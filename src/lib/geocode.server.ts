@@ -7,7 +7,27 @@
 //     property-import volume grows past ~1 req/sec sustained, switch to a
 //     paid provider (LocationIQ, Mapbox, Google) or a self-hosted Nominatim.
 
-export type GeocodeResult = { latitude: number; longitude: number } | null;
+/** How precisely the geocoder actually matched.
+ *
+ *  ── WHY THIS EXISTS ────────────────────────────────────────────────────
+ *
+ *  Nominatim answers a house it does not know by returning the STREET, or the
+ *  city, and the shape of the reply is identical either way. Until this, the
+ *  caller received {latitude, longitude} and had no way to tell a driveway
+ *  from a town centre, so a street centroid was stored as though somebody
+ *  lived on it -- and on a long suburban road that is hundreds of metres from
+ *  the actual house, which is the difference between a technician finding it
+ *  and phoning the office.
+ *
+ *  Measured against six ordinary US addresses on 2026-08-26: two matched a
+ *  house, two returned the street only, two missed entirely. So the imprecise
+ *  answer is the COMMON case in the United States, not the edge case, and it
+ *  was indistinguishable from the good one. */
+export type GeocodePrecision = "house" | "street" | "area";
+
+export type GeocodeResult =
+  | { latitude: number; longitude: number; precision: GeocodePrecision }
+  | null;
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT =
@@ -38,7 +58,9 @@ export async function geocodeAddress(parts: {
 
   await throttle();
 
-  const url = `${NOMINATIM_URL}?format=json&limit=1&addressdetails=0&q=${encodeURIComponent(address)}`;
+  // addressdetails=1, so the reply says WHICH part it matched. It used to be
+  // 0, which made a house and a city centre arrive looking the same.
+  const url = `${NOMINATIM_URL}?format=json&limit=1&addressdetails=1&q=${encodeURIComponent(address)}`;
 
   let res: Response;
   try {
@@ -73,7 +95,19 @@ export async function geocodeAddress(parts: {
   const lat = first?.lat != null ? Number(first.lat) : NaN;
   const lon = first?.lon != null ? Number(first.lon) : NaN;
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
-    return { latitude: lat, longitude: lon };
+    const detail = (first as any)?.address ?? {};
+    const precision: GeocodePrecision = detail.house_number
+      ? "house"
+      : detail.road
+        ? "street"
+        : "area";
+    if (precision !== "house") {
+      // Not an error, and deliberately not a refusal: a street-level point is
+      // far better than nothing for routing, and refusing it would block a
+      // signup over a road OSM has not house-numbered. It has to be VISIBLE.
+      console.warn(`[geocode] ${precision}-level match only for "${address}"`);
+    }
+    return { latitude: lat, longitude: lon, precision };
   }
 
   console.warn(`[geocode] no result for address "${address}"`);

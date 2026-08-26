@@ -941,6 +941,18 @@ export const applyOptimize = createServerFn({ method: "POST" })
     const perStaff = new Map<string, { stops: number; totalMin: number }>();
 
     for (const day of days) {
+      // Measure the real road legs for this day before planning it. Best
+      // effort on purpose: refreshRoadLegs returns 0 for every failure path,
+      // drive_minutes() falls back to its straight-line estimate for anything
+      // unmeasured, and a dispatcher whose routing engine is down still gets a
+      // plan. It is a cache warm, not a dependency.
+      try {
+        const { refreshRoadLegs } = await import("@/lib/road-legs.server");
+        await refreshRoadLegs(orgId, day);
+      } catch (err) {
+        console.error("road leg refresh failed for", day, (err as Error).message);
+      }
+
       const { data: rows, error } = await (supabase as any).rpc("plan_day_across_staff", {
         _org_id: orgId,
         _staff_ids: data.staffIds,

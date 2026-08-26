@@ -1,0 +1,222 @@
+// Real driving distances, from the road network, cached.
+//
+// ── WHY ──────────────────────────────────────────────────────────────────
+//
+// The planner minimised straight-line distance. Measured against OSRM on four
+// consecutive legs of a real day, the road is 1.44x to 2.42x longer than the
+// straight line, against a model that assumes a flat 1.45x. A straight line
+// across the East River is not a road, and one multiplier cannot know that.
+//
+// Time was wrong in the other direction and by more: `dense_urban` assumes
+// 11 km/h, so a hop OSRM drives in 22 minutes was costed at 66.7.
+//
+// The ETA being wrong is the visible part. The part that matters is that a
+// solver minimising the wrong quantity picks the wrong ORDER, and no amount of
+// 2-opt fixes an objective that disagrees with the road by 2.4x on one leg.
+//
+// ── HOW ──────────────────────────────────────────────────────────────────
+//
+// One Table request per day gives every pair at once -- for 21 stops and three
+// start points that is a single call, not 576 -- and the rows land in
+// `road_legs`, which drive_minutes() prefers over its estimate. Anything not
+// measured still costs what it costed before, so a failure here degrades to
+// yesterday's behaviour rather than to nothing.
+//
+// ── THE HOSTING DECISION, WHICH IS NOT MINE ──────────────────────────────
+//
+// router.project-osrm.org is the public demo server. It is free, needs no key,
+// and its operators say plainly it is a demo and not for production use. This
+// repo already depends on Nominatim on the same terms and says so in
+// geocode.server.ts, so this is consistent rather than novel -- but both are
+// the same bet, and it comes due at the same time. For a shipped product this
+// wants a self-hosted OSRM or a paid provider, and the only thing that has to
+// change is OSRM_URL.
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
+const OSRM_URL = process.env.OSRM_URL ?? "https://router.project-osrm.org";
+
+/** Region endpoints, for national coverage without a national graph.
+ *
+ *  Geofabrik's four US sub-extracts cover the whole country and sum to about
+ *  what the national one weighs -- 1.67, 2.32, 3.83 and 3.16 GB against 11.27 --
+ *  but each builds on a 32-64 GB box instead of one needing ~124 GB.
+ *
+ *  OSRM_ENDPOINTS is JSON: {"northeast":"http://ne:5000","south":"http://s:5000"}
+ *  Anything unconfigured falls through to OSRM_URL, and anything unmatched
+ *  falls through to the straight-line estimate, so partial coverage is a
+ *  supported state rather than a broken one. That matters while regions are
+ *  added as tenants appear in them. */
+function endpointFor(lat: number, lon: number): string {
+  let map: Record<string, string> = {};
+  try {
+    map = JSON.parse(process.env.OSRM_ENDPOINTS ?? "{}");
+  } catch {
+    console.error("[road-legs] OSRM_ENDPOINTS is not valid JSON; using OSRM_URL");
+  }
+  if (Object.keys(map).length === 0) return OSRM_URL;
+
+  // Coarse, and deliberately so: it only has to pick a candidate, because
+  // every answer is then checked against how far each point had to be snapped.
+  // A wrong guess costs a wasted request, not a wrong route.
+  const region =
+    lon < -104 ? "west" : lon < -87 ? (lat < 36.5 ? "south" : "midwest") : lat < 39.5 ? "south" : "northeast";
+  return map[region] ?? map.default ?? OSRM_URL;
+}
+const USER_AGENT =
+  "HoundStack/1.0 (pet-waste operations app; contact: support@houndstack.com)";
+
+/** How many points one Table request may carry.
+ *
+ *  The public demo server caps this at 100, so 90 is the safe default. A
+ *  self-hosted osrm-routed sets its own limit with --max-table-size, and
+ *  infra/osrm/docker-compose.yml sets 200 -- so this is an env var rather than
+ *  a constant, and raising the server without raising this would leave the
+ *  extra capacity unused and silent. */
+const MAX_POINTS = Number(process.env.OSRM_MAX_TABLE ?? 90);
+
+type Point = { lat: number; lon: number };
+
+/** Rounded exactly as the table stores them, so a lookup cannot miss by a tick. */
+const r5 = (n: number) => Number(n.toFixed(5));
+
+/**
+ * Measure every pair among a day's stops and start points, and cache them.
+ *
+ * Best effort by design: returns the number of legs written, and 0 for every
+ * failure path. The caller must not treat 0 as an error, because a planner
+ * that refuses to run when a third-party router is down is worse than one that
+ * falls back to an estimate.
+ */
+export async function refreshRoadLegs(orgId: string, day: string): Promise<number> {
+  const admin = supabaseAdmin as any;
+
+  const { data: visits } = await admin
+    .from("visits")
+    .select("property_id, properties!inner(latitude, longitude)")
+    .eq("organization_id", orgId)
+    .eq("scheduled_on", day)
+    .eq("status", "scheduled");
+
+  const { data: staff } = await admin
+    .from("staff")
+    .select("start_latitude, start_longitude")
+    .eq("organization_id", orgId)
+    .eq("active", true)
+    .eq("routing_available", true);
+
+  const seen = new Set<string>();
+  const points: Point[] = [];
+  const add = (lat: unknown, lon: unknown) => {
+    if (typeof lat !== "number" || typeof lon !== "number") return;
+    const p = { lat: r5(lat), lon: r5(lon) };
+    const k = `${p.lat},${p.lon}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    points.push(p);
+  };
+
+  for (const v of visits ?? []) add((v as any).properties?.latitude, (v as any).properties?.longitude);
+  for (const s of staff ?? []) add((s as any).start_latitude, (s as any).start_longitude);
+
+  // One point is a matrix of itself; nothing to measure.
+  if (points.length < 2) return 0;
+  if (points.length > MAX_POINTS) {
+    // Deliberately not silently truncating: a partial matrix would measure some
+    // legs and estimate others, and the mix is harder to reason about than
+    // estimating all of them. Say so and leave it alone.
+    console.warn(
+      `[road-legs] ${points.length} points for ${orgId} on ${day} exceeds ${MAX_POINTS}; leaving this day on estimates`,
+    );
+    return 0;
+  }
+
+  // OSRM takes lon,lat. Getting this backwards routes through the Indian Ocean
+  // and returns plausible-looking numbers, so it is written once, here.
+  const coords = points.map((p) => `${p.lon},${p.lat}`).join(";");
+  const base = endpointFor(points[0].lat, points[0].lon);
+  const url = `${base}/table/v1/driving/${coords}?annotations=duration,distance`;
+
+  let json: any;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) {
+      console.error(`[road-legs] OSRM ${res.status} for ${orgId} ${day}`);
+      return 0;
+    }
+    json = await res.json();
+  } catch (err) {
+    console.error("[road-legs] OSRM unreachable", (err as Error).message);
+    return 0;
+  }
+
+  if (json?.code !== "Ok" || !Array.isArray(json.distances) || !Array.isArray(json.durations)) {
+    console.error("[road-legs] OSRM returned", json?.code, json?.message ?? "");
+    return 0;
+  }
+
+  // ── THE GUARD THAT MAKES A WRONG GRAPH HARMLESS ────────────────────────
+  //
+  // OSRM does not refuse a coordinate outside its extract. It snaps to the
+  // nearest road it HAS and answers Ok. Asking a Delaware graph about Los
+  // Angeles returns code "Ok", both points snapped 3,849 km to a lane called
+  // "Cross Road", and every duration ZERO -- which the planner would read as
+  // "every stop is next door to every other" and act on.
+  //
+  // That is the worst possible failure: not an error, not a bad number, but a
+  // confident zero. So every point is checked against how far it had to be
+  // snapped, and any leg touching a bad one is dropped to the estimate.
+  const SNAP_LIMIT_M = 2000; // generous: a rural driveway can be a long way off a mapped road
+  const snapped = [...(json.sources ?? []), ...(json.destinations ?? [])];
+  const worst = snapped.reduce((m: number, p: any) => Math.max(m, p?.distance ?? 0), 0);
+  const bad = new Set<number>();
+  (json.sources ?? []).forEach((p: any, i: number) => {
+    if ((p?.distance ?? 0) > SNAP_LIMIT_M) bad.add(i);
+  });
+  if (bad.size) {
+    console.error(
+      `[road-legs] ${bad.size}/${points.length} points for ${orgId} on ${day} are outside this graph ` +
+        `(worst snap ${Math.round(worst)} m, endpoint ${base}); those legs stay on estimates`,
+    );
+  }
+  // Nothing in this extract at all: almost certainly the wrong region, and
+  // writing any of it would be writing fiction.
+  if (bad.size === points.length) return 0;
+
+  const rows: any[] = [];
+  for (let i = 0; i < points.length; i++) {
+    for (let j = 0; j < points.length; j++) {
+      if (i === j) continue;
+      const meters = json.distances[i]?.[j];
+      const seconds = json.durations[i]?.[j];
+      // OSRM returns null for a pair it cannot connect. Skipping leaves the
+      // estimate in charge for that leg, which is the right answer for two
+      // points with no road between them.
+      if (typeof meters !== "number" || typeof seconds !== "number") continue;
+      if (bad.has(i) || bad.has(j)) continue;
+      rows.push({
+        organization_id: orgId,
+        from_lat: points[i].lat,
+        from_lon: points[i].lon,
+        to_lat: points[j].lat,
+        to_lon: points[j].lon,
+        meters,
+        seconds,
+        source: "osrm",
+        fetched_at: new Date().toISOString(),
+      });
+    }
+  }
+  if (rows.length === 0) return 0;
+
+  const { error } = await admin
+    .from("road_legs")
+    .upsert(rows, { onConflict: "organization_id,from_lat,from_lon,to_lat,to_lon" });
+  if (error) {
+    console.error("[road-legs] upsert failed", error.message);
+    return 0;
+  }
+  return rows.length;
+}
