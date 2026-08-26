@@ -51,3 +51,21 @@ playwright-report/
 # and can run to thousands of lines; one landed in ios/App/ and is not a source
 # artefact. Ignored by shape rather than by name so the next one is too.
 20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
+
+# Signing material, which is not source and must never reach the remote.
+#
+# An Apple .p8 turned up in the repo root on 2026-08-26, one `git add -A` away
+# from being published. It had never been committed and nothing was stopping
+# it. That key downloads from Apple EXACTLY ONCE and cannot be re-fetched, and
+# a leaked one lets anybody mint Sign in with Apple client secrets for this
+# team until it is revoked -- so the cost of the accident is not "rotate a
+# password", it is "revoke the key, generate a new one, and re-sign".
+#
+# Keep the real thing outside the repo. scripts/apple-client-secret.mjs takes
+# a path, so it never needs to live here.
+*.p8
+AuthKey_*.p8
+*.p12
+*.mobileprovision
+*.cer
+*.certSigningRequest
