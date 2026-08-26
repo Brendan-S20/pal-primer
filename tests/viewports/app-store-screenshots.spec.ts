@@ -40,52 +40,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
-
-/** The sweep fixture pins `getTrialState` to `phase: "expired"`, ON PURPOSE:
- *  the layout sweep exists to measure the banner, so it ships the worst case.
- *
- *  For a screenshot that is exactly backwards. The first version of these shots
- *  gave the top third of every phone frame to "Your free trial has ended", with
- *  "Set up billing" underneath -- a paywall notice as the opening image of the
- *  store listing.
- *
- *  Registered AFTER installStubBackend, because Playwright matches handlers in
- *  reverse order of registration, so this wins over the fixture without
- *  touching it. The sweep keeps measuring the state it needs to measure. */
-async function showAPayingCustomer(page: Page) {
-  await page.route("**/_serverFn/**", async (route) => {
-    const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
-    let name = "";
-    try {
-      name = String(
-        JSON.parse(Buffer.from(decodeURIComponent(id), "base64url").toString()).export ?? "",
-      ).replace(/_createServerFn_handler$/, "");
-    } catch {
-      /* not a shape we recognise; let the fixture answer */
-    }
-    if (name === "getTrialState") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        // { result: ... } is the envelope a TanStack Start server function
-        // replies in, and the fixture uses it too. Returning the bare object
-        // gives the client `undefined` and React Query logs "Query data cannot
-        // be undefined" for ["trial","state"] -- which is not a crash, so the
-        // page still renders and the screenshot still looks plausible.
-        body: JSON.stringify({
-          result: {
-            phase: "paid",
-            daysRemaining: null,
-            endsOn: null,
-            restricted: false,
-            canManageBilling: true,
-          },
-        }),
-      });
-    }
-    return route.fallback();
-  });
-}
+import { installMarketingData } from "./fixtures/marketing";
 
 const OUT = join(process.cwd(), "ios", "screenshots");
 
@@ -115,12 +70,22 @@ const SHOTS: Array<{
     },
   },
   {
+    // BOARD, not Map. The map draws its pins and its per-technician route lines
+    // beautifully and then draws them on a SOLID RED RECTANGLE, because the
+    // fence blocks tile requests and the container's fallback colour shows
+    // through. Letting tiles out would send coordinates to a tile server and
+    // break the one guarantee that makes this harness safe to run.
+    //
+    // The board is the better picture anyway: one column per technician, the
+    // round in order, which is the thing being sold.
     name: "the-round",
     path: "/routes",
     ready: async (p) => {
       await expect(p.getByRole("button", { name: "Auto-routing" })).toBeVisible({
         timeout: 20_000,
       });
+      await p.getByRole("button", { name: "Board", exact: true }).click();
+      await p.waitForTimeout(400);
     },
   },
   {
@@ -165,7 +130,7 @@ for (const size of SIZES) {
       test(`${i + 1}. ${shot.name}`, async ({ page }) => {
         await installSignedInSession(page);
         await installStubBackend(page);
-        await showAPayingCustomer(page);
+        await installMarketingData(page);
 
         await page.goto(shot.path, { waitUntil: "domcontentloaded" });
         await shot.ready(page);
