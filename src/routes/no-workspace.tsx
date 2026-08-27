@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { signOutAndClearDevice } from "@/lib/offline/read-cache";
@@ -63,6 +64,7 @@ export const Route = createFileRoute("/no-workspace")({
 
 function NoWorkspacePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [orgName, setOrgName] = useState("");
@@ -106,10 +108,36 @@ function NoWorkspacePage() {
         orgName: orgName.trim(),
         displayName: displayName.trim(),
       });
+
+      // ── THE WORKSPACE EXISTS AND THE GUARD CANNOT SEE IT ──────────────
+      //
+      // _authenticated/route.tsx decides whether you have a workspace with
+      // ensureQueryData({ queryKey: ["my-org"], staleTime: 60_000 }), and
+      // ensureQueryData answers from cache while the entry is fresh. Landing
+      // here populated that cache with "no organization" seconds ago.
+      //
+      // So without this, the sequence was: create the workspace, navigate to
+      // /dashboard, guard reads the stale "no organization", redirect back to
+      // /no-workspace -- with `busy` still true, because the navigation was
+      // treated as success. The organization was created every time; the app
+      // simply could not see it for a minute. Reported as "I enter my business
+      // name and it just endlessly loads", which is exactly what it looks like.
+      //
+      // Removed rather than invalidated: invalidate marks it stale and leaves
+      // the value in place, and ensureQueryData is happy to hand a stale value
+      // back while the refetch is in flight. Removing forces the guard to ask.
+      queryClient.removeQueries({ queryKey: ["my-org"] });
+      queryClient.removeQueries({ queryKey: ["platform-context"] });
+
       navigate({ to: "/dashboard" });
     } catch (err) {
-      setBusy(false);
       setError(err instanceof Error ? err.message : "Couldn't finish setting up. Try again.");
+    } finally {
+      // ALWAYS. This used to be cleared only on the error path, on the
+      // reasoning that success navigates away -- which is true right up until
+      // the navigation lands somewhere that sends you back here, and then the
+      // spinner never stops and there is no way to try again.
+      setBusy(false);
     }
   };
 
