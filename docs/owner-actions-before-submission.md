@@ -8,54 +8,19 @@ Ordered by what blocks the most. Last measured 2026-08-26 against `main`
 
 ---
 
-## 1. Sign in with Apple
+## 1. Sign in with Apple — DONE
 
-**Blocks:** shipping any third-party sign-in inside the iOS binary
-(guideline 4.8). Not blocking submission today, because the whole OAuth block
-is hidden in the native build.
+Live on the web, verified by following the redirect and reading what Apple
+returned: `appleid.apple.com` renders the real "Sign in to Apple Account", and
+the `client_id` is `consulting.thenorth.houndstack.web` — the **Services ID**,
+not the App ID. That is the trap this section used to warn about and it was
+avoided.
 
-Supabase currently answers:
+Google and Facebook are live too. `npm run check:oauth` reports all three.
 
-```json
-{"error_code":"validation_failed","msg":"Unsupported provider: missing OAuth secret"}
-```
-
-The provider toggle is on. The credential is empty, and it is the one provider
-where the toggle is not the credential: Apple hands you a `.p8` PRIVATE KEY,
-and Supabase wants an ES256 **JWT signed with it**. Apple never shows you that
-JWT, because it does not exist until somebody makes one.
-
-You already have the key. **Key ID `JPRR76PFJX`.** What is missing:
-
-- [ ] **Services ID.** Apple Developer → Identifiers → `+` → Services IDs.
-      Something like `consulting.thenorth.houndstack.web`.
-      **This is not the App ID.** The App ID identifies the iOS app; the
-      Services ID identifies the web sign-in client, and Apple rejects the
-      wrong one with `invalid_client` and no explanation.
-- [ ] **Configure that Services ID** → domain `api.houndstack.com`,
-      return URL `https://api.houndstack.com/auth/v1/callback`
-- [ ] **Team ID** — top right of the Apple Developer portal, 10 characters
-- [ ] Run it:
-
-```
-npm run apple:secret -- \
-  --p8 /path/to/AuthKey_JPRR76PFJX.p8 \
-  --team-id YOURTEAMID \
-  --key-id JPRR76PFJX \
-  --services-id consulting.thenorth.houndstack.web
-```
-
-- [ ] Paste the JWT into Supabase → Authentication → Providers → Apple →
-      Secret Key. Client IDs field gets the **Services ID**.
-- [ ] Run `npm run check:oauth`. It follows the redirect all the way to Apple
-      and tells you whether it actually works, rather than whether it looks
-      configured.
-
-**Diarise the expiry.** Apple caps the token at 15,777,000 seconds, about six
-months. When it lapses, Sign in with Apple stops — at Apple, invisible to the
-app, exactly like the Google outage on 2026-08-25. The script prints the date.
-
----
+**Diarise the expiry.** Apple caps the client secret at about six months. When
+it lapses, Sign in with Apple stops at Apple, invisibly to the app.
+`npm run apple:secret` prints the date when it generates one.
 
 ## 2. Move the `.p8` out of the repo directory — DONE
 
@@ -69,36 +34,33 @@ somewhere else; `apple:secret` takes a path.
 
 ---
 
-## 3. Delete the Xcode Cloud "Test" action
+## 3. Xcode Cloud — ALREADY DONE, and this entry was stale
 
-**Blocks:** clean Xcode Cloud builds.
+There is no Test action to delete. The workflow has one Action, **Archive -
+iOS**, with Distribution Preparation set to App Store Connect, and two
+Post-Actions: TestFlight Internal Testing (Stackers) and TestFlight External
+Testing (The Hounds). The truncated "Test..." entries in the sidebar are those
+two TestFlight post-actions.
 
-- [ ] Xcode Cloud → the workflow → delete the Test action.
+The Test action was deleted by the owner much earlier in the project, right
+after the "There are no test bundles available to test" failure. This checklist
+kept carrying it as outstanding for days afterwards, which is worse than not
+listing it: a checklist that asks for work already done teaches people to skim
+it.
 
-There is no API and no CLI for this. It has to be done in the UI, by you.
+The original diagnosis was still correct and is worth keeping, because it
+explains why a Test action can never work here: `ios/App/App.xcodeproj` has
+exactly ONE target and it is of type `application`. The UITests are a separate
+project, `ios/UITests/UITests.xcodeproj`, so the App workspace has no test
+bundle to run. If a Test action is ever added back, it will fail the same way.
 
----
+## 4. App Privacy questionnaire — DONE
 
-## 4. App Privacy questionnaire
+## 5. Category — DECIDED: Productivity
 
-**Blocks submission.**
-
-- [ ] App Store Connect → App Privacy → complete it.
-
-Nothing in the repo can answer it: it is a set of declarations about what the
-app collects, and the person making the declaration has to be you.
-
----
-
-## 5. Category mismatch
-
-**Blocks submission review consistency.**
-
-- [ ] Pick one. `docs/app-store-submission.md` says **Productivity**; App Store
-      Connect currently says **Utilities**. Tell me which and I will make the
-      doc agree, or change it in ASC yourself.
-
----
+- [ ] Set it in App Store Connect. `docs/app-store-submission.md` already says
+      Productivity; App Store Connect said Utilities, so ASC is the one to
+      change.
 
 ## 6. Allow the app's redirect URL in Supabase — NEW, and native sign-in needs it
 
@@ -127,22 +89,23 @@ choosing shots, not for submitting, and they predate today's UI.
 
 ---
 
-## 7. Facebook sign-in — only if you want it
+## 7. Facebook sign-in — IN REVIEW at Meta
 
-Not started, and nothing depends on it.
+Live and verified from our side. One thing is still not checkable from here:
 
-- [ ] Meta app (Consumer) → add Facebook Login
-- [ ] Valid OAuth Redirect URI → `https://api.houndstack.com/auth/v1/callback`
-- [ ] App ID + secret into Supabase
-- [ ] Privacy Policy URL → `https://houndstack.com/legal/privacy`
-- [ ] **Switch the app from Development to Live**
+- [ ] Confirm the Meta app is **Live**, not Development, once review completes.
 
-That last one is the trap. In Development mode it works for you and fails for
-100% of buyers, and no automated check can see the difference — it is an
-account-level distinction, not a redirect-URI one. Test it with an account that
-has no role on the Meta app.
+In Development it works for anyone with a role on the app and fails for every
+real buyer, and the two are indistinguishable to an unauthenticated request —
+so no automated check can see the difference. Test it with an account that has
+no role on the Meta app.
 
----
+**A note on how this was found broken.** The Client IDs field originally held an
+app ACCESS TOKEN, `APPID|APPSECRET`, so the app secret was going out in a query
+string on every attempt and Facebook was answering "Invalid App ID" inside a
+200 response. `check:oauth` passed it, because it only knew how to read a 4xx
+and a redirect-to-error. It now reads the body and refuses any `client_id`
+containing a pipe. The secret has been rotated.
 
 ## Things you do NOT need to do
 
@@ -159,6 +122,33 @@ Listed so they stop taking up room.
 | Deploy | `main` is live; `latest_commit_sha` matches |
 
 ---
+
+## Why there are no sign-in buttons in the iOS app
+
+Asked on 2026-08-26, and the answer is that it is deliberate. The whole OAuth
+block sits behind `!IS_NATIVE_BUNDLE` in `src/routes/auth.tsx`, so the binary
+ships email sign-in only. Two reasons, and the first is the hard one:
+
+**Google refuses to run OAuth inside an embedded WebView.** It answers
+`disallowed_useragent`. A Capacitor app IS an embedded WebView, so the button
+cannot be made to work there however it is wired. A native flow needs
+`ASWebAuthenticationSession` and a deep link back into the app, which is real
+work rather than a flag.
+
+**Guideline 4.8** requires Sign in with Apple wherever an app offers
+third-party sign-in. Shipping Google alone would invite a rejection; shipping
+none avoids the rule entirely.
+
+Now that Apple genuinely works, an Apple-only button in the binary would
+satisfy 4.8 by construction and dodge Google's WebView block. It is still not a
+one-line change: the redirect comes back to `capacitor://localhost` and has to
+be caught and handed to the session, which is the "proper native auth flow"
+this repo has never had.
+
+**Recommendation: ship v1 without it.** Email sign-in works in the binary,
+nothing blocks submission, and 4.8 stays unengaged rather than merely
+satisfied. Add native Sign in with Apple as a follow-up, when there is time to
+do the deep link properly rather than at the end of a submission checklist.
 
 ## How to deploy, when you need to
 
