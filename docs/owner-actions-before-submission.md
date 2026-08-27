@@ -34,27 +34,25 @@ somewhere else; `apple:secret` takes a path.
 
 ---
 
-## 3. Delete the Xcode Cloud "Test" action
+## 3. Xcode Cloud — ALREADY DONE, and this entry was stale
 
-**Blocks:** clean Xcode Cloud builds.
+There is no Test action to delete. The workflow has one Action, **Archive -
+iOS**, with Distribution Preparation set to App Store Connect, and two
+Post-Actions: TestFlight Internal Testing (Stackers) and TestFlight External
+Testing (The Hounds). The truncated "Test..." entries in the sidebar are those
+two TestFlight post-actions.
 
-The build fails with:
+The Test action was deleted by the owner much earlier in the project, right
+after the "There are no test bundles available to test" failure. This checklist
+kept carrying it as outstanding for days afterwards, which is worse than not
+listing it: a checklist that asks for work already done teaches people to skim
+it.
 
-```
-xcodebuild: error: Failed to build workspace App with scheme App.
-There are no test bundles available to test.
-```
-
-It is telling the truth. `ios/App/App.xcodeproj` has exactly ONE target and it
-is of type `application` — there is no test bundle in that project at all. The
-UITests are a separate project, `ios/UITests/UITests.xcodeproj`, so the App
-workspace has nothing to run.
-
-- [ ] App Store Connect → your app → **Xcode Cloud** → **Manage Workflows** →
-      select the workflow → **Actions** → delete the **Test** action.
-      (Or from Xcode: Product → Xcode Cloud → Manage Workflows.)
-
-Keep Archive and Build. Only Test goes. There is no API for this.
+The original diagnosis was still correct and is worth keeping, because it
+explains why a Test action can never work here: `ios/App/App.xcodeproj` has
+exactly ONE target and it is of type `application`. The UITests are a separate
+project, `ios/UITests/UITests.xcodeproj`, so the App workspace has no test
+bundle to run. If a Test action is ever added back, it will fail the same way.
 
 ## 4. App Privacy questionnaire — DONE
 
