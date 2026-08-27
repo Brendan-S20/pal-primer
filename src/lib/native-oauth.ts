@@ -105,3 +105,47 @@ export async function completeNativeOAuth(url: string): Promise<CallbackResult |
   if (error) return { ok: false, message: error.message };
   return { ok: true };
 }
+
+// ── SIGN IN WITH APPLE, WITH NO BROWSER AT ALL ───────────────────────────
+//
+// Google and Facebook have to leave the app: Google refuses OAuth in an
+// embedded WebView and there is no way round it. Apple does not. ASAuthorization
+// is a system sheet -- Face ID, two taps, no Safari -- and it is what an iOS
+// user expects from an Apple button.
+//
+// The flow is different in kind, not degree. There is no redirect and no URL to
+// come back from: the sheet returns an identity token and Supabase exchanges it
+// directly.
+//
+// ── THE NONCE, WHICH IS EASY TO GET SUBTLY WRONG ─────────────────────────
+//
+// Apple binds the token to a nonce, and the two ends want DIFFERENT forms of
+// it: Apple is given the SHA-256 hash, and Supabase is given the raw string it
+// hashes to. Sending the same value to both looks like it works -- the sheet
+// appears, the token comes back -- and Supabase rejects it with a message about
+// the nonce that reads like a library problem.
+export async function nativeAppleSignIn(): Promise<void> {
+  const raw = crypto.randomUUID() + crypto.randomUUID();
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  const hashed = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
+  const result = await SignInWithApple.authorize({
+    clientId: "consulting.thenorth.houndstack",
+    redirectURI: NATIVE_OAUTH_REDIRECT,
+    scopes: "email name",
+    nonce: hashed,
+  });
+
+  const token = result?.response?.identityToken;
+  if (!token) throw new Error("Apple did not return an identity token.");
+
+  const { error } = await supabase.auth.signInWithIdToken({
+    provider: "apple",
+    token,
+    nonce: raw,
+  });
+  if (error) throw new Error(error.message);
+}
