@@ -57,7 +57,7 @@ app, exactly like the Google outage on 2026-08-25. The script prints the date.
 
 ---
 
-## 2. Move the `.p8` out of the repo directory
+## 2. Move the `.p8` out of the repo directory — DONE
 
 - [ ] It is currently at the repo root. It is now gitignored, and it has never
       been committed, so nothing has leaked.
@@ -100,7 +100,21 @@ app collects, and the person making the declaration has to be you.
 
 ---
 
-## 6. The demo workspace, before screenshots
+## 6. Allow the app's redirect URL in Supabase — NEW, and native sign-in needs it
+
+- [ ] Supabase → Authentication → URL Configuration → **Redirect URLs** → add
+      `consulting.thenorth.houndstack://auth-callback`
+
+Sign-in from inside the iOS app hands back to the app through that custom URL
+scheme. Supabase refuses to redirect anywhere that is not on this list, and the
+way it refuses is the problem: it silently sends the person to the site URL
+instead, so the flow completes with no session and the app reports a sign-in
+that came back empty. It does not look like a configuration error.
+
+Nothing else about native sign-in needs a console: the scheme is registered in
+Info.plist and the Browser plugin is wired through SPM.
+
+## 7. The demo workspace, before screenshots
 
 - [ ] `brendancreataco@gmail.com` holds **owner** on the demo org. Keep or
       remove.

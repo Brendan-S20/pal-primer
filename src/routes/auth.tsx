@@ -190,10 +190,73 @@ function AuthPage() {
     navigate({ to });
   };
 
+  // The other half of the native flow: the system browser hands back to
+  // consulting.thenorth.houndstack://auth-callback and this turns it into a
+  // session. Registered once, and torn down on unmount so a remount does not
+  // stack listeners and process the same URL twice.
+  useEffect(() => {
+    if (!IS_NATIVE_BUNDLE) return;
+    let remove: (() => void) | undefined;
+    let cancelled = false;
+
+    void (async () => {
+      const { App } = await import("@capacitor/app");
+      const handle = await App.addListener("appUrlOpen", async ({ url }) => {
+        const { completeNativeOAuth } = await import("@/lib/native-oauth");
+        const result = await completeNativeOAuth(url);
+        if (!result) return; // some other deep link; not ours
+        setLoading(false);
+        if (!result.ok) return setError(result.message);
+        // Same landing decision as every other way in, including the
+        // brand-new-organization case that has to name the business first.
+        const { data } = await supabase.auth.getUser();
+        if (!data.user) return setError("Signed in, but the session did not stick. Try again.");
+        let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
+        try {
+          isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
+        } catch (err) {
+          console.error("bootstrap after native oauth failed", err);
+        }
+        if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
+        const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
+        navigate({ to });
+      });
+      if (cancelled) void handle.remove();
+      else remove = () => void handle.remove();
+    })();
+
+    return () => {
+      cancelled = true;
+      remove?.();
+    };
+  }, [navigate]);
+
   const oauthSignIn = async (provider: "google" | "apple" | "facebook") => {
     const label = provider.charAt(0).toUpperCase() + provider.slice(1);
     setError(null);
     setLoading(true);
+
+    // ── NATIVE TAKES A DIFFERENT ROUTE ENTIRELY ────────────────────────
+    //
+    // Not a variation on the web flow: the web flow navigates THIS WebView to
+    // the provider, and Google refuses to run OAuth in an embedded WebView at
+    // all (`disallowed_useragent`). The native path opens the system browser
+    // instead and is handed back through a custom URL scheme. See
+    // lib/native-oauth.ts for why it is implicit rather than PKCE.
+    if (IS_NATIVE_BUNDLE) {
+      try {
+        const { nativeOAuthSignIn } = await import("@/lib/native-oauth");
+        await nativeOAuthSignIn(provider);
+        // Loading stays ON: the browser sheet is up and the session arrives
+        // through appUrlOpen. Clearing it here would offer a second tap that
+        // starts a second flow underneath the first.
+      } catch (err) {
+        setLoading(false);
+        setError(err instanceof Error ? err.message : `${label} sign-in failed`);
+      }
+      return;
+    }
+
     try {
       // All three providers go through Supabase's native OAuth flow. This
       // project's auth is an external Supabase project — there is no
@@ -343,25 +406,28 @@ function AuthPage() {
           </form>
         )}
 
-        {/* OAuth lives under the email sign-in (re-review), with brand marks.
-            NATIVE ONLY — the whole block is absent from the binary, and that is
-            a deliberate divergence rather than a layout tweak:
+        {/* ── OAUTH SHIPS IN THE BINARY, 2026-08-27 ────────────────────────
+            This block used to be web-only, and the reason it was hidden is
+            worth keeping because only half of it has gone away.
 
-            * Google BLOCKS OAuth inside embedded WebViews (disallowed_useragent),
-              so the button cannot work in a Capacitor shell however it is wired.
-              A native flow needs ASWebAuthenticationSession, which is its own
-              piece of work.
-            * App Store guideline 4.8 requires Sign in with Apple wherever an app
-              offers third-party sign-in. Shipping Google alone into a review
-              build invites a rejection; shipping NO third-party button avoids
-              the rule entirely until Apple sign-in is actually built.
+            Google still REFUSES OAuth inside an embedded WebView
+            (`disallowed_useragent`), and the app's WKWebView is one. That has
+            not changed and cannot be worked around. What changed is that the
+            native path no longer uses the WebView: oauthSignIn opens the
+            provider in SFSafariViewController via @capacitor/browser, which
+            Google treats as a system browser, and the session comes back
+            through a custom URL scheme. See lib/native-oauth.ts.
 
-            Hidden rather than disabled because the iOS audit measured what a
-            disabled button costs here: 132px of a 392px card, three controls a
-            first-time visitor taps and gets nothing from — ui/button.tsx sets
-            disabled:pointer-events-none, so even their "Coming soon" tooltip
-            can never fire. */}
-        {!IS_NATIVE_BUNDLE && (
+            Guideline 4.8 is now satisfied the way it is meant to be -- Sign in
+            with Apple is OFFERED alongside the others -- rather than dodged by
+            offering nothing. Apple must stay in this list for as long as
+            Google or Facebook are in it.
+
+            NEEDS ONE THING OUTSIDE THE REPO: the redirect
+            consulting.thenorth.houndstack://auth-callback must be in Supabase
+            → Authentication → URL Configuration → Redirect URLs. Supabase
+            silently redirects to the site URL instead when it is not, which
+            arrives as a sign-in that returns no session. */}
           <>
             <div className="relative my-5">
               <div className="absolute inset-0 flex items-center">
@@ -460,7 +526,6 @@ function AuthPage() {
               </div>
             </div>
           </>
-        )}
       </div>
 
       {alert && (
