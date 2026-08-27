@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,6 +90,19 @@ async function landingPathForUser(userId: string): Promise<string> {
 
 function AuthPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  /** A brand-new organization is invisible to the route guard for a minute.
+   *
+   *  _authenticated/route.tsx asks ensureQueryData({ queryKey: ["my-org"],
+   *  staleTime: 60_000 }), and this page has usually just populated that cache
+   *  with "no organization". Navigating to /onboarding or /dashboard then reads
+   *  the stale answer and redirects to /no-workspace, which looks like the
+   *  workspace was never created. It always was. */
+  const forgetWorkspaceCache = () => {
+    queryClient.removeQueries({ queryKey: ["my-org"] });
+    queryClient.removeQueries({ queryKey: ["platform-context"] });
+  };
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [stage, setStage] = useState<"email" | "password">("email");
@@ -113,6 +127,7 @@ function AuthPage() {
           // asks — the same screen, and the same validator, that /get-started
           // uses on the email path.
           isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
+          if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
           console.error("bootstrap on landing failed", err);
         }
@@ -148,6 +163,7 @@ function AuthPage() {
       if (identity.user && !isDefinitelyOffline()) {
         try {
           isNewOrg = await ensureBootstrapped(identity.user as any, { requireOrgName: true });
+          if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
           console.error("bootstrap on landing failed", err);
         }
@@ -175,6 +191,7 @@ function AuthPage() {
     if (data.user) {
       try {
         isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
+          if (isNewOrg === true) forgetWorkspaceCache();
       } catch (err) {
         setLoading(false);
         return setError(err instanceof Error ? err.message : "Failed to create organization");
@@ -214,6 +231,7 @@ function AuthPage() {
         let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
         try {
           isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
+          if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
           console.error("bootstrap after native oauth failed", err);
         }
