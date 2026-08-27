@@ -189,25 +189,50 @@ describe("the OAuth gate can see a refusal that arrives as a 200", () => {
   });
 });
 
-// ── AND THE BINARY STILL OFFERS NONE OF THEM ─────────────────────────────
+// ── 4.8 IS NOW SATISFIED RATHER THAN DODGED ──────────────────────────────
 //
-// Guideline 4.8 wants Sign in with Apple wherever an app offers third-party
-// sign-in. Apple is now genuinely available, so shipping it would be possible
-// -- but Google cannot work in a Capacitor WebView at all
-// (disallowed_useragent), so the block stays out of the binary and 4.8 stays
-// unengaged rather than merely satisfied.
-describe("enabling providers on the web did not put them in the app", () => {
+// The binary used to offer no third-party sign-in at all, which sidestepped
+// guideline 4.8 by never engaging it. Since 2026-08-27 it offers all three,
+// so the rule applies for real: an app offering third-party sign-in must
+// offer Sign in with Apple.
+//
+// The test therefore changed shape. "The block is hidden in native" is no
+// longer the invariant worth defending -- this is: IF Google or Facebook is
+// offered, Apple is offered too. That holds on web and in the binary, and it
+// is the thing a reviewer actually checks.
+describe("Sign in with Apple is offered wherever the others are", () => {
   const auth = read("src/routes/auth.tsx");
+  const code = auth.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^\s*\/\/.*$/gm, "");
 
-  it("the whole block is still behind the native gate", () => {
-    // The literal opener, not "does !IS_NATIVE_BUNDLE appear somewhere above".
-    // auth.tsx uses that identifier three times for unrelated reasons, so a
-    // lastIndexOf search found one of those and passed while the gate itself
-    // had been replaced with `{true && (`.
-    const opener = "{!IS_NATIVE_BUNDLE && (";
-    const gate = auth.indexOf(opener);
-    expect(gate, "the OAuth block's `{!IS_NATIVE_BUNDLE && (` opener is gone").toBeGreaterThan(-1);
-    const at = auth.indexOf("or continue with");
-    expect(at).toBeGreaterThan(gate);
+  it("offers Apple if it offers Google or Facebook", () => {
+    const offers = (p: string) => new RegExp(`oauthSignIn\\(\\s*["']${p}["']`).test(code);
+    if (offers("google") || offers("facebook")) {
+      expect(offers("apple"), "guideline 4.8: Apple must be offered alongside the others").toBe(
+        true,
+      );
+    }
+  });
+
+  it("and the native path does not go through the WebView", () => {
+    // Google refuses OAuth in an embedded WebView regardless of anything else,
+    // so a native build that called the web path would ship a button that
+    // cannot work. @capacitor/browser opens SFSafariViewController, which is
+    // an approved system browser.
+    const native = read("src/lib/native-oauth.ts");
+    expect(native).toMatch(/@capacitor\/browser/);
+    expect(native).toMatch(/skipBrowserRedirect: true/);
+    expect(code).toMatch(/if \(IS_NATIVE_BUNDLE\) \{/);
+  });
+
+  it("hands back through a scheme the app actually registers", () => {
+    // A redirect the binary does not claim goes nowhere, and the failure looks
+    // like a button that opens Safari and never returns.
+    const native = read("src/lib/native-oauth.ts");
+    const plist = read("ios/App/App/Info.plist");
+    const scheme = /NATIVE_OAUTH_REDIRECT = "([a-z0-9.\-]+):\/\//i.exec(native)?.[1];
+    expect(scheme, "no scheme in NATIVE_OAUTH_REDIRECT").toBeTruthy();
+    expect(plist, `Info.plist does not register ${scheme}`).toMatch(
+      new RegExp(`<string>${scheme!.replace(/\./g, "\\.")}</string>`),
+    );
   });
 });
