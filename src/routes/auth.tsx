@@ -224,20 +224,7 @@ function AuthPage() {
         if (!result) return; // some other deep link; not ours
         setLoading(false);
         if (!result.ok) return setError(result.message);
-        // Same landing decision as every other way in, including the
-        // brand-new-organization case that has to name the business first.
-        const { data } = await supabase.auth.getUser();
-        if (!data.user) return setError("Signed in, but the session did not stick. Try again.");
-        let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
-        try {
-          isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
-          if (isNewOrg === true) forgetWorkspaceCache();
-        } catch (err) {
-          console.error("bootstrap after native oauth failed", err);
-        }
-        if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
-        const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
-        navigate({ to });
+        await afterNativeSignIn();
       });
       if (cancelled) void handle.remove();
       else remove = () => void handle.remove();
@@ -248,6 +235,24 @@ function AuthPage() {
       remove?.();
     };
   }, [navigate]);
+
+  /** Where a native sign-in lands, whichever way the session arrived. Shared so
+   *  the Apple sheet and the browser hand-back cannot drift apart. */
+  const afterNativeSignIn = async () => {
+    setLoading(false);
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return setError("Signed in, but the session did not stick. Try again.");
+    let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
+    try {
+      isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
+      if (isNewOrg === true) forgetWorkspaceCache();
+    } catch (err) {
+      console.error("bootstrap after native sign-in failed", err);
+    }
+    if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
+    const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
+    navigate({ to });
+  };
 
   const oauthSignIn = async (provider: "google" | "apple" | "facebook") => {
     const label = provider.charAt(0).toUpperCase() + provider.slice(1);
@@ -263,8 +268,17 @@ function AuthPage() {
     // lib/native-oauth.ts for why it is implicit rather than PKCE.
     if (IS_NATIVE_BUNDLE) {
       try {
-        const { nativeOAuthSignIn } = await import("@/lib/native-oauth");
-        await nativeOAuthSignIn(provider);
+        const mod = await import("@/lib/native-oauth");
+        if (provider === "apple") {
+          // No browser: ASAuthorization is a system sheet and returns a token
+          // directly, so there is no redirect to wait for. The session exists
+          // the moment this resolves, which is why it lands rather than
+          // leaving `loading` on for a hand-back that will never come.
+          await mod.nativeAppleSignIn();
+          await afterNativeSignIn();
+          return;
+        }
+        await mod.nativeOAuthSignIn(provider);
         // Loading stays ON: the browser sheet is up and the session arrives
         // through appUrlOpen. Clearing it here would offer a second tap that
         // starts a second flow underneath the first.
