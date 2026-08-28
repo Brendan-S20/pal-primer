@@ -67,7 +67,7 @@ function ReviewPage() {
           <button
             key={f.value}
             onClick={() => setStatus(f.value)}
-            className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+            className={`touch:min-h-11 rounded px-3 py-1 text-xs font-medium transition-colors ${
               status === f.value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted"

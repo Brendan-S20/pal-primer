@@ -31,6 +31,23 @@
  * Resolution is done the way Playwright does it — a positional argument is a
  * regular expression matched against the file path — so the check cannot
  * drift from what the command actually selects.
+ *
+ * ── AND IT CAUGHT ITS FIRST ONE BY BEING RED ON main ──────────────────────
+ *
+ * Worth knowing before trusting a green run of this file on a branch: the
+ * corpus it scans is the WORKING TREE, and a branch's working tree is not
+ * what main will look like after the merge.
+ *
+ * `eleven-tabs-five-visible.spec.ts` merged in one PR while this rule was
+ * being written in another, branched from before it. So the rule scanned a
+ * tree that did not contain the file, passed, merged — and main was red the
+ * moment the two met, for a spec that had genuinely been left running
+ * nowhere. The rule was right and the merge order hid it for one commit.
+ *
+ * There is no assertion that can fix that from inside the file, because the
+ * fault is in what it was pointed at rather than in what it does. The
+ * mitigation is knowing it: any rule here that scans `src/` or
+ * `tests/viewports/` can go red on merge without either branch being wrong.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";

@@ -70,7 +70,7 @@ export function BusinessAdvisor() {
             <button
               key={w.days}
               onClick={() => setWindowDays(w.days)}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`touch:min-h-11 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 windowDays === w.days
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted"

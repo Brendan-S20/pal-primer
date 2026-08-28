@@ -93,7 +93,7 @@ function DeepCleanSettings() {
                     type="button"
                     onClick={() => toggleMonth(m)}
                     disabled={!enabled}
-                    className={`rounded-md border px-2 py-1.5 text-sm transition-colors ${
+                    className={`touch:min-h-11 rounded-md border px-2 py-1.5 text-sm transition-colors ${
                       active
                         ? "border-primary bg-primary/10 text-primary font-medium"
                         : "text-muted-foreground hover:bg-muted"
