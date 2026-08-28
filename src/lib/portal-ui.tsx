@@ -624,8 +624,11 @@ function ChannelChooser({
       <Button className="w-full" disabled={sending} onClick={onSend}>
         {sending ? "Sending…" : "Send code"}
       </Button>
+      {/* The other way in, for someone who already has the code from a text.
+          It was a 16px line of type -- the smallest control in the product,
+          on the page every portal customer sees first. */}
       <button
-        className="w-full text-center text-xs text-muted-foreground hover:underline"
+        className="w-full text-center text-xs text-muted-foreground hover:underline touch:min-h-11"
         onClick={onHaveCode}
       >
         Already have a code from us? Enter it
@@ -795,7 +798,7 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
             </Button>
           </form>
           <button
-            className="mt-3 w-full text-center text-xs text-muted-foreground hover:underline"
+            className="mt-3 w-full text-center text-xs text-muted-foreground hover:underline touch:min-h-11"
             onClick={() => setStep("haveCode")}
           >
             Already have a code from us? Enter it

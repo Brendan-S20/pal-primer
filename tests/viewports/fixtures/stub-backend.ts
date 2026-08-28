@@ -1,6 +1,7 @@
 import type { BrowserContext, Route } from "@playwright/test";
 import { SUPABASE_ORIGIN, sweepUser } from "./session";
 import * as fx from "./dataset";
+import * as pfx from "./portal-dataset";
 
 /**
  * Everything the signed-in app asks the network for, answered locally.
@@ -77,7 +78,7 @@ const ok = { ok: true };
  * calls it and a rename in `src/lib` shows up here as an unstubbed call
  * rather than as a wrong-looking page.
  */
-const STUBS: Record<string, Stub> = {
+const BASE_STUBS: Record<string, Stub> = {
   // ── The shell. Every authenticated route waits on these. ────────────────
   getMyOrg: { organization: fx.ORGANIZATION },
   getPlatformContext: { isPlatformAdmin: true },
@@ -626,9 +627,92 @@ export type StubReport = {
  * Install both interceptors. Returns a live report of what went unanswered,
  * read by the spec after each surface is measured.
  */
-export async function installStubBackend(context: BrowserContext): Promise<StubReport> {
+/**
+ * The role every sweep before 2026-08-28 ran as, and the only one.
+ *
+ * `useMyRole` reads `getMyOrg().organization.role` — not the profile, which is
+ * a different field on a different call and was the first place I looked. Four
+ * stubs have to agree or the app renders a nav for one role and a page for
+ * another, which measures nothing about either.
+ */
+export type SweepRole = "owner" | "office_manager" | "dispatcher" | "tech";
+
+/**
+ * The customer's half of the product.
+ *
+ * Kept separate from BASE_STUBS and opted into, because a portal page and a
+ * staff page never coexist: the portal has no Supabase session at all -- it
+ * authenticates on a token in the URL -- so installing both would only make
+ * the unstubbed report harder to read.
+ *
+ * `verified: true` is the whole point. Every one of the eleven data queries in
+ * portal-ui.tsx is `enabled: verified`, so a fixture that stops at the OTP gate
+ * measures the OTP gate eleven times.
+ */
+const PORTAL_STUBS: Record<string, Stub> = {
+  portalOrgBySlug: { found: true, branding: pfx.PORTAL_BRANDING },
+  portalContext: {
+    verified: true,
+    valid: true,
+    client: pfx.PORTAL_CLIENT,
+    branding: pfx.PORTAL_BRANDING,
+  },
+  portalGetClient: pfx.PORTAL_CLIENT,
+  portalListUpcomingVisits: pfx.PORTAL_UPCOMING_VISITS,
+  portalListRecentVisits: pfx.PORTAL_RECENT_VISITS,
+  portalListInvoices: pfx.PORTAL_INVOICES,
+  portalListPrepaidSubs: pfx.PORTAL_SUBS,
+  portalListAddonCatalog: pfx.PORTAL_ADDON_CATALOG,
+  portalListClientAddons: pfx.PORTAL_CLIENT_ADDONS,
+  portalListDogs: pfx.PORTAL_DOGS,
+  portalListStations: pfx.PORTAL_STATIONS,
+  portalListMyRequests: pfx.PORTAL_REQUESTS,
+  portalGetReferral: pfx.PORTAL_REFERRAL,
+  portalListProperties: pfx.PORTAL_PROPERTIES,
+  // `{ urls: Record<path, url> }`, not a list. A list crashed the Visits page
+  // outright -- "Cannot read properties of undefined" on the first path -- and
+  // the sweep would have measured the error boundary. The fence answers images
+  // with a transparent PNG, so what is being measured is the grid, not the
+  // picture.
+  portalSignPhotoUrls: {
+    urls: Object.fromEntries(
+      pfx.PORTAL_RECENT_VISITS.flatMap((v) =>
+        v.photo_paths.map((path) => [path, `/portal-photo/${encodeURIComponent(path)}`]),
+      ),
+    ),
+  },
+  // /pay/i/:token, which is not a portal page but arrives the same way -- in a
+  // text -- and has no session either.
+  getPublicInvoice: pfx.PUBLIC_INVOICE,
+  portalSelfServeOptions: {
+    allow_self_reschedule: true,
+    allow_vacation_hold: true,
+    allow_frequency_change: true,
+    reschedule_cutoff_hours: 24,
+  },
+};
+
+export async function installStubBackend(
+  context: BrowserContext,
+  options: { role?: SweepRole; portal?: boolean } = {},
+): Promise<StubReport> {
   const report: StubReport = { unstubbed: [], blockedHosts: [] };
   const user = sweepUser();
+  const role: SweepRole = options.role ?? "owner";
+
+  // Everything the shell asks about who this is, kept consistent. The platform
+  // console is an Anthropic-side surface and nobody below owner has it — a
+  // dispatcher who is also a platform admin is not a scenario the app ships.
+  const STUBS: Record<string, Stub> = {
+    ...(options.portal ? PORTAL_STUBS : BASE_STUBS),
+    getMyOrg: { organization: { ...fx.ORGANIZATION, role } },
+    getPlatformContext: { isPlatformAdmin: role === "owner" },
+    getMyProfile: {
+      ...(BASE_STUBS.getMyProfile as Record<string, any>),
+      staff: { ...(BASE_STUBS.getMyProfile as any).staff, role },
+    },
+    getBillingBannerStatus: { planStatus: "active", role },
+  };
 
   // ── THE FENCE ─────────────────────────────────────────────────────────
   //
