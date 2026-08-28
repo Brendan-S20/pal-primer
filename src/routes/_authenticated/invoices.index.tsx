@@ -251,7 +251,7 @@ function StatCard({
         active && "ring-2 ring-primary/50",
       )}
     >
-      <SectionLabel className="max-sm:text-[10px]">{label}</SectionLabel>
+      <SectionLabel className="max-sm:text-3xs">{label}</SectionLabel>
       <div
         className={cn(
           "mt-1 font-semibold tabular-nums text-2xl max-sm:mt-0.5 max-sm:text-base",
