@@ -197,7 +197,17 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                 ))}
               </div>
             )}
-            <div className={`mt-3 overflow-x-auto ${IS_NATIVE_BUNDLE ? "max-md:hidden" : ""}`}>
+            {/* `relative` is load-bearing, not decoration. The Actions column
+                header is a `sr-only` span, and `sr-only` is `position:
+                absolute` -- overflow clipping does not apply to a descendant
+                whose containing block is outside the clipping box, so without
+                a positioned ancestor here the 1x1 span resolves against the
+                initial containing block, lands at x=843 on a 768px tablet and
+                widens <html> by 76px. Same fault as the one that scrolled
+                /clients 663px; see docs/mobile-ux-audit.md 6.10. */}
+            <div
+              className={`relative mt-3 overflow-x-auto ${IS_NATIVE_BUNDLE ? "max-md:hidden" : ""}`}
+            >
               {/* Same invoice row + preview drawer as the Invoices page (B4/I3):
                 click a row (or its View button) to open the shared drawer;
                 the trailing ••• offers open-full-invoice / copy pay link,

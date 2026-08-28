@@ -183,6 +183,19 @@ jobs:
       - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes
         run: npm run test:viewports:auth
 
+      # ── THE SWEEPS ARE NOT ALL OF IT ─────────────────────────────────────
+      #
+      # The two steps above run by filename pattern, and for five months
+      # everything that did not match one of those two patterns ran nowhere.
+      # Four one-off measurements had been written, merged, and never run
+      # again by anything.
+      #
+      # `the-sweeps-are-not-the-whole-suite.test.ts` now asserts that every
+      # spec under tests/viewports is named by a step in THIS FILE, or is on
+      # a short exempt list with a reason, so the next one cannot go quiet.
+      - name: Measure the one-off cases
+        run: npm run test:viewports:cases
+
       # Screenshots and traces exist only for failures — on a green run this
       # uploads nothing, which is the point.
       - name: Keep what failed
