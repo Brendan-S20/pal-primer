@@ -120,14 +120,14 @@ function AccountingSettings() {
           <button
             onClick={() => connect("quickbooks")}
             disabled={busy || !ACCOUNTING_CONNECT_ENABLED}
-            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60"
+            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11"
           >
             Connect QuickBooks Online
           </button>
           <button
             onClick={() => connect("xero")}
             disabled={busy || !ACCOUNTING_CONNECT_ENABLED}
-            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60"
+            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11"
           >
             Connect Xero
           </button>
@@ -244,7 +244,7 @@ function AccountingSettings() {
           <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
           Auto-sync paid invoices nightly
         </label>
-        <button disabled={busy} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60">
+        <button disabled={busy} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11">
           {busy ? "Saving…" : "Save connection"}
         </button>
         {msg && <p className="text-sm">{msg}</p>}
