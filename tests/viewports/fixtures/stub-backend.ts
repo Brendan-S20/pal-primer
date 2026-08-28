@@ -77,7 +77,7 @@ const ok = { ok: true };
  * calls it and a rename in `src/lib` shows up here as an unstubbed call
  * rather than as a wrong-looking page.
  */
-const STUBS: Record<string, Stub> = {
+const BASE_STUBS: Record<string, Stub> = {
   // ── The shell. Every authenticated route waits on these. ────────────────
   getMyOrg: { organization: fx.ORGANIZATION },
   getPlatformContext: { isPlatformAdmin: true },
@@ -626,9 +626,37 @@ export type StubReport = {
  * Install both interceptors. Returns a live report of what went unanswered,
  * read by the spec after each surface is measured.
  */
-export async function installStubBackend(context: BrowserContext): Promise<StubReport> {
+/**
+ * The role every sweep before 2026-08-28 ran as, and the only one.
+ *
+ * `useMyRole` reads `getMyOrg().organization.role` — not the profile, which is
+ * a different field on a different call and was the first place I looked. Four
+ * stubs have to agree or the app renders a nav for one role and a page for
+ * another, which measures nothing about either.
+ */
+export type SweepRole = "owner" | "office_manager" | "dispatcher" | "tech";
+
+export async function installStubBackend(
+  context: BrowserContext,
+  options: { role?: SweepRole } = {},
+): Promise<StubReport> {
   const report: StubReport = { unstubbed: [], blockedHosts: [] };
   const user = sweepUser();
+  const role: SweepRole = options.role ?? "owner";
+
+  // Everything the shell asks about who this is, kept consistent. The platform
+  // console is an Anthropic-side surface and nobody below owner has it — a
+  // dispatcher who is also a platform admin is not a scenario the app ships.
+  const STUBS: Record<string, Stub> = {
+    ...BASE_STUBS,
+    getMyOrg: { organization: { ...fx.ORGANIZATION, role } },
+    getPlatformContext: { isPlatformAdmin: role === "owner" },
+    getMyProfile: {
+      ...(BASE_STUBS.getMyProfile as Record<string, any>),
+      staff: { ...(BASE_STUBS.getMyProfile as any).staff, role },
+    },
+    getBillingBannerStatus: { planStatus: "active", role },
+  };
 
   // ── THE FENCE ─────────────────────────────────────────────────────────
   //
