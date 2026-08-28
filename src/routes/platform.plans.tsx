@@ -562,7 +562,9 @@ function PlansPage() {
           <CardTitle className="text-base">Catalog</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* `relative`: the sr-only column header below is position:absolute
+              and escapes an unpositioned scroller, widening the page. */}
+          <div className="relative overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

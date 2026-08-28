@@ -545,10 +545,13 @@ function PropertyCard({
                   <span className="mt-1 text-xs">
                     Yard size and estimated time come from the boundary.
                   </span>
+                  {/* The only way out of the empty state, and it was a 20px
+                      line of text -- half Apple's floor. `touch:` rather than
+                      `max-md:` because an iPad is 744px+ and all thumb. */}
                   <button
                     type="button"
                     onClick={onEdit}
-                    className="mt-2 text-primary hover:underline"
+                    className="mt-2 inline-flex items-center justify-center rounded-md px-3 text-primary hover:underline touch:min-h-11"
                   >
                     Draw it in the editor
                   </button>
