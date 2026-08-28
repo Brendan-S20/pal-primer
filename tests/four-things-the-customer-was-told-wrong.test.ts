@@ -263,7 +263,9 @@ describe("the address the footer prints", () => {
   });
 
   it("is editable, which is the difference between a column and a feature", () => {
-    const settings = read("src/routes/_authenticated/settings.preferences.tsx");
+    // Moved 2026-08-28 to the Client portal settings page. The address the
+    // footer prints still has to be editable; only its address bar changed.
+    const settings = read("src/components/settings/ClientPortalCards.tsx");
     expect(settings).toMatch(/Business address/);
     expect(settings).toMatch(/setContactAddress/);
     expect(settings).toMatch(/contactAddress: contactAddress\.trim\(\) \|\| null/);

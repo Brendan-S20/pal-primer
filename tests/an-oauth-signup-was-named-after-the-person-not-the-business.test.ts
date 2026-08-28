@@ -126,7 +126,11 @@ describe("and /auth is a caller that can ask", () => {
 
 describe("and the name can be fixed afterwards", () => {
   const fns = read("src/lib/org.functions.ts");
-  const ui = read("src/routes/_authenticated/settings.preferences.tsx");
+  // Moved 2026-08-28: the branding card left Preferences for the Client
+  // portal page, because a brand colour a customer sees is not a preference.
+  // The assertion is unchanged -- the business name still has to be editable
+  // somewhere, and this is where.
+  const ui = read("src/components/settings/ClientPortalCards.tsx");
 
   it("the server accepts a business name, through the signup validator", () => {
     expect(fns).toMatch(/name: z\.string\(\)/);

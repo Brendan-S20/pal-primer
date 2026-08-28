@@ -27,6 +27,11 @@ const TAB_GROUPS: TabGroup[] = [
   {
     title: "Customer-facing",
     tabs: [
+      // The portal is the first thing a customer meets, so it sits at the top
+      // of the group that is about them. It was under Preferences until
+      // 2026-08-28, which is where a reader looking for a brand colour would
+      // never have thought to go.
+      { label: "Client portal", to: "/settings/client-portal" },
       { label: "Lead form", to: "/settings/lead-form" },
       // The two gates on /signup/{slug} had no UI at all, which is why the
       // whole public signup flow shipped unreachable. Sits next to Lead form
