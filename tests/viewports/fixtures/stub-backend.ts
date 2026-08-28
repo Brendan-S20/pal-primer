@@ -95,6 +95,22 @@ const STUBS: Record<string, Stub> = {
     pendingEmail: null,
   },
   getMyOrgFeatures: { commercialAccounts: true, hasCommercialData: true },
+  // The SOLE-OWNER branch of Delete your account, deliberately. Without this
+  // the fence answers {} and the card renders its two-line simple form, so the
+  // harder layout -- a transfer picker, a second explanation, and a confirm
+  // field -- was never measured at 360px. The names are long on purpose,
+  // because a picker of short names proves nothing about a phone.
+  listOwnershipTransferCandidates: {
+    soleOwner: true,
+    candidates: [
+      { userId: "dddddddd-0000-4000-8000-00000000d002", name: "Samantha Okonkwo", role: "tech" },
+      {
+        userId: "dddddddd-0000-4000-8000-00000000d003",
+        name: "Bartholomew Fitzgerald III",
+        role: "office_manager",
+      },
+    ],
+  },
   getTrialState: {
     phase: "expired",
     daysRemaining: null,
