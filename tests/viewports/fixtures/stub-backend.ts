@@ -1,6 +1,7 @@
 import type { BrowserContext, Route } from "@playwright/test";
 import { SUPABASE_ORIGIN, sweepUser } from "./session";
 import * as fx from "./dataset";
+import * as pfx from "./portal-dataset";
 
 /**
  * Everything the signed-in app asks the network for, answered locally.
@@ -636,9 +637,61 @@ export type StubReport = {
  */
 export type SweepRole = "owner" | "office_manager" | "dispatcher" | "tech";
 
+/**
+ * The customer's half of the product.
+ *
+ * Kept separate from BASE_STUBS and opted into, because a portal page and a
+ * staff page never coexist: the portal has no Supabase session at all -- it
+ * authenticates on a token in the URL -- so installing both would only make
+ * the unstubbed report harder to read.
+ *
+ * `verified: true` is the whole point. Every one of the eleven data queries in
+ * portal-ui.tsx is `enabled: verified`, so a fixture that stops at the OTP gate
+ * measures the OTP gate eleven times.
+ */
+const PORTAL_STUBS: Record<string, Stub> = {
+  portalOrgBySlug: { found: true, branding: pfx.PORTAL_BRANDING },
+  portalContext: {
+    verified: true,
+    valid: true,
+    client: pfx.PORTAL_CLIENT,
+    branding: pfx.PORTAL_BRANDING,
+  },
+  portalGetClient: pfx.PORTAL_CLIENT,
+  portalListUpcomingVisits: pfx.PORTAL_UPCOMING_VISITS,
+  portalListRecentVisits: pfx.PORTAL_RECENT_VISITS,
+  portalListInvoices: pfx.PORTAL_INVOICES,
+  portalListPrepaidSubs: pfx.PORTAL_SUBS,
+  portalListAddonCatalog: pfx.PORTAL_ADDON_CATALOG,
+  portalListClientAddons: pfx.PORTAL_CLIENT_ADDONS,
+  portalListDogs: pfx.PORTAL_DOGS,
+  portalListStations: pfx.PORTAL_STATIONS,
+  portalListMyRequests: pfx.PORTAL_REQUESTS,
+  portalGetReferral: pfx.PORTAL_REFERRAL,
+  portalListProperties: pfx.PORTAL_PROPERTIES,
+  // `{ urls: Record<path, url> }`, not a list. A list crashed the Visits page
+  // outright -- "Cannot read properties of undefined" on the first path -- and
+  // the sweep would have measured the error boundary. The fence answers images
+  // with a transparent PNG, so what is being measured is the grid, not the
+  // picture.
+  portalSignPhotoUrls: {
+    urls: Object.fromEntries(
+      pfx.PORTAL_RECENT_VISITS.flatMap((v) =>
+        v.photo_paths.map((path) => [path, `/portal-photo/${encodeURIComponent(path)}`]),
+      ),
+    ),
+  },
+  portalSelfServeOptions: {
+    allow_self_reschedule: true,
+    allow_vacation_hold: true,
+    allow_frequency_change: true,
+    reschedule_cutoff_hours: 24,
+  },
+};
+
 export async function installStubBackend(
   context: BrowserContext,
-  options: { role?: SweepRole } = {},
+  options: { role?: SweepRole; portal?: boolean } = {},
 ): Promise<StubReport> {
   const report: StubReport = { unstubbed: [], blockedHosts: [] };
   const user = sweepUser();
@@ -648,7 +701,7 @@ export async function installStubBackend(
   // console is an Anthropic-side surface and nobody below owner has it — a
   // dispatcher who is also a platform admin is not a scenario the app ships.
   const STUBS: Record<string, Stub> = {
-    ...BASE_STUBS,
+    ...(options.portal ? PORTAL_STUBS : BASE_STUBS),
     getMyOrg: { organization: { ...fx.ORGANIZATION, role } },
     getPlatformContext: { isPlatformAdmin: role === "owner" },
     getMyProfile: {
