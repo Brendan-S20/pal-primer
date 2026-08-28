@@ -49,7 +49,8 @@ const WIRED: Array<[string, string]> = [
   ["src/routes/_authenticated/neighbors.tsx", "canvassing: add a door manually"],
   ["src/routes/_authenticated/waste-log.tsx", "disposal facility address"],
   [
-    "src/routes/_authenticated/settings.preferences.tsx",
+    // Moved 2026-08-28 out of Preferences and into the Client portal page.
+    "src/components/settings/ClientPortalCards.tsx",
     "the business address, geocoded for routing",
   ],
 ];
