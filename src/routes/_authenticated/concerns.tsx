@@ -178,7 +178,7 @@ function ConcernsPage() {
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
-            className={`rounded-full border px-3 py-1 text-sm max-md:px-4 max-md:py-2 ${filter === f.key ? "border-primary bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"}`}
+            className={`touch:min-h-11 rounded-full border px-3 py-1 text-sm touch:px-4 ${filter === f.key ? "border-primary bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"}`}
           >
             {f.label}
           </button>

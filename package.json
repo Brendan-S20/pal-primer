@@ -19,7 +19,7 @@
     "test:viewports": "playwright test",
     "test:viewports:public": "playwright test every-public-page",
     "test:viewports:auth": "playwright test every-signed-in-page",
-    "test:viewports:cases": "playwright test a-page-called-invoices preferences-was-a-dumping-ground every-tab-on-the-client-page the-billing-gate the-store-gate",
+    "test:viewports:cases": "playwright test a-page-called-invoices preferences-was-a-dumping-ground eleven-tabs-five-visible every-tab-on-the-client-page every-route-nobody-put-on-the-list the-billing-gate the-store-gate",
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:baseline-objects": "node scripts/check-baseline-objects.mjs",
     "check:app-origin": "node scripts/check-app-origin.mjs",

@@ -260,6 +260,52 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+
+  /*
+   * ── THE 44px FLOOR, FOR THE CONTROLS THAT ARE NOT COMPONENTS ────────────
+   *
+   * `ui/input.tsx`, `ui/select.tsx` and `ui/checkbox.tsx` each carry the floor
+   * themselves, and a test pins all three. That covers every control built out
+   * of the design system and none of the ones written as plain HTML — and this
+   * app has 97 raw `<select>` elements across 36 files and 30 raw checkboxes
+   * across 19. Every one of them was between 16px and 40px on a phone.
+   *
+   * Found by sweeping all 23 settings pages at 430px, which had never been
+   * done: three of them were failing on a raw `<select>` alone. Fixing them
+   * one at a time fixes the three that happened to be measured, so this is
+   * done here instead, where it reaches the ones nobody has opened yet.
+   *
+   * The same media condition as the `touch:` variant above, written out
+   * because a custom variant cannot be used in a plain CSS rule.
+   */
+  @media (pointer: coarse), (max-width: 767px) {
+    select {
+      min-height: 2.75rem;
+    }
+
+    /*
+     * A checkbox is not made usable by being 44px — it is made usable by its
+     * TARGET being 44px, which is why `ui/checkbox.tsx` uses an out-of-flow
+     * `::before` and leaves the square at 16px.
+     *
+     * That trick is unavailable here: browsers do not generate pseudo-elements
+     * for `<input>`, which is a replaced element. What IS available is the
+     * label, because activating a label activates the control it labels —
+     * browser behaviour, not something this app implements — so the label IS
+     * the target, and tests/viewports/rules.ts already measures it as one.
+     *
+     * `inline-flex` rather than a bare `min-height`: a `<label>` is inline by
+     * default and a min-height on an inline box does nothing at all. The
+     * labels that already set `flex` keep it — a more specific utility class
+     * wins over a base-layer element rule.
+     */
+    label:has(> input[type="checkbox"]),
+    label:has(> input[type="radio"]) {
+      display: inline-flex;
+      align-items: center;
+      min-height: 2.75rem;
+    }
+  }
 }
 
 /* Hide the scrollbar on horizontally-scrollable mobile strips (tab pills,
@@ -274,12 +320,24 @@
 
 .marketing-hero-gradient {
   background:
-    radial-gradient(1200px 500px at 85% -10%, color-mix(in oklab, var(--brand) 18%, transparent), transparent 60%),
-    radial-gradient(800px 400px at 10% 20%, color-mix(in oklab, var(--brand) 10%, transparent), transparent 60%),
+    radial-gradient(
+      1200px 500px at 85% -10%,
+      color-mix(in oklab, var(--brand) 18%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 400px at 10% 20%,
+      color-mix(in oklab, var(--brand) 10%, transparent),
+      transparent 60%
+    ),
     linear-gradient(180deg, var(--cream), var(--background));
 }
 
 .portal-header-gradient {
-  background: linear-gradient(135deg, var(--brand) 0%, color-mix(in oklab, var(--brand) 65%, black) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--brand) 0%,
+    color-mix(in oklab, var(--brand) 65%, black) 100%
+  );
   color: var(--brand-foreground);
 }

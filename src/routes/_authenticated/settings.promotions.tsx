@@ -100,13 +100,13 @@ function PromotionsPage() {
       <div className="inline-flex rounded-md border p-0.5">
         <button
           onClick={() => setTab("promos")}
-          className={`rounded px-3 py-1 text-sm ${tab === "promos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          className={`touch:min-h-11 rounded px-3 py-1 text-sm ${tab === "promos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
         >
           Promo codes
         </button>
         <button
           onClick={() => setTab("gifts")}
-          className={`rounded px-3 py-1 text-sm ${tab === "gifts" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          className={`touch:min-h-11 rounded px-3 py-1 text-sm ${tab === "gifts" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
         >
           Gift cards
         </button>
