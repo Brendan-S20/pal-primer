@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Download, FileText, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Download, FileText, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
@@ -239,21 +239,31 @@ function StatCard({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-xl border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/30",
+        // Compact below `sm`. Measured on a 430pt phone: three of these
+        // stacked full-width, plus the filter panel, pushed the first invoice
+        // off the bottom of the screen entirely -- a page called Invoices that
+        // opens on no invoices. They stay CONTROLS, not decoration: each one
+        // still toggles its status filter, which is why they are not simply
+        // hidden on a phone.
+        "rounded-xl border bg-card text-left shadow-sm transition-colors hover:bg-muted/30",
+        "max-sm:min-h-11 max-sm:p-2 p-4",
         destructive && "border-destructive/30 bg-destructive/5 hover:bg-destructive/10",
         active && "ring-2 ring-primary/50",
       )}
     >
-      <SectionLabel>{label}</SectionLabel>
+      <SectionLabel className="max-sm:text-3xs">{label}</SectionLabel>
       <div
         className={cn(
-          "mt-1 text-2xl font-semibold tabular-nums",
+          "mt-1 font-semibold tabular-nums text-2xl max-sm:mt-0.5 max-sm:text-base",
           destructive && "text-destructive",
         )}
       >
         {value}
       </div>
-      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+      {/* The explanatory line is what makes these cards tall. On a phone the
+          number is the point, and "5 invoices open" under a card labelled Open
+          invoices reading 5 is the least load-bearing sentence on the page. */}
+      {sub && <p className="mt-0.5 text-xs text-muted-foreground max-sm:hidden">{sub}</p>}
     </button>
   );
 }
@@ -275,6 +285,11 @@ function InvoicesPage() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Counted, not merely "are any set": the trigger has to say HOW MANY, or a
+  // filtered-empty list looks like missing data.
+  const activeFilterCount =
+    (search ? 1 : 0) + (from ? 1 : 0) + (to ? 1 : 0) + (status !== "all" ? 1 : 0);
   // Row click opens the shared invoice drawer (QA round 8) instead of
   // navigating away; "Open full invoice" inside goes to the page.
   const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
@@ -640,7 +655,7 @@ function InvoicesPage() {
       </div>
 
       {/* Summary stats — click one to filter by that status */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
         <StatCard
           label="Outstanding"
           value={fmtCents(stats.outstandingCents)}
@@ -685,8 +700,42 @@ function InvoicesPage() {
         )}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
+      {/* ── FILTERS ────────────────────────────────────────────────────────
+          Open on a laptop, folded on a phone. Measured at 430pt: a search
+          field, six status buttons and two date inputs come to roughly a full
+          screen of controls sitting between the page title and the first
+          invoice. Almost nobody arrives at Invoices to set a date range; they
+          arrive to look at invoices.
+
+          The count on the trigger is the part that makes folding safe — a
+          filtered list with the filters hidden is how somebody concludes their
+          invoices have vanished. */}
+      <button
+        type="button"
+        onClick={() => setFiltersOpen((v) => !v)}
+        aria-expanded={filtersOpen}
+        aria-controls="invoices-filters"
+        className="flex min-h-11 items-center justify-between rounded-xl border bg-card px-3 text-sm shadow-sm sm:hidden"
+      >
+        <span className="flex items-center gap-2">
+          <SlidersHorizontal className="h-4 w-4" />
+          Filters
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-primary px-1.5 py-0.5 text-2xs font-semibold text-primary-foreground">
+              {activeFilterCount}
+            </span>
+          )}
+        </span>
+        <ChevronDown className={cn("h-4 w-4 transition-transform", filtersOpen && "rotate-180")} />
+      </button>
+
+      <div
+        id="invoices-filters"
+        className={cn(
+          "flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex",
+          filtersOpen ? "flex" : "hidden",
+        )}
+      >
         <div className="min-w-[200px] flex-1">
           <label htmlFor="invoices-search" className="text-xs text-muted-foreground">
             Search client
