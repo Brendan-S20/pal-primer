@@ -5,12 +5,70 @@ import { cn } from "@/lib/utils";
 
 const Tabs = TabsPrimitive.Root;
 
+/**
+ * Is there more tab bar off the side, and which side?
+ *
+ * ── WHY THIS IS NEEDED ──────────────────────────────────────────────────
+ *
+ * The bar below `md` scrolls sideways with `no-scrollbar`, which hides the one
+ * affordance a scroller normally has. Measured on a real phone against a real
+ * client: ELEVEN tabs, five visible, and nothing on screen suggesting the other
+ * six exist. Billing looks like the last tab. It is the fifth of eleven.
+ *
+ * A fade cannot be unconditional -- over a bar that fits, it dims the last tab
+ * for no reason and makes a complete row look truncated. So it is measured, and
+ * re-measured on scroll and on resize, and the edges are marked only when there
+ * is genuinely something past them.
+ */
+function useEdgeOverflow(ref: React.RefObject<HTMLElement | null>) {
+  const [edges, setEdges] = React.useState({ start: false, end: false });
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      // 1px of tolerance: sub-pixel layout leaves scrollWidth a hair over
+      // clientWidth on bars that actually fit, and a permanent fade on a
+      // complete row is the exact thing this is trying not to do.
+      const max = el.scrollWidth - el.clientWidth;
+      setEdges({ start: el.scrollLeft > 1, end: max > 1 && el.scrollLeft < max - 1 });
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // The tabs themselves can change width after fonts load, which changes the
+    // answer without either a scroll or a resize of the container.
+    for (const child of Array.from(el.children)) ro.observe(child);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      ro.disconnect();
+    };
+  }, [ref]);
+
+  return edges;
+}
+
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
+>(({ className, ...props }, ref) => {
+  const inner = React.useRef<HTMLDivElement | null>(null);
+  const edges = useEdgeOverflow(inner);
+  const setRefs = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      inner.current = node;
+      if (typeof ref === "function") ref(node);
+      else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    },
+    [ref],
+  );
+
+  return (
   <TabsPrimitive.List
-    ref={ref}
+    ref={setRefs}
+    data-overflow-start={edges.start ? "" : undefined}
+    data-overflow-end={edges.end ? "" : undefined}
     className={cn(
       // Below `md` a tab bar scrolls sideways instead of wrapping. Seven tabs
       // on /analytics and nine on a client wrapped into two or three rows of
@@ -23,11 +81,18 @@ const TabsList = React.forwardRef<
       // this is a shared component.
       "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
       "no-scrollbar max-md:h-auto max-md:w-full max-md:justify-start max-md:overflow-x-auto",
+      // The affordance the hidden scrollbar took away. A soft mask on whichever
+      // edge has content past it, so a bar that continues LOOKS like it
+      // continues. Only below `md`, where the bar scrolls at all.
+      "max-md:data-[overflow-end]:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]",
+      "max-md:data-[overflow-start]:[mask-image:linear-gradient(to_left,black_calc(100%-2rem),transparent)]",
+      "max-md:data-[overflow-start]:data-[overflow-end]:[mask-image:linear-gradient(to_right,transparent,black_2rem,black_calc(100%-2rem),transparent)]",
       className,
     )}
     {...props}
   />
-));
+  );
+});
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 const TabsTrigger = React.forwardRef<
