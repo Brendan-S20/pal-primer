@@ -56,6 +56,17 @@ const TENANT_DETAIL = `/platform/tenants/${ORG_ID}`;
 
 export const SURFACES: Surface[] = [
   {
+    // The account page. Carries the two most consequential controls in the
+    // product -- "Ways to sign in" and Delete your account -- and neither had
+    // ever been measured at any width, because this surface was not on the
+    // list. Both shipped in the last two days.
+    id: "/profile",
+    path: "/profile",
+    proof: (p) => p.getByText("Ways to sign in", { exact: true }).first(),
+    proofLabel: 'the "Ways to sign in" card',
+    expectsData: "Delete your account",
+  },
+  {
     id: "/dashboard",
     path: "/dashboard",
     proof: (p) => p.getByText("Today's routes", { exact: false }).first(),

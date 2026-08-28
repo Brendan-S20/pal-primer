@@ -121,7 +121,30 @@ export function sweepUser() {
     // rules are about — and the tour has its own coverage in the public sweep's
     // sibling static tests.
     user_metadata: { full_name: "Dana Whitfield-Ramirez", tour_seen_at: new Date().toISOString() },
-    identities: [],
+    // Two connected, one not — which is the state that actually stresses the
+    // "Ways to sign in" card: a Disconnect button, a Connect button, and the
+    // "Only way in" case all render off this. An empty array renders three
+    // identical rows and measures none of them.
+    identities: [
+      {
+        identity_id: "11111111-0000-4000-8000-000000000001",
+        id: SWEEP_USER_EMAIL,
+        user_id: SWEEP_USER_ID,
+        provider: "email",
+        identity_data: { email: SWEEP_USER_EMAIL, sub: SWEEP_USER_ID },
+        created_at: "2026-01-01T00:00:00Z",
+        last_sign_in_at: "2026-08-01T00:00:00Z",
+      },
+      {
+        identity_id: "11111111-0000-4000-8000-000000000002",
+        id: "google-oauth-subject",
+        user_id: SWEEP_USER_ID,
+        provider: "google",
+        identity_data: { email: SWEEP_USER_EMAIL, sub: "google-oauth-subject" },
+        created_at: "2026-02-01T00:00:00Z",
+        last_sign_in_at: "2026-08-20T00:00:00Z",
+      },
+    ],
     created_at: now,
     updated_at: now,
     email_confirmed_at: now,
