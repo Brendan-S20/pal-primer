@@ -681,6 +681,9 @@ const PORTAL_STUBS: Record<string, Stub> = {
       ),
     ),
   },
+  // /pay/i/:token, which is not a portal page but arrives the same way -- in a
+  // text -- and has no session either.
+  getPublicInvoice: pfx.PUBLIC_INVOICE,
   portalSelfServeOptions: {
     allow_self_reschedule: true,
     allow_vacation_hold: true,

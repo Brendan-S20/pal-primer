@@ -297,3 +297,58 @@ export const PORTAL_PROPERTIES = [
     price_cents: 2400,
   },
 ];
+
+/**
+ * `/pay/i/:token` — the one-off payment link a customer gets in a text.
+ *
+ * Not part of the portal: no session, no OTP, no nav. Just an invoice and a
+ * card field, opened on a phone by someone who was asked for money. It had
+ * never been measured in the state that matters, because with no fixture
+ * `getPublicInvoice` answers `{ found: false }` and the page renders "This
+ * payment link isn't valid" — which lays out fine and proves nothing.
+ *
+ * camelCase and hand-built, because the handler reshapes the row: `shortId`,
+ * `amountDueCents` net of credit, and the org and client names lifted out of
+ * joined rows.
+ */
+export const PUBLIC_INVOICE = {
+  found: true,
+  invoice: {
+    id: "99999999-0000-4000-8000-000000009001",
+    shortId: "99999999",
+    status: "open",
+    currency: "usd",
+    subtotalCents: 12900,
+    totalCents: 12900,
+    // Credit applied, so the "you owe less than the total" layout is the one
+    // measured -- it is two lines where the simple case is one.
+    creditAppliedCents: 2500,
+    amountDueCents: 10400,
+    periodStart: day(-34),
+    periodEnd: day(-4),
+    issuedAt: stamp(-4),
+    paidAt: null,
+    dueOn: day(-2),
+  },
+  orgName: PORTAL_ORG_NAME,
+  clientName: PORTAL_CLIENT_NAME,
+  items: [
+    {
+      id: "88888888-0000-4000-8000-000000008001",
+      description: "Weekly yard service — 4 visits",
+      amountCents: 9600,
+    },
+    {
+      id: "88888888-0000-4000-8000-000000008002",
+      description: "Deodorising treatment, every visit",
+      amountCents: 3600,
+    },
+    {
+      id: "88888888-0000-4000-8000-000000008003",
+      // Long on purpose: a line-item row is description against a
+      // right-aligned amount, and only a long one pushes on the amount.
+      description: "Seasonal deep clean — first visit after the autumn leaf drop, back yard only",
+      amountCents: -300,
+    },
+  ],
+};

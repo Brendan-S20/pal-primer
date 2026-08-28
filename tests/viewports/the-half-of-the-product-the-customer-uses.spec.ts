@@ -48,7 +48,12 @@
  */
 import { test, expect } from "@playwright/test";
 import { installStubBackend } from "./fixtures/stub-backend";
-import { PORTAL_SLUG, PORTAL_TOKEN, PORTAL_CLIENT_NAME } from "./fixtures/portal-dataset";
+import {
+  PORTAL_SLUG,
+  PORTAL_TOKEN,
+  PORTAL_CLIENT_NAME,
+  PUBLIC_INVOICE,
+} from "./fixtures/portal-dataset";
 import {
   measurePageOverflow,
   findControlsOffTheSide,
@@ -138,4 +143,44 @@ test.describe("the two doors a customer arrives at", () => {
     expect(await findControlsOffTheSide(page)).toEqual([]);
     expect(await findControlsUnder44px(page)).toEqual([]);
   });
+});
+
+test.describe("the payment link, which is not the portal and arrives the same way", () => {
+  /**
+   * `/pay/i/:token`. No session, no OTP, no nav — an invoice and a card field,
+   * opened on a phone by somebody who has just been asked for money. It is the
+   * shortest path in the product between a text message and a payment, and it
+   * had never been measured in the state that matters: with no fixture,
+   * `getPublicInvoice` answers `{ found: false }` and the page renders "This
+   * payment link isn't valid", which lays out fine and proves nothing.
+   *
+   * The fixture applies account credit on purpose. "Total" and "Amount due"
+   * being different numbers is a taller money block than the simple case, and
+   * the simple case is the one that would have been measured by accident.
+   */
+  for (const width of WIDTHS) {
+    test(`holds together at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await installStubBackend(page, { portal: true });
+      await page.goto(`/pay/i/${PORTAL_TOKEN}`, { waitUntil: "domcontentloaded" });
+
+      // The client's name proves the invoice resolved; "Amount due" proves the
+      // money block rendered rather than just the header.
+      await expect(page.getByText(PORTAL_CLIENT_NAME).first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText(/Amount due/i).first()).toBeVisible({ timeout: 15_000 });
+      // And that it is THIS invoice, not a fallback: the net figure only
+      // exists because credit was applied to it.
+      const due = (PUBLIC_INVOICE.invoice.amountDueCents / 100).toFixed(2);
+      await expect(page.getByText(`$${due}`).first()).toBeVisible();
+      await page.waitForTimeout(700);
+
+      const { scrollW, innerW } = await measurePageOverflow(page);
+      expect(scrollW, `pay link @${width}: scrolls sideways`).toBeLessThanOrEqual(innerW + 1);
+      expect(await findControlsOffTheSide(page), `pay link @${width}`).toEqual([]);
+      expect(await findSilentlyClippedText(page), `pay link @${width}`).toEqual([]);
+      if (width < 768) {
+        expect(await findControlsUnder44px(page), `pay link @${width}`).toEqual([]);
+      }
+    });
+  }
 });
