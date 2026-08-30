@@ -95,16 +95,45 @@ Info.plist and the Browser plugin is wired through SPM.
 
 ## 7. The demo workspace, before screenshots
 
+**Relocated to metro Detroit on 2026-08-30**, on your instruction. Was
+Manhattan; every address, every pin and every technician start point now sits
+in the Detroit suburbs.
+
+| | before | after |
+|---|---|---|
+| Demo Pet Waste Co (110) | New York, NY | Royal Oak, Ferndale, Berkley, Huntington Woods, Pleasant Ridge, Clawson, Madison Heights, Oak Park |
+| — Northside (10) | New York, NY | Troy, Birmingham, Rochester Hills, Bloomfield Hills |
+| — Southside (10) | New York, NY | Dearborn, Allen Park, Lincoln Park, Wyandotte, Grosse Pointe Park |
+
+Also changed, because moving the pins alone would have left the map incoherent:
+
+- **Staff start points.** The depot is now `1750 E Lincoln Ave, Royal Oak`, at
+  the centroid of the core service area rather than an hour's drive from it.
+- **1,242 cached road legs deleted.** Every one was measured between Manhattan
+  coordinates. It is a cache, so routing refetches against the new geography;
+  leaving them would have priced Detroit routes on New York distances.
+- **ZIP, city and coordinates now agree.** The old data did not — ZIP 10023 sat
+  on downtown coordinates, and Brooklyn ZIPs sat on Manhattan pins. Harmless in
+  a list, wrong the moment a screenshot shows a map.
+
+House numbers are synthetic and street names are real to those suburbs, so the
+addresses read correctly without being anyone's home. The previous values are
+in `backup.demo_geo_20260830` (130 properties, 10 staff); drop that table once
+you are happy.
+
+Still open, and both still need you:
+
 - [ ] `brendancreataco@gmail.com` holds **owner** on the demo org. Keep or
-      remove.
-- [ ] Confirm the demo data is what you want photographed. It is currently
-      3 technicians and 21 stops on a day, no real addresses, no gate codes,
-      no customer detail.
-
-Then I can regenerate the App Store screenshots. The existing 11 were for
-choosing shots, not for submitting, and they predate today's UI.
-
----
+      remove. Unchanged — this was not part of the relocation.
+- [ ] **The two franchise locations are on `America/Chicago`.** Metro Detroit
+      is Eastern, so their clocks read an hour off the parent, which is on
+      `America/New_York`. I did not change it: a parent and its locations
+      deliberately disagreeing may be the fixture that demonstrates per-location
+      clocks, which is what
+      `20260819130000_every-location-kept-the-parents-clock-and-rolled-over-an-hour-early`
+      exists for. If it is not deliberate, the fix is `America/Detroit` on all
+      three and I can do it in one statement. Worth settling before screenshots,
+      because a time an hour out is the sort of thing a reviewer notices.
 
 ## 8. Facebook sign-in — IN REVIEW at Meta
 
