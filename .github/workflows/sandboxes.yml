@@ -105,9 +105,32 @@ jobs:
       #
       # A retry is only honest if it cannot mask the thing being tested. So a
       # genuine migration fault exits immediately: the retry is reachable only
-      # when the log carries the 5xx from the restart. Retrying a failed
+      # when the log shows the restart was reached. Retrying a failed
       # migration three times would turn this job into a slower version of
       # nothing, which is the opposite of why it was built.
+      #
+      # ── THAT USED TO BE SPELLED AS A 5xx, AND THE RACE HAS MORE THAN ONE
+      #    SPELLING ────────────────────────────────────────────────────────
+      #
+      # The guard below matched `Error status 5[0-9][0-9]` and nothing else.
+      # On 2026-08-29 the same race arrived as a CLIENT-side timeout instead:
+      #
+      #     failed to execute http request: Get
+      #     "http://127.0.0.1:54321/storage/v1/bucket": context deadline
+      #     exceeded (Client.Timeout exceeded while awaiting headers)
+      #
+      # No 5xx anywhere in it — the CLI stopped waiting before storage
+      # answered, and storage came up healthy 43 seconds later. All 612
+      # migrations had applied with zero errors. The old guard would have
+      # taken the other branch and printed "failed on a migration", accusing
+      # the migrations of a fault that is not theirs, which is precisely the
+      # misreport this block exists to prevent.
+      #
+      # So the discriminator is no longer the error text, which nobody can
+      # enumerate in advance. `db reset` applies every migration BEFORE it
+      # restarts anything, so "Restarting containers..." in the log means the
+      # replay — the only thing this job tests — already finished. A migration
+      # fault aborts before that line is ever printed, and still exits here.
       - name: Replay every migration into an empty database
         run: |
           set -o pipefail
@@ -117,11 +140,11 @@ jobs:
               echo "migrations replayed from empty on attempt $attempt"
               exit 0
             fi
-            if ! grep -qE 'Error status 5[0-9][0-9]' "reset-$attempt.log"; then
+            if ! grep -qF 'Restarting containers...' "reset-$attempt.log"; then
               echo "::error::db reset failed on a migration, not on the container restart"
               exit 1
             fi
-            echo "::warning::the container restart raced the API gateway (attempt $attempt of 3); retrying"
+            echo "::warning::every migration applied; the restart raced the stack coming back (attempt $attempt of 3); retrying"
             sleep 15
           done
           echo "::error::the stack failed to come back three times running — this is the runner, not the migrations"
