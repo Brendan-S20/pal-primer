@@ -3,8 +3,9 @@
 Everything in here needs a console, an account, a card, or a judgement call
 that is not mine to make. Nothing in here can be done from the repo.
 
-Ordered by what blocks the most. Last measured 2026-08-26 against `main`
-(`76410a0`), deployed and live.
+Ordered by what blocks the most. Last measured 2026-08-30 against `main`
+(`18aed23`). The 2026-08-26 pass against `76410a0` is what most of the DONE
+entries below rest on; item 2 and item 9 were re-measured on the later date.
 
 ---
 
@@ -24,8 +25,19 @@ it lapses, Sign in with Apple stops at Apple, invisibly to the app.
 
 ## 2. Move the `.p8` out of the repo directory — DONE
 
-- [ ] It is currently at the repo root. It is now gitignored, and it has never
-      been committed, so nothing has leaked.
+- [x] Gone from the repo root, and nothing leaked. Re-verified 2026-08-30:
+      no `.p8` anywhere in the working tree, and
+      `git log --all --diff-filter=A -- '*.p8'` is empty, so no such file was
+      ever added on any branch. `.gitignore` still covers `*.p8`,
+      `AuthKey_*.p8`, `*.p12` and `*.mobileprovision` for the next one.
+
+      The same sweep checked the rest of history for secrets. `.env` WAS
+      tracked once and is in history, but every committed version holds only
+      `SUPABASE_URL`, `SUPABASE_PROJECT_ID` and `SUPABASE_PUBLISHABLE_KEY` —
+      no `SERVICE_ROLE_KEY` in any of the four commits that touched it. Those
+      three are publishable by design, which
+      `tests/the-supabase-url-is-not-a-secret.test.ts` asserts. **Nothing to
+      rotate.**
 
 That key downloads from Apple **once** and cannot be re-fetched. Anyone holding
 it can mint Sign in with Apple secrets for the team until it is revoked, so the
@@ -89,7 +101,7 @@ choosing shots, not for submitting, and they predate today's UI.
 
 ---
 
-## 7. Facebook sign-in — IN REVIEW at Meta
+## 8. Facebook sign-in — IN REVIEW at Meta
 
 Live and verified from our side. One thing is still not checkable from here:
 
@@ -106,6 +118,44 @@ string on every attempt and Facebook was answering "Invalid App ID" inside a
 200 response. `check:oauth` passed it, because it only knew how to read a 4xx
 and a redirect-to-error. It now reads the body and refuses any `client_id`
 containing a pipe. The secret has been rotated.
+
+## 9. The service worker is still 404 in production — NEW to this list
+
+Not submission-blocking: the iOS binary does not use it, and this is web-only.
+It is on the list because it affects every web visitor right now, it has been
+open since 2026-08-28, and it cannot be fixed from the repo.
+
+- [ ] Make the host serve `/sw.js` from the build output at
+      `https://app.houndstack.com`.
+
+Re-measured 2026-08-30 with `npm run check:pwa:live`:
+
+```
+/sw.js                 404
+/manifest.webmanifest  200
+/favicon.ico           200
+```
+
+Files from the same build directory are served; the worker specifically is
+not. `src/pwa/register.ts` calls `serviceWorker.register("/sw.js")` on every
+production page load, so every visitor gets a console error, no install
+prompt, and no offline tolerance.
+
+**The build is not the problem and never was.** `check:pwa` reads
+`.output/public`, proves the worker is emitted with a populated precache, and
+has been green throughout — correctly. #145 established this and said so
+plainly: *"WHAT IT DOES NOT DO IS FIX THE DEPLOY. The build emits the file and
+the host does not serve it, which is a hosting question rather than a repo
+one."* That is still true, which is why it needs you rather than a commit.
+
+**One repo-side follow-up, deliberately deferred.** `check:pwa:live` is the
+only `check:*` script no workflow runs — it was written CI-safe on purpose
+(exit 1 only when the origin ANSWERS and the worker is missing, so a flaky
+network cannot fail a build) and then wired to nothing. Wiring it now would
+put a knowingly-red gate into CI, which is the habit `sandboxes.yml` already
+warns about: a check that can only be red teaches people to ignore it. Wire it
+**after** the host is fixed, the way the signed-in viewport sweep was made a
+gate the day its 22 failures reached zero.
 
 ## Things you do NOT need to do
 
