@@ -181,15 +181,34 @@ describe("the two surfaces that were unconditional", () => {
   it("the DNA workspace leaves the sidebar", () => {
     const bar = read("src/components/AppSidebar.tsx");
     expect(bar).toMatch(/url: "\/dna", icon: Dna, commercialOnly: true/);
-    expect(bar).toMatch(/!it\.commercialOnly \|\| commercialEnabled/);
+    expect(bar).toMatch(/!it\.commercialOnly \|\| \w+\.commercialEnabled/);
   });
 
   it("but permission and business-type stay separate filters", () => {
     // They answer different questions and conflating them would make one of
-    // them a security boundary it is not.
-    expect(read("src/components/AppSidebar.tsx")).toMatch(
-      /canAccess\(role, it\.url\) && \(!it\.commercialOnly \|\| commercialEnabled\)/,
+    // them a security boundary it is not. Asserted as two separate conjuncts
+    // rather than one exact string: on 2026-08-30 the filter moved out of the
+    // component body into `isNavItemVisible` so the phone could share it, and
+    // pinning the old one-line spelling would have failed a refactor that
+    // widened the rule rather than weakened it.
+    const bar = read("src/components/AppSidebar.tsx");
+    expect(bar).toMatch(
+      /canAccess\(role, it\.url\)\s*&&\s*\(!it\.commercialOnly \|\| \w+\.commercialEnabled\)/,
     );
+  });
+
+  it("and the phone applies it too, which it did not used to", () => {
+    // MobileTabBar consumes NAV_GROUPS and filtered on `canAccess` ALONE, so
+    // every flag the sidebar honoured leaked into the More sheet. DNA
+    // compliance was showing to residential-only orgs on phones for as long as
+    // that flag existed — under a comment promising the phone nav "can never
+    // drift from (or exceed) what the sidebar offers".
+    //
+    // The property is that More is filtered by the SHARED helper. A bare
+    // `canAccess(role, it.url)` in the filter is the regression.
+    const tabs = read("src/components/MobileTabBar.tsx");
+    expect(tabs).toMatch(/isNavItemVisible\(it, role, \w+\)/);
+    expect(codeOnly(tabs)).not.toMatch(/items:\s*g\.items\.filter\(\(it\) => canAccess\(/);
   });
 
   it("a new zone defaults to residential for a residential-only org", () => {

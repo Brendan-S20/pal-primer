@@ -12,9 +12,9 @@ import {
   Users,
 } from "lucide-react";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
-import { canAccess, useMyRole } from "@/hooks/useMyRole";
+import { useMyRole } from "@/hooks/useMyRole";
 import { useTabletTier } from "@/hooks/useTabletTier";
-import { NAV_GROUPS, type NavItem } from "@/components/AppSidebar";
+import { NAV_GROUPS, isNavItemVisible, useNavVisibility, type NavItem } from "@/components/AppSidebar";
 import { CreateSheet } from "@/components/CreateSheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -61,6 +61,8 @@ export function MobileTabBar() {
   // Above the `!role` early return: hooks cannot be conditional.
   const { signOut, dialog: signOutDialog } = useOfflineSignOut();
   const { staff: me } = useMyProfile();
+  // Also above the early return, and for the same reason.
+  const navVisibility = useNavVisibility();
 
   // No role yet (loading, or a platform admin without a tenant org): no bar.
   if (!role) return null;
@@ -72,9 +74,15 @@ export function MobileTabBar() {
       : pathname === url || pathname.startsWith(url + "/");
 
   const tabUrls = isTech ? TECH_TAB_URLS : OFFICE_TAB_URLS;
+  // `isNavItemVisible` rather than a bare `canAccess`: this sheet used to apply
+  // only the permission filter, so every flag the sidebar honoured leaked here.
+  // DNA compliance has been showing to residential-only orgs on phones because
+  // of it. See the note on NavVisibility in AppSidebar.
   const moreGroups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((it) => canAccess(role, it.url) && !tabUrls.includes(it.url)),
+    items: g.items.filter(
+      (it) => isNavItemVisible(it, role, navVisibility) && !tabUrls.includes(it.url),
+    ),
   })).filter((g) => g.items.length > 0);
 
   const handleSignOut = async () => {
