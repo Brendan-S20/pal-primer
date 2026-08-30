@@ -85,6 +85,39 @@ jobs:
           fi
           echo "docker and supabase are both present"
 
+          # ── ROOM TO WORK IS A PREREQUISITE LIKE THE OTHER TWO ───────────
+          #
+          # Read what this can and cannot do before trusting it. On
+          # 2026-08-29 the runner's disk filled and BOTH jobs died inside
+          # `Set up job`, before step one, with
+          #
+          #     System.IO.IOException: No space left on device :
+          #     '.../actions-runner/_diag/Worker_….log'
+          #
+          # No step can catch that: the worker crashed writing its own log.
+          # This check cannot have prevented that run and does not claim to.
+          #
+          # What it catches is the approach — a disk with room to start a job
+          # but not to finish one. That case otherwise surfaces as a cryptic
+          # failure several minutes in: a half-pulled image layer, an ENOSPC
+          # from initdb, a `db reset` that dies mid-replay and gets read as a
+          # migration fault. Naming it here is the same trade the docker and
+          # supabase checks above already make.
+          #
+          # 15 GiB because a cold start of this job is the whole Supabase
+          # stack — thirteen images plus a fresh Postgres volume — and the
+          # cache is empty exactly when someone has just cleared the disk,
+          # which is to say right after the failure this guards against.
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          if [ "$avail_kb" -lt 15728640 ]; then
+            echo "::error::Only $((avail_kb / 1048576)) GiB free on the runner; this job needs 15 GiB"
+            echo "  Docker's virtual disk is the usual growth vector and does not shrink on its"
+            echo "  own: 'docker system prune -a --volumes' frees space INSIDE the VM, but the"
+            echo "  .raw file keeps the blocks it has already claimed."
+            exit 1
+          fi
+          echo "$((avail_kb / 1048576)) GiB free"
+
       # `db reset` drops the local database and replays supabase/migrations/
       # from nothing. That is a stronger claim than anything in ci.yml, which
       # only ever compares the repo against a database built incrementally over
@@ -173,6 +206,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # Same prerequisite, smaller number — see the long note in the database
+      # job for what this can and cannot catch. 5 GiB rather than 15: this job
+      # downloads a browser rather than thirteen container images, and writes
+      # traces and screenshots only when something has already failed. Both
+      # jobs run on one self-hosted runner, so whichever is scheduled first
+      # is the one that reports a disk the other was going to trip over.
+      - name: Find room to work
+        run: |
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          if [ "$avail_kb" -lt 5242880 ]; then
+            echo "::error::Only $((avail_kb / 1048576)) GiB free on the runner; this job needs 5 GiB"
+            echo "  A browser download that runs out of disk half way leaves a cache that exists,"
+            echo "  fails to launch, and reports as a layout failure on every route at every width."
+            exit 1
+          fi
+          echo "$((avail_kb / 1048576)) GiB free"
 
       # A self-hosted runner keeps its workspace between jobs, so the browser is
       # usually already there and this is a no-op after the first run.
