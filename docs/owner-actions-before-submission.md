@@ -74,7 +74,12 @@ bundle to run. If a Test action is ever added back, it will fail the same way.
       Productivity; App Store Connect said Utilities, so ASC is the one to
       change.
 
-## 6. Allow the app's redirect URL in Supabase — NEW, and native sign-in needs it
+## 6. Allow the app's redirect URL in Supabase — BLOCKING
+
+The single most important entry here. OAuth buttons ship in the binary as of
+2026-08-27, so without this every Google and Facebook sign-in from inside the
+iOS app fails, and fails silently. A reviewer would hit it on the first tap.
+See the superseded-section note near the end for why this changed.
 
 - [ ] Supabase → Authentication → URL Configuration → **Redirect URLs** → add
       `consulting.thenorth.houndstack://auth-callback`
@@ -173,32 +178,36 @@ Listed so they stop taking up room.
 
 ---
 
-## Why there are no sign-in buttons in the iOS app
+## The iOS app DOES have sign-in buttons now — this section was stale
 
-Asked on 2026-08-26, and the answer is that it is deliberate. The whole OAuth
-block sits behind `!IS_NATIVE_BUNDLE` in `src/routes/auth.tsx`, so the binary
-ships email sign-in only. Two reasons, and the first is the hard one:
+Superseded, and worth reading because the old answer is still quoted around.
 
-**Google refuses to run OAuth inside an embedded WebView.** It answers
-`disallowed_useragent`. A Capacitor app IS an embedded WebView, so the button
-cannot be made to work there however it is wired. A native flow needs
-`ASWebAuthenticationSession` and a deep link back into the app, which is real
-work rather than a flag.
+Asked on 2026-08-26, the answer was "deliberate: the whole OAuth block sits
+behind `!IS_NATIVE_BUNDLE`, so the binary ships email sign-in only," with a
+recommendation to ship v1 that way. **That stopped being true on 2026-08-27.**
+`src/routes/auth.tsx` now carries the header *"OAUTH SHIPS IN THE BINARY,
+2026-08-27"* and the block is no longer gated.
 
-**Guideline 4.8** requires Sign in with Apple wherever an app offers
-third-party sign-in. Shipping Google alone would invite a rejection; shipping
-none avoids the rule entirely.
+What changed is the half that could change. Google still refuses OAuth inside
+an embedded WebView (`disallowed_useragent`) and the app's WKWebView is still
+one — that never went away. The native path stopped using the WebView:
+`nativeOAuthSignIn` opens the provider in SFSafariViewController through
+`@capacitor/browser`, which Google treats as a system browser, and the session
+comes back through the custom URL scheme. Apple does not even need the browser
+— `nativeAppleSignIn` uses the system ASAuthorization sheet and returns a token
+directly.
 
-Now that Apple genuinely works, an Apple-only button in the binary would
-satisfy 4.8 by construction and dodge Google's WebView block. It is still not a
-one-line change: the redirect comes back to `capacitor://localhost` and has to
-be caught and handed to the session, which is the "proper native auth flow"
-this repo has never had.
+**Guideline 4.8 is now satisfied rather than dodged.** Sign in with Apple is
+offered alongside Google and Facebook instead of nothing being offered. Apple
+must stay in that list for as long as either of the others is in it.
 
-**Recommendation: ship v1 without it.** Email sign-in works in the binary,
-nothing blocks submission, and 4.8 stays unengaged rather than merely
-satisfied. Add native Sign in with Apple as a follow-up, when there is time to
-do the deep link properly rather than at the end of a submission checklist.
+**This is why item 6 is blocking and not housekeeping.** With OAuth buttons in
+the shipped binary, the Supabase redirect allow-list is the difference between
+a working sign-in and one that fails silently. Supabase does not reject an
+unlisted redirect; it sends the person to the site URL instead, so the flow
+completes with no session and the app reports a sign-in that came back empty.
+A reviewer tapping "Sign in with Apple" would hit exactly that. Under the old
+email-only plan the entry could wait; it cannot now.
 
 ## How to deploy, when you need to
 
