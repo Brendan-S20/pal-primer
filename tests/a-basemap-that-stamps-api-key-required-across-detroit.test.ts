@@ -55,6 +55,25 @@ describe("no basemap that needs a key we do not have", () => {
     });
   }
 
+  // Nominatim is the same shape of dependency as the basemap: free, keyless,
+  // governed by a usage policy, and it degrades rather than erroring. The
+  // policy asks for a descriptive User-Agent and one request a second, and a
+  // BROWSER can honour neither -- fetch() forbids setting User-Agent, and every
+  // tab is its own process with nothing to throttle through. So the browser
+  // must not call it at all; src/lib/geocode.functions.ts is the way through.
+  it("never geocodes straight from the browser", () => {
+    const offenders = files
+      .filter((f) => !/\.server\.ts$/.test(f))
+      .filter((f) => /nominatim\.openstreetmap\.org/.test(codeOnly(readFileSync(f, "utf8"))))
+      .map((f) => relative(ROOT, f));
+    expect(
+      offenders,
+      "these reach Nominatim from client code. They cannot send the User-Agent " +
+        "its policy requires, they share no throttle, and the request comes from " +
+        "the tenant's own IP. Call lookupAddressPoint from geocode.functions.ts.",
+    ).toEqual([]);
+  });
+
   it("offers only styles it can actually draw, and defaults to one of them", () => {
     // Read rather than imported: map-tiles.ts imports Leaflet, which touches
     // `window` at module scope and throws in a node environment. Importing it
