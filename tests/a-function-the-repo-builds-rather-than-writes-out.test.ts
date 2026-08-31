@@ -60,6 +60,7 @@ const files = readdirSync(MIGRATIONS)
   .map((f) => ({ file: f, sql: readFileSync(join(MIGRATIONS, f), "utf8") }));
 
 const SPLICE_FILE = "20260815190000_the-preview-showed-every-tech-the-whole-day.sql";
+const RESPLICE_FILE = "20260831130000_the-2-opt-was-still-optimising-straight-lines.sql";
 
 describe("a function the repo builds rather than writes out", () => {
   it("still has no literal CREATE, so the old rule genuinely could not see it", () => {
@@ -72,9 +73,15 @@ describe("a function the repo builds rather than writes out", () => {
     expect(isDeclared(files, "plan_visits")).toBe(true);
   });
 
-  it("credits the file that actually splices it, and only that file", () => {
+  it("credits every file that actually splices it, and only those", () => {
+    // Was `toEqual([SPLICE_FILE])`. 20260831130000 fixed the solver and had to
+    // respice plan_visits from it, so there are legitimately two now -- and
+    // there will be one more every time plan_route changes, because that is
+    // what the splice is FOR. What the assertion still refuses is a file that
+    // is credited without doing the work: every name here must both construct
+    // the DDL and assert the function exists afterwards.
     const crediting = files.filter(({ sql }) => createsDynamically(sql, "plan_visits"));
-    expect(crediting.map((f) => f.file)).toEqual([SPLICE_FILE]);
+    expect(crediting.map((f) => f.file)).toEqual([SPLICE_FILE, RESPLICE_FILE]);
   });
 
   // ── the mutations ───────────────────────────────────────────────────────

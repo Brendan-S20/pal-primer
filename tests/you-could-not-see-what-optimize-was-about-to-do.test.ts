@@ -49,10 +49,24 @@ const SQL = readdirSync(dir)
   .map((f) => readFileSync(join(dir, f), "utf8"))
   .join("\n");
 
+// Reads the tag rather than assuming it. This used to hunt for a literal
+// `AS $$` and then the next `$$;`, which is right for every definition that
+// happened to be written with an anonymous dollar quote and quietly wrong for
+// any other: `AS $fn$ ... $fn$;` does not contain `AS $$` at all, so
+// `indexOf` ran on to the NEXT function in the concatenated file and returned
+// either a slice of somebody else's body or "". Both are worse than failing,
+// because every assertion below is a `toMatch` — and a pattern that is absent
+// from the wrong body fails with a message about the right one.
+//
+// Found when 20260831130000 rewrote plan_route as `AS $fn$`, which is the tag
+// most of this repo's newer migrations use.
 function lastBody(name: string) {
   const at = SQL.lastIndexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
   expect(at, `${name} is not defined`).toBeGreaterThan(-1);
-  const end = SQL.indexOf("$$;", SQL.indexOf("AS $$", at));
+  const open = /\sAS\s+(\$[A-Za-z_]*\$)/.exec(SQL.slice(at));
+  expect(open, `${name} has no dollar-quoted body`).not.toBeNull();
+  const bodyAt = at + open!.index + open![0].length;
+  const end = SQL.indexOf(open![1], bodyAt);
   return SQL.slice(at, end === -1 ? undefined : end);
 }
 
@@ -120,12 +134,70 @@ describe("levels mean what they say", () => {
     // Recomputing the reversal separately for the comparison and the
     // assignment is how a 2-opt pass ends up applying a move it did not
     // actually evaluate.
+    //
+    // This used to count the slice expression and require exactly 2 -- once
+    // compared, once assigned -- which was the best available reading of "the
+    // same" while the expression was written out twice. 20260831130000
+    // materialises it into `_cand` instead, so the property is now structural
+    // rather than textual: there is ONE candidate, it is the thing scored, and
+    // it is the thing assigned. Requiring 2 here would now fail against the
+    // version that cannot get this wrong, so the assertion follows the
+    // variable.
     const plan = lastBody("plan_route");
     expect(plan).toMatch(/SELECT array_agg\(x ORDER BY ord DESC\) INTO _rev/);
+    // Built exactly once. A second slice expression is a second reversal, and
+    // whether it agrees with the first is exactly what this test exists to
+    // stop anyone having to check by eye.
     expect(
       plan.match(/_order\[1:_i-1\] \|\| _rev \|\| _order\[_j\+1:array_length\(_order,1\)\]/g)
         ?.length,
-    ).toBe(2);
+    ).toBe(1);
+    expect(plan).toMatch(
+      /_cand := _order\[1:_i-1\] \|\| _rev \|\| _order\[_j\+1:array_length\(_order,1\)\];/,
+    );
+    // Scored and assigned, both by name.
+    expect(plan).toMatch(/_cand_min := public\.route_segment_min\(_cand\);/);
+    expect(plan).toMatch(/IF _cand_min < _base THEN/);
+    expect(plan).toMatch(/_order := _cand;/);
+  });
+
+  it("scores the improvement pass in road minutes, not straight-line km", () => {
+    // The half of 20260826180000 that was never finished. That migration
+    // taught nearest-neighbour to score on drive_minutes and left the 2-opt
+    // calling route_segment_km, so `thorough` built a route on road time and
+    // then reordered it to shorten a straight line -- the improvement pass
+    // undoing the objective the construction pass had just been given.
+    //
+    // Comments are stripped first: the fix carries a comment that names
+    // route_segment_km in order to say it is gone, and a check answered by the
+    // prose describing it is the fault this repo keeps re-finding.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).not.toMatch(/route_segment_km/);
+    expect(code).toMatch(/route_segment_min/);
+  });
+
+  it("lets the 2-opt reach the last stop", () => {
+    // `_j` ran to array_length - 1, so no segment ending at the final stop was
+    // ever reversed. This is an open path -- the planner does not return to a
+    // depot -- so reversing the tail changes exactly one edge and is an
+    // ordinary improving move that was simply unreachable.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/FOR _j IN _i \+ 1 \.\. array_length\(_order,1\) LOOP/);
+    expect(code).not.toMatch(/FOR _j IN _i \+ 1 \.\. array_length\(_order,1\) - 1 LOOP/);
+  });
+
+  it("reports a distance and a time that describe the same journey", () => {
+    // The owner-visible half. travel_km was haversine while travel_min was the
+    // cached road time plus park_walk_min, so the route screen printed pairs
+    // like "0.21 km · 7.1 min" -- 1.8 km/h. Both now come from the same cached
+    // leg, and the parking constant stays in the CLOCK rather than in the
+    // number labelled travel.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/_tkm\s*:=\s*COALESCE\(public\.road_km\(/);
+    expect(code).not.toMatch(/_tkm\s*:=\s*COALESCE\(public\.haversine_km\(/);
+    // The clock still spends it; only the reported figure drops it.
+    expect(code).toMatch(/_tmin\s*:=\s*GREATEST\(_drive - _park, 0\)/);
+    expect(code).toMatch(/_es := _clock \+ make_interval\(mins => COALESCE\(_drive,0\)::int\)/);
   });
 });
 

@@ -320,12 +320,21 @@ describe("a database can actually be built from these files", () => {
         } else if (!live.has(key)) {
           // An ACL statement inside a `to_regprocedure(...) IS NOT NULL` block
           // is deliberate and cannot fail, so it is not a violation.
+          //
+          // The tag is READ, not assumed. This matched a literal `DO $$` and
+          // then `END $$`, so a block opened as `DO $grant$` was invisible to
+          // it and its grants were reported as premature -- and, worse in the
+          // other direction, an anonymous `END $$` belonging to some earlier
+          // block could be mistaken for the close of this one. Both go away by
+          // pairing the tag with itself.
           const before = sql.slice(0, m.index);
-          const blockStart = before.lastIndexOf("DO $$");
+          const opens = [...before.matchAll(/DO\s+(\$[A-Za-z_]*\$)/g)];
+          const lastOpen = opens.length ? opens[opens.length - 1] : null;
           const guarded =
-            blockStart !== -1 &&
-            before.indexOf("END $$", blockStart) === -1 &&
-            before.slice(blockStart).includes("to_regprocedure");
+            lastOpen !== null &&
+            // Still inside it: its own END tag has not appeared since.
+            before.indexOf(`END ${lastOpen[1]}`, lastOpen.index!) === -1 &&
+            before.slice(lastOpen.index!).includes("to_regprocedure");
           if (!guarded) {
             const verb = kind.split(/\s+/)[0].toLowerCase();
             premature.push(`${file} ${verb}s EXECUTE on ${key} when no such function is live`);
