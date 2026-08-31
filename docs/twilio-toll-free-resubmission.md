@@ -7,14 +7,36 @@ flagged rather than changed because they alter what customers actually receive.
 
 ## 30482 — Business Email Address Must Use an Official Domain
 
-**Not on the toll-free form.** `support@houndstack.com` is already on it and is
-already an official domain.
+**Corrected 2026-08-31 against Twilio's own error documentation.** An earlier
+version of this file said 30482 was not on the toll-free form at all and pointed
+at the Trust Hub Business Profile instead. That was wrong, and it was inference
+from a screenshot rather than a reading of the spec.
 
-This code refers to the **Business Profile in Trust Hub** (Console → Trust Hub →
-Customer Profiles → Business Information), a separate object with its own
-contact email. That is where a `@gmail.com` address will be sitting. Change it
-there, and make sure the address actually receives mail — Twilio may write to it
-and a forwarding alias that bounces will fail the recheck.
+https://www.twilio.com/docs/api/errors/30482 says the field is
+**`BusinessContactEmail`, in the verification request itself**:
+
+> The business email in the verification request uses a free or personal email
+> provider instead of your business domain.
+
+`BusinessContactEmail` is one of the submission's business-information fields —
+it appears in the same list as `BusinessName`, `BusinessStreetAddress`,
+`BusinessWebsite` and the rest (see the field enumeration under error 30472).
+The `support@houndstack.com` visible in the screenshot sits lower down, near the
+phone number; the business contact email is in the business section above it.
+So the Gmail address is on the form, in a part the screenshots did not capture.
+
+**Fix:** set `BusinessContactEmail` to an `@houndstack.com` address.
+
+Two things the docs add that are worth knowing:
+
+- **There is a second, legitimate remedy.** "If you must use a free email
+  address, list that address on your official business website as a valid
+  business contact before you resubmit." So a Gmail address can pass, provided
+  it is published on houndstack.com as a contact method. Setting up mail on the
+  domain is still the cleaner answer.
+- **Use the resubmit flow, not delete-and-recreate.** From the sibling error
+  30452: "Deleting and resubmitting places the request in the same queue as a
+  new submission." Correcting the rejected request in place keeps its position.
 
 ## 30507 — Opt-In Does Not Match the Use Case
 
@@ -198,3 +220,56 @@ is customer-facing copy and would normally fall under the em-dash rule.
 stored per account as the evidence), invalidates screenshots 4 and 5, and would
 mean the text quoted to Twilio no longer matches the text on the page — which is
 mismatch §3 all over again, self-inflicted.
+
+---
+
+# Two rejection codes the resubmission has not accounted for
+
+Found by reading the neighbouring error codes rather than only the two that
+fired. Both bear directly on the broadened description above.
+
+## 30504 — a single opt-in cannot cover multiple use cases
+
+https://www.twilio.com/docs/api/errors/30504 rejects "combining multiple use
+cases under one consent mechanism" and asks for "separate opt-in mechanisms for
+each message type".
+
+The description drafted above names two populations. That is only safe because
+the two opt-ins are genuinely separate mechanisms, and the submission has to
+make that structural rather than leave it implied:
+
+- **Account holders** consent at signup, on app.houndstack.com/get-started, to
+  account and service notifications about their own HoundStack account.
+- **A business's customers** consent separately — either themselves on their
+  portal account page, or through a consent the business records — to messages
+  about their appointments, visits and billing with that business.
+
+Neither box covers the other population, neither is pre-ticked, and neither is a
+condition of anything. Say that explicitly. A description that blends them into
+one paragraph of "we send transactional messages" is what 30504 exists to catch.
+
+## 30506 — opt-ins must clearly reflect the end business
+
+This is the one to watch, and it is structural rather than a wording fix.
+Twilio's review "looks at the business sending messaging (not the software
+powering it)". For category (2) the business with the consumer relationship is
+the pet-care company, not HoundStack — but the messages leave HoundStack's
+toll-free number, and the customer consent string reads:
+
+> "I agree to receive service text messages about my appointments, visit
+> updates, and billing **from this business** at the number provided."
+
+"this business" is not a name. On the portal page the business is identifiable
+from the surrounding page, which may satisfy a reviewer, but the consent string
+alone does not name who is texting. The same gap shows in the messages
+themselves — see the sender-identification item below, which is the same problem
+seen from the other end.
+
+If a reviewer treats HoundStack as an ISV messaging on behalf of end businesses,
+the guidance under 30472 applies and the submission should carry the END
+business's details, not the platform's. That is a different shape of submission
+from the one in flight, and it is the argument for the narrower option: keep the
+toll-free number for HoundStack's own account holders, and move customer traffic
+onto per-tenant 10DLC where each business is its own sender. The code already
+anticipates exactly that split — `resolveOrgTwilioConfig` provisions a subaccount
+per tenant and returns null until 10DLC clears.
