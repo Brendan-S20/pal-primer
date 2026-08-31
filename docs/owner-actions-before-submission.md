@@ -116,6 +116,21 @@ Also changed, because moving the pins alone would have left the map incoherent:
   on downtown coordinates, and Brooklyn ZIPs sat on Manhattan pins. Harmless in
   a list, wrong the moment a screenshot shows a map.
 
+**One thing the relocation missed, found and fixed 2026-08-30.** Thirty-one
+properties carry a `boundary` — the drawn yard outline, GeoJSON in its own
+column. The move rewrote `latitude`/`longitude` and did not touch it, so those
+yards sat in Manhattan while their pins sat in Detroit, about 500 miles apart.
+Nothing surfaced it: the address reads correctly, the pin lands correctly, and
+the outline only appears once you open that property's boundary view.
+
+Fixed by translating each polygon by its own property's exact delta, taken
+from the backup, so shape is preserved rather than redrawn. Verified after:
+boundaries now span 42.207–42.658, every polygon is still within 108 m of its
+own pin as before, and the areas shrank 2.6% — which is
+`cos(42.4°)/cos(40.7°)`, the correct amount for the same shape at a higher
+latitude, and therefore evidence the translation was clean rather than a
+reshape.
+
 House numbers are synthetic and street names are real to those suburbs, so the
 addresses read correctly without being anyone's home. The previous values are
 in `backup.demo_geo_20260830` (130 properties, 10 staff); drop that table once
