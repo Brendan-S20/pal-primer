@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useEffect, useMemo, useState } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
 
@@ -69,6 +70,7 @@ function NewClientWizard() {
   const qc = useQueryClient();
   const onboardFn = useServerFn(onboardClient);
   const quoteFn = useServerFn(getInternalQuote);
+  const geocodeFn = useServerFn(lookupAddressPoint);
 
   const [step, setStep] = useState(0);
   // Turn on inline "required" messages after the user tries to advance —
@@ -150,29 +152,31 @@ function NewClientWizard() {
       setGeoStatus("notfound");
       return;
     }
-    const ac = new AbortController();
+    // A `cancelled` flag rather than an AbortController: a server function
+    // takes no signal, so the guard this needs is against a STALE result
+    // landing after the address changed, which is what the abort was doing
+    // here anyway.
+    let cancelled = false;
     setGeoStatus("loading");
     (async () => {
       try {
-        const r = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
-          { signal: ac.signal, headers: { Accept: "application/json" } },
-        );
-        if (!r.ok) throw new Error(`geocoder ${r.status}`);
-        const rows = (await r.json()) as Array<{ lat: string; lon: string }>;
-        if (rows?.[0]) {
-          setGeo({ lat: Number(rows[0].lat), lng: Number(rows[0].lon) });
+        const { geo: g } = await geocodeFn({ data: { query: q } });
+        if (cancelled) return;
+        if (g) {
+          setGeo({ lat: g.latitude, lng: g.longitude });
           setGeoStatus("ok");
         } else {
           setGeoStatus("notfound");
         }
-      } catch (e) {
-        if ((e as Error).name === "AbortError") return;
+      } catch {
+        if (cancelled) return;
         setGeoStatus("error");
       }
     })();
-    return () => ac.abort();
-  }, [step, street, city, region, postalCode, geo]);
+    return () => {
+      cancelled = true;
+    };
+  }, [step, street, city, region, postalCode, geo, geocodeFn]);
 
   // dogs
   const [dogs, setDogs] = useState<Dog[]>([
