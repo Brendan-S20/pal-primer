@@ -290,4 +290,30 @@ describe("the guards still apply, and refusals are visible", () => {
     expect(ui).toMatch(/disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy\}/);
     expect(ui, "the preview gate is back").not.toMatch(/previewMut/);
   });
+  it("costs the drive from the last stop to where the day ends", () => {
+    // Before 20260831150000 the planner resolved a START and then planned an
+    // OPEN path: the last stop of the day was chosen as though the van
+    // evaporates on arrival. staff.end_latitude has existed since 20260703 and
+    // Settings has always collected it under "Route end (dump, home, shop)";
+    // RouteMap even drew the marker. The solver had never read it.
+    //
+    // Measured on the demo day with the dump at a cached coordinate: the
+    // end-blind order left 116.3 minutes of driving still to do, the end-aware
+    // one 22.3. Same stops, same technicians.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/public\.staff_end_point\(_org_id, _staff_id\)/);
+    // The closing leg goes into the same matrix as every other leg, so it is
+    // priced by the road and not by the 11 km/h fallback.
+    expect(code).toMatch(/INSERT INTO _legs \(from_id, to_id, minutes\)[\s\S]{0,400}_END/);
+  });
+
+  it("degrades to an open path when nothing resolves an end", () => {
+    // Most orgs have neither a technician end address nor a geocoded dump
+    // today — 2 of 7 and 0 of 6 on 2026-08-31 — so the no-end case is the
+    // common one and must be exactly the old behaviour. The END rows are
+    // inserted only inside the guard, so route_segment_min finds nothing to
+    // add. Verified in Postgres: 38.0 / 35.5 / 17.4, bit-identical.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/IF _end_lat IS NOT NULL AND _end_lon IS NOT NULL THEN/);
+  });
 });
