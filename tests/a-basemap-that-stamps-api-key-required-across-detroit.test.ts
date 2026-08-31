@@ -74,6 +74,26 @@ describe("no basemap that needs a key we do not have", () => {
     ).toEqual([]);
   });
 
+  // Leaflet's default marker images were pointed at unpkg.com. Nothing fetched
+  // them -- all eleven L.marker() calls pass their own icon -- so it was a
+  // SAFETY NET for a marker created without one, not a live dependency. A net
+  // that reaches for a CDN is no net at all in a van with no signal, which is
+  // the condition this app exists to survive. They are imported and bundled
+  // now (Vite inlines all three; each is under the 4KB limit).
+  it("hotlinks no CDN for an asset it already ships", () => {
+    const CDNS = ["unpkg.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"];
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = codeOnly(readFileSync(f, "utf8"));
+      for (const cdn of CDNS) if (src.includes(cdn)) offenders.push(`${relative(ROOT, f)} -> ${cdn}`);
+    }
+    expect(
+      offenders,
+      "this app bundles its dependencies, so a runtime CDN fetch is an outage " +
+        "and an offline failure it does not need to own.",
+    ).toEqual([]);
+  });
+
   it("offers only styles it can actually draw, and defaults to one of them", () => {
     // Read rather than imported: map-tiles.ts imports Leaflet, which touches
     // `window` at module scope and throws in a node environment. Importing it
