@@ -60,7 +60,6 @@ const files = readdirSync(MIGRATIONS)
   .map((f) => ({ file: f, sql: readFileSync(join(MIGRATIONS, f), "utf8") }));
 
 const SPLICE_FILE = "20260815190000_the-preview-showed-every-tech-the-whole-day.sql";
-const RESPLICE_FILE = "20260831130000_the-2-opt-was-still-optimising-straight-lines.sql";
 
 describe("a function the repo builds rather than writes out", () => {
   it("still has no literal CREATE, so the old rule genuinely could not see it", () => {
@@ -74,14 +73,37 @@ describe("a function the repo builds rather than writes out", () => {
   });
 
   it("credits every file that actually splices it, and only those", () => {
-    // Was `toEqual([SPLICE_FILE])`. 20260831130000 fixed the solver and had to
-    // respice plan_visits from it, so there are legitimately two now -- and
-    // there will be one more every time plan_route changes, because that is
-    // what the splice is FOR. What the assertion still refuses is a file that
-    // is credited without doing the work: every name here must both construct
-    // the DDL and assert the function exists afterwards.
+    // This was a hardcoded list — first `[SPLICE_FILE]`, then
+    // `[SPLICE_FILE, RESPLICE_FILE]` — and it needed an edit every time
+    // plan_route changed, because a change to plan_route MUST respice
+    // plan_visits or the two drift apart. That is the whole purpose of the
+    // splice, so the list grows forever and pinning it tests the calendar
+    // rather than the property. 20260831150000 was the second edit in two
+    // days; that is the signal to assert the invariant instead.
+    //
+    // The strength is unchanged and lives in `createsDynamically`, which
+    // demands two things in one file: DDL that is constructed and actually
+    // EXECUTEd, and the migration asserting the function exists when it
+    // finishes. A mere mention in a GRANT or a DROP — the hole this whole
+    // script was written to close — still credits nobody.
     const crediting = files.filter(({ sql }) => createsDynamically(sql, "plan_visits"));
-    expect(crediting.map((f) => f.file)).toEqual([SPLICE_FILE, RESPLICE_FILE]);
+
+    // The original is always in it, and always first.
+    expect(crediting.length).toBeGreaterThan(0);
+    expect(crediting[0].file).toBe(SPLICE_FILE);
+
+    // Filename order, which for these files is apply order. A respice that
+    // landed before the file it derives from would be nonsense.
+    expect(crediting.map((f) => f.file)).toEqual([...crediting.map((f) => f.file)].sort());
+
+    // And the filter genuinely discriminates: a migration that only MENTIONS
+    // plan_visits, in the guarded GRANT block, is not credited with building
+    // it. Without this the three assertions above would also pass if
+    // createsDynamically matched everything.
+    const mentionsOnly = files.filter(
+      ({ file, sql }) => sql.includes("plan_visits") && !crediting.some((c) => c.file === file),
+    );
+    expect(mentionsOnly.length).toBeGreaterThan(0);
   });
 
   // ── the mutations ───────────────────────────────────────────────────────
