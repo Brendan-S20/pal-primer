@@ -58,13 +58,13 @@ bundle to run. If a Test action is ever added back, it will fail the same way.
 
 ## 5. Category — DECIDED: Productivity
 
-- [ ] Set it in App Store Connect. `docs/app-store-submission.md` already says
+- [x] Set it in App Store Connect. `docs/app-store-submission.md` already says
       Productivity; App Store Connect said Utilities, so ASC is the one to
       change.
 
 ## 6. Allow the app's redirect URL in Supabase — NEW, and native sign-in needs it
 
-- [ ] Supabase → Authentication → URL Configuration → **Redirect URLs** → add
+- [x] Supabase → Authentication → URL Configuration → **Redirect URLs** → add
       `consulting.thenorth.houndstack://auth-callback`
 
 Sign-in from inside the iOS app hands back to the app through that custom URL
@@ -78,7 +78,8 @@ Info.plist and the Browser plugin is wired through SPM.
 
 ## 7. The demo workspace, before screenshots
 
-- [ ] `brendancreataco@gmail.com` holds **owner** on the demo org. Keep or
+- [x] `brendancreataco@gmail.com` holds **owner** on the demo org. **Decided
+      2026-08-31: keep.** Keep or
       remove.
 - [ ] Confirm the demo data is what you want photographed. It is currently
       3 technicians and 21 stops on a day, no real addresses, no gate codes,
