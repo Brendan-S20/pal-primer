@@ -4,13 +4,26 @@ import { isNative, getPositionNative } from "@/lib/native";
 import "leaflet/dist/leaflet.css";
 import { AlertTriangle, Loader2, LocateFixed } from "lucide-react";
 import { addBaseTiles, type TileVariant } from "@/lib/map-tiles";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
 // Fix Leaflet default icon paths (they break under bundlers).
+//
+// These three were unpkg.com URLs. Nothing fetches them today -- every one of
+// the eleven L.marker() calls in this app passes its own icon, there is no
+// L.geoJSON (which would make default markers for Point features), and no
+// L.Marker constructed directly -- so this block is a SAFETY NET for a future
+// marker created without one, not a live dependency. It was still worth
+// changing: a net that reaches for a CDN is no net at all in a van with no
+// signal, which is the condition this app is built to survive. Imported so
+// Vite bundles them, which also drops three cross-origin requests from the
+// day somebody does add a default marker.
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
 });
 
 export type MapVisit = {
