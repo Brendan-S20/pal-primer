@@ -316,4 +316,30 @@ describe("the guards still apply, and refusals are visible", () => {
     const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
     expect(code).toMatch(/IF _end_lat IS NOT NULL AND _end_lon IS NOT NULL THEN/);
   });
+  it("refuses an end point no stop of the day can reach", () => {
+    // Found in production an hour after 20260831150000 shipped: five demo
+    // technicians carried 40.748,-73.986 — the Empire State Building — seeded
+    // when that data was New York based and left behind when the stops moved to
+    // Michigan, 784 km away. Inert while the solver ignored the end point.
+    //
+    // The size is not the damage; a constant cancels out of every comparison.
+    // The SPREAD is. Measured on those twenty stops: closing legs of 6,195 to
+    // 6,249 minutes, so 54 minutes between the best and worst last stop against
+    // a real route improvement worth 2.4 minutes. The 2-opt would have spent the
+    // whole pass ranking stops by closeness to Manhattan.
+    //
+    // The threshold is the org's own max_drive_minutes, not a literal: if the
+    // CLOSEST stop cannot reach the end point inside it, no ordering ends there.
+    // The minimum is the right statistic — a dump at one edge of a wide rural
+    // territory is legitimately far from the stops at the other edge.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/max_drive_minutes/);
+    expect(code).toMatch(/SELECT min\(lg\.minutes\) INTO _nearest_close FROM _legs lg WHERE lg\.to_id = _END/);
+    expect(code).toMatch(/IF _nearest_close IS NOT NULL AND _nearest_close > _max_drive THEN/);
+    // Dropped, not clamped: the day reverts to the open path it had before the
+    // end point existed, which is strictly better than a wrong one.
+    expect(code).toMatch(/DELETE FROM _legs WHERE to_id = _END/);
+    // And it says so somewhere a person can find it.
+    expect(code).toMatch(/RAISE WARNING/);
+  });
 });
