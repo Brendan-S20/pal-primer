@@ -21,6 +21,17 @@
 -- come from the same subquery with the same ORDER BY, so index i in one is
 -- index i in the other -- which is the property the page needs and the only
 -- thing that makes parallel arrays safe.
+-- DROP first, because this ADDS a column to the returned row.
+--
+-- `CREATE OR REPLACE FUNCTION` cannot change a function's return type:
+-- Postgres answers "cannot change return type of existing function / Row type
+-- defined by OUT parameters is different / Use DROP FUNCTION ... first". The
+-- replace succeeds only where the function does not exist yet, which is why
+-- this passed against a scratch database and failed the moment it ran on top
+-- of the definition an earlier migration had already created -- which is what
+-- a replay is, and the only thing a replay is for.
+DROP FUNCTION IF EXISTS public.portal_list_recent_visits(uuid);
+
 CREATE OR REPLACE FUNCTION public.portal_list_recent_visits(_token uuid)
 RETURNS TABLE(visit_id uuid, scheduled_on date, status visit_status, photo_paths text[],
               photo_kinds text[], tech_name text, completed_at timestamp with time zone,
