@@ -45,10 +45,10 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
 export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
   customer_requested: "You asked us to skip this one",
   client_cancelled_late: "Cancelled after our cut-off",
-  gate_locked: "We could not get in — the gate was locked",
+  gate_locked: "The gate was locked, so we could not get in",
   dog_outside: "Your dog was out in the yard",
   weather: "Called off for weather",
-  our_fault: "Our mistake — no charge",
+  our_fault: "Our mistake, so there is no charge",
   access_blocked: "We could not get to the yard",
   unsafe_conditions: "It was not safe to work",
   other: "Skipped",
