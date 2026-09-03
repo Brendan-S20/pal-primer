@@ -918,6 +918,10 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
       scheduled_on: string;
       status: string;
       photo_paths: string[];
+      // Parallel to photo_paths, same order, added in 20260903130000. The page
+      // used to label a photo by its INDEX -- `i % 2 === 0 ? "Before" :
+      // "After"` -- because position was all it had.
+      photo_kinds: string[];
     }>;
   });
 

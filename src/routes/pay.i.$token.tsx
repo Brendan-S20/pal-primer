@@ -16,6 +16,7 @@ import { getPublicInvoice, createPublicInvoicePaymentIntent } from "@/lib/invoic
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { formatDay } from "@/lib/format";
 import { formatLineItemDescription } from "@/lib/invoice-labels";
+import { isInvoiceOverdue, todayISO } from "@/lib/overdue";
 
 export const Route = createFileRoute("/pay/i/$token")({
   head: () => ({ meta: [{ title: "Pay invoice" }] }),
@@ -42,9 +43,16 @@ function getStripe(pk: string, stripeAccount?: string) {
   return p;
 }
 
-function isOverdue(status: string, dueOn: string | null) {
-  return status === "open" && !!dueOn && dueOn < new Date().toISOString().slice(0, 10);
-}
+// The local `isOverdue` that used to live here is gone.
+//
+// It was `dueOn < new Date().toISOString().slice(0, 10)` — the SERVER's day —
+// which is the exact line src/lib/overdue.ts documents as a fixed bug: "For an
+// org in America/Chicago that is already tomorrow from 19:00 local, so every
+// invoice read as overdue five hours before it was due, on its own due date."
+// That was fixed on the staff list, the drawer and the portal, and this page
+// kept a private copy — so every evening a customer's own payment page stamped
+// OVERDUE on a bill due that day. It already imported InvoiceStatusBadge from
+// portal-ui; it just had its own opinion about dates.
 
 function PublicPayPage() {
   const { token } = Route.useParams();
@@ -111,7 +119,11 @@ function PublicPayPage() {
     );
   }
 
-  const overdue = isOverdue(invoice.status, invoice.dueOn);
+  const overdue = isInvoiceOverdue(
+    invoice.status,
+    invoice.dueOn,
+    todayISO(data.orgTimezone ?? undefined),
+  );
   const period =
     invoice.periodStart && invoice.periodEnd && invoice.periodStart !== invoice.periodEnd
       ? `${formatDay(invoice.periodStart)} to ${formatDay(invoice.periodEnd)}`
