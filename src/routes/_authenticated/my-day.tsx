@@ -284,6 +284,23 @@ function MyDay() {
     [startFn, completeFn, skipFn, photoFn, stationFn],
   );
 
+  // Client names for the two messages that ask a tech to go back and redo
+  // work. Held in a ref rather than closed over, because `visits` is derived
+  // below `runSync` and putting it in the dependency array would rebuild the
+  // sync driver on every refetch.
+  const visitNames = useRef<Map<string, string>>(new Map());
+  /** "Bark Park and 2 others", or nothing when we cannot name any of them.
+   *  A queued action can outlive the day it belongs to -- it survives the app
+   *  being killed in a pocket -- so an id with no row today is expected and
+   *  simply contributes no name. */
+  const namesFor = useCallback((ids: string[]): string | undefined => {
+    const named = ids.map((id) => visitNames.current.get(id)).filter(Boolean) as string[];
+    if (named.length === 0) return undefined;
+    if (named.length === 1) return named[0];
+    if (named.length === 2) return `${named[0]} and ${named[1]}`;
+    return `${named[0]} and ${named.length - 1} others`;
+  }, []);
+
   const runSync = useCallback(async () => {
     // Replay only the signed-in tech's own queued work — see lib/offline/queue.
     //
@@ -321,6 +338,7 @@ function MyDay() {
       // gone, and the tech is the only person who can retake it.
       toast.error(
         `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device. Retake if the visit still needs one`,
+        { description: namesFor(res.droppedVisitIds) },
       );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
@@ -328,16 +346,21 @@ function MyDay() {
       // Loud, specific, and never folded into any other count. The queue was
       // blocking everything behind this; giving up unblocks the day, but the
       // work itself is gone and only the tech can redo it.
+      //
+      // And it now NAMES the stop. This is the one message in the app that
+      // asks somebody to drive somewhere a second time, and it used to end
+      // "Check the visit and redo it if needed" without saying which visit --
+      // on a twenty-stop day, with the queue already emptied of the evidence.
       toast.error(
-        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Check the visit and redo it if needed`,
-        { duration: 12_000 },
+        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Go back and redo the work if it still needs doing`,
+        { duration: 12_000, description: namesFor(res.deadLetteredVisitIds) },
       );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
     if (res.failed > 0) {
       toast.error(`Sync stalled on 1 action, will retry`);
     }
-  }, [callers, qc]);
+  }, [callers, qc, namesFor]);
 
   // Auto-sync on load + whenever we come back online.
   useEffect(() => {
@@ -348,6 +371,16 @@ function MyDay() {
   }, [runSync]);
 
   const visits = data?.visits ?? [];
+  // Kept current for namesFor above. Written during render rather than in an
+  // effect: a sync can fire from the online listener before an effect has run,
+  // and a toast that says "and 2 others" with no names is worse than one that
+  // says nothing.
+  visitNames.current = new Map(
+    visits.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
+      v.id,
+      v.clients?.display_name ?? "a visit",
+    ]),
+  );
   const staff = data?.staff;
 
   // ── the read half of the same basement garage ────────────────────────────
