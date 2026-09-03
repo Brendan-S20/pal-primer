@@ -195,9 +195,72 @@ describe("levels mean what they say", () => {
     const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
     expect(code).toMatch(/_tkm\s*:=\s*COALESCE\(public\.road_km\(/);
     expect(code).not.toMatch(/_tkm\s*:=\s*COALESCE\(public\.haversine_km\(/);
-    // The clock still spends it; only the reported figure drops it.
-    expect(code).toMatch(/_tmin\s*:=\s*GREATEST\(_drive - _park, 0\)/);
+    // And the reported minute is now the leg as driven. It used to be
+    // `GREATEST(_drive - _park, 0)` while the clock below advanced by the
+    // whole leg, so the arrival times and the drive times printed beside them
+    // described different journeys and 6 minutes a stop appeared in neither
+    // the travel column nor the service one. See 20260903120000.
+    expect(code).toMatch(/_tmin\s*:=\s*COALESCE\(_drive, 0\)/);
+    expect(code).not.toMatch(/GREATEST\(_drive/);
     expect(code).toMatch(/_es := _clock \+ make_interval\(mins => COALESCE\(_drive,0\)::int\)/);
+  });
+
+  it("does not keep a variable whose only job was to be subtracted", () => {
+    // `_park` was read from the organization solely to be taken back off the
+    // reported leg. park_walk_min still exists and still applies -- inside
+    // drive_minutes(), which is where it belongs and where it is added to
+    // every leg in `_legs`. A leftover declaration here would be an invitation
+    // to subtract it again.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).not.toMatch(/_park/);
+  });
+});
+
+describe("the day it prints is the day it drives", () => {
+  it("counts the leg to the dump wherever a day is added up", () => {
+    // The planner has ORDERED the day around ending at the dump since
+    // 20260831150000, and the leg appeared in no total: not in the panel, and
+    // not in the number the rebalance compares between technicians. Three
+    // places add up a day and all three now ask one function, so there is one
+    // rule about max_drive_minutes rather than three that agree until someone
+    // edits one.
+    for (const fn of ["dry_day_min", "plan_day_across_staff", "route_cost_current"]) {
+      expect(lastBody(fn).replace(/--[^\n]*/g, "")).toMatch(/closing_drive_min/);
+    }
+  });
+
+  it("asks what a technician's day costs in exactly one place", () => {
+    // The rebalance weighs the day before a move and again after it. Those
+    // were two copies of one SELECT; a loop that compares a day against a
+    // subtly different day reverts on noise.
+    const dry = lastBody("plan_day_across_staff_dryrun").replace(/--[^\n]*/g, "");
+    expect(dry.match(/dry_day_min/g) ?? []).toHaveLength(2);
+    expect(dry).not.toMatch(/SUM\(COALESCE\(p\.service_duration_min, 8\) \+ COALESCE\(r\.t_min, 0\)\)/);
+  });
+
+  it("refuses a closing leg the planner itself refused", () => {
+    // plan_route drops the end point when the NEAREST stop of the day cannot
+    // reach it inside max_drive_minutes. Anything else costing that leg has to
+    // apply the same test over the same set, or it bills a day for a trip the
+    // route does not make.
+    const close = lastBody("closing_drive_min").replace(/--[^\n]*/g, "");
+    expect(close).toMatch(/max_drive_minutes/);
+    expect(close).toMatch(/min\(public\.drive_minutes\(/);
+    expect(close).toMatch(/_nearest > COALESCE\(_max_drive, 240\)/);
+  });
+
+  it("matches a technician to an arc from where they will actually start", () => {
+    // The cluster-to-technician match read staff.start_latitude raw. For
+    // anyone without a start address that is NULL, COALESCE(...,9999) sorted
+    // them behind every colleague who had one, and they took whatever arc was
+    // left however far away it was. staff_start_point resolves the same point
+    // plan_route will start them from.
+    const dry = lastBody("plan_day_across_staff_dryrun").replace(/--[^\n]*/g, "");
+    expect(dry).toMatch(/LATERAL public\.staff_start_point\(_org_id, sh\.sid, _day\)/);
+    expect(dry).not.toMatch(/st\.start_latitude/);
+    expect(lastBody("route_cost_current").replace(/--[^\n]*/g, "")).not.toMatch(
+      /SELECT start_latitude, start_longitude INTO/,
+    );
   });
 });
 
