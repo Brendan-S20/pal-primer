@@ -31,6 +31,7 @@ import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
@@ -341,7 +342,7 @@ function MyDay() {
 
   // Auto-sync on load + whenever we come back online.
   useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.onLine) runSync();
+    if (typeof navigator !== "undefined" && !isDefinitelyOffline()) runSync();
     const on = () => runSync();
     window.addEventListener("online", on);
     return () => window.removeEventListener("online", on);
@@ -1178,6 +1179,9 @@ function VisitCard({
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
   const scheduled = visit.status === "scheduled";
+  // Auto-marked missed overnight. Still completable — see the note on the
+  // Complete button — because the work may well have been done.
+  const missed = visit.status === "missed";
   const finalStatus = done || skipped;
   const p = visit.properties;
   const [collapsed, setCollapsed] = useState(finalStatus);
@@ -1422,7 +1426,14 @@ function VisitCard({
                 !canPerformVisit ||
                 (!hasCompletionPhoto && !hasQueuedCompletionPhoto) ||
                 complete.isPending ||
-                (!inProg && !scheduled)
+                // `missed` belongs here. complete_visit has accepted
+                // ('scheduled','in_progress','missed') since 20260804060000 --
+                // widened deliberately, so a tech who did the work and forgot
+                // to close it can come back to yesterday and record it. The
+                // button never learned, so both Start and Complete were dead
+                // on those cards with nothing on screen saying why. There are
+                // 2,001 missed visits in production.
+                (!inProg && !scheduled && !missed)
               }
               onClick={() =>
                 canPerformVisit
@@ -1441,6 +1452,12 @@ function VisitCard({
             >
               Complete
             </Button>
+            {missed && (
+              <p className="mt-1 w-full text-xs text-muted-foreground">
+                Marked missed overnight. If you did the work, you can still
+                complete it here and it will be recorded late.
+              </p>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -1869,7 +1886,12 @@ function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; read
       notes?: string;
     }) =>
       runOrQueue({
-        online: typeof navigator === "undefined" ? true : navigator.onLine,
+        // The honest answer, like every other action in this file. This one
+        // read `navigator.onLine` raw, which on a resumed native app in a dead
+        // zone says "online" -- so the request went out, hung, and cost the
+        // 8-second deadline before queueing. Per station. On a wall of twenty
+        // bins, in the basement car park this panel was hardened for.
+        online: !isDefinitelyOffline(),
         label: "Log station",
         send: () => logFn({ data: { visitId, ...v } }),
         queue: async () => {
