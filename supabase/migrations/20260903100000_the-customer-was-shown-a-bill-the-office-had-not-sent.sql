@@ -98,4 +98,4 @@ BEGIN
      AND (i.status NOT IN ('open', 'paid', 'void')
           OR (i.sent_at IS NULL AND i.send_after > current_date));
   RAISE WARNING 'invoices that were reaching a customer portal and no longer will: % of %', _n, _total;
-END $obs$;
+END $exposure$;

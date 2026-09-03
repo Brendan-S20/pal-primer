@@ -131,9 +131,32 @@ jobs:
       # So startup retries too, on its own terms: a stop between attempts,
       # because a half-started stack is the usual reason the next start fails,
       # and a message that names Docker so nobody has to read three logs to
-      # find out the machine is unwell. The migration guarantee is untouched —
-      # this loop only ever runs BEFORE any migration is replayed, so it cannot
-      # mask a migration fault, and the reset loop below still exits
+      # find out the machine is unwell.
+      #
+      # ── AND WHY THAT PARAGRAPH USED TO END WITH SOMETHING FALSE ─────────
+      #
+      # It said: "The migration guarantee is untouched — this loop only ever
+      # runs BEFORE any migration is replayed, so it cannot mask a migration
+      # fault." That is wrong, and it cost a cycle on 2026-09-03 to find out.
+      # `supabase start` brings up a FRESH stack, and bringing up a fresh stack
+      # replays supabase/migrations/ as part of starting it. So a migration
+      # with a syntax error fails HERE, three times, twenty seconds apart, and
+      # is then reported as:
+      #
+      #     the stack would not start three times running — this is the runner,
+      #     not the migrations
+      #
+      # which is the exact opposite of true, on a job that takes eight minutes
+      # and queues behind everything else on one runner. The real error —
+      # "unterminated dollar-quoted string ... (SQLSTATE 42601)" — was four
+      # lines above it in the log and contradicted by the banner beneath.
+      #
+      # The loop now reads the log it already tees. A SQLSTATE or an "At
+      # statement:" is Postgres refusing the SQL, which no amount of restarting
+      # will change, so it exits at once with the CLI's own message — the same
+      # principle the reset loop below has always applied, now applied one step
+      # earlier. Anything else is still the runner and still retries. The
+      # reset loop still exits
       # immediately on one.
       - name: Replay every migration into an empty database
         run: |
@@ -143,6 +166,12 @@ jobs:
             if supabase start 2>&1 | tee "start-$attempt.log"; then
               started=yes
               break
+            fi
+            # Postgres refused the SQL. Retrying is not going to change its
+            # mind, and the "this is the runner" banner below would be a lie.
+            if grep -qE 'SQLSTATE|At statement:' "start-$attempt.log"; then
+              echo "::error::a migration was refused while the stack came up — this is the SQL, not the runner. The CLI's own error is above; a fresh stack replays supabase/migrations/ as part of starting."
+              exit 1
             fi
             echo "::warning::supabase start failed (attempt $attempt of 3); stopping the stack and retrying"
             supabase stop --no-backup >/dev/null 2>&1 || true
