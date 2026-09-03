@@ -6390,6 +6390,7 @@ export type Database = {
         Args: { _token: string }
         Returns: {
           completed_at: string
+          photo_kinds: string[]
           photo_paths: string[]
           scheduled_on: string
           skip_reason: string

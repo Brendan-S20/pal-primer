@@ -1187,7 +1187,10 @@ async function invoiceByPublicToken(token: string) {
   const { data, error } = await sb
     .from("invoices")
     .select(
-      "id, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name), clients(display_name)",
+      // `organizations(timezone)` so the public pay page can date "overdue" in
+      // the business's day rather than the server's — it used to keep its own
+      // copy of the date logic, with the bug src/lib/overdue.ts documents.
+      "id, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone), clients(display_name)",
     )
     .eq("public_token", token)
     .maybeSingle();
@@ -1244,6 +1247,7 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
         dueOn: invoice.due_on as string | null,
       },
       orgName: (org?.name ?? "Your service provider") as string,
+      orgTimezone: (org?.timezone ?? null) as string | null,
       clientName: (client?.display_name ?? null) as string | null,
       items: (items ?? []).map((i) => ({
         id: i.id as string,
