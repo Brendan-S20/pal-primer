@@ -38,7 +38,9 @@ export const listNeighborLeads = createServerFn({ method: "GET" })
     const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("neighbor_leads")
-      .select("id, seed_client_id, address_line, latitude, longitude, status, notes, contacted_at, created_at, clients:seed_client_id(display_name)")
+      .select(
+        "id, seed_client_id, address_line, latitude, longitude, status, notes, contacted_at, created_at, clients:seed_client_id(display_name)",
+      )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(500);
@@ -102,9 +104,30 @@ const seedSchema = z.object({
 });
 
 /**
- * Seed neighbor leads for a client by generating placeholder addresses
- * within +/-5 house numbers of that client's property street. Marks each
- * new door as "canvass this street".
+ * Seed neighbor leads for a client by generating addresses at even offsets
+ * from that client's house number on the same street, then GEOCODING each one
+ * and keeping only the doors that turned out to exist.
+ *
+ * ── WHY IT GEOCODES ──────────────────────────────────────────────────────
+ *
+ * It used to write `latitude: prop.latitude, longitude: prop.longitude` on
+ * every generated row -- the seed client's own coordinate, copied onto each of
+ * its neighbours. In production that left 22 leads on 3 distinct points: the
+ * map drew one pin where a street of doors should be, and six seeded rows
+ * reading "New York, NY 10011" sat on a coordinate in Brooklyn, because the
+ * text was generated and the point was inherited and nothing ever compared
+ * them.
+ *
+ * Generating a house number is a guess. Copying a coordinate onto it is a
+ * guess presented as a measurement, and the walk order, the map and the
+ * "Navigate" link all read it as one. So each candidate now goes through the
+ * same provider the address field uses: what comes back is a real door in a
+ * real place, and what does not come back is dropped rather than invented.
+ *
+ * Two calls per door and at most 20 doors, on a button an office user pressed
+ * deliberately. With no provider configured the addresses are still generated
+ * -- a tech standing on the street can read the house numbers -- but they are
+ * stored with NO coordinate rather than a borrowed one, and the map says so.
  */
 export const seedNeighborsForClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -125,28 +148,106 @@ export const seedNeighborsForClient = createServerFn({ method: "POST" })
     const base = Number(m[1]);
     const rest = m[2];
 
-    const rows: any[] = [];
-    // alternate offsets (even numbers on same side)
-    for (let i = 1; rows.length < data.count && i <= 20; i++) {
+    const tail =
+      `${prop.city ? `, ${prop.city}` : ""}${prop.region ? `, ${prop.region}` : ""}` +
+      `${prop.postal_code ? ` ${prop.postal_code}` : ""}`;
+
+    // Doors this workspace already knows about, so pressing Seed twice does not
+    // double the street and so a tech is never sent to knock on the door of
+    // somebody who already pays them. Both are cheap reads and both were
+    // missing; the second is the one that is embarrassing in the field.
+    const [{ data: existingLeads }, { data: ownProps }] = await Promise.all([
+      context.supabase.from("neighbor_leads").select("address_line").eq("organization_id", orgId),
+      context.supabase.from("properties").select("street").eq("organization_id", orgId),
+    ]);
+    const norm = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+    const known = new Set<string>();
+    for (const r of (existingLeads ?? []) as Array<{ address_line?: string | null }>)
+      if (r.address_line) known.add(norm(r.address_line));
+    const ownStreets = new Set<string>();
+    for (const r of (ownProps ?? []) as Array<{ street?: string | null }>)
+      if (r.street) ownStreets.add(norm(r.street));
+
+    const candidates: string[] = [];
+    for (let i = 1; candidates.length < data.count && i <= 20; i++) {
       const offset = i * 2;
       for (const delta of [offset, -offset]) {
         const n = base + delta;
         if (n <= 0) continue;
-        rows.push({
-          organization_id: orgId,
-          seed_client_id: data.clientId,
-          address_line: `${n} ${rest}${prop.city ? `, ${prop.city}` : ""}${prop.region ? `, ${prop.region}` : ""}${prop.postal_code ? ` ${prop.postal_code}` : ""}`,
-          latitude: prop.latitude,
-          longitude: prop.longitude,
-          created_by: context.userId,
-        });
-        if (rows.length >= data.count) break;
+        if (ownStreets.has(norm(`${n} ${rest}`))) continue;
+        candidates.push(`${n} ${rest}${tail}`);
+        if (candidates.length >= data.count) break;
       }
     }
-    if (rows.length === 0) return { added: 0 };
+
+    const { getAddressProvider } = await import("@/lib/address/index.server");
+    const provider = getAddressProvider();
+
+    type Row = {
+      organization_id: string;
+      seed_client_id: string;
+      address_line: string;
+      latitude: number | null;
+      longitude: number | null;
+      created_by: string;
+    };
+    const rows: Row[] = [];
+    let unresolved = 0;
+    let duplicates = 0;
+
+    for (const candidate of candidates) {
+      let line = candidate;
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+
+      if (provider) {
+        // The provider answers about places that exist. A generated house
+        // number that is a vacant lot, a parking structure, or simply not a
+        // number this street uses comes back with nothing, and that is the
+        // answer -- not a reason to store the guess anyway.
+        try {
+          const [best] = await provider.autocomplete(candidate, {
+            bias:
+              prop.latitude != null && prop.longitude != null
+                ? { latitude: Number(prop.latitude), longitude: Number(prop.longitude) }
+                : null,
+          });
+          const details = best ? await provider.details(best.id) : null;
+          if (!details) {
+            unresolved++;
+            continue;
+          }
+          line = details.formatted || candidate;
+          latitude = details.latitude;
+          longitude = details.longitude;
+        } catch {
+          // A provider outage must not turn Seed into an error. Fall through
+          // and store the generated line with no coordinate, which is what an
+          // unconfigured workspace gets and is honest about what is known.
+          unresolved++;
+          continue;
+        }
+      }
+
+      if (known.has(norm(line))) {
+        duplicates++;
+        continue;
+      }
+      known.add(norm(line));
+      rows.push({
+        organization_id: orgId,
+        seed_client_id: data.clientId,
+        address_line: line,
+        latitude,
+        longitude,
+        created_by: context.userId,
+      });
+    }
+
+    if (rows.length === 0) return { added: 0, unresolved, duplicates, geocoded: !!provider };
     const { error } = await context.supabase.from("neighbor_leads").insert(rows);
     if (error) throw new Error(error.message);
-    return { added: rows.length };
+    return { added: rows.length, unresolved, duplicates, geocoded: !!provider };
   });
 
 const updateSchema = z.object({
