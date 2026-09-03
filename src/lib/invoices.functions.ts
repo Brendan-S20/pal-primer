@@ -369,6 +369,32 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         paid_at: nowIso,
         raw_event: { source: "manual_mark_paid", note: data.note ?? null },
       });
+
+      // CANCEL THE CUSTOMER'S LIVE PAYMENT INTENT, for the same reason
+      // voidInvoice does and with worse consequences if we do not.
+      //
+      // Marking an invoice paid out of band -- a cheque, cash at the door --
+      // says the money is collected. The PaymentIntent minted for the pay page
+      // is still confirmable on the connected account until somebody cancels
+      // it, and the client may have that tab open. If they press Pay, the card
+      // IS charged.
+      //
+      // What happens next is the part that makes this worse than the void
+      // case. The webhook's guard is `inv.status !== "paid"`
+      // (routes/api/public/hooks/stripe.ts) -- and this invoice now IS paid, so
+      // the branch is skipped entirely. No `payments` row, no receipt, no
+      // activity entry, no refund. The money leaves the customer's account and
+      // exists nowhere in this system. A voided invoice at least flips to paid
+      // and leaves a trace; this one leaves none.
+      //
+      // Never throws, so a Stripe outage cannot block marking a cheque paid.
+      try {
+        const { syncInvoicePaymentIntentAmount } = await import("@/lib/invoice-reconcile.server");
+        await syncInvoicePaymentIntentAmount(id);
+      } catch (e) {
+        console.error("[mark-paid] could not cancel the pay-page intent for", id, e);
+      }
+
       ok++;
     }
     return { ok, failed };
@@ -407,10 +433,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     // Charge the OPEN amount: total net of applied credit (B7).
-    const dueCents = Math.max(
-      (invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0),
-      0,
-    );
+    const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // If a previous session/intent was already paid but the status is stale
     // (webhook missed), reconcile instead of minting a second charge.
@@ -605,10 +628,7 @@ async function chargeSavedCardCore(
   // Charging a draft would also skip the credit-first ordering, since
   // apply_credit_to_invoice only touches open invoices.
   if (invoice.status !== "open") throw new Error("Only open invoices can be charged");
-  const dueCents = Math.max(
-    (invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0),
-    0,
-  );
+  const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
   if (dueCents <= 0) throw new Error("Nothing due on this invoice");
   // Stale-open guard: if a prior session/intent already paid this invoice
   // (webhook missed), reconcile instead of charging the saved card too.
@@ -685,9 +705,8 @@ async function chargeSavedCardCore(
   }
   // Saved card: rail and funding are knowable before the charge, so this path
   // stays one step. Platform fee remains on the BASE.
-  const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } = await import(
-    "@/lib/processing-fee.server"
-  );
+  const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } =
+    await import("@/lib/processing-fee.server");
   const { supabaseAdmin: feeAdmin } = await import("@/integrations/supabase/client.server");
   const quote = await quoteForPaymentMethodId(stripe, {
     paymentMethodId: c.default_payment_method_id,
