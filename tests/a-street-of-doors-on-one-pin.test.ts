@@ -1,10 +1,12 @@
 // Canvassing: the seeder invented a coordinate and Walk mode skipped a door.
 //
-// Both were live on 2026-09-03. The production numbers in the assertions below
-// came from the demo workspace: 23 leads, 22 with a coordinate, THREE distinct
-// points — one of which held six rows whose text says "New York, NY 10011"
-// while the point is in Brooklyn, because the address was generated and the
-// coordinate was copied from the seed client.
+// Both were live on 2026-09-03, and both are read off the code rather than off
+// production. Worth knowing before you cite the demo workspace as evidence:
+// its 23 canvassing leads arrived in four bulk inserts and none of them came
+// out of the seeder -- of the six tagged to a seed client, zero have an
+// address on that client's street. What it does show is the shape of the
+// fault: 23 distinct addresses on 3 distinct coordinates, because a lead's
+// point has never had to agree with its text.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { orderForWalk, type WalkDoor } from "../src/lib/canvass-order";
@@ -123,7 +125,11 @@ describe("the walk order is geographic, not the order somebody typed them", () =
 
   it("keeps a line with no house number rather than dropping it", () => {
     const doors = [d("x", "The cottage behind the church"), d("y", "12 Elm St")];
-    expect(orderForWalk(doors).map((x) => x.id).sort()).toEqual(["x", "y"]);
+    expect(
+      orderForWalk(doors)
+        .map((x) => x.id)
+        .sort(),
+    ).toEqual(["x", "y"]);
   });
 
   it("returns every door it was given, exactly once", () => {

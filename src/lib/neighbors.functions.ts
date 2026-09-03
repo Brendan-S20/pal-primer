@@ -112,11 +112,18 @@ const seedSchema = z.object({
  *
  * It used to write `latitude: prop.latitude, longitude: prop.longitude` on
  * every generated row -- the seed client's own coordinate, copied onto each of
- * its neighbours. In production that left 22 leads on 3 distinct points: the
- * map drew one pin where a street of doors should be, and six seeded rows
- * reading "New York, NY 10011" sat on a coordinate in Brooklyn, because the
- * text was generated and the point was inherited and nothing ever compared
- * them.
+ * its neighbours. Ten doors down a street would be ten rows on one point, and
+ * the map would draw one pin where a street of doors should be.
+ *
+ * That is read off the code, not off production: the 23 canvassing leads in
+ * the demo workspace arrived in four bulk inserts, and not one of the six
+ * tagged to a seed client has an address on that client's street -- rows
+ * reading "332 Smith St, New York, NY 10011" are tagged to a client at 1061
+ * Blair Ave, Royal Oak, MI. They are hand-made demo data, and no row there
+ * came out of this function. What production DOES show is the shape of the
+ * fault regardless of who wrote it: 23 distinct addresses on 3 distinct
+ * coordinates, because a canvassing lead's point has never had to have
+ * anything to do with its text.
  *
  * Generating a house number is a guess. Copying a coordinate onto it is a
  * guess presented as a measurement, and the walk order, the map and the
