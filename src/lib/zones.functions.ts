@@ -317,7 +317,7 @@ function requireAreaCeiling(mode: string | null | undefined, maxCents: number | 
   if (mode !== "per_sqft" && mode !== "per_acre") return;
   if (maxCents == null || maxCents <= 0) {
     throw new Error(
-      "A zone that prices by area needs a maximum area charge. Without one, a large property quotes an unbounded price — one yard in this database would quote $287.92 a visit. Set the most you would ever charge for the area component.",
+      "A zone that prices by area needs a maximum area charge. Without one, a large property quotes an unbounded price: one yard in this database would quote $287.92 a visit. Set the most you would ever charge for the area component.",
     );
   }
 }

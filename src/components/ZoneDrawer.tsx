@@ -571,7 +571,7 @@ export function ZoneDrawer({
                       />
                       <p className="text-xs text-muted-foreground">
                         Required. The rate above times a big enough yard has no upper bound of its
-                        own — this is the most the area part of a quote can ever reach.
+                        own. This is the most the area part of a quote can ever reach.
                       </p>
                     </div>
                   </div>
