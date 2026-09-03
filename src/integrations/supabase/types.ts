@@ -5287,6 +5287,7 @@ export type Database = {
           id: string
           is_deepclean: boolean
           organization_id: string
+          price_cents: number | null
           property_id: string
           rescheduled_from: string | null
           scheduled_on: string
@@ -5322,6 +5323,7 @@ export type Database = {
           id?: string
           is_deepclean?: boolean
           organization_id: string
+          price_cents?: number | null
           property_id: string
           rescheduled_from?: string | null
           scheduled_on: string
@@ -5357,6 +5359,7 @@ export type Database = {
           id?: string
           is_deepclean?: boolean
           organization_id?: string
+          price_cents?: number | null
           property_id?: string
           rescheduled_from?: string | null
           scheduled_on?: string
