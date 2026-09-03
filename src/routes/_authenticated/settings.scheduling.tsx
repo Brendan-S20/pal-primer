@@ -40,15 +40,44 @@ function SchedulingSettings() {
   const settings: any = data?.settings ?? {
     workday_start: "08:00",
     workday_end: "17:00",
-    avg_speed_kmh: 30,
+    avg_speed_kmh: null,
     traffic_profile: "normal",
   };
 
-  /** The speed the field shows, in the units the operator thinks in.
+  /** The speed the field shows, in the units the operator thinks in, or "" for
+   *  a workspace that has not set one.
+   *
+   *  Empty is a real state now. `avg_speed_kmh` used to be NOT NULL DEFAULT 30
+   *  with 30 read as "unset", so the field always had a number in it and the
+   *  number was a lie 30 was telling on behalf of a lookup table. It is
+   *  nullable since 20260903090000, and blank here means "work it out from the
+   *  routes" — which is what the panel underneath reports.
    *
    *  Also the value the blur handler compares against, so an untouched field
-   *  writes nothing — see the note on the input. */
-  const shownSpeedMph = mphFromStoredKmh(settings.avg_speed_kmh ?? 30);
+   *  writes nothing. */
+  const shownSpeedMph =
+    settings.avg_speed_kmh == null ? "" : String(mphFromStoredKmh(settings.avg_speed_kmh));
+
+  /** What this workspace's own roads turned out to be worth.
+   *
+   *  Written by `refresh_road_profile` every time road legs are fetched, from
+   *  the OSRM durations and distances themselves. It is shown rather than kept
+   *  behind the scenes because it is now the FIRST thing the estimate reaches
+   *  for: an owner looking at an arrival time deserves to be able to find out
+   *  where the number under it came from, and "37 mph, from 1,262 measured
+   *  legs" is an answer. "Dense urban" was not.
+   *
+   *  Absent until a workspace has planned a day or so — the profile needs 50
+   *  legs before it will speak, which one 10-stop day clears. */
+  const measured: boolean = settings.measured_speed_kmh != null;
+  const measuredMph = measured ? mphFromStoredKmh(Number(settings.measured_speed_kmh)) : null;
+  const measuredWhen = settings.measured_at
+    ? new Date(settings.measured_at).toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
 
   /** The date the horizon currently reaches, spelled out.
    *
@@ -58,7 +87,12 @@ function SchedulingSettings() {
   const horizonLabel = (() => {
     const d = new Date();
     d.setDate(d.getDate() + (settings.auto_generate_days_ahead ?? 90));
-    return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    return d.toLocaleDateString(undefined, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
   })();
 
   const mut = useMutation({
@@ -159,8 +193,8 @@ function SchedulingSettings() {
             <p className="text-xs font-medium">Currently filled through</p>
             <p className="mt-0.5 text-sm tabular-nums">{horizonLabel}</p>
             <p className="mt-1 text-2xs text-muted-foreground">
-              Clients whose plan has an end date stop on that date, and one-off visits never
-              repeat. Changing this number does not change either.
+              Clients whose plan has an end date stop on that date, and one-off visits never repeat.
+              Changing this number does not change either.
             </p>
           </div>
         </div>
@@ -199,24 +233,63 @@ function SchedulingSettings() {
                 engine to 25 km/h, which is 15.5 mph, and every arrival time in
                 the app ran about 60% slow with no error anywhere.
 
-                The guard against writing on a blur that changed nothing is not
-                tidiness. `effective_speed_kmh()` treats any stored value other
-                than 30 as "this tenant has set their own speed" and stops
-                deriving it from `area_type`. Rounding 30 km/h to 19 mph and
-                back gives 31, so tabbing through this field would have quietly
-                taken an org off area-based speeds forever. */}
+                The blur guard used to carry a second, worse reason. While 30
+                meant "unset", rounding 30 km/h to 19 mph and back gave 31, so
+                tabbing through this field without editing it took the
+                workspace off area-based speeds forever. That hazard is gone:
+                unset is NULL now, and this field is empty when it is unset. The
+                guard stays because writing on a blur that changed nothing is
+                still pointless. */}
             <Label className="text-xs">Average speed (mph)</Label>
             <Input
               type="number"
+              inputMode="numeric"
               min={MIN_SPEED_MPH}
               max={MAX_SPEED_MPH}
               defaultValue={shownSpeedMph}
+              placeholder={measured ? `${measuredMph} (from your routes)` : "Worked out for you"}
               onBlur={(e) => {
-                const mph = Number(e.target.value);
-                if (!Number.isFinite(mph) || mph === shownSpeedMph) return;
+                const raw = e.target.value.trim();
+                if (raw === shownSpeedMph) return;
+                // Emptying the field is how you hand the estimate back to the
+                // road data. It has to be distinguishable from "unchanged",
+                // which is why the server takes null and undefined differently.
+                if (raw === "") {
+                  if (settings.avg_speed_kmh != null) mut.mutate({ avg_speed_kmh: null });
+                  return;
+                }
+                const mph = Number(raw);
+                if (!Number.isFinite(mph)) return;
                 mut.mutate({ avg_speed_kmh: mphToStoredKmh(mph) });
               }}
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Leave this empty and HoundStack works it out from the routes your technicians have
+              actually driven.
+            </p>
+          </div>
+          {/* What the road data says, so the estimate is legible rather than
+              magic. This is the FIRST source the planner reaches for when it
+              has to estimate a leg nobody has driven yet, so an owner looking
+              at an arrival time can find out where the number came from. */}
+          <div className="sm:col-span-2 rounded-md border bg-muted/30 p-3">
+            {measured ? (
+              <p className="text-xs text-muted-foreground">
+                Measured from your routes:{" "}
+                <span className="font-medium text-foreground">{measuredMph} mph</span> average, over{" "}
+                <span className="font-medium text-foreground">
+                  {Number(settings.measured_legs ?? 0).toLocaleString()}
+                </span>{" "}
+                road legs{measuredWhen ? `, last checked ${measuredWhen}` : ""}. Arrival times use
+                the real road wherever we have it and this figure everywhere else.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No road measurements yet. Once you have optimized a day or two, HoundStack works out
+                your real average from the roads your technicians drove and uses that instead of a
+                guess.
+              </p>
+            )}
           </div>
           <div>
             <Label className="text-xs">Traffic profile</Label>

@@ -258,5 +258,25 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
     console.error("[road-legs] upsert failed", error.message);
     return 0;
   }
+
+  // Re-measure what this workspace's roads are actually worth, now that there
+  // are more of them to measure.
+  //
+  // The estimator underneath drive_minutes used to reach for a hardcoded table
+  // keyed on `area_type` -- 11 km/h for `dense_urban` against the 37.5 km/h
+  // this org's own 1262 legs record. Every leg written above is evidence about
+  // the real road network, and it costs one statement per day planned to turn
+  // it into the constant the fallback uses. See 20260903090000.
+  //
+  // Deliberately after the upsert and deliberately not awaited into the return
+  // value: the legs are the product of this function and they are already
+  // safe. A failure here leaves the previous profile in place, which is a
+  // slightly staler estimate for legs nobody has driven -- not a reason to
+  // report that the measurement failed.
+  const { error: profileError } = await admin.rpc("refresh_road_profile", { _org_id: orgId });
+  if (profileError) {
+    console.error("[road-legs] road profile refresh failed", profileError.message);
+  }
+
   return rows.length;
 }
