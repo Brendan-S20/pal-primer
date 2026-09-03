@@ -195,6 +195,40 @@ const ALL_MIGRATIONS = readdirSync(MIGRATIONS)
   .map((f) => ({ file: f, sql: sqlWithoutComments(readFileSync(join(MIGRATIONS, f), "utf8")) }));
 
 describe("a database can actually be built from these files", () => {
+  it("every dollar-quoted block closes with the tag it opened with", () => {
+    // Postgres reads `$tag$ ... $tag$` as one string. Open with `$exposure$`
+    // and close with `$obs$` and the quote is never terminated: the parser
+    // swallows the rest of the file and dies on "unterminated dollar-quoted
+    // string", pointing at the OPENING line — which is nowhere near the typo.
+    //
+    // This is not hypothetical. It shipped on 2026-09-03 in
+    // 20260903100000, from a `sed` that renamed `DO $obs$` and left
+    // `END $obs$;` behind, and the file had applied cleanly before the rename.
+    // Two things made it expensive out of proportion to a one-word typo. The
+    // `supabase start` retry loop added by #161 cannot tell a bad migration
+    // from an unhealthy container — a fresh stack replays migrations as part
+    // of starting — so it tried three times and then reported "this is the
+    // runner, not the migrations", which is the opposite of true. And the CI
+    // job that catches it takes eight minutes and queues behind every other
+    // job on one self-hosted runner.
+    //
+    // A tag appearing an odd number of times is the whole check. Comments are
+    // stripped first, so prose naming a tag does not count, and `$$` is
+    // included because an anonymous quote can be left open the same way.
+    const offenders = ALL_MIGRATIONS.flatMap(({ file, sql }) => {
+      const counts = new Map<string, number>();
+      for (const tag of sql.match(/\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$/g) ?? []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+      return [...counts]
+        .filter(([, n]) => n % 2 === 1)
+        .map(([tag, n]) => `${file}: ${tag} appears ${n} time(s) — an opener with no matching close`);
+    });
+    expect(offenders, "a dollar quote that never closes takes the rest of the file with it").toEqual(
+      [],
+    );
+  });
+
   it("no two migrations claim the same version", () => {
     // `supabase_migrations.schema_migrations.version` is the PRIMARY KEY, and
     // the version is the filename's leading timestamp. Two files sharing one

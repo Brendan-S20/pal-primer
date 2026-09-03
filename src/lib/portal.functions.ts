@@ -745,8 +745,45 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     if (invoice.status === "paid") throw new Error("Already paid");
     if (invoice.status === "void") throw new Error("Voided");
     // Charge what's still owed, net of applied credit (B7) — never the gross total.
+    // Net the client's account credit off FIRST, which is what the comment
+    // above this line has always claimed and what the code did not do.
+    //
+    // `invoiceOutstandingCents` is `total_cents - credit_applied_cents`, and
+    // `credit_applied_cents` is only non-zero once `apply_credit_to_invoice`
+    // has RUN. It is run by the staff invoice screen and by the nightly
+    // autopay loop, and by neither portal charge path -- so the same invoice
+    // cost one amount through the office and the gross amount through the
+    // customer's own portal, while the header above the Pay button showed them
+    // the credit balance it was about to ignore. PromoRedeemCard promises in
+    // so many words that credit "is applied to your next invoice
+    // automatically".
+    //
+    // Idempotent (advisory lock + row locks) and a no-op on anything but an
+    // open invoice, so calling it here cannot double-apply. If the credit
+    // covers the whole invoice it marks it paid and there is nothing to charge.
+    // Never throws the customer out of a payment over it: on failure we fall
+    // through to the last known figure, which can only ever be too HIGH by the
+    // credit we failed to apply -- and that is the status quo, not a new fault.
     const { invoiceOutstandingCents } = await import("@/lib/ar");
-    const dueCents = invoiceOutstandingCents(invoice);
+    let dueCents = invoiceOutstandingCents(invoice);
+    try {
+      const { data: applied, error: applyErr } = await supabaseAdmin.rpc(
+        "apply_credit_to_invoice",
+        {
+          _invoice_id: invoice.id,
+        },
+      );
+      if (!applyErr && applied) {
+        const a = applied as { remaining_due_cents?: number; invoice_status?: string };
+        dueCents = Math.max(Number(a.remaining_due_cents ?? dueCents), 0);
+        if (a.invoice_status === "paid" || dueCents <= 0) {
+          throw new Error("Your account credit covered this invoice. Nothing left to pay.");
+        }
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("Your account credit")) throw e;
+      console.error("portal credit application failed", invoice.id, e);
+    }
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // Stale-open guard: if a prior session/intent already paid this invoice
     // (webhook missed), reconcile instead of charging the saved card too.
@@ -1196,8 +1233,45 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     // Charge what's still owed, net of applied credit (B7) — never the gross total.
+    // Net the client's account credit off FIRST, which is what the comment
+    // above this line has always claimed and what the code did not do.
+    //
+    // `invoiceOutstandingCents` is `total_cents - credit_applied_cents`, and
+    // `credit_applied_cents` is only non-zero once `apply_credit_to_invoice`
+    // has RUN. It is run by the staff invoice screen and by the nightly
+    // autopay loop, and by neither portal charge path -- so the same invoice
+    // cost one amount through the office and the gross amount through the
+    // customer's own portal, while the header above the Pay button showed them
+    // the credit balance it was about to ignore. PromoRedeemCard promises in
+    // so many words that credit "is applied to your next invoice
+    // automatically".
+    //
+    // Idempotent (advisory lock + row locks) and a no-op on anything but an
+    // open invoice, so calling it here cannot double-apply. If the credit
+    // covers the whole invoice it marks it paid and there is nothing to charge.
+    // Never throws the customer out of a payment over it: on failure we fall
+    // through to the last known figure, which can only ever be too HIGH by the
+    // credit we failed to apply -- and that is the status quo, not a new fault.
     const { invoiceOutstandingCents } = await import("@/lib/ar");
-    const dueCents = invoiceOutstandingCents(invoice);
+    let dueCents = invoiceOutstandingCents(invoice);
+    try {
+      const { data: applied, error: applyErr } = await supabaseAdmin.rpc(
+        "apply_credit_to_invoice",
+        {
+          _invoice_id: invoice.id,
+        },
+      );
+      if (!applyErr && applied) {
+        const a = applied as { remaining_due_cents?: number; invoice_status?: string };
+        dueCents = Math.max(Number(a.remaining_due_cents ?? dueCents), 0);
+        if (a.invoice_status === "paid" || dueCents <= 0) {
+          throw new Error("Your account credit covered this invoice. Nothing left to pay.");
+        }
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("Your account credit")) throw e;
+      console.error("portal credit application failed", invoice.id, e);
+    }
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // If the stored intent OR a legacy hosted-checkout session already
     // succeeded but the status is stale (webhook missed), reconcile instead
