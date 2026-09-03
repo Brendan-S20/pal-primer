@@ -922,6 +922,11 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
       // used to label a photo by its INDEX -- `i % 2 === 0 ? "Before" :
       // "After"` -- because position was all it had.
       photo_kinds: string[];
+      // Free text a technician typed at the gate, and the structured reason
+      // beside it. The page shows the code; see portal-ui.tsx for why the text
+      // is shown only when the customer wrote it.
+      skip_reason: string | null;
+      skip_reason_code: string | null;
     }>;
   });
 
