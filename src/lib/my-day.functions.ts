@@ -82,7 +82,8 @@ export const listMyDayFieldStaff = createServerFn({ method: "GET" })
       roleRow?.role === "owner" ||
       roleRow?.role === "office_manager" ||
       roleRow?.role === "dispatcher";
-    if (!officeRole || !roleRow?.organization_id) return { staff: [] as { id: string; display_name: string; role: string }[] };
+    if (!officeRole || !roleRow?.organization_id)
+      return { staff: [] as { id: string; display_name: string; role: string }[] };
     const { data, error } = await supabase
       .from("staff")
       .select("id, display_name, role, active, is_field_tech")
@@ -91,9 +92,10 @@ export const listMyDayFieldStaff = createServerFn({ method: "GET" })
       .order("display_name", { ascending: true });
     if (error) throw new Error(error.message);
     const rows = (data ?? []).filter((s: any) => s.is_field_tech !== false);
-    return { staff: rows.map((s: any) => ({ id: s.id, display_name: s.display_name, role: s.role })) };
+    return {
+      staff: rows.map((s: any) => ({ id: s.id, display_name: s.display_name, role: s.role })),
+    };
   });
-
 
 export const startVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -184,11 +186,15 @@ export const completeVisit = createServerFn({ method: "POST" })
     try {
       const { data: v } = await context.supabase
         .from("visits")
-        .select("organization_id, client_id, scheduled_on, properties(street, city, visit_contact_email)")
+        .select(
+          "organization_id, client_id, scheduled_on, properties(street, city, visit_contact_email)",
+        )
         .eq("id", data.visitId)
         .single();
       if (v) {
-        const prop: any = Array.isArray((v as any).properties) ? (v as any).properties[0] : (v as any).properties;
+        const prop: any = Array.isArray((v as any).properties)
+          ? (v as any).properties[0]
+          : (v as any).properties;
         const address = prop ? [prop.street, prop.city].filter(Boolean).join(", ") : undefined;
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
         await enqueueAppEmail({
@@ -227,11 +233,18 @@ export const completeVisit = createServerFn({ method: "POST" })
     try {
       const { data: v } = await context.supabase
         .from("visits")
-        .select("organization_id, client_id, clients(id, display_name, sms_opt_out, comms_paused, primary_phone, review_asked_at), organizations!inner(name, review_ask_enabled, google_review_url, sms_from_number, review_ask_template)")
+        .select(
+          "organization_id, client_id, clients(id, display_name, sms_opt_out, comms_paused, primary_phone, review_asked_at), organizations!inner(name, review_ask_enabled, google_review_url, sms_from_number, review_ask_template)",
+        )
         .eq("id", data.visitId)
         .single();
-      const c: any = v && (Array.isArray((v as any).clients) ? (v as any).clients[0] : (v as any).clients);
-      const o: any = v && (Array.isArray((v as any).organizations) ? (v as any).organizations[0] : (v as any).organizations);
+      const c: any =
+        v && (Array.isArray((v as any).clients) ? (v as any).clients[0] : (v as any).clients);
+      const o: any =
+        v &&
+        (Array.isArray((v as any).organizations)
+          ? (v as any).organizations[0]
+          : (v as any).organizations);
       const ninetyDaysAgo = Date.now() - 90 * 24 * 3600_000;
       const eligible =
         o?.review_ask_enabled &&
@@ -258,7 +271,9 @@ export const completeVisit = createServerFn({ method: "POST" })
           const template =
             (o.review_ask_template && String(o.review_ask_template).trim()) ||
             `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
-          const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url);
+          const body = template
+            .replace(/\{name\}/g, firstName)
+            .replace(/\{link\}/g, o.google_review_url);
           const { sendTwilioSms } = await import("@/lib/twilio.server");
           try {
             const res = await sendTwilioSms({
@@ -266,7 +281,11 @@ export const completeVisit = createServerFn({ method: "POST" })
               body,
               from: tenant.from ?? undefined,
               messagingServiceSid: tenant.messagingServiceSid ?? undefined,
-              credentials: { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken },
+              credentials: {
+                mode: "direct",
+                accountSid: tenant.accountSid,
+                authToken: tenant.authToken,
+              },
             });
             await context.supabase.from("messages").insert({
               organization_id: orgId,
@@ -301,8 +320,6 @@ export const completeVisit = createServerFn({ method: "POST" })
     }
     return { ok: true };
   });
-
-
 
 export const skipVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -359,13 +376,24 @@ export const recordVisitPhoto = createServerFn({ method: "POST" })
       .single();
     if (vErr) throw new Error(vErr.message);
 
-    const { error } = await supabase.from("visit_photos").insert({
-      visit_id: data.visitId,
-      organization_id: v.organization_id,
-      uploaded_by: userId,
-      storage_path: data.storagePath,
-      kind: data.kind,
-    });
+    // Idempotent, because this is the second of two steps and the offline queue
+    // replays the pair. The upload can land and this call's RESPONSE be lost --
+    // a dropped connection, the 45s deadline -- and the replay then re-records
+    // a path already recorded, showing the customer the same photograph twice.
+    //
+    // `ignoreDuplicates` needs the unique index added in 20260903110000; with
+    // the storage UPDATE policy from the same file it is what finally makes a
+    // photo action safe to replay however far it got the first time.
+    const { error } = await supabase.from("visit_photos").upsert(
+      {
+        visit_id: data.visitId,
+        organization_id: v.organization_id,
+        uploaded_by: userId,
+        storage_path: data.storagePath,
+        kind: data.kind,
+      },
+      { onConflict: "visit_id,storage_path", ignoreDuplicates: true },
+    );
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -421,7 +449,9 @@ export const listVisitsAwaitingCloseOut = createServerFn({ method: "GET" })
 
     const { data: rows, error } = await (supabase as any)
       .from("visits")
-      .select("id, scheduled_on, started_at, status, clients(display_name), properties(street, city)")
+      .select(
+        "id, scheduled_on, started_at, status, clients(display_name), properties(street, city)",
+      )
       .eq("assigned_staff_id", staffRow.id)
       .eq("status", "in_progress")
       .gte("scheduled_on", since)
