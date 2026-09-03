@@ -376,12 +376,18 @@ function ZoneCard({
             <div className="mt-1 text-xs text-primary">
               {Number(zone.price_per_sqft_cents ?? 0).toFixed(2)} cents/sq ft
               {zone.area_min_charge_cents > 0 && ` · min ${money(zone.area_min_charge_cents)}`}
+              {zone.area_max_charge_cents != null
+                ? ` · max ${money(zone.area_max_charge_cents)}`
+                : " · no maximum"}
             </div>
           )}
           {zone.pricing_mode === "per_acre" && (
             <div className="mt-1 text-xs text-primary">
               {money(zone.price_per_acre_cents)}/acre
               {zone.area_min_charge_cents > 0 && ` · min ${money(zone.area_min_charge_cents)}`}
+              {zone.area_max_charge_cents != null
+                ? ` · max ${money(zone.area_max_charge_cents)}`
+                : " · no maximum"}
             </div>
           )}
           {(zone.commercial_base_cents ?? 0) +

@@ -244,6 +244,10 @@ export function ZoneDrawer({
   const [areaMin, setAreaMin] = useState<string>(
     ((zone?.area_min_charge_cents ?? 0) / 100).toFixed(2),
   );
+  // Blank rather than "0.00" when unset: 0 and "no ceiling" are the same
+  // number here and very different intentions, and every zone written before
+  // 2026-09 carries NULL. Blank is what makes the field read as unanswered.
+  const [areaMax, setAreaMax] = useState<string>(dollarsOrBlank(zone?.area_max_charge_cents));
 
   // Commercial (HOA) pricing: base + per-unit x units + per-acre x acres.
   const [commBase, setCommBase] = useState<string>(dollarsOrBlank(zone?.commercial_base_cents));
@@ -350,6 +354,7 @@ export function ZoneDrawer({
         pricePerSqftCents: parseFloat(perSqft) > 0 ? parseFloat(perSqft) * 100 : 0,
         pricePerAcreCents: Math.round((parseFloat(perAcre) || 0) * 100),
         areaMinChargeCents: Math.round((parseFloat(areaMin) || 0) * 100),
+        areaMaxChargeCents: areaMax.trim() ? Math.round(parseFloat(areaMax) * 100) : null,
         commercialBaseCents: centsOrNull(commBase),
         commercialPerUnitCents: centsOrNull(commPerUnit),
         commercialPerAcreCents: centsOrNull(commPerAcre),
@@ -555,6 +560,19 @@ export function ZoneDrawer({
                         onChange={(e) => mark(setAreaMin)(e.target.value)}
                         placeholder="25.00"
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Maximum charge / visit ($)</Label>
+                      <Input
+                        inputMode="decimal"
+                        value={areaMax}
+                        onChange={(e) => mark(setAreaMax)(e.target.value)}
+                        placeholder="60.00"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Required. The rate above times a big enough yard has no upper bound of its
+                        own — this is the most the area part of a quote can ever reach.
+                      </p>
                     </div>
                   </div>
                 </>
