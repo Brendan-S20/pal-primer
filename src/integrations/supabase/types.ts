@@ -5660,6 +5660,7 @@ export type Database = {
       zones: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"] | null
+          area_max_charge_cents: number | null
           area_min_charge_cents: number
           base_price_cents: number
           boundary: Json | null
@@ -5690,6 +5691,7 @@ export type Database = {
         }
         Insert: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          area_max_charge_cents?: number | null
           area_min_charge_cents?: number
           base_price_cents?: number
           boundary?: Json | null
@@ -5720,6 +5722,7 @@ export type Database = {
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          area_max_charge_cents?: number | null
           area_min_charge_cents?: number
           base_price_cents?: number
           boundary?: Json | null

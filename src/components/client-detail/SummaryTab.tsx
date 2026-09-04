@@ -123,6 +123,7 @@ export function SummaryTab({
         price_per_sqft_cents: Number(zone.price_per_sqft_cents ?? 0),
         price_per_acre_cents: zone.price_per_acre_cents,
         area_min_charge_cents: zone.area_min_charge_cents,
+        area_max_charge_cents: zone.area_max_charge_cents,
       },
       {
         dogCount: sub.dog_count ?? 1,

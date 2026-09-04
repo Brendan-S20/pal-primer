@@ -150,7 +150,7 @@ export const listZones = createServerFn({ method: "GET" })
     const { data, error } = await (supabase as any)
       .from("zones")
       .select(
-        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
       )
       .eq("organization_id", orgId)
       .order("name");
@@ -201,6 +201,10 @@ const zoneWriteSchema = z.object({
   pricePerSqftCents: z.number().min(0).max(10000).optional(),
   pricePerAcreCents: z.number().int().min(0).optional(),
   areaMinChargeCents: z.number().int().min(0).optional(),
+  // Nullable, because NULL is a real answer ("no ceiling") and it is what
+  // every zone written before 2026-09 carries. `requireAreaCeiling` below is
+  // what stops a NEW area-priced zone being saved that way.
+  areaMaxChargeCents: z.number().int().min(0).optional().nullable(),
   // Commercial (HOA) pricing: base + per-unit x units + per-acre x acres.
   commercialBaseCents: z.number().int().min(0).optional().nullable(),
   commercialPerUnitCents: z.number().int().min(0).optional().nullable(),
@@ -252,6 +256,8 @@ export const createZone = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+
+    requireAreaCeiling(data.pricingMode ?? "flat", data.areaMaxChargeCents);
     const { data: row, error } = await (supabase as any)
       .from("zones")
       .insert({
@@ -271,6 +277,7 @@ export const createZone = createServerFn({ method: "POST" })
         price_per_sqft_cents: data.pricePerSqftCents ?? 0,
         price_per_acre_cents: data.pricePerAcreCents ?? 0,
         area_min_charge_cents: data.areaMinChargeCents ?? 0,
+        area_max_charge_cents: data.areaMaxChargeCents ?? null,
         commercial_base_cents: data.commercialBaseCents ?? null,
         commercial_per_unit_cents: data.commercialPerUnitCents ?? null,
         commercial_per_acre_cents: data.commercialPerAcreCents ?? null,
@@ -291,6 +298,30 @@ export const createZone = createServerFn({ method: "POST" })
     return { id: row.id as string, propertiesUpdated };
   });
 
+/**
+ * An area-priced zone must declare a ceiling.
+ *
+ * `area_min_charge_cents` is a FLOOR, and until 2026-09 it was the only bound
+ * the quote had: a per-sqft or per-acre rate times a large enough lot returned
+ * an arbitrarily large per-visit price. On this database a 0.75c/sqft zone
+ * computes $287.92 for a 35,700 sqft yard whose owner pays $26.00.
+ *
+ * Enforced on the WRITE rather than backfilled, because the cap is a price and
+ * a price the software picked would be a price the software invented. Existing
+ * zones keep quoting exactly as they do today until somebody edits one, at
+ * which point they have to answer the question.
+ *
+ * `flat` zones are unaffected -- they have no area component to bound.
+ */
+function requireAreaCeiling(mode: string | null | undefined, maxCents: number | null | undefined) {
+  if (mode !== "per_sqft" && mode !== "per_acre") return;
+  if (maxCents == null || maxCents <= 0) {
+    throw new Error(
+      "A zone that prices by area needs a maximum area charge. Without one, a large property quotes an unbounded price: one yard in this database would quote $287.92 a visit. Set the most you would ever charge for the area component.",
+    );
+  }
+}
+
 const updateZoneSchema = zoneWriteSchema.extend({ id: z.string().uuid() }).partial({ name: true });
 
 export const updateZone = createServerFn({ method: "POST" })
@@ -306,11 +337,24 @@ export const updateZone = createServerFn({ method: "POST" })
     // coverage can still update pricing while they wait for a map.
     const { data: existing, error: exErr } = await (supabase as any)
       .from("zones")
-      .select("geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes")
+      .select(
+        "geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, pricing_mode, area_max_charge_cents",
+      )
       .eq("id", data.id)
       .eq("organization_id", orgId)
       .single();
     if (exErr) throw new Error(exErr.message);
+
+    // Merged, not read from the patch: changing a flat zone to per_sqft
+    // without touching the cap, and clearing the cap without touching the
+    // mode, are both ways to end up area-priced with no ceiling.
+    requireAreaCeiling(
+      data.pricingMode !== undefined ? data.pricingMode : existing.pricing_mode,
+      data.areaMaxChargeCents !== undefined
+        ? data.areaMaxChargeCents
+        : existing.area_max_charge_cents,
+    );
+
     const touchesGeometry =
       data.geoMatchMode !== undefined ||
       data.boundary !== undefined ||
@@ -361,6 +405,8 @@ export const updateZone = createServerFn({ method: "POST" })
     if (data.pricePerSqftCents !== undefined) patch.price_per_sqft_cents = data.pricePerSqftCents;
     if (data.pricePerAcreCents !== undefined) patch.price_per_acre_cents = data.pricePerAcreCents;
     if (data.areaMinChargeCents !== undefined) patch.area_min_charge_cents = data.areaMinChargeCents;
+    if (data.areaMaxChargeCents !== undefined)
+      patch.area_max_charge_cents = data.areaMaxChargeCents;
     if (data.commercialBaseCents !== undefined) patch.commercial_base_cents = data.commercialBaseCents;
     if (data.commercialPerUnitCents !== undefined)
       patch.commercial_per_unit_cents = data.commercialPerUnitCents;
