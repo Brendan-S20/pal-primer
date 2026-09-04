@@ -29,6 +29,39 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
   other: "Other",
 };
 
+/**
+ * The same reasons, phrased for the person whose yard it is.
+ *
+ * SKIP_REASON_LABELS above is written for the office: "Our fault", "Client
+ * cancelled late", "Access blocked (car, construction, etc.)". Those are
+ * internal framings and two of them are about the customer rather than to
+ * them. A customer opening the portal wants one thing from a skipped visit --
+ * why did nobody come -- and they should get it in a sentence somebody would
+ * actually say to them.
+ *
+ * Separate map rather than a rename, because the office list is used in
+ * reporting and settings where the terse internal wording is right.
+ */
+export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
+  customer_requested: "You asked us to skip this one",
+  client_cancelled_late: "Cancelled after our cut-off",
+  gate_locked: "The gate was locked, so we could not get in",
+  dog_outside: "Your dog was out in the yard",
+  weather: "Called off for weather",
+  our_fault: "Our mistake, so there is no charge",
+  access_blocked: "We could not get to the yard",
+  unsafe_conditions: "It was not safe to work",
+  other: "Skipped",
+};
+
+/** The customer-facing sentence for a code, or a plain fallback for a code
+ *  this build does not know — a value added to the enum in the database and
+ *  not yet here must not render as a raw identifier on a customer's screen. */
+export function customerSkipReason(code: string | null | undefined): string {
+  if (!code) return "Skipped";
+  return CUSTOMER_SKIP_REASON_LABELS[code as (typeof SKIP_REASON_CODES)[number]] ?? "Skipped";
+}
+
 const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
   // 0 to MATCH the SQL, which is the whole point of adding this row rather than
   // picking a nicer number: `portal_skip_visit` ends with

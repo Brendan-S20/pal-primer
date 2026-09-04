@@ -5287,6 +5287,7 @@ export type Database = {
           id: string
           is_deepclean: boolean
           organization_id: string
+          price_cents: number | null
           property_id: string
           rescheduled_from: string | null
           scheduled_on: string
@@ -5322,6 +5323,7 @@ export type Database = {
           id?: string
           is_deepclean?: boolean
           organization_id: string
+          price_cents?: number | null
           property_id: string
           rescheduled_from?: string | null
           scheduled_on: string
@@ -5357,6 +5359,7 @@ export type Database = {
           id?: string
           is_deepclean?: boolean
           organization_id?: string
+          price_cents?: number | null
           property_id?: string
           rescheduled_from?: string | null
           scheduled_on?: string
@@ -5657,6 +5660,7 @@ export type Database = {
       zones: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"] | null
+          area_max_charge_cents: number | null
           area_min_charge_cents: number
           base_price_cents: number
           boundary: Json | null
@@ -5687,6 +5691,7 @@ export type Database = {
         }
         Insert: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          area_max_charge_cents?: number | null
           area_min_charge_cents?: number
           base_price_cents?: number
           boundary?: Json | null
@@ -5717,6 +5722,7 @@ export type Database = {
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          area_max_charge_cents?: number | null
           area_min_charge_cents?: number
           base_price_cents?: number
           boundary?: Json | null
@@ -6394,6 +6400,7 @@ export type Database = {
           photo_paths: string[]
           scheduled_on: string
           skip_reason: string
+          skip_reason_code: string
           status: Database["public"]["Enums"]["visit_status"]
           tech_name: string
           visit_id: string
