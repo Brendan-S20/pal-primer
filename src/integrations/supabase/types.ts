@@ -4939,6 +4939,9 @@ export type Database = {
           preferred_time_of_day: string
           preferred_weekdays: number[] | null
           price_cents: number
+          price_overridden_at: string | null
+          priced_at: string | null
+          priced_from_zone_id: string | null
           property_id: string
           started_on: string
           status: Database["public"]["Enums"]["subscription_status"]
@@ -4966,6 +4969,9 @@ export type Database = {
           preferred_time_of_day?: string
           preferred_weekdays?: number[] | null
           price_cents: number
+          price_overridden_at?: string | null
+          priced_at?: string | null
+          priced_from_zone_id?: string | null
           property_id: string
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -4993,6 +4999,9 @@ export type Database = {
           preferred_time_of_day?: string
           preferred_weekdays?: number[] | null
           price_cents?: number
+          price_overridden_at?: string | null
+          priced_at?: string | null
+          priced_from_zone_id?: string | null
           property_id?: string
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]

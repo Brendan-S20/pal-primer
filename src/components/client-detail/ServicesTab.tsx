@@ -47,6 +47,7 @@ import {
   computeCommercialZonePrice,
   zoneHasCommercialPricing,
 } from "@/lib/pricing";
+import { describePriceProvenance } from "@/lib/price-provenance";
 import {
   subscriptionToFormValues,
   blankSubscriptionFormValues,
@@ -878,6 +879,12 @@ function ServiceDetailDrawer({
           <div>
             <dt className="text-xs text-muted-foreground">Price</dt>
             <dd className="font-medium">${(s.price_cents / 100).toFixed(2)} /visit</dd>
+            {/* Where the number came from. A price with no provenance says so
+                rather than being read as "priced from the zone it sits in",
+                which is the assumption that made a stale rate invisible. */}
+            <dd className="text-xs text-muted-foreground">
+              {describePriceProvenance(s, (id) => zones.find((z: any) => z.id === id)?.name).text}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Property</dt>
