@@ -6397,6 +6397,7 @@ export type Database = {
           photo_paths: string[]
           scheduled_on: string
           skip_reason: string
+          skip_reason_code: string
           status: Database["public"]["Enums"]["visit_status"]
           tech_name: string
           visit_id: string
