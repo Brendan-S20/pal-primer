@@ -13,6 +13,9 @@ export interface ZonePricingFields {
   price_per_sqft_cents: number | null;
   price_per_acre_cents: number | null;
   area_min_charge_cents: number | null;
+  /** Ceiling on the area component. See computeZoneVisitPrice for why this is
+   *  not optional in practice even though the column is nullable. */
+  area_max_charge_cents?: number | null;
 }
 
 export interface VisitPriceInput {
@@ -25,6 +28,10 @@ export interface VisitPriceInput {
 export interface VisitPriceResult {
   /** Raw area-based charge before the minimum was applied (null when area pricing wasn't used). */
   areaBasisCents: number | null;
+  /** True when the zone's ceiling bound the area charge down. Quote screens
+   *  show this, because a capped price and an uncapped one that happens to
+   *  land on the same number are different facts about the zone. */
+  areaCapped: boolean;
   /** Full per-visit price before the frequency multiplier: base + area + extra dogs. */
   perVisitCents: number;
   /** Per-visit price after the frequency multiplier. */
@@ -40,6 +47,7 @@ export function computeZoneVisitPrice(zone: ZonePricingFields, input: VisitPrice
 
   let areaBasisCents: number | null = null;
   let areaCharge = 0;
+  let areaCapped = false;
   if (mode !== "flat" && input.boundaryAreaSqm) {
     const raw =
       mode === "per_sqft"
@@ -47,11 +55,31 @@ export function computeZoneVisitPrice(zone: ZonePricingFields, input: VisitPrice
         : Math.round((input.boundaryAreaSqm / SQM_PER_ACRE) * (zone.price_per_acre_cents ?? 0));
     areaBasisCents = raw;
     areaCharge = Math.max(raw, zone.area_min_charge_cents ?? 0);
+
+    // The ceiling. `area_min_charge_cents` is a FLOOR and was the only bound
+    // this function had, so an area rate multiplied by a big enough lot
+    // returned an arbitrarily large per-visit price with nothing to stop it.
+    // Measured on real data before this was added: a per_sqft zone at
+    // 0.75c/sqft quoted $287.92 per visit for a 35,700 sqft yard, against the
+    // $26.00 that customer actually pays. Nobody was ever charged it, because
+    // the zone is only read when a subscription is created and these
+    // subscriptions predate the rate -- which is to say the arithmetic was
+    // never wrong in production only because it was never used in production.
+    //
+    // Applied AFTER the floor deliberately. A zone saved with min > max is
+    // misconfigured either way, and of the two answers the lower one is the
+    // one that cannot generate a $489 invoice. Save-time validation rejects
+    // that pair so the case should not arise.
+    const cap = zone.area_max_charge_cents ?? 0;
+    if (cap > 0 && areaCharge > cap) {
+      areaCharge = cap;
+      areaCapped = true;
+    }
   }
 
   const perVisitCents = (zone.base_price_cents ?? 0) + areaCharge + dogAddl;
   const recurringCents = Math.round(perVisitCents * (input.multiplier ?? 1));
-  return { areaBasisCents, perVisitCents, recurringCents };
+  return { areaBasisCents, areaCapped, perVisitCents, recurringCents };
 }
 
 // ── Commercial (HOA) zone pricing ───────────────────────────────────────────

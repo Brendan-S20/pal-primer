@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { useNavigate } from "@tanstack/react-router";
+import { customerSkipReason } from "@/lib/skip-rules.functions";
 import {
   portalContext,
   portalRequestOtp,
@@ -1610,8 +1611,22 @@ export function ServiceHistorySection({
                       </>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-700">
-                        <X className="h-3 w-3" /> Skipped
-                        {r.skip_reason && <>: {r.skip_reason}</>}
+                        <X className="h-3 w-3" />
+                        {/* The reason CODE, phrased for the person whose yard
+                            it is. This used to print `skip_reason` -- the free
+                            text a technician types at the gate, 1 to 500
+                            characters, with nothing marking it internal and
+                            nobody writing it thinking about a customer reading
+                            it. The office surfaces already prefer the code;
+                            the customer got the rawest version in the app.
+
+                            The free text is shown only when the customer wrote
+                            it themselves from the portal, which is the one
+                            case where the words are their own. */}
+                        {customerSkipReason(r.skip_reason_code)}
+                        {r.skip_reason_code === "customer_requested" && r.skip_reason && (
+                          <>: {r.skip_reason}</>
+                        )}
                       </span>
                     )}
                   </div>

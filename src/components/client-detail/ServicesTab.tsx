@@ -1147,6 +1147,7 @@ function ServiceDrawer({
             price_per_sqft_cents: Number(pricingZone.price_per_sqft_cents ?? 0),
             price_per_acre_cents: pricingZone.price_per_acre_cents,
             area_min_charge_cents: pricingZone.area_min_charge_cents,
+            area_max_charge_cents: pricingZone.area_max_charge_cents,
           },
           {
             dogCount: dogsForPricing,
