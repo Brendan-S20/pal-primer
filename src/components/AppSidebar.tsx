@@ -17,6 +17,7 @@ import {
   Receipt,
   BarChart3,
   LineChart,
+  Scale,
   CreditCard,
   Upload,
   Settings as SettingsIcon,
@@ -127,6 +128,10 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // URL-only on purpose — a queue of things we refused to guess about
       // is worthless if nobody knows it exists.
       { title: "Needs review", url: "/review", icon: ClipboardCheck },
+      // In the nav rather than URL-only for the same reason as Needs review:
+      // a report of who is off the rate card is worthless if the only person
+      // who can find it is the one who already knew to look.
+      { title: "Rate card drift", url: "/pricing-drift", icon: Scale },
       // Royalties (/franchise) is hidden until multi-location is a real,
       // supported offering (per Brendan, 2026-07-14). The route still works
       // by URL for the rare royalty-parent org.
