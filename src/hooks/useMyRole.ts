@@ -37,6 +37,9 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/leads": ["owner", "office_manager"],
   "/clients": ["owner", "office_manager", "dispatcher"],
   "/zones": ["owner", "office_manager", "dispatcher"],
+  // Prices, not routing: a dispatcher moves visits around and has no reason
+  // to see what every customer pays.
+  "/pricing-drift": ["owner", "office_manager"],
   "/routes": ["owner", "office_manager", "dispatcher"],
   "/my-day": ["owner", "office_manager", "dispatcher", "tech"],
   "/waste-log": ["owner", "office_manager", "dispatcher", "tech"],
