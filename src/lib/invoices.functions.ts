@@ -309,6 +309,12 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
     const nowIso = new Date().toISOString();
     let ok = 0,
       failed = 0;
+    // Invoices marked paid whose live PaymentIntent we could NOT cancel. These
+    // are not failures -- the invoice IS paid and the row is correct -- but the
+    // customer can still be charged on the pay page, and that second charge
+    // lands nowhere. Counted separately so the office is told, rather than
+    // reading a clean "Marked 12 paid" over a live intent. See the block below.
+    const intentStillLive: string[] = [];
     for (const id of data.ids) {
       const { data: inv, error: rErr } = await supabase
         .from("invoices")
@@ -393,11 +399,12 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         await syncInvoicePaymentIntentAmount(id);
       } catch (e) {
         console.error("[mark-paid] could not cancel the pay-page intent for", id, e);
+        intentStillLive.push(id);
       }
 
       ok++;
     }
-    return { ok, failed };
+    return { ok, failed, intentStillLive };
   });
 
 // In-app payment (Payment Element): staff take a card or ACH payment right on
