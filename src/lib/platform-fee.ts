@@ -107,6 +107,28 @@ export const PLATFORM_FEE_BPS = 0;
 export const PLATFORM_FEE_THRESHOLD_CENTS = 1000;
 
 /**
+ * HoundStack's own cut as a sentence fragment, or null when there is not one.
+ *
+ * NULL IS THE POINT. Every surface that tells a tenant what a payment costs has
+ * to name this fee when it exists and stay silent when it does not, and both
+ * halves are real faults: naming a fee of zero overstates what leaves their
+ * account, and omitting a live one is the surprise the franchise copy already
+ * had to be corrected for. Deriving the sentence from the constant means the
+ * next rate change updates every surface, rather than leaving whichever one
+ * somebody forgot saying the wrong thing.
+ *
+ * Reads the threshold as well as the rate, because "0.5%" alone is not the
+ * term -- a $10 job is free, and a tenant who works out our cut from a small
+ * ticket and gets a different answer is entitled to think the number is a lie.
+ */
+export function describePlatformFee(): string | null {
+  if (PLATFORM_FEE_BPS <= 0) return null;
+  const pct = PLATFORM_FEE_BPS / 100;
+  const floor = PLATFORM_FEE_THRESHOLD_CENTS / 100;
+  return `a ${pct}% HoundStack fee on payments over $${floor}`;
+}
+
+/**
  * The platform fee on a charge, in whole cents, or undefined when there is none.
  *
  * UNDEFINED RATHER THAN 0 is the load-bearing part of the signature. Every one
