@@ -627,10 +627,17 @@ function RoyaltyBilling() {
               The royalty is round(collected × pct / 100) over
               payments.amount_cents. That base excludes the card surcharge —
               right, it was fee recovery and never revenue — and includes
-              Stripe's processing fee and HoundStack's 0.5% platform fee, both
-              of which come out of the location's side. So a location billed
-              7% of collected revenue pays 7% of a number larger than the one
-              that reached its bank.
+              Stripe's processing fee, which comes out of the location's side.
+              So a location billed 7% of collected revenue pays 7% of a number
+              larger than the one that reached its bank.
+
+              This paragraph named a second deduction, HoundStack's 0.5%
+              platform fee, until 2026-09-08. PLATFORM_FEE_BPS is now 0 and
+              nothing is taken, so naming it would overstate what leaves the
+              location's side. The wording is tied to the constant rather than
+              to today's answer: see the copy assertion in
+              tests/a-royalty-quoted-on-money-the-location-never-receives.test.ts,
+              which fails if the rate returns and this sentence does not.
 
               No arithmetic changes. What changes is that the person choosing
               the percentage is told what it multiplies, at the moment they
@@ -640,10 +647,10 @@ function RoyaltyBilling() {
               rollup use, and a fourth wording for one figure is how the last
               round of this went wrong. */}
           <p className="mb-3 text-xs text-muted-foreground">
-            The percentage applies to collected revenue before fees. Stripe&apos;s processing fee
-            and HoundStack&apos;s 0.5% platform fee are deducted from what the location receives and
-            are not taken off the royalty base, so a location keeps less than the figure the royalty
-            is calculated on. The card surcharge is already excluded, because it was never revenue.
+            The percentage applies to collected revenue before fees. Stripe&apos;s processing fee is
+            deducted from what the location receives and is not taken off the royalty base, so a
+            location keeps less than the figure the royalty is calculated on. The card surcharge is
+            already excluded, because it was never revenue.
           </p>
           <div className="space-y-2">
             {children.map((c) => (
