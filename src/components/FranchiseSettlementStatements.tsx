@@ -109,22 +109,25 @@ export function FranchiseSettlementStatements({
             `revenue_cents` is sum(payments.amount_cents) for the period. That
             figure already excludes the card surcharge — correct, it was fee
             recovery and was never revenue — but it is gross of Stripe's
-            processing fee and gross of HoundStack's 0.5% platform fee. So a
-            location keeps less than "collected revenue" and is billed a
-            percentage of the whole of it.
+            processing fee. So a location keeps less than "collected revenue"
+            and is billed a percentage of the whole of it.
+
+            HoundStack's 0.5% platform fee was named here as a second deduction
+            until 2026-09-08. PLATFORM_FEE_BPS is now 0, so it is not one. Both
+            copies of this sentence are checked against the constant rather than
+            against a fixed string, so the rate coming back puts the words back.
 
             That is the arrangement, not a defect, and nothing about the
             arithmetic changes. What was missing is that neither party could
             read it anywhere: a franchisee reconciling a statement against what
-            landed in their bank account finds two deductions the statement
-            never mentions, and the first time they notice is an argument. Said
-            on both sides' copy, in the same words, because the two reconcile
-            the same document. */}
+            landed in their bank account finds a deduction the statement never
+            mentions, and the first time they notice is an argument. Said on
+            both sides' copy, in the same words, because the two reconcile the
+            same document. */}
         <p className="mt-2 text-xs text-muted-foreground">
-          The percentage applies to collected revenue before fees. Stripe&apos;s processing fee and
-          HoundStack&apos;s 0.5% platform fee come out of what{" "}
-          {forLocation ? "you receive" : "the location receives"}, and the royalty is calculated on
-          the amount collected, not on what is left after them.
+          The percentage applies to collected revenue before fees. Stripe&apos;s processing fee comes
+          out of what {forLocation ? "you receive" : "the location receives"}, and the royalty is
+          calculated on the amount collected, not on what is left after it.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
