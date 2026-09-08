@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { listZones, deleteZone, normalizeUsZip } from "@/lib/zones.functions";
-import { getZoneCoverage } from "@/lib/zone-coverage.functions";
+import { getZoneCoverage, rerunZoneDetection } from "@/lib/zone-coverage.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +59,25 @@ function ZonesPage() {
   const { data: coverage } = useQuery({
     queryKey: ["zone-coverage"],
     queryFn: () => getZoneCoverage(),
+  });
+
+  // The remedy for what the banner reports. Same permission as editing a zone,
+  // because it rewrites properties.zone_id across the organization.
+  const redetectM = useMutation({
+    mutationFn: () => rerunZoneDetection(),
+    onSuccess: (r: { propertiesUpdated: number }) => {
+      toast.success(
+        r.propertiesUpdated === 0
+          ? "Detection re-run. Nothing changed, so every property already agreed with the rules."
+          : `Detection re-run. ${r.propertiesUpdated} propert${r.propertiesUpdated === 1 ? "y" : "ies"} updated.`,
+      );
+      qc.invalidateQueries({ queryKey: ["zone-coverage"] });
+      qc.invalidateQueries({ queryKey: ["zones"] });
+    },
+    // Deliberately loud. The side-effect version of this swallows its failure
+    // and logs it; a person who pressed a button is owed the error.
+    onError: (e: unknown) =>
+      toast.error(`Could not re-run detection: ${(e as Error).message}`),
   });
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
@@ -156,6 +175,36 @@ function ZonesPage() {
               ? " A property that keeps a zone the rules would no longer give it still shows that zone everywhere else in the app."
               : ""}
           </p>
+          {canEdit && coverage.summary.stale > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 min-h-[44px]"
+              disabled={redetectM.isPending}
+              onClick={async () => {
+                const c = coverage.summary;
+                const willClear = c.orphaned;
+                const lines = [
+                  willClear > 0
+                    ? `${willClear} propert${willClear === 1 ? "y" : "ies"} will lose the zone they currently show, because no zone matches them under the rules as saved right now.`
+                    : null,
+                  c.reassigned > 0
+                    ? `${c.reassigned} will move to a different zone.`
+                    : null,
+                  c.unassigned > 0 ? `${c.unassigned} will gain a zone.` : null,
+                ].filter(Boolean) as string[];
+                const ok = await confirm({
+                  title: "Re-run zone detection?",
+                  description: `${lines.join(" ")} Pricing for existing services is not changed by this; it updates which zone each property is recorded in. If the zones themselves are wrong, fix those first, because this makes the properties agree with whatever the zones currently say.`,
+                  confirmLabel: "Re-run detection",
+                  destructive: willClear > 0,
+                });
+                if (ok) redetectM.mutate();
+              }}
+            >
+              {redetectM.isPending ? "Re-running…" : "Re-run zone detection"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
