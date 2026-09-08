@@ -425,6 +425,34 @@ const BASE_STUBS: Record<string, Stub> = {
       },
     ],
   },
+  // The coverage banner. Chosen to be the awkward case rather than the happy
+  // one: a long zone name inside a long sentence, which is exactly what
+  // overflows a 360px banner.
+  getZoneCoverage: {
+    summary: {
+      total: 110,
+      covered: 54,
+      uncovered: 56,
+      stale: 56,
+      orphaned: 54,
+      reassigned: 2,
+      unassigned: 0,
+      perZone: [
+        {
+          zoneId: "zzzz1111-0000-4000-8000-000000000001",
+          zoneName: "Ravenswood Manor / Lincoln Square North",
+          wouldMatch: 54,
+        },
+        {
+          zoneId: "zzzz1111-0000-4000-8000-000000000002",
+          zoneName: "Uptown / Edgewater Beach Commercial Grounds",
+          wouldMatch: 0,
+        },
+      ],
+    },
+    problem:
+      "56 of 110 properties fall outside every zone, 54 still carry a zone the rules would no longer give them, Uptown / Edgewater Beach Commercial Grounds matches no properties.",
+  },
   listZones: {
     zones: [
       {

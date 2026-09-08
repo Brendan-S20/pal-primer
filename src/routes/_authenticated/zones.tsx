@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { listZones, deleteZone, normalizeUsZip } from "@/lib/zones.functions";
+import { getZoneCoverage } from "@/lib/zone-coverage.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,12 @@ function ZonesPage() {
   const qc = useQueryClient();
   const { confirm, dialog: bulkDialog } = useConfirmDialog();
   const { data } = useQuery({ queryKey: ["zones"], queryFn: () => list() });
+  // Recomputed from the matcher, not read from properties.zone_id -- that
+  // column is the thing that goes stale. See src/lib/zone-coverage.ts.
+  const { data: coverage } = useQuery({
+    queryKey: ["zone-coverage"],
+    queryFn: () => getZoneCoverage(),
+  });
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
 
@@ -135,6 +142,23 @@ function ZonesPage() {
           </div>
         </div>
       )}
+      {coverage?.problem ? (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/20"
+        >
+          <p className="font-medium">{coverage.problem}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Checked by running the matching rules over every property again, so this
+            reflects the zones as they are saved right now, not what was recorded the
+            last time a property was matched.
+            {coverage.summary.orphaned > 0
+              ? " A property that keeps a zone the rules would no longer give it still shows that zone everywhere else in the app."
+              : ""}
+          </p>
+        </div>
+      ) : null}
+
       {noGeoZones.length > 0 && (
         <p className="text-xs text-amber-600">
           No map coverage yet: {noGeoZones.map((z: any) => `"${z.name}"`).join(", ")}. Open Edit to
