@@ -120,10 +120,10 @@ export function FranchiseSettlementStatements({
             That is the arrangement, not a defect, and nothing about the
             arithmetic changes. What was missing is that neither party could
             read it anywhere: a franchisee reconciling a statement against what
-            landed in their bank account finds two deductions the statement
-            never mentions, and the first time they notice is an argument. Said
-            on both sides' copy, in the same words, because the two reconcile
-            the same document. */}
+            landed in their bank account finds a deduction the statement never
+            mentions, and the first time they notice is an argument. Said on
+            both sides' copy, in the same words, because the two reconcile the
+            same document. */}
         <p className="mt-2 text-xs text-muted-foreground">
           The percentage applies to collected revenue before fees. Stripe&apos;s processing fee comes
           out of what {forLocation ? "you receive" : "the location receives"}, and the royalty is
