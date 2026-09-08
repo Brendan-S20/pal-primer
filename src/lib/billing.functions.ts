@@ -74,6 +74,21 @@ export const getBillingStatus = createServerFn({ method: "GET" })
   });
 
 // Plan catalog for the in-app plan picker (embedded billing + onboarding).
+/**
+ * Why a signup promo code produced no discount.
+ *
+ * Named rather than boolean because they are not equally actionable:
+ * `wrong_plan` is the customer's to act on by picking a different plan,
+ * `invalid` is theirs to know about, and the other two are ours.
+ *
+ * A REFERRAL CODE IS NOT ON THIS LIST, deliberately. `lookupSignupCode`
+ * resolves a code to a coupon, a referral, or invalid, and a referral produces
+ * no coupon BY DESIGN — the credit reaches the referrer through a different
+ * mechanism entirely. Reporting one as a dropped discount would invent a fault
+ * and send somebody to support over a code that worked.
+ */
+export type PromoDropReason = "lookup_failed" | "invalid" | "not_in_stripe" | "wrong_plan";
+
 export const listPlatformPlans = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -497,8 +512,22 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     // is applied to the FIRST subscription as the mirrored Stripe coupon —
     // Stripe then enforces once/repeating/forever on its own. Re-validated
     // here: a code deactivated/expired/maxed since signup, or one restricted
-    // to other plans, silently applies nothing rather than blocking checkout.
+    // to other plans, applies nothing rather than blocking checkout.
+    //
+    // NOT BLOCKING IS THE RIGHT CALL AND IS NOT WHAT CHANGED. A dead code must
+    // not stand between somebody and paying us. What was wrong is that it was
+    // also SILENT: an owner typed a code on Get-started, reached this page, and
+    // was charged full price with nothing on screen saying the code had not
+    // applied. They find out on the first statement, or never.
+    //
+    // There are four ways to arrive at "no discount that should have been one",
+    // and a person cannot tell them apart from the price alone, so the reason
+    // is carried out with it: the lookup threw, the code is no longer valid,
+    // the coupon was never mirrored into Stripe, or it does not cover the plan
+    // being bought. A code that resolves to a REFERRAL is none of these and is
+    // not reported: it produced no coupon because it never was one.
     let promoCoupon: { id: string; code: string; stripe_coupon_id: string } | null = null;
+    let promoDropped: { code: string; reason: PromoDropReason; detail?: string } | null = null;
     try {
       const { data: orgPromoRow } = await (supabaseAdmin as any)
         .from("organizations")
@@ -509,7 +538,16 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       if (storedCode) {
         const { lookupSignupCode } = await import("@/lib/signup-codes.server");
         const hit = await lookupSignupCode(supabaseAdmin, storedCode);
-        if (hit.kind === "coupon" && hit.coupon.stripe_coupon_id) {
+        if (hit.kind === "referral") {
+          // Worked, just not as a discount. Nothing to report.
+        } else if (hit.kind === "invalid") {
+          // `hit.reason` is already a sentence written for a person ("That code
+          // has expired.", "That code has been fully redeemed."), so it is
+          // carried out rather than re-worded into something vaguer.
+          promoDropped = { code: storedCode, reason: "invalid", detail: hit.reason };
+        } else if (!hit.coupon.stripe_coupon_id) {
+          promoDropped = { code: hit.coupon.code, reason: "not_in_stripe" };
+        } else {
           const planOk =
             !hit.coupon.applies_to_plan_ids?.length ||
             hit.coupon.applies_to_plan_ids.includes(targetPlan.id);
@@ -519,10 +557,16 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
               code: hit.coupon.code,
               stripe_coupon_id: hit.coupon.stripe_coupon_id,
             };
+          } else {
+            promoDropped = { code: hit.coupon.code, reason: "wrong_plan" };
           }
         }
       }
     } catch (e) {
+      // The code IS stored on the org, so a throw here means we could not tell
+      // whether it was good. Reporting that as "no code" would be a third
+      // wrong answer; it is reported as unknown.
+      promoDropped = { code: "", reason: "lookup_failed" };
       console.error("signup promo lookup failed (subscribing without it)", (e as Error).message);
     }
 
@@ -562,6 +606,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
           publishableKey,
           planName: targetPlan.name,
           subscriptionId: sub.id,
+          promoDropped,
         };
       }
       // Stale (different plan/seat mix, or no usable secret) — cancel so the
@@ -644,6 +689,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       clientSecret,
       publishableKey,
       planName: targetPlan.name,
+      promoDropped,
       // Returned so the payment form can name the metered charges at the point
       // of purchase. There is no Stripe-hosted checkout page here — the card is
       // taken inline through a Payment Element — so every word the buyer reads
