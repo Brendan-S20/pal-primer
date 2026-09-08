@@ -28,5 +28,17 @@ for (const w of [360, 1280]) {
     const box = await banner.first().boundingBox();
     expect(box, "banner has no box").not.toBeNull();
     expect(box!.x + box!.width, "banner runs off the side").toBeLessThanOrEqual(w + 1);
+
+    // The remedy has to be reachable too. A warning whose button is off the
+    // side of a phone is the same dead end the banner was added to fix, and
+    // 44px is the floor CLAUDE.md sets for anything a thumb has to hit.
+    const button = page.getByRole("button", { name: "Re-run zone detection" });
+    await expect(button, "the remedy button is not on screen").toBeVisible({
+      timeout: 15000,
+    });
+    const bb = await button.boundingBox();
+    expect(bb, "button has no box").not.toBeNull();
+    expect(bb!.x + bb!.width, "button runs off the side").toBeLessThanOrEqual(w + 1);
+    expect(bb!.height, "button is under the 44px touch floor").toBeGreaterThanOrEqual(44);
   });
 }

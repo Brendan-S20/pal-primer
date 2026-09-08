@@ -7,7 +7,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { resolveCaller } from "@/lib/authz.server";
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import {
   computeZoneCoverage,
   describeCoverageProblem,
@@ -56,4 +56,33 @@ export const getZoneCoverage = createServerFn({ method: "GET" })
     // thousands of rows to render one banner.
     const { rows: _rows, ...summary } = coverage;
     return { summary, problem: describeCoverageProblem(coverage) };
+  });
+
+// ── AND THE BUTTON THAT ACTS ON IT ─────────────────────────────────────────
+//
+// `redetectZonesForOrg` already existed, but until now it ran ONLY as a side
+// effect of creating, editing or deleting a zone -- three call sites, all of
+// them `redetectBestEffort`, which swallows its own failure and logs it.
+//
+// So an owner looking at "54 properties carry a zone the rules would no longer
+// give them" had no way to act on it except to open some unrelated zone and
+// re-save it to trigger the side effect, and no way to find out if that
+// silently failed. A warning with no button is a dead end.
+//
+// This is the same operation, made deliberate: permission-gated like a zone
+// edit (it rewrites `properties.zone_id`), and it THROWS rather than swallowing,
+// because a person who pressed a button is owed the error. The preview the UI
+// shows before asking comes from getZoneCoverage, so the confirm dialog states
+// what will change before anything does.
+export const rerunZoneDetection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    // Same gate as creating or editing a zone: this writes properties.zone_id
+    // across the organization.
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+
+    const { redetectZonesForOrg } = await import("@/lib/zones-redetect.server");
+    const updated = await redetectZonesForOrg(supabase, orgId, userId);
+    return { propertiesUpdated: updated };
   });
