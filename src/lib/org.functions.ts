@@ -66,7 +66,17 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
     // Coupon capture: written once (only while null, so an idempotent re-run
     // for an existing org can't overwrite), audited best-effort. Application
     // happens later, at the first subscribe (createPlanSubscription).
+    //
+    // `promoStored` is null when there was no coupon code to keep, and a
+    // boolean when there was. That distinction is the point: Get-started
+    // validates the typed code on blur and TELLS THE PERSON it is good, so a
+    // capture that then fails leaves somebody promised a discount, with nothing
+    // stored, and no way for createPlanSubscription to warn them later --
+    // "never entered a code" and "we lost your code" are the same empty column.
+    // This is the only place the difference is still visible.
+    let promoStored: boolean | null = null;
     if (orgId && couponCode) {
+      promoStored = false;
       try {
         const { data: updated } = await (supabaseAdmin as any)
           .from("organizations")
@@ -75,18 +85,31 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
           .is("signup_promo_code", null)
           .select("id");
         if (updated?.length) {
+          promoStored = true;
           await supabaseAdmin.from("platform_admin_audit").insert({
             actor_user_id: userId,
             organization_id: orgId as string,
             action: "signup_promo_captured",
             after_json: { code: couponCode },
           });
+        } else {
+          // Zero rows is NOT necessarily a failure: the `.is(null)` guard makes
+          // this idempotent, so a re-run against an org that already carries a
+          // code matches nothing and that is the correct outcome. Asking what
+          // is actually stored is the only way to tell that apart from a write
+          // that did not land.
+          const { data: row } = await (supabaseAdmin as any)
+            .from("organizations")
+            .select("signup_promo_code")
+            .eq("id", orgId)
+            .maybeSingle();
+          promoStored = !!row?.signup_promo_code;
         }
       } catch (e) {
         console.error("signup promo capture failed (signup continues)", e);
       }
     }
-    return { organizationId: orgId as string };
+    return { organizationId: orgId as string, promoStored };
   });
 
 // Twilio/TCPA compliance: persist the owner's express SMS consent collected

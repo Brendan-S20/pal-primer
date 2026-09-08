@@ -9,6 +9,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization, recordSmsConsent, validateSignupCode } from "@/lib/org.functions";
 import { registerAccount, sendEmailVerification } from "@/lib/auth-entry.functions";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -156,7 +157,7 @@ function GetStartedPage() {
       if (signInErr) throw signInErr;
 
       const attribution = readSignupAttribution();
-      await bootstrapOrganization({
+      const boot = await bootstrapOrganization({
         data: {
           orgName,
           displayName,
@@ -166,6 +167,23 @@ function GetStartedPage() {
         },
       });
       clearSignupAttribution();
+
+      // The code was checked on blur and this form TOLD them it was good. If
+      // keeping it then failed, nothing downstream can warn them: the org
+      // carries no code, so the subscribe screen cannot tell "lost it" from
+      // "never had one" and will quietly charge full price.
+      //
+      // Signup is not blocked and the account is already created -- losing a
+      // discount is not worth losing a customer over. But this is the last
+      // moment anybody can say so, so it is said here and held on screen.
+      // `promoStored` is null when there was no coupon to keep, which is the
+      // ordinary case and says nothing.
+      if (boot?.promoStored === false) {
+        toast.warning(
+          `We could not attach promo code ${promoCode.trim()} to your account. Your account is set up. Contact us before you subscribe so we can apply it.`,
+          { duration: 15000 },
+        );
+      }
       if (smsConsent && phone.trim()) {
         try {
           await recordSmsConsent({ data: { phone: phone.trim(), consentText: SMS_CONSENT_TEXT } });
