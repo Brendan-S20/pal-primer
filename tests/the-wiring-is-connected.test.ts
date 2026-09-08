@@ -195,6 +195,40 @@ const ALL_MIGRATIONS = readdirSync(MIGRATIONS)
   .map((f) => ({ file: f, sql: sqlWithoutComments(readFileSync(join(MIGRATIONS, f), "utf8")) }));
 
 describe("a database can actually be built from these files", () => {
+  it("every dollar-quoted block closes with the tag it opened with", () => {
+    // Postgres reads `$tag$ ... $tag$` as one string. Open with `$exposure$`
+    // and close with `$obs$` and the quote is never terminated: the parser
+    // swallows the rest of the file and dies on "unterminated dollar-quoted
+    // string", pointing at the OPENING line — which is nowhere near the typo.
+    //
+    // This is not hypothetical. It shipped on 2026-09-03 in
+    // 20260903100000, from a `sed` that renamed `DO $obs$` and left
+    // `END $obs$;` behind, and the file had applied cleanly before the rename.
+    // Two things made it expensive out of proportion to a one-word typo. The
+    // `supabase start` retry loop added by #161 cannot tell a bad migration
+    // from an unhealthy container — a fresh stack replays migrations as part
+    // of starting — so it tried three times and then reported "this is the
+    // runner, not the migrations", which is the opposite of true. And the CI
+    // job that catches it takes eight minutes and queues behind every other
+    // job on one self-hosted runner.
+    //
+    // A tag appearing an odd number of times is the whole check. Comments are
+    // stripped first, so prose naming a tag does not count, and `$$` is
+    // included because an anonymous quote can be left open the same way.
+    const offenders = ALL_MIGRATIONS.flatMap(({ file, sql }) => {
+      const counts = new Map<string, number>();
+      for (const tag of sql.match(/\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$/g) ?? []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+      return [...counts]
+        .filter(([, n]) => n % 2 === 1)
+        .map(([tag, n]) => `${file}: ${tag} appears ${n} time(s) — an opener with no matching close`);
+    });
+    expect(offenders, "a dollar quote that never closes takes the rest of the file with it").toEqual(
+      [],
+    );
+  });
+
   it("no two migrations claim the same version", () => {
     // `supabase_migrations.schema_migrations.version` is the PRIMARY KEY, and
     // the version is the filename's leading timestamp. Two files sharing one
@@ -320,12 +354,21 @@ describe("a database can actually be built from these files", () => {
         } else if (!live.has(key)) {
           // An ACL statement inside a `to_regprocedure(...) IS NOT NULL` block
           // is deliberate and cannot fail, so it is not a violation.
+          //
+          // The tag is READ, not assumed. This matched a literal `DO $$` and
+          // then `END $$`, so a block opened as `DO $grant$` was invisible to
+          // it and its grants were reported as premature -- and, worse in the
+          // other direction, an anonymous `END $$` belonging to some earlier
+          // block could be mistaken for the close of this one. Both go away by
+          // pairing the tag with itself.
           const before = sql.slice(0, m.index);
-          const blockStart = before.lastIndexOf("DO $$");
+          const opens = [...before.matchAll(/DO\s+(\$[A-Za-z_]*\$)/g)];
+          const lastOpen = opens.length ? opens[opens.length - 1] : null;
           const guarded =
-            blockStart !== -1 &&
-            before.indexOf("END $$", blockStart) === -1 &&
-            before.slice(blockStart).includes("to_regprocedure");
+            lastOpen !== null &&
+            // Still inside it: its own END tag has not appeared since.
+            before.indexOf(`END ${lastOpen[1]}`, lastOpen.index!) === -1 &&
+            before.slice(lastOpen.index!).includes("to_regprocedure");
           if (!guarded) {
             const verb = kind.split(/\s+/)[0].toLowerCase();
             premature.push(`${file} ${verb}s EXECUTE on ${key} when no such function is live`);

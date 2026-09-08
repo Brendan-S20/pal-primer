@@ -1815,19 +1815,26 @@ function MapPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={baseStyle}
-            onChange={(e) => onBaseStyle(e.target.value as TileVariant)}
-            className="h-7 rounded-md border bg-background px-2 text-2xs"
-            title={BASE_STYLES.find((b) => b.value === baseStyle)?.hint}
-            aria-label="Map style"
-          >
-            {BASE_STYLES.map((b) => (
-              <option key={b.value} value={b.value} title={b.hint}>
-                {b.label}
-              </option>
-            ))}
-          </select>
+          {/* Hidden while only one basemap is available. CARTO's two styles
+              were removed when it began watermarking our tiles (see
+              map-tiles.ts), and a picker offering a single choice is a control
+              that does nothing. It returns on its own the moment a second
+              style is added. */}
+          {BASE_STYLES.length > 1 && (
+            <select
+              value={baseStyle}
+              onChange={(e) => onBaseStyle(e.target.value as TileVariant)}
+              className="h-7 rounded-md border bg-background px-2 text-2xs"
+              title={BASE_STYLES.find((b) => b.value === baseStyle)?.hint}
+              aria-label="Map style"
+            >
+              {BASE_STYLES.map((b) => (
+                <option key={b.value} value={b.value} title={b.hint}>
+                  {b.label}
+                </option>
+              ))}
+            </select>
+          )}
           {onGeocode && missing > 0 && (
             <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
               <MapPin className="mr-1 h-3.5 w-3.5" />

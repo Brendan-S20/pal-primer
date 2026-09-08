@@ -447,7 +447,12 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("organizations")
       .select(
-        "workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone, work_days, auto_generate_days_ahead, notify_schedule_horizon",
+        // measured_* are written by refresh_road_profile from this workspace's
+        // own cached road legs and never by a person. They are read here so the
+        // settings screen can show what the routes turned out to be worth,
+        // rather than leaving the speed field looking like the only input to an
+        // estimate it is now the second-choice source for.
+        "workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone, work_days, auto_generate_days_ahead, notify_schedule_horizon, area_type, measured_speed_kmh, measured_road_factor, measured_legs, measured_at",
       )
       .eq("id", orgId)
       .maybeSingle();
@@ -462,7 +467,10 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       .object({
         workday_start: z.string().optional(),
         workday_end: z.string().optional(),
-        avg_speed_kmh: z.number().int().min(5).max(120).optional(),
+        // `null` clears it back to "work it out from the routes"; `undefined`
+        // leaves it alone. Those were the same value until 20260903090000,
+        // which is why the column could be set and never unset.
+        avg_speed_kmh: z.number().int().min(5).max(120).nullable().optional(),
         traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
         max_drive_minutes: z.number().int().min(15).max(1440).optional(),
         // Days the business operates (0=Sun..6=Sat). Visit generation shifts
@@ -503,6 +511,7 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       _workday_start: data.workday_start ?? null,
       _workday_end: data.workday_end ?? null,
       _avg_speed_kmh: data.avg_speed_kmh ?? null,
+      _clear_avg_speed: data.avg_speed_kmh === null,
       _traffic_profile: data.traffic_profile ?? null,
       _max_drive_minutes: data.max_drive_minutes ?? null,
       _timezone: data.timezone ?? null,

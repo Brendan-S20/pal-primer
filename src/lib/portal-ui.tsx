@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { useNavigate } from "@tanstack/react-router";
+import { customerSkipReason } from "@/lib/skip-rules.functions";
 import {
   portalContext,
   portalRequestOtp,
@@ -1610,8 +1611,22 @@ export function ServiceHistorySection({
                       </>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-700">
-                        <X className="h-3 w-3" /> Skipped
-                        {r.skip_reason && <>: {r.skip_reason}</>}
+                        <X className="h-3 w-3" />
+                        {/* The reason CODE, phrased for the person whose yard
+                            it is. This used to print `skip_reason` -- the free
+                            text a technician types at the gate, 1 to 500
+                            characters, with nothing marking it internal and
+                            nobody writing it thinking about a customer reading
+                            it. The office surfaces already prefer the code;
+                            the customer got the rawest version in the app.
+
+                            The free text is shown only when the customer wrote
+                            it themselves from the portal, which is the one
+                            case where the words are their own. */}
+                        {customerSkipReason(r.skip_reason_code)}
+                        {r.skip_reason_code === "customer_requested" && r.skip_reason && (
+                          <>: {r.skip_reason}</>
+                        )}
                       </span>
                     )}
                   </div>
@@ -1633,27 +1648,12 @@ export function ServiceHistorySection({
               {(r.photo_paths?.length ?? 0) > 0 && (
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {r.photo_paths.map((p: string, i: number) => (
-                    <button
+                    <PortalVisitPhoto
                       key={p}
-                      onClick={() => urls[p] && setLightbox(urls[p])}
-                      className="group relative aspect-square overflow-hidden rounded border bg-muted"
-                    >
-                      {urls[p] ? (
-                        <>
-                          <img
-                            src={urls[p]}
-                            alt="Visit photo"
-                            loading="lazy"
-                            className="h-full w-full object-cover transition group-hover:scale-105"
-                          />
-                          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-3xs font-medium uppercase text-white">
-                            {i % 2 === 0 ? "Before" : "After"}
-                          </span>
-                        </>
-                      ) : (
-                        <div className="h-full w-full animate-pulse bg-muted" />
-                      )}
-                    </button>
+                      url={urls[p]}
+                      kind={r.photo_kinds?.[i]}
+                      onOpen={() => urls[p] && setLightbox(urls[p])}
+                    />
                   ))}
                 </div>
               )}
@@ -1671,6 +1671,70 @@ export function ServiceHistorySection({
         </div>
       )}
     </section>
+  );
+}
+
+/** One photo on a customer's visit card.
+ *
+ *  Two things it does that the inline markup did not.
+ *
+ *  It labels the photo by what it IS. The caption used to be
+ *  `i % 2 === 0 ? "Before" : "After"` — the position in the array — while
+ *  `visit_photos.kind` sat populated in the database and written explicitly by
+ *  the field app. Any odd number of photos mislabelled everything after the
+ *  gap; two photos of the same kind mislabelled each other; and an `issue`
+ *  photo, taken to document a problem, was served to the customer captioned as
+ *  a routine before-and-after.
+ *
+ *  And it has a third state. A signed URL that 404s rendered the browser's
+ *  broken-image glyph to a paying customer, and no URL at all rendered
+ *  `animate-pulse` — a skeleton with no timeout behind it, pulsing for ever.
+ *  My Day's own PhotoThumb has had the loading / loaded / unavailable split
+ *  for a while; this is the same shape, on the screen a customer sees. */
+function PortalVisitPhoto({
+  url,
+  kind,
+  onOpen,
+}: {
+  url?: string;
+  kind?: string;
+  onOpen: () => void;
+}) {
+  const [broken, setBroken] = useState(false);
+  // `completion` is what the field app writes for the photo that proves the
+  // work is done, and "After" is what a customer calls that. An unknown kind
+  // gets no caption rather than a guessed one.
+  const caption =
+    kind === "before" ? "Before" : kind === "completion" ? "After" : kind === "issue" ? "Issue" : null;
+  return (
+    <button
+      onClick={onOpen}
+      disabled={!url || broken}
+      className="group relative aspect-square overflow-hidden rounded border bg-muted"
+    >
+      {url && !broken ? (
+        <>
+          <img
+            src={url}
+            alt={caption ? `${caption} photo of your visit` : "Photo of your visit"}
+            loading="lazy"
+            onError={() => setBroken(true)}
+            className="h-full w-full object-cover transition group-hover:scale-105"
+          />
+          {caption && (
+            <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-3xs font-medium uppercase text-white">
+              {caption}
+            </span>
+          )}
+        </>
+      ) : broken ? (
+        <span className="flex h-full w-full items-center justify-center px-1 text-center text-3xs text-muted-foreground">
+          Photo unavailable
+        </span>
+      ) : (
+        <div className="h-full w-full animate-pulse bg-muted" />
+      )}
+    </button>
   );
 }
 

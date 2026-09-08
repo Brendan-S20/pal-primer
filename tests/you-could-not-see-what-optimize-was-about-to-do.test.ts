@@ -49,10 +49,24 @@ const SQL = readdirSync(dir)
   .map((f) => readFileSync(join(dir, f), "utf8"))
   .join("\n");
 
+// Reads the tag rather than assuming it. This used to hunt for a literal
+// `AS $$` and then the next `$$;`, which is right for every definition that
+// happened to be written with an anonymous dollar quote and quietly wrong for
+// any other: `AS $fn$ ... $fn$;` does not contain `AS $$` at all, so
+// `indexOf` ran on to the NEXT function in the concatenated file and returned
+// either a slice of somebody else's body or "". Both are worse than failing,
+// because every assertion below is a `toMatch` — and a pattern that is absent
+// from the wrong body fails with a message about the right one.
+//
+// Found when 20260831130000 rewrote plan_route as `AS $fn$`, which is the tag
+// most of this repo's newer migrations use.
 function lastBody(name: string) {
   const at = SQL.lastIndexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
   expect(at, `${name} is not defined`).toBeGreaterThan(-1);
-  const end = SQL.indexOf("$$;", SQL.indexOf("AS $$", at));
+  const open = /\sAS\s+(\$[A-Za-z_]*\$)/.exec(SQL.slice(at));
+  expect(open, `${name} has no dollar-quoted body`).not.toBeNull();
+  const bodyAt = at + open!.index + open![0].length;
+  const end = SQL.indexOf(open![1], bodyAt);
   return SQL.slice(at, end === -1 ? undefined : end);
 }
 
@@ -120,12 +134,133 @@ describe("levels mean what they say", () => {
     // Recomputing the reversal separately for the comparison and the
     // assignment is how a 2-opt pass ends up applying a move it did not
     // actually evaluate.
+    //
+    // This used to count the slice expression and require exactly 2 -- once
+    // compared, once assigned -- which was the best available reading of "the
+    // same" while the expression was written out twice. 20260831130000
+    // materialises it into `_cand` instead, so the property is now structural
+    // rather than textual: there is ONE candidate, it is the thing scored, and
+    // it is the thing assigned. Requiring 2 here would now fail against the
+    // version that cannot get this wrong, so the assertion follows the
+    // variable.
     const plan = lastBody("plan_route");
     expect(plan).toMatch(/SELECT array_agg\(x ORDER BY ord DESC\) INTO _rev/);
+    // Built exactly once. A second slice expression is a second reversal, and
+    // whether it agrees with the first is exactly what this test exists to
+    // stop anyone having to check by eye.
     expect(
       plan.match(/_order\[1:_i-1\] \|\| _rev \|\| _order\[_j\+1:array_length\(_order,1\)\]/g)
         ?.length,
-    ).toBe(2);
+    ).toBe(1);
+    expect(plan).toMatch(
+      /_cand := _order\[1:_i-1\] \|\| _rev \|\| _order\[_j\+1:array_length\(_order,1\)\];/,
+    );
+    // Scored and assigned, both by name.
+    expect(plan).toMatch(/_cand_min := public\.route_segment_min\(_cand\);/);
+    expect(plan).toMatch(/IF _cand_min < _base THEN/);
+    expect(plan).toMatch(/_order := _cand;/);
+  });
+
+  it("scores the improvement pass in road minutes, not straight-line km", () => {
+    // The half of 20260826180000 that was never finished. That migration
+    // taught nearest-neighbour to score on drive_minutes and left the 2-opt
+    // calling route_segment_km, so `thorough` built a route on road time and
+    // then reordered it to shorten a straight line -- the improvement pass
+    // undoing the objective the construction pass had just been given.
+    //
+    // Comments are stripped first: the fix carries a comment that names
+    // route_segment_km in order to say it is gone, and a check answered by the
+    // prose describing it is the fault this repo keeps re-finding.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).not.toMatch(/route_segment_km/);
+    expect(code).toMatch(/route_segment_min/);
+  });
+
+  it("lets the 2-opt reach the last stop", () => {
+    // `_j` ran to array_length - 1, so no segment ending at the final stop was
+    // ever reversed. This is an open path -- the planner does not return to a
+    // depot -- so reversing the tail changes exactly one edge and is an
+    // ordinary improving move that was simply unreachable.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/FOR _j IN _i \+ 1 \.\. array_length\(_order,1\) LOOP/);
+    expect(code).not.toMatch(/FOR _j IN _i \+ 1 \.\. array_length\(_order,1\) - 1 LOOP/);
+  });
+
+  it("reports a distance and a time that describe the same journey", () => {
+    // The owner-visible half. travel_km was haversine while travel_min was the
+    // cached road time plus park_walk_min, so the route screen printed pairs
+    // like "0.21 km · 7.1 min" -- 1.8 km/h. Both now come from the same cached
+    // leg, and the parking constant stays in the CLOCK rather than in the
+    // number labelled travel.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/_tkm\s*:=\s*COALESCE\(public\.road_km\(/);
+    expect(code).not.toMatch(/_tkm\s*:=\s*COALESCE\(public\.haversine_km\(/);
+    // And the reported minute is now the leg as driven. It used to be
+    // `GREATEST(_drive - _park, 0)` while the clock below advanced by the
+    // whole leg, so the arrival times and the drive times printed beside them
+    // described different journeys and 6 minutes a stop appeared in neither
+    // the travel column nor the service one. See 20260903120000.
+    expect(code).toMatch(/_tmin\s*:=\s*COALESCE\(_drive, 0\)/);
+    expect(code).not.toMatch(/GREATEST\(_drive/);
+    expect(code).toMatch(/_es := _clock \+ make_interval\(mins => COALESCE\(_drive,0\)::int\)/);
+  });
+
+  it("does not keep a variable whose only job was to be subtracted", () => {
+    // `_park` was read from the organization solely to be taken back off the
+    // reported leg. park_walk_min still exists and still applies -- inside
+    // drive_minutes(), which is where it belongs and where it is added to
+    // every leg in `_legs`. A leftover declaration here would be an invitation
+    // to subtract it again.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).not.toMatch(/_park/);
+  });
+});
+
+describe("the day it prints is the day it drives", () => {
+  it("counts the leg to the dump wherever a day is added up", () => {
+    // The planner has ORDERED the day around ending at the dump since
+    // 20260831150000, and the leg appeared in no total: not in the panel, and
+    // not in the number the rebalance compares between technicians. Three
+    // places add up a day and all three now ask one function, so there is one
+    // rule about max_drive_minutes rather than three that agree until someone
+    // edits one.
+    for (const fn of ["dry_day_min", "plan_day_across_staff", "route_cost_current"]) {
+      expect(lastBody(fn).replace(/--[^\n]*/g, "")).toMatch(/closing_drive_min/);
+    }
+  });
+
+  it("asks what a technician's day costs in exactly one place", () => {
+    // The rebalance weighs the day before a move and again after it. Those
+    // were two copies of one SELECT; a loop that compares a day against a
+    // subtly different day reverts on noise.
+    const dry = lastBody("plan_day_across_staff_dryrun").replace(/--[^\n]*/g, "");
+    expect(dry.match(/dry_day_min/g) ?? []).toHaveLength(2);
+    expect(dry).not.toMatch(/SUM\(COALESCE\(p\.service_duration_min, 8\) \+ COALESCE\(r\.t_min, 0\)\)/);
+  });
+
+  it("refuses a closing leg the planner itself refused", () => {
+    // plan_route drops the end point when the NEAREST stop of the day cannot
+    // reach it inside max_drive_minutes. Anything else costing that leg has to
+    // apply the same test over the same set, or it bills a day for a trip the
+    // route does not make.
+    const close = lastBody("closing_drive_min").replace(/--[^\n]*/g, "");
+    expect(close).toMatch(/max_drive_minutes/);
+    expect(close).toMatch(/min\(public\.drive_minutes\(/);
+    expect(close).toMatch(/_nearest > COALESCE\(_max_drive, 240\)/);
+  });
+
+  it("matches a technician to an arc from where they will actually start", () => {
+    // The cluster-to-technician match read staff.start_latitude raw. For
+    // anyone without a start address that is NULL, COALESCE(...,9999) sorted
+    // them behind every colleague who had one, and they took whatever arc was
+    // left however far away it was. staff_start_point resolves the same point
+    // plan_route will start them from.
+    const dry = lastBody("plan_day_across_staff_dryrun").replace(/--[^\n]*/g, "");
+    expect(dry).toMatch(/LATERAL public\.staff_start_point\(_org_id, sh\.sid, _day\)/);
+    expect(dry).not.toMatch(/st\.start_latitude/);
+    expect(lastBody("route_cost_current").replace(/--[^\n]*/g, "")).not.toMatch(
+      /SELECT start_latitude, start_longitude INTO/,
+    );
   });
 });
 
@@ -217,5 +352,57 @@ describe("the guards still apply, and refusals are visible", () => {
     );
     expect(ui).toMatch(/disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy\}/);
     expect(ui, "the preview gate is back").not.toMatch(/previewMut/);
+  });
+  it("costs the drive from the last stop to where the day ends", () => {
+    // Before 20260831150000 the planner resolved a START and then planned an
+    // OPEN path: the last stop of the day was chosen as though the van
+    // evaporates on arrival. staff.end_latitude has existed since 20260703 and
+    // Settings has always collected it under "Route end (dump, home, shop)";
+    // RouteMap even drew the marker. The solver had never read it.
+    //
+    // Measured on the demo day with the dump at a cached coordinate: the
+    // end-blind order left 116.3 minutes of driving still to do, the end-aware
+    // one 22.3. Same stops, same technicians.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/public\.staff_end_point\(_org_id, _staff_id\)/);
+    // The closing leg goes into the same matrix as every other leg, so it is
+    // priced by the road and not by the 11 km/h fallback.
+    expect(code).toMatch(/INSERT INTO _legs \(from_id, to_id, minutes\)[\s\S]{0,400}_END/);
+  });
+
+  it("degrades to an open path when nothing resolves an end", () => {
+    // Most orgs have neither a technician end address nor a geocoded dump
+    // today — 2 of 7 and 0 of 6 on 2026-08-31 — so the no-end case is the
+    // common one and must be exactly the old behaviour. The END rows are
+    // inserted only inside the guard, so route_segment_min finds nothing to
+    // add. Verified in Postgres: 38.0 / 35.5 / 17.4, bit-identical.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/IF _end_lat IS NOT NULL AND _end_lon IS NOT NULL THEN/);
+  });
+  it("refuses an end point no stop of the day can reach", () => {
+    // Found in production an hour after 20260831150000 shipped: five demo
+    // technicians carried 40.748,-73.986 — the Empire State Building — seeded
+    // when that data was New York based and left behind when the stops moved to
+    // Michigan, 784 km away. Inert while the solver ignored the end point.
+    //
+    // The size is not the damage; a constant cancels out of every comparison.
+    // The SPREAD is. Measured on those twenty stops: closing legs of 6,195 to
+    // 6,249 minutes, so 54 minutes between the best and worst last stop against
+    // a real route improvement worth 2.4 minutes. The 2-opt would have spent the
+    // whole pass ranking stops by closeness to Manhattan.
+    //
+    // The threshold is the org's own max_drive_minutes, not a literal: if the
+    // CLOSEST stop cannot reach the end point inside it, no ordering ends there.
+    // The minimum is the right statistic — a dump at one edge of a wide rural
+    // territory is legitimately far from the stops at the other edge.
+    const code = lastBody("plan_route").replace(/--[^\n]*/g, "");
+    expect(code).toMatch(/max_drive_minutes/);
+    expect(code).toMatch(/SELECT min\(lg\.minutes\) INTO _nearest_close FROM _legs lg WHERE lg\.to_id = _END/);
+    expect(code).toMatch(/IF _nearest_close IS NOT NULL AND _nearest_close > _max_drive THEN/);
+    // Dropped, not clamped: the day reverts to the open path it had before the
+    // end point existed, which is strictly better than a wrong one.
+    expect(code).toMatch(/DELETE FROM _legs WHERE to_id = _END/);
+    // And it says so somewhere a person can find it.
+    expect(code).toMatch(/RAISE WARNING/);
   });
 });

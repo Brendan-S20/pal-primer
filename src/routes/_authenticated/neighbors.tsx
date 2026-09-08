@@ -32,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
+import { orderForWalk } from "@/lib/canvass-order";
 import { usePermissions } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
@@ -77,6 +78,12 @@ function NeighborsPage() {
   });
 
   const [address, setAddress] = useState("");
+  // The point the address field already resolved. It used to be thrown away --
+  // `onResolved` kept `formatted` and nothing else -- so every door added by
+  // hand went in with no coordinate, could never appear on the map, and had no
+  // place in a walk order. The geocoder had already answered; nobody wrote it
+  // down.
+  const [addressPoint, setAddressPoint] = useState<{ lat: number; lon: number } | null>(null);
   const [notes, setNotes] = useState("");
   const [seedClient, setSeedClient] = useState<string>("");
   const [seedCount, setSeedCount] = useState(6);
@@ -84,10 +91,19 @@ function NeighborsPage() {
   const [showAddForms, setShowAddForms] = useState(false);
 
   const add = useMutation({
-    mutationFn: () => addFn({ data: { addressLine: address, notes: notes || undefined } }),
+    mutationFn: () =>
+      addFn({
+        data: {
+          addressLine: address,
+          notes: notes || undefined,
+          latitude: addressPoint?.lat ?? null,
+          longitude: addressPoint?.lon ?? null,
+        },
+      }),
     onSuccess: () => {
       toast.success("Lead added");
       setAddress("");
+      setAddressPoint(null);
       setNotes("");
       refetch();
     },
@@ -97,7 +113,15 @@ function NeighborsPage() {
   const seed = useMutation({
     mutationFn: () => seedFn({ data: { clientId: seedClient, count: seedCount } }),
     onSuccess: (r) => {
-      toast.success(`Seeded ${r.added} neighbor door${r.added === 1 ? "" : "s"}`);
+      const aside = [
+        r.duplicates ? `${r.duplicates} already on the list` : null,
+        r.unresolved
+          ? `${r.unresolved} address${r.unresolved === 1 ? "" : "es"} didn't exist`
+          : null,
+      ].filter(Boolean);
+      const line = `Seeded ${r.added} neighbor door${r.added === 1 ? "" : "s"}`;
+      if (r.added === 0) toast.message(line, { description: aside.join(" · ") || undefined });
+      else toast.success(line, { description: aside.join(" · ") || undefined });
       refetch();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -120,8 +144,26 @@ function NeighborsPage() {
   const [view, setView] = useState<"list" | "map">("list");
 
   const [walkIdx, setWalkIdx] = useState(0);
-  const walkQueue = rows.filter((r) => r.status === "new" || r.status === "contacted");
-  const current = walkQueue[walkIdx];
+  // Doors answered during THIS walk. The queue used to be recomputed straight
+  // from server state and the index bumped by one after every button, so the
+  // three buttons that take a door OUT of the queue -- interested, passed,
+  // signed up -- shifted everything down by one and then skipped past it. A
+  // tech pressing "Interested" missed the next house, every time. Holding the
+  // answered ids locally makes the queue update immediately instead of a
+  // refetch later, and removes the index arithmetic that caused it.
+  const [answered, setAnswered] = useState<ReadonlySet<string>>(() => new Set());
+  const walkQueue = orderForWalk(
+    rows.filter((r) => (r.status === "new" || r.status === "contacted") && !answered.has(r.id)),
+  );
+  const current = walkQueue[Math.min(walkIdx, Math.max(walkQueue.length - 1, 0))];
+  // Answering a door removes it from the queue, so the next one slides into
+  // this position and the index must NOT move. Skip is the only thing that
+  // advances past a door still waiting for an answer.
+  const answer = (status: NeighborLead["status"]) => {
+    if (!current) return;
+    update.mutate({ id: current.id, status });
+    setAnswered((prev) => new Set(prev).add(current.id));
+  };
 
   if (walkMode) {
     return (
@@ -162,38 +204,16 @@ function NeighborsPage() {
                 <Navigation2 className="h-4 w-4" /> Navigate
               </a>
               <div className="grid grid-cols-2 gap-2 pt-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    update.mutate({ id: current.id, status: "contacted" });
-                    setWalkIdx((i) => i + 1);
-                  }}
-                >
+                <Button variant="secondary" onClick={() => answer("contacted")}>
                   Left flyer
                 </Button>
-                <Button
-                  onClick={() => {
-                    update.mutate({ id: current.id, status: "interested" });
-                    setWalkIdx((i) => i + 1);
-                  }}
-                >
-                  Interested
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    update.mutate({ id: current.id, status: "not_interested" });
-                    setWalkIdx((i) => i + 1);
-                  }}
-                >
+                <Button onClick={() => answer("interested")}>Interested</Button>
+                <Button variant="destructive" onClick={() => answer("not_interested")}>
                   Passed
                 </Button>
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={() => {
-                    update.mutate({ id: current.id, status: "converted" });
-                    setWalkIdx((i) => i + 1);
-                  }}
+                  onClick={() => answer("converted")}
                 >
                   Signed up
                 </Button>
@@ -207,7 +227,12 @@ function NeighborsPage() {
                 >
                   <ArrowLeft className="mr-1 h-4 w-4" /> Prev
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setWalkIdx((i) => i + 1)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={walkIdx >= walkQueue.length - 1}
+                  onClick={() => setWalkIdx((i) => Math.min(i + 1, walkQueue.length - 1))}
+                >
                   Skip <ArrowRight className="ml-1 h-4 w-4" />
                 </Button>
               </div>
@@ -234,6 +259,7 @@ function NeighborsPage() {
           variant="outline"
           onClick={() => {
             setWalkIdx(0);
+            setAnswered(new Set());
             setWalkMode(true);
           }}
           disabled={walkQueue.length === 0}
@@ -321,8 +347,9 @@ function NeighborsPage() {
                 {seed.isPending ? "Seeding…" : `Seed ${seedCount} neighbors`}
               </Button>
               <p className="text-xs text-muted-foreground">
-                Generates addresses at even offsets from the client's house number on the same
-                street.
+                Works out the house numbers either side of this client, checks each one against
+                address search, and adds the ones that turned out to be real. Doors already on your
+                list, and your own customers, are left out.
               </p>
             </CardContent>
           </Card>
@@ -342,8 +369,21 @@ function NeighborsPage() {
                   a match writes the formatted address. */}
               <AddressAutocomplete
                 value={address}
-                onChangeText={setAddress}
-                onResolved={(r) => setAddress(r.address.formatted)}
+                onChangeText={(v) => {
+                  setAddress(v);
+                  // Typing past a resolved match makes the point stale, and a
+                  // stale point is exactly the fault this page had: text and
+                  // coordinate describing different places.
+                  setAddressPoint(null);
+                }}
+                onResolved={(r) => {
+                  setAddress(r.address.formatted);
+                  setAddressPoint(
+                    r.address.latitude != null && r.address.longitude != null
+                      ? { lat: r.address.latitude, lon: r.address.longitude }
+                      : null,
+                  );
+                }}
                 placeholder="123 Elm St, Springfield"
               />
             </div>
@@ -392,25 +432,7 @@ function NeighborsPage() {
             rather than themselves. */}
         <CardContent className="overflow-x-auto p-0">
           {view === "map" ? (
-            <div className="p-3">
-              {rows.every((r) => r.latitude == null || r.longitude == null) ? (
-                <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  No mapped leads yet. Seed from a client with a geocoded property to place pins.
-                </div>
-              ) : (
-                <NeighborMap
-                  pins={rows.map<NeighborPin>((r) => ({
-                    id: r.id,
-                    address: r.address_line,
-                    status: r.status,
-                    latitude: r.latitude,
-                    longitude: r.longitude,
-                    seedClientName: r.seed_client_name,
-                    isSeed: false,
-                  }))}
-                />
-              )}
-            </div>
+            <CanvassMap rows={rows} />
           ) : (
             <table className="w-full text-sm min-w-[480px]">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
@@ -481,6 +503,55 @@ function NeighborsPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** The map half of the canvassing card.
+ *
+ *  Its own component for two reasons. It grew a filter, an empty state and a
+ *  count of what it cannot show, and inline that pushed the sibling `<table>`
+ *  34 lines below the `overflow-x-auto` on CardContent -- past the 25-line
+ *  lookback in tests/wide-things-that-set-the-width-of-the-page.test.ts, which
+ *  correctly reported a five-column table with no scroll container. The rule
+ *  is right and the distance was the problem.
+ *
+ *  And a door with no coordinate is now an ordinary state rather than an
+ *  impossible one: seeding stopped inventing points, so a workspace with no
+ *  address search has doors that are real, listable, walkable and unmappable.
+ *  Drawing fewer pins than the list has rows, silently, is how somebody
+ *  concludes the leads went missing. */
+function CanvassMap({ rows }: { rows: NeighborLead[] }) {
+  const placed = rows.filter((r) => r.latitude != null && r.longitude != null);
+  const unplaced = rows.length - placed.length;
+  return (
+    <div className="p-3">
+      {placed.length === 0 ? (
+        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+          None of these doors has a location yet. Add one with address search, or seed from a
+          client, and the pins appear here.
+        </div>
+      ) : (
+        <>
+          {unplaced > 0 && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              {unplaced} of {rows.length} doors have no location and are not on this map. They are
+              still in the list and in Walk mode.
+            </p>
+          )}
+          <NeighborMap
+            pins={placed.map<NeighborPin>((r) => ({
+              id: r.id,
+              address: r.address_line,
+              status: r.status,
+              latitude: r.latitude,
+              longitude: r.longitude,
+              seedClientName: r.seed_client_name,
+              isSeed: false,
+            }))}
+          />
+        </>
+      )}
     </div>
   );
 }

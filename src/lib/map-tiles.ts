@@ -11,32 +11,43 @@ import L from "leaflet";
 
 /** Base styles a user can pick between.
  *
- *  All free and keyless. MapTiler Basic and OSM Bright — the two originally
- *  asked for — are MapTiler-hosted styles requiring an account key, and a map
- *  that silently stops drawing when a key expires or hits its quota is a worse
- *  failure than a slightly different palette. CARTO's Positron IS the style
- *  usually meant by "Positron", and Voyager is its close counterpart to OSM
- *  Bright, so the visual intent survives with nothing to sign up for.
+ *  ── CARTO NOW REQUIRES A KEY, AND THE PREMISE OF THIS FILE FAILED ────────
  *
- *  If MAPTILER_KEY is ever set, swapping these three URLs is the whole change. */
-export type TileVariant = "street" | "positron" | "voyager" | "satellite";
+ *  This block used to say "all free and keyless", and chose CARTO's Positron
+ *  and Voyager over MapTiler on exactly that reasoning: "a map that silently
+ *  stops drawing when a key expires or hits its quota is a worse failure than
+ *  a slightly different palette."
+ *
+ *  The reasoning was right and the bet lost. CARTO now stamps
+ *  "API KEY REQUIRED  carto.com/basemaps/apikey" diagonally across every tile
+ *  it serves us. Verified 2026-08-31 by fetching a Detroit tile
+ *  (13/2206/3030) from both styles and LOOKING at the returned PNG, with a
+ *  browser User-Agent, Referer and Origin set — the watermark is identical
+ *  with and without them, so it is not a user-agent artifact. It failed worse
+ *  than the failure mode the comment was written to avoid: the map kept
+ *  drawing, so nothing alerted, and it was the DEFAULT style.
+ *
+ *  Both are removed rather than key-gated. Adding an `?api_key=` path nobody
+ *  has a key for would be config that reads as working and is never exercised,
+ *  which is the same shape of mistake. Restoring a choice of styles needs a
+ *  keyed provider (MapTiler, or the Google Maps migration under discussion),
+ *  and that is a decision rather than a patch.
+ *
+ *  OpenStreetMap and Esri were re-verified the same way and are both clean.
+ *  A 418 "Access blocked" from OSM during that check turned out to be curl's
+ *  default user agent tripping OSM's tile usage policy, not the app: with a
+ *  browser UA it returns a normal tile. Written down because it looked like a
+ *  second outage and was not one. */
+export type TileVariant = "street" | "satellite";
 
 /** Styles offered in the picker, in display order. `satellite` is deliberately
  *  absent: it is chosen by the SURFACE (yard sketching needs imagery), not by
  *  preference, and offering it as a route basemap makes stop pins unreadable. */
 export const BASE_STYLES: Array<{ value: TileVariant; label: string; hint: string }> = [
-  { value: "positron", label: "Light", hint: "Muted greys, so pins and routes read loudest" },
-  { value: "voyager", label: "Standard", hint: "Gentle colour, street names stay legible" },
   { value: "street", label: "Detailed", hint: "Full OpenStreetMap detail" },
 ];
 
-export const DEFAULT_BASE_STYLE: TileVariant = "positron";
-
-const CARTO_ATTR =
-  '&copy; OpenStreetMap contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
-// `{r}` resolves to "@2x" on retina displays; Leaflet fills it in.
-const POSITRON_URL = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-const VOYAGER_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+export const DEFAULT_BASE_STYLE: TileVariant = "street";
 
 const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTR = "&copy; OpenStreetMap contributors";
@@ -78,14 +89,6 @@ export function addBaseTiles(map: L.Map, variant: TileVariant = "street"): void 
     }).addTo(map);
     return;
   }
-  if (variant === "positron") {
-    L.tileLayer(POSITRON_URL, { attribution: CARTO_ATTR, maxZoom: 20 }).addTo(map);
-    return;
-  }
-  if (variant === "voyager") {
-    L.tileLayer(VOYAGER_URL, { attribution: CARTO_ATTR, maxZoom: 20 }).addTo(map);
-    return;
-  }
   L.tileLayer(OSM_URL, { attribution: OSM_ATTR, maxZoom: 19 }).addTo(map);
 }
 
@@ -98,7 +101,11 @@ export function addBaseTiles(map: L.Map, variant: TileVariant = "street"): void 
 export function storedBaseStyle(): TileVariant {
   if (typeof localStorage === "undefined") return DEFAULT_BASE_STYLE;
   const v = localStorage.getItem("map.baseStyle");
-  return v === "positron" || v === "voyager" || v === "street" ? v : DEFAULT_BASE_STYLE;
+  // Anything not currently offered falls back, which is what silently retires a
+  // stored "positron" or "voyager". Without this, every user who ever opened
+  // the picker keeps their watermarked choice forever: the tiles are the
+  // broken thing, not the preference, and nothing would ever clear it.
+  return BASE_STYLES.some((b) => b.value === v) ? (v as TileVariant) : DEFAULT_BASE_STYLE;
 }
 
 export function storeBaseStyle(v: TileVariant): void {

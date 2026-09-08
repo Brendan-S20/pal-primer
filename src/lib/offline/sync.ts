@@ -150,6 +150,17 @@ export interface SyncResult {
   /** Actions the server refused MAX_ATTEMPTS times in a row while the device
    *  was online. Given up on, so the queue behind them can move. */
   deadLettered: number;
+  /** WHICH visits those were, so the message that asks a person to redo
+   *  physical work can name the door they have to go back to.
+   *
+   *  It used to say "2 queued actions the server kept refusing have been
+   *  discarded so the rest could sync. Check the visit and redo it if needed"
+   *  -- the only message in this app that asks somebody to drive somewhere
+   *  again, and the least specific one in it. The action is in hand at the
+   *  point of the decision; it just was not carried out. */
+  deadLetteredVisitIds: string[];
+  /** Same, for a photo whose bytes are gone from this device. */
+  droppedVisitIds: string[];
   /** ANOTHER replay was already in flight, so this call did nothing.
    *
    *  Without this a caller cannot tell "I flushed and nothing succeeded" from
@@ -184,7 +195,13 @@ export const REPLAY_DEADLINE_MS = 60_000;
 export async function syncQueue(callers: SyncCallers, userId: string): Promise<SyncResult> {
   if (running) {
     return {
-      attempted: 0, succeeded: 0, failed: 0, dropped: 0, deadLettered: 0,
+      attempted: 0,
+      succeeded: 0,
+      failed: 0,
+      dropped: 0,
+      deadLettered: 0,
+      deadLetteredVisitIds: [],
+      droppedVisitIds: [],
       alreadyRunning: true,
     };
   }
@@ -196,7 +213,16 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
     failed: 0,
     dropped: 0,
     deadLettered: 0,
+    deadLetteredVisitIds: [],
+    droppedVisitIds: [],
   };
+  // Sets rather than a guarded push, so the dead-letter branch stays the three
+  // flat statements it has always been: delete, count, continue. A nested `if`
+  // in there also defeats the extraction in tests/offline-dead-letter.test.ts,
+  // which reads the branch as source and checks it continues rather than
+  // breaking -- a rule worth keeping legible.
+  const deadLetteredVisits = new Set<string>();
+  const droppedVisits = new Set<string>();
   try {
     // Only this user's actions. Replaying another tech's work under the
     // signed-in tech's identity fails every authorization check and wedges the
@@ -221,6 +247,7 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
           // queue can move, and report it as a loss rather than a success.
           await deleteAction(action.id);
           result.dropped++;
+          droppedVisits.add(action.visitId);
           console.error("offline sync dropped an action", action, e);
           continue;
         }
@@ -246,6 +273,7 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
             await deleteAction(action.id);
             if (action.kind === "photo") await deletePhoto(action.photoId);
             result.deadLettered++;
+            deadLetteredVisits.add(action.visitId);
             console.error("offline sync gave up on an action", action, e);
             continue;
           }
@@ -260,5 +288,7 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
   } finally {
     running = false;
   }
+  result.deadLetteredVisitIds = [...deadLetteredVisits];
+  result.droppedVisitIds = [...droppedVisits];
   return result;
 }

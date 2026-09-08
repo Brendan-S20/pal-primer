@@ -59,11 +59,18 @@ function endpointFor(lat: number, lon: number): string {
   // every answer is then checked against how far each point had to be snapped.
   // A wrong guess costs a wasted request, not a wrong route.
   const region =
-    lon < -104 ? "west" : lon < -87 ? (lat < 36.5 ? "south" : "midwest") : lat < 39.5 ? "south" : "northeast";
+    lon < -104
+      ? "west"
+      : lon < -87
+        ? lat < 36.5
+          ? "south"
+          : "midwest"
+        : lat < 39.5
+          ? "south"
+          : "northeast";
   return map[region] ?? map.default ?? OSRM_URL;
 }
-const USER_AGENT =
-  "HoundStack/1.0 (pet-waste operations app; contact: support@houndstack.com)";
+const USER_AGENT = "HoundStack/1.0 (pet-waste operations app; contact: support@houndstack.com)";
 
 /** How many points one Table request may carry.
  *
@@ -99,10 +106,25 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
 
   const { data: staff } = await admin
     .from("staff")
-    .select("start_latitude, start_longitude")
+    .select("start_latitude, start_longitude, end_latitude, end_longitude")
     .eq("organization_id", orgId)
     .eq("active", true)
     .eq("routing_available", true);
+
+  // Where the day ENDS, which the planner started costing in 20260831150000.
+  // Without these two the closing leg is the only leg on the route that is not
+  // measured, and drive_minutes falls back to `dense_urban`'s 11 km/h -- which
+  // on this org's own data turns an 8km hop into 96 minutes. A solver that
+  // trades real measured stop-legs against a closing leg inflated fourfold does
+  // not merely mis-report, it reorders the day to avoid a cost that is not
+  // there. That is the same fault 20260826180000 named and 20260831130000
+  // finished fixing, and it would have been reintroduced by the end point
+  // itself. Measured before this line existed: 90.9 stop-minutes became 103.8.
+  const { data: dumps } = await admin
+    .from("waste_disposal_facilities")
+    .select("latitude, longitude")
+    .eq("organization_id", orgId)
+    .eq("active", true);
 
   const seen = new Set<string>();
   const points: Point[] = [];
@@ -115,8 +137,26 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
     points.push(p);
   };
 
-  for (const v of visits ?? []) add((v as any).properties?.latitude, (v as any).properties?.longitude);
-  for (const s of staff ?? []) add((s as any).start_latitude, (s as any).start_longitude);
+  // Row shapes rather than an `as any` per field. `admin` is untyped, so every
+  // read out of it used to cast at the point of use; naming the three shapes
+  // once says what came back, and stops each new column adding another cast to
+  // a lint baseline that is already red.
+  type Coord = { latitude?: number | null; longitude?: number | null };
+  type VisitRow = { properties?: Coord | null };
+  type StaffRow = {
+    start_latitude?: number | null;
+    start_longitude?: number | null;
+    end_latitude?: number | null;
+    end_longitude?: number | null;
+  };
+
+  for (const v of (visits ?? []) as VisitRow[])
+    add(v.properties?.latitude, v.properties?.longitude);
+  for (const s of (staff ?? []) as StaffRow[]) {
+    add(s.start_latitude, s.start_longitude);
+    add(s.end_latitude, s.end_longitude);
+  }
+  for (const d of (dumps ?? []) as Coord[]) add(d.latitude, d.longitude);
 
   // One point is a matrix of itself; nothing to measure.
   if (points.length < 2) return 0;
@@ -218,5 +258,25 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
     console.error("[road-legs] upsert failed", error.message);
     return 0;
   }
+
+  // Re-measure what this workspace's roads are actually worth, now that there
+  // are more of them to measure.
+  //
+  // The estimator underneath drive_minutes used to reach for a hardcoded table
+  // keyed on `area_type` -- 11 km/h for `dense_urban` against the 37.5 km/h
+  // this org's own 1262 legs record. Every leg written above is evidence about
+  // the real road network, and it costs one statement per day planned to turn
+  // it into the constant the fallback uses. See 20260903090000.
+  //
+  // Deliberately after the upsert and deliberately not awaited into the return
+  // value: the legs are the product of this function and they are already
+  // safe. A failure here leaves the previous profile in place, which is a
+  // slightly staler estimate for legs nobody has driven -- not a reason to
+  // report that the measurement failed.
+  const { error: profileError } = await admin.rpc("refresh_road_profile", { _org_id: orgId });
+  if (profileError) {
+    console.error("[road-legs] road profile refresh failed", profileError.message);
+  }
+
   return rows.length;
 }
