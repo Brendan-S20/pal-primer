@@ -147,6 +147,14 @@ export function WeatherStrip({ day }: { day: string }) {
             ? targets[0]
             : `${targets[0]} (shifted to a working day)`
           : `${targets.length} working days`;
+      // Said before the success toast, because it is the part that needs acting
+      // on: a customer who was not told is a locked gate on a day nobody comes.
+      if (r.notifyFailed) {
+        toast.warning(
+          `${r.notifyFailed} customer${r.notifyFailed === 1 ? " was" : "s were"} not emailed about the change. Call ${r.notifyFailed === 1 ? "them" : "those"} before the day.`,
+          { duration: 15000 },
+        );
+      }
       toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to ${where}`, {
         duration: 8000,
         action: moves.length
