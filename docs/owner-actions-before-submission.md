@@ -239,6 +239,35 @@ web app" as blocked, because the machinery is built and correct here and simply
 is not served. It is a strong claim for a product used in driveways with one
 bar of signal, and it is unavailable until this is fixed.
 
+## 10. Decide whether seats should reconcile on a schedule — NEW to this list
+
+Not blocking anything, and not urgent. It is here because it is a decision
+rather than a task, and because the money can move the wrong way while it waits.
+
+The Stripe seat-overage quantity is reconciled to the active-employee count on
+three events: a staff toggle, an invite accepted, and somebody opening the
+billing page. **Nothing reconciles it on a schedule** — not the nightly run, not
+a cron. Checked 2026-09-09.
+
+Each of those three is best effort by design, so a Stripe hiccup cannot block a
+staff toggle, and that should not change. As of 2026-09-09 a failure is at least
+visible: the users page now warns that the billing seat count was not updated
+and that the next invoice may not match the team. Before that it was silent.
+
+What is still true is that an organization which does none of those three keeps
+a drifted quantity indefinitely. The direction that matters is deactivating an
+employee and going on charging for the seat, on an invoice the customer has no
+reason to question. The opposite direction only costs us money.
+
+- [ ] Decide whether the nightly run should reconcile seats for every org with a
+      live subscription.
+
+It is perhaps fifteen lines in `src/routes/api/public/hooks/nightly.ts`, calling
+the `syncOrgSeatQuantity` that already exists. What makes it yours rather than
+mine is that it adds an unattended Stripe API call per organization per night,
+every night, forever. That is an operating cost and a rate-limit surface, and it
+should be chosen rather than arrive in a commit.
+
 ## Things you do NOT need to do
 
 Listed so they stop taking up room.
