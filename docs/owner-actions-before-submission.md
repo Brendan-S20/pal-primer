@@ -239,6 +239,77 @@ web app" as blocked, because the machinery is built and correct here and simply
 is not served. It is a strong claim for a product used in driveways with one
 bar of signal, and it is unavailable until this is fixed.
 
+### What 2026-09-09 ruled out, so nobody re-runs it
+
+A redeploy was triggered from the Lovable API and **completed successfully**
+(`status: "completed"`, `agentFinished: true`, `updated_at` after the trigger).
+`/sw.js` was polled eighteen times over the following six minutes and answered
+404 every time, and `check:pwa:live` agreed. So the deploy is not stale and
+re-deploying is not the fix.
+
+Four things are now measured rather than assumed:
+
+- **The live output is current.** `manifest.webmanifest` served from production
+  is byte-identical to the one a local build produces.
+- **The build is correct on a clean tree.** `.output` was deleted and rebuilt
+  from nothing. Both `sw.js` and `workbox-<hash>.js` are emitted into
+  `.output/public`, and both appear in the public-asset manifest embedded in
+  `.output/server/index.mjs`. An earlier theory that a *stale* `sw.js` from a
+  previous build was propping the local build up is **wrong**, and was tested
+  before it was believed.
+- **The split is exact, and it is not "static files".** Everything copied from
+  `public/` is served (`push-handlers.js`, `pwa-192.png`, `favicon.svg`), and so
+  is everything the client build emits through Rollup, `manifest.webmanifest`
+  included. The only two files missing are the two `vite-plugin-pwa` writes
+  directly to disk in its `closeBundle` hook.
+- **The 404 comes from the app, not the CDN.** Served files carry an
+  `x-deployment-id` response header; the `/sw.js` 404 comes back as `text/html`
+  with no such header, which is the SSR worker's own not-found page. The asset
+  layer never had the file to serve.
+
+That is as far as read-only access reaches. The remaining question is what the
+host's pipeline does with files written after the bundle is generated, and
+answering it means asking the host.
+
+**One observation worth keeping, which is NOT the cause.** Nitro records
+`/sw.js` in that embedded manifest with `size: 21373` while the file on disk is
+21442 bytes: `vite-plugin-pwa` writes the worker twice and the scan lands
+between the two writes. It is inert on Cloudflare, which serves assets from its
+own upload rather than from those numbers, but it is wrong, and a runtime that
+did trust the recorded length would serve a worker truncated by 69 bytes, which
+fails to parse and installs nothing. Recorded so that whoever fixes the deploy
+does not then chase this as a second mystery.
+
+## 9b. The app was not installable either, for an unrelated reason. FIXED
+
+Found while measuring the above, and fixed in the repo the same day, so this
+one needs nothing from you. It is here because it changes what "fix the worker"
+buys.
+
+The HTML at `https://app.houndstack.com/auth` carried four `<link>` rels:
+stylesheet, two icons, and apple-touch-icon. There was no `rel="manifest"` on
+any page, and no occurrence of `webmanifest` anywhere under `src/`.
+
+`vite-plugin-pwa` does two things: it generates `manifest.webmanifest`, and it
+injects the link that references it into `index.html`. This app is
+server-rendered and the web build emits no `index.html`, so the first half ran
+and the second half had nothing to run against. The manifest was generated,
+deployed, and served with a 200 for the life of the app, and no browser ever
+read it, because a manifest is only fetched when a document links it.
+
+So the two halves of "this is a PWA" were broken independently: no worker
+(hosting) and no installability signal (this). **Fixing the worker would not
+have made the app installable on its own.** The link and a matching
+`theme-color` now live in `src/routes/__root.tsx`, `check:pwa:live` asks the
+running site for both, and `tests/a-webmanifest-nothing-pointed-at.test.ts`
+holds it in place.
+
+The 200 on `/manifest.webmanifest` is why this hid for so long. It was listed
+in `check:pwa:live` as a CONTROL, proving "other files from the same build
+output ARE served, so the 404 is the worker specifically". That reading was
+correct and still is. It simply answers a different question from "is any of
+this reaching a browser", and one 200 looked like an answer to both.
+
 ## 10. Decide whether seats should reconcile on a schedule — NEW to this list
 
 Not blocking anything, and not urgent. It is here because it is a decision

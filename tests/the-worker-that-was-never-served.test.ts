@@ -62,8 +62,15 @@ describe("and it cannot fail the build for the wrong reason", () => {
     // trains people to re-run rather than to look, which is how a real 404
     // would get waved through.
     expect(SCRIPT).toMatch(/could not reach the origin/);
-    const guard = SCRIPT.slice(SCRIPT.indexOf('if (typeof sw !== "number")'));
+    // Anchored on the message rather than on the condition. The condition grew
+    // a second clause when the check started fetching a page as well as the
+    // worker, and pinning its exact text made a correct change look like a
+    // regression -- the guard was still there and still exited 0. What has to
+    // hold is that the message and the early exit stay together.
+    const guard = SCRIPT.slice(SCRIPT.indexOf("could not reach the origin"));
     expect(guard.slice(0, 200)).toMatch(/process\.exit\(0\)/);
+    // And that it is a guard: something must still be able to fail below it.
+    expect(guard).toMatch(/process\.exit\(1\)/);
   });
 
   it("checks siblings, so it can tell a missing worker from a dead deploy", () => {
