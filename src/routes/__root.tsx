@@ -109,6 +109,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies.",
       },
       { name: "robots", content: "noindex" },
+      // Matches manifest.theme_color in vite.config.ts (brand cream). Chrome
+      // reads the manifest for the installed window and this tag for the
+      // browser tab, so the two have to agree or the address bar and the
+      // installed title bar are different colours.
+      { name: "theme-color", content: "#fdfaf1" },
       { property: "og:site_name", content: "HoundStack" },
       { property: "og:type", content: "website" },
       { property: "og:title", content: "HoundStack - Field Service App" },
@@ -140,6 +145,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "icon", type: "image/x-icon", href: "/favicon.ico", sizes: "48x48" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+      // THE WEBMANIFEST WAS SERVED AND NOTHING POINTED AT IT.
+      //
+      // vite-plugin-pwa generates /manifest.webmanifest and injects the link
+      // that references it into index.html. This app is server-rendered and
+      // the web build emits no index.html at all, so the generation half ran
+      // and the injection half had nowhere to run. Measured against the live
+      // site on 2026-09-09: /manifest.webmanifest answers 200, and the HTML at
+      // /auth carries exactly four <link> rels -- stylesheet, two icons and
+      // apple-touch-icon. No manifest among them.
+      //
+      // A manifest a document does not link is not read, so Chrome and Edge
+      // had no installability signal and never offered "Install app" on any
+      // surface. That is independent of the /sw.js 404: fixing the worker
+      // would not have made the app installable on its own, and this does not
+      // depend on the worker being fixed first.
+      //
+      // Not gated on the native bundle even though the store app is already
+      // installed, because a manifest whose scope does not match a
+      // capacitor://localhost document is ignored by the WebView rather than
+      // acted on -- gating it would add a branch to guard against nothing.
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
