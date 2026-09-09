@@ -82,8 +82,30 @@ function UsersPage() {
 
   const toggleActive = useMutation({
     mutationFn: (v: { staffId: string; active: boolean }) => activeFn({ data: v }),
-    onSuccess: () => {
+    onSuccess: (r: any) => {
       toast.success("Staff updated");
+      // THE SEAT COUNT JUST CHANGED, AND THE BILLING SIDE MAY NOT HAVE.
+      //
+      // The staff row is written by the RPC above and is correct either way;
+      // reconciling the Stripe seat-overage quantity is deliberately
+      // best-effort so a Stripe outage cannot stop somebody deactivating an
+      // employee. What it must not be is invisible.
+      //
+      // Nothing reconciles seats on a schedule. The only healing is the next
+      // toggle, the next invite accepted, or somebody opening Billing, so a
+      // failure here can sit for as long as none of those happens. The
+      // direction that hurts is deactivating an employee and going on charging
+      // for the seat, which is why this is a warning rather than a line in the
+      // success toast.
+      //
+      // `skipped` is not a failure: no live subscription, not a per-employee
+      // plan, or no Stripe key. Those are ordinary and say nothing.
+      if (r?.seats?.state === "failed" || r?.seats?.state === "unknown") {
+        toast.warning(
+          "The billing seat count was not updated. Open Billing to reconcile it, or your next invoice may not match your team.",
+          { duration: 12000 },
+        );
+      }
       qc.invalidateQueries({ queryKey: ["org-users"] });
     },
     onError: (e: any) => toast.error(e.message),

@@ -38,6 +38,20 @@ export const changeUserRole = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/**
+ * What the Stripe seat reconcile did, for a caller that wants to say so.
+ *
+ * `skipped` is not a failure and must not be reported as one: it is the answer
+ * for an org with no live subscription, one not on a per-employee plan, or a
+ * Stripe key that is not configured, and those are the ordinary cases. Only
+ * `failed` means the seat quantity may now disagree with the employee count.
+ */
+export type SeatOutcome =
+  | { state: "synced"; quantity: number; changed: boolean }
+  | { state: "skipped"; why: string }
+  | { state: "failed" }
+  | { state: "unknown" };
+
 export const setStaffActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ staffId: z.string().uuid(), active: z.boolean() }).parse(d))
@@ -47,17 +61,33 @@ export const setStaffActive = createServerFn({ method: "POST" })
       _active: data.active,
     });
     if (error) throw new Error(error.message);
-    // Activating/deactivating an employee changes the billable seat count —
-    // reconcile the Stripe seat-overage quantity (best-effort; never blocks the
-    // toggle if billing isn't configured or Stripe hiccups).
+    // Activating/deactivating an employee changes the billable seat count, so
+    // the Stripe seat-overage quantity is reconciled here. Best-effort, and
+    // that does not change: never block a staff toggle because billing is not
+    // configured or Stripe hiccupped.
+    //
+    // WHAT CHANGED IS THAT A FAILURE IS NO LONGER SILENT. syncOrgSeatQuantity
+    // already returns a discriminated result and all three call sites threw it
+    // away. Nothing reconciles seats on a schedule -- not the nightly run, not
+    // a cron -- so the only healing is the next staff toggle, the next invite
+    // accepted, or somebody opening the billing page. An organization that
+    // does none of those keeps the drifted quantity indefinitely.
+    //
+    // The direction that matters: deactivating an employee and losing the sync
+    // means we go on charging for a seat the customer no longer has. The
+    // opposite direction only costs us money, which is our problem rather
+    // than theirs.
+    let seats: SeatOutcome = { state: "unknown" };
     try {
       const orgId = await resolveOrgId(context.supabase, context.userId);
       const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
-      await syncOrgSeatQuantity(orgId);
+      const r = await syncOrgSeatQuantity(orgId);
+      seats = "skipped" in r ? { state: "skipped", why: r.skipped } : { state: "synced", quantity: r.quantity, changed: r.changed };
     } catch (e) {
+      seats = { state: "failed" };
       console.error("seat sync after set_staff_active failed", (e as Error).message);
     }
-    return { ok: true };
+    return { ok: true, seats };
   });
 
 // Reconcile the caller org's Stripe seat-overage quantity to its current active
@@ -67,10 +97,12 @@ export const setStaffActive = createServerFn({ method: "POST" })
 export const resyncMySeats = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    let seats: SeatOutcome = { state: "unknown" };
     try {
       const orgId = await resolveOrgId(context.supabase, context.userId);
       const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
-      await syncOrgSeatQuantity(orgId);
+      const r = await syncOrgSeatQuantity(orgId);
+      seats = "skipped" in r ? { state: "skipped", why: r.skipped } : { state: "synced", quantity: r.quantity, changed: r.changed };
       // Let owners/managers know a teammate joined.
       try {
         const { data: userData } = await context.supabase.auth.getUser();
@@ -87,9 +119,10 @@ export const resyncMySeats = createServerFn({ method: "POST" })
         console.error("teammate-joined notification failed", (e as Error).message);
       }
     } catch (e) {
+      seats = { state: "failed" };
       console.error("resyncMySeats failed", (e as Error).message);
     }
-    return { ok: true };
+    return { ok: true, seats };
   });
 
 // ── Teammate invites (finding #40) ───────────────────────────────────────────
