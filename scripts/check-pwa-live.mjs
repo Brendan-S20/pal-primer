@@ -42,6 +42,26 @@
 // reasons, and each one is invisible from the other. Both are asked here, and
 // both are asked of the running site rather than the build, because that is
 // the whole reason this file exists.
+//
+// ── WHICH DEPLOYMENT THIS MEASURED ───────────────────────────────────────
+//
+// THE HOST DOES NOT DEPLOY ON PUSH TO main. Measured 2026-09-09: the
+// rel="manifest" fix merged to main at 14:20, the host picked the commit up
+// into its preview by 14:22, and app.houndstack.com went on serving the
+// deployment somebody had triggered by hand at 13:41. Neither new tag was
+// live, and the x-deployment-id had not moved.
+//
+// That matters more to this file than to any other, because ci.yml runs it as
+// a job attached to a COMMIT. A red result reads as "this commit is not
+// served correctly" when what it means is "whatever is deployed is not served
+// correctly", and the two come apart by however long it has been since
+// somebody pressed deploy. An hour of chasing why a merged fix had not taken
+// effect ended here.
+//
+// So the deployment id is printed with every run. It is not asserted on -- the
+// check has no way to know which deployment SHOULD be live -- but it is on
+// screen, so "the fix is not deployed yet" and "the fix is deployed and does
+// not work" stop looking identical.
 const ORIGIN = process.env.PWA_ORIGIN ?? "https://app.houndstack.com";
 
 // Served by the same build output as sw.js. If these are missing too the
@@ -71,6 +91,18 @@ async function status(path) {
   return (await get(path)).status;
 }
 
+// Which deployment answered. Read from a file that IS served -- the 404 comes
+// back from the SSR worker without the header, so asking /sw.js for it would
+// always report "unknown" and say nothing.
+async function deploymentId(path) {
+  const { res } = await get(path);
+  const raw = res?.headers.get("x-deployment-id");
+  if (!raw) return null;
+  // psr2.<uuid>.<epoch>.<signature> -- the uuid is the deployment, the rest
+  // changes per response and would make two identical deploys look different.
+  return raw.split(".")[1] ?? raw;
+}
+
 const sw = await status("/sw.js");
 const companions = Object.fromEntries(
   await Promise.all(COMPANIONS.map(async (p) => [p, await status(p)])),
@@ -84,7 +116,10 @@ const html = page.res ? await page.res.text() : "";
 const manifestHref = html.match(/<link[^>]+rel=["']manifest["'][^>]*>/i)?.[0];
 const linkedHref = manifestHref?.match(/href=["']([^"']+)["']/i)?.[1] ?? null;
 
+const deployment = await deploymentId("/favicon.ico");
+
 console.log(`\n${ORIGIN}`);
+console.log(`  deployment             ${deployment ?? "unknown"}`);
 console.log(`  /sw.js                 ${sw}`);
 for (const [p, s] of Object.entries(companions)) console.log(`  ${p.padEnd(22)} ${s}`);
 console.log(`  ${PAGE.padEnd(22)} ${page.status}`);
@@ -145,6 +180,10 @@ console.error(`✗ ${ORIGIN} is not serving a working PWA:\n`);
 for (const p of problems) console.error(`  - ${p}\n`);
 console.error(
   "  check:pwa reads .output/public and cannot see any of this: it proves the\n" +
-    "  build, not the deployment.",
+    "  build, not the deployment.\n\n" +
+    `  BEFORE READING ANY OF THE ABOVE AS A VERDICT ON A COMMIT: this measured\n` +
+    `  deployment ${deployment ?? "unknown"}, and the host does not deploy on push to main.\n` +
+    "  If a fix for one of these merged recently, check that it was deployed\n" +
+    "  before concluding it did not work.",
 );
 process.exit(1);
