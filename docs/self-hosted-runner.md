@@ -100,6 +100,66 @@ Worth knowing before the first surprising result.
   public repo, and GitHub's own documentation says so — if this repository is
   ever made public, delete `CI_RUNNER` and remove the runner first.
 
+## Reading a failure
+
+Five things that look alike on the Actions page and are not. Written on
+2026-09-09 after a day of hitting four of them, including two I diagnosed
+wrongly first. The discriminator is given for each, because guessing costs a
+ten-minute run.
+
+**Never picked up.** The job sits `queued` with no `runner_id`, no steps and no
+logs, and finishes in about two seconds with zero billable milliseconds. That
+is a job that never received a machine. On hosted runners this was the failure
+that moved `verify` here in the first place.
+
+**Killed mid-run.** Steps recorded, tests streaming green, then:
+
+```
+##[error]Process completed with exit code 130.
+##[error]The runner has received a shutdown signal.
+```
+
+Exit 130 is SIGINT. Somebody stopped or restarted the runner service, or the
+machine slept, while a job was running. **Not a code failure**, and the log
+proves it: every test above the error reports a pass. Re-run it.
+
+**Slow, not stuck.** `setup-node` on this machine takes about six and a half
+minutes against roughly two on a hosted runner, and a whole run lands near ten.
+That is normal here. I called it wedged at four minutes and was wrong; the same
+step then completed successfully at 6m39s. Before concluding a step has hung,
+compare it against a step that completed on the same machine rather than
+against a hosted baseline.
+
+**Queued behind another workflow.** `ci.yml` shows nothing in progress and
+three runs queued, which reads exactly like a dead runner. It is one runner and
+`sandboxes.yml` was using it: the database job and the four-width browser sweep
+together run about twenty minutes. Check for in-progress runs **across all
+workflows** before deciding the runner is stuck. Filtering to `ci.yml` is what
+nearly sent me to ask for a restart that was not needed.
+
+**A native panic in a build dependency.** Typecheck and the full suite pass,
+then the build dies:
+
+```
+thread '<unnamed>' panicked at lightningcss/src/printer.rs:350:30:
+byte index 2 is out of bounds of ``
+sh: line 1: 72429 Abort trap: 6           vite build
+##[error]Process completed with exit code 134.
+```
+
+Exit 134 is SIGABRT. This is nondeterministic: the same commit was built twice
+locally and passed both times, and passed in CI on the next run. It is not the
+runner and not the diff. Re-run once; if it recurs often, pin or replace the CSS
+minifier rather than living with it.
+
+### Before blaming the machine
+
+A rule that would have saved two of the above. **A job that recorded steps did
+not fail to start**, and **a job whose tests all passed did not fail on the
+code** -- so read the last step and the exit code before forming a theory. Exit
+130 and exit 134 are both "something killed the process", and neither is a
+reason to look at the branch.
+
 ## Turning it off
 
 Delete the `CI_RUNNER` variable. That is enough — the next run goes to hosted
