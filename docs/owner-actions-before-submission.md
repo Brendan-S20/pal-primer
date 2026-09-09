@@ -267,6 +267,15 @@ Four things are now measured rather than assumed:
   with no such header, which is the SSR worker's own not-found page. The asset
   layer never had the file to serve.
 
+A sixth thing, added after deploying 5e633c7 as deployment `b3e2917c` on
+2026-09-09: **server-rendered head content DOES reach production.** The
+`rel="manifest"` link and the `theme-color` meta added in #185 are both live in
+the HTML at `/auth` immediately after that deploy. So the host is not dropping
+anything the SSR worker renders, and a build made from a fresh commit and
+deployed the same minute still answers 404 for `/sw.js`. It is neither a stale
+deploy nor a one-off bad build, and it is not "the deploy loses things
+generally". It is those two files.
+
 That is as far as read-only access reaches. The remaining question is what the
 host's pipeline does with files written after the bundle is generated, and
 answering it means asking the host.
@@ -300,7 +309,7 @@ did trust the recorded length would serve a worker truncated by 69 bytes, which
 fails to parse and installs nothing. Recorded so that whoever fixes the deploy
 does not then chase this as a second mystery.
 
-## 9b. The app was not installable either, for an unrelated reason. FIXED
+## 9b. The app was not installable either, for an unrelated reason. FIXED AND DEPLOYED
 
 Found while measuring the above, and fixed in the repo the same day, so this
 one needs nothing from you. It is here because it changes what "fix the worker"
@@ -323,6 +332,24 @@ have made the app installable on its own.** The link and a matching
 `theme-color` now live in `src/routes/__root.tsx`, `check:pwa:live` asks the
 running site for both, and `tests/a-webmanifest-nothing-pointed-at.test.ts`
 holds it in place.
+
+Deployed and verified on 2026-09-09 as deployment `b3e2917c`:
+
+```
+  deployment             b3e2917c-2c62-4009-ac89-32756df46966
+  /sw.js                 404
+  /manifest.webmanifest  200
+  rel="manifest" in HTML /manifest.webmanifest
+```
+
+**What that does and does not buy.** The manifest is now linked and complete:
+name, short_name, three icons including a 512 maskable, `start_url`, `scope`,
+`display: standalone`, over HTTPS. What is still unknown is whether Chrome
+offers an install prompt without a service worker, since its installability
+criteria have changed more than once on exactly that point and differ between
+desktop and Android. That is a question for a real browser on a real phone
+rather than for this file, and it is why the site's claim register still holds
+"install it on your phone" rather than releasing it.
 
 The 200 on `/manifest.webmanifest` is why this hid for so long. It was listed
 in `check:pwa:live` as a CONTROL, proving "other files from the same build
