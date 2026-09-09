@@ -480,7 +480,7 @@ HoundStack runs two live Stripe accounts:
 | | account | role |
 |---|---|---|
 | Platform | `acct_1U0RifQjJFmqXgZD` | bills tenants for the software — `STRIPE_SECRET_KEY` |
-| Connect | `acct_1U0CVSQUHYdejlaV` | tenants charge their own clients; our 50 bps comes from here — `STRIPE_CONNECT_*` |
+| Connect | `acct_1U0CVSQUHYdejlaV` | tenants charge their own clients; the platform fee is taken here, currently at a rate of zero — `STRIPE_CONNECT_*` |
 
 The v1.21f catalog was created on the **Connect** account and `platform_plans`
 pointed at it. Subscription checkout runs on `STRIPE_SECRET_KEY` — the platform
@@ -737,6 +737,26 @@ configured. Nothing here replaces that.
 > Stripe live-mode entry below.
 
 **A platform transaction fee: 50 bps on charges over $10.**
+
+> **STATUS, 2026-09-09: the rate is currently ZERO.** `PLATFORM_FEE_BPS` was set
+> to 0 in #178 so the posted price could be Stripe's own 2.9% + 30 cents with
+> nothing on top. On a DIRECT charge Stripe bills the tenant's own account, so
+> 50 bps on top made their real cost about 3.4% while the site said 2.9%, and no
+> wording fixes a number larger than the published one.
+>
+> **Everything below still stands and is why the machinery was left in place**
+> rather than deleted: the term, the threshold reasoning, the ten call sites and
+> the refund asymmetry all apply again the moment the rate moves off zero. The
+> fee returns in a different shape once charges route through the platform as
+> destination charges, at which point Stripe bills US at a negotiated volume
+> rate, the posted price stays 2.9% + 30 cents, and the spread is the margin.
+>
+> Two things depend on this staying accurate. `docs/MARKETING_CLAIMS.md` in the
+> site repo marks "HoundStack adds nothing on top" as true-but-time-limited and
+> tells copywriters to quote the rate rather than promise a margin. And
+> `expectFeeCopy` in the franchise tests asserts the product's own copy names
+> the fee when the constant is above zero and stays silent when it is not, so
+> the screens follow the constant without anybody remembering to change them.
 
 The direction is Jobber-shaped — a cut of payment volume on top of the
 subscription. `application_fee_amount` on every tenant→client charge, which on a
