@@ -27,6 +27,8 @@ import {
   setProcessingFeePassThrough,
   attestCardSurcharge,
 } from "@/lib/processing-fee.functions";
+import { describeStripeRates } from "@/lib/processing-fee";
+import { describePlatformFee } from "@/lib/platform-fee";
 import { sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -113,6 +115,10 @@ function PaymentsSettings() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // null while PLATFORM_FEE_BPS is 0, which is why the sentence below is built
+  // with a conditional rather than a ternary picking between two wordings.
+  const platformFee = describePlatformFee();
+
   return (
     // Wider than the old max-w-3xl: the Payments tab is a transaction table
     // inside an iframe, and 768px forced it to scroll horizontally at every
@@ -175,6 +181,22 @@ function PaymentsSettings() {
           <p className="text-sm text-muted-foreground">
             No Stripe account connected yet. Set one up to start collecting payments. You'll finish
             a short Stripe verification right here in the app.
+          </p>
+          {/* WHAT IT COSTS, ON THE SCREEN WHERE THE DECISION IS MADE.
+              The rate used to appear only inside the processing-fee card, which
+              renders under `cfg.chargesEnabled` -- so a tenant could read the
+              price only AFTER onboarding, having already decided. The site
+              quotes this number to get them here; the app owed it to them at
+              the same moment.
+
+              Both sentences are derived, not written: describeStripeRates()
+              from the rate constants, describePlatformFee() from
+              PLATFORM_FEE_BPS, which is 0 today and renders nothing at all. If
+              the platform fee comes back, this line grows a clause on its own
+              rather than waiting for somebody to remember this screen. */}
+          <p className="text-sm text-muted-foreground">
+            Stripe charges {describeStripeRates()}, billed to your own account.
+            {platformFee ? ` HoundStack adds ${platformFee}.` : ""} Payouts settle to you directly.
           </p>
           <Button onClick={() => ensure.mutate()} disabled={ensure.isPending}>
             {ensure.isPending ? "Setting up…" : "Set up payments"}
@@ -326,8 +348,8 @@ function ProcessingFeeCard() {
       <div>
         <div className="text-sm font-medium">Processing fees</div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Stripe charges you 2.9% + 30¢ on cards and 0.8% (capped at $5) on bank payments. You can
-          absorb that or pass it to the client as a separate line at checkout.
+          Stripe charges you {describeStripeRates()}. You can absorb that or pass it to the
+          client as a separate line at checkout.
         </p>
       </div>
 

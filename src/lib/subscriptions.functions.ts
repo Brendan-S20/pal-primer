@@ -96,6 +96,18 @@ export const createSubscription = createServerFn({ method: "POST" })
         dog_count: data.dogCount ?? null,
         unit_count: data.unitCount ?? null,
         zone_id: data.zoneId ?? null,
+        // Where this price came from, recorded beside the price itself.
+        // `zone_id` is where the service is ROUTED and an admin may move it
+        // without meaning to restate what priced it; this is the rate card
+        // that was in force when the number was set.
+        //
+        // No price_overridden_at here even though the form lets a person edit
+        // the prefilled figure: the server cannot tell an accepted zone price
+        // from a typed one, and guessing would put a false "hand-priced" flag
+        // on the majority that just accepted it. A service created off its
+        // zone's rate shows up as drift instead, which is what it is.
+        priced_from_zone_id: data.zoneId ?? null,
+        priced_at: new Date().toISOString(),
         billing_cadence: data.billingCadence ?? "postpaid",
         interval_weeks: data.frequency === "weekly" ? (data.intervalWeeks ?? null) : null,
         interval_days: data.frequency === "every_n_days" ? (data.intervalDays ?? null) : null,
@@ -186,6 +198,11 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // end date cancels; clearing it (or moving it to the future) on a
     // canceled service revives it — otherwise ending a service was a one-way
     // door the Edit drawer silently couldn't undo.
+    // Computed BEFORE the update, because the row is about to stop being the
+    // before-image. The activity log recomputes the same thing further down
+    // for its summary; this one has to reach the patch.
+    const priceWasTypedOver = !!before && before.price_cents !== data.priceCents;
+
     const today = new Date().toISOString().slice(0, 10);
     const endsInPast = !!data.endsOn && data.endsOn <= today;
     const statusPatch = endsInPast
@@ -203,6 +220,12 @@ export const updateSubscription = createServerFn({ method: "POST" })
         dog_count: data.dogCount ?? null,
         unit_count: data.unitCount ?? null,
         zone_id: data.zoneId ?? null,
+        // A person typed a different number. Stamped only on a real change, so
+        // re-saving the drawer without touching the price does not manufacture
+        // an override, and left alone otherwise so an earlier one survives.
+        ...(priceWasTypedOver
+          ? { price_overridden_at: new Date().toISOString(), priced_at: new Date().toISOString() }
+          : {}),
         billing_cadence: data.billingCadence ?? "postpaid",
         interval_weeks: data.frequency === "weekly" ? (data.intervalWeeks ?? null) : null,
         interval_days: data.frequency === "every_n_days" ? (data.intervalDays ?? null) : null,
@@ -228,7 +251,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
 
     if (before) {
       const { logActivity } = await import("@/lib/activity.server");
-      const priceChanged = before.price_cents !== data.priceCents;
+      const priceChanged = priceWasTypedOver;
       await logActivity(supabase, {
         orgId: before.organization_id,
         clientId: before.client_id,
@@ -395,7 +418,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time",
+        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

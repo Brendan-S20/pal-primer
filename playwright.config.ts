@@ -80,7 +80,27 @@ export default defineConfig({
     : {
         command: "npx vite dev --port 5599 --host 127.0.0.1",
         url: "http://127.0.0.1:5599/auth",
-        reuseExistingServer: true,
+        // ── IN CI THIS MUST START ITS OWN SERVER, NOT ADOPT ONE ──────────
+        //
+        // Reuse is a convenience locally: a dev server already up on 5599 is
+        // this checkout, and attaching to it saves a cold start per sweep.
+        //
+        // On the self-hosted runner it is a way to go GREEN against code that
+        // is not the code under test. The runner shares a machine with whoever
+        // is working on it, so 5599 may be held by another branch, another
+        // worktree, or a process orphaned out of an interrupted run — and
+        // `reuseExistingServer: true` adopts it silently. On 2026-08-29 that
+        // is exactly what happened: an orphaned `vite dev` from a developer's
+        // own tree answered the sweep, the job logged not one `[WebServer]`
+        // line, and all 58 public tests reported failures belonging to a
+        // checkout the runner had never built. Red that time. Nothing about
+        // the mechanism prefers red.
+        //
+        // False with CI set means Playwright refuses a busy port instead of
+        // measuring whatever is behind it. A stale server becomes a loud
+        // startup error naming the port, which is a fault about the runner —
+        // where it belongs — rather than a layout finding that is not true.
+        reuseExistingServer: !process.env.CI,
         timeout: 180_000,
         // Passed HERE rather than left to a `.env`, deliberately.
         //

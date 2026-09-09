@@ -203,19 +203,51 @@ describe("speed converts, because a relabel would have made it worse", () => {
     expect(mphToStoredKmh(MAX_SPEED_MPH + 1)).toBeGreaterThan(120);
   });
 
-  it("shows the stored default as the mph a dispatcher would recognise", async () => {
+  it("shows a stored speed as the mph a dispatcher would recognise", async () => {
     const { mphFromStoredKmh, mphToStoredKmh } = await measures();
-    // 30 km/h, the schema default, is 19 mph. That number is also why the
-    // blur handler must not write on an unchanged field: 19 mph converts back
-    // to 31 km/h, and effective_speed_kmh() reads any value other than 30 as
-    // a deliberate manual override of area-based speed.
+    // The round trip is lossy: 30 km/h shows as 19 mph and 19 mph stores as
+    // 31. That USED to be a hazard as well as an imprecision — while 30 meant
+    // "unset", tabbing through this field without editing it took the
+    // workspace off area-based speeds forever. 20260903090000 removed the
+    // sentinel, so 30 is now just 30 and the round trip is only a rounding.
     expect(mphFromStoredKmh(30)).toBe(19);
     expect(mphToStoredKmh(19)).toBe(31);
 
     const settings = codeOnly(read("src/routes/_authenticated/settings.scheduling.tsx"));
-    expect(settings).toMatch(/mph === shownSpeedMph\) return/);
+    // The no-op guard stays, on the raw text rather than the parsed number,
+    // because the field can now legitimately be empty and Number("") is 0.
+    expect(settings).toMatch(/if \(raw === shownSpeedMph\) return/);
     expect(settings).toMatch(/Average speed \(mph\)/);
     expect(settings).not.toMatch(/Average speed \(km\/h\)/);
+  });
+
+  it("lets a workspace hand the speed back to the road data", async () => {
+    // The column is nullable since 20260903090000 and NULL means "work it out
+    // from the routes actually driven". A screen that can set a value and
+    // never unset it turns a preference into a one-way door.
+    const settings = codeOnly(read("src/routes/_authenticated/settings.scheduling.tsx"));
+    expect(settings).toMatch(/if \(raw === ""\)/);
+    expect(settings).toMatch(/mut\.mutate\(\{ avg_speed_kmh: null \}\)/);
+    // Empty is shown as empty, not as the old default wearing a number.
+    expect(settings).toMatch(/settings\.avg_speed_kmh == null \? "" :/);
+
+    // And the server can tell "clear it" from "leave it alone", which the
+    // COALESCE-everything RPC could not.
+    const fns = codeOnly(read("src/lib/visits.functions.ts"));
+    expect(fns).toMatch(/avg_speed_kmh: z\.number\(\)\.int\(\)\.min\(5\)\.max\(120\)\.nullable\(\)\.optional\(\)/);
+    expect(fns).toMatch(/_clear_avg_speed: data\.avg_speed_kmh === null/);
+  });
+
+  it("shows what the roads turned out to be worth", async () => {
+    // The estimate's first source is now this workspace's own measured legs.
+    // An owner reading an arrival time should be able to find out where the
+    // number under it came from; "dense urban" was not an answer.
+    const settings = codeOnly(read("src/routes/_authenticated/settings.scheduling.tsx"));
+    expect(settings).toMatch(/settings\.measured_speed_kmh/);
+    expect(settings).toMatch(/settings\.measured_legs/);
+    expect(settings).toMatch(/Measured from your routes/);
+    const fns = codeOnly(read("src/lib/visits.functions.ts"));
+    expect(fns).toMatch(/measured_speed_kmh, measured_road_factor, measured_legs, measured_at/);
   });
 
   it("uses the exact mile, not a rounded one", async () => {

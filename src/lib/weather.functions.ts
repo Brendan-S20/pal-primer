@@ -477,17 +477,30 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     // Fire weather-reschedule emails (best-effort) — only for visits that
     // actually moved, and with each visit's REAL target date (which may have
     // been shifted off a non-working day).
-    try {
-      const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-      const seen = new Set<string>();
-      for (const m of moves) {
-        const pre = preMap.get(m.visitId);
-        if (!pre) continue;
-        // Dedupe per destination+target date — a property contact (P3.5) and
-        // the account contact are distinct recipients.
-        const key = `${pre.contact_email ?? pre.client_id}|${m.to}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+    // How many customers were NOT told their visit moved.
+    //
+    // This used to be one try around the whole loop, which had two faults and
+    // the second is the one that mattered. It was silent -- the caller got
+    // `moved` and nothing else, so the strip said "Moved 14 visits" whether or
+    // not a single email went out. And because the await was inside the try
+    // rather than the loop body, a throw on the SECOND customer skipped every
+    // remaining one: fourteen moved visits, one notified customer, no signal.
+    //
+    // In this trade an unsent reschedule is a locked gate and a dog in the yard
+    // on a day nobody is coming. It is not a nicety to be logged.
+    let notifyFailed = 0;
+    const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+    const seen = new Set<string>();
+    for (const m of moves) {
+      const pre = preMap.get(m.visitId);
+      if (!pre) continue;
+      // Dedupe per destination+target date — a property contact (P3.5) and
+      // the account contact are distinct recipients.
+      const key = `${pre.contact_email ?? pre.client_id}|${m.to}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Per customer, so one bad address cannot silence the rest of the round.
+      try {
         await enqueueAppEmail({
           organizationId: orgId,
           clientId: pre.client_id,
@@ -501,12 +514,13 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
             reason: data.note,
           },
         });
+      } catch (e) {
+        notifyFailed++;
+        console.error("weather reschedule email failed for visit", m.visitId, e);
       }
-    } catch (e) {
-      console.error("weather reschedule emails failed", e);
     }
 
-    return { moved, errors, moves };
+    return { moved, errors, moves, notifyFailed };
   });
 
 export const undoReschedule = createServerFn({ method: "POST" })

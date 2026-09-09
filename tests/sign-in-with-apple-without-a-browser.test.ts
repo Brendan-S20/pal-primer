@@ -23,7 +23,6 @@
 // before this reaches main.
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
@@ -59,6 +58,41 @@ describe("Apple signs in without leaving the app", () => {
   });
 });
 
+/** Every XCBuildConfiguration's buildSettings, as flat key/value maps.
+ *
+ *  A pbxproj is an OpenStep plist, which is why the original reached for
+ *  plutil. Only one question is being asked of it, so a full plist parser is
+ *  not needed: scope to the XCBuildConfiguration section, balance the braces
+ *  of each `buildSettings = { ... }`, and read `KEY = value;` lines out of it.
+ *  Block comments are stripped first so a commented-out setting cannot be
+ *  mistaken for a live one. */
+function buildConfigurations(pbxproj: string): Array<Record<string, string>> {
+  const from = pbxproj.indexOf("/* Begin XCBuildConfiguration section */");
+  const to = pbxproj.indexOf("/* End XCBuildConfiguration section */");
+  if (from === -1 || to === -1) return [];
+  const section = pbxproj.slice(from, to);
+  const out: Array<Record<string, string>> = [];
+  const opener = /buildSettings = \{/g;
+  let m: RegExpExecArray | null;
+  while ((m = opener.exec(section))) {
+    let i = m.index + m[0].length;
+    let depth = 1;
+    while (i < section.length && depth > 0) {
+      if (section[i] === "{") depth++;
+      else if (section[i] === "}") depth--;
+      i++;
+    }
+    const body = section.slice(m.index + m[0].length, i - 1).replace(/\/\*[\s\S]*?\*\//g, "");
+    const settings: Record<string, string> = {};
+    for (const line of body.split("\n")) {
+      const kv = /^\s*([A-Za-z0-9_]+)\s*=\s*(.+?);\s*$/.exec(line);
+      if (kv) settings[kv[1]] = kv[2].replace(/^"(.*)"$/, "$1");
+    }
+    out.push(settings);
+  }
+  return out;
+}
+
 describe("the entitlement the sheet cannot work without", () => {
   const entitlements = "ios/App/App/App.entitlements";
 
@@ -72,21 +106,24 @@ describe("the entitlement the sheet cannot work without", () => {
     // which is the slowest possible way to find out. Parsed rather than
     // grepped: project.pbxproj is a plist, and a grep cannot tell a build
     // setting from a comment.
-    const json = execFileSync(
-      "plutil",
-      ["-convert", "json", "-o", "-", join(root, "ios/App/App.xcodeproj/project.pbxproj")],
-      { encoding: "utf8" },
-    );
-    const objects = JSON.parse(json).objects as Record<string, any>;
-    const appConfigs = Object.values(objects).filter(
-      (o) =>
-        o?.isa === "XCBuildConfiguration" &&
-        o?.buildSettings?.PRODUCT_BUNDLE_IDENTIFIER === "consulting.thenorth.houndstack",
-    );
+    // Parsed in JS rather than shelled out to `plutil`.
+    //
+    // plutil is macOS-only, so this test threw `spawnSync plutil ENOENT` on
+    // every non-Mac. CI did not notice because it runs on a self-hosted Mac —
+    // but ci.yml documents deleting the CI_RUNNER variable as a one-click
+    // switch back to ubuntu-latest, and that switch would have turned this
+    // red for a reason that has nothing to do with the code.
+    //
+    // The reason for parsing rather than grepping still holds and is kept:
+    // scoping to the XCBuildConfiguration section and balancing braces means a
+    // comment or another object's settings cannot be read as a build setting.
+    const appConfigs = buildConfigurations(
+      read("ios/App/App.xcodeproj/project.pbxproj"),
+    ).filter((c) => c.PRODUCT_BUNDLE_IDENTIFIER === "consulting.thenorth.houndstack");
     expect(appConfigs.length, "no app build configurations found").toBeGreaterThan(0);
     for (const c of appConfigs) {
       expect(
-        c.buildSettings.CODE_SIGN_ENTITLEMENTS,
+        c.CODE_SIGN_ENTITLEMENTS,
         `a build configuration has no CODE_SIGN_ENTITLEMENTS`,
       ).toMatch(/App\.entitlements/);
     }

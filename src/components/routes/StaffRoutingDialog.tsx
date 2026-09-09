@@ -13,6 +13,7 @@
  * one at all.
  */
 import { useState } from "react";
+import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -42,15 +43,14 @@ import {
  *  user just typed, and a failure here is recoverable — the address saves
  *  without a pin and the optimizer falls back to the org default. */
 async function geocode(q: string): Promise<{ lat: number; lng: number } | null> {
-  if (!q.trim()) return null;
+  // Through the server rather than straight at Nominatim: the throttle, the
+  // User-Agent their policy asks for, and one origin IP instead of every
+  // tenant's. See src/lib/geocode.functions.ts.
+  const query = q.trim();
+  if (query.length < 3) return null;
   try {
-    const r = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
-      { headers: { Accept: "application/json" } },
-    );
-    const j = (await r.json()) as Array<{ lat: string; lon: string }>;
-    if (!j?.[0]) return null;
-    return { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) };
+    const { geo } = await lookupAddressPoint({ data: { query } });
+    return geo ? { lat: geo.latitude, lng: geo.longitude } : null;
   } catch {
     return null;
   }

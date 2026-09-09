@@ -7,7 +7,9 @@ import {
   platformFeeCents,
 } from "@/lib/platform-fee";
 
-// 50 basis points of a tenant→client charge, on charges over $10.
+// The platform's cut of a tenant→client charge. Currently ZERO — see the header
+// of src/lib/platform-fee.ts for why, which is a pricing decision rather than a
+// disabled feature.
 //
 // Two things are pinned here, and the second matters more than the first.
 //
@@ -26,47 +28,87 @@ import {
 // hosts that disagreed, and one revenue figure with three implementations
 // (BUG-21). So the last describe block reads the source and refuses a charge
 // built without the fee.
+//
+// That block still earns its keep at a rate of zero — arguably more than it did
+// at 50 bps. The wiring is what makes the rate a one-line change, so the wiring
+// is what has to stay proven while nothing is being collected through it.
 
 describe("the fee itself", () => {
-  it("is 50 bps over a $10 floor", () => {
-    expect(PLATFORM_FEE_BPS).toBe(50);
+  it("is zero, deliberately, and not as a placeholder", () => {
+    // HoundStack posts Stripe's 2.9% + 30¢ as the whole cost of taking a
+    // payment. On a direct charge Stripe bills that to the TENANT'S connected
+    // account, so anything added here makes the real cost exceed the published
+    // one — which is a pricing problem no wording solves.
+    expect(PLATFORM_FEE_BPS).toBe(0);
+    // The floor is part of the term, not part of the rate, and outlives it.
     expect(PLATFORM_FEE_THRESHOLD_CENTS).toBe(1000);
   });
 
+  it("collects nothing at any amount", () => {
+    for (const cents of [1_001, 4_500, 10_000, 20_000, 250_000, 9_999_999]) {
+      expect(platformFeeCents(cents)).toBeUndefined();
+    }
+  });
+
+  it("returns undefined rather than 0, so the key never reaches Stripe", () => {
+    // This is the whole reason the rate could be turned off without editing ten
+    // payment paths. Each call site spends the return value straight into
+    // `application_fee_amount`: undefined omits the key, 0 would send a field we
+    // do not mean on every charge the platform makes.
+    const fee = platformFeeCents(10_000);
+    expect(fee).toBeUndefined();
+    expect(fee).not.toBe(0);
+    // And the omission is real at the object level, not just falsy.
+    expect(Object.hasOwn({ application_fee_amount: fee }, "application_fee_amount")).toBe(true);
+    expect(JSON.stringify({ application_fee_amount: fee })).toBe("{}");
+  });
+
+  it("returns undefined rather than NaN for unusable input", () => {
+    // A NaN reaching Stripe as an application fee fails the whole charge, and
+    // the customer's payment matters more than our fee — at any rate.
+    expect(platformFeeCents(Number.NaN)).toBeUndefined();
+    expect(platformFeeCents(Number.POSITIVE_INFINITY)).toBeUndefined();
+    expect(platformFeeCents(-5_000)).toBeUndefined();
+    expect(platformFeeCents(0)).toBeUndefined();
+  });
+
+  it("has expected numbers written for whatever rate is set", () => {
+    // The guard that makes the next rate change safe. platformFeeCents reads the
+    // constant directly, so the arithmetic cases below can only run at the rate
+    // they were written for. Any THIRD value arrives with no cases at all —
+    // which is exactly the silent change the module header says must not happen.
+    // Set a new rate, and this fails until its numbers are written.
+    expect([0, 50]).toContain(PLATFORM_FEE_BPS);
+  });
+});
+
+// Kept, not deleted. These took the two decisions that define the term — "$10
+// is a threshold, not a deduction", and round rather than truncate — and they
+// come back the moment the rate does. `describe.skip` would hide them from the
+// count; this form re-arms them automatically at 50 bps.
+const at50 = PLATFORM_FEE_BPS === 50 ? describe : describe.skip;
+at50("the 50 bps arithmetic, when that is the rate", () => {
   it("charges half a percent of the FULL amount, not of the excess", () => {
-    // The decision was "$10 is a threshold, not a deduction". $100 → 50¢, which
-    // is 0.5% of $100. The other reading gives 45¢ (0.5% of $90) and this case
-    // is the whole difference between them.
+    // "$10 is a threshold, not a deduction". $100 → 50¢, which is 0.5% of $100.
+    // The other reading gives 45¢ (0.5% of $90) and this case is the whole
+    // difference between them.
     expect(platformFeeCents(10_000)).toBe(50);
     expect(platformFeeCents(20_000)).toBe(100);
     expect(platformFeeCents(4_500)).toBe(23); // 22.5¢ → 23
   });
 
   it("is free at exactly $10 and charged at $10.01", () => {
-    // "Over $10" is strictly greater. Off-by-one here is a real, if small,
-    // policy change applied to every transaction at the floor.
-    expect(platformFeeCents(999)).toBe(0);
-    expect(platformFeeCents(1_000)).toBe(0);
-    // 0.5% of $10.01 is 5.005¢, which rounds to 5 — the fee does not ramp up
-    // from zero at the floor, it steps straight to half a percent.
+    expect(platformFeeCents(999)).toBeUndefined();
+    expect(platformFeeCents(1_000)).toBeUndefined();
+    // 0.5% of $10.01 is 5.005¢ → 5. The fee does not ramp up from zero at the
+    // floor, it steps straight to half a percent.
     expect(platformFeeCents(1_001)).toBe(5);
   });
 
   it("rounds to the nearest cent rather than truncating", () => {
-    // application_fee_amount must be an integer. Truncating would give away a
-    // fraction of a cent on most transactions for no reason.
     expect(platformFeeCents(3_740)).toBe(19); // 18.7 → 19
     expect(platformFeeCents(3_720)).toBe(19); // 18.6 → 19
     expect(platformFeeCents(3_660)).toBe(18); // 18.3 → 18
-  });
-
-  it("returns zero rather than NaN for unusable input", () => {
-    // A NaN reaching Stripe as an application fee fails the whole charge, and
-    // the customer's payment matters more than our fee.
-    expect(platformFeeCents(Number.NaN)).toBe(0);
-    expect(platformFeeCents(Number.POSITIVE_INFINITY)).toBe(0);
-    expect(platformFeeCents(-5_000)).toBe(0);
-    expect(platformFeeCents(0)).toBe(0);
   });
 });
 
@@ -104,11 +146,15 @@ describe("giving it back on a refund", () => {
     expect(feeReversalCents(50, 10_000, Number.NaN)).toBe(0);
   });
 
-  it("reverses nothing when the charge was under the floor", () => {
-    // No fee was taken, so there is nothing to give back.
+  it("reverses nothing when no fee was taken", () => {
+    // Nothing was collected, so there is nothing to give back. At a zero rate
+    // that is every charge; at 50 bps it was every charge under the floor. The
+    // reversal side is rate-independent by design — it works from the fee Stripe
+    // reports on the charge, not from a recomputation — which is why the rest of
+    // this block still means something with the rate off.
     const fee = platformFeeCents(900);
-    expect(fee).toBe(0);
-    expect(feeReversalCents(fee, 900, 900)).toBe(0);
+    expect(fee).toBeUndefined();
+    expect(feeReversalCents(fee ?? 0, 900, 900)).toBe(0);
   });
 });
 

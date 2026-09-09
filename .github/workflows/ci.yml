@@ -407,3 +407,59 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         # See the note on `if: always()` below the first check.
         if: always() && steps.psql.conclusion == 'success'
+
+  deployment:
+    name: The deployed site serves the worker it built
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    # ── WHY THIS JOB EXISTS, AND WHY IT IS NOT ON PULL REQUESTS ──────────
+    #
+    # /sw.js answered 404 on app.houndstack.com for THREE WEEKS after the bug
+    # that caused it was fixed, and nothing here noticed. The reason is worth
+    # stating precisely, because it is the same shape as the IMP-2 incident
+    # above and as the two OAuth gates before it: every check we had was
+    # reading the ARTEFACT rather than the RUNNING THING.
+    #
+    #   check:pwa       reads .output/public and proves the BUILD emits a
+    #                   worker with a populated precache. Green throughout,
+    #                   correctly, because the build has been right since #104.
+    #   this job        asks the site.
+    #
+    # On 2026-09-08 the build was verified correct in every way a repository
+    # can be: sw.js and workbox-*.js present on disk in .output/public AND
+    # listed in Nitro's embedded public-asset manifest in .output/server. Yet
+    # production served 404 for both, while manifest.webmanifest and
+    # push-handlers.js from the SAME directory served 200 -- and the 404 came
+    # back from the SSR worker with no x-deployment-id header, meaning the
+    # asset layer had no such file to serve. Whatever drops them happens in the
+    # deploy, downstream of anything this repository controls.
+    #
+    # Which is exactly why it must be watched from here: nobody else is going
+    # to notice, and the symptom is silent. Every visitor's browser calls
+    # navigator.serviceWorker.register("/sw.js"), gets a 404, and the app has
+    # no install prompt and no offline tolerance -- on a product whose users
+    # stand in driveways with one bar of signal.
+    #
+    # NOT ON PULL REQUESTS, deliberately, and for a different reason than the
+    # migrations job. A PR author cannot fix the deployed site: the deploy has
+    # not happened yet for their change, and a red X they are powerless to
+    # clear is the fastest way to teach a team to ignore a check. It is a hard
+    # gate on main and on manual dispatch, where the state it describes is the
+    # state somebody can actually act on.
+    #
+    # The script itself exits 0 when the origin cannot be reached, so a flaky
+    # network or a DNS blip cannot fail this. It fails only when the site
+    # ANSWERS and the worker is missing.
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Does the deployed site serve /sw.js
+        run: npm run check:pwa:live

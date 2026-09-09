@@ -104,9 +104,23 @@ function AccountingSettings() {
     <div className="space-y-8">
       {dialog}
       <div>
-        <h2 className="text-lg font-semibold">Accounting sync</h2>
+        <h2 className="text-lg font-semibold">
+          Accounting sync{ACCOUNTING_CONNECT_ENABLED ? "" : " (coming soon)"}
+        </h2>
+        {/* THE PAGE USED TO OPEN BY TELLING YOU TO PRESS A DISABLED BUTTON.
+            "Use the Connect buttons below to authorize your accounting
+            provider" sat above two buttons that have been `disabled` since
+            2026-07-14, with the words "coming soon" a further paragraph down
+            and easy to miss. Somebody who came here to connect QuickBooks read
+            an instruction, followed it, and nothing happened.
+
+            Both sentences now read off ACCOUNTING_CONNECT_ENABLED, so flipping
+            the flag restores the working copy rather than leaving whichever
+            paragraph somebody forgot. */}
         <p className="text-sm text-muted-foreground">
-          Push paid invoices to QuickBooks Online or Xero. Use the Connect buttons below to authorize your accounting provider. Tokens are refreshed automatically.
+          {ACCOUNTING_CONNECT_ENABLED
+            ? "Push paid invoices to QuickBooks Online or Xero. Use the Connect buttons below to authorize your accounting provider. Tokens are refreshed automatically."
+            : "Push paid invoices to QuickBooks Online or Xero. Connecting a provider is not switched on yet, so nothing here will sync. The rest of the page is built and waiting on the provider approvals."}
         </p>
       </div>
 
@@ -198,8 +212,9 @@ function AccountingSettings() {
           Advanced: enter connection details manually
         </summary>
         <p className="mt-1 mb-3 text-xs text-muted-foreground">
-          For support use only. Prefer the "Connect" buttons above. OAuth tokens should not need to
-          be pasted by hand.
+          {ACCOUNTING_CONNECT_ENABLED
+            ? 'For support use only. Prefer the "Connect" buttons above. OAuth tokens should not need to be pasted by hand.'
+            : "For support use only. While the Connect buttons are off this is the only way to attach a provider, and it needs tokens obtained outside the app."}
         </p>
       <form onSubmit={save} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">

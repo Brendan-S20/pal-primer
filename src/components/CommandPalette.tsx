@@ -19,6 +19,7 @@ const NAV: NavEntry[] = [
   { label: "Leads", to: "/leads", group: "Overview" },
   { label: "Clients", to: "/clients", group: "Operations" },
   { label: "Zones", to: "/zones", group: "Operations" },
+  { label: "Rate card drift", to: "/pricing-drift", group: "Insights" },
   // "Schedule" for /routes, matching the mobile tab bar and the sidebar. The
   // URL stays as it is; the label is what a person searches for, and there is
   // no `routes` table behind it to justify the older word.

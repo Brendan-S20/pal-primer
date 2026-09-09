@@ -30,6 +30,28 @@
  *  initialised to `true`: "no news" must not read as "connected". */
 let nativeConnected: boolean | null = null;
 
+/** Broadcast when the native answer changes.
+ *
+ *  The value above was write-only: the ACTION path reads it through
+ *  `isDefinitelyOffline()` on every call, so it was always current there, but
+ *  nothing told React it had moved. `useOnline` therefore rendered from
+ *  `navigator.onLine` alone -- which is the one signal this module exists
+ *  because it cannot be trusted -- and every offline INDICATOR in the app was
+ *  blind in exactly the state described above: the resumed app in a dead zone.
+ *
+ *  A DOM event rather than a subscriber list, to match `offline-queue-change`
+ *  which the same hooks already listen to, and so a listener registered before
+ *  init still hears the first real answer. */
+export const CONNECTIVITY_CHANGE = "offline-connectivity-change";
+
+function setNative(v: boolean | null): void {
+  if (nativeConnected === v) return;
+  nativeConnected = v;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(CONNECTIVITY_CHANGE));
+  }
+}
+
 /** Pure core, so the composition can be asserted without a device. */
 export function definitelyOffline(input: {
   /** `navigator.onLine`, or undefined where there is no navigator. */
@@ -52,7 +74,7 @@ export function isDefinitelyOffline(): boolean {
 
 /** Test seam. Not exported for production use; the listener owns this value. */
 export function __setNativeConnected(v: boolean | null): void {
-  nativeConnected = v;
+  setNative(v);
 }
 
 /**
@@ -66,12 +88,12 @@ export async function initNativeConnectivity(): Promise<() => void> {
   if (!isNative()) return () => {};
   const { Network } = await import("@capacitor/network");
   const status = await Network.getStatus();
-  nativeConnected = status.connected;
+  setNative(status.connected);
   const handle = await Network.addListener("networkStatusChange", (s) => {
-    nativeConnected = s.connected;
+    setNative(s.connected);
   });
   return () => {
-    nativeConnected = null;
+    setNative(null);
     void handle.remove();
   };
 }

@@ -72,9 +72,38 @@ describe("a function the repo builds rather than writes out", () => {
     expect(isDeclared(files, "plan_visits")).toBe(true);
   });
 
-  it("credits the file that actually splices it, and only that file", () => {
+  it("credits every file that actually splices it, and only those", () => {
+    // This was a hardcoded list — first `[SPLICE_FILE]`, then
+    // `[SPLICE_FILE, RESPLICE_FILE]` — and it needed an edit every time
+    // plan_route changed, because a change to plan_route MUST respice
+    // plan_visits or the two drift apart. That is the whole purpose of the
+    // splice, so the list grows forever and pinning it tests the calendar
+    // rather than the property. 20260831150000 was the second edit in two
+    // days; that is the signal to assert the invariant instead.
+    //
+    // The strength is unchanged and lives in `createsDynamically`, which
+    // demands two things in one file: DDL that is constructed and actually
+    // EXECUTEd, and the migration asserting the function exists when it
+    // finishes. A mere mention in a GRANT or a DROP — the hole this whole
+    // script was written to close — still credits nobody.
     const crediting = files.filter(({ sql }) => createsDynamically(sql, "plan_visits"));
-    expect(crediting.map((f) => f.file)).toEqual([SPLICE_FILE]);
+
+    // The original is always in it, and always first.
+    expect(crediting.length).toBeGreaterThan(0);
+    expect(crediting[0].file).toBe(SPLICE_FILE);
+
+    // Filename order, which for these files is apply order. A respice that
+    // landed before the file it derives from would be nonsense.
+    expect(crediting.map((f) => f.file)).toEqual([...crediting.map((f) => f.file)].sort());
+
+    // And the filter genuinely discriminates: a migration that only MENTIONS
+    // plan_visits, in the guarded GRANT block, is not credited with building
+    // it. Without this the three assertions above would also pass if
+    // createsDynamically matched everything.
+    const mentionsOnly = files.filter(
+      ({ file, sql }) => sql.includes("plan_visits") && !crediting.some((c) => c.file === file),
+    );
+    expect(mentionsOnly.length).toBeGreaterThan(0);
   });
 
   // ── the mutations ───────────────────────────────────────────────────────

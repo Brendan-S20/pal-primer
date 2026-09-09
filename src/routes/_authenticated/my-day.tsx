@@ -31,6 +31,7 @@ import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
@@ -284,6 +285,23 @@ function MyDay() {
     [startFn, completeFn, skipFn, photoFn, stationFn],
   );
 
+  // Client names for the two messages that ask a tech to go back and redo
+  // work. Held in a ref rather than closed over, because `visits` is derived
+  // below `runSync` and putting it in the dependency array would rebuild the
+  // sync driver on every refetch.
+  const visitNames = useRef<Map<string, string>>(new Map());
+  /** "Bark Park and 2 others", or nothing when we cannot name any of them.
+   *  A queued action can outlive the day it belongs to -- it survives the app
+   *  being killed in a pocket -- so an id with no row today is expected and
+   *  simply contributes no name. */
+  const namesFor = useCallback((ids: string[]): string | undefined => {
+    const named = ids.map((id) => visitNames.current.get(id)).filter(Boolean) as string[];
+    if (named.length === 0) return undefined;
+    if (named.length === 1) return named[0];
+    if (named.length === 2) return `${named[0]} and ${named[1]}`;
+    return `${named[0]} and ${named.length - 1} others`;
+  }, []);
+
   const runSync = useCallback(async () => {
     // Replay only the signed-in tech's own queued work — see lib/offline/queue.
     //
@@ -321,6 +339,7 @@ function MyDay() {
       // gone, and the tech is the only person who can retake it.
       toast.error(
         `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device. Retake if the visit still needs one`,
+        { description: namesFor(res.droppedVisitIds) },
       );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
@@ -328,26 +347,41 @@ function MyDay() {
       // Loud, specific, and never folded into any other count. The queue was
       // blocking everything behind this; giving up unblocks the day, but the
       // work itself is gone and only the tech can redo it.
+      //
+      // And it now NAMES the stop. This is the one message in the app that
+      // asks somebody to drive somewhere a second time, and it used to end
+      // "Check the visit and redo it if needed" without saying which visit --
+      // on a twenty-stop day, with the queue already emptied of the evidence.
       toast.error(
-        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Check the visit and redo it if needed`,
-        { duration: 12_000 },
+        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Go back and redo the work if it still needs doing`,
+        { duration: 12_000, description: namesFor(res.deadLetteredVisitIds) },
       );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
     if (res.failed > 0) {
       toast.error(`Sync stalled on 1 action, will retry`);
     }
-  }, [callers, qc]);
+  }, [callers, qc, namesFor]);
 
   // Auto-sync on load + whenever we come back online.
   useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.onLine) runSync();
+    if (typeof navigator !== "undefined" && !isDefinitelyOffline()) runSync();
     const on = () => runSync();
     window.addEventListener("online", on);
     return () => window.removeEventListener("online", on);
   }, [runSync]);
 
   const visits = data?.visits ?? [];
+  // Kept current for namesFor above. Written during render rather than in an
+  // effect: a sync can fire from the online listener before an effect has run,
+  // and a toast that says "and 2 others" with no names is worse than one that
+  // says nothing.
+  visitNames.current = new Map(
+    visits.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
+      v.id,
+      v.clients?.display_name ?? "a visit",
+    ]),
+  );
   const staff = data?.staff;
 
   // ── the read half of the same basement garage ────────────────────────────
@@ -1178,6 +1212,9 @@ function VisitCard({
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
   const scheduled = visit.status === "scheduled";
+  // Auto-marked missed overnight. Still completable — see the note on the
+  // Complete button — because the work may well have been done.
+  const missed = visit.status === "missed";
   const finalStatus = done || skipped;
   const p = visit.properties;
   const [collapsed, setCollapsed] = useState(finalStatus);
@@ -1422,7 +1459,14 @@ function VisitCard({
                 !canPerformVisit ||
                 (!hasCompletionPhoto && !hasQueuedCompletionPhoto) ||
                 complete.isPending ||
-                (!inProg && !scheduled)
+                // `missed` belongs here. complete_visit has accepted
+                // ('scheduled','in_progress','missed') since 20260804060000 --
+                // widened deliberately, so a tech who did the work and forgot
+                // to close it can come back to yesterday and record it. The
+                // button never learned, so both Start and Complete were dead
+                // on those cards with nothing on screen saying why. There are
+                // 2,001 missed visits in production.
+                (!inProg && !scheduled && !missed)
               }
               onClick={() =>
                 canPerformVisit
@@ -1441,6 +1485,12 @@ function VisitCard({
             >
               Complete
             </Button>
+            {missed && (
+              <p className="mt-1 w-full text-xs text-muted-foreground">
+                Marked missed overnight. If you did the work, you can still
+                complete it here and it will be recorded late.
+              </p>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -1869,7 +1919,12 @@ function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; read
       notes?: string;
     }) =>
       runOrQueue({
-        online: typeof navigator === "undefined" ? true : navigator.onLine,
+        // The honest answer, like every other action in this file. This one
+        // read `navigator.onLine` raw, which on a resumed native app in a dead
+        // zone says "online" -- so the request went out, hung, and cost the
+        // 8-second deadline before queueing. Per station. On a wall of twenty
+        // bins, in the basement car park this panel was hardened for.
+        online: !isDefinitelyOffline(),
         label: "Log station",
         send: () => logFn({ data: { visitId, ...v } }),
         queue: async () => {

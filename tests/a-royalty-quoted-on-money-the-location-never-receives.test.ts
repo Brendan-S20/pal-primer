@@ -12,11 +12,20 @@
 //
 // `payments.amount_cents` excludes the card surcharge — correct, and settled
 // long ago: the surcharge was fee recovery and was never revenue. It does NOT
-// exclude Stripe's processing fee, and it does not exclude HoundStack's own
-// 50 bps `application_fee_amount`. Both come out of the location's side of the
-// charge. So a location billed 7% of "collected revenue" pays 7% of a number
-// larger than the one that reached its bank, by two deductions the statement
-// never mentioned.
+// exclude Stripe's processing fee. So a location billed 7% of "collected
+// revenue" pays 7% of a number larger than the one that reached its bank, by a
+// deduction the statement never mentioned.
+//
+// It was TWO deductions until 2026-09-08: HoundStack's own `application_fee_
+// amount` was 50 bps and came out of the same side. PLATFORM_FEE_BPS is now 0,
+// so the copy naming it would overstate what the location loses — the opposite
+// error, but the same kind.
+//
+// Which is why the assertions below read the CONSTANT rather than a fixed
+// string. A test that hardcoded "0.5%" would have had to be edited by whoever
+// changed the rate, and the whole point is that they should not have to notice:
+// set PLATFORM_FEE_BPS back to 50 and these fail until the sentence names it
+// again.
 //
 // That is a legitimate way to write a franchise agreement and it is not this
 // product's place to change it. It IS this product's place to say it, in the
@@ -58,6 +67,32 @@ function rendered(src: string): string {
 }
 
 const routeText = rendered(route);
+
+/**
+ * The platform fee is named in this copy exactly when it is charged.
+ *
+ * Both failures are real. Naming a fee of zero tells a franchisee money is
+ * leaving that is not; omitting a fee that IS charged is the surprise this
+ * whole test file exists to prevent. Driving both off PLATFORM_FEE_BPS means
+ * the next rate change fails here with the sentence to write, instead of
+ * silently leaving one of the two wrong.
+ */
+function expectFeeCopy(text: string): void {
+  const pct = PLATFORM_FEE_BPS / 100;
+  if (PLATFORM_FEE_BPS > 0) {
+    expect(
+      text,
+      `PLATFORM_FEE_BPS is ${PLATFORM_FEE_BPS}, so this copy must name HoundStack's ` +
+        `${pct}% platform fee as a deduction from the location's side.`,
+    ).toContain(`${pct}% platform fee`);
+  } else {
+    expect(
+      text,
+      "PLATFORM_FEE_BPS is 0, so this copy must not tell a franchisee that a " +
+        "HoundStack platform fee comes out of what they receive. Nothing does.",
+    ).not.toMatch(/platform fee/i);
+  }
+}
 const componentText = rendered(component);
 
 describe("the stripper leaves the copy and removes the reasoning", () => {
@@ -78,18 +113,17 @@ describe("the rate editor says what the percentage is a percentage of", () => {
     expect(routeText).toMatch(/percentage applies to collected revenue before fees/i);
   });
 
-  it("names both deductions, rather than gesturing at 'fees'", () => {
-    // "Fees" is what the reader already assumed was excluded. The two that are
-    // not have names, and one of them is ours.
+  it("names the deduction, rather than gesturing at 'fees'", () => {
+    // "Fees" is what the reader already assumed was excluded. The one that is
+    // not has a name.
     expect(routeText).toMatch(/Stripe's processing fee/i);
-    expect(routeText).toMatch(/HoundStack's 0\.5% platform fee/i);
   });
 
-  it("quotes the platform fee the code actually charges", () => {
-    // 50 bps. If PLATFORM_FEE_BPS ever moves, this copy is a claim about money
-    // that has gone stale on the screen where an owner sets a rate.
-    expect(PLATFORM_FEE_BPS).toBe(50);
-    expect(routeText).toContain(`${PLATFORM_FEE_BPS / 100}% platform fee`);
+  it("names our fee when we charge one, and stays silent when we do not", () => {
+    // Both directions are wrong in the same way — the screen where an owner
+    // sets a rate is making a claim about money — so both are checked here
+    // rather than the copy being pinned to whichever is true today.
+    expectFeeCopy(routeText);
   });
 
   it("still says the surcharge is out, so the reader is not told the base is everything", () => {
@@ -104,7 +138,7 @@ describe("the statement says it too, to whoever is reading it", () => {
 
   it("names both deductions", () => {
     expect(componentText).toMatch(/Stripe's processing fee/i);
-    expect(componentText).toMatch(/HoundStack's 0\.5% platform fee/i);
+    expectFeeCopy(componentText);
   });
 
   it("says it to BOTH parties", () => {

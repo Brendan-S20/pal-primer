@@ -69,9 +69,20 @@ describe("the fetcher is a cache warm, not a dependency", () => {
     expect(server).toMatch(/\$\{p\.lon\},\$\{p\.lat\}/);
   });
 
-  it("returns 0 rather than throwing on every failure path", () => {
-    const paths = server.match(/return 0;/g) ?? [];
-    expect(paths.length, "a failure path throws instead of degrading").toBeGreaterThanOrEqual(4);
+  it("degrades rather than throwing on every failure path", () => {
+    // CHANGED 2026-09-08: the failure paths used to `return 0;` and this
+    // counted those. They now return `failed("<cause>")`, because one number
+    // could not tell "nothing to measure" from "the router is down" and the
+    // caller was discarding it either way.
+    //
+    // The property is unchanged and is what is asserted: no failure path
+    // throws, so a routing outage cannot take the planner down with it. Naming
+    // the causes made that stronger rather than weaker -- a throw would now
+    // also fail the exhaustive Record in AutoRoutingPanel.
+    const paths = server.match(/return failed\("/g) ?? [];
+    expect(paths.length, "a failure path stopped degrading").toBeGreaterThanOrEqual(4);
+    const body = server.slice(server.indexOf("export async function refreshRoadLegs"));
+    expect(body, "refreshRoadLegs throws instead of degrading").not.toMatch(/^\s*throw /m);
   });
 
   it("refuses to half-measure a day that is too big", () => {
@@ -220,7 +231,10 @@ describe("a coordinate outside the graph cannot poison the plan", () => {
 
   it("writes nothing at all when every point is outside", () => {
     // Almost certainly the wrong region. Writing any of it is writing fiction.
-    expect(server).toMatch(/if \(bad\.size === points\.length\) return 0;/);
+    // The cause is now named, which is also what the screen shows: "The
+    // routing service has no map for these addresses" is actionable in a way
+    // that a silent zero was not.
+    expect(server).toMatch(/if \(bad\.size === points\.length\) return failed\("wrong_region"\);/);
   });
 
   it("says which endpoint it asked, because that is the misconfiguration", () => {
@@ -271,5 +285,49 @@ describe("the geocoder says how precisely it matched", () => {
     // was that it was invisible, not that it was used.
     expect(geo).toMatch(/console\.warn/);
     expect(geo).toMatch(/-level match only/);
+  });
+});
+
+// ── The end of the day, added 2026-08-31 ──────────────────────────────────
+//
+// 20260831150000 made the planner cost the drive from the last stop to where
+// the technician's day ends. That only works if the closing leg is MEASURED
+// like every other leg. It was not: refreshRoadLegs collected visit properties
+// and staff START points, so the one leg the new objective turns on was the one
+// leg still priced by `dense_urban`'s 11 km/h.
+//
+// It is not a rounding error. On this org's own data an 8km hop costs 96
+// minutes at that speed, and a solver trading real stop-legs against a closing
+// leg inflated fourfold reorders the day to dodge a cost that is not there —
+// measured, 90.9 stop-minutes became 103.8. Exactly the fault 20260826180000
+// named and 20260831130000 finished fixing, reintroduced through the back door
+// by the feature that needed it most.
+describe("the leg home is measured like every other leg", () => {
+  const src = read("src/lib/road-legs.server.ts");
+  // Comments here name the columns in order to explain them; the question is
+  // whether the QUERY selects them.
+  const code = src.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("asks staff for where the day ends, not only where it starts", () => {
+    expect(code).toMatch(
+      /\.select\(\s*"start_latitude,\s*start_longitude,\s*end_latitude,\s*end_longitude"\s*\)/,
+    );
+  });
+
+  it("puts both staff points into the matrix", () => {
+    expect(code).toMatch(
+      /add\([^)]*\bstart_latitude\b[^)]*\bstart_longitude\b[^)]*\)/,
+    );
+    // The fields, not the cast syntax used to read them: those reads were
+    // `(s as any).x` and are now typed rows, and either spelling puts the
+    // same coordinate into the matrix. The test is about the coordinate.
+    expect(code).toMatch(/add\([^)]*\bend_latitude\b[^)]*\bend_longitude\b[^)]*\)/);
+  });
+
+  it("includes the dump, which is the fallback end for anyone with no end address", () => {
+    // staff_end_point falls back to an active, geocoded disposal facility. A
+    // fallback the matrix has never heard of is a fallback priced at 11 km/h.
+    expect(code).toMatch(/from\(\s*"waste_disposal_facilities"\s*\)/);
+    expect(code).toMatch(/for \(const d of \(dumps \?\? \[\]\)[^)]*\) add\(/);
   });
 });
