@@ -56,6 +56,29 @@ describe("the live check exists and is actually run", () => {
   });
 });
 
+describe("and it says which deployment it measured", () => {
+  it("reads the deployment id from a file that is actually served", () => {
+    // The host does not deploy on push to main, and this check runs as a job
+    // attached to a commit. Without the id on screen, "the fix merged an hour
+    // ago and is not deployed" and "the fix is deployed and does not work"
+    // produce identical output. An hour went on exactly that confusion.
+    expect(SCRIPT).toMatch(/x-deployment-id/);
+    // NOT from /sw.js: the 404 comes back from the SSR worker with no such
+    // header, so asking the failing path would always report "unknown".
+    expect(SCRIPT).toMatch(/deploymentId\("\/favicon\.ico"\)/);
+  });
+
+  it("reports it rather than asserting on it", () => {
+    // There is no way for this check to know which deployment SHOULD be live,
+    // so turning a stale deploy into a failure would be inventing a verdict.
+    // It goes in the output and in the failure text, not into `problems`.
+    expect(SCRIPT).toMatch(/console\.log\(` {2}deployment/);
+    expect(SCRIPT).toMatch(/does not deploy on push to main/);
+    const problemPushes = SCRIPT.slice(SCRIPT.indexOf("const problems = []"));
+    expect(problemPushes).not.toMatch(/problems\.push\([^)]*deployment \$\{/);
+  });
+});
+
 describe("and it cannot fail the build for the wrong reason", () => {
   it("treats an unreachable origin as inconclusive, not as a failure", () => {
     // A DNS blip or a network hiccup must not turn a deploy check red: that

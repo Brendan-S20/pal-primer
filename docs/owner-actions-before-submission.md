@@ -271,6 +271,26 @@ That is as far as read-only access reaches. The remaining question is what the
 host's pipeline does with files written after the bundle is generated, and
 answering it means asking the host.
 
+**And a fifth thing, found the same evening, which changes how to READ all of
+the above: the host does not deploy on push to `main`.** The `rel="manifest"`
+fix merged at 14:20, Lovable had the commit in its preview by 14:22, and
+`app.houndstack.com` went on serving the deployment triggered by hand at 13:41.
+Neither new tag was live and the `x-deployment-id` had not moved.
+
+This matters because `ci.yml` runs `check:pwa:live` as a job attached to a
+COMMIT. A red result reads as "this commit is not served correctly" when what
+it means is "whatever is deployed is not served correctly", and those two come
+apart by however long it has been since somebody pressed deploy. So the check
+now prints the deployment id it measured, and its failure text says outright
+that a merged fix may simply not be deployed yet. Nothing asserts on the id:
+the check has no way to know which deployment SHOULD be live. It just stops
+"not deployed" and "deployed and broken" from looking identical.
+
+- [ ] Decide whether pushes to `main` should deploy automatically. Today every
+      release is a manual step, so merged work sits until somebody presses the
+      button, and the deployment gate on `main` grades whatever happens to be
+      live rather than the commit it is attached to.
+
 **One observation worth keeping, which is NOT the cause.** Nitro records
 `/sw.js` in that embedded manifest with `size: 21373` while the file on disk is
 21442 bytes: `vite-plugin-pwa` writes the worker twice and the scan lands
