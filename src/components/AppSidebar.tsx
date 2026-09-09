@@ -2,8 +2,9 @@ import { useEffect } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { useMyRole, canAccess } from "@/hooks/useMyRole";
+import { useMyRole, canAccess, type AppRole } from "@/hooks/useMyRole";
 import { getPlatformContext } from "@/lib/platform.functions";
+import { getFranchiseContext } from "@/lib/franchise.functions";
 import { getReviewQueueCount } from "@/lib/review-queue.functions";
 import {
   LayoutDashboard,
@@ -57,6 +58,11 @@ export type NavItem = {
   /** Only meaningful for an org that serves HOAs, apartment complexes or dog
    *  parks. Hidden when the owner has said they do not — see CommercialOnly. */
   commercialOnly?: boolean;
+  /** Only meaningful for a franchise PARENT — an org with `is_franchise_parent`
+   *  set, or with children linked to it. For everyone else the screen behind it
+   *  is a page about locations they do not have. Unlike `commercialOnly` this
+   *  fails CLOSED while the answer is unknown: see `useNavVisibility`. */
+  franchiseParentOnly?: boolean;
 };
 
 // Single source of nav truth — also consumed by MobileTabBar's "More" sheet so
@@ -132,9 +138,22 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // a report of who is off the rate card is worthless if the only person
       // who can find it is the one who already knew to look.
       { title: "Rate card drift", url: "/pricing-drift", icon: Scale },
-      // Royalties (/franchise) is hidden until multi-location is a real,
-      // supported offering (per Brendan, 2026-07-14). The route still works
-      // by URL for the rare royalty-parent org.
+      // ── WAS HIDDEN FROM EVERYONE; NOW SHOWN TO THE ORGS IT IS FOR ───────
+      //
+      // This entry was omitted entirely (per Brendan, 2026-07-14) "until
+      // multi-location is a real, supported offering", leaving /franchise
+      // reachable only by typing the URL. The cost of that landed on
+      // 2026-08-30: the owner of the demo franchise parent signed in, found no
+      // way to reach their own locations, and reasonably read it as the
+      // locations being broken or unlinked. They were neither.
+      //
+      // Hiding it from everyone was the right call only for as long as nobody
+      // had locations. `franchiseParentOnly` is the narrower version of the
+      // same intent — an org with no children still never sees it, and the one
+      // that has them can now find them. Title and icon match the page's own
+      // h1 ("Royalties & rollup", Building2) so the nav and the screen do not
+      // name the same thing two different ways.
+      { title: "Royalties", url: "/franchise", icon: Building2, franchiseParentOnly: true },
     ],
   },
   {
@@ -145,6 +164,55 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     ],
   },
 ];
+
+/**
+ * The answers every nav consumer needs before it can decide what to show.
+ *
+ * ── WHY THIS IS SHARED RATHER THAN WRITTEN TWICE ──────────────────────────
+ *
+ * NAV_GROUPS says it is the "single source of nav truth", consumed by
+ * MobileTabBar's More sheet "so the phone nav can never drift from (or exceed)
+ * what the sidebar offers". The list was shared; the FILTER was not. The
+ * sidebar applied `commercialOnly` and the phone did not, so a residential-only
+ * org has been seeing DNA compliance in More this whole time — the exact drift
+ * the comment promises cannot happen.
+ *
+ * One item leaking was survivable. Adding a second flag with the same split
+ * would have made it a pattern, so the filter moved here and both callers use
+ * it. Neither is a security boundary: the routes and their server functions
+ * keep their own gates, and `/franchise` is owner-only in ROUTE_ROLES.
+ */
+export type NavVisibility = { commercialEnabled: boolean; franchiseParent: boolean };
+
+export function useNavVisibility(): NavVisibility {
+  const { enabled: commercialEnabled } = useCommercialAccounts();
+  const ctxFn = useServerFn(getFranchiseContext);
+  // Same key the /franchise page uses, so the two share one fetch rather than
+  // asking the same question twice on every navigation.
+  const ctx = useQuery({
+    queryKey: ["franchise", "ctx"],
+    queryFn: () => ctxFn(),
+    staleTime: 60_000,
+  });
+  // Fails CLOSED, unlike useCommercialAccounts, and the difference is
+  // deliberate. There, falling open shows a slightly busier sidebar to an org
+  // that opted out of clutter. Here, falling open would put a Royalties entry
+  // in front of every single-location business on a slow request — which is
+  // precisely what hiding it was meant to prevent.
+  return { commercialEnabled, franchiseParent: ctx.data?.isParent === true };
+}
+
+export function isNavItemVisible(
+  it: NavItem,
+  role: AppRole | null,
+  v: NavVisibility,
+): boolean {
+  return (
+    canAccess(role, it.url) &&
+    (!it.commercialOnly || v.commercialEnabled) &&
+    (!it.franchiseParentOnly || v.franchiseParent)
+  );
+}
 
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
@@ -197,17 +265,16 @@ export function AppSidebar() {
   });
   const openReviews = reviewCount.data?.openCount ?? 0;
 
-  // Two independent filters, and they answer different questions. `canAccess`
-  // is about permission — a dispatcher may not see Payments. `commercialOnly`
-  // is about what kind of business this is, chosen by the owner about their
-  // own sidebar. Neither is a security boundary on its own; the routes and the
-  // server functions behind them keep their own gates.
-  const { enabled: commercialEnabled } = useCommercialAccounts();
+  // Three independent filters answering different questions. `canAccess` is
+  // permission — a dispatcher may not see Payments. `commercialOnly` is what
+  // kind of business this is, chosen by the owner about their own sidebar.
+  // `franchiseParentOnly` is whether this org has locations at all. None is a
+  // security boundary on its own; the routes and the server functions behind
+  // them keep their own gates. See isNavItemVisible for why they live there.
+  const navVisibility = useNavVisibility();
   const visibleGroups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter(
-      (it) => canAccess(role, it.url) && (!it.commercialOnly || commercialEnabled),
-    ),
+    items: g.items.filter((it) => isNavItemVisible(it, role, navVisibility)),
   })).filter((g) => g.items.length > 0);
 
   if (isPlatformAdmin) {
