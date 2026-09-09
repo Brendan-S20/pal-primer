@@ -2,15 +2,33 @@
 //
 // ── THE TERM ──────────────────────────────────────────────────────────────
 //
-// 50 basis points (0.5%) of the full charge, on charges OVER $10. The $10 is a
-// threshold, not a deduction: a $100 job is charged $0.50, not $0.45. A $10.00
-// job is charged nothing, because "over $10" is strictly greater.
+// ZERO, as of 2026-09-08. `platformFeeCents()` returns undefined for every
+// amount, so `application_fee_amount` is omitted from every charge and nothing
+// is taken for the platform. What a payment costs a tenant is what Stripe
+// charges their own connected account, and nothing else.
 //
-// This is a PRICING TERM, so it is a constant and not an environment variable.
-// A fee that could differ between staging and production is a fee that can ship
-// wrong, and "what does this tenant actually pay" must have exactly one answer
-// everywhere. Changing the rate is a deliberate one-line edit with a test that
-// fails until the expected numbers are updated with it.
+// It was 50 bps of the full charge, on charges over $10. Why it is not any more
+// is a PRICING decision, not a cleanup:
+//
+//   HoundStack now posts a card rate the way the rest of the category does --
+//   2.9% + 30 cents. On a DIRECT charge that number is Stripe's, billed to the
+//   tenant's own account (see "HOW STRIPE APPLIES IT" below). Charging 50 bps
+//   on top made a tenant's real cost about 3.4% while the page said 2.9%, and
+//   no choice of words fixes a number that is simply larger than the published
+//   one. So the fee comes off until the charge routes through the platform.
+//
+// The machinery is left standing rather than deleted, because the fee returns
+// in a different shape. Once platform pricing is configured on the live Connect
+// profile and charges become destination charges, Stripe bills the PLATFORM at
+// whatever volume rate has been negotiated, the posted price stays 2.9% + 30
+// cents, and the spread is the margin. Tenants on the books at that point are
+// grandfathered by construction: the price they were quoted never moved.
+//
+// Turning it back on is this one constant. Every call site, the refund
+// reversal, the franchise settlement split, and the coverage test that refuses
+// a charge built without the fee are all still here and still exercised at
+// zero -- which is the point of setting the rate rather than ripping the wiring
+// out and rebuilding it under time pressure later.
 //
 // ── WHY A MODULE FOR TWO LINES OF ARITHMETIC ──────────────────────────────
 //
@@ -34,6 +52,12 @@
 // touches the platform balance, which is why one Stripe account is enough: it
 // holds subscription revenue and these fees, both of which are ours, and no part
 // of a tenant's or a homeowner's money.
+//
+// While the rate is zero the helper returns undefined rather than 0, so the key
+// is absent from the params object entirely. Stripe documents the field as an
+// optional integer and does not forbid 0, but "charge no fee" and "charge a fee
+// of nothing" are not worth distinguishing on a live payment path, and omitting
+// it is the behaviour Stripe unambiguously specifies.
 //
 // ── REFUNDS ───────────────────────────────────────────────────────────────
 //
@@ -59,8 +83,15 @@
 // It also writes no `payments` row, which is why the `charge.refunded` branch
 // finds nothing to reconcile and correctly does nothing.
 
-/** Basis points. 50 bps = 0.5%. */
-export const PLATFORM_FEE_BPS = 50;
+/**
+ * Basis points. Currently 0 -- see "THE TERM" above.
+ *
+ * 50 would be 0.5%. This is a PRICING TERM, so it is a constant and not an
+ * environment variable: a fee that could differ between staging and production
+ * is a fee that can ship wrong, and "what does this tenant actually pay" must
+ * have exactly one answer everywhere.
+ */
+export const PLATFORM_FEE_BPS = 0;
 
 /**
  * Charges at or below this collect nothing.
@@ -68,23 +99,58 @@ export const PLATFORM_FEE_BPS = 50;
  * Strictly greater, so exactly $10.00 is free and $10.01 is not. The floor
  * exists so a sub-dollar transaction does not carry a fee that costs more in
  * explanation than it earns.
+ *
+ * Inert while PLATFORM_FEE_BPS is 0 -- everything is free -- and kept because
+ * the floor is part of the term, not part of the rate. It applies again the
+ * moment the rate does.
  */
 export const PLATFORM_FEE_THRESHOLD_CENTS = 1000;
 
 /**
- * The platform fee on a charge, in whole cents.
+ * HoundStack's own cut as a sentence fragment, or null when there is not one.
+ *
+ * NULL IS THE POINT. Every surface that tells a tenant what a payment costs has
+ * to name this fee when it exists and stay silent when it does not, and both
+ * halves are real faults: naming a fee of zero overstates what leaves their
+ * account, and omitting a live one is the surprise the franchise copy already
+ * had to be corrected for. Deriving the sentence from the constant means the
+ * next rate change updates every surface, rather than leaving whichever one
+ * somebody forgot saying the wrong thing.
+ *
+ * Reads the threshold as well as the rate, because "0.5%" alone is not the
+ * term -- a $10 job is free, and a tenant who works out our cut from a small
+ * ticket and gets a different answer is entitled to think the number is a lie.
+ */
+export function describePlatformFee(): string | null {
+  if (PLATFORM_FEE_BPS <= 0) return null;
+  const pct = PLATFORM_FEE_BPS / 100;
+  const floor = PLATFORM_FEE_THRESHOLD_CENTS / 100;
+  return `a ${pct}% HoundStack fee on payments over $${floor}`;
+}
+
+/**
+ * The platform fee on a charge, in whole cents, or undefined when there is none.
+ *
+ * UNDEFINED RATHER THAN 0 is the load-bearing part of the signature. Every one
+ * of the ten call sites spends this straight into `application_fee_amount`, so
+ * returning undefined omits the key and returning a number sets it. That is why
+ * the rate can be turned off in one constant without editing a single payment
+ * path -- and why nothing here needs to grow a conditional spread that a future
+ * charge site could forget to copy.
  *
  * Rounded to the nearest cent — `application_fee_amount` must be an integer, and
  * truncating would give away a fraction of a cent on most transactions for no
- * reason. Returns 0 for anything at or below the threshold, and for input that
- * is not a usable amount, because a NaN reaching Stripe as an application fee
- * fails the whole charge and the customer's payment is what matters most.
+ * reason. Returns undefined for anything at or below the threshold, and for
+ * input that is not a usable amount, because a NaN reaching Stripe as an
+ * application fee fails the whole charge and the customer's payment is what
+ * matters most.
  */
-export function platformFeeCents(amountCents: number): number {
-  if (!Number.isFinite(amountCents)) return 0;
+export function platformFeeCents(amountCents: number): number | undefined {
+  if (!Number.isFinite(amountCents)) return undefined;
   const amount = Math.floor(amountCents);
-  if (amount <= PLATFORM_FEE_THRESHOLD_CENTS) return 0;
-  return Math.round((amount * PLATFORM_FEE_BPS) / 10_000);
+  if (amount <= PLATFORM_FEE_THRESHOLD_CENTS) return undefined;
+  const fee = Math.round((amount * PLATFORM_FEE_BPS) / 10_000);
+  return fee > 0 ? fee : undefined;
 }
 
 /**

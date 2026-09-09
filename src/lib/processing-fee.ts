@@ -100,6 +100,39 @@ export const STRIPE_ACH_BPS = 80;
 export const STRIPE_ACH_CAP_CENTS = 500;
 
 /**
+ * Stripe's rates as a sentence fragment, derived from the constants above.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A STRING IN THE JSX. Until now the same
+ * figures were written out three times: these constants, prose on the Payments
+ * page, and the marketing site. That is the shape this repo has already been
+ * bitten by and named -- one revenue figure with three implementations
+ * (BUG-21). Two of the three are in this repo, so two of the three can be made
+ * to move together, and `tests/what-a-payment-costs-is-said-once.test.ts`
+ * refuses a hardcoded rate anywhere in src/.
+ *
+ * The marketing site is a separate repository and cannot be pulled in here. It
+ * quotes the same numbers, so a rate change is still a two-repo edit -- but it
+ * is now one edit per repo rather than one per surface, and this side fails
+ * loudly rather than drifting quietly.
+ *
+ * Deliberately says nothing about HoundStack's own cut: that is
+ * `describePlatformFee()` in platform-fee.ts, and the reason the two fees are
+ * not blended into one number is the whole subject of the header above.
+ */
+export function describeStripeCardRate(): string {
+  return `${STRIPE_CARD_BPS / 100}% + ${STRIPE_CARD_FIXED_CENTS}\u00a2`;
+}
+
+export function describeStripeAchRate(): string {
+  return `${STRIPE_ACH_BPS / 100}% (capped at $${STRIPE_ACH_CAP_CENTS / 100})`;
+}
+
+/** "2.9% + 30¢ on cards and 0.8% (capped at $5) on bank payments". */
+export function describeStripeRates(): string {
+  return `${describeStripeCardRate()} on cards and ${describeStripeAchRate()} on bank payments`;
+}
+
+/**
  * The network ceiling on a card surcharge, in basis points.
  *
  * 300 = 3%, Visa's limit since April 2023. Mastercard permits 4%, but the

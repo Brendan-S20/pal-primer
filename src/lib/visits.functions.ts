@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { RoadLegProblem } from "@/lib/road-legs.server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -447,7 +448,12 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("organizations")
       .select(
-        "workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone, work_days, auto_generate_days_ahead, notify_schedule_horizon",
+        // measured_* are written by refresh_road_profile from this workspace's
+        // own cached road legs and never by a person. They are read here so the
+        // settings screen can show what the routes turned out to be worth,
+        // rather than leaving the speed field looking like the only input to an
+        // estimate it is now the second-choice source for.
+        "workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone, work_days, auto_generate_days_ahead, notify_schedule_horizon, area_type, measured_speed_kmh, measured_road_factor, measured_legs, measured_at",
       )
       .eq("id", orgId)
       .maybeSingle();
@@ -462,7 +468,10 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       .object({
         workday_start: z.string().optional(),
         workday_end: z.string().optional(),
-        avg_speed_kmh: z.number().int().min(5).max(120).optional(),
+        // `null` clears it back to "work it out from the routes"; `undefined`
+        // leaves it alone. Those were the same value until 20260903090000,
+        // which is why the column could be set and never unset.
+        avg_speed_kmh: z.number().int().min(5).max(120).nullable().optional(),
         traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
         max_drive_minutes: z.number().int().min(15).max(1440).optional(),
         // Days the business operates (0=Sun..6=Sat). Visit generation shifts
@@ -503,6 +512,7 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       _workday_start: data.workday_start ?? null,
       _workday_end: data.workday_end ?? null,
       _avg_speed_kmh: data.avg_speed_kmh ?? null,
+      _clear_avg_speed: data.avg_speed_kmh === null,
       _traffic_profile: data.traffic_profile ?? null,
       _max_drive_minutes: data.max_drive_minutes ?? null,
       _timezone: data.timezone ?? null,
@@ -938,18 +948,41 @@ export const applyOptimize = createServerFn({ method: "POST" })
     // 20260815170000 for the algorithm and why each part of it is there.
     let stops = 0;
     const skipped: Array<{ staffId: string; day: string; reason: string }> = [];
+    // Days planned from straight-line estimates because nothing could be
+    // measured, and days where only some points were measurable. Kept apart
+    // because they are different sentences: one day is wrong throughout, the
+    // other is wrong in places.
+    const estimatedDays: Array<{ day: string; problem: RoadLegProblem }> = [];
+    const partlyEstimatedDays: Array<{ day: string; points: number }> = [];
     const perStaff = new Map<string, { stops: number; totalMin: number }>();
 
     for (const day of days) {
       // Measure the real road legs for this day before planning it. Best
-      // effort on purpose: refreshRoadLegs returns 0 for every failure path,
-      // drive_minutes() falls back to its straight-line estimate for anything
-      // unmeasured, and a dispatcher whose routing engine is down still gets a
-      // plan. It is a cache warm, not a dependency.
+      // effort on purpose: drive_minutes() falls back to its straight-line
+      // estimate for anything unmeasured, and a dispatcher whose routing engine
+      // is down still gets a plan. It is a cache warm, not a dependency, and
+      // that does not change.
+      //
+      // WHAT CHANGED IS THAT THE FALLBACK IS NO LONGER SILENT. The result used
+      // to be discarded on this line, so a day planned entirely from estimates
+      // and a day measured against the road network produced identical output.
+      // That is not a cosmetic difference: road-legs.server.ts opens with the
+      // measurement -- the road runs 1.44x to 2.42x the straight line against a
+      // flat 1.45x model, a hop OSRM drives in 22 minutes was costed at 66.7,
+      // and a solver minimising the wrong quantity picks the wrong ORDER. So a
+      // silent fallback hands back a plan in a different ORDER from the one the
+      // dispatcher thinks they asked for, and they route their day by it.
       try {
         const { refreshRoadLegs } = await import("@/lib/road-legs.server");
-        await refreshRoadLegs(orgId, day);
+        const legs = await refreshRoadLegs(orgId, day);
+        if (legs.problem) estimatedDays.push({ day, problem: legs.problem });
+        else if (legs.pointsOutsideGraph > 0) partlyEstimatedDays.push({ day, points: legs.pointsOutsideGraph });
       } catch (err) {
+        // A throw here is not one of refreshRoadLegs' own answers -- it returns
+        // its failures. This is the import or something below it, and the day
+        // is on estimates either way, so it is reported as an outage rather
+        // than left out of the count.
+        estimatedDays.push({ day, problem: "router_unreachable" });
         console.error("road leg refresh failed for", day, (err as Error).message);
       }
 
@@ -993,7 +1026,7 @@ export const applyOptimize = createServerFn({ method: "POST" })
     // `forecast` rides along with the three the screen already had. It is what
     // the removed Preview step used to put on the card, and it is the only
     // route by which a window violation now reaches anybody.
-    return { stops, skipped, balance, forecast };
+    return { stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays };
   });
 
 // assignRoute / optimizeRoute / optimizeWeek / reoptimizeAll were removed here.

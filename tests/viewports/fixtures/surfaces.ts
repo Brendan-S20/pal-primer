@@ -248,4 +248,16 @@ export const SURFACES: Surface[] = [
     proofLabel: 'the "Plans" heading',
     expectsData: "Enterprise (annual, invoiced)",
   },
+  {
+    // Eight columns of mostly numbers, two of them money that has to stay
+    // readable side by side, and a 37-character client name in the first one.
+    // Below md it is cards instead, which is the "dense grids reflow, they do
+    // not shrink" rule rather than a nicety -- so this surface measures two
+    // different layouts and both need to hold.
+    id: "/pricing-drift",
+    path: "/pricing-drift",
+    proof: (p) => p.getByRole("heading", { name: "Who is off the rate card" }).first(),
+    proofLabel: 'the "Who is off the rate card" heading',
+    expectsData: "Kimberly-Anne Rutherford-Sinclair",
+  },
 ];

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { listZones, deleteZone, normalizeUsZip } from "@/lib/zones.functions";
+import { getZoneCoverage, rerunZoneDetection } from "@/lib/zone-coverage.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,31 @@ function ZonesPage() {
   const qc = useQueryClient();
   const { confirm, dialog: bulkDialog } = useConfirmDialog();
   const { data } = useQuery({ queryKey: ["zones"], queryFn: () => list() });
+  // Recomputed from the matcher, not read from properties.zone_id -- that
+  // column is the thing that goes stale. See src/lib/zone-coverage.ts.
+  const { data: coverage } = useQuery({
+    queryKey: ["zone-coverage"],
+    queryFn: () => getZoneCoverage(),
+  });
+
+  // The remedy for what the banner reports. Same permission as editing a zone,
+  // because it rewrites properties.zone_id across the organization.
+  const redetectM = useMutation({
+    mutationFn: () => rerunZoneDetection(),
+    onSuccess: (r: { propertiesUpdated: number }) => {
+      toast.success(
+        r.propertiesUpdated === 0
+          ? "Detection re-run. Nothing changed, so every property already agreed with the rules."
+          : `Detection re-run. ${r.propertiesUpdated} propert${r.propertiesUpdated === 1 ? "y" : "ies"} updated.`,
+      );
+      qc.invalidateQueries({ queryKey: ["zone-coverage"] });
+      qc.invalidateQueries({ queryKey: ["zones"] });
+    },
+    // Deliberately loud. The side-effect version of this swallows its failure
+    // and logs it; a person who pressed a button is owed the error.
+    onError: (e: unknown) =>
+      toast.error(`Could not re-run detection: ${(e as Error).message}`),
+  });
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
 
@@ -135,6 +161,53 @@ function ZonesPage() {
           </div>
         </div>
       )}
+      {coverage?.problem ? (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/20"
+        >
+          <p className="font-medium">{coverage.problem}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Checked by running the matching rules over every property again, so this
+            reflects the zones as they are saved right now, not what was recorded the
+            last time a property was matched.
+            {coverage.summary.orphaned > 0
+              ? " A property that keeps a zone the rules would no longer give it still shows that zone everywhere else in the app."
+              : ""}
+          </p>
+          {canEdit && coverage.summary.stale > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 min-h-[44px]"
+              disabled={redetectM.isPending}
+              onClick={async () => {
+                const c = coverage.summary;
+                const willClear = c.orphaned;
+                const lines = [
+                  willClear > 0
+                    ? `${willClear} propert${willClear === 1 ? "y" : "ies"} will lose the zone they currently show, because no zone matches them under the rules as saved right now.`
+                    : null,
+                  c.reassigned > 0
+                    ? `${c.reassigned} will move to a different zone.`
+                    : null,
+                  c.unassigned > 0 ? `${c.unassigned} will gain a zone.` : null,
+                ].filter(Boolean) as string[];
+                const ok = await confirm({
+                  title: "Re-run zone detection?",
+                  description: `${lines.join(" ")} Pricing for existing services is not changed by this; it updates which zone each property is recorded in. If the zones themselves are wrong, fix those first, because this makes the properties agree with whatever the zones currently say.`,
+                  confirmLabel: "Re-run detection",
+                  destructive: willClear > 0,
+                });
+                if (ok) redetectM.mutate();
+              }}
+            >
+              {redetectM.isPending ? "Re-running…" : "Re-run zone detection"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {noGeoZones.length > 0 && (
         <p className="text-xs text-amber-600">
           No map coverage yet: {noGeoZones.map((z: any) => `"${z.name}"`).join(", ")}. Open Edit to
@@ -376,12 +449,18 @@ function ZoneCard({
             <div className="mt-1 text-xs text-primary">
               {Number(zone.price_per_sqft_cents ?? 0).toFixed(2)} cents/sq ft
               {zone.area_min_charge_cents > 0 && ` · min ${money(zone.area_min_charge_cents)}`}
+              {zone.area_max_charge_cents != null
+                ? ` · max ${money(zone.area_max_charge_cents)}`
+                : " · no maximum"}
             </div>
           )}
           {zone.pricing_mode === "per_acre" && (
             <div className="mt-1 text-xs text-primary">
               {money(zone.price_per_acre_cents)}/acre
               {zone.area_min_charge_cents > 0 && ` · min ${money(zone.area_min_charge_cents)}`}
+              {zone.area_max_charge_cents != null
+                ? ` · max ${money(zone.area_max_charge_cents)}`
+                : " · no maximum"}
             </div>
           )}
           {(zone.commercial_base_cents ?? 0) +

@@ -85,6 +85,39 @@ jobs:
           fi
           echo "docker and supabase are both present"
 
+          # ── ROOM TO WORK IS A PREREQUISITE LIKE THE OTHER TWO ───────────
+          #
+          # Read what this can and cannot do before trusting it. On
+          # 2026-08-29 the runner's disk filled and BOTH jobs died inside
+          # `Set up job`, before step one, with
+          #
+          #     System.IO.IOException: No space left on device :
+          #     '.../actions-runner/_diag/Worker_….log'
+          #
+          # No step can catch that: the worker crashed writing its own log.
+          # This check cannot have prevented that run and does not claim to.
+          #
+          # What it catches is the approach — a disk with room to start a job
+          # but not to finish one. That case otherwise surfaces as a cryptic
+          # failure several minutes in: a half-pulled image layer, an ENOSPC
+          # from initdb, a `db reset` that dies mid-replay and gets read as a
+          # migration fault. Naming it here is the same trade the docker and
+          # supabase checks above already make.
+          #
+          # 15 GiB because a cold start of this job is the whole Supabase
+          # stack — thirteen images plus a fresh Postgres volume — and the
+          # cache is empty exactly when someone has just cleared the disk,
+          # which is to say right after the failure this guards against.
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          if [ "$avail_kb" -lt 15728640 ]; then
+            echo "::error::Only $((avail_kb / 1048576)) GiB free on the runner; this job needs 15 GiB"
+            echo "  Docker's virtual disk is the usual growth vector and does not shrink on its"
+            echo "  own: 'docker system prune -a --volumes' frees space INSIDE the VM, but the"
+            echo "  .raw file keeps the blocks it has already claimed."
+            exit 1
+          fi
+          echo "$((avail_kb / 1048576)) GiB free"
+
       # `db reset` drops the local database and replays supabase/migrations/
       # from nothing. That is a stronger claim than anything in ci.yml, which
       # only ever compares the repo against a database built incrementally over
@@ -105,23 +138,115 @@ jobs:
       #
       # A retry is only honest if it cannot mask the thing being tested. So a
       # genuine migration fault exits immediately: the retry is reachable only
-      # when the log carries the 5xx from the restart. Retrying a failed
+      # when the log shows the restart was reached. Retrying a failed
       # migration three times would turn this job into a slower version of
       # nothing, which is the opposite of why it was built.
+      #
+      # ── THAT USED TO BE SPELLED AS A 5xx, AND THE RACE HAS MORE THAN ONE
+      #    SPELLING ────────────────────────────────────────────────────────
+      #
+      # The guard below matched `Error status 5[0-9][0-9]` and nothing else.
+      # On 2026-08-29 the same race arrived as a CLIENT-side timeout instead:
+      #
+      #     failed to execute http request: Get
+      #     "http://127.0.0.1:54321/storage/v1/bucket": context deadline
+      #     exceeded (Client.Timeout exceeded while awaiting headers)
+      #
+      # No 5xx anywhere in it — the CLI stopped waiting before storage
+      # answered, and storage came up healthy 43 seconds later. All 612
+      # migrations had applied with zero errors. The old guard would have
+      # taken the other branch and printed "failed on a migration", accusing
+      # the migrations of a fault that is not theirs, which is precisely the
+      # misreport this block exists to prevent.
+      #
+      # So the discriminator is no longer the error text, which nobody can
+      # enumerate in advance. `db reset` applies every migration BEFORE it
+      # restarts anything, so "Restarting containers..." in the log means the
+      # replay — the only thing this job tests — already finished. A migration
+      # fault aborts before that line is ever printed, and still exits here.
+      # ── AND WHY `supabase start` NEEDED THE SAME TREATMENT ──────────────
+      #
+      # The loop below was written for the restart race and sat one line too
+      # far down. `supabase start` ran ABOVE it, bare, under `bash -e`: when the
+      # stack would not come up the step died on the CLI's own message and none
+      # of the diagnosis below ever printed.
+      #
+      # Which is exactly what happened on 2026-09-01. Docker on the runner could
+      # not bring supabase_db to a healthy state:
+      #
+      #     Starting database...
+      #     supabase_db_<ref> container is not ready: unhealthy
+      #
+      # Three runs failed that way — twice on a PR and once on a dispatched run
+      # against main, which is how it was established as the runner rather than
+      # the change. None of them retried, and none of them printed "this is the
+      # runner, not the migrations", because that sentence lives after a loop
+      # the failure never reached. The retry written for precisely this class of
+      # problem did not cover the step that hits it.
+      #
+      # So startup retries too, on its own terms: a stop between attempts,
+      # because a half-started stack is the usual reason the next start fails,
+      # and a message that names Docker so nobody has to read three logs to
+      # find out the machine is unwell.
+      #
+      # ── AND WHY THAT PARAGRAPH USED TO END WITH SOMETHING FALSE ─────────
+      #
+      # It said: "The migration guarantee is untouched — this loop only ever
+      # runs BEFORE any migration is replayed, so it cannot mask a migration
+      # fault." That is wrong, and it cost a cycle on 2026-09-03 to find out.
+      # `supabase start` brings up a FRESH stack, and bringing up a fresh stack
+      # replays supabase/migrations/ as part of starting it. So a migration
+      # with a syntax error fails HERE, three times, twenty seconds apart, and
+      # is then reported as:
+      #
+      #     the stack would not start three times running — this is the runner,
+      #     not the migrations
+      #
+      # which is the exact opposite of true, on a job that takes eight minutes
+      # and queues behind everything else on one runner. The real error —
+      # "unterminated dollar-quoted string ... (SQLSTATE 42601)" — was four
+      # lines above it in the log and contradicted by the banner beneath.
+      #
+      # The loop now reads the log it already tees. A SQLSTATE or an "At
+      # statement:" is Postgres refusing the SQL, which no amount of restarting
+      # will change, so it exits at once with the CLI's own message — the same
+      # principle the reset loop below has always applied, now applied one step
+      # earlier. Anything else is still the runner and still retries. The
+      # reset loop still exits
+      # immediately on one.
       - name: Replay every migration into an empty database
         run: |
           set -o pipefail
-          supabase start
+          started=""
+          for attempt in 1 2 3; do
+            if supabase start 2>&1 | tee "start-$attempt.log"; then
+              started=yes
+              break
+            fi
+            # Postgres refused the SQL. Retrying is not going to change its
+            # mind, and the "this is the runner" banner below would be a lie.
+            if grep -qE 'SQLSTATE|At statement:' "start-$attempt.log"; then
+              echo "::error::a migration was refused while the stack came up — this is the SQL, not the runner. The CLI's own error is above; a fresh stack replays supabase/migrations/ as part of starting."
+              exit 1
+            fi
+            echo "::warning::supabase start failed (attempt $attempt of 3); stopping the stack and retrying"
+            supabase stop --no-backup >/dev/null 2>&1 || true
+            sleep 20
+          done
+          if [ -z "$started" ]; then
+            echo "::error::the stack would not start three times running — this is the runner, not the migrations. Check Docker on the runner: 'docker info' should succeed and supabase_db must reach healthy."
+            exit 1
+          fi
           for attempt in 1 2 3; do
             if supabase db reset --local 2>&1 | tee "reset-$attempt.log"; then
               echo "migrations replayed from empty on attempt $attempt"
               exit 0
             fi
-            if ! grep -qE 'Error status 5[0-9][0-9]' "reset-$attempt.log"; then
+            if ! grep -qF 'Restarting containers...' "reset-$attempt.log"; then
               echo "::error::db reset failed on a migration, not on the container restart"
               exit 1
             fi
-            echo "::warning::the container restart raced the API gateway (attempt $attempt of 3); retrying"
+            echo "::warning::every migration applied; the restart raced the stack coming back (attempt $attempt of 3); retrying"
             sleep 15
           done
           echo "::error::the stack failed to come back three times running — this is the runner, not the migrations"
@@ -150,6 +275,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # Same prerequisite, smaller number — see the long note in the database
+      # job for what this can and cannot catch. 5 GiB rather than 15: this job
+      # downloads a browser rather than thirteen container images, and writes
+      # traces and screenshots only when something has already failed. Both
+      # jobs run on one self-hosted runner, so whichever is scheduled first
+      # is the one that reports a disk the other was going to trip over.
+      - name: Find room to work
+        run: |
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          if [ "$avail_kb" -lt 5242880 ]; then
+            echo "::error::Only $((avail_kb / 1048576)) GiB free on the runner; this job needs 5 GiB"
+            echo "  A browser download that runs out of disk half way leaves a cache that exists,"
+            echo "  fails to launch, and reports as a layout failure on every route at every width."
+            exit 1
+          fi
+          echo "$((avail_kb / 1048576)) GiB free"
 
       # A self-hosted runner keeps its workspace between jobs, so the browser is
       # usually already there and this is a no-op after the first run.

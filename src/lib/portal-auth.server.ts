@@ -5,7 +5,6 @@
 //
 // Import inside server-function handlers only (uses service_role + cookies).
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { appUrl } from "@/lib/app-origin";
 
 // @tanstack/react-start/server is server-only and denied in the client bundle.
 // portal.functions.ts (which ships to the client) statically imports this
@@ -338,21 +337,27 @@ export async function issuePortalOtp(
       const resendApiKey = process.env.RESEND_API_KEY;
       if (!resendApiKey) throw new Error("Email isn't configured for this company. Ask us to read you the code.");
       const logMessageId = `portal-otp-${randomBytes(8).toString("hex")}`;
-      const unsubscribeToken = randomBytes(32).toString("hex");
-      await supabaseAdmin
-        .from("email_unsubscribe_tokens")
-        .insert({ email: dest.trim().toLowerCase(), token: unsubscribeToken });
-      const unsubUrl = appUrl(`/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`);
+      // NO List-Unsubscribe on this one. It used to mint a token and set
+      // `List-Unsubscribe` + `List-Unsubscribe-Post: One-Click`, exactly as the
+      // marketing and notification sends do -- and /unsubscribe writes the
+      // address into `suppressed_emails` GLOBALLY, which both senders fail
+      // closed on. So a customer who tapped "unsubscribe" on a LOGIN CODE, or
+      // whose mail client fired the one-click POST on their behalf while
+      // scanning the message, silently stopped receiving their invoices, their
+      // receipts and their visit notifications. Neither they nor the office
+      // would be told, and the code itself kept working, because this send
+      // POSTs Resend directly and never checks suppression -- so nothing about
+      // the failure was visible from either end.
+      //
+      // RFC 8058 one-click exists for BULK mail. A one-time authentication
+      // code is transactional: there is nothing to opt out of, and offering it
+      // is how a login screen quietly turns off somebody's billing email.
       const emailBody = {
         from: `${contact.org_name} <noreply@notify.houndstack.com>`,
         to: [dest],
         subject: `Your ${contact.org_name} verification code`,
         html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
         text: message,
-        headers: {
-          "List-Unsubscribe": `<${unsubUrl}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
       };
       try {
         const res = await fetch("https://api.resend.com/emails", {

@@ -17,6 +17,7 @@ import { platform } from "@/lib/native";
 import {
   listPlatformPlans,
   createPlanSubscription,
+  type PromoDropReason,
   refreshBillingStatus,
 } from "@/lib/billing.functions";
 
@@ -86,6 +87,8 @@ export function PlanPicker({
   switchingPlanId?: string | null;
   chooseLabel?: string;
 }) {
+
+
   // A store build renders the note, never a purchase. See StoreBuildNote.
   if (!saasPurchaseAllowed(platform())) return <StoreBuildNote />;
 
@@ -275,6 +278,29 @@ function withUpgradedFlag(url: string) {
 
 /** Inline plan purchase via the Payment Element — the subscription is created
  *  server-side (default_incomplete) and paid for right here, no Checkout. */
+/**
+ * What to tell somebody whose signup promo code produced no discount.
+ *
+ * Split by reason because the right next step differs, and a single "your code
+ * did not apply" would send all four to support including the one they can fix
+ * themselves. `invalid` carries the server's own sentence, which is already
+ * written for a person and says which of expired / deactivated / fully
+ * redeemed it was.
+ */
+function promoDropMessage(d: { code: string; reason: PromoDropReason; detail?: string }): string {
+  const named = d.code ? `Promo code ${d.code}` : "Your promo code";
+  switch (d.reason) {
+    case "wrong_plan":
+      return `${named} does not apply to this plan, so this price has no discount in it. It may apply to a different plan.`;
+    case "invalid":
+      return `${named} was not applied. ${d.detail ?? "That code is no longer valid."} Contact us before paying if you were promised a discount.`;
+    case "not_in_stripe":
+      return `${named} could not be applied, which is a problem on our side. Contact us before paying rather than re-entering it.`;
+    case "lookup_failed":
+      return `${named} could not be checked just now, so this price has no discount in it. Contact us before paying if you were expecting one.`;
+  }
+}
+
 export function EmbeddedPlanCheckout({
   planId,
   interval = "month",
@@ -326,6 +352,17 @@ export function EmbeddedPlanCheckout({
         if (onSwitched) onSwitched(r.planName);
         else onCancel();
         return;
+      }
+      // BEFORE THE CARD FORM, NOT AFTER THE CHARGE.
+      //
+      // An owner typed a code on Get-started and is about to be billed full
+      // price. The whole value of saying so is that it arrives while they can
+      // still stop, so this runs ahead of setSession and holds for 15s rather
+      // than the default toast life. Nothing is blocked: a dead code must not
+      // stand between somebody and paying us, which is why the server applies
+      // no discount instead of refusing.
+      if (r.promoDropped) {
+        toast.warning(promoDropMessage(r.promoDropped), { duration: 15000 });
       }
       setSession({
         clientSecret: r.clientSecret,

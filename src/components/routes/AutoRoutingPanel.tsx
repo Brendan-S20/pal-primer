@@ -61,6 +61,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { applyOptimize } from "@/lib/visits.functions";
+import type { RoadLegProblem } from "@/lib/road-legs.server";
 
 // ── THERE IS NO LEVEL TO CHOOSE ANY MORE ────────────────────────────────
 //
@@ -128,6 +129,21 @@ const shortDay = (iso: string) => {
 };
 
 type Section = "dates" | "techs" | null;
+
+/**
+ * Why a day could not be measured, in words for whoever has to act on it.
+ *
+ * A Record keyed on RoadLegProblem rather than a switch, so a seventh cause
+ * added to road-legs.server.ts fails to compile here until it has a sentence.
+ */
+const ROAD_LEG_REASON: Record<RoadLegProblem, string> = {
+  router_unreachable: "The routing service could not be reached.",
+  router_error: "The routing service returned an error.",
+  wrong_region: "The routing service has no map for these addresses.",
+  too_many_points: "The day has more stops than the router will measure at once.",
+  nothing_usable: "The routing service returned nothing usable.",
+  save_failed: "The measurements could not be saved.",
+};
 
 /** applyOptimize's measurement, or null when it could not be taken. */
 type Forecast = Awaited<ReturnType<typeof applyOptimize>>["forecast"];
@@ -276,6 +292,42 @@ export function AutoRoutingPanel({
         toast.warning("Routed, but the arrival-window check could not run for this batch.", {
           duration: 8000,
         });
+      }
+      // A day planned from straight-line estimates is not the same day as one
+      // planned against the road network, and until now they produced
+      // identical output. road-legs.server.ts opens with why that matters: the
+      // road runs 1.44x to 2.42x the straight line against a flat 1.45x model,
+      // a hop OSRM drives in 22 minutes was costed at 66.7, and a solver
+      // minimising the wrong quantity picks the wrong ORDER. So this is not
+      // "the ETA may be off" -- the STOP ORDER may be wrong, and the
+      // dispatcher is about to drive it.
+      //
+      // The reason is named because the four causes have different owners: an
+      // outage passes, a wrong region is configuration, and a day too big for
+      // the router is ours. A dispatcher cannot fix any of them, but the
+      // person they forward this to can, and "routing was estimated" alone
+      // does not tell them which.
+      if (r.estimatedDays.length > 0) {
+        const days = r.estimatedDays.length;
+        const reasons = [...new Set(r.estimatedDays.map((d) => ROAD_LEG_REASON[d.problem]))];
+        toast.warning(
+          `${days === 1 ? "1 day was" : `${days} days were`} routed from straight-line estimates, not measured roads. ` +
+            `The stop order may not be the best road route.`,
+          { description: reasons.join(" "), duration: 12000 },
+        );
+      }
+      // Different sentence on purpose: this day WAS measured, just not all of
+      // it. Folding it into the warning above would overstate the problem, and
+      // leaving it out would understate it.
+      if (r.partlyEstimatedDays.length > 0) {
+        const days = r.partlyEstimatedDays.length;
+        toast.warning(
+          `On ${days === 1 ? "1 day" : `${days} days`}, some stops sit outside the routing map, so those legs were estimated.`,
+          {
+            description: "Usually an address whose coordinates are wrong, or a region the router does not cover.",
+            duration: 12000,
+          },
+        );
       }
       // Refusals are surfaced, not swallowed. A dispatcher who is not told a
       // day was skipped will believe it was optimized.

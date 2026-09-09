@@ -3,9 +3,10 @@
 Everything in here needs a console, an account, a card, or a judgement call
 that is not mine to make. Nothing in here can be done from the repo.
 
-Ordered by what blocks the most. Last measured 2026-08-30 against `main`
-(`18aed23`). The 2026-08-26 pass against `76410a0` is what most of the DONE
-entries below rest on; item 2 and item 9 were re-measured on the later date.
+Ordered by what blocks the most. Last measured 2026-09-09 against `main`
+(`2799691`). The 2026-08-26 pass against `76410a0` is what most of the DONE
+entries below rest on; item 2 was re-measured on 2026-08-30, and item 6, item 7
+and item 9 on 2026-09-09.
 
 ---
 
@@ -74,14 +75,14 @@ bundle to run. If a Test action is ever added back, it will fail the same way.
       Productivity; App Store Connect said Utilities, so ASC is the one to
       change.
 
-## 6. Allow the app's redirect URL in Supabase — BLOCKING
+## 6. Allow the app's redirect URL in Supabase — DONE
 
-The single most important entry here. OAuth buttons ship in the binary as of
-2026-08-27, so without this every Google and Facebook sign-in from inside the
-iOS app fails, and fails silently. A reviewer would hit it on the first tap.
-See the superseded-section note near the end for why this changed.
+Was the single most important entry here, and you did it. OAuth buttons ship in
+the binary as of 2026-08-27, so until the redirect was allowed every Google and
+Facebook sign-in from inside the iOS app failed, and failed silently. Ticked on
+`main` between this branch being written and 2026-09-09.
 
-- [ ] Supabase → Authentication → URL Configuration → **Redirect URLs** → add
+- [x] Supabase → Authentication → URL Configuration → **Redirect URLs** → add
       `consulting.thenorth.houndstack://auth-callback`
 
 Sign-in from inside the iOS app hands back to the app through that custom URL
@@ -130,6 +131,26 @@ own pin as before, and the areas shrank 2.6% — which is
 `cos(42.4°)/cos(40.7°)`, the correct amount for the same shape at a higher
 latitude, and therefore evidence the translation was clean rather than a
 reshape.
+
+**A second thing the relocation missed, found 2026-09-08 and still open.** The
+zones did not move. `Demo Pet Waste Co` has two: `Downtown Core`, matching on
+ZIPs 10001, 10002 and 10003, and `Westside Suburb`, matching on 10023 and 10024
+plus a polygon over Manhattan. Every one of the 110 active properties is now in
+Michigan, in 480xx and 482xx, so **no property matches any zone** and neither
+zone sets a centre or radius that could reach one.
+
+This is the same class of miss as the boundaries above: the move rewrote the
+addresses and left a geographic column behind. It shows up as 54 properties
+carrying a `zone_id` the matcher would no longer give them, which the zones
+page now reports rather than leaving to be discovered.
+
+I have not fixed it, and will not without you, because both repairs are
+plausible and they are not equivalent. **Re-running zone detection** clears
+those 54 assignments, which is right if the ZONES are what is stale.
+**Rewriting the two zones to Detroit ZIPs** keeps the assignments meaningful,
+which is right if the zones are meant to describe the demo service area. The
+first is one button on the zones page; the second is two rows. Say which and it
+is done in a minute.
 
 House numbers are synthetic and street names are real to those suburbs, so the
 addresses read correctly without being anyone's home. The previous values are
@@ -197,14 +218,26 @@ plainly: *"WHAT IT DOES NOT DO IS FIX THE DEPLOY. The build emits the file and
 the host does not serve it, which is a hosting question rather than a repo
 one."* That is still true, which is why it needs you rather than a commit.
 
-**One repo-side follow-up, deliberately deferred.** `check:pwa:live` is the
-only `check:*` script no workflow runs — it was written CI-safe on purpose
-(exit 1 only when the origin ANSWERS and the worker is missing, so a flaky
-network cannot fail a build) and then wired to nothing. Wiring it now would
-put a knowingly-red gate into CI, which is the habit `sandboxes.yml` already
-warns about: a check that can only be red teaches people to ignore it. Wire it
-**after** the host is fixed, the way the signed-in viewport sweep was made a
-gate the day its 22 failures reached zero.
+**That follow-up is now done, resolved differently.** This section used to say
+`check:pwa:live` should be wired **after** the host was fixed, because a
+knowingly-red gate teaches people to ignore it. The objection was right; the
+conclusion was not, and waiting had already cost three weeks of silence.
+
+It was wired on 2026-09-08 (#180) as the `deployment` job in `ci.yml`, gated
+`if: github.event_name != 'pull_request'`. That is what dissolves the
+objection: **a pull request never sees it.** No contributor is ever blocked by
+a red X they are powerless to clear, which was the actual harm. It is a hard
+gate on `main` and on manual dispatch, where the state it reports is state
+somebody can act on.
+
+So `main` is red today, on purpose and accurately, and goes green the moment
+the host serves the worker. Re-measured on every push since; still 404.
+
+**And it now costs a marketing claim too.** `docs/MARKETING_CLAIMS.md` in the
+site repo lists "works offline", "install it on your phone" and "progressive
+web app" as blocked, because the machinery is built and correct here and simply
+is not served. It is a strong claim for a product used in driveways with one
+bar of signal, and it is unavailable until this is fixed.
 
 ## Things you do NOT need to do
 

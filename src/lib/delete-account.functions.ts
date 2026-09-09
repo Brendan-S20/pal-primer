@@ -41,6 +41,15 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 /** Who a sole owner could hand the workspace to. Empty for everybody else,
  *  which is what lets the UI show the simple confirmation rather than the
  *  transfer picker. */
+/**
+ * A step of account deletion that runs AFTER the database half has committed.
+ *
+ * Each is best effort by design, so each can fail without failing the
+ * deletion. Naming them is what lets the screen say which one, and lets a
+ * `switch` over them fail to compile when a fourth is added.
+ */
+export type DeletionStep = "billing" | "identity" | "sessions";
+
 export const listOwnershipTransferCandidates = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -112,6 +121,32 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+    // ── WHAT DID NOT HAPPEN, RATHER THAN A BARE ok ──────────────────────
+    //
+    // The three steps below are best effort ON PURPOSE and that does not
+    // change: the database half has already committed, and a Stripe outage or
+    // a GoTrue hiccup must not leave somebody unable to delete their account.
+    // Each reason is argued at its own step.
+    //
+    // What was wrong is that all three swallowed their failure and the
+    // function returned `ok: true` regardless, so the screen said "Your
+    // account is deleted" whether or not it was. The three are not equally
+    // serious and none of them is cosmetic:
+    //
+    //   billing   a closed workspace keeps its subscription, so we go on
+    //             taking money from somebody who closed their account.
+    //   identity  the address is still on the account. It can still receive
+    //             a password reset, and it still collides with a genuine
+    //             re-signup. This is the one where "deleted" is furthest from
+    //             true, and the person is the only one who can chase it.
+    //   sessions  every already-signed-in device stays signed in. A deletion
+    //             done because a laptop was lost does not achieve the thing it
+    //             was done for.
+    //
+    // So they are named and returned. The caller decides what to say; what it
+    // must not do any more is claim a clean deletion it cannot vouch for.
+    const incomplete: DeletionStep[] = [];
+
     // 2. Stop future platform billing on a closed workspace. Best effort and
     //    AFTER the database half: a Stripe outage must not leave somebody
     //    unable to delete their account, and a subscription on a suspended
@@ -135,6 +170,7 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
           }
         }
       } catch (e) {
+        incomplete.push("billing");
         console.error("workspace close: subscription cancel failed", (e as Error).message);
       }
     }
@@ -152,6 +188,7 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
         app_metadata: { deleted_at: new Date().toISOString() },
       });
     } catch (e) {
+      incomplete.push("identity");
       console.error("account deletion: identity anonymisation failed", (e as Error).message);
     }
 
@@ -161,12 +198,19 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
     try {
       await (supabaseAdmin as any).auth.admin.signOut(userId, "global");
     } catch (e) {
+      incomplete.push("sessions");
       console.error("account deletion: session revoke failed", (e as Error).message);
     }
 
     return {
+      // Still `ok`, and deliberately: the records ARE gone, because the RPC
+      // throws rather than returning on failure and we never reach here if it
+      // did. Turning a failed session revoke into an error would tell somebody
+      // their deletion failed when the irreversible part of it succeeded, and
+      // would invite them to press the button again.
       ok: true as const,
       workspaceClosed: closed,
       transferred: !!(result as any)?.transferred,
+      incomplete,
     };
   });

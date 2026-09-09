@@ -410,6 +410,18 @@ function InvoicesPage() {
     onSuccess: (r) => {
       if (r.failed) toast.error(`Marked ${r.ok} of ${r.ok + r.failed} paid, ${r.failed} skipped`);
       else toast.success(`Marked ${r.ok} paid`);
+      // Separate from `failed`, and deliberately not silent. These invoices ARE
+      // paid; what did not happen is the cancellation of the pay-page intent,
+      // so the client can still press Pay and be charged a second time, and
+      // that charge is recorded nowhere. The office needs to hear it now, while
+      // it can still cancel the intent in Stripe.
+      if (r.intentStillLive?.length) {
+        const n = r.intentStillLive.length;
+        toast.warning(
+          `${n} of those still ${n === 1 ? "has" : "have"} a live payment link. Cancel ${n === 1 ? "it" : "them"} in Stripe, or the client can still be charged.`,
+          { duration: 15000 },
+        );
+      }
       sel.clear();
       refreshMoney();
     },
@@ -486,6 +498,12 @@ function InvoicesPage() {
     onSuccess: (r) => {
       if (r.ok) toast.success("Invoice marked paid");
       else toast.error("Invoice could not be marked paid");
+      if (r.intentStillLive?.length) {
+        toast.warning(
+          "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
+          { duration: 15000 },
+        );
+      }
       refreshMoney();
     },
     onError: (e: Error) => toast.error(e.message),
