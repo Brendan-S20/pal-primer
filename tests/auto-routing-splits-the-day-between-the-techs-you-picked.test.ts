@@ -97,7 +97,16 @@ describe("applying auto-routing hands the whole team to one planner", () => {
     // window. The three that were here are named individually rather than
     // relaxed to a wildcard: this assertion exists to notice a member going
     // MISSING, and /return \{ stops, .* \}/ would not have.
-    expect(apply).toMatch(/return \{ stops, skipped, balance, forecast \}/);
+    //
+    // CHANGED 2026-09-08: two more members, `estimatedDays` and
+    // `partlyEstimatedDays` — which days were planned from straight-line
+    // estimates because the road legs could not be measured, and which were
+    // only partly measured. Still named individually rather than relaxed to a
+    // wildcard, for the reason above: this assertion exists to notice a member
+    // going MISSING.
+    expect(apply).toMatch(
+      /return \{ stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays \}/,
+    );
 
     const panel = codeOnly(read("src/components/routes/AutoRoutingPanel.tsx"));
     expect(panel).toMatch(/r\.balance/);

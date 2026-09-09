@@ -69,9 +69,20 @@ describe("the fetcher is a cache warm, not a dependency", () => {
     expect(server).toMatch(/\$\{p\.lon\},\$\{p\.lat\}/);
   });
 
-  it("returns 0 rather than throwing on every failure path", () => {
-    const paths = server.match(/return 0;/g) ?? [];
-    expect(paths.length, "a failure path throws instead of degrading").toBeGreaterThanOrEqual(4);
+  it("degrades rather than throwing on every failure path", () => {
+    // CHANGED 2026-09-08: the failure paths used to `return 0;` and this
+    // counted those. They now return `failed("<cause>")`, because one number
+    // could not tell "nothing to measure" from "the router is down" and the
+    // caller was discarding it either way.
+    //
+    // The property is unchanged and is what is asserted: no failure path
+    // throws, so a routing outage cannot take the planner down with it. Naming
+    // the causes made that stronger rather than weaker -- a throw would now
+    // also fail the exhaustive Record in AutoRoutingPanel.
+    const paths = server.match(/return failed\("/g) ?? [];
+    expect(paths.length, "a failure path stopped degrading").toBeGreaterThanOrEqual(4);
+    const body = server.slice(server.indexOf("export async function refreshRoadLegs"));
+    expect(body, "refreshRoadLegs throws instead of degrading").not.toMatch(/^\s*throw /m);
   });
 
   it("refuses to half-measure a day that is too big", () => {
@@ -220,7 +231,10 @@ describe("a coordinate outside the graph cannot poison the plan", () => {
 
   it("writes nothing at all when every point is outside", () => {
     // Almost certainly the wrong region. Writing any of it is writing fiction.
-    expect(server).toMatch(/if \(bad\.size === points\.length\) return 0;/);
+    // The cause is now named, which is also what the screen shows: "The
+    // routing service has no map for these addresses" is actionable in a way
+    // that a silent zero was not.
+    expect(server).toMatch(/if \(bad\.size === points\.length\) return failed\("wrong_region"\);/);
   });
 
   it("says which endpoint it asked, because that is the misconfiguration", () => {

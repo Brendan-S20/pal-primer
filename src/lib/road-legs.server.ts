@@ -94,7 +94,63 @@ const r5 = (n: number) => Number(n.toFixed(5));
  * that refuses to run when a third-party router is down is worse than one that
  * falls back to an estimate.
  */
-export async function refreshRoadLegs(orgId: string, day: string): Promise<number> {
+/**
+ * Why a day got no measured road legs and is being planned on estimates.
+ *
+ * Named rather than boolean because the answers differ. `too_many_points` is a
+ * deliberate refusal of ours and is fixed by raising MAX_POINTS or splitting
+ * the day; `wrong_region` means OSRM_ENDPOINTS points at the wrong extract and
+ * is a configuration fault; the router ones are an outage. Somebody reading
+ * "this day was estimated" needs to know which before they can do anything.
+ */
+export type RoadLegProblem =
+  | "too_many_points"
+  | "router_unreachable"
+  | "router_error"
+  | "wrong_region"
+  | "nothing_usable"
+  | "save_failed";
+
+/**
+ * What a day's measurement actually achieved.
+ *
+ * This replaced a bare `number`, which collapsed six different situations into
+ * the same 0 and threw away the difference between "nothing to measure" and
+ * "the router is down". The caller discarded it anyway, so a dispatcher was
+ * handed a plan built on straight-line estimates with nothing on screen saying
+ * so -- and the header of this file is the argument for why that matters: the
+ * road runs 1.44x to 2.42x the straight line against a flat 1.45x model, a hop
+ * OSRM drives in 22 minutes is costed at 66.7, and a solver minimising the
+ * wrong quantity picks the wrong ORDER. Falling back is right. Falling back
+ * quietly is not.
+ */
+export type RoadLegResult = {
+  /** Legs written to `road_legs`. */
+  measured: number;
+  /**
+   * Set when the day got NO measured legs at all. Null both when the day was
+   * measured and when there was nothing to measure -- a day with one point is
+   * not a degraded day, and reporting it as one would put a warning on the
+   * screen of every workspace with a single stop.
+   */
+  problem: RoadLegProblem | null;
+  /**
+   * Points that snapped too far to trust, whose legs stayed on estimates while
+   * the rest of the day was measured. Zero normally. This is the PARTIAL case,
+   * which a single problem code cannot express: the day is neither cleanly
+   * measured nor cleanly estimated.
+   */
+  pointsOutsideGraph: number;
+};
+
+const nothingToMeasure: RoadLegResult = { measured: 0, problem: null, pointsOutsideGraph: 0 };
+const failed = (problem: RoadLegProblem): RoadLegResult => ({
+  measured: 0,
+  problem,
+  pointsOutsideGraph: 0,
+});
+
+export async function refreshRoadLegs(orgId: string, day: string): Promise<RoadLegResult> {
   const admin = supabaseAdmin as any;
 
   const { data: visits } = await admin
@@ -159,7 +215,7 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
   for (const d of (dumps ?? []) as Coord[]) add(d.latitude, d.longitude);
 
   // One point is a matrix of itself; nothing to measure.
-  if (points.length < 2) return 0;
+  if (points.length < 2) return nothingToMeasure;
   if (points.length > MAX_POINTS) {
     // Deliberately not silently truncating: a partial matrix would measure some
     // legs and estimate others, and the mix is harder to reason about than
@@ -167,7 +223,7 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
     console.warn(
       `[road-legs] ${points.length} points for ${orgId} on ${day} exceeds ${MAX_POINTS}; leaving this day on estimates`,
     );
-    return 0;
+    return failed("too_many_points");
   }
 
   // OSRM takes lon,lat. Getting this backwards routes through the Indian Ocean
@@ -184,17 +240,17 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
     });
     if (!res.ok) {
       console.error(`[road-legs] OSRM ${res.status} for ${orgId} ${day}`);
-      return 0;
+      return failed("router_error");
     }
     json = await res.json();
   } catch (err) {
     console.error("[road-legs] OSRM unreachable", (err as Error).message);
-    return 0;
+    return failed("router_unreachable");
   }
 
   if (json?.code !== "Ok" || !Array.isArray(json.distances) || !Array.isArray(json.durations)) {
     console.error("[road-legs] OSRM returned", json?.code, json?.message ?? "");
-    return 0;
+    return failed("router_error");
   }
 
   // ── THE GUARD THAT MAKES A WRONG GRAPH HARMLESS ────────────────────────
@@ -223,7 +279,7 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
   }
   // Nothing in this extract at all: almost certainly the wrong region, and
   // writing any of it would be writing fiction.
-  if (bad.size === points.length) return 0;
+  if (bad.size === points.length) return failed("wrong_region");
 
   const rows: any[] = [];
   for (let i = 0; i < points.length; i++) {
@@ -249,14 +305,14 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
       });
     }
   }
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) return failed("nothing_usable");
 
   const { error } = await admin
     .from("road_legs")
     .upsert(rows, { onConflict: "organization_id,from_lat,from_lon,to_lat,to_lon" });
   if (error) {
     console.error("[road-legs] upsert failed", error.message);
-    return 0;
+    return failed("save_failed");
   }
 
   // Re-measure what this workspace's roads are actually worth, now that there
@@ -278,5 +334,5 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
     console.error("[road-legs] road profile refresh failed", profileError.message);
   }
 
-  return rows.length;
+  return { measured: rows.length, problem: null, pointsOutsideGraph: bad.size };
 }
