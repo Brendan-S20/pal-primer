@@ -21,6 +21,33 @@ for (const w of [360, 1280]) {
     await installStubBackend(context);
     await page.setViewportSize({ width: w, height: 900 });
     await page.goto("/zones");
+
+    // ── WHY THIS WAIT, AND WHY IT IS NOT A RETRY ──────────────────────────
+    //
+    // The banner is drawn from getZoneCoverage(), a server function. On a cold
+    // dev server the FIRST call to one pays for its on-demand transform, and
+    // that cost lands entirely on whichever test navigates first -- the same
+    // cold-start effect playwright.config.ts documents for the 90s test
+    // ceiling, one layer further in.
+    //
+    // Measured, not assumed. Against a freshly started server this file's
+    // 1280px case -- the one that PASSES -- took 15.1s, against an assertion
+    // ceiling of 15s. It was never comfortably green; it was winning a coin
+    // toss. The 360px case is first in the loop, so it paid the cost and lost,
+    // while 1280px ran second on a warm server and took 3.5s. That is the
+    // whole of the difference between them, and it is why this looked like a
+    // width-dependent layout fault and is not one: at 360px the banner renders
+    // correctly, it simply had not arrived yet.
+    //
+    // So wait for the navigation to go quiet BEFORE the assertion opens its
+    // budget, which is exactly what settle() does in
+    // every-signed-in-page-at-every-width.spec.ts and why the big sweeps do
+    // not flake here. The 15s ceiling then measures what it was written to
+    // measure -- whether the banner is on screen -- rather than how warm the
+    // server was. A banner that is genuinely missing still fails, and still
+    // fails in the same place.
+    await page.waitForLoadState("networkidle").catch(() => {});
+
     const banner = page.getByText("still carry a zone the rules would no longer give them", {
       exact: false,
     });
