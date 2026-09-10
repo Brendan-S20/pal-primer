@@ -189,63 +189,89 @@ string on every attempt and Facebook was answering "Invalid App ID" inside a
 and a redirect-to-error. It now reads the body and refuses any `client_id`
 containing a pipe. The secret has been rotated.
 
-## 9. The service worker is still 404 in production — NEW to this list
+## 9. The service worker was 404 in production. FIXED, DEPLOYED, VERIFIED
 
-Not submission-blocking: the iOS binary does not use it, and this is web-only.
-It is on the list because it affects every web visitor right now, it has been
-open since 2026-08-28, and it cannot be fixed from the repo.
+Nothing here needs you any more. Kept rather than deleted because the wrong
+theories are the useful part, and because two of them were mine.
 
-- [ ] Make the host serve `/sw.js` from the build output at
-      `https://app.houndstack.com`.
-
-Re-measured 2026-08-30 with `npm run check:pwa:live`:
+**Resolved 2026-09-10.** `/sw.js` answers 200 on `https://app.houndstack.com`:
+21,477 bytes, 377 precache entries. `npm run check:pwa:live` prints
 
 ```
-/sw.js                 404
-/manifest.webmanifest  200
-/favicon.ico           200
+✓ the deployed site serves its service worker and links its manifest
 ```
 
-Files from the same build directory are served; the worker specifically is
-not. `src/pwa/register.ts` calls `serviceWorker.register("/sw.js")` on every
-production page load, so every visitor gets a console error, no install
-prompt, and no offline tolerance.
+and the `deployment` job in `ci.yml` is GREEN on `main` for the first time
+since it was created.
 
-**The build is not the problem and never was.** `check:pwa` reads
-`.output/public`, proves the worker is emitted with a populated precache, and
-has been green throughout — correctly. #145 established this and said so
-plainly: *"WHAT IT DOES NOT DO IS FIX THE DEPLOY. The build emits the file and
-the host does not serve it, which is a hosting question rather than a repo
-one."* That is still true, which is why it needs you rather than a commit.
+**It was not a hosting problem. It was two directories.**
+`@lovable.dev/vite-tanstack-config` overrides Nitro's output paths inside the
+hosted build (`nitroOpts.output = { dir: "dist", serverDir: "dist/server",
+publicDir: "dist/client" }`), while `vite.config.ts` hardcoded
+`.output/public` for the PWA. Everything routed through Rollup or Nitro's own
+`public/` copy followed Nitro and shipped; the two files `vite-plugin-pwa`
+writes directly to disk in `closeBundle` followed the hardcoded path into a
+directory the hosted build never created. `PWA_OUT_DIR` now derives all three
+cases and a build-time guard compares it against the client environment's
+resolved `outDir`, so the two can no longer disagree silently. #188.
 
-**That follow-up is now done, resolved differently.** This section used to say
-`check:pwa:live` should be wired **after** the host was fixed, because a
-knowingly-red gate teaches people to ignore it. The objection was right; the
-conclusion was not, and waiting had already cost three weeks of silence.
+**This line was wrong for three weeks and it was written here:** *"it cannot be
+fixed from the repo."* It could. `check:pwa` read `.output/public`, which on a
+laptop is right and in the hosted build is precisely the orphaned directory, so
+the one check that could have seen it was pointed at the one place guaranteed
+to look correct. A green build check and a red deploy check were both telling
+the truth, and the conclusion drawn from them -- that the host was at fault --
+did not follow.
 
-It was wired on 2026-09-08 (#180) as the `deployment` job in `ci.yml`, gated
-`if: github.event_name != 'pull_request'`. That is what dissolves the
-objection: **a pull request never sees it.** No contributor is ever blocked by
-a red X they are powerless to clear, which was the actual harm. It is a hard
-gate on `main` and on manual dispatch, where the state it reports is state
-somebody can act on.
+**Two corrections worth keeping, both about method rather than code.** The fix
+was called working before it had shipped, and then called broken when the
+deployment being measured had been built before it landed. Same root error
+twice: a local reproduction and a partial signal each treated as proof about
+production. What settled it was measuring the running site after the right
+commit reached it.
 
-So `main` is red today, on purpose and accurately, and goes green the moment
-the host serves the worker. Re-measured on every push since; still 404.
+**A property of the pipeline that came out of this and is worth knowing:** the
+host builds the commit it had synced when the deploy was triggered, not the
+newest one. There is a one-deploy lag. `check:pwa:live` now prints the
+deployment id it measured (#186) precisely so that "not deployed yet" and
+"deployed and broken" stop looking identical.
 
-**And it now costs a marketing claim too.** `docs/MARKETING_CLAIMS.md` in the
-site repo lists "works offline", "install it on your phone" and "progressive
-web app" as blocked, because the machinery is built and correct here and simply
-is not served. It is a strong claim for a product used in driveways with one
-bar of signal, and it is unavailable until this is fixed.
+### What was believed while it was open, and why each was wrong
 
-### What 2026-09-09 ruled out, so nobody re-runs it
+Kept because every one of these was argued from real evidence, and the evidence
+was not the problem.
 
-A redeploy was triggered from the Lovable API and **completed successfully**
-(`status: "completed"`, `agentFinished: true`, `updated_at` after the trigger).
-`/sw.js` was polled eighteen times over the following six minutes and answered
-404 every time, and `check:pwa:live` agreed. So the deploy is not stale and
-re-deploying is not the fix.
+**"The build is not the problem and never was."** Written here, repeatedly, and
+false. `check:pwa` proved the worker was emitted into `.output/public` and was
+green throughout -- correctly, because on a laptop that IS the deployed
+directory. In the hosted build it is the orphan. The one check that could have
+caught this was pointed at the one place guaranteed to look right.
+
+**"It cannot be fixed from the repo."** It could, and it was, in
+`vite.config.ts`. This sentence sat in this file for three weeks and is the
+single line that cost the most, because it told everybody to stop looking.
+
+**"The host does not serve the file."** True as an observation and wrong as a
+diagnosis. The host served every file it was given. It was never given this one.
+
+**The `deployment` gate was right the whole time.** It was wired on 2026-09-08
+(#180) as a job in `ci.yml` gated `if: github.event_name != 'pull_request'`, so
+no contributor is ever blocked by a red X they cannot clear. It reported a real
+fault accurately for two days while the explanation attached to it was wrong,
+which is the best argument for keeping a gate red rather than removing it: the
+signal outlived every theory about it.
+
+### The measurements, which were all true and still are
+
+None of the following is retracted. They were measured carefully and they all
+still hold; they simply did not support the conclusion drawn from them, which
+was that the fault lay outside the repo. Worth reading before trusting any
+future "we have ruled that out".
+
+A redeploy was triggered from the Lovable API and **completed successfully**.
+`/sw.js` was polled eighteen times over six minutes and answered 404 every
+time. So re-deploying was not the fix -- correct, and it stayed correct right
+up until the deploy that carried #188.
 
 Four things are now measured rather than assumed:
 
@@ -276,12 +302,16 @@ deployed the same minute still answers 404 for `/sw.js`. It is neither a stale
 deploy nor a one-off bad build, and it is not "the deploy loses things
 generally". It is those two files.
 
-That is as far as read-only access reaches. The remaining question is what the
-host's pipeline does with files written after the bundle is generated, and
-answering it means asking the host.
+That last bullet is the one that mattered, and it was read backwards. "Only
+those two files are missing" was taken as evidence that the DEPLOY treats them
+specially. It was evidence that the BUILD does: they are the only two files
+whose destination is chosen by `vite-plugin-pwa`'s own option rather than by
+Nitro. The same fact, pointing the other way, and it sat in this file for a day
+before anybody turned it over.
 
-**And a fifth thing, found the same evening, which changes how to READ all of
-the above: the host does not deploy on push to `main`.** The `rel="manifest"`
+**And a further thing, which changes how to READ all of the above: the host
+does not deploy on push to `main`, and it builds the commit it had synced when
+the deploy was triggered rather than the newest one.** The `rel="manifest"`
 fix merged at 14:20, Lovable had the commit in its preview by 14:22, and
 `app.houndstack.com` went on serving the deployment triggered by hand at 13:41.
 Neither new tag was live and the `x-deployment-id` had not moved.
