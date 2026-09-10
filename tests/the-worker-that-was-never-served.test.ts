@@ -56,6 +56,56 @@ describe("the live check exists and is actually run", () => {
   });
 });
 
+describe("a 200 is not a service worker", () => {
+  // The check asked for a status code and nothing else, so a host that
+  // answered 200 with an HTML error page passed it completely. That is the
+  // same shape as every other fault in this story: an assertion that cannot
+  // fail on the real problem, reported as a green light.
+  //
+  // Verified by pointing the check at a server that answers 200 for /sw.js,
+  // /manifest.webmanifest, /favicon.ico and every page, and serves
+  // "<!doctype html>not a worker" as the worker. Before: passed. After:
+  // "/sw.js answers 200, but it is only 40 bytes", exit 1.
+  it("reads the body, not just the status", () => {
+    expect(SCRIPT).toMatch(/swBody/);
+    expect(SCRIPT).toMatch(/\.text\(\)/);
+  });
+
+  it("rejects something too small to be a built worker", () => {
+    expect(SCRIPT).toMatch(/body\.length\s*<\s*\d{4}/);
+  });
+
+  it("requires a populated precache on the SERVED bytes", () => {
+    // Counting `url:"` rather than `"url":`, because the output is minified.
+    // That exact mistake was made by hand once and reported 324 entries as
+    // zero, which is why the build check carries the same note.
+    expect(SCRIPT).toMatch(/url:"/);
+    expect(SCRIPT).toMatch(/precache manifest is EMPTY/);
+  });
+
+  it("requires both runtime caches and the push handlers", () => {
+    expect(SCRIPT).toMatch(/app-shell/);
+    expect(SCRIPT).toMatch(/static-assets/);
+    // Web push is the reason this worker matters most: every notification
+    // toggle in the product needs a registered worker with these in it.
+    expect(SCRIPT).toMatch(/push-handlers\.js/);
+  });
+
+  it("catches a createHandlerBoundToURL that would throw at install", () => {
+    // One bad call aborts every registerRoute after it, so the worker would be
+    // served, registered, and dead. This build emits no HTML, so nothing
+    // should be bound at all.
+    expect(SCRIPT).toMatch(/createHandlerBoundToURL/);
+  });
+
+  it("reports what it measured rather than only a verdict", () => {
+    // "200" and "200, 21475 bytes, 377 precached" are different amounts of
+    // evidence, and only one of them survives being wrong.
+    expect(SCRIPT).toMatch(/precacheCount/);
+    expect(SCRIPT).toMatch(/bytes, \$\{?precacheCount\}? precached|precached/);
+  });
+});
+
 describe("and it says which deployment it measured", () => {
   it("reads the deployment id from a file that is actually served", () => {
     // The host does not deploy on push to main, and this check runs as a job

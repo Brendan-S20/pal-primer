@@ -103,7 +103,15 @@ async function deploymentId(path) {
   return raw.split(".")[1] ?? raw;
 }
 
-const sw = await status("/sw.js");
+const swRes = await get("/sw.js");
+const sw = swRes.status;
+// The BODY, not just the code. A 200 that returns an HTML error page passes
+// every status check ever written, and this file exists because a check that
+// cannot fail on the real fault is worse than no check: it is a green light
+// pointed at the wrong thing. See the build-time twin in check-pwa-output.mjs,
+// which asserts all of this against `.output/public` and was green for three
+// weeks while production served nothing.
+const swBody = sw === 200 && swRes.res ? await swRes.res.text() : "";
 const companions = Object.fromEntries(
   await Promise.all(COMPANIONS.map(async (p) => [p, await status(p)])),
 );
@@ -120,7 +128,11 @@ const deployment = await deploymentId("/favicon.ico");
 
 console.log(`\n${ORIGIN}`);
 console.log(`  deployment             ${deployment ?? "unknown"}`);
-console.log(`  /sw.js                 ${sw}`);
+const precacheCount = sw === 200 ? [...swBody.matchAll(/url:"[^"]+"/g)].length : 0;
+console.log(
+  `  /sw.js                 ${sw}` +
+    (sw === 200 ? `  (${swBody.length} bytes, ${precacheCount} precached)` : ""),
+);
 for (const [p, s] of Object.entries(companions)) console.log(`  ${p.padEnd(22)} ${s}`);
 console.log(`  ${PAGE.padEnd(22)} ${page.status}`);
 console.log(`  rel="manifest" in HTML ${linkedHref ?? (page.res ? "MISSING" : "not checked")}`);
@@ -134,6 +146,62 @@ if (typeof sw !== "number" || typeof page.status !== "number") {
 const problems = [];
 const companionsOk = Object.values(companions).some((s) => s === 200);
 
+// ── IS THE THING THAT ANSWERED ACTUALLY A SERVICE WORKER ─────────────────
+//
+// Everything below is measured on the bytes production served, not on the
+// build. The build check already proves the artifact; the whole point of this
+// file is that the artifact and the deployment are different questions, and
+// answering the first has twice been mistaken here for answering the second.
+//
+// Counting `url:"` rather than `"url":` because the output is minified. That
+// exact mistake was made by hand once and reported a populated manifest as
+// empty, which is why the build check carries the same note.
+function whatIsWrongWithTheWorker(body) {
+  const faults = [];
+  if (body.length < 5000) {
+    faults.push(
+      `it is only ${body.length} bytes, which is too small to be a built worker. ` +
+        `Something answered 200 that is not the file.`,
+    );
+    return faults;
+  }
+  const precached = [...body.matchAll(/url:"([^"]+)"/g)].map((m) => m[1]);
+  if (precached.length === 0) {
+    faults.push(
+      "its precache manifest is EMPTY, so it installs and caches nothing. " +
+        "Offline tolerance would be decorative.",
+    );
+  }
+  for (const cacheName of ["app-shell", "static-assets"]) {
+    if (!body.includes(cacheName)) {
+      faults.push(`it registers no "${cacheName}" runtime cache.`);
+    }
+  }
+  // createHandlerBoundToURL THROWS when its argument is absent from the
+  // precache manifest, and the generated worker is one top-level comma
+  // sequence, so one bad call takes out every registerRoute after it. This
+  // build is SSR and emits no HTML, so nothing should be bound at all.
+  for (const [, u] of body.matchAll(/createHandlerBoundToURL\(\s*["']([^"']+)["']\s*\)/g)) {
+    const normalized = u.replace(/^\//, "");
+    if (!precached.some((e) => e.replace(/^\//, "") === normalized)) {
+      faults.push(
+        `it calls createHandlerBoundToURL(${JSON.stringify(u)}) and "${u}" is not ` +
+          `precached. That THROWS at install and aborts every route after it, so ` +
+          `the worker would be served, registered, and dead.`,
+      );
+    }
+  }
+  // Web push is the reason this worker matters most: every notification toggle
+  // in the product needs a registered worker with these handlers in it.
+  if (!body.includes("push-handlers.js")) {
+    faults.push(
+      "it does not import /push-handlers.js, so web push is dead even though " +
+        "the worker installs. Every notification toggle would fail.",
+    );
+  }
+  return faults;
+}
+
 if (sw !== 200) {
   problems.push(
     `/sw.js answers ${sw}.\n` +
@@ -144,6 +212,12 @@ if (sw !== 200) {
           "    every visitor."
         : "    Its companions are missing too, so the whole static output is unserved."),
   );
+}
+
+if (sw === 200) {
+  for (const fault of whatIsWrongWithTheWorker(swBody)) {
+    problems.push(`/sw.js answers 200, but ${fault}`);
+  }
 }
 
 // A 200 on the page is not enough to trust this: a page that failed to render
