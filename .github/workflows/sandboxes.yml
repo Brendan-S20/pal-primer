@@ -44,10 +44,30 @@ on:
   # Docker and several minutes, and the overwhelming majority of PRs do not
   # touch a migration. The ones that do are exactly the ones that cannot be
   # judged without it.
+  #
+  # ── AND A VIEWPORT SPEC USED TO REACH main BEFORE ANY BROWSER RAN IT ────
+  #
+  # The same hole, one level up, found on 2026-09-10. The filter below
+  # admitted migrations and nothing else, so a PR editing
+  # tests/viewports/**.spec.ts did not start this workflow at all. #194 -- a
+  # fix TO a viewport spec, for a failure this workflow had reported on main
+  # -- went green on ci.yml, which does not run a browser, and had to be
+  # dispatched by hand to be tested at all.
+  #
+  # tests/the-sweeps-are-not-the-whole-suite.test.ts already asserts every
+  # spec is named by some step here. That is necessary and was not
+  # sufficient: being named by a step means nothing on a PR the workflow
+  # never runs on.
+  #
+  # playwright.config.ts is in the list for the same reason. It carries the
+  # timeouts, the retry count and the dev-server wiring, so a change to it
+  # changes the outcome of every spec without touching one.
   pull_request:
     paths:
       - "supabase/migrations/**"
       - "supabase/proofs/**"
+      - "tests/viewports/**"
+      - "playwright.config.ts"
       - ".github/workflows/sandboxes.yml"
 
 concurrency:
@@ -55,7 +75,93 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── WHY A GATE JOB RATHER THAN A WIDER FILTER ──────────────────────────
+  #
+  # `paths` is a property of the WORKFLOW, not of a job, so widening it to
+  # admit viewport PRs would also start the Docker replay on them, and the
+  # browser sweep on every migration PR. The second of those is what the
+  # `viewports` job's old `if:` existed to prevent, and that reasoning is
+  # still right: a browser has nothing to say about a .sql file.
+  #
+  # So each job asks whether ITS OWN inputs changed. On push and on manual
+  # dispatch both run, unconditionally -- the filter never applied there.
+  #
+  # This job must FAIL rather than answer "no" when it cannot tell. A gate
+  # that emits an empty output skips both jobs and reports the workflow
+  # green, which is the failure this whole file exists to stop happening
+  # somewhere else. Hence `set -euo pipefail`, an explicit diff check, and
+  # the assertion that both answers are literally true or false.
+  changes:
+    name: What this change can affect
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    outputs:
+      database: ${{ steps.decide.outputs.database }}
+      viewports: ${{ steps.decide.outputs.viewports }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The diff below needs the base commit, which a shallow clone of the
+          # PR merge ref does not carry.
+          fetch-depth: 0
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "$EVENT is not a pull request, so the path filter never applied: both jobs run."
+            echo "database=true"  >> "$GITHUB_OUTPUT"
+            echo "viewports=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "$BASE" ] || [ -z "$HEAD" ]; then
+            echo "::error::the pull_request payload carried no base/head sha, so nothing could be compared"
+            exit 1
+          fi
+
+          if ! changed=$(git diff --name-only "$BASE...$HEAD"); then
+            echo "::error::git diff $BASE...$HEAD failed, so which files changed is unknown"
+            exit 1
+          fi
+
+          if [ -z "$changed" ]; then
+            echo "::error::the diff is empty, which cannot be true of a pull request that started this workflow"
+            exit 1
+          fi
+
+          echo "changed files:"
+          echo "$changed" | sed 's/^/  /'
+
+          database=false
+          viewports=false
+          while IFS= read -r f; do
+            case "$f" in
+              supabase/migrations/*|supabase/proofs/*)     database=true ;;
+              tests/viewports/*|playwright.config.ts)      viewports=true ;;
+              # The workflow itself changes what both jobs DO, so it runs both.
+              .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
+            esac
+          done <<< "$changed"
+
+          for v in "$database" "$viewports"; do
+            case "$v" in
+              true|false) ;;
+              *) echo "::error::a gate answered '$v', which is neither true nor false"; exit 1 ;;
+            esac
+          done
+
+          echo "database=$database"   >> "$GITHUB_OUTPUT"
+          echo "viewports=$viewports" >> "$GITHUB_OUTPUT"
+          echo "database=$database, viewports=$viewports"
+
   database:
+    needs: changes
+    if: needs.changes.outputs.database == 'true'
     name: A database built from the migrations alone
     # Follows CI_RUNNER exactly like ci.yml — see docs/self-hosted-runner.md.
     # Deleting that repository variable puts this back on hosted runners.
@@ -261,11 +367,15 @@ jobs:
 
   viewports:
     name: Four real widths in a real browser
-    # Not on migration PRs. The path filter above admits them for the replay's
-    # sake, and a browser sweep has nothing to say about a .sql file -- running
-    # it would spend ten minutes of a single self-hosted runner to re-prove
-    # what the push-to-main run already proves.
-    if: github.event_name != 'pull_request'
+    # Not on migration PRs -- a browser sweep has nothing to say about a .sql
+    # file, and running it would spend ten minutes of a single self-hosted
+    # runner to re-prove what the push-to-main run already proves. That was
+    # `if: github.event_name != 'pull_request'` until 2026-09-10, which bought
+    # it by never running on ANY pull request, including the ones that change
+    # the specs this job runs. The gate above draws the line where it was
+    # always meant to be: on whether this job's own inputs moved.
+    needs: changes
+    if: needs.changes.outputs.viewports == 'true'
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
