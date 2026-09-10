@@ -361,6 +361,24 @@ jobs:
         # See the note on `if: always()` below the first check.
         if: always() && steps.psql.conclusion == 'success'
 
+      # A function can exist, typecheck and sit in every ledger while being
+      # unreachable by the role that calls it. That is how auto-routing came to
+      # refuse every day for a week with "permission denied for function
+      # plan_day_across_staff" while `check every object the migrations create
+      # still exists` stayed green: the function IS there.
+      - name: Every function the app calls, it can call
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the RPC reachability check cannot run."
+            exit 1
+          fi
+          node scripts/check-rpc-grants.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'
+
       - name: The published app origin answers the native preflight
         # §3 item 6 of the brief listed this as two curls "only you can confirm".
         # They sat unrun, and when finally run the answer was that the
