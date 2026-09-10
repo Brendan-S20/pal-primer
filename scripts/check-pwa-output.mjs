@@ -26,13 +26,62 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-const OUT = ".output/public";
-const SW = join(OUT, "sw.js");
+// WHICH DIRECTORY IS THE DEPLOYED ONE.
+//
+// This read `.output/public` and nothing else, and that is half of why the
+// /sw.js 404 survived three weeks with a green check. The hosted build
+// overrides Nitro's output paths to dist/ + dist/client (see PWA_OUT_DIR in
+// vite.config.ts), so on the host the worker's real home is dist/client and
+// `.output/public` is a directory the deploy never produced. A check that
+// inspects the wrong directory reports on nothing, confidently.
+//
+// ASK NITRO RATHER THAN ASKING THE ENVIRONMENT. The first version of this
+// re-derived the host wrapper's env test, and it was wrong within a minute of
+// being written: after a hosted-style build BOTH directories exist, and picking
+// whichever exists picked `.output/public`, which by then held two files and
+// nothing to measure. It passed. That is the same failure this check exists to
+// stop, reproduced inside the fix for it.
+//
+// `nitro.json` is written by Nitro into the root of the output it produced, so
+// it identifies the deployed tree from the build itself, with no environment
+// variable and no guess. Newest wins when both are present, which is what makes
+// running this by hand after either kind of build give the right answer.
+const CANDIDATES = [
+  { root: ".output", out: ".output/public" },
+  { root: "dist", out: "dist/client" },
+];
 
-if (!existsSync(OUT)) {
+const built = CANDIDATES.filter((c) => existsSync(join(c.root, "nitro.json"))).sort(
+  (a, b) =>
+    statSync(join(b.root, "nitro.json")).mtimeMs - statSync(join(a.root, "nitro.json")).mtimeMs,
+);
+
+if (built.length === 0) {
   console.log("✓ no build output to check (run `npm run build` first)");
   process.exit(0);
 }
+
+const OUT = built[0].out;
+const SW = join(OUT, "sw.js");
+
+// The worker landing outside the deployed tree IS the fault, so name it as that
+// rather than as a missing file. Checked against every candidate, not just the
+// runner-up, so this keeps working if a third output layout ever appears.
+if (!existsSync(SW)) {
+  const stray = CANDIDATES.find((c) => c.out !== OUT && existsSync(join(c.out, "sw.js")));
+  if (stray) {
+    console.error(
+      `✗ ${SW} does not exist, but ${join(stray.out, "sw.js")} does.\n\n` +
+        `  The worker was written to a directory this build does not deploy, which\n` +
+        `  is exactly why /sw.js answered 404 in production for three weeks:\n` +
+        `  vite-plugin-pwa's outDir and Nitro's resolved client output directory\n` +
+        `  disagreed, and nothing compared them. See PWA_OUT_DIR in vite.config.ts.`,
+    );
+    process.exit(1);
+  }
+}
+
+console.log(`  (checking ${OUT}, the tree ${join(built[0].root, "nitro.json")} describes)`);
 
 const problems = [];
 
