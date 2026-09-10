@@ -87,7 +87,57 @@ const PWA_OUT_DIR = NATIVE_BUILD
 // warning still says the check did not run -- which is the distinction the
 // migration rules in CLAUDE.md ask for: "no experiment was run" must never look
 // like "the experiment passed".
+// ── ASK THE DEPLOY WHAT IT ACTUALLY GOT ──────────────────────────────────
+//
+// The directory split above is real, reproducible and now fixed, and it was
+// NOT the cause of the production 404. Deployment 7e26e1cc was built from
+// 9a39305 with the fix in place -- seven asset hashes changed against the
+// previous deployment, so the build genuinely ran -- and /sw.js and
+// /workbox-<hash>.js both still answered 404.
+//
+// Which leaves a question this repo cannot answer from a laptop: what does
+// the HOSTED environment resolve these paths to? Every attempt so far has
+// reasoned from a local reproduction and been wrong at least once, because
+// `LOVABLE_SANDBOX=1 npx vite build` is a guess about that environment rather
+// than a measurement of it.
+//
+// So this emits a tiny JSON file through Rollup's emitFile -- the same channel
+// manifest.webmanifest goes through, which is PROVEN to reach production while
+// closeBundle's disk writes are proven not to. One deploy then answers, from
+// the far side, what the build decided:
+//
+//     curl https://app.houndstack.com/pwa-build-info.json
+//
+// It carries no secret: four booleans and two build paths. Delete it once the
+// worker is served; it exists to end a guessing loop, not to live forever.
+//
+// The guard's verdict is included deliberately. `verified` distinguishes the
+// two readings that "the build did not fail" cannot: the guard COMPARED the
+// paths and they matched, versus the guard could not read the resolved value
+// and warned instead. Those look identical from outside and mean opposite
+// things -- one says the worker is in the deployed directory, the other says
+// nothing was checked at all.
+type PwaBuildFacts = {
+  hostedBuild: boolean;
+  nativeBuild: boolean;
+  sawLovableSandbox: boolean;
+  sawDevServerProjectPath: boolean;
+  pwaOutDir: string;
+  resolvedClientOutDir: string | null;
+  verdict: "matched" | "mismatch" | "could-not-read";
+};
+
 function theWorkerHasToLandWhereTheClientBuildDoes() {
+  const facts: PwaBuildFacts = {
+    hostedBuild: HOSTED_BUILD,
+    nativeBuild: NATIVE_BUILD,
+    sawLovableSandbox: process.env.LOVABLE_SANDBOX === "1",
+    sawDevServerProjectPath: !!process.env.DEV_SERVER__PROJECT_PATH,
+    pwaOutDir: PWA_OUT_DIR,
+    resolvedClientOutDir: null,
+    verdict: "could-not-read",
+  };
+
   return {
     name: "the-worker-has-to-land-where-the-client-build-does",
     apply: "build" as const,
@@ -104,8 +154,10 @@ function theWorkerHasToLandWhereTheClientBuildDoes() {
         );
         return;
       }
+      facts.resolvedClientOutDir = resolved;
       const expected = path.resolve(import.meta.dirname, PWA_OUT_DIR);
       const actual = path.resolve(import.meta.dirname, resolved);
+      facts.verdict = expected === actual ? "matched" : "mismatch";
       if (expected !== actual) {
         throw new Error(
           `[pwa] the service worker would be written to ${expected} but this ` +
@@ -118,6 +170,18 @@ function theWorkerHasToLandWhereTheClientBuildDoes() {
             `needs updating.`,
         );
       }
+    },
+    // Client environment only. The server bundle is not served as static
+    // assets, so a copy there would be dead weight rather than a second
+    // reading -- and the whole point is to travel by the route that ships.
+    generateBundle(this: { environment?: { name?: string }; emitFile: (f: unknown) => void }) {
+      const env = this.environment?.name;
+      if (env && env !== "client") return;
+      this.emitFile({
+        type: "asset",
+        fileName: "pwa-build-info.json",
+        source: JSON.stringify(facts, null, 2),
+      });
     },
   };
 }
