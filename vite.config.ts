@@ -28,6 +28,100 @@ Object.assign(process.env, serverEnv);
 // native one. `npm run build:native` sets it; `npm run build` is untouched.
 const NATIVE_BUILD = process.env.NATIVE_BUILD === "1";
 
+// ── WHERE THE CLIENT BUILD ACTUALLY WRITES, WHICH IS NOT ONE PLACE ───────
+//
+// /sw.js answered 404 in production for about three weeks, and the reason was
+// two directories rather than anything to do with the worker.
+//
+// @lovable.dev/vite-tanstack-config branches on whether it is running inside
+// the hosted build environment, and in that branch it overrides Nitro's output
+// paths (its dist/index.js, in the `if (isSandbox)` block):
+//
+//     nitroOpts.output = { dir: "dist", serverDir: "dist/server", publicDir: "dist/client" }
+//
+// Outside it, Nitro's cloudflare-module defaults give `.output/public`. So the
+// deployed client directory is `dist/client` on the host and `.output/public`
+// on a laptop, and this file used to hardcode the second one. Everything that
+// goes through Rollup or Nitro's own public/ copy follows Nitro and shipped;
+// the two files vite-plugin-pwa writes DIRECTLY TO DISK in closeBundle follow
+// this option, so they landed in a directory the hosted build never produced.
+//
+// Reproduced locally with `LOVABLE_SANDBOX=1 npx vite build`:
+//
+//     dist/client/      assets, manifest.webmanifest, favicon.ico, ...  (no sw.js)
+//     .output/public/   sw.js, workbox-<hash>.js                        (nothing else)
+//
+// WHY NOT SIMPLY DROP THIS OPTION AND LET THE PLUGIN DEFAULT. Because its
+// default is `viteConfig.build.outDir`, the TOP-LEVEL one, which is Vite's
+// plain "dist". Nitro sets the real value in `configEnvironment` on the CLIENT
+// environment's config (nitro/dist/vite.mjs: `config.build.outDir =
+// useNitro(ctx).options.output.publicDir`), and the plugin never reads that.
+// Dropping the option reinstates the original fault, which is exactly how the
+// worker came to be written to `dist/` before #104.
+//
+// A copy after the fact does not work either: workbox globs this directory to
+// build the precache manifest, so a worker generated against the wrong
+// directory ships with a manifest of whatever happened to be in it.
+const HOSTED_BUILD = process.env.LOVABLE_SANDBOX === "1" || !!process.env.DEV_SERVER__PROJECT_PATH;
+
+const PWA_OUT_DIR = NATIVE_BUILD
+  ? "dist-native/client"
+  : HOSTED_BUILD
+    ? "dist/client"
+    : ".output/public";
+
+// THE LINE ABOVE IS A THIRD COPY OF SOMEBODY ELSE'S PRIVATE CONTRACT, and this
+// plugin is why that is survivable. The fault being fixed happened because two
+// places disagreed about a path and nothing noticed for three weeks; re-deriving
+// the wrapper's environment test here is a real answer but it re-creates that
+// shape, one wrapper release away from splitting again the same silent way.
+//
+// So the guess is checked against the resolved truth. Nitro puts the deployed
+// directory on the client environment's config, and by `configResolved` that
+// value is settled, so the two can be compared and a mismatch can end the build
+// instead of shipping a 404 nobody sees. Cheap, and it converts the one
+// remaining fragility from silent to loud.
+//
+// It does NOT throw when the value cannot be found. An upstream rename of the
+// environments API is not a reason to make this repo unbuildable, and the
+// warning still says the check did not run -- which is the distinction the
+// migration rules in CLAUDE.md ask for: "no experiment was run" must never look
+// like "the experiment passed".
+function theWorkerHasToLandWhereTheClientBuildDoes() {
+  return {
+    name: "the-worker-has-to-land-where-the-client-build-does",
+    apply: "build" as const,
+    configResolved(config: {
+      environments?: Record<string, { consumer?: string; build?: { outDir?: string } }>;
+    }) {
+      const client = config.environments?.client;
+      const resolved = client?.build?.outDir;
+      if (!resolved) {
+        console.warn(
+          "[pwa] could not read the client environment's resolved outDir, so " +
+            "nothing verified that the service worker is being written to the " +
+            "directory this build deploys. If /sw.js 404s, start here.",
+        );
+        return;
+      }
+      const expected = path.resolve(import.meta.dirname, PWA_OUT_DIR);
+      const actual = path.resolve(import.meta.dirname, resolved);
+      if (expected !== actual) {
+        throw new Error(
+          `[pwa] the service worker would be written to ${expected} but this ` +
+            `build deploys ${actual}, so /sw.js would 404 in production.\n\n` +
+            `  NATIVE_BUILD=${NATIVE_BUILD ? "1" : "0"} HOSTED_BUILD=${HOSTED_BUILD ? "1" : "0"}\n\n` +
+            `This is the fault that took three weeks to find, caught at build ` +
+            `time instead. PWA_OUT_DIR in vite.config.ts derives the deployed ` +
+            `directory from the host wrapper's environment test; if the wrapper ` +
+            `changed how it sets Nitro's output paths, that derivation is what ` +
+            `needs updating.`,
+        );
+      }
+    },
+  };
+}
+
 // Where a bundled build sends server functions. Server-function URLs are baked
 // into the client bundle at build time as a PATH (`/_serverFn/<id>`), which is
 // correct only while the document is served from the API's own origin. In a
@@ -198,9 +292,8 @@ export default defineConfig({
                 // "@/components/billing/PlanPicker" here never fires. Proven
                 // by logging what actually arrives, which is the only reason
                 // this is the fourth attempt and not the fortieth.
-                const isPlanPicker = /[\\/]src[\\/]components[\\/]billing[\\/]PlanPicker(\.tsx)?$/.test(
-                  source,
-                );
+                const isPlanPicker =
+                  /[\\/]src[\\/]components[\\/]billing[\\/]PlanPicker(\.tsx)?$/.test(source);
                 return isPlanPicker
                   ? path.resolve(
                       import.meta.dirname,
@@ -229,7 +322,10 @@ export default defineConfig({
         // shell: precaching would duplicate files already on disk and
         // navigateFallback could shadow the shipped shell with a stale one.
         // See src/pwa/register.ts, which refuses to register there.
-        outDir: NATIVE_BUILD ? "dist-native/client" : ".output/public",
+        // See PWA_OUT_DIR at the top of this file. NOT a literal: the deployed
+        // client directory differs between the hosted build and a laptop, and
+        // hardcoding either one 404s the worker on the other.
+        outDir: PWA_OUT_DIR,
         registerType: "autoUpdate",
         injectRegister: null,
         filename: "sw.js",
@@ -341,6 +437,7 @@ export default defineConfig({
           ],
         },
       }),
+      theWorkerHasToLandWhereTheClientBuildDoes(),
     ],
   },
 });
