@@ -2802,7 +2802,7 @@ export type Database = {
           auto_generate_days_ahead: number
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
-          avg_speed_kmh: number
+          avg_speed_kmh: number | null
           billing_status: Database["public"]["Enums"]["org_billing_status"]
           billing_tier: string | null
           brand_color: string | null
@@ -2829,15 +2829,19 @@ export type Database = {
           grace_expires_at: string | null
           id: string
           invoice_grace_days: number
-          latitude: number | null
-          longitude: number | null
           invoice_net_days: number
           is_comped: boolean
           is_franchise_parent: boolean
           last_digest_sent_at: string | null
+          latitude: number | null
           lead_form_config: Json
           logo_url: string | null
+          longitude: number | null
           max_drive_minutes: number
+          measured_at: string | null
+          measured_legs: number | null
+          measured_road_factor: number | null
+          measured_speed_kmh: number | null
           name: string
           notify_email_invoice_sent: boolean
           notify_email_overdue: boolean
@@ -2920,7 +2924,7 @@ export type Database = {
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
-          avg_speed_kmh?: number
+          avg_speed_kmh?: number | null
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
@@ -2947,15 +2951,19 @@ export type Database = {
           grace_expires_at?: string | null
           id?: string
           invoice_grace_days?: number
-          latitude?: number | null
-          longitude?: number | null
           invoice_net_days?: number
           is_comped?: boolean
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
+          latitude?: number | null
           lead_form_config?: Json
           logo_url?: string | null
+          longitude?: number | null
           max_drive_minutes?: number
+          measured_at?: string | null
+          measured_legs?: number | null
+          measured_road_factor?: number | null
+          measured_speed_kmh?: number | null
           name: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
@@ -3038,7 +3046,7 @@ export type Database = {
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
-          avg_speed_kmh?: number
+          avg_speed_kmh?: number | null
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
@@ -3065,15 +3073,19 @@ export type Database = {
           grace_expires_at?: string | null
           id?: string
           invoice_grace_days?: number
-          latitude?: number | null
-          longitude?: number | null
           invoice_net_days?: number
           is_comped?: boolean
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
+          latitude?: number | null
           lead_form_config?: Json
           logo_url?: string | null
+          longitude?: number | null
           max_drive_minutes?: number
+          measured_at?: string | null
+          measured_legs?: number | null
+          measured_road_factor?: number | null
+          measured_speed_kmh?: number | null
           name?: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
@@ -3583,8 +3595,8 @@ export type Database = {
           refunded_at: string | null
           refunded_cents: number
           status: string
-          stripe_payment_intent_id: string | null
           stripe_invoice_id: string | null
+          stripe_payment_intent_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3605,8 +3617,8 @@ export type Database = {
           refunded_at?: string | null
           refunded_cents?: number
           status?: string
-          stripe_payment_intent_id?: string | null
           stripe_invoice_id?: string | null
+          stripe_payment_intent_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3627,8 +3639,8 @@ export type Database = {
           refunded_at?: string | null
           refunded_cents?: number
           status?: string
-          stripe_payment_intent_id?: string | null
           stripe_invoice_id?: string | null
+          stripe_payment_intent_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3693,6 +3705,7 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          entitlement_tier: string
           features: Json
           id: string
           included_seats: number | null
@@ -3722,6 +3735,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          entitlement_tier: string
           features?: Json
           id?: string
           included_seats?: number | null
@@ -3751,6 +3765,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          entitlement_tier?: string
           features?: Json
           id?: string
           included_seats?: number | null
@@ -4562,6 +4577,50 @@ export type Database = {
           },
         ]
       }
+      road_legs: {
+        Row: {
+          fetched_at: string
+          from_lat: number
+          from_lon: number
+          meters: number
+          organization_id: string
+          seconds: number
+          source: string
+          to_lat: number
+          to_lon: number
+        }
+        Insert: {
+          fetched_at?: string
+          from_lat: number
+          from_lon: number
+          meters: number
+          organization_id: string
+          seconds: number
+          source?: string
+          to_lat: number
+          to_lon: number
+        }
+        Update: {
+          fetched_at?: string
+          from_lat?: number
+          from_lon?: number
+          meters?: number
+          organization_id?: string
+          seconds?: number
+          source?: string
+          to_lat?: number
+          to_lon?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "road_legs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roadmap_votes: {
         Row: {
           created_at: string
@@ -5021,6 +5080,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_priced_from_zone_id_fkey"
+            columns: ["priced_from_zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
             referencedColumns: ["id"]
           },
           {
@@ -5775,7 +5841,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      accept_org_invite_for_current_user: { Args: never; Returns: string }
+      accept_org_invite_for_current_user: {
+        Args: { _token?: string }
+        Returns: string
+      }
       addon_frequency_step: {
         Args: { _f: Database["public"]["Enums"]["addon_frequency"] }
         Returns: string
@@ -5911,6 +5980,15 @@ export type Database = {
       }
       client_may_be_texted: { Args: { _client_id: string }; Returns: boolean }
       close_abandoned_impersonation_grants: { Args: never; Returns: number }
+      closing_drive_min: {
+        Args: {
+          _last_visit_id: string
+          _org_id: string
+          _staff_id: string
+          _visit_ids: string[]
+        }
+        Returns: number
+      }
       complete_visit: {
         Args: { _completed_at?: string; _visit_id: string }
         Returns: undefined
@@ -5946,6 +6024,10 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      delete_my_account: {
+        Args: { _close_workspace?: boolean; _transfer_to?: string }
+        Returns: Json
+      }
       detect_review_items: { Args: { _org_id?: string }; Returns: number }
       drive_minutes: {
         Args: {
@@ -5955,6 +6037,10 @@ export type Database = {
           _lon2: number
           _org_id: string
         }
+        Returns: number
+      }
+      dry_day_min: {
+        Args: { _org_id: string; _staff_id: string }
         Returns: number
       }
       effective_speed_kmh: {
@@ -6246,6 +6332,41 @@ export type Database = {
       org_has_commercial_data: { Args: { _org_id: string }; Returns: boolean }
       org_seat_overage_cents: { Args: { _org_id: string }; Returns: number }
       phone_digits: { Args: { _p: string }; Returns: string }
+      plan_day_across_staff: {
+        Args: {
+          _day: string
+          _level?: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_ids: string[]
+        }
+        Returns: {
+          service_min: number
+          staff_id: string
+          stops: number
+          total_min: number
+          travel_min: number
+        }[]
+      }
+      plan_day_across_staff_dryrun: {
+        Args: {
+          _day: string
+          _level?: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_ids: string[]
+        }
+        Returns: {
+          eta_end: string
+          eta_start: string
+          seq: number
+          staff_id: string
+          travel_km: number
+          travel_min: number
+          visit_id: string
+          window_violated: boolean
+        }[]
+      }
       plan_route: {
         Args: {
           _day: string
@@ -6265,6 +6386,24 @@ export type Database = {
         }[]
       }
       plan_tier_for_org: { Args: { _org_id: string }; Returns: string }
+      plan_visits: {
+        Args: {
+          _day: string
+          _level?: string
+          _org_id: string
+          _staff_id: string
+          _visit_ids: string[]
+        }
+        Returns: {
+          eta_end: string
+          eta_start: string
+          seq: number
+          travel_km: number
+          travel_min: number
+          visit_id: string
+          window_violated: boolean
+        }[]
+      }
       portal_cancel_addon: {
         Args: { _addon_subscription_id: string; _token: string }
         Returns: undefined
@@ -6521,6 +6660,13 @@ export type Database = {
         Args: { _members?: Json; _name: string }
         Returns: string
       }
+      prune_road_legs: {
+        Args: { _older_than?: string }
+        Returns: {
+          orphaned_removed: number
+          stale_removed: number
+        }[]
+      }
       public_get_org_by_slug: {
         Args: { _slug: string }
         Returns: {
@@ -6616,6 +6762,14 @@ export type Database = {
         Args: { _org_id: string }
         Returns: undefined
       }
+      refresh_road_profile: {
+        Args: { _org_id: string }
+        Returns: {
+          legs: number
+          road_factor: number
+          speed_kmh: number
+        }[]
+      }
       regenerate_portal_token: { Args: { _client_id: string }; Returns: string }
       renumber_property_stations: {
         Args: { _property_id: string }
@@ -6629,8 +6783,27 @@ export type Database = {
         Args: { _new_date: string; _note?: string; _visit_id: string }
         Returns: undefined
       }
+      resequence_staff_day: {
+        Args: {
+          _day: string
+          _level?: string
+          _org_id: string
+          _staff_id: string
+        }
+        Returns: number
+      }
       reverse_prepaid_credit_for_payment: {
         Args: { _payment_id: string; _refunded_cents: number }
+        Returns: number
+      }
+      road_km: {
+        Args: {
+          _lat1: number
+          _lat2: number
+          _lon1: number
+          _lon2: number
+          _org_id: string
+        }
         Returns: number
       }
       roadmap_vote_counts: {
@@ -6639,6 +6812,10 @@ export type Database = {
           feature: string
           votes: number
         }[]
+      }
+      routable_staff: {
+        Args: { _day: string; _org_id: string; _staff_ids: string[] }
+        Returns: string[]
       }
       route_cost_current: {
         Args: { _day: string; _org_id: string; _staff_id: string }
@@ -6652,6 +6829,7 @@ export type Database = {
         Args: { _ids: string[]; _start_lat: number; _start_lon: number }
         Returns: number
       }
+      route_segment_min: { Args: { _ids: string[] }; Returns: number }
       run_billing_cycles: { Args: { _org_id?: string }; Returns: number }
       seed_demo_org: { Args: { _org_id: string }; Returns: Json }
       set_addon_subscription_status: {
@@ -6696,6 +6874,39 @@ export type Database = {
           with_phone: number
         }[]
       }
+      staff_day_minutes: {
+        Args: { _day: string; _org_id: string; _staff_id: string }
+        Returns: number
+      }
+      staff_end_point: {
+        Args: { _org_id: string; _staff_id: string }
+        Returns: {
+          lat: number
+          lon: number
+        }[]
+      }
+      staff_start_point:
+        | {
+            Args: { _day: string; _org_id: string; _staff_id: string }
+            Returns: {
+              lat: number
+              lon: number
+              source: string
+            }[]
+          }
+        | {
+            Args: {
+              _day: string
+              _org_id: string
+              _staff_id: string
+              _visit_ids: string[]
+            }
+            Returns: {
+              lat: number
+              lon: number
+              source: string
+            }[]
+          }
       staff_time_off_impact: {
         Args: { _from: string; _staff_id: string; _to: string }
         Returns: {
@@ -6731,6 +6942,7 @@ export type Database = {
         Args: {
           _auto_generate_days_ahead?: number
           _avg_speed_kmh?: number
+          _clear_avg_speed?: boolean
           _max_drive_minutes?: number
           _notify_schedule_horizon?: boolean
           _org_id: string
@@ -6861,12 +7073,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6890,11 +7102,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6915,11 +7127,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6940,11 +7152,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -6957,11 +7169,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
