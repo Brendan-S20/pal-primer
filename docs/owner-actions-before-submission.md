@@ -482,9 +482,26 @@ are a one-off measurement of the OLD model against OSRM, written into a comment
 In particular, **OSRM has never been compared against Google Distance Matrix or
 any other reference.** If parity with a commercial matrix ever gets claimed --
 to a customer, in marketing copy, or in a decision about paying for one -- it
-needs measuring first. A harness sampling real days across OSRM, a paid matrix
-and the straight-line estimate would answer it; it needs an API key and costs a
-little per run.
+needs measuring first.
+
+There is now a harness for exactly that, added 2026-09-11:
+
+    npm run measure:routing              # samples days, costs nothing
+    npm run measure:routing -- --spend   # bills Google, reports the answer
+
+It samples the fullest real days, builds three cost matrices over the same
+stops (OSRM, Google, and the app's own straight-line estimate computed by
+Postgres), solves each with one identical solver, and scores all three orders
+against Google. The number it reports is minutes per day: how much longer a day
+routed on OSRM takes than the same day routed on Google. Without `--spend` it
+calls nothing and only prints what a real run would buy.
+
+- [ ] Run it, and decide from the number whether a paid matrix is worth it.
+
+Two things it cannot tell you, both printed in its own output: it samples the
+fullest days, so the percentage is not a fleet average, and on this database
+those days all belong to ONE organization, which makes it a measurement of one
+road network rather than of routing in general.
 
 ## Things you do NOT need to do
 
