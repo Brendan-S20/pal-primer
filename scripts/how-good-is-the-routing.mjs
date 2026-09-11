@@ -113,6 +113,47 @@ export function solve(matrix) {
   return tour;
 }
 
+/**
+ * The same solver from every start, keeping the best BY THIS MATRIX.
+ *
+ * ── WHY, AND IT IS NOT AN OPTIMISATION ────────────────────────────────────
+ *
+ * The first version of this harness solved once, from index 0. Running it on
+ * five real 20-stop days showed penalties of +3.4%, -2.6%, -4.3%, +6.4% --
+ * including two days where routing on the WORSE matrix produced a BETTER
+ * order, which is impossible as a fact about cost models and obvious as an
+ * artifact of a heuristic.
+ *
+ * So the noise was measured directly: same matrix, same solver, only the
+ * greedy start moved. The spread was 12% to 15% of the day. The effect under
+ * test was 3% to 6%. The headline number was therefore reporting WHICH STOP
+ * HAPPENED TO BE INDEX 0, and index 0 is whichever property id sorted first.
+ *
+ * Trying every start collapses that: the seed is no longer a free variable,
+ * the same search is applied to every matrix, and a worse cost model can no
+ * longer win by luck. On the same five days the penalties became +4.5%, +4.7%,
+ * +7.7%, +11.6% -- all positive, as the physics requires.
+ *
+ * It is O(n) solves of an O(n^2) improvement pass, which for a 20-stop day is
+ * milliseconds. There is no reason to prefer the cheap version.
+ */
+export function solveBest(matrix) {
+  const n = matrix.length;
+  let best = null;
+  let bestCost = Infinity;
+  for (let k = 0; k < n; k++) {
+    const order = [k, ...Array.from({ length: n }, (_, i) => i).filter((i) => i !== k)];
+    const sub = order.map((a) => order.map((b) => matrix[a][b]));
+    const tour = solve(sub).map((i) => order[i]);
+    const cost = tourCost(tour, matrix);
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = tour;
+    }
+  }
+  return best;
+}
+
 /** What an order costs, in whatever unit the matrix is in. Open tour. */
 export function tourCost(order, matrix) {
   let total = 0;
@@ -363,9 +404,21 @@ async function main() {
   const measured = [];
   const skipped = [];
 
+  // Two of the five days sampled on 2026-09-11 held the IDENTICAL twenty
+  // coordinates -- a recurring weekly route. Measuring both is not two
+  // measurements, it is one counted twice, and it quietly doubles that day's
+  // weight in the total.
+  const seenPoints = new Set();
+
   for (const day of days) {
     const pts = pointsFor(day.orgId, day.date);
     const where = `${day.date} (${pts.length} stops)`;
+    const fingerprint = pts.map((p) => `${p.lat},${p.lon}`).join("|");
+    if (seenPoints.has(fingerprint)) {
+      skipped.push(`${where}: the same stops as a day already measured`);
+      continue;
+    }
+    seenPoints.add(fingerprint);
     try {
       const [osrm, google] = [await osrmMatrix(pts), await googleMatrix(pts, key, spent)];
       const estimate = estimateMatrix(day.orgId, pts);
@@ -387,15 +440,15 @@ async function main() {
         return ratios(out);
       };
 
-      const best = tourCost(solve(google), google);
+      const best = tourCost(solveBest(google), google);
       measured.push({
         where,
         stops: pts.length,
         osrmLeg: legRatio(osrm),
         estLeg: legRatio(estimate),
         best,
-        osrmPenalty: tourCost(solve(osrm), google) - best,
-        estPenalty: tourCost(solve(estimate), google) - best,
+        osrmPenalty: tourCost(solveBest(osrm), google) - best,
+        estPenalty: tourCost(solveBest(estimate), google) - best,
       });
     } catch (e) {
       skipped.push(`${where}: ${e.message}`);
