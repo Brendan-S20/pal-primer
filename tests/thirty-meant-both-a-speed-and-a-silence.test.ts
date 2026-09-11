@@ -87,8 +87,11 @@ describe("a sentinel that collided with a real answer", () => {
         /COALESCE\(\s*_?o?\.?measured_road_factor|measured_road_factor/,
       );
     }
-    expect(code("road_km")).toMatch(/measured_road_factor, o\.road_factor, 1\.30/);
-    expect(code("drive_minutes")).toMatch(/measured_road_factor, _o\.road_factor, 1\.30/);
+    // 1.35 since 20260911230000, which unified this constant with the column
+    // default and the rows; a-default-that-would-have-started-the-argument-again
+    // is what keeps those three from drifting apart again.
+    expect(code("road_km")).toMatch(/measured_road_factor, o\.road_factor, 1\.35/);
+    expect(code("drive_minutes")).toMatch(/measured_road_factor, _o\.road_factor, 1\.35/);
   });
 
   it("still prefers a leg somebody actually drove", () => {
