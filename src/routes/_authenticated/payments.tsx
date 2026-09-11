@@ -28,7 +28,7 @@ import {
   attestCardSurcharge,
 } from "@/lib/processing-fee.functions";
 import { describeStripeRates } from "@/lib/processing-fee";
-import { describePlatformFee } from "@/lib/platform-fee";
+import { getPlatformFeeSentence } from "@/lib/platform-fee.functions";
 import { sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -115,9 +115,27 @@ function PaymentsSettings() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // null while PLATFORM_FEE_BPS is 0, which is why the sentence below is built
+  // FETCHED, NOT IMPORTED, and that is the whole point of the round trip.
+  //
+  // This used to call describePlatformFee() directly. That import pulled
+  // PLATFORM_FEE_BPS into the client bundle, and a JS chunk is a static asset
+  // served to anyone who asks. With the rate at 0 nothing shipped -- the
+  // function returns null on its first line and the bundler folded it away --
+  // so the exposure was invisible right up until the day somebody set the rate,
+  // which would have published it with nothing in the diff to say so. See
+  // platform-fee.functions.ts.
+  //
+  // Still null while the rate is 0, which is why the sentence below is built
   // with a conditional rather than a ternary picking between two wordings.
-  const platformFee = describePlatformFee();
+  const platformFeeFn = useServerFn(getPlatformFeeSentence);
+  const { data: platformFeeData } = useQuery({
+    queryKey: ["platform-fee-sentence"],
+    queryFn: () => platformFeeFn(),
+    // A published pricing term, identical for every tenant and changed by a
+    // deploy rather than by anything on this screen.
+    staleTime: Infinity,
+  });
+  const platformFee = platformFeeData?.sentence ?? null;
 
   return (
     // Wider than the old max-w-3xl: the Payments tab is a transaction table
@@ -348,8 +366,8 @@ function ProcessingFeeCard() {
       <div>
         <div className="text-sm font-medium">Processing fees</div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Stripe charges you {describeStripeRates()}. You can absorb that or pass it to the
-          client as a separate line at checkout.
+          Stripe charges you {describeStripeRates()}. You can absorb that or pass it to the client
+          as a separate line at checkout.
         </p>
       </div>
 
@@ -399,8 +417,8 @@ function ProcessingFeeCard() {
           </ul>
           <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
             These apply to automatic payments and saved cards. When a client pays from a link or the
-            portal and picks their own method at checkout, you absorb the fee, because the amount is fixed
-            before they choose.
+            portal and picks their own method at checkout, you absorb the fee, because the amount is
+            fixed before they choose.
           </p>
           {ex.card.shortfallCents > 0 && !ex.card.suppressed && (
             <p className="mt-2 text-xs text-muted-foreground">
@@ -498,7 +516,9 @@ function MaybeConnectProvider({
   children: ReactNode;
 }) {
   if (skip) return <>{children}</>;
-  return <ConnectComponentsProvider connectInstance={instance}>{children}</ConnectComponentsProvider>;
+  return (
+    <ConnectComponentsProvider connectInstance={instance}>{children}</ConnectComponentsProvider>
+  );
 }
 
 function NotOnAPhone({ what }: { what: string }) {
@@ -506,13 +526,15 @@ function NotOnAPhone({ what }: { what: string }) {
     <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
       <p className="font-medium text-foreground">{what} needs a bigger screen</p>
       <p className="mt-1">
-        Stripe&rsquo;s {what.toLowerCase()} view has controls too small to use reliably on a
-        phone or tablet, and we cannot resize them. Open this page on a computer for the
-        full view.
+        Stripe&rsquo;s {what.toLowerCase()} view has controls too small to use reliably on a phone
+        or tablet, and we cannot resize them. Open this page on a computer for the full view.
       </p>
       <p className="mt-2">
         For day-to-day work,{" "}
-        <Link to="/invoices" className="inline-flex items-center font-medium text-primary hover:underline touch:min-h-11">
+        <Link
+          to="/invoices"
+          className="inline-flex items-center font-medium text-primary hover:underline touch:min-h-11"
+        >
           Invoices
         </Link>{" "}
         shows every charge with controls built for touch.
@@ -813,17 +835,13 @@ function BalanceSummary() {
   return (
     <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
       <div>
-        <div className="text-2xs uppercase tracking-wide text-muted-foreground">
-          Available now
-        </div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">Available now</div>
         <div className="text-xl font-semibold">
           {avail.length ? avail.map((b) => fmt(b.amount, b.currency)).join(" · ") : "—"}
         </div>
       </div>
       <div>
-        <div className="text-2xs uppercase tracking-wide text-muted-foreground">
-          Still clearing
-        </div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">Still clearing</div>
         {/* Kept separate from "available" rather than summed. A single total
             overstates what can actually be drawn today, which is the number
             somebody opens this page to find. */}
@@ -832,9 +850,7 @@ function BalanceSummary() {
         </div>
       </div>
       <div>
-        <div className="text-2xs uppercase tracking-wide text-muted-foreground">
-          Latest payout
-        </div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">Latest payout</div>
         {d.lastPayout ? (
           <div className="text-sm">
             <span className="font-semibold">{fmt(d.lastPayout.amount, d.lastPayout.currency)}</span>
