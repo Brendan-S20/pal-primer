@@ -20,6 +20,7 @@
 import { describe, it, expect } from "vitest";
 import {
   solve,
+  solveBest,
   tourCost,
   blocks,
   elementsFor,
@@ -151,6 +152,89 @@ describe("a wrong matrix is caught", () => {
     const truth = lineMatrix([0, 3, 7, 12]);
     const doubled = truth.map((r) => r.map((v) => v * 2));
     expect(tourCost(solve(doubled), truth)).toBe(tourCost(solve(truth), truth));
+  });
+});
+
+describe("the seed is not allowed to be a variable", () => {
+  /**
+   * The defect this file did not catch until the harness was RUN.
+   *
+   * Solving once from index 0 made the headline penalty depend on which stop
+   * sorted first. Measured on five real 20-stop days: the spread from moving
+   * the start alone was 12-15% of the day, while the effect under test was
+   * 3-6%. Two days reported a NEGATIVE penalty -- routing on the worse matrix
+   * beating routing on the better one, which cannot be true of cost models and
+   * is obvious as heuristic luck.
+   */
+  const line = (xs: number[]) => xs.map((a) => xs.map((b) => Math.abs(a - b)));
+
+  it("beats the single-start solver where the start actually matters", () => {
+    // Found by searching for a layout where starting at index 0 traps the
+    // greedy pass somewhere 2-opt cannot recover from: 43.1 from index 0,
+    // 33.4 trying every start. A 22% difference decided by nothing but which
+    // property id sorted first.
+    //
+    // This fixture exists because every other test here passed with
+    // multi-start reduced to a single start -- the earlier layouts were small
+    // enough that index 0 already found the optimum, so nothing noticed. Same
+    // hole as the 2-opt one above, found the same way.
+    const pts = [
+      [3, 16],
+      [1, 3],
+      [10, 18],
+      [11, 1],
+      [5, 6],
+      [3, 2],
+      [2, 12],
+    ];
+    const m = pts.map((a) =>
+      pts.map((b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1]) * 10) / 10),
+    );
+    expect(tourCost(solve(m), m)).toBeCloseTo(43.1, 1);
+    expect(tourCost(solveBest(m), m)).toBeCloseTo(33.4, 1);
+  });
+
+  it("never returns a worse tour than the single-start solver", () => {
+    const pts = [
+      [1, 15],
+      [2, 17],
+      [10, 3],
+      [11, 15],
+      [1, 18],
+      [6, 14],
+      [14, 9],
+      [3, 2],
+    ];
+    const m = pts.map((a) =>
+      pts.map((b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1]) * 10) / 10),
+    );
+    expect(tourCost(solveBest(m), m)).toBeLessThanOrEqual(tourCost(solve(m), m));
+  });
+
+  it("gives the same cost however the stops are numbered", () => {
+    // The property that makes the comparison about the MATRIX. Relabelling the
+    // stops is not a different day, and must not produce a different answer.
+    const xs = [0, 9, 2, 14, 5, 11, 7];
+    const m = line(xs);
+    const perm = [3, 0, 6, 1, 5, 2, 4];
+    const shuffled = perm.map((a) => perm.map((b) => m[a][b]));
+    expect(tourCost(solveBest(shuffled), shuffled)).toBeCloseTo(tourCost(solveBest(m), m), 9);
+  });
+
+  it("still visits every stop exactly once", () => {
+    const m = line([0, 9, 2, 14, 5, 11, 7]);
+    expect([...solveBest(m)].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it("cannot let a worse matrix beat a better one by luck", () => {
+    // The end-to-end property. Scored against truth, the tour chosen using
+    // truth must never lose to the tour chosen using a liar.
+    const truth = line([0, 3, 7, 12, 20, 26]);
+    const liar = truth.map((r) => [...r]);
+    liar[0][5] = 1;
+    liar[5][0] = 1;
+    const best = tourCost(solveBest(truth), truth);
+    expect(tourCost(solveBest(liar), truth)).toBeGreaterThanOrEqual(best);
   });
 });
 
