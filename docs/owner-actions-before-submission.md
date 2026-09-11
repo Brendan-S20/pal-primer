@@ -4,7 +4,7 @@ Everything in here needs a console, an account, a card, or a judgement call
 that is not mine to make. Nothing in here can be done from the repo.
 
 Ordered by what blocks the most. Last measured 2026-09-09 against `main`
-(`2799691`). The 2026-08-26 pass against `76410a0` is what most of the DONE
+(`2799691`), except item 11, added 2026-09-11 against `5ec7654`. The 2026-08-26 pass against `76410a0` is what most of the DONE
 entries below rest on; item 2 was re-measured on 2026-08-30, and item 6, item 7
 and item 9 on 2026-09-09.
 
@@ -415,6 +415,76 @@ the `syncOrgSeatQuantity` that already exists. What makes it yours rather than
 mine is that it adds an unattended Stripe API call per organization per night,
 every night, forever. That is an operating cost and a rate-limit surface, and it
 should be chosen rather than arrive in a commit.
+
+## 11. Decide where the routing engine runs — NEW to this list
+
+Not blocking submission. It is here because the dispatch path currently depends
+on somebody else's demo server, and that is a decision rather than an oversight.
+
+`src/lib/road-legs.server.ts` reads real driving distances from OSRM, and
+`OSRM_URL` defaults to `https://router.project-osrm.org`. That is the public
+**demo** server. Its operators say plainly it is not for production, there is no
+SLA, and it is rate limited.
+
+**The same bet is already placed on geocoding.** `src/lib/geocode.server.ts`
+uses OpenStreetMap Nominatim on the same terms and names the same two ways out:
+a paid provider or a self-hosted instance. Neither is wrong today, and both come
+due at the same time, which is the reason to look at them together rather than
+twice.
+
+### What happens today when it is unavailable
+
+It degrades rather than breaks: `drive_minutes()` falls back to its straight-line
+estimate, so the worst case is the behaviour the product had before any of this
+existed. Two things are worth knowing about that worst case.
+
+The first is that the estimate is measurably wrong, which is why the road legs
+were added. Against OSRM on four consecutive legs of a real day, the road ran
+**1.44x to 2.42x** the straight line, against a model assuming a flat 1.45x; and
+`dense_urban` assumes 11 km/h, so a hop OSRM drives in 22 minutes was costed at
+**66.7**. The ETA being wrong is the visible part. The part that matters is that
+a solver minimising the wrong quantity picks the wrong ORDER, and no amount of
+2-opt fixes an objective that disagrees with the road by 2.4x on one leg. On 23
+real stops the difference was about 17.6 minutes and 10 miles per truck per day.
+
+The second is that this is at least no longer silent. Since 2026-09-08 the
+routing panel names the cause -- router unreachable, wrong region, day too
+large -- so a dispatcher sees that the day was estimated rather than measured
+before they drive it. Before that, a day costed from straight lines and a day
+costed from roads produced identical output.
+
+### What it costs to close
+
+`infra/osrm/` already holds `build.sh`, a `docker-compose.yml` and a README.
+The whole change in the app is one environment variable:
+
+    OSRM_URL=http://<host>:5000
+
+`OSRM_ENDPOINTS` takes a JSON map of region to endpoint if you want national
+coverage from several extracts rather than one national graph.
+
+- [ ] Decide where OSRM runs in production: self-hosted, or a paid routing
+      provider.
+- [ ] Decide the same for Nominatim geocoding, which rides the same terms.
+
+What makes this yours rather than mine is that both answers cost money or a box
+to run, forever, and the alternative is a third-party demo server on the path a
+technician uses at 6am.
+
+### What has NOT been measured, and should not be assumed
+
+Nothing in the test suite measures routing QUALITY. The tests prove the planner
+runs, is reachable by the role that calls it, and does not crash. Whether the
+route it returns is GOOD is checked by nothing. The 1.44x-2.42x figures above
+are a one-off measurement of the OLD model against OSRM, written into a comment
+-- they say the previous objective was wrong, not that the current one is right.
+
+In particular, **OSRM has never been compared against Google Distance Matrix or
+any other reference.** If parity with a commercial matrix ever gets claimed --
+to a customer, in marketing copy, or in a decision about paying for one -- it
+needs measuring first. A harness sampling real days across OSRM, a paid matrix
+and the straight-line estimate would answer it; it needs an API key and costs a
+little per run.
 
 ## Things you do NOT need to do
 
