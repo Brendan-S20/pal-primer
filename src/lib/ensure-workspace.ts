@@ -1,6 +1,31 @@
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization } from "@/lib/org.functions";
 
+/**
+ * The browser's own IANA zone, for the one moment it is worth asking.
+ *
+ * `organizations.timezone` is NOT NULL DEFAULT 'America/Chicago' and nothing
+ * in signup has ever set it, so every workspace started in US Central and
+ * stayed there until its owner found Settings -> Preferences. An operator in
+ * Michigan was an hour out and one in California three, on every workday
+ * window, every ETA, every "visits today" boundary and every month-to-date
+ * cut.
+ *
+ * Undefined rather than a guess when it cannot be read: SSR has no Intl
+ * locale to speak of, and the accessor can throw in a hardened browser. The
+ * server treats a missing or unresolvable zone identically -- it drops it and
+ * the column default stands -- so there is exactly one fallback and it is not
+ * spelled here.
+ */
+function browserTimezone(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The signed-in user's shape, as much of it as the bootstrap needs. */
 export type BootstrapUser = {
   id: string;
@@ -127,6 +152,7 @@ export async function ensureBootstrapped(
       refCode: attribution.ref,
       utm: attribution.utm,
       promoCode: attribution.promo,
+      timezone: browserTimezone(),
     },
   });
   clearSignupAttribution();

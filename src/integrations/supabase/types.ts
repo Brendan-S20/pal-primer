@@ -5914,6 +5914,7 @@ export type Database = {
           _display_name: string
           _org_name: string
           _ref_code?: string
+          _timezone?: string
           _utm?: Json
         }
         Returns: string
