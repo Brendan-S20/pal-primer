@@ -161,15 +161,51 @@ Still open, and both still need you:
 
 - [ ] `brendancreataco@gmail.com` holds **owner** on the demo org. Keep or
       remove. Unchanged — this was not part of the relocation.
-- [ ] **The two franchise locations are on `America/Chicago`.** Metro Detroit
-      is Eastern, so their clocks read an hour off the parent, which is on
-      `America/New_York`. I did not change it: a parent and its locations
-      deliberately disagreeing may be the fixture that demonstrates per-location
-      clocks, which is what
-      `20260819130000_every-location-kept-the-parents-clock-and-rolled-over-an-hour-early`
-      exists for. If it is not deliberate, the fix is `America/Detroit` on all
-      three and I can do it in one statement. Worth settling before screenshots,
-      because a time an hour out is the sort of thing a reviewer notices.
+- [x] **The two franchise locations were on `America/Chicago`. Settled
+      2026-09-12: both are Eastern.** You decided they were not a deliberate
+      fixture, and the evidence agreed -- their own customers average
+      42.580, -83.188 and 42.284, -83.141, which is metro Detroit, and
+      `provision_franchise_location` copies the PARENT's timezone, so a location
+      created today would already be Eastern. These two predate
+      `20260805080000`, whose `WHERE` matched the parent alone.
+
+      Applied as `America/New_York` rather than the `America/Detroit` this entry
+      originally proposed, because that is what the parent already holds and the
+      two are the same offset and the same DST rules. Matching the parent is
+      also what the provisioning function would have produced.
+
+      `20260819130000`'s decision that each location uses its OWN clock is
+      untouched and still correct. It was right about the design and wrong about
+      one input. The cost, weighed and accepted: the demo data no longer spans
+      two timezones, so nothing in the seed exercises that rollup path by hand.
+
+**Three routing settings on the demo org were stale in the same way, and are
+now fixed.** None of these needs anything from you; they are recorded because
+they came out of the same relocation and the same 2026-08-05 "NYC demo org"
+migration, which set four values in one statement and was only ever undone one
+value at a time.
+
+| | was | now | why |
+|---|---|---|---|
+| `area_type` | `dense_urban` (11 km/h) | `suburban` (28 km/h) | 110 properties average 42.486, -83.151. 11 km/h is documented as "Manhattan, Boston core". |
+| `road_factor` | 1.45 on the parent, 1.30 on everyone else | **1.35 everywhere, including the column default** | 3,168 measured OSRM legs give a median of 1.354. Both values in use were wrong, in opposite directions. |
+| `timezone` | `America/Chicago` on both locations | `America/New_York` | above |
+
+- [ ] **`park_walk_min` is still 6 on the parent and 2 on every other
+      organization** -- the fourth value from that same statement, and the only
+      one left. 6 minutes is a city figure: find a space, walk back. 2 is a
+      suburban driveway.
+
+      I tried to measure it rather than guess and could not. There is no
+      `arrived_at`, but the gap between one visit's `completed_at` and the next
+      one's `started_at`, minus the OSRM road time for that leg, IS park and
+      walk. The data cannot carry it: 324 visits have both timestamps and they
+      hold **four distinct service durations** between them, with a median
+      inter-stop gap of 64 minutes. Those timestamps are seeded, not observed,
+      so the residual measures the seeder.
+
+      So this one is a judgement, not a measurement. Say 2 and it matches
+      everything else in one statement.
 
 ## 8. Facebook sign-in — IN REVIEW at Meta
 
@@ -496,12 +532,38 @@ against Google. The number it reports is minutes per day: how much longer a day
 routed on OSRM takes than the same day routed on Google. Without `--spend` it
 calls nothing and only prints what a real run would buy.
 
-- [ ] Run it, and decide from the number whether a paid matrix is worth it.
+- [ ] Run the Google arm, and decide from the number whether a paid matrix is
+      worth it. **Two of the three arms have been run; the Google one has
+      not**, because this environment has no `GOOGLE_MAPS_API_KEY`. Set one and
+      the harness does the rest -- about 2,000 elements for a full run, and it
+      refuses rather than overspending past `--max-elements`.
+
+What the two runnable arms produced on 2026-09-11, against OSRM rather than
+Google:
+
+| | |
+|---|---|
+| straight-line estimate vs OSRM road time | **3.4x-3.7x** at the median, up to **6.1x** on the worst leg |
+| cost of the ORDER that estimate picks | about **6.6%** more driving |
+| actual road speed | p10 28.4, median 36.9, p90 45.0 km/h |
+| actual road factor | p10 1.14, median 1.34, p90 1.79 |
+
+The bottom two rows are what `road_factor` and `area_type` were corrected
+against in section 7. **Parity with Google remains unclaimed and unmeasured** --
+this compares the app's own estimate against OSRM, which is a different
+question from whether OSRM matches a commercial matrix.
 
 Two things it cannot tell you, both printed in its own output: it samples the
 fullest days, so the percentage is not a fleet average, and on this database
 those days all belong to ONE organization, which makes it a measurement of one
 road network rather than of routing in general.
+
+A third, learned by running it: the first version reported two days where
+routing on the WORSE matrix produced a BETTER order, which cannot be true of
+cost models. The solver's greedy start was a free variable worth 12-15% of
+spread against an effect of 3-6%, so the number was reporting which stop
+happened to sort first. Fixed by trying every start; the figures above are from
+after that.
 
 ## Things you do NOT need to do
 
