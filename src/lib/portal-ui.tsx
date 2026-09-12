@@ -7,6 +7,7 @@ import { frequencyLabel } from "@/lib/frequency-request";
 import { stationDisplayName } from "@/lib/dna-linkage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { PhotoLightbox } from "@/components/PhotoLightbox";
 import { toast } from "sonner";
 import {
   Camera,
@@ -1558,7 +1559,21 @@ export function ServiceHistorySection({
   reporting: boolean;
 }) {
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  // WHICH photo of WHICH visit, rather than one URL string. The bare-URL
+  // version could only ever show the single photo that was tapped; a customer
+  // looking at a before/after pair had to close and reopen to see the other.
+  const [lightbox, setLightbox] = useState<{ visitId: string; index: number } | null>(null);
+
+  // The photos of the visit the viewer is open on, in the order they are shown
+  // on the card, so paging in the viewer matches what the customer just saw.
+  const lightboxPhotos = useMemo(() => {
+    if (!lightbox) return [];
+    const row = rows.find((r) => r.visit_id === lightbox.visitId);
+    return (row?.photo_paths ?? []).map((path: string, i: number) => ({
+      url: urls[path] ?? null,
+      kind: photoCaption(row?.photo_kinds?.[i]),
+    }));
+  }, [lightbox, rows, urls]);
 
   // Key the signing round-trip on the actual photo paths, not the rows array
   // identity — the query result is a fresh array each settle, and this section
@@ -1652,7 +1667,7 @@ export function ServiceHistorySection({
                       key={p}
                       url={urls[p]}
                       kind={r.photo_kinds?.[i]}
-                      onOpen={() => urls[p] && setLightbox(urls[p])}
+                      onOpen={() => urls[p] && setLightbox({ visitId: r.visit_id, index: i })}
                     />
                   ))}
                 </div>
@@ -1662,16 +1677,43 @@ export function ServiceHistorySection({
         </ul>
       )}
 
-      {lightbox && (
-        <div
-          onClick={() => setLightbox(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-        >
-          <img src={lightbox} alt="Visit photo" className="max-h-full max-w-full rounded" />
-        </div>
-      )}
+      {/* THE SAME VIEWER THE FIELD APP USES.
+          This was `<div onClick={close} className="fixed inset-0 ...">` with
+          an <img> inside it: no
+          focus trap, so tabbing walked the page behind it; nothing inert to a
+          screen reader; no Escape; and because the close handler sat on the
+          parent, a click on the PHOTO closed it too, so a customer could not
+          tap their own before-and-after without dismissing it.
+          PhotoLightbox is the component My Day got in #203, and sharing it is
+          the point -- two spellings of "show this photo" is how the one with
+          fewer users stays the worse one. */}
+      <PhotoLightbox
+        photos={lightboxPhotos}
+        openIndex={lightbox ? lightbox.index : null}
+        onClose={() => setLightbox(null)}
+      />
     </section>
   );
+}
+
+/** What a CUSTOMER calls this photo.
+ *
+ *  `completion` is what the field app writes for the photo that proves the work
+ *  is done, and "After" is what the person paying for it calls that. An unknown
+ *  kind gets no caption rather than a guessed one.
+ *
+ *  At module scope because the thumbnail and the full-size viewer both show it,
+ *  and a customer tapping "After" must not be shown a heading that says
+ *  "completion". It was inline in the thumbnail when the viewer had no caption
+ *  at all to disagree with. */
+export function photoCaption(kind?: string | null): string | null {
+  return kind === "before"
+    ? "Before"
+    : kind === "completion"
+      ? "After"
+      : kind === "issue"
+        ? "Issue"
+        : null;
 }
 
 /** One photo on a customer's visit card.
@@ -1701,11 +1743,7 @@ function PortalVisitPhoto({
   onOpen: () => void;
 }) {
   const [broken, setBroken] = useState(false);
-  // `completion` is what the field app writes for the photo that proves the
-  // work is done, and "After" is what a customer calls that. An unknown kind
-  // gets no caption rather than a guessed one.
-  const caption =
-    kind === "before" ? "Before" : kind === "completion" ? "After" : kind === "issue" ? "Issue" : null;
+  const caption = photoCaption(kind);
   return (
     <button
       onClick={onOpen}

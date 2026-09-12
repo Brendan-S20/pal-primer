@@ -80,7 +80,9 @@ describe("the pay page dates overdue in the org's day", () => {
 
 describe("a photo is labelled by what it is", () => {
   it("returns the kind alongside the path", () => {
-    const fn = SQL.slice(SQL.lastIndexOf("CREATE OR REPLACE FUNCTION public.portal_list_recent_visits"));
+    const fn = SQL.slice(
+      SQL.lastIndexOf("CREATE OR REPLACE FUNCTION public.portal_list_recent_visits"),
+    );
     const body = fn.slice(0, fn.indexOf("$function$;"));
     expect(body).toMatch(/photo_kinds text\[\]/);
     expect(body).toMatch(/SELECT vp\.kind::text FROM public\.visit_photos vp/);
@@ -90,7 +92,9 @@ describe("a photo is labelled by what it is", () => {
     // Parallel arrays are only safe if index i means the same thing in both.
     // `created_at` alone is not a total order — a seeder writes a visit's
     // photos in one statement, so they share a timestamp to the microsecond.
-    const fn = SQL.slice(SQL.lastIndexOf("CREATE OR REPLACE FUNCTION public.portal_list_recent_visits"));
+    const fn = SQL.slice(
+      SQL.lastIndexOf("CREATE OR REPLACE FUNCTION public.portal_list_recent_visits"),
+    );
     const body = fn.slice(0, fn.indexOf("$function$;"));
     expect(body.match(/ORDER BY vp\.created_at, vp\.id/g) ?? []).toHaveLength(2);
   });
@@ -98,9 +102,15 @@ describe("a photo is labelled by what it is", () => {
   it("stops counting positions to decide what a photo shows", () => {
     const ui = strip(read("src/lib/portal-ui.tsx"));
     expect(ui).not.toMatch(/i % 2 === 0 \? "Before" : "After"/);
-    expect(ui).toMatch(/kind === "before" \? "Before"/);
-    expect(ui).toMatch(/kind === "completion" \? "After"/);
-    expect(ui).toMatch(/kind === "issue" \? "Issue"/);
+    // `\s*` rather than a literal space: the rule is that the caption comes
+    // from the photo's KIND and not from its position in the array, and that
+    // is true however prettier chooses to break the ternary. It got broken
+    // across lines when the caption moved to module scope so the full-size
+    // viewer could show the same word as the thumbnail -- a customer tapping
+    // "After" must not be handed a heading that says "completion".
+    expect(ui).toMatch(/kind === "before"\s*\? "Before"/);
+    expect(ui).toMatch(/kind === "completion"\s*\? "After"/);
+    expect(ui).toMatch(/kind === "issue"\s*\? "Issue"/);
   });
 
   it("says nothing rather than guessing at an unknown kind", () => {
