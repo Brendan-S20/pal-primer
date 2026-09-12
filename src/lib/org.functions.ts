@@ -14,6 +14,11 @@ const bootstrapSchema = z.object({
   // The "Promo or referral code" box on Get-started. May hold a platform
   // coupon code OR a tenant referral code — classified server-side below.
   promoCode: z.string().trim().max(40).optional(),
+  // The browser's own IANA zone, read at signup. Shape-checked only: whether
+  // this server can actually resolve it is pg_timezone_names' question, and
+  // bootstrap_organization asks it. An unrecognised zone is dropped there
+  // rather than raised on, so a browser string can never block a signup.
+  timezone: z.string().trim().max(64).optional(),
 });
 
 // Pre-signup validation for the "Promo or referral code" box: public (the
@@ -60,6 +65,7 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
       _display_name: data.displayName,
       _ref_code: refCode,
       _utm: data.utm && Object.keys(data.utm).length ? data.utm : undefined,
+      _timezone: data.timezone || undefined,
     });
     if (error) throw new Error(error.message);
 
