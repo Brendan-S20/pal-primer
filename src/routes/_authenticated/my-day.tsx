@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,6 +48,7 @@ import {
   formatCacheAge,
   READ_CACHE_MAX_AGE_MS,
 } from "@/lib/offline/read-cache-policy";
+import { PhotoLightbox } from "@/components/PhotoLightbox";
 import { toast } from "sonner";
 import {
   Navigation,
@@ -57,6 +58,17 @@ import {
   WifiOff,
   RefreshCw,
   ArrowDown,
+  Clock,
+  CircleParking,
+  Dog,
+  Fence,
+  KeyRound,
+  LockKeyhole,
+  Phone,
+  Ruler,
+  Timer,
+  List as ListIcon,
+  Map as MapIcon,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
@@ -372,6 +384,10 @@ function MyDay() {
   }, [runSync]);
 
   const visits = data?.visits ?? [];
+  // List or map. Not in the URL: it is a way of looking at the day, not a
+  // different day, and a tech who taps Map then reloads in a dead spot should
+  // get the list back rather than a grey tile grid.
+  const [view, setView] = useState<"list" | "map">("list");
   // Kept current for namesFor above. Written during render rather than in an
   // effect: a sync can fire from the online listener before an effect has run,
   // and a toast that says "and 2 others" with no names is worse than one that
@@ -644,23 +660,56 @@ function MyDay() {
           </div>
 
           {total > 0 && (
-            <div>
-              <div className="flex items-center justify-between text-xs">
-                <div className="font-medium">
-                  {completedCount} {t("common.of")} {total} {t("common.done")}
-                  {skippedCount > 0 && (
-                    <span className="ml-1 font-normal text-muted-foreground">
-                      · {skippedCount} skipped
-                    </span>
-                  )}
-                </div>
-                <div className="text-muted-foreground">{pct}%</div>
+            <div className="flex items-center gap-2">
+              {/* List or map, on the bar rather than buried in the page, so
+                  the whole day is one tap away from any scroll position. */}
+              <div className="flex shrink-0 rounded-lg border p-0.5" role="group" aria-label="View">
+                {(["list", "map"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => {
+                      haptic("tap");
+                      setView(v);
+                    }}
+                    // 44px square, not the 36px an `h-9` icon button defaults
+                    // to. MEASURED by the 360px sweep, which failed this the
+                    // first time it ran: "List view is 36.0px tall".
+                    className={`grid h-11 w-11 place-items-center rounded-md transition-colors ${
+                      view === v
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
+                    title={v === "list" ? "List" : "Map"}
+                  >
+                    {v === "list" ? (
+                      <ListIcon className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <MapIcon className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    <span className="sr-only">{v === "list" ? "List view" : "Map view"}</span>
+                  </button>
+                ))}
               </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-primary transition-all duration-500 ease-out"
-                  style={{ width: `${pct}%` }}
-                />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="font-medium">
+                    {completedCount} {t("common.of")} {total} {t("common.done")}
+                    {skippedCount > 0 && (
+                      <span className="ml-1 font-normal text-muted-foreground">
+                        · {skippedCount} skipped
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-muted-foreground">{pct}%</div>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all duration-500 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -742,11 +791,30 @@ function MyDay() {
           </div>
         )}
 
-        <ol className="space-y-3">
-          {visits.map((v: any, idx: number) => (
-            <VisitCard key={v.id} visit={v} index={idx + 1} day={day} preview={previewing} />
-          ))}
-        </ol>
+        {view === "map" ? (
+          <MyDayMap
+            visits={visits}
+            staffName={data?.staff?.display_name ?? "My route"}
+            onVisitClick={(id) => {
+              // Back to the list, at that stop. A pin answers "where", the
+              // card answers "what do I do here", and a tech tapping a pin is
+              // asking the second question.
+              setView("list");
+              requestAnimationFrame(() => {
+                document.getElementById(`visit-${id}`)?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+              });
+            }}
+          />
+        ) : (
+          <ol className="space-y-3">
+            {visits.map((v: any, idx: number) => (
+              <VisitCard key={v.id} visit={v} index={idx + 1} day={day} preview={previewing} />
+            ))}
+          </ol>
+        )}
       </div>
 
       {/* Sticky bottom "Next up" action bar. Wherever the MobileTabBar is on
@@ -792,6 +860,85 @@ function MyDay() {
               {activeVisit ? t("myDay.resume") : t("myDay.jump")} <ArrowDown className="h-4 w-4" />
             </div>
           </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The whole day on one map.
+ *
+ * The route was only ever a vertical list of cards, so "where am I going after
+ * this" meant scrolling and reading addresses. This is the same visits, in the
+ * same order, with the driving order drawn between them — see RouteMap, which
+ * the office dispatch board already uses for exactly this and which techs had
+ * no way to reach.
+ *
+ * LOADED ON DEMAND. Leaflet plus its CSS and marker images is real weight, and
+ * a technician who never opens the map should never pay for it — this screen is
+ * the one that has to work on a cold start in a van. `React.lazy` keeps it out
+ * of the My Day chunk until the toggle is pressed.
+ */
+const RouteMapLazy = lazy(() =>
+  import("@/components/RouteMap").then((m) => ({ default: m.RouteMap })),
+);
+
+function MyDayMap({
+  visits,
+  staffName,
+  onVisitClick,
+}: {
+  visits: any[];
+  staffName: string;
+  onVisitClick: (visitId: string) => void;
+}) {
+  const mappable = visits.filter(
+    (v) => v.properties?.latitude != null && v.properties?.longitude != null,
+  );
+
+  // A map with nothing on it is worse than no map: it looks like a failure of
+  // the map rather than of the data. Say which it is.
+  if (mappable.length === 0) {
+    return (
+      <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
+        {visits.length === 0
+          ? "Nothing scheduled for this day."
+          : "None of today's stops have coordinates yet, so there is nothing to plot. The office can geocode these properties."}
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border">
+      <Suspense
+        fallback={
+          <div className="grid h-[60vh] place-items-center bg-muted/30 text-sm text-muted-foreground">
+            Loading map...
+          </div>
+        }
+      >
+        <RouteMapLazy
+          groups={[
+            {
+              staffId: null,
+              name: staffName,
+              color: "#2563eb",
+              visits: mappable,
+            },
+          ]}
+          // Tall on a phone, because the point is to see the shape of the day.
+          // vh rather than a pixel height so it is the same proportion of a
+          // small phone and a crew tablet.
+          height={typeof window !== "undefined" && window.innerWidth >= 768 ? 520 : 460}
+          drawRoutes
+          onVisitClick={onVisitClick}
+        />
+      </Suspense>
+      {mappable.length < visits.length && (
+        <div className="border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {visits.length - mappable.length} of {visits.length} stops have no coordinates and are not
+          shown.
         </div>
       )}
     </div>
@@ -902,12 +1049,29 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
   );
 }
 
-function PhotoThumb({ path }: { path: string }) {
+function PhotoThumb({
+  path,
+  onOpen,
+  onUrl,
+}: {
+  path: string;
+  /** Opens the in-app viewer. Was `target="_blank"` to a signed storage URL,
+   *  which on the phone handed the technician to Safari mid-route — see
+   *  PhotoLightbox. */
+  onOpen?: () => void;
+  /** Reports the signed URL up so the viewer can show it without signing
+   *  again. Signing happens once, here, where the thumbnail already needed it. */
+  onUrl?: (url: string | null) => void;
+}) {
   // Distinguish "still loading" from "can't be shown" so a broken photo shows a
   // clear placeholder instead of the browser's broken-image icon (finding #35).
   const { url, status } = useSignedUrl("visit-photos", path);
   const [imgFailed, setImgFailed] = useState(false);
   const state = imgFailed ? "error" : status;
+
+  useEffect(() => {
+    onUrl?.(imgFailed ? null : (url ?? null));
+  }, [url, imgFailed, onUrl]);
 
   if (state === "error") {
     return (
@@ -923,14 +1087,21 @@ function PhotoThumb({ path }: { path: string }) {
   if (state === "loading" || !url)
     return <div className="h-14 w-14 animate-pulse rounded bg-muted" />;
   return (
-    <a href={url} target="_blank" rel="noreferrer">
+    <button
+      type="button"
+      onClick={onOpen}
+      // 56px square: already over the 44px floor, so the thumbnail itself is
+      // the target and there is nothing smaller to hit.
+      className="block rounded border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label="Open photo"
+    >
       <img
         src={url}
         alt="Visit"
-        className="h-14 w-14 rounded border object-cover"
+        className="h-14 w-14 rounded object-cover"
         onError={() => setImgFailed(true)}
       />
-    </a>
+    </button>
   );
 }
 
@@ -990,22 +1161,66 @@ function DogsRow({ dogs }: { dogs: any }) {
         return (
           <span
             key={d?.id ?? d?.name ?? i}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+            // text-sm, not text-xs: this is the line that tells somebody what
+            // is behind the gate before they open it, and it was set two steps
+            // smaller than the client's name.
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm ${
               aggressive
-                ? "border-destructive/50 bg-destructive/10 font-medium text-destructive"
-                : "border-border bg-muted/40 text-muted-foreground"
+                ? "border-destructive/60 bg-destructive/10 font-semibold text-destructive"
+                : "border-border bg-muted/50 text-foreground/80"
             }`}
-            title="Dog on site"
           >
-            🐕 {d?.name ?? "Dog"}
+            {/* A lucide glyph rather than 🐕: an emoji renders in the system
+                font at a size this app does not control, ignores currentColor
+                so it stays brown inside a red warning chip, and is a different
+                picture on every platform. Same reason the clock, parking and
+                phone emoji went. */}
+            <Dog className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="sr-only">Dog on site:</span>
+            {d?.name ?? "Dog"}
             {d?.temperament && (
-              <span className="opacity-80">
+              <span className="font-normal opacity-80">
                 · {DOG_TEMPERAMENT_LABELS[d.temperament] ?? d.temperament}
               </span>
             )}
           </span>
         );
       })}
+    </div>
+  );
+}
+
+/** One access fact — gate code, lock box, key, yard size.
+ *
+ *  These were a two-column grid of `text-xs` label/value pairs, which is the
+ *  size this app uses for timestamps and footnotes. A gate code is not a
+ *  footnote: it is the thing somebody is squinting at, outdoors, holding a
+ *  phone in one hand, while a dog barks on the other side of the gate. Codes
+ *  are `text-base` and tabular so 0 and O, 1 and l cannot be confused. */
+function AccessFact({
+  icon: Icon,
+  label,
+  value,
+  mono = false,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="min-w-0">
+        <div className="text-3xs font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+        <div
+          className={`leading-tight ${mono ? "font-mono text-base font-semibold tabular-nums" : "text-sm"}`}
+        >
+          {value}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1079,6 +1294,14 @@ function VisitCard({
   const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
+  // Which photo the in-app viewer is showing, and the signed URLs the
+  // thumbnails have already fetched. Keyed by photo id rather than index so a
+  // photo arriving mid-render cannot shift somebody else's URL onto it.
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string | null>>({});
+  const setPhotoUrl = useCallback((id: string, url: string | null) => {
+    setPhotoUrls((m) => (m[id] === url ? m : { ...m, [id]: url }));
+  }, []);
   const [pendingLocal, setPendingLocal] = useState(0);
   // Counted SEPARATELY from pendingLocal. The Complete button is unlocked
   // offline on the strength of a completion photo waiting to sync; it used to
@@ -1229,12 +1452,28 @@ function VisitCard({
     >
       {!collapsed && <HazardBanner property={p} />}
 
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
+        {/* The stop's place in the route, as a target rather than a `#3` in a
+            row of grey footnotes. A technician checking they are at the right
+            house reads this and the address, in that order. */}
+        <div
+          className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-base font-bold tabular-nums ${
+            finalStatus
+              ? "bg-muted text-muted-foreground"
+              : inProg
+                ? "bg-blue-600 text-white"
+                : "bg-primary/10 text-primary"
+          }`}
+          aria-hidden="true"
+        >
+          {visit.sequence ?? index}
+        </div>
+
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono">#{visit.sequence ?? index}</span>
-            {visit.zones?.name && <span>· {visit.zones.name}</span>}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span className="sr-only">Stop {visit.sequence ?? index}.</span>
             {statusBadge(visit.status)}
+            {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">
                 {pendingLocal} queued
@@ -1243,25 +1482,33 @@ function VisitCard({
             {inProg && visit.started_at && (
               // Larger + bolder than the meta row: techs read this outdoors
               // in sunlight (P2 field-readiness).
-              <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                · <ElapsedTimer startedAt={visit.started_at} />
+              <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 dark:text-blue-300">
+                <Timer className="h-3.5 w-3.5" aria-hidden="true" />
+                <ElapsedTimer startedAt={visit.started_at} />
               </span>
             )}
           </div>
-          <div className="mt-1 truncate text-base font-semibold">
-            {visit.clients?.display_name ?? "Client"}
+
+          {/* THE ADDRESS LEADS. It was `text-sm text-muted-foreground` under a
+              `text-base` client name — the faintest line on the card was the
+              one answering "is this the right house". The name still matters
+              (it is who you greet, and who you are calling) and keeps the line
+              below. */}
+          <div className="mt-1 text-lg font-bold leading-tight">
+            {p?.street ?? visit.clients?.display_name ?? "Visit"}
           </div>
-          <div className="text-sm text-muted-foreground">
-            {p?.street}
-            {p?.city ? `, ${p.city}` : ""}
-            {p?.postal_code ? ` ${p.postal_code}` : ""}
+          <div className="truncate text-sm text-muted-foreground">
+            {[p?.city, p?.postal_code].filter(Boolean).join(" ")}
+            {p?.city || p?.postal_code ? " · " : ""}
+            {visit.clients?.display_name ?? "Client"}
           </div>
 
           {/* Per-card ETA / service window (H1): techs need to know WHEN this
               stop is expected, on the card itself. */}
           {visitWindowLabel(visit) && (
-            <div className="mt-0.5 text-xs font-medium text-foreground">
-              🕒 {visitWindowLabel(visit)}
+            <div className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <Clock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              {visitWindowLabel(visit)}
             </div>
           )}
 
@@ -1271,36 +1518,39 @@ function VisitCard({
                   to hazards, on residential cards too, so the tech knows what
                   they're walking into. */}
               <DogsRow dogs={p?.dogs} />
-              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                {p?.gate_code && (
-                  <div>
-                    <span className="text-muted-foreground">Gate:</span>{" "}
-                    <span className="font-mono">{p.gate_code}</span>
-                  </div>
-                )}
-                {p?.lock_box_code && (
-                  <div>
-                    <span className="text-muted-foreground">Lock box:</span>{" "}
-                    <span className="font-mono">{p.lock_box_code}</span>
-                  </div>
-                )}
-                {p?.key_location && (
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground">Key:</span> {p.key_location}
-                  </div>
-                )}
-                {p?.yard_size && (
-                  <div>
-                    <span className="text-muted-foreground">Yard:</span>{" "}
-                    {YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? p.yard_size}
-                  </div>
-                )}
-              </div>
+
+              {/* Getting in. One block, bordered, at a size that survives
+                  sunlight and gloves — see AccessFact. */}
+              {(p?.gate_code || p?.lock_box_code || p?.key_location || p?.yard_size) && (
+                <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border bg-muted/30 p-2.5">
+                  {p?.gate_code && (
+                    <AccessFact icon={Fence} label="Gate" value={p.gate_code} mono />
+                  )}
+                  {p?.lock_box_code && (
+                    <AccessFact icon={LockKeyhole} label="Lock box" value={p.lock_box_code} mono />
+                  )}
+                  {p?.key_location && (
+                    <div className="col-span-2">
+                      <AccessFact icon={KeyRound} label="Key" value={p.key_location} />
+                    </div>
+                  )}
+                  {p?.yard_size && (
+                    <AccessFact
+                      icon={Ruler}
+                      label="Yard"
+                      value={YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? p.yard_size}
+                    />
+                  )}
+                </div>
+              )}
               {p?.parking_notes && (
-                <div className="mt-1 text-xs text-muted-foreground">🅿 {p.parking_notes}</div>
+                <div className="mt-2 flex items-start gap-2 text-sm text-muted-foreground">
+                  <CircleParking className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">{p.parking_notes}</span>
+                </div>
               )}
               {p?.access_notes && (
-                <div className="mt-1 text-xs text-muted-foreground">{p.access_notes}</div>
+                <div className="mt-1.5 text-sm text-muted-foreground">{p.access_notes}</div>
               )}
               {skipped && (
                 <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
@@ -1326,49 +1576,72 @@ function VisitCard({
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-1.5">
+        {finalStatus && (
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label={collapsed ? "Expand" : "Collapse"}
+          >
+            {collapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+          </button>
+        )}
+      </div>
+
+      {/* Navigate and Call, side by side and full width.
+          They were stacked in a right-hand column beside the text, which cost
+          the address about a third of a 360px card and gave each button
+          whatever width was left over. They are the two things a technician
+          presses without looking, so they get equal halves of the card and a
+          48px height rather than the 40px minimum. */}
+      {!collapsed && (p?.street || visit.clients?.primary_phone) && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
           {p?.street && (
             <a
               href={mapsUrl(p)}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-10 items-center gap-1 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent touch:min-h-11"
+              className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold transition-colors hover:bg-accent active:bg-accent ${
+                visit.clients?.primary_phone ? "" : "col-span-2"
+              }`}
             >
-              <Navigation className="h-4 w-4" /> Navigate
+              <Navigation className="h-4 w-4 shrink-0" aria-hidden="true" /> Navigate
             </a>
           )}
           {visit.clients?.primary_phone && (
             <a
               href={`tel:${visit.clients.primary_phone}`}
-              className="inline-flex min-h-10 items-center rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent touch:min-h-11"
+              className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold transition-colors hover:bg-accent active:bg-accent ${
+                p?.street ? "" : "col-span-2"
+              }`}
             >
-              📞 Call
+              <Phone className="h-4 w-4 shrink-0" aria-hidden="true" /> Call
             </a>
           )}
-          {finalStatus && (
-            <button
-              onClick={() => setCollapsed((c) => !c)}
-              className="grid h-10 w-10 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground touch:h-11 touch:w-11"
-              aria-label={collapsed ? "Expand" : "Collapse"}
-            >
-              {collapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
       {!collapsed && photos.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {photos.map((ph: any) => (
+          {photos.map((ph: any, i: number) => (
             <div key={ph.id} className="relative">
-              <PhotoThumb path={ph.storage_path} />
-              <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
+              <PhotoThumb
+                path={ph.storage_path}
+                onOpen={() => setLightboxIndex(i)}
+                onUrl={(u) => setPhotoUrl(ph.id, u)}
+              />
+              <span className="pointer-events-none absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
                 {ph.kind}
               </span>
             </div>
           ))}
         </div>
       )}
+
+      <PhotoLightbox
+        photos={photos.map((ph: any) => ({ url: photoUrls[ph.id] ?? null, kind: ph.kind }))}
+        openIndex={lightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+      />
 
       {!preview && !finalStatus && (
         <div className="mt-4 space-y-3">
@@ -1487,8 +1760,8 @@ function VisitCard({
             </Button>
             {missed && (
               <p className="mt-1 w-full text-xs text-muted-foreground">
-                Marked missed overnight. If you did the work, you can still
-                complete it here and it will be recorded late.
+                Marked missed overnight. If you did the work, you can still complete it here and it
+                will be recorded late.
               </p>
             )}
             <Button
