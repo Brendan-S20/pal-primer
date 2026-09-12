@@ -1,8 +1,12 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { listMyNotifications } from "@/lib/notifications-center.functions";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bell,
   CalendarDays,
+  Trash2,
   HelpCircle,
   LayoutDashboard,
   LogOut,
@@ -14,28 +18,30 @@ import {
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useTabletTier } from "@/hooks/useTabletTier";
-import { NAV_GROUPS, isNavItemVisible, useNavVisibility, type NavItem } from "@/components/AppSidebar";
+import {
+  NAV_GROUPS,
+  isNavItemVisible,
+  useNavVisibility,
+  type NavItem,
+} from "@/components/AppSidebar";
 import { CreateSheet } from "@/components/CreateSheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
 
 /**
- * Fired by the tech "Schedule" tab so My Day scrolls to / focuses its
- * seven-day strip (Phase 2 — replaces the Phase 1 date-picker stand-in).
- * My Day listens for this.
+ * Asks My Day to scroll to and focus its seven-day strip. My Day listens.
+ *
+ * Fired by pressing the "Today" tab while already on My Day — the press that
+ * would otherwise do nothing. It used to belong to a "Schedule" tab that
+ * navigated nowhere and existed only to send this event; that tab is gone and
+ * a real destination took its place.
  */
 export const FOCUS_MY_DAY_SCHEDULE_EVENT = "houndstack:focus-my-day-schedule";
 
-function todayISO() {
-  const d = new Date();
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
-}
-
 // Destinations already surfaced as a first-class tab — excluded from "More".
 const OFFICE_TAB_URLS = ["/dashboard", "/routes", "/clients"];
-const TECH_TAB_URLS = ["/my-day"];
+const TECH_TAB_URLS = ["/my-day", "/waste-log", "/notifications"];
 
 const tabClass = (active: boolean) =>
   `flex min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-3xs font-medium transition-colors ${
@@ -55,7 +61,6 @@ export function MobileTabBar() {
   const { barHiddenFrom } = useTabletTier();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (r) => r.location.pathname });
-  const search = useRouterState({ select: (r) => r.location.search }) as { date?: string };
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   // Above the `!role` early return: hooks cannot be conditional.
@@ -63,6 +68,17 @@ export function MobileTabBar() {
   const { staff: me } = useMyProfile();
   // Also above the early return, and for the same reason.
   const navVisibility = useNavVisibility();
+  // Unread badge on the Alerts tab. `staleTime` keeps it off the wire on every
+  // tab change; `retry: false` keeps a van with no signal from queueing
+  // retries behind a bar that is only decoration when it fails.
+  const notificationsFn = useServerFn(listMyNotifications);
+  const { data: notifications } = useQuery({
+    queryKey: ["my-notifications", "tab-badge"],
+    queryFn: () => notificationsFn(),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const unread = notifications?.unread ?? 0;
 
   // No role yet (loading, or a platform admin without a tenant org): no bar.
   if (!role) return null;
@@ -107,7 +123,6 @@ export function MobileTabBar() {
   };
 
   const onMyDay = pathname === "/my-day" || pathname.startsWith("/my-day/");
-  const viewingOtherDay = !!search.date && search.date !== todayISO();
 
   const moreButton = (
     // data-tour: the guided tour anchors to these. They were only ever on
@@ -133,27 +148,71 @@ export function MobileTabBar() {
         className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80 ${barHiddenFrom}`}
       >
         {isTech ? (
-          <ul className="grid grid-cols-3">
+          /* FOUR TABS, THREE OF THEM DESTINATIONS.
+             It was Today / Schedule / More, and "Schedule" went nowhere: it
+             fired FOCUS_MY_DAY_SCHEDULE_EVENT to scroll the seven-day strip
+             that is already on screen, on the page the tech was already on. So
+             a technician's entire bottom bar offered one destination and a
+             sheet, while /waste-log and /notifications — both things they can
+             actually open, and both things they need mid-route — were buried
+             two taps deep in More.
+             The day strip keeps doing the job the Schedule tab pretended to
+             do, which is why dropping the tab costs nothing. */
+          <ul className="grid grid-cols-4">
             <li>
               <Link
                 to="/my-day"
                 data-tour="/my-day"
                 preload="render"
-                className={tabClass(onMyDay && !viewingOtherDay)}
+                className={tabClass(onMyDay)}
+                // Pressing the tab you are already on jumps to the day strip.
+                // That is where FOCUS_MY_DAY_SCHEDULE_EVENT lives now: the
+                // Schedule tab that used to fire it was a tab that navigated
+                // nowhere, and this is the same affordance attached to the
+                // gesture people already use for it.
+                onClick={() => {
+                  if (onMyDay) focusMyDaySchedule();
+                }}
               >
                 <Sun className="h-5 w-5" />
                 <span>Today</span>
               </Link>
             </li>
             <li>
-              <button
-                type="button"
-                onClick={focusMyDaySchedule}
-                className={tabClass(onMyDay && viewingOtherDay)}
+              <Link
+                to="/waste-log"
+                data-tour="/waste-log"
+                preload="render"
+                className={tabClass(isActive("/waste-log"))}
               >
-                <CalendarDays className="h-5 w-5" />
-                <span>Schedule</span>
-              </button>
+                <Trash2 className="h-5 w-5" />
+                <span>Waste log</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/notifications"
+                data-tour="/notifications"
+                preload="render"
+                className={`relative ${tabClass(isActive("/notifications"))}`}
+              >
+                <span className="relative">
+                  <Bell className="h-5 w-5" />
+                  {unread > 0 && (
+                    // Count, not a dot: "three things happened" and "something
+                    // happened" are different messages to somebody deciding
+                    // whether to stop driving and look.
+                    <span
+                      className="absolute -right-2 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-3xs font-bold leading-4 text-destructive-foreground"
+                      aria-hidden="true"
+                    >
+                      {unread > 9 ? "9+" : unread}
+                    </span>
+                  )}
+                </span>
+                <span>Alerts</span>
+                {unread > 0 && <span className="sr-only">{unread} unread</span>}
+              </Link>
             </li>
             <li>{moreButton}</li>
           </ul>
@@ -269,16 +328,22 @@ export function MobileTabBar() {
             ))}
             <div className="mt-1 border-t py-1">
               <ul>
-                <li>
-                  <Link
-                    to="/notifications"
-                    onClick={() => setMoreOpen(false)}
-                    className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors hover:bg-muted active:bg-muted"
-                  >
-                    <Bell className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    Notifications
-                  </Link>
-                </li>
+                {/* Techs reach this from the Alerts tab, where it carries an
+                    unread badge. Listing it twice would put the same
+                    destination on the bar and two taps inside a sheet. Office
+                    roles have no Alerts tab, so for them it stays here. */}
+                {!isTech && (
+                  <li>
+                    <Link
+                      to="/notifications"
+                      onClick={() => setMoreOpen(false)}
+                      className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors hover:bg-muted active:bg-muted"
+                    >
+                      <Bell className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      Notifications
+                    </Link>
+                  </li>
+                )}
                 <li>
                   <Link
                     to="/help"
