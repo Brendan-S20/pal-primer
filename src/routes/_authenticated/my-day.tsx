@@ -1060,15 +1060,47 @@ function MyDayMap({
       // the space went, which a map tucked under the navigation does not.
       setMapHeight(Math.max(0, Math.round(floor - top - 12)));
     };
-    measure();
-    // One more after paint: on a cold load the bars below mount in the same
-    // commit as this one and the first measurement reads the layout before
-    // them.
-    const raf = requestAnimationFrame(measure);
+    // ── MEASURE UNTIL IT SETTLES, NOT ONCE ──────────────────────────────
+    //
+    // One measurement at mount is wrong and was: MEASURED at 360x800, the map
+    // came out 202px when the room was 126px, and the 76px difference went
+    // behind the tab bar. Two things move underneath this after the first
+    // paint and neither is a window resize, so neither fires any listener
+    // below. The header above grows when the day's data arrives and the
+    // at-a-glance row appears. The Next Up strip does not exist at all until
+    // there is a visit to be next, and it is 61px, so before it mounts the
+    // floor is the tab bar 66px lower down.
+    //
+    // So measure on every frame for about a second, which is a bounded
+    // handful of getBoundingClientRect calls and converges as soon as the
+    // layout does — React bails out of an identical setState, so the frames
+    // after it settles cost a measurement and nothing else. Deliberately not
+    // a ResizeObserver on this element's parent: the parent's height is
+    // partly the height being set here, which is a loop.
+    let frames = 0;
+    let raf = 0;
+    const settle = () => {
+      measure();
+      if (++frames < 60) raf = requestAnimationFrame(settle);
+    };
+    settle();
     window.addEventListener("resize", measure);
     window.addEventListener("orientationchange", measure);
+
+    // And watch the bars themselves, because they change height without the
+    // window changing size. MEASURED: the Next Up strip reads "NEXT UP · #1 /
+    // Jump" on a day that has not started and "IN PROGRESS · #3 / Resume" on
+    // one that has, and the second is 4px taller. A map measured against the
+    // first wording sits 4px behind the second — small, and exactly the fault
+    // this is all about, so it is watched rather than rounded away.
+    //
+    // Only the bars, for the same reason as above.
+    const ro = new ResizeObserver(measure);
+    for (const bar of document.querySelectorAll("[data-bottom-chrome]")) ro.observe(bar);
+
     return () => {
       cancelAnimationFrame(raf);
+      ro.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("orientationchange", measure);
     };

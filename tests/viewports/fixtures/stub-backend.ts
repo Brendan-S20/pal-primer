@@ -664,13 +664,45 @@ const BASE_STUBS: Record<string, Stub> = {
     staff: fx.STAFF.map((s) => ({ id: s.id, display_name: s.display_name, role: s.role })),
   },
   getMyDay: () => {
-    const visits = fx
+    // ── ONE STOP IN EACH STATE, ON PURPOSE ──────────────────────────────
+    //
+    // The shared dataset gives this technician two visits today and, by where
+    // their indices fall in STATUSES, both are terminal or not-yet-started:
+    // one `scheduled` and one `completed`. So the card state that changed most
+    // on 2026-09-13 — a visit IN PROGRESS, where the photo control and
+    // Complete become the primary actions instead of Start — was rendered by
+    // nothing the sweep measures. "Which controls show is the visit's own
+    // state" was a claim with one of its three states unexercised.
+    //
+    // So a third stop is borrowed from another technician's day and handed to
+    // this one, in progress. `started_at` moves with it rather than being
+    // pinned to the first card: a scheduled visit carrying a start time is a
+    // shape the database cannot produce, and a fixture that produces it
+    // measures something that does not exist.
+    const mine = fx
       .visitsBetween(fx.TODAY, fx.TODAY)
-      .filter((v) => v.assigned_staff_id === fx.STAFF[0].id)
-      .map((v, i) => ({
+      .filter((v) => v.assigned_staff_id === fx.STAFF[0].id);
+    const borrowed = fx
+      .visitsBetween(fx.TODAY, fx.TODAY)
+      .find((v) => v.assigned_staff_id && v.assigned_staff_id !== fx.STAFF[0].id);
+    const startedAt = new Date(Date.now() - 22 * 60_000).toISOString();
+    const visits = [
+      ...mine,
+      ...(borrowed
+        ? [
+            {
+              ...borrowed,
+              assigned_staff_id: fx.STAFF[0].id,
+              status: "in_progress",
+              sequence: (mine.length ?? 0) + 1,
+            },
+          ]
+        : []),
+    ]
+      .map((v) => ({
         ...v,
         organization_id: fx.ORG_ID,
-        started_at: i === 0 ? new Date().toISOString() : null,
+        started_at: v.status === "in_progress" ? startedAt : null,
         completed_at: null,
         skip_reason: null,
         skip_reason_code: null,
