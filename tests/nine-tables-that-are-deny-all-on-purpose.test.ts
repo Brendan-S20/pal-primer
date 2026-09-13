@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { migrationFiles, readMigration, statements, stripLineComments } from "./support/sql-migrations";
 
-// Eight tables have RLS enabled and ZERO policies, and the security advisor
+// Nine tables have RLS enabled and ZERO policies, and the security advisor
 // reports each one as `rls_enabled_no_policy` forever.
 //
-// All eight are correct. RLS with no policies is deny-all to `anon` and
+// All nine are correct. RLS with no policies is deny-all to `anon` and
 // `authenticated` — it is evaluated after the blanket table grants Supabase
 // applies project-wide, so those grants buy nothing. `relforcerowsecurity` is
 // false, so the postgres-owned SECURITY DEFINER functions and the service-role
@@ -22,7 +22,7 @@ import { migrationFiles, readMigration, statements, stripLineComments } from "./
 // evidence — this test — rather than re-investigated every time somebody reads
 // the list. What it asserts is the thing that would make the dismissal wrong:
 // that no migration ever gives one of these tables a policy. That is the shape
-// 20260801091000 already uses for `roadmap_votes`, generalised to the other seven.
+// 20260801091000 already uses for `roadmap_votes`, generalised to the other eight.
 //
 // It deliberately does NOT assert that RLS is enabled. `rls_auto_enable` does
 // that for every table, and duplicating it here would be a second definition of
@@ -36,6 +36,7 @@ const DENY_ALL: Record<string, string> = {
   oauth_states: "CSRF nonces for the accounting connectors; a readable state defeats the callback check",
   org_twilio_credentials: "holds an encrypted carrier auth token; deny-all is the entire point",
   roadmap_votes: "reached only through cast_roadmap_vote / roadmap_vote_counts; nothing in src/ names it",
+  roadmap_vote_throttle: "salted hashes of voters' addresses; a readable row is the list the poll promises not to keep",
 };
 
 /** `CREATE POLICY ... ON [public.]<table>` — parsed, because these migrations

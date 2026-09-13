@@ -93,18 +93,27 @@ a lead form embedded on a tenant's own site is not the signup page),
 policy itself calls), `roadmap_vote_counts` (aggregates), and `cast_roadmap_vote`.
 
 These are the public surface of the product and are meant to be reachable.
-`cast_roadmap_vote` takes a client-supplied `p_voter`, so it is spoofable — that
-is ballot-stuffing on a roadmap poll, not money and not auth, and its migration
-reasons about the exposure explicitly.
+`cast_roadmap_vote` takes a client-supplied `p_voter`, so the vote is spoofable
+— that is ballot-stuffing on a roadmap poll, not money and not auth. What it was
+not, and was described here as if it were, is bounded: `UNIQUE (feature,
+voter_id)` reads like a guard but the caller picks both halves of the pair, so
+until 2026-09-13 the grant to `anon` was an unmetered INSERT into a production
+table by anybody who could read the page source. 20260913100000 added a limit of
+60 votes per client address per hour, keyed on `cf-connecting-ip` because
+Cloudflare overwrites it and the caller therefore cannot choose it, and gave
+`roadmap_vote_counts` a LIMIT so junk slugs could not turn the public poll's own
+payload into the second symptom. Stuffing the vote remains possible at 60/hour
+and is still not worth an account system; writing without end is not.
 
 Worth knowing: `public_get_org_for_lead_form` is the org-uuid disclosure that
 made §1 reachable without guesswork. It is deliberate, but anything newly keyed
 on an org id should be read with it in mind.
 
-## 4. The 8 deny-all tables
+## 4. The 9 deny-all tables
 
 `portal_otps`, `portal_sessions`, `portal_code_attempts`, `email_verifications`,
-`impersonation_grants`, `oauth_states`, `org_twilio_credentials`, `roadmap_votes`.
+`impersonation_grants`, `oauth_states`, `org_twilio_credentials`, `roadmap_votes`,
+`roadmap_vote_throttle`.
 
 RLS enabled, zero policies — deny-all to `anon` and `authenticated`, evaluated
 after the blanket table grants, so those grants buy nothing.
@@ -112,11 +121,17 @@ after the blanket table grants, so those grants buy nothing.
 service-role client pass through, and those are the only callers. Every access in
 `src/` goes through `supabaseAdmin`.
 
-For two of them a policy would be a regression, not a loosening: a readable
-`impersonation_grants` row tells a tenant it is being impersonated, and a
-readable `oauth_states` row defeats the callback check it exists to make.
+For three of them a policy would be a regression, not a loosening: a readable
+`impersonation_grants` row tells a tenant it is being impersonated, a readable
+`oauth_states` row defeats the callback check it exists to make, and a readable
+`roadmap_vote_throttle` row is the list of who-voted-from-where that the poll
+promises not to keep. That last one holds salted SHA-256 of the client address
+rather than the address, and rows are dropped an hour after the window opens, so
+it is a short-lived counter and not a log — but the salt is in the migration, so
+with both this repo and table read access the IPv4 space is enumerable. Deny-all
+is what makes that a hypothetical.
 
-Pinned by `tests/eight-tables-that-are-deny-all-on-purpose.test.ts`, which fails
+Pinned by `tests/nine-tables-that-are-deny-all-on-purpose.test.ts`, which fails
 if any migration ever gives one of them a policy.
 
 ## 5. `extension_in_public` — pg_net
