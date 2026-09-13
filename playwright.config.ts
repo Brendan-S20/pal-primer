@@ -62,6 +62,29 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
+        // ── PIN THE CLOCK, OR THE SWEEP MEANS SOMETHING DIFFERENT ON EVERY
+        //    MACHINE IT RUNS ON ───────────────────────────────────────────
+        //
+        // Without this the browser inherits the host's time zone, and on
+        // 2026-09-13 that cost a CI cycle: two `/routes` surfaces failed the
+        // 44px floor on the runner (a Mac in US time) and passed locally (a
+        // container in UTC), on the same commit, with no way to reproduce the
+        // failure from the machine the change was written on.
+        //
+        // The path was `findRouteWarnings`, which compares an absolute
+        // `eta_start` against LOCAL midnight of `scheduled_on`. Shift the zone
+        // and the arithmetic moves by the offset, so whether the implausible-
+        // route banner renders at all — and with it two buttons that were
+        // 32px tall — depended on where the test ran. That banner is not the
+        // only thing in this app that does date arithmetic against a local
+        // midnight, so the fix belongs here rather than at that one call site.
+        //
+        // America/Chicago, and not UTC: a business time zone, behind UTC like
+        // every one this product is used in, which keeps that class of fault
+        // visible instead of pinning the one offset where the arithmetic
+        // happens to come out clean.
+        timezoneId: "America/Chicago",
+        locale: "en-US",
         // Normally Playwright downloads a browser build matched to its own
         // version. Set SWEEP_CHROMIUM to point at one already on the machine
         // instead — for a sandbox with no browser download, or a runner where

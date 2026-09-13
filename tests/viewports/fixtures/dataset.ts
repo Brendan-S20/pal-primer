@@ -61,13 +61,29 @@ export const ORGANIZATION = {
 };
 
 export const STAFF = [
-  { id: "dddddddd-0000-4000-8000-00000000d001", display_name: "Alejandro Villanueva-Castro", role: "tech" },
+  {
+    id: "dddddddd-0000-4000-8000-00000000d001",
+    display_name: "Alejandro Villanueva-Castro",
+    role: "tech",
+  },
   { id: "dddddddd-0000-4000-8000-00000000d002", display_name: "Samantha Okonkwo", role: "tech" },
-  { id: "dddddddd-0000-4000-8000-00000000d003", display_name: "Bartholomew Fitzgerald III", role: "tech" },
+  {
+    id: "dddddddd-0000-4000-8000-00000000d003",
+    display_name: "Bartholomew Fitzgerald III",
+    role: "tech",
+  },
   { id: "dddddddd-0000-4000-8000-00000000d004", display_name: "Wen Zhang", role: "tech" },
-  { id: "dddddddd-0000-4000-8000-00000000d005", display_name: "Priyanka Balasubramanian", role: "tech" },
+  {
+    id: "dddddddd-0000-4000-8000-00000000d005",
+    display_name: "Priyanka Balasubramanian",
+    role: "tech",
+  },
   { id: "dddddddd-0000-4000-8000-00000000d006", display_name: "Kai Ortiz", role: "dispatcher" },
-  { id: "dddddddd-0000-4000-8000-00000000d007", display_name: "Marguerite Delacroix-Bennett", role: "tech" },
+  {
+    id: "dddddddd-0000-4000-8000-00000000d007",
+    display_name: "Marguerite Delacroix-Bennett",
+    role: "tech",
+  },
 ].map((s, i) => ({
   ...s,
   active: true,
@@ -145,6 +161,30 @@ export function visitsBetween(from: string, to: string) {
       // Every fourth stop is unassigned: the board draws an "Unassigned" lane
       // for those, which is a column that only exists when the data has one.
       const tech = i % 4 === 3 ? null : STAFF[n % 5];
+      // ── ONE DELIBERATELY IMPLAUSIBLE STOP PER SHORT-NAMED CLIENT ──────
+      //
+      // A 45-minute drive that claims to arrive at 07:35 — five minutes after
+      // the workday the optimizer starts from. `findRouteWarnings` flags an
+      // ETA its own drive figure cannot produce, and the board then draws a
+      // banner listing them.
+      //
+      // Here on purpose, and load-bearing twice over. That banner is the one
+      // place `/routes` renders a control that is a whole SENTENCE, and on
+      // 2026-09-13 two of those buttons measured 32px tall on a phone.
+      //
+      // SHORT-named on purpose, and this is the part worth not rediscovering:
+      // the control's height is its message wrapped, so "Anastasia
+      // Vandermolen-Whitaker: arrival time is earlier than…" runs to three
+      // lines at 360px and clears the 44px floor by accident. "Bo Ng: …" runs
+      // to two and does not. An earlier draft picked the stop by index, got
+      // the long name, and measured nothing.
+      //
+      // The times are fixed rather than derived from `i`, because the ordinary
+      // ETA below climbs with the stop number and a warning that depends on
+      // that is a warning that quietly stops happening when the day shifts.
+      const implausible = (client.display_name || "").length <= 8;
+      const etaFrom = implausible ? "07:35" : `${String(8 + (i % 8)).padStart(2, "0")}:15`;
+      const etaTo = implausible ? "08:05" : `${String(8 + (i % 8)).padStart(2, "0")}:45`;
       out.push({
         id: `eeeeeeee-0000-4000-8000-${String(100000000000 + n).slice(0, 12)}`,
         scheduled_on: on,
@@ -155,13 +195,32 @@ export function visitsBetween(from: string, to: string) {
         property_id: property.id,
         client_id: client.id,
         subscription_id: `ffffffff-0000-4000-8000-${String(200000000000 + n).slice(0, 12)}`,
-        eta_start: `${String(8 + (i % 8)).padStart(2, "0")}:15:00`,
-        eta_end: `${String(8 + (i % 8)).padStart(2, "0")}:45:00`,
+        // `visits.eta_start` and `visits.eta_end` are `timestamp with time zone`
+        // in the database. This fixture emitted bare clock strings ("08:15:00")
+        // until 2026-09-13, and every consumer in `src/` reads them through
+        // `new Date(...)` — ScheduleCalendar, MobileDayList, VisitDetailDrawer,
+        // the client Visits tab, the customer portal and My Day's own ETA label.
+        // `new Date("08:15:00")` is Invalid Date, so each of those rendered its
+        // empty branch and the sweep measured, at four widths and twenty
+        // surfaces, a label that production always draws and this dataset never
+        // did. A fixture that is tidier than reality measures nothing; one that
+        // is the WRONG SHAPE measures the fallback.
+        // LOCAL time, deliberately no `Z`. `new Date("2026-09-13T08:15:00")`
+        // is 08:15 in the browser's zone, which is what production means: the
+        // optimizer writes an ETA for the business's own working day, and
+        // `findRouteWarnings` compares it against LOCAL midnight of
+        // `scheduled_on`. An absolute `…Z` here reads as 03:15 in a US zone
+        // and makes every stop look like it arrives before the day starts.
+        // The zone itself is pinned in playwright.config.ts; see the note
+        // there for what leaving it to the host cost.
+        eta_start: `${on}T${etaFrom}:00`,
+        eta_end: `${on}T${etaTo}:00`,
         travel_km: 3.4 + (n % 7),
-        travel_min: 9 + (n % 13),
+        travel_min: implausible ? 45 : 9 + (n % 13),
         window_violated: n % 11 === 0,
         weather_flagged: n % 9 === 0,
-        weather_note: n % 9 === 0 ? "Thunderstorms forecast between 13:00 and 16:00 — heavy rain" : null,
+        weather_note:
+          n % 9 === 0 ? "Thunderstorms forecast between 13:00 and 16:00 — heavy rain" : null,
         clients: { display_name: client.display_name },
         properties: {
           street: property.street,
@@ -205,12 +264,48 @@ export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
 /** The platform console's tenant list. Two rows in every lifecycle state the
  *  console draws a badge for, so nothing in that column is untested. */
 export const PLATFORM_TENANTS = [
-  { name: ORG_NAME, billing_status: "active", suspended_at: null, deleted_at: null, grace_expires_at: null },
-  { name: "Pawsitive Scoops of Greater Metropolitan Phoenix", billing_status: "past_due", suspended_at: null, deleted_at: null, grace_expires_at: iso(new Date(Date.now() + 3 * 864e5)) },
-  { name: "K9 Kleanup", billing_status: "trialing", suspended_at: null, deleted_at: null, grace_expires_at: null },
-  { name: "Doody Calls Franchising Incorporated (Southeast)", billing_status: "canceled", suspended_at: iso(new Date(Date.now() - 8 * 864e5)), deleted_at: null, grace_expires_at: null },
-  { name: "Turdminator", billing_status: "active", suspended_at: null, deleted_at: null, grace_expires_at: null },
-  { name: "Scoopy Doo Waste Removal & Sanitation Cooperative", billing_status: "active", suspended_at: null, deleted_at: null, grace_expires_at: null },
+  {
+    name: ORG_NAME,
+    billing_status: "active",
+    suspended_at: null,
+    deleted_at: null,
+    grace_expires_at: null,
+  },
+  {
+    name: "Pawsitive Scoops of Greater Metropolitan Phoenix",
+    billing_status: "past_due",
+    suspended_at: null,
+    deleted_at: null,
+    grace_expires_at: iso(new Date(Date.now() + 3 * 864e5)),
+  },
+  {
+    name: "K9 Kleanup",
+    billing_status: "trialing",
+    suspended_at: null,
+    deleted_at: null,
+    grace_expires_at: null,
+  },
+  {
+    name: "Doody Calls Franchising Incorporated (Southeast)",
+    billing_status: "canceled",
+    suspended_at: iso(new Date(Date.now() - 8 * 864e5)),
+    deleted_at: null,
+    grace_expires_at: null,
+  },
+  {
+    name: "Turdminator",
+    billing_status: "active",
+    suspended_at: null,
+    deleted_at: null,
+    grace_expires_at: null,
+  },
+  {
+    name: "Scoopy Doo Waste Removal & Sanitation Cooperative",
+    billing_status: "active",
+    suspended_at: null,
+    deleted_at: null,
+    grace_expires_at: null,
+  },
 ].map((t, i) => ({
   id: i === 0 ? ORG_ID : `aaaaaaaa-0000-4000-8000-00000000a0${String(i + 1).padStart(2, "0")}`,
   name: t.name,
@@ -243,7 +338,13 @@ export function platformUsers(offset: number, limit: number) {
       organizations: [
         { id: ORG_ID, name: ORG_NAME, role: i % 5 === 0 ? "owner" : "office_manager" },
         ...(i % 7 === 0
-          ? [{ id: TENANT_B_ID, name: "Pawsitive Scoops of Greater Metropolitan Phoenix", role: "tech" }]
+          ? [
+              {
+                id: TENANT_B_ID,
+                name: "Pawsitive Scoops of Greater Metropolitan Phoenix",
+                role: "tech",
+              },
+            ]
           : []),
       ],
     });
@@ -257,13 +358,31 @@ export function platformUsers(offset: number, limit: number) {
 export const TENANT_AUDIT = [
   {
     action: "billing_status_change",
-    before_json: { billing_status: "trialing", plan_id: "1f0c2f5e-3b7a-4d21-9e88-6c5a4b3d2e10", grace_expires_at: null },
-    after_json: { billing_status: "active", plan_id: "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", grace_expires_at: null },
+    before_json: {
+      billing_status: "trialing",
+      plan_id: "1f0c2f5e-3b7a-4d21-9e88-6c5a4b3d2e10",
+      grace_expires_at: null,
+    },
+    after_json: {
+      billing_status: "active",
+      plan_id: "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+      grace_expires_at: null,
+    },
   },
   {
     action: "plan_change",
-    before_json: { plan_slug: "starter", price_cents: 4900, included_seats: 3, stripe_price_id: "price_1QxT7HkPmZ3vLd8RaFn2Wq0Bs" },
-    after_json: { plan_slug: "pro", price_cents: 14900, included_seats: 10, stripe_price_id: "price_1QxT7HkPmZ3vLd8RaFn2Wq0Ct" },
+    before_json: {
+      plan_slug: "starter",
+      price_cents: 4900,
+      included_seats: 3,
+      stripe_price_id: "price_1QxT7HkPmZ3vLd8RaFn2Wq0Bs",
+    },
+    after_json: {
+      plan_slug: "pro",
+      price_cents: 14900,
+      included_seats: 10,
+      stripe_price_id: "price_1QxT7HkPmZ3vLd8RaFn2Wq0Ct",
+    },
   },
   {
     action: "grace_granted",
@@ -273,7 +392,10 @@ export const TENANT_AUDIT = [
   {
     action: "tenant_suspended",
     before_json: { suspended_at: null, suspended_reason: null },
-    after_json: { suspended_at: iso(new Date(Date.now() - 8 * 864e5)), suspended_reason: "Payment failed four consecutive times and the grace period elapsed" },
+    after_json: {
+      suspended_at: iso(new Date(Date.now() - 8 * 864e5)),
+      suspended_reason: "Payment failed four consecutive times and the grace period elapsed",
+    },
   },
 ].map((r, i) => ({
   id: `88888888-0000-4000-8000-${String(400000000000 + i).slice(0, 12)}`,
@@ -286,12 +408,43 @@ export const TENANT_AUDIT = [
 }));
 
 export const PLATFORM_PLANS = [
-  { slug: "starter", name: "Starter", price_cents: 4_900, annual_price_cents: 49_000, included_seats: 3, price_per_seat_cents: 900, interval: "month", is_active: true, sort_order: 1 },
-  { slug: "pro", name: "Pro", price_cents: 14_900, annual_price_cents: 149_000, included_seats: 10, price_per_seat_cents: 700, interval: "month", is_active: true, sort_order: 2 },
-  { slug: "enterprise", name: "Enterprise (annual, invoiced)", price_cents: 0, annual_price_cents: 720_000, included_seats: 50, price_per_seat_cents: 0, interval: "year", is_active: false, sort_order: 3 },
+  {
+    slug: "starter",
+    name: "Starter",
+    price_cents: 4_900,
+    annual_price_cents: 49_000,
+    included_seats: 3,
+    price_per_seat_cents: 900,
+    interval: "month",
+    is_active: true,
+    sort_order: 1,
+  },
+  {
+    slug: "pro",
+    name: "Pro",
+    price_cents: 14_900,
+    annual_price_cents: 149_000,
+    included_seats: 10,
+    price_per_seat_cents: 700,
+    interval: "month",
+    is_active: true,
+    sort_order: 2,
+  },
+  {
+    slug: "enterprise",
+    name: "Enterprise (annual, invoiced)",
+    price_cents: 0,
+    annual_price_cents: 720_000,
+    included_seats: 50,
+    price_per_seat_cents: 0,
+    interval: "year",
+    is_active: false,
+    sort_order: 3,
+  },
 ].map((p, i) => ({
   id: `66666666-0000-4000-8000-00000000f0${String(i + 1).padStart(2, "0")}`,
-  description: "Everything in the tier below, plus route optimisation, the client portal and unlimited SMS reminders.",
+  description:
+    "Everything in the tier below, plus route optimisation, the client portal and unlimited SMS reminders.",
   stripe_product_id: `prod_QxT7HkPmZ3vLd8Ra${i}`,
   stripe_price_id: `price_1QxT7HkPmZ3vLd8RaFn2Wq0B${i}`,
   stripe_annual_price_id: `price_1QxT7HkPmZ3vLd8RaFn2Wq0C${i}`,
