@@ -49,6 +49,7 @@ import {
   READ_CACHE_MAX_AGE_MS,
 } from "@/lib/offline/read-cache-policy";
 import { PhotoLightbox } from "@/components/PhotoLightbox";
+import { dayAtAGlance } from "@/lib/day-at-a-glance";
 import { toast } from "sonner";
 import {
   Navigation,
@@ -69,6 +70,7 @@ import {
   Timer,
   List as ListIcon,
   Map as MapIcon,
+  TriangleAlert,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
@@ -714,6 +716,8 @@ function MyDay() {
             </div>
           )}
 
+          {total > 0 && <DayAtAGlance visits={visits} />}
+
           {isOfficeRole && fieldStaff.length > 0 && (
             <div className="flex min-w-0 items-center gap-2 text-xs">
               <label htmlFor="my-day-staff" className="shrink-0 text-muted-foreground">
@@ -862,6 +866,104 @@ function MyDay() {
           </a>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The rest of the day in three numbers, above the first card.
+ *
+ * The progress bar says how far through the day is and the map says where it
+ * goes. Neither says when it ends, and neither says whether there is something
+ * ahead you should not walk straight into. Those were on the cards, one at a
+ * time, several scrolls apart — the one shape a glance cannot take in.
+ *
+ * The arithmetic is `dayAtAGlance`, a pure function over the visits already
+ * fetched, kept in its own module precisely so every judgement in it — count
+ * what is ahead, critical hazards only, no invented finish time — can be tested
+ * without a browser. Everything here is the presentation of it, and the reason
+ * there are three chips and not six is written down there too.
+ *
+ * LAYOUT: three columns at every width. Three is few enough that they still fit
+ * side by side at 360px, and a row that reflows to 2+1 puts one number on a line
+ * of its own for no reason. Labels `truncate` rather than widening their column
+ * — clipped WITH an ellipsis, which is the difference the browser sweep
+ * measures. Nothing here is interactive, so nothing needs a 44px target; it is
+ * read, not pressed.
+ */
+function DayAtAGlance({ visits }: { visits: any[] }) {
+  const glance = useMemo(() => dayAtAGlance(visits), [visits]);
+
+  // Nothing left to do. The progress bar directly above already says 12 of 12,
+  // and a row of zeroes under it would be noise at the moment the day is won.
+  if (glance.remaining === 0) return null;
+
+  const finish = glance.finishAt ? fmtClock(glance.finishAt) : null;
+
+  return (
+    <dl
+      role="group"
+      aria-label="The rest of the day at a glance"
+      className="grid grid-cols-3 gap-2"
+    >
+      <GlanceFact
+        icon={Clock}
+        // No ETA is an answer — the route was never optimized — and reads better
+        // as a dash than as a fact quietly left out of the row.
+        value={finish ?? "—"}
+        label={finish ? "est. finish" : "no ETAs"}
+      />
+      <GlanceFact
+        icon={ListIcon}
+        value={String(glance.remaining)}
+        label={glance.remaining === 1 ? "stop left" : "stops left"}
+      />
+      <GlanceFact
+        icon={TriangleAlert}
+        value={String(glance.warnings)}
+        label={glance.warnings === 1 ? "needs care" : "need care"}
+        alert={glance.warnings > 0}
+      />
+    </dl>
+  );
+}
+
+function GlanceFact({
+  icon: Icon,
+  value,
+  label,
+  alert = false,
+}: {
+  icon: typeof Clock;
+  value: string;
+  label: string;
+  alert?: boolean;
+}) {
+  return (
+    <div
+      className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 ${
+        alert ? "border-destructive/40 bg-destructive/5" : "bg-card"
+      }`}
+    >
+      <Icon
+        className={`h-4 w-4 shrink-0 ${alert ? "text-destructive" : "text-muted-foreground"}`}
+        aria-hidden="true"
+      />
+      {/* min-w-0 on the text column: without it the column is laid out as wide
+          as its longest word, the row grows past the grid track, and the
+          `truncate` below never engages. */}
+      <div className="min-w-0">
+        <dd
+          className={`truncate text-sm font-semibold leading-tight tabular-nums ${
+            alert ? "text-destructive" : ""
+          }`}
+        >
+          {value}
+        </dd>
+        <dt className="truncate text-3xs uppercase leading-tight tracking-wide text-muted-foreground">
+          {label}
+        </dt>
+      </div>
     </div>
   );
 }

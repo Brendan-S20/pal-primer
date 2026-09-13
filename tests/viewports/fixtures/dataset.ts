@@ -155,8 +155,18 @@ export function visitsBetween(from: string, to: string) {
         property_id: property.id,
         client_id: client.id,
         subscription_id: `ffffffff-0000-4000-8000-${String(200000000000 + n).slice(0, 12)}`,
-        eta_start: `${String(8 + (i % 8)).padStart(2, "0")}:15:00`,
-        eta_end: `${String(8 + (i % 8)).padStart(2, "0")}:45:00`,
+        // `visits.eta_start` and `visits.eta_end` are `timestamp with time zone`
+        // in the database. This fixture emitted bare clock strings ("08:15:00")
+        // until 2026-09-13, and every consumer in `src/` reads them through
+        // `new Date(...)` — ScheduleCalendar, MobileDayList, VisitDetailDrawer,
+        // the client Visits tab, the customer portal and My Day's own ETA label.
+        // `new Date("08:15:00")` is Invalid Date, so each of those rendered its
+        // empty branch and the sweep measured, at four widths and twenty
+        // surfaces, a label that production always draws and this dataset never
+        // did. A fixture that is tidier than reality measures nothing; one that
+        // is the WRONG SHAPE measures the fallback.
+        eta_start: `${on}T${String(8 + (i % 8)).padStart(2, "0")}:15:00Z`,
+        eta_end: `${on}T${String(8 + (i % 8)).padStart(2, "0")}:45:00Z`,
         travel_km: 3.4 + (n % 7),
         travel_min: 9 + (n % 13),
         window_violated: n % 11 === 0,

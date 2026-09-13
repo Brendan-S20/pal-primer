@@ -122,6 +122,18 @@ Four things about it are worth knowing before you trust or extend it:
   itself twice, with a locator only that page draws and a fixture string only
   its data contains. A sweep that measures the login screen twenty times is
   green and worthless.
+- **A fixture of the wrong SHAPE measures the fallback, and looks exactly as
+  green as one of the right shape.** Tidiness is the failure mode the dataset
+  was built against; this is the other one. `visits.eta_start` and `eta_end` are
+  `timestamptz`, and until 2026-09-13 the dataset emitted bare clock strings
+  (`"08:15:00"`) for them. Every consumer in `src/` reads them through
+  `new Date(...)`, which makes that an Invalid Date, so ScheduleCalendar,
+  MobileDayList, VisitDetailDrawer, the client Visits tab, the customer portal
+  and My Day's own ETA label each rendered their empty branch — and the sweep
+  measured, at four widths across twenty surfaces, a label production always
+  draws and the fixture never did. Nothing failed, because nothing was there.
+  When you add a rule, check what the fixture actually puts on the page, not
+  that the page is green.
 - **Assertions of the form "nothing is wrong" all pass on a blank page**, so
   `settle()` refuses to measure a route that did not render. That guard is
   there because the sweep spent several runs green against a Vite error page

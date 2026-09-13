@@ -19,7 +19,7 @@
     "test:viewports": "playwright test",
     "test:viewports:public": "playwright test every-public-page",
     "test:viewports:auth": "playwright test every-signed-in-page",
-    "test:viewports:cases": "playwright test a-page-called-invoices the-day-on-a-map-nobody-measured preferences-was-a-dumping-ground eleven-tabs-five-visible every-tab-on-the-client-page every-route-nobody-put-on-the-list the-sweep-had-only-ever-been-an-owner the-half-of-the-product-the-customer-uses the-billing-gate the-store-gate a-zone-that-matches-nobody",
+    "test:viewports:cases": "playwright test a-page-called-invoices the-day-on-a-map-nobody-measured three-numbers-an-empty-row-would-also-pass preferences-was-a-dumping-ground eleven-tabs-five-visible every-tab-on-the-client-page every-route-nobody-put-on-the-list the-sweep-had-only-ever-been-an-owner the-half-of-the-product-the-customer-uses the-billing-gate the-store-gate a-zone-that-matches-nobody",
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:baseline-objects": "node scripts/check-baseline-objects.mjs",
     "check:app-origin": "node scripts/check-app-origin.mjs",
