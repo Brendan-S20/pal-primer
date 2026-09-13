@@ -145,6 +145,11 @@ export function MobileTabBar() {
     <>
       <nav
         aria-label="Primary"
+        // Marks this as one of the bars pinned to the bottom of the screen.
+        // My Day's map measures the gap between its own top edge and the
+        // highest of these, so a full-height map stops above the navigation
+        // instead of behind it. Nothing else reads the attribute.
+        data-bottom-chrome=""
         className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80 ${barHiddenFrom}`}
       >
         {isTech ? (

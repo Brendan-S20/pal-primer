@@ -2,7 +2,16 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -491,7 +500,14 @@ function MyDay() {
     );
 
   return (
-    <div className={`-mx-4 -my-6 ${belowTabBarPadding}`}>
+    // The bottom padding is what keeps the LIST clear of the two bars pinned
+    // to the bottom of the screen. The map does not need it and must not have
+    // it: the map sizes itself to stop exactly above those bars, so 10.5rem of
+    // padding underneath it is 168px of empty page below a map that already
+    // ends where it should — which is precisely the "I have to scroll to see
+    // the whole map" the view was reported for. Measured at 360x800: the page
+    // was 1002px tall inside an 800px viewport, and 168 of the 202 was this.
+    <div className={`-mx-4 -my-6 ${view === "map" ? "pb-0" : belowTabBarPadding}`}>
       {/* BUILD-11: a visit started on an earlier day (or before today's workday
           ended) that was never closed. Asks the tech what happened rather than
           guessing — nothing here completes anything on its own. */}
@@ -841,6 +857,7 @@ function MyDay() {
              When the rail is collapsed to icons the var still reads 16rem, so
              the bar starts slightly inboard of the rail; a small gap, never an
              overlap, and the navigation stays reachable either way. */
+          data-bottom-chrome=""
           className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in md:left-(--sidebar-width) ${nextUpAboveTabBar}`}
         >
           <a
@@ -999,6 +1016,66 @@ function MyDayMap({
     (v) => v.properties?.latitude != null && v.properties?.longitude != null,
   );
 
+  // ── THE MAP IS AS TALL AS THE ROOM IT HAS, AND NOT A PIXEL MORE ──────────
+  //
+  // It used to be a flat 460px on a phone, 520 above `md`. On the handset this
+  // is actually used on, 460px starting below the header runs underneath the
+  // Next Up strip and the tab bar, so seeing the bottom of the route meant
+  // scrolling the page — on the one view whose entire job is showing the shape
+  // of the day at a glance. A map you have to scroll to see is a list.
+  //
+  // Measured rather than computed from a breakpoint, because the space above
+  // it is not a constant: the day strip, the progress bar and the at-a-glance
+  // row are always there, an office user previewing a technician gets another
+  // row, and the Next Up strip appears only when something is still open. So
+  // the gap between this element's own top edge and the highest bar pinned to
+  // the bottom is the answer, and every one of those bars carries
+  // `data-bottom-chrome` so this does not have to know their names.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [mapHeight, setMapHeight] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = frameRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      let floor = window.innerHeight;
+      for (const bar of document.querySelectorAll<HTMLElement>("[data-bottom-chrome]")) {
+        const r = bar.getBoundingClientRect();
+        // A bar hidden at this width has no height and must not pull the
+        // floor up to zero.
+        if (r.height > 0) floor = Math.min(floor, r.top);
+      }
+      // The 12 is the gap this sits in. NO FLOOR, deliberately, and this was
+      // measured rather than reasoned: a 200px minimum put the bottom of the
+      // map 62px behind the tab bar at 360x800, which is the same fault as the
+      // scrolling in a quieter costume — the map "fits" and you still cannot
+      // see the end of the route. A minimum that exceeds the room available
+      // can only hide something.
+      //
+      // So the map is exactly the room there is. On a technician's own phone
+      // that is around 460px of a 932px screen. It is smallest for an office
+      // user previewing a technician, whose header carries an extra row for the
+      // staff picker — and a visibly short map there is TRUE, and says where
+      // the space went, which a map tucked under the navigation does not.
+      setMapHeight(Math.max(0, Math.round(floor - top - 12)));
+    };
+    measure();
+    // One more after paint: on a cold load the bars below mount in the same
+    // commit as this one and the first measurement reads the layout before
+    // them.
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+    };
+    // Re-measure when the day changes: the Next Up strip is there for a day
+    // with work left and gone for a day that is finished, and it is 56px.
+  }, [visits.length, mappable.length]);
+
   // A map with nothing on it is worse than no map: it looks like a failure of
   // the map rather than of the data. Say which it is.
   if (mappable.length === 0) {
@@ -1012,10 +1089,13 @@ function MyDayMap({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border">
+    <div ref={frameRef} className="overflow-hidden rounded-xl border">
       <Suspense
         fallback={
-          <div className="grid h-[60vh] place-items-center bg-muted/30 text-sm text-muted-foreground">
+          <div
+            className="grid place-items-center bg-muted/30 text-sm text-muted-foreground"
+            style={{ height: mapHeight ?? 360 }}
+          >
             Loading map...
           </div>
         }
@@ -1029,10 +1109,10 @@ function MyDayMap({
               visits: mappable,
             },
           ]}
-          // Tall on a phone, because the point is to see the shape of the day.
-          // vh rather than a pixel height so it is the same proportion of a
-          // small phone and a crew tablet.
-          height={typeof window !== "undefined" && window.innerWidth >= 768 ? 520 : 460}
+          // Measured above. The fallback only applies for the single frame
+          // before the first measurement lands, and on the server, where
+          // there is no viewport to measure.
+          height={mapHeight ?? 360}
           drawRoutes
           onVisitClick={onVisitClick}
         />
@@ -1362,6 +1442,10 @@ function VisitCard({
   // never agreed to. The server refuses it too; this keeps the button from
   // appearing at all.
   const [showDna, setShowDna] = useState(false);
+  // The secondary actions, folded away until asked for. Per card, and not
+  // remembered: a technician who opened Skip on stop 3 is not asking for it on
+  // stop 4, and a card that opens pre-expanded is the busy card again.
+  const [showMore, setShowMore] = useState(false);
   const dnaEnrolled = !!visit.clients?.dna_compliance_enabled;
   const [addonSvcId, setAddonSvcId] = useState("");
   const [addonQty, setAddonQty] = useState("1");
@@ -1542,6 +1626,59 @@ function VisitCard({
   const missed = visit.status === "missed";
   const finalStatus = done || skipped;
   const p = visit.properties;
+  // Waste stations only exist on commercial or multi-unit properties. On a
+  // residential card there are never any, so the button never appears.
+  const hasStations = p?.account_type === "commercial" || !!p?.has_units;
+
+  // The photo control appears in two places — primary once the visit is under
+  // way, behind More before that — so it is written once. A FUNCTION and not a
+  // component: an inline component is a new type on every render, which would
+  // unmount and remount the select and close it under the tech's thumb.
+  const photoCapture = () => (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={photoKind}
+        onChange={(e) => setPhotoKind(e.target.value as any)}
+        // MEASURED 2026-08-19: 40px, four short of the floor, on the
+        // screen a technician uses outdoors with gloves on.
+        className="h-11 rounded-md border bg-background px-3 text-sm"
+        aria-label="Photo type"
+      >
+        <option value="before">Before</option>
+        <option value="completion">Completion</option>
+        <option value="issue">Issue</option>
+      </select>
+      <Button
+        type="button"
+        variant="outline"
+        size="default"
+        className="h-11 min-w-0 flex-1"
+        disabled={uploading}
+        onClick={async () => {
+          // Prefer native Capacitor camera when inside the app shell.
+          try {
+            const { isNative, takePhotoNative } = await import("@/lib/native");
+            if (isNative()) {
+              const blob = await takePhotoNative();
+              if (blob) {
+                const file = new File([blob], `photo-${Date.now()}.jpg`, {
+                  type: blob.type || "image/jpeg",
+                });
+                await uploadPhoto(file);
+                return;
+              }
+            }
+          } catch {
+            /* fall through to web input */
+          }
+          fileInput.current?.click();
+        }}
+      >
+        <Camera className="mr-1.5 h-4 w-4" />
+        {uploading ? "Uploading…" : "Take photo"}
+      </Button>
+    </div>
+  );
   const [collapsed, setCollapsed] = useState(finalStatus);
   useEffect(() => {
     setCollapsed(finalStatus);
@@ -1605,12 +1742,29 @@ function VisitCard({
             {visit.clients?.display_name ?? "Client"}
           </div>
 
-          {/* Per-card ETA / service window (H1): techs need to know WHEN this
-              stop is expected, on the card itself. */}
-          {visitWindowLabel(visit) && (
-            <div className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <Clock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              {visitWindowLabel(visit)}
+          {/* When this stop is expected, and how big the yard is — one line of
+              context, wrapping rather than stacking.
+
+              Yard size used to sit in the bordered access block below with the
+              gate code and the key. It is not a credential: nobody squints at
+              "Extra large" through a windscreen, and on a property with no
+              code and no key it was the block's only occupant, which drew a
+              framed panel around one word. The block is for things you have to
+              read correctly to get in. */}
+          {(visitWindowLabel(visit) || p?.yard_size) && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              {visitWindowLabel(visit) && (
+                <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                  <Clock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  {visitWindowLabel(visit)}
+                </span>
+              )}
+              {p?.yard_size && (
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                  <Ruler className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? p.yard_size} yard
+                </span>
+              )}
             </div>
           )}
 
@@ -1623,7 +1777,7 @@ function VisitCard({
 
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
-              {(p?.gate_code || p?.lock_box_code || p?.key_location || p?.yard_size) && (
+              {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
                 <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border bg-muted/30 p-2.5">
                   {p?.gate_code && (
                     <AccessFact icon={Fence} label="Gate" value={p.gate_code} mono />
@@ -1635,13 +1789,6 @@ function VisitCard({
                     <div className="col-span-2">
                       <AccessFact icon={KeyRound} label="Key" value={p.key_location} />
                     </div>
-                  )}
-                  {p?.yard_size && (
-                    <AccessFact
-                      icon={Ruler}
-                      label="Yard"
-                      value={YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? p.yard_size}
-                    />
                   )}
                 </div>
               )}
@@ -1747,89 +1894,65 @@ function VisitCard({
 
       {!preview && !finalStatus && (
         <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileInput}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadPhoto(f);
-              }}
-            />
-            <select
-              value={photoKind}
-              onChange={(e) => setPhotoKind(e.target.value as any)}
-              // MEASURED 2026-08-19: 40px, four short of the floor, on the
-              // screen a technician uses outdoors with gloves on.
-              className="h-10 rounded-md border bg-background px-3 text-sm touch:min-h-11"
-              aria-label="Photo type"
-            >
-              <option value="before">Before</option>
-              <option value="completion">Completion</option>
-              <option value="issue">Issue</option>
-            </select>
-            <Button
-              type="button"
-              variant="outline"
-              size="default"
-              className="h-10 touch:min-h-11"
-              disabled={uploading}
-              onClick={async () => {
-                // Prefer native Capacitor camera when inside the app shell.
-                try {
-                  const { isNative, takePhotoNative } = await import("@/lib/native");
-                  if (isNative()) {
-                    const blob = await takePhotoNative();
-                    if (blob) {
-                      const file = new File([blob], `photo-${Date.now()}.jpg`, {
-                        type: blob.type || "image/jpeg",
-                      });
-                      await uploadPhoto(file);
-                      return;
-                    }
-                  }
-                } catch {
-                  /* fall through to web input */
-                }
-                fileInput.current?.click();
-              }}
-            >
-              <Camera className="mr-1.5 h-4 w-4" />
-              {uploading ? "Uploading…" : "Take photo"}
-            </Button>
-          </div>
+          {/* ── WHAT THIS STOP NEEDS NEXT, AND NOTHING ELSE ────────────────
+              A scheduled stop used to render nine buttons: Start, a greyed-out
+              Complete, Skip, + Add-on, Stations, DNA sample, Text reminder,
+              Text "on my way", and a photo-type select beside Take photo. Nine
+              controls, on a phone, for a technician who has not arrived yet and
+              whose next act is one of them.
+              Nothing has been taken away — every one of those is still on the
+              card, one tap down, under More. What changed is which ones are
+              showing before you ask. The rule is the visit's own state: a stop
+              you have not started needs Start; a stop in progress needs a photo
+              and Complete; everything else is occasional and can wait to be
+              asked for. A greyed Complete next to Start was the clearest case —
+              it looks pressable, it is not, and the sentence explaining why
+              only appears once you have started. */}
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadPhoto(f);
+            }}
+          />
 
-          {/* Field buttons: ≥44px tall on touch screens (gloved thumbs,
-              sunlight) — the 32px "sm" height is desktop-only (P2). */}
-          <div className="flex flex-wrap gap-2">
-            {scheduled && (
-              <Button
-                size="sm"
-                className="h-11 px-4 sm:h-8 sm:px-3"
-                onClick={() =>
-                  canPerformVisit
-                    ? start.mutate()
-                    : toast.error(
-                        "You're not authorized to start visits. Dispatchers can schedule, but field staff must start the visit.",
-                      )
-                }
-                disabled={start.isPending || !canPerformVisit}
-                title={
-                  canPerformVisit
-                    ? ""
-                    : "Only field staff (owner, office manager, or tech) can start a visit"
-                }
-              >
-                Start
-              </Button>
-            )}
+          {scheduled && (
             <Button
-              size="sm"
+              className="h-12 w-full text-base"
+              onClick={() =>
+                canPerformVisit
+                  ? start.mutate()
+                  : toast.error(
+                      "You're not authorized to start visits. Dispatchers can schedule, but field staff must start the visit.",
+                    )
+              }
+              disabled={start.isPending || !canPerformVisit}
+              title={
+                canPerformVisit
+                  ? ""
+                  : "Only field staff (owner, office manager, or tech) can start a visit"
+              }
+            >
+              Start
+            </Button>
+          )}
+
+          {(inProg || missed) && photoCapture()}
+
+          {/* Complete stays out of the way until it can do something. It is
+              enabled for a SCHEDULED visit too — complete_visit has accepted
+              ('scheduled','in_progress','missed') since 20260804060000, so a
+              tech who did the work without pressing Start can still close it —
+              which is why a completion photo on a scheduled stop brings the
+              button back rather than stranding the work behind Start. */}
+          {(inProg || missed || hasCompletionPhoto || hasQueuedCompletionPhoto) && (
+            <Button
               variant="default"
-              className="h-11 px-4 sm:h-8 sm:px-3"
+              className="h-12 w-full text-base"
               disabled={
                 !canPerformVisit ||
                 (!hasCompletionPhoto && !hasQueuedCompletionPhoto) ||
@@ -1860,74 +1983,113 @@ function VisitCard({
             >
               Complete
             </Button>
-            {missed && (
-              <p className="mt-1 w-full text-xs text-muted-foreground">
-                Marked missed overnight. If you did the work, you can still complete it here and it
-                will be recorded late.
-              </p>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-11 px-4 sm:h-8 sm:px-3"
-              onClick={() => setShowSkip((s) => !s)}
-            >
-              Skip
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-11 px-4 sm:h-8 sm:px-3"
-              onClick={() => setShowAddon((s) => !s)}
-            >
-              + Add-on
-            </Button>
-            {/* Waste stations only exist on commercial / multi-unit properties
-                — the button was showing on residential cards where there are
-                never any (H1). */}
-            {(p?.account_type === "commercial" || p?.has_units) && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-11 px-4 sm:h-8 sm:px-3"
-                onClick={() => setShowStations((s) => !s)}
-              >
+          )}
+
+          {missed && (
+            <p className="text-xs text-muted-foreground">
+              Marked missed overnight. If you did the work, you can still complete it here and it
+              will be recorded late.
+            </p>
+          )}
+
+          {/* Logging the work itself.
+              Stations stays primary on any property that has them, in every
+              state, because on a commercial site the station list IS the card's
+              content rather than a step in the visit — and because the button's
+              only condition is the PROPERTY. It is deliberately not gated on
+              `canPerformVisit`: a dispatcher cannot start or complete a visit
+              but log_station_service authorises them through can_write_org, so
+              gating it would take away a real capability to tidy a different
+              problem. `tests/a-read-only-preview-that-wrote-a-station-log`
+              pins that, and pins it by reading the 400 characters in front of
+              this onClick — which is why the DNA button, which IS gated, sits
+              after it and not in a shared condition above it.
+              A DNA sample is taken during the visit, so that one is state-shaped
+              and waits until there is a visit under way to attach it to.
+              `empty:hidden` rather than a compound condition on the wrapper,
+              for the same reason. */}
+          <div className="grid grid-cols-2 gap-2 empty:hidden">
+            {hasStations && (
+              <Button variant="outline" className="h-11" onClick={() => setShowStations((s) => !s)}>
                 Stations
               </Button>
             )}
-            {dnaEnrolled && canPerformVisit && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-11 px-4 sm:h-8 sm:px-3"
-                onClick={() => setShowDna((s) => !s)}
-              >
+            {(inProg || missed) && dnaEnrolled && canPerformVisit && (
+              <Button variant="outline" className="h-11" onClick={() => setShowDna((s) => !s)}>
                 DNA sample
               </Button>
             )}
-            {visit.clients?.primary_phone && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-11 px-4 sm:h-8 sm:px-3"
-                  disabled={sms.isPending}
-                  onClick={() => sms.mutate("reminder")}
-                >
-                  Text reminder
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-11 px-4 sm:h-8 sm:px-3"
-                  disabled={sms.isPending}
-                  onClick={() => sms.mutate("on_my_way")}
-                >
-                  Text "on my way"
-                </Button>
-              </>
-            )}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowMore((m) => !m)}
+            aria-expanded={showMore}
+            className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            {showMore ? "Fewer options" : "More options"}
+            {showMore ? (
+              <ChevronUp className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            )}
+          </button>
+
+          {showMore && (
+            <div className="space-y-3 rounded-lg border bg-muted/20 p-2.5">
+              {scheduled && photoCapture()}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  onClick={() => setShowSkip((s) => !s)}
+                >
+                  Skip
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  onClick={() => setShowAddon((s) => !s)}
+                >
+                  + Add-on
+                </Button>
+                {scheduled && dnaEnrolled && canPerformVisit && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-11 px-4 sm:h-8 sm:px-3"
+                    onClick={() => setShowDna((s) => !s)}
+                  >
+                    DNA sample
+                  </Button>
+                )}
+                {visit.clients?.primary_phone && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-11 px-4 sm:h-8 sm:px-3"
+                      disabled={sms.isPending}
+                      onClick={() => sms.mutate("reminder")}
+                    >
+                      Text reminder
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-11 px-4 sm:h-8 sm:px-3"
+                      disabled={sms.isPending}
+                      onClick={() => sms.mutate("on_my_way")}
+                    >
+                      Text "on my way"
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           {canPerformVisit &&
             !hasCompletionPhoto &&
             !hasQueuedCompletionPhoto &&
