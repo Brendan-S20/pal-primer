@@ -1,19 +1,65 @@
 # Security-advisor triage
 
-**Dated 2026-08-20.** The Supabase security advisor returns 107 findings for
-this project. One was a real hole and is fixed. The other 106 are the shape this
-application is built in, and this document is why they can be dismissed — so the
-next person reads a page instead of repeating an afternoon.
+**Audited 2026-08-20. Counts re-measured 2026-09-13.** The Supabase security
+advisor returns a hundred-odd findings for this project. One was a real hole and
+is fixed. The rest are the shape this application is built in, and this document
+is why they can be dismissed — so the next person reads a page instead of
+repeating an afternoon.
 
 The correct way to re-check any section is to re-run the queries it quotes.
-Re-reading the advisor tells you nothing new; it will report the same 106.
+Re-reading the advisor tells you nothing new.
 
-| category | count | verdict |
-| --- | --- | --- |
-| `authenticated_security_definer_function_executable` | 92 | 91 by design, **1 was a hole** — fixed 2026-08-20 |
-| `anon_security_definer_function_executable` | 6 | by design — the deliberate public allowlist |
-| `rls_enabled_no_policy` | 8 | by design — deny-all, pinned by a test |
-| `extension_in_public` (pg_net) | 1 | false positive, and the remediation is unavailable |
+| category | 2026-08-20 | 2026-09-13 | verdict |
+| --- | --- | --- | --- |
+| `authenticated_security_definer_function_executable` | 92 | 90 | by design, **1 was a hole** — fixed 2026-08-20 |
+| `anon_security_definer_function_executable` | 6 | 6 | by design — the deliberate public allowlist |
+| `rls_enabled_no_policy` | 8 | 9 | by design — deny-all, pinned by a test |
+| `extension_in_public` (pg_net) | 1 | 1 | false positive, and the remediation is unavailable |
+
+### The count moves. Do not read a moved count as a finding.
+
+Both numbers that changed above changed for reasons written down elsewhere in
+this repo, and neither is a regression:
+
+- **9 deny-all tables, not 8.** `roadmap_vote_throttle` arrived with
+  20260913100000. §4.
+- **90 definer functions, not 92.** `staff_start_point` lost its grant on
+  2026-08-20 (§1), and `accept_org_invite_for_current_user()` — the no-argument
+  overload — was dropped by 20260825160000 in favour of the one that takes a
+  token. Functions have also been added and replaced since; the net is 90.
+
+Which is the point: **the number is a measurement of a database on a day, and
+the claim this document actually makes is a property.** Chasing the count
+teaches you nothing. Re-check the property instead, with one query:
+
+```sql
+-- Every definer function reachable by `authenticated` names one of the guard
+-- shapes in §2. The only rows this should EVER return are the six deliberately
+-- public functions in §3, which have no caller to authorize.
+select p.oid::regprocedure::text as fn
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prosecdef
+   and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+   and p.prosrc !~* ('(can_write_org|has_permission|has_role|is_visit_tech'
+                     || '|is_org_member|is_platform_admin|auth\.uid\(\))')
+ order by 1;
+```
+
+The parentheses around the concatenation are load-bearing and the first draft of
+this block did not have them: `!~*` binds tighter than `||`, so without them
+Postgres parses `(prosrc !~* 'a') || 'b'` and refuses the statement with
+`argument of AND must be type boolean, not type text`. Every query in this
+document has been pasted into the live database and run, because a triage page
+whose re-check instructions do not execute is worse than no page.
+
+Run 2026-09-13: six rows, and all six are the §3 list — `cast_roadmap_vote`,
+`org_accepts_public_leads`, `public_get_org_by_slug`,
+`public_get_org_for_lead_form`, `public_quote`, `roadmap_vote_counts`. A
+seventh name appearing there is a function that forgot its gate, and that is a
+finding whatever the totals say.
+
+`prosrc` and not `pg_get_functiondef`, deliberately — see the migrations rule in
+CLAUDE.md for why the latter raises on a set it has not been narrowed by name.
 
 ---
 
@@ -34,13 +80,24 @@ in-database callers are `plan_route` and `plan_visits`, both `SECURITY DEFINER`
 and owned by `postgres`, so they run it as the owner. `service_role` keeps
 EXECUTE, so the nightly cron path is untouched.
 
-Verified on production by attempting the call as the `authenticated` role:
+Verified on production. Ask the catalog rather than attempting the call, so the
+check needs no org uuid and covers **every overload** — which matters here more
+than anywhere else in this document, because an overload is exactly how a revoke
+gets quietly undone, and there are two of these now:
 
 ```sql
-set local role authenticated;
-select * from public.staff_start_point('<org>', gen_random_uuid(), current_date);
--- ERROR: permission denied for function staff_start_point
+select p.oid::regprocedure::text as fn,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_can_execute,
+       has_function_privilege('anon',          p.oid, 'EXECUTE') as anon_can_execute
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname = 'staff_start_point'
+ order by 1;
 ```
+
+Run 2026-09-13 — two rows, `staff_start_point(uuid,uuid,date)` and
+`staff_start_point(uuid,uuid,date,uuid[])`, both false for both roles. The
+four-argument overload arrived after the revoke and came out closed; a `true` in
+either column is the hole reopening.
 
 **The rule that should have caught it, and why it did not.**
 `tests/six-helpers-that-answered-questions-about-other-peoples-tenants.test.ts`
@@ -53,11 +110,13 @@ neighbouring docstring forbids. It is now an ordered walk that starts pessimisti
 and matches **per overload**; the first rewrite keyed on the function name, and a
 revoke of the four-argument overload silently cleared the three-argument one.
 
-## 2. The 91 by-design definer functions
+## 2. The by-design definer functions
 
 A `SECURITY DEFINER` function callable by a signed-in user is how most of this
 app works. The advisor is saying such a function runs past RLS and must do its
-own authorization — not that it is broken. All 91 do, in one of seven shapes:
+own authorization — not that it is broken. All of them do, in one of seven
+shapes, and the query at the top of this page is how you confirm that without
+counting anything:
 
 | shape | example guard |
 | --- | --- |
@@ -73,11 +132,17 @@ No `trigger`-returning function is reachable by `authenticated` — the 2026-08-
 pass has held. Confirm with:
 
 ```sql
-select p.oid::regprocedure, p.prokind
+select count(*) as total,
+       count(*) filter (where p.prokind <> 'f') as not_plain_functions,
+       count(*) filter (where p.prorettype = 'trigger'::regtype) as trigger_returning
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.prosecdef
    and has_function_privilege('authenticated', p.oid, 'EXECUTE');
 ```
+
+Run 2026-09-13: `90, 0, 0`. The answer wanted here is the two zeroes; an earlier
+version of this block listed all ninety names instead, which is ninety lines to
+read before learning the one thing the paragraph above claims.
 
 **Do not turn this into an allowlist.** That was built, measured against the live
 catalog, and deliberately thrown away; the reasoning is in the header of the
