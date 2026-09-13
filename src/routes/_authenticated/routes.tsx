@@ -1409,10 +1409,16 @@ function RoutesPage() {
                 <ul className="mt-2 space-y-1">
                   {routeWarnings.map((w) => (
                     <li key={`${w.visitId}-${w.reason}`}>
+                      {/* A whole sentence is the control here, so the 44px
+                          floor is met by giving the row height rather than by
+                          padding a glyph — `max-md:` and not `touch:`, because
+                          what has to clear the floor is a phone-width layout
+                          and the sweep measures by width, not by pointer type.
+                          Above md it stays a tight list of links. */}
                       <button
                         type="button"
                         onClick={() => setDetailVisitId(w.visitId)}
-                        className="text-left text-xs text-destructive underline-offset-2 hover:underline"
+                        className="flex w-full items-center text-left text-xs text-destructive underline-offset-2 hover:underline max-md:min-h-11 max-md:py-1"
                       >
                         {w.message}
                       </button>
