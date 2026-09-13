@@ -120,3 +120,45 @@ test("a scheduled stop asks for one thing, and hides nothing", async ({ page, co
     expect(opened, `${label} is not reachable from the card`).toContain(label);
   }
 });
+
+test("a stop in progress asks for the next thing instead", async ({ page, context }) => {
+  // The claim the card rework rests on is that WHICH controls show is the
+  // visit's own state. Until the fixture grew a third stop, two of the three
+  // states existed on this screen — scheduled and completed — and the one that
+  // changed most did not, so that claim was tested at a third of its width.
+  //
+  // What must be true here and is false one card up: no Start (it has been
+  // started), and Complete present rather than folded away, because on a stop
+  // in progress finishing it IS the next act. Complete is disabled until a
+  // completion photo exists, and that is correct — the difference from the
+  // scheduled card is that here the sentence explaining why is on screen.
+  await installSignedInSession(context);
+  await installStubBackend(context);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/my-day");
+  await page.waitForLoadState("networkidle").catch(() => {});
+
+  // The badge renders `status.replace("_", " ")`, so the word on screen is
+  // "in progress" and not the column value.
+  //
+  // A STRING and not a regex, measured rather than assumed: Playwright
+  // normalises whitespace for a string `hasText` and does not for a RegExp,
+  // and the badge's text arrives with JSX whitespace in it. `/\bin progress\b/`
+  // matches zero of these cards; "in progress" matches exactly one.
+  const inProgress = page.locator("ol > li").filter({ hasText: "in progress" }).first();
+  await expect(inProgress).toBeVisible({ timeout: 20000 });
+
+  const ctl = await inProgress.evaluate((li) =>
+    [...li.querySelectorAll("button, a, select")]
+      .filter((e) => (e as HTMLElement).offsetParent !== null)
+      .map((e) => (e.textContent || "").trim())
+      .filter(Boolean),
+  );
+
+  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Take photo");
+  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Complete");
+  expect(ctl, "Start is still offered on a visit that has already started").not.toContain("Start");
+  // Still folded, not deleted — the same both-ends check as the scheduled card.
+  expect(ctl).toContain("More options");
+  expect(ctl, "the occasional actions leaked back onto a card").not.toContain("+ Add-on");
+});
