@@ -33,6 +33,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 /** The clients row of the checklist, found by its own copy. */
 const readRow = (page: import("@playwright/test").Page) =>
@@ -78,7 +79,7 @@ for (const { w, h, label, phone } of [
     // Proves the component RENDERED, before anything measures it. Every
     // assertion below is of the form "nothing is off the edge", and all of
     // those pass on a page where the checklist is absent.
-    await expect(page.getByText("Add or import clients")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Add or import clients")).toBeVisible({ timeout: FIRST_PAINT_MS });
 
     const row = await readRow(page);
     expect(row, "the clients step did not render").not.toBeNull();

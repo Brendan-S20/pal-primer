@@ -40,6 +40,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 import {
   findControlsOffTheSide,
   findSilentlyClippedText,
@@ -59,7 +60,7 @@ for (const { w, label } of [
     await page.waitForLoadState("networkidle").catch(() => {});
 
     const row = page.getByRole("group", { name: "The rest of the day at a glance" });
-    await expect(row).toBeVisible({ timeout: 20000 });
+    await expect(row).toBeVisible({ timeout: FIRST_PAINT_MS });
 
     // It rendered, and it rendered all three. A row holding one chip clears
     // every geometric rule below just as easily as a row holding none.

@@ -37,6 +37,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 const FOCUS_EVENT = "houndstack:focus-my-day-schedule";
 
@@ -115,7 +116,7 @@ for (const w of [320, 360, 390]) {
     // Proves the page RENDERED before anything measures it. Every assertion
     // below is of the form "nothing is wrong", and those all pass on a blank
     // page.
-    await expect(page.getByRole("heading", { name: "My day" })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("heading", { name: "My day" })).toBeVisible({ timeout: FIRST_PAINT_MS });
     await expect(page.getByRole("group", { name: "View" })).toBeVisible();
 
     const h = await readHeader(page);
@@ -191,7 +192,7 @@ test("pressing Today while on My Day still reaches a day control", async ({ page
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/my-day");
   await page.waitForLoadState("networkidle").catch(() => {});
-  await expect(page.getByRole("heading", { name: "My day" })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole("heading", { name: "My day" })).toBeVisible({ timeout: FIRST_PAINT_MS });
 
   const focused = await page.evaluate((evt) => {
     window.dispatchEvent(new Event(evt));
@@ -212,7 +213,7 @@ test("a laptop keeps the native date field and drops the chip", async ({ page, c
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/my-day");
   await page.waitForLoadState("networkidle").catch(() => {});
-  await expect(page.getByRole("heading", { name: "My day" })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole("heading", { name: "My day" })).toBeVisible({ timeout: FIRST_PAINT_MS });
 
   const h = await readHeader(page);
   expect(h.nativeDateVisible, "the desktop date field is gone").toBe(true);
