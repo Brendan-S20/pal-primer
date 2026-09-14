@@ -53,7 +53,12 @@ for (const { w, h, label } of PHONES) {
     await page.goto("/my-day");
     await page.waitForLoadState("networkidle").catch(() => {});
 
-    const toggle = page.getByRole("button", { name: "Map view" });
+    // "Map", not "Map view". The toggle carried an icon and an sr-only
+    // "Map view" until 2026-09-14; it now shows the word next to the glyph,
+    // so the visible label IS the accessible name and the sr-only span that
+    // used to supply it is gone. Matching the visible text is the point
+    // (WCAG 2.5.3), not an accident of this rename.
+    const toggle = page.getByRole("button", { name: "Map", exact: true });
     await expect(toggle).toBeVisible({ timeout: 20000 });
     await toggle.click();
 
