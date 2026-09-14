@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
+  listCanvassSeedClients,
   listNeighborLeads,
   addNeighborLead,
   updateNeighborLead,
@@ -11,7 +12,6 @@ import {
   seedNeighborsForClient,
   type NeighborLead,
 } from "@/lib/neighbors.functions";
-import { listClients } from "@/lib/clients.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -62,7 +62,7 @@ function NeighborsPage() {
   const updateFn = useServerFn(updateNeighborLead);
   const deleteFn = useServerFn(deleteNeighborLead);
   const seedFn = useServerFn(seedNeighborsForClient);
-  const clientsFn = useServerFn(listClients);
+  const clientsFn = useServerFn(listCanvassSeedClients);
 
   const { data, refetch, isLoading } = useQuery({
     queryKey: ["neighbor-leads"],
@@ -70,12 +70,20 @@ function NeighborsPage() {
   });
   const { can } = usePermissions();
   const canSeeDirectory = can("view_client_directory");
+  // Everyone who can open this page gets a picker. A directory holder is
+  // offered the roster; everyone else is offered the clients on their OWN work,
+  // which is the canvassing case as it actually happens — you are at the house,
+  // you knock next door. Gating the whole card on view_client_directory is what
+  // produced "I can't select a client to go off of for neighbors/doors" from a
+  // technician standing on a street, on a page the product grants them.
   const clientsQ = useQuery({
-    queryKey: ["clients", "for-canvass"],
+    queryKey: ["canvass-seed-clients"],
     queryFn: () => clientsFn(),
-    // The seed picker needs the client roster — techs don't get it.
-    enabled: canSeeDirectory,
   });
+  const seedOptions = (clientsQ.data?.clients ?? []) as Array<{
+    id: string;
+    display_name: string;
+  }>;
 
   const [address, setAddress] = useState("");
   // The point the address field already resolved. It used to be thrown away --
@@ -311,7 +319,7 @@ function NeighborsPage() {
       </div>
 
       <div className={`grid gap-4 md:grid-cols-2 ${showAddForms ? "" : "max-md:hidden"}`}>
-        {canSeeDirectory && (
+        {seedOptions.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Seed from an existing client</CardTitle>
@@ -325,7 +333,7 @@ function NeighborsPage() {
                   className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Pick a client…</option>
-                  {(clientsQ.data?.clients ?? []).map((c: any) => (
+                  {seedOptions.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.display_name}
                     </option>

@@ -68,13 +68,48 @@ const GUARDED: Array<{
   /** No tenant writes this at all — it is filled by a webhook on service_role,
    *  which bypasses RLS. The absence of a write policy IS the property. */
   readOnlyForTenants?: boolean;
+  /**
+   * The permission guards DELETE only; reading, inserting and updating are open
+   * to any member of the organization.
+   *
+   * For a table whose rows ARE field work, recorded by the field crew, where
+   * the destructive command is the one the office owns. The same shape as
+   * `readMayBeWider` on subscriptions — doing the job is not the risk, undoing
+   * it is — extended to the two writes that are part of doing the job.
+   *
+   * The entry stays on this list rather than leaving it, so the table stays
+   * under scrutiny and the DELETE guarantee is still asserted. What narrows is
+   * the claim about which commands the permission covers.
+   */
+  guardsDeleteOnly?: boolean;
 }> = [
   { table: "gift_cards", permission: "manage_settings" },
   { table: "gift_card_redemptions", permission: "manage_settings" },
   { table: "promo_codes", permission: "manage_settings" },
   { table: "accounting_connections", permission: "manage_settings" },
   { table: "skip_billing_rules", permission: "manage_settings" },
-  { table: "neighbor_leads", permission: "view_client_directory" },
+  // 2026-09-14: this was a single FOR ALL policy on view_client_directory,
+  // which a technician does not hold — so their list came back empty, adding a
+  // door raised, and the walk mode's buttons did nothing. Reported from an
+  // iPhone, on a page ROUTE_ROLES grants to techs, whose server function
+  // already NULLs seed_client_id for a caller without the directory, and whose
+  // walk mode's own comments describe a tech pressing Interested at a door.
+  // Four places were written for that role; the policy was never widened to
+  // agree, so the feature was unreachable for the role it was designed around.
+  //
+  // A canvassing lead is the address of somebody who is NOT a customer, written
+  // down by the person who walked past the house. Withholding it from that
+  // person protects nothing. The client's IDENTITY is still not theirs:
+  // listNeighborLeads strips seed_client_id and seed_client_name for them and
+  // `clients` keeps its own RLS, so the embedded join comes back null whatever
+  // this table allows — two independent layers, which is the point.
+  //
+  // Residual risk, stated rather than hidden: a tech reaching PostgREST
+  // directly can read `seed_client_id` as a bare UUID. They cannot resolve it
+  // through `clients`, and they already hold the ids of their own assigned
+  // clients from My Day, so what it discloses is "this door was seeded from
+  // some client" — which is the premise of standing there.
+  { table: "neighbor_leads", permission: "view_client_directory", guardsDeleteOnly: true },
   // Written by the Twilio voice webhook and the public signup flow, both on
   // service_role. A tenant only ever reads these.
   { table: "ai_receptionist_logs", permission: "manage_settings", readOnlyForTenants: true },
@@ -84,7 +119,8 @@ const GUARDED: Array<{
   { table: "subscriptions", permission: "manage_pricing", readMayBeWider: true },
 ];
 
-describe.each(GUARDED)("$table", ({ table, permission, readMayBeWider, readOnlyForTenants }) => {
+describe.each(GUARDED)("$table", (entry) => {
+  const { table, permission, readMayBeWider, readOnlyForTenants, guardsDeleteOnly } = entry;
   const policies = policiesFor(table);
 
   it("has at least one policy to check", () => {
@@ -103,6 +139,24 @@ describe.each(GUARDED)("$table", ({ table, permission, readMayBeWider, readOnlyF
       return;
     }
     expect(writes.length).toBeGreaterThan(0);
+    if (guardsDeleteOnly) {
+      // The claim narrows to the destructive command, and it is still a claim:
+      // a DELETE policy on bare membership, or no DELETE policy at all, fails
+      // here exactly as a wide write policy fails anywhere else on this list.
+      const deletes = policies.filter((p) => /FOR\s+DELETE/i.test(p));
+      expect(deletes.length, `${table} has no DELETE policy to guard`).toBeGreaterThan(0);
+      for (const p of deletes) {
+        expect(p, p.slice(0, 80)).toMatch(new RegExp(`'${permission}'`));
+        expect(p, p.slice(0, 80)).not.toMatch(MEMBERSHIP_HELPERS);
+      }
+      // And no FOR ALL may come back. One would re-merge the four commands this
+      // entry exists to keep separate, and would satisfy the DELETE check above
+      // while silently re-gating the other three.
+      for (const p of policies) {
+        expect(p, `${table} must not carry a FOR ALL policy`).not.toMatch(/FOR\s+ALL/i);
+      }
+      return;
+    }
     for (const p of writes) {
       expect(p, p.slice(0, 80)).toMatch(new RegExp(`'${permission}'`));
       expect(p, p.slice(0, 80)).not.toMatch(MEMBERSHIP_HELPERS);
@@ -110,7 +164,7 @@ describe.each(GUARDED)("$table", ({ table, permission, readMayBeWider, readOnlyF
   });
 
   it("does not let a membership helper stand in for a permission on reads", () => {
-    if (readMayBeWider) return;
+    if (readMayBeWider || guardsDeleteOnly) return;
     for (const p of policies.filter((p) => /FOR\s+SELECT/i.test(p))) {
       expect(p, p.slice(0, 80)).not.toMatch(MEMBERSHIP_HELPERS);
     }
