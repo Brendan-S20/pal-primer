@@ -377,7 +377,31 @@ jobs:
     needs: changes
     if: needs.changes.outputs.viewports == 'true'
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    # 45, raised from 30 on 2026-09-14 after this job was cancelled at 30m13s
+    # with the last step mid-run. Raising a ceiling is usually how a real
+    # slowdown gets hidden, so here is the arithmetic it was raised against,
+    # measured on the run that was cut off and on the machine these specs were
+    # written on:
+    #
+    #   setup-node        5-7 min normally, 19m16s on the run that timed out
+    #   npm ci            ~15s
+    #   public sweep      ~2.0-2.5 min   (58 tests)
+    #   signed-in sweep   ~3.8-4.8 min   (92 tests)
+    #   one-off cases     ~7.0-9.2 min   (227 tests)
+    #
+    # That is 19-24 minutes of work on a healthy runner, against a 30-minute
+    # budget — so the margin was already thin before anything went wrong, and
+    # it got thinner honestly: the cases step gained four specs on 2026-09-13
+    # and 14 (the day map, the at-a-glance row, the map fit, the trial notice)
+    # and went from 219 tests to 227.
+    #
+    # What actually tipped it over was setup-node taking three times as long as
+    # usual on a runner that threw `Bus error: 10` during `npm run build:native`
+    # in the same hour. THAT is not fixed by this number and is not meant to be
+    # — it is written down in the PR that raised this, and a job that keeps
+    # needing 45 minutes to do 20 minutes of work is a machine to look at, not a
+    # ceiling to raise again.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
