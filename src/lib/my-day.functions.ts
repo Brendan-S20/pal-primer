@@ -542,3 +542,114 @@ export const confirmOpenVisit = createServerFn({ method: "POST" })
 
     return { outcome: (outcome ?? "already_resolved") as string };
   });
+
+/**
+ * The technician's own next two weeks: which days they work, and how big each
+ * one is.
+ *
+ * ── "HOW MANY ROUTES" HAS NO LITERAL ANSWER, AND THAT IS THE FINDING ──────
+ *
+ * There is no routes table in this database. No shifts table either. A
+ * "route" in this product is not a record — it is a technician plus a date,
+ * and the set of visits carrying that pair. /routes is a day BOARD, which is
+ * why it is office-only: it shows everyone's work and lets you move it
+ * between people.
+ *
+ * So a technician's schedule cannot count routes; it counts the things a
+ * route is made of. Per working day: how many stops, how many are already
+ * done, which zones the day touches, and when the first and last stop are
+ * due. A day with no assigned visits is not a working day and does not
+ * appear — which is exactly "which days they work", read out of the only
+ * data that knows.
+ *
+ * ── WHY THIS IS NOT JUST GRANTING /routes TO TECHS ───────────────────────
+ *
+ * That page assigns work. A technician looking up whether they are on
+ * tomorrow does not need, and should not have, a control that moves
+ * somebody else's stops onto somebody else's van. This reads one staff row —
+ * their own — and returns counts.
+ */
+export const getMyUpcomingDays = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        /** How far ahead to look. Bounded so a bad caller cannot ask for a year. */
+        days: z.number().int().min(1).max(60).optional(),
+      })
+      .parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    const { data: staffRow, error: staffErr } = await supabase
+      .from("staff")
+      .select("id, organization_id, display_name")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (staffErr) throw new Error(staffErr.message);
+    // An account with no staff row is not a technician. My Day already says so
+    // in its own words; this returns empty rather than inventing a schedule.
+    if (!staffRow) return { staff: null, days: [] as UpcomingDay[] };
+
+    const horizon = data.days ?? 14;
+
+    // Org-local, never UTC. A technician west of UTC asking "am I on tomorrow"
+    // late in the evening would otherwise be shown a window starting on a day
+    // that, for them, has not begun — the same BUG-12 reasoning the close-out
+    // prompt above follows, and the reason orgToday exists at all.
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("timezone")
+      .eq("id", staffRow.organization_id)
+      .maybeSingle();
+    const { DEFAULT_TIMEZONE } = await import("@/lib/route-window");
+    const today = orgToday(org?.timezone || DEFAULT_TIMEZONE);
+    const until = new Date(`${today}T00:00:00Z`);
+    until.setUTCDate(until.getUTCDate() + horizon - 1);
+    const lastDay = until.toISOString().slice(0, 10);
+
+    const { data: visits, error } = await supabase
+      .from("visits")
+      .select("scheduled_on, status, eta_start, eta_end, zones(name)")
+      .eq("assigned_staff_id", staffRow.id)
+      .gte("scheduled_on", today)
+      .lte("scheduled_on", lastDay)
+      .order("scheduled_on", { ascending: true });
+    if (error) throw new Error(error.message);
+
+    const byDay = new Map<string, UpcomingDay>();
+    for (const v of (visits ?? []) as any[]) {
+      const key = v.scheduled_on as string;
+      let day = byDay.get(key);
+      if (!day) {
+        day = { date: key, stops: 0, done: 0, zones: [], firstEta: null, lastEta: null };
+        byDay.set(key, day);
+      }
+      day.stops += 1;
+      // "Done" is completed OR skipped: both are stops the technician no longer
+      // has to drive to, and a day showing 6 left when 2 were skipped would be
+      // wrong in the direction that makes people stop trusting the number.
+      if (v.status === "completed" || v.status === "skipped") day.done += 1;
+      const zone = v.zones?.name as string | undefined;
+      if (zone && !day.zones.includes(zone)) day.zones.push(zone);
+      // Bare clock strings are not comparable across days, and eta_* are
+      // timestamptz — compare the instants, keep the ISO string.
+      if (v.eta_start && (!day.firstEta || v.eta_start < day.firstEta)) day.firstEta = v.eta_start;
+      if (v.eta_end && (!day.lastEta || v.eta_end > day.lastEta)) day.lastEta = v.eta_end;
+    }
+
+    return {
+      staff: staffRow,
+      days: [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  });
+
+export type UpcomingDay = {
+  date: string;
+  stops: number;
+  done: number;
+  zones: string[];
+  firstEta: string | null;
+  lastEta: string | null;
+};

@@ -42,6 +42,12 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/pricing-drift": ["owner", "office_manager"],
   "/routes": ["owner", "office_manager", "dispatcher"],
   "/my-day": ["owner", "office_manager", "dispatcher", "tech"],
+  // The technician's own forward view. Deliberately a DIFFERENT entry from
+  // "/routes", which stays office-only: that page is the dispatch board and
+  // exists to move work between people. This one reads the signed-in tech's
+  // own staff row and returns counts, so the office roles get it too — an
+  // owner who also drives is the ordinary case in a one-truck business.
+  "/my-schedule": ["owner", "office_manager", "dispatcher", "tech"],
   "/waste-log": ["owner", "office_manager", "dispatcher", "tech"],
   "/messages": ["owner", "office_manager", "dispatcher"],
   "/notifications": ["owner", "office_manager", "dispatcher", "tech"],

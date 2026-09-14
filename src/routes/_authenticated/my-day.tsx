@@ -819,11 +819,12 @@ function MyDay() {
                 : t("myDay.nothingScheduled")}
             </p>
             <Button asChild variant="outline" size="sm" className="mt-4">
-              {/* "Schedule", the name the tab bar directly below this button
-                  already uses for the same destination. A tech with an empty
-                  day was being sent to "routes" and landing on a page headed
-                  and tabbed "Schedule". The URL is unchanged. */}
-              <Link to="/routes">View schedule</Link>
+              {/* /routes is OFFICE-ONLY. ROUTE_ROLES does not grant it to a
+                  tech, so RoleGuard bounced them straight back here with a red
+                  "You don't have access to that page" — the only action on the
+                  screen was a dead end for the only role the screen is for.
+                  /my-schedule is their own forward view and they can open it. */}
+              <Link to="/my-schedule">View my schedule</Link>
             </Button>
           </div>
         )}

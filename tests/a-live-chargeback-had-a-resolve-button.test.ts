@@ -253,8 +253,20 @@ describe("desktop and mobile call the page the same thing", () => {
   });
 
   it("an empty day sends a tech to the schedule, not to routes", () => {
+    // This test's NAME was right and its assertion was not. It pinned
+    // `<Link to="/routes">View schedule</Link>` — the label renamed, the
+    // destination left alone — and the destination was the bug: ROUTE_ROLES
+    // has never granted /routes to a tech, so RoleGuard bounced them straight
+    // back to /my-day with "You don't have access to that page." The only
+    // action on an empty day was a dead end for the only role that screen is
+    // for, and this test was holding it in place.
+    //
+    // /my-schedule is the technician's own forward view and admits them. The
+    // full rule — every ROUTE_ROLES-guarded link My Day offers must admit a
+    // tech — lives in tests/the-only-button-on-an-empty-day-was-a-dead-end.ts,
+    // which catches the next one rather than just this one.
     expect(codeOnly(read("src/routes/_authenticated/my-day.tsx"))).toMatch(
-      /<Link to="\/routes">View schedule<\/Link>/,
+      /<Link to="\/my-schedule">View my schedule<\/Link>/,
     );
   });
 
@@ -263,11 +275,15 @@ describe("desktop and mobile call the page the same thing", () => {
     // string nobody reads. Every surface above still points at the same path,
     // and this is what keeps a later "finish the rename" from being started
     // quietly by find-and-replace.
+    // my-day.tsx came off this list on 2026-09-14 and that is not a rename:
+    // its one link moved to /my-schedule because a tech cannot open /routes.
+    // The surfaces below are all office-facing, still point at /routes, and
+    // are what this test is actually guarding.
     for (const f of [
       "src/components/KeyboardShortcuts.tsx",
       "src/components/CommandPalette.tsx",
       "src/lib/help-content.ts",
-      "src/routes/_authenticated/my-day.tsx",
+      "src/components/AppSidebar.tsx",
     ]) {
       expect(read(f), `${f} no longer links to /routes`).toMatch(/["']\/routes["']/);
     }
