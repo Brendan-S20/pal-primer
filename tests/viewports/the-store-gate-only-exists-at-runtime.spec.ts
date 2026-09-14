@@ -26,6 +26,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 /** iPhone 17 Pro in points, the device the QA pass measured. */
 const PHONE = { width: 402, height: 874 };
@@ -48,7 +49,7 @@ test("a store build offers no way to buy or change a HoundStack plan", async ({
 
   await page.goto("/settings/billing");
   // Proof of render before any absence is claimed.
-  await expect(page.getByText("Current plan")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Current plan")).toBeVisible({ timeout: FIRST_PAINT_MS });
 
   const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
 
@@ -111,7 +112,7 @@ test("the hosted app still renders the invoice table at 402px", async ({ page, c
     .getByRole("tab", { name: /billing/i })
     .first()
     .click();
-  await expect(page.getByText("Payment methods")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Payment methods")).toBeVisible({ timeout: FIRST_PAINT_MS });
 
   expect(
     await page.locator("table:visible").count(),
@@ -150,7 +151,7 @@ test.fixme("the client billing tab does not scroll sideways at 402px", async ({
     .getByRole("tab", { name: /billing/i })
     .first()
     .click();
-  await expect(page.getByText("Payment methods")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Payment methods")).toBeVisible({ timeout: FIRST_PAINT_MS });
 
   const scrollW = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(scrollW, "the client billing tab scrolls sideways at 402px").toBeLessThanOrEqual(

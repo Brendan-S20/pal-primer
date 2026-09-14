@@ -40,6 +40,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 import { installMarketingData } from "./fixtures/marketing";
 
 const OUT = join(process.cwd(), "ios", "screenshots");
@@ -65,7 +66,7 @@ const SHOTS: Array<{
     path: "/dashboard",
     ready: async (p) => {
       await expect(p.getByText("Today's routes", { exact: false }).first()).toBeVisible({
-        timeout: 20_000,
+        timeout: FIRST_PAINT_MS,
       });
     },
   },
@@ -82,7 +83,7 @@ const SHOTS: Array<{
     path: "/routes",
     ready: async (p) => {
       await expect(p.getByRole("button", { name: "Auto-routing" })).toBeVisible({
-        timeout: 20_000,
+        timeout: FIRST_PAINT_MS,
       });
       await p.getByRole("button", { name: "Board", exact: true }).click();
       await p.waitForTimeout(400);
@@ -93,7 +94,7 @@ const SHOTS: Array<{
     path: "/routes",
     ready: async (p) => {
       const btn = p.getByRole("button", { name: "Auto-routing" });
-      await expect(btn).toBeVisible({ timeout: 20_000 });
+      await expect(btn).toBeVisible({ timeout: FIRST_PAINT_MS });
       await btn.click();
       // The panel is now three things: who, which days, Apply. Which is the
       // point of the screenshot.
@@ -105,7 +106,7 @@ const SHOTS: Array<{
     path: "/clients",
     ready: async (p) => {
       await expect(p.getByRole("heading", { name: "Clients", exact: true }).first()).toBeVisible({
-        timeout: 20_000,
+        timeout: FIRST_PAINT_MS,
       });
     },
   },

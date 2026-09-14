@@ -17,6 +17,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 const PHONE = { width: 430, height: 932 };
 
@@ -28,7 +29,7 @@ test.describe("preferences is preferences again", () => {
     await installStubBackend(page);
     await page.goto("/settings/preferences", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({
-      timeout: 20_000,
+      timeout: FIRST_PAINT_MS,
     });
     await page.waitForTimeout(800);
 
@@ -45,7 +46,7 @@ test.describe("preferences is preferences again", () => {
     await installSignedInSession(page);
     await installStubBackend(page);
     await page.goto("/settings/client-portal", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText("Portal sign-in address").first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Portal sign-in address").first()).toBeVisible({ timeout: FIRST_PAINT_MS });
     await expect(page.getByText("Client portal branding & policy").first()).toBeVisible();
     // The business name lives on that card and is the one field with a
     // validator behind it; if the card moved without its state it would render
@@ -58,7 +59,7 @@ test.describe("preferences is preferences again", () => {
     await installStubBackend(page);
     await page.goto("/settings/preferences", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible({
-      timeout: 20_000,
+      timeout: FIRST_PAINT_MS,
     });
     // Below md the nav is a sheet behind a switcher, so open it first.
     const switcher = page.getByRole("button", { name: /Preferences|Choose a section/ }).first();

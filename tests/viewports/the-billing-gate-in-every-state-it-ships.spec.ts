@@ -32,6 +32,7 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 const PHONE = { width: 402, height: 874 };
 test.use({ viewport: PHONE });
@@ -134,7 +135,7 @@ for (const state of STATES) {
 
     // PROOF OF RENDER, before any absence is claimed. Every "X is not present"
     // assertion passes on a blank page, and this whole file is absences.
-    await expect(page.getByText("Current plan")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Current plan")).toBeVisible({ timeout: FIRST_PAINT_MS });
 
     const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
 
@@ -187,7 +188,7 @@ test("a store build cannot reach a plan picker through onboarding either", async
   // while writing the file about it.
   const pick = page.getByRole("button", { name: "Pick a plan" });
   await expect(pick, "/onboarding did not render its welcome step").toBeVisible({
-    timeout: 20_000,
+    timeout: FIRST_PAINT_MS,
   });
   await pick.click();
   await page.waitForTimeout(1500);
