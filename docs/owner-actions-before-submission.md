@@ -565,6 +565,65 @@ spread against an effect of 3-6%, so the number was reporting which stop
 happened to sort first. Fixed by trying every start; the figures above are from
 after that.
 
+## 12. The `Mac0s` CI runner — NEW to this list, and the newest of these entries
+
+Every workflow in this repo runs on one self-hosted Mac. Three separate faults
+appeared on it on 2026-09-13 and 14, and none of them is in the code. They are
+here rather than only in a chat log because the machine is yours and this is the
+list of things that are.
+
+**1. `setup-node` went from about five minutes to about nineteen, in a step, in
+one night.** Measured off the job timings of consecutive runs:
+
+| run | started | `actions/setup-node@v4` |
+| --- | --- | --- |
+| #208 CI | 12:33 UTC 09-13 | 5m 32s |
+| #209 CI | 13:47 | 7m 09s |
+| #210 CI | 16:56 | 4m 41s |
+| #211 Sandboxes | 02:47 UTC 09-14 | **19m 16s** |
+| #211 CI | 03:36 | **19m 19s** |
+
+Something changed between 17:00 and 02:30. It is not the workflow — `cache: npm`
+is configured and unchanged — and it is not the repo, because the same step on
+the same file took five minutes the afternoon before. On a single runner this is
+not cosmetic: six jobs a pull request at fourteen extra minutes each is most of
+an hour of wall clock per change.
+
+**2. A bus error in the native build.** #211's first CI attempt died with
+`Bus error: 10` — exit 138, SIGBUS — partway through `npm run build:native`:
+
+```
+76656 Bus error: 10   npm run build:native
+transforming...
+##[error]Process completed with exit code 138.
+```
+
+The same command on the same commit completes elsewhere in 12.46 seconds, and
+the step passed on a later attempt in 24 seconds. A process killed by SIGBUS is
+a memory or filesystem fault, not a failing test.
+
+**3. The browser sweep ran out of its budget**, cancelled at 30m13s against
+`timeout-minutes: 30`, with the last of its three sweeps mid-run. That one is
+half mine — the case-spec step gained four specs on the 13th and 14th — and the
+budget is now 45 minutes, with the arithmetic in a comment in
+`sandboxes.yml`. But 19 minutes of a 30-minute budget spent before any test
+ran is what actually tipped it, so the raise is a splint and not a repair.
+
+**4. And, separately, the container-restart race**, which predates all of this:
+`failed to execute http request: Get "http://127.0.0.1:54321/storage/v1/bucket":
+context deadline exceeded` on the database job, three occurrences, each after
+every migration had already applied, each cleared by a single re-run. The
+Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
+
+- [ ] Look at the machine: disk health and free space first, then memory. A Mac
+      that throws SIGBUS during a bundler and triples the time to unpack Node is
+      describing hardware, not configuration.
+- [ ] Update the Supabase CLI on the runner, which is forty minor versions
+      behind and is the most likely fix for (4).
+- [ ] Decide whether one self-hosted runner is still the right shape. Every
+      check in both workflows queues behind every other, so one slow step
+      delays everything, and one unhealthy machine stops all of it.
+
 ## Things you do NOT need to do
 
 Listed so they stop taking up room.
