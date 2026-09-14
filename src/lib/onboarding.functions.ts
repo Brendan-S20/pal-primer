@@ -8,6 +8,12 @@ export type OnboardingStep = {
   done: boolean;
   to: string;
   cta: string;
+  /** A second way to finish the same step, when the step has two honest
+   *  answers and the description already says so. Rendered beside the primary
+   *  control, never instead of it. `gate` is a route path checked against the
+   *  viewer's role with the same `canAccess` the sidebar and CreateSheet use,
+   *  because this runs on the server and cannot see the role itself. */
+  alt?: { to: string; cta: string; gate: string };
 };
 
 export const getOnboardingStatus = createServerFn({ method: "GET" })
@@ -121,12 +127,31 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         cta: "Add dump site",
       },
       {
+        // ── WHY THIS STEP HAS TWO BUTTONS ───────────────────────────────
+        //
+        // The description has promised the CSV since this checklist was
+        // written; the step offered one control and it went to the
+        // one-at-a-time form. An operator arriving with a book of business --
+        // the only kind of signup that already has customers to bring -- read
+        // "or upload a CSV to seed many at once" and was handed a form to fill
+        // in once per client.
+        //
+        // /imports is in the sidebar and the command palette, so this is not
+        // a missing feature; it is a missing door on the one screen that
+        // names it. The step it belongs to is also the step that matters:
+        // every organization in production that never added a client never
+        // came back either.
+        //
+        // Gated because /imports is owner+office_manager while /clients/new
+        // also admits dispatchers -- an ungated second button would offer a
+        // dispatcher a route that redirects them straight back.
         id: "clients",
         label: "Add or import clients",
         description: "Bring in at least one client (or upload a CSV to seed many at once).",
         done: (clients.count ?? 0) > 0,
         to: "/clients/new",
         cta: "Add client",
+        alt: { to: "/imports", cta: "Import CSV", gate: "/imports" },
       },
       {
         id: "route",

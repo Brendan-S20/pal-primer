@@ -4,10 +4,12 @@ import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, Circle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { canAccess, useMyRole } from "@/hooks/useMyRole";
 import { getOnboardingStatus, dismissOnboarding } from "@/lib/onboarding.functions";
 
 export function OnboardingChecklist() {
   const qc = useQueryClient();
+  const { role } = useMyRole();
   const statusFn = useServerFn(getOnboardingStatus);
   const dismissFn = useServerFn(dismissOnboarding);
 
@@ -75,11 +77,26 @@ export function OnboardingChecklist() {
               </div>
             </div>
             {!step.done && (
-              <Link to={step.to}>
-                <Button size="sm" variant="outline">
-                  {step.cta}
-                </Button>
-              </Link>
+              // shrink-0 so the label column cannot squeeze the controls off
+              // the card, and flex-wrap so two buttons stack rather than
+              // overflow at 360px. The label column carries no min-w-0 and
+              // does not need one: it is wrapping prose, so its min-content
+              // width is its longest WORD. The rule in CLAUDE.md bites when a
+              // value has no space in it to break on, which no copy here does.
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                <Link to={step.to}>
+                  <Button size="sm" variant="outline">
+                    {step.cta}
+                  </Button>
+                </Link>
+                {step.alt && canAccess(role, step.alt.gate) && (
+                  <Link to={step.alt.to}>
+                    <Button size="sm" variant="outline">
+                      {step.alt.cta}
+                    </Button>
+                  </Link>
+                )}
+              </div>
             )}
           </li>
         ))}
