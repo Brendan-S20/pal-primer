@@ -30,6 +30,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 import {
   findControlsOffTheSide,
   findControlsUnder44px,
@@ -49,15 +50,20 @@ for (const { w, label } of [
     await page.goto("/my-day");
     await page.waitForLoadState("networkidle").catch(() => {});
 
-    const toggle = page.getByRole("button", { name: "Map view" });
+    // "Map", not "Map view". The toggle carried an icon and an sr-only
+    // "Map view" until 2026-09-14; it now shows the word next to the glyph,
+    // so the visible label IS the accessible name and the sr-only span that
+    // used to supply it is gone. Matching the visible text is the point
+    // (WCAG 2.5.3), not an accident of this rename.
+    const toggle = page.getByRole("button", { name: "Map", exact: true });
     await expect(toggle).toBeVisible({ timeout: 15000 });
     await toggle.click();
 
     // It rendered, and it has the day on it. Leaflet is loaded lazily, so this
     // also covers the Suspense boundary actually resolving.
     const map = page.locator(".leaflet-container");
-    await expect(map).toBeVisible({ timeout: 20000 });
-    await expect(page.locator(".leaflet-marker-icon").first()).toBeVisible({ timeout: 20000 });
+    await expect(map).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.locator(".leaflet-marker-icon").first()).toBeVisible({ timeout: FIRST_PAINT_MS });
 
     const { scrollW, innerW } = await measurePageOverflow(page);
     expect(scrollW, `the day map scrolls sideways at ${w}px`).toBeLessThanOrEqual(innerW + 1);

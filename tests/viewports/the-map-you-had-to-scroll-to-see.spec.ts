@@ -38,6 +38,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 const PHONES = [
   { w: 360, h: 800, label: "360x800 · a small phone" },
@@ -53,14 +54,19 @@ for (const { w, h, label } of PHONES) {
     await page.goto("/my-day");
     await page.waitForLoadState("networkidle").catch(() => {});
 
-    const toggle = page.getByRole("button", { name: "Map view" });
-    await expect(toggle).toBeVisible({ timeout: 20000 });
+    // "Map", not "Map view". The toggle carried an icon and an sr-only
+    // "Map view" until 2026-09-14; it now shows the word next to the glyph,
+    // so the visible label IS the accessible name and the sr-only span that
+    // used to supply it is gone. Matching the visible text is the point
+    // (WCAG 2.5.3), not an accident of this rename.
+    const toggle = page.getByRole("button", { name: "Map", exact: true });
+    await expect(toggle).toBeVisible({ timeout: FIRST_PAINT_MS });
     await toggle.click();
 
     // It rendered before anything is measured. An unmounted Leaflet container
     // is an empty div, and an empty div fits any screen perfectly.
-    await expect(page.locator(".leaflet-container")).toBeVisible({ timeout: 20000 });
-    await expect(page.locator(".leaflet-marker-icon").first()).toBeVisible({ timeout: 20000 });
+    await expect(page.locator(".leaflet-container")).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.locator(".leaflet-marker-icon").first()).toBeVisible({ timeout: FIRST_PAINT_MS });
 
     const m = await page.evaluate(() => {
       const frame = document.querySelector(".leaflet-container")?.parentElement as HTMLElement;
@@ -93,7 +99,7 @@ test("a scheduled stop asks for one thing, and hides nothing", async ({ page, co
   await page.waitForLoadState("networkidle").catch(() => {});
 
   const card = page.locator("ol > li").first();
-  await expect(card.getByRole("button", { name: "Start" })).toBeVisible({ timeout: 20000 });
+  await expect(card.getByRole("button", { name: "Start" })).toBeVisible({ timeout: FIRST_PAINT_MS });
 
   const visible = () =>
     page.evaluate(() => {
@@ -146,7 +152,7 @@ test("a stop in progress asks for the next thing instead", async ({ page, contex
   // and the badge's text arrives with JSX whitespace in it. `/\bin progress\b/`
   // matches zero of these cards; "in progress" matches exactly one.
   const inProgress = page.locator("ol > li").filter({ hasText: "in progress" }).first();
-  await expect(inProgress).toBeVisible({ timeout: 20000 });
+  await expect(inProgress).toBeVisible({ timeout: FIRST_PAINT_MS });
 
   const ctl = await inProgress.evaluate((li) =>
     [...li.querySelectorAll("button, a, select")]

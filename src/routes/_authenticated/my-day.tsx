@@ -62,6 +62,7 @@ import { dayAtAGlance } from "@/lib/day-at-a-glance";
 import { toast } from "sonner";
 import {
   Navigation,
+  Calendar as CalendarIcon,
   Camera,
   ChevronDown,
   ChevronUp,
@@ -145,12 +146,6 @@ function todayISO() {
   return local.toISOString().slice(0, 10);
 }
 
-function addDaysISO(iso: string, days: number) {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  const off = d.getTimezoneOffset();
-  return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 10);
-}
 
 function MyDay() {
   const { date: dateParam, staff: staffParam } = Route.useSearch();
@@ -161,7 +156,13 @@ function MyDay() {
   useEffect(() => {
     if (dateParam) setDay(dateParam);
   }, [dateParam]);
-  // The mobile tab bar's "Schedule" tab asks us to focus the 7-day strip.
+  // Pressing "Today" while already on My Day asks us to focus the day control.
+  // Below `md` that is the date chip in the header; the seven-day strip it
+  // replaced on 2026-09-14 was a whole 48px row spent on a control that is
+  // used a few times a week, on the screen whose entire problem is vertical
+  // room. `input` comes first in the query because the chip IS an input --
+  // a native date field laid transparently over the styled face, so the day
+  // picker a phone already has is the one that opens.
   const stripRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const focusStrip = () => {
@@ -169,8 +170,9 @@ function MyDay() {
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "nearest" });
       const target =
-        el.querySelector<HTMLButtonElement>("button[data-selected='true']") ??
-        el.querySelector<HTMLButtonElement>("button");
+        el.querySelector<HTMLElement>("input") ??
+        el.querySelector<HTMLElement>("button[data-selected='true']") ??
+        el.querySelector<HTMLElement>("button");
       target?.focus({ preventScroll: true });
     };
     window.addEventListener(FOCUS_MY_DAY_SCHEDULE_EVENT, focusStrip);
@@ -192,15 +194,6 @@ function MyDay() {
     [navigate],
   );
 
-  // Seven-day strip (mobile): today-first window. If a deep link lands on a
-  // day outside that window, anchor the window at the selected day so the
-  // strip always reflects the selection.
-  const stripDays = useMemo(() => {
-    const today = todayISO();
-    const inWindow = day >= today && day <= addDaysISO(today, 6);
-    const anchor = inWindow ? today : day;
-    return Array.from({ length: 7 }, (_, i) => addDaysISO(anchor, i));
-  }, [day]);
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
@@ -604,15 +597,67 @@ function MyDay() {
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-semibold">{t("myDay.title")}</h1>
-              <p className="truncate text-xs text-muted-foreground">
-                {staff
-                  ? `${staff.display_name}${staff.role ? ` · ${humanizeRole(staff.role)}` : ""}`
-                  : t("myDay.notOnStaff")}
-              </p>
+              <h1 className="truncate text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
+                {t("myDay.title")}
+              </h1>
+              {/* Your own name under your own heading is noise, and it cost a
+                  line on the one screen that has none to spare. It is still
+                  drawn for the two cases that are NOT "this is me": an office
+                  role previewing a technician, and an account with no staff
+                  record, where the line is the explanation. */}
+              {previewing || !staff ? (
+                <p className="truncate text-xs text-muted-foreground">
+                  {staff
+                    ? `${staff.display_name}${staff.role ? ` · ${humanizeRole(staff.role)}` : ""}`
+                    : t("myDay.notOnStaff")}
+                </p>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <PushToggle />
+              {/* Icon-only below `md`: the words cost 149px in a row that also
+                  carries the page heading and the day chip, and at 320px the
+                  heading lost. The full-width version returns on a laptop. */}
+              <PushToggle compact />
+
+              {/* The day control below `md`. A native date input laid
+                  transparently over a styled face: the phone opens the picker
+                  it already has, the control is a real form field for the
+                  keyboard and for screen readers, and nothing here reimplements
+                  a calendar. `pointer-events-none` on the face so the tap
+                  always lands on the input beneath it. */}
+              <div ref={stripRef} className="relative shrink-0 md:hidden">
+                <div className="pointer-events-none flex min-h-11 items-center gap-2 rounded-lg border bg-background pl-3 pr-2">
+                  <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="whitespace-nowrap text-sm font-medium">
+                    {/* The weekday is the first 47px to go, and only below
+                        360px. At 320 the heading and the chip cannot both have
+                        what they want, and a date without its weekday is still
+                        a date -- whereas "My d…" is not a heading. Every real
+                        phone in the 360-430 band keeps the full label. */}
+                    <span className="max-[359px]:hidden">
+                      {new Date(`${day}T00:00:00`).toLocaleDateString(undefined, {
+                        weekday: "short",
+                      })}
+                      {", "}
+                    </span>
+                    {new Date(`${day}T00:00:00`).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </div>
+                <input
+                  type="date"
+                  aria-label="Pick a day"
+                  value={day}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    applyDay(v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO());
+                  }}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </div>
 
               {/* Desktop keeps the raw date input; below `md` the 7-day strip
                   (below) is the date control (Mobile Phase 2). */}
@@ -639,49 +684,47 @@ function MyDay() {
             </div>
           </div>
 
-          {/* Mobile Phase 2: horizontal 7-day strip driving ?date=. Today-first;
-              the selected day is filled, today is outlined when not selected. */}
-          <div
-            ref={stripRef}
-            aria-label="Pick a day"
-            className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1 md:hidden"
-          >
-            {stripDays.map((d) => {
-              const selected = d === day;
-              const isToday = d === todayISO();
-              const dt = new Date(`${d}T00:00:00`);
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  data-selected={selected ? "true" : undefined}
-                  aria-pressed={selected}
-                  onClick={() => {
-                    haptic("tap");
-                    applyDay(d);
-                  }}
-                  className={`flex min-h-12 min-w-11 flex-1 shrink-0 flex-col items-center justify-center rounded-lg border px-1 py-1.5 text-center transition-colors ${
-                    selected
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : isToday
-                        ? "border-primary/50 text-primary"
-                        : "border-transparent text-muted-foreground hover:bg-muted active:bg-muted"
-                  }`}
-                >
-                  <span className="text-3xs font-medium uppercase leading-none">
-                    {dt.toLocaleDateString(undefined, { weekday: "narrow" })}
-                  </span>
-                  <span className="mt-0.5 text-sm font-semibold leading-tight">{dt.getDate()}</span>
-                </button>
-              );
-            })}
-          </div>
-
           {total > 0 && (
             <div className="flex items-center gap-2">
-              {/* List or map, on the bar rather than buried in the page, so
-                  the whole day is one tap away from any scroll position. */}
-              <div className="flex shrink-0 rounded-lg border p-0.5" role="group" aria-label="View">
+              {/* PROGRESS LEFT, VIEW RIGHT.
+                  The toggle used to lead the row and the progress followed it,
+                  which put the control first and the fact second. The number
+                  is what a technician reads at a glance between driveways; the
+                  toggle is pressed a few times a day. min-w-0 so the pill
+                  yields to the toggle rather than pushing it off the edge. */}
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
+                <div className="min-w-0 shrink-0 truncate text-xs font-medium">
+                  {completedCount} {t("common.of")} {total} {t("common.done")}
+                  {skippedCount > 0 && (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      · {skippedCount} skipped
+                    </span>
+                  )}
+                </div>
+                {/* The bar is the one thing here allowed to give up width, so
+                    it is the only flex item without shrink-0. At 320px it
+                    narrows to a sliver and the two numbers stay readable,
+                    which is the right way round: the bar restates the
+                    percentage, the percentage does not restate the bar. */}
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted-foreground/20">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="shrink-0 text-xs font-medium text-muted-foreground">{pct}%</div>
+              </div>
+
+              {/* Labelled, not icon-only. "List" and "Map" next to the glyph
+                  cost about 60px and remove the guess; the icons alone were a
+                  list and a folded map, which are not far apart at 16px. Still
+                  44px tall -- the height is now the padding plus the label
+                  rather than a fixed square, so min-h-11 states it outright. */}
+              <div
+                className="flex shrink-0 rounded-lg border p-0.5"
+                role="group"
+                aria-label="View"
+              >
                 {(["list", "map"] as const).map((v) => (
                   <button
                     key={v}
@@ -691,43 +734,20 @@ function MyDay() {
                       haptic("tap");
                       setView(v);
                     }}
-                    // 44px square, not the 36px an `h-9` icon button defaults
-                    // to. MEASURED by the 360px sweep, which failed this the
-                    // first time it ran: "List view is 36.0px tall".
-                    className={`grid h-11 w-11 place-items-center rounded-md transition-colors ${
+                    className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors ${
                       view === v
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-muted"
                     }`}
-                    title={v === "list" ? "List" : "Map"}
                   >
                     {v === "list" ? (
-                      <ListIcon className="h-4 w-4" aria-hidden="true" />
+                      <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
                     ) : (
-                      <MapIcon className="h-4 w-4" aria-hidden="true" />
+                      <MapIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
                     )}
-                    <span className="sr-only">{v === "list" ? "List view" : "Map view"}</span>
+                    {v === "list" ? "List" : "Map"}
                   </button>
                 ))}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="font-medium">
-                    {completedCount} {t("common.of")} {total} {t("common.done")}
-                    {skippedCount > 0 && (
-                      <span className="ml-1 font-normal text-muted-foreground">
-                        · {skippedCount} skipped
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-muted-foreground">{pct}%</div>
-                </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full bg-primary transition-all duration-500 ease-out"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
               </div>
             </div>
           )}

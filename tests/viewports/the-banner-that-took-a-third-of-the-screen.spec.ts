@@ -25,6 +25,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 /** The banner, found by its own copy rather than a test id, because the copy is
  *  the thing that must survive. */
@@ -57,7 +58,7 @@ for (const { w, h, label, phone } of [
     await page.goto("/my-day");
     await page.waitForLoadState("networkidle").catch(() => {});
 
-    await expect(page.getByText("Your free trial has ended")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Your free trial has ended")).toBeVisible({ timeout: FIRST_PAINT_MS });
     const closed = await read(page);
     expect(closed, "the banner was not found by its own copy").not.toBeNull();
 

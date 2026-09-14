@@ -86,9 +86,20 @@ interface Props {
   portalToken?: string;
   /** Extra classes for the trigger button (e.g. to invert on dark backgrounds). */
   className?: string;
+  /**
+   * Icon only, with the words moved to the accessible name.
+   *
+   * For headers that have run out of horizontal room. "Enable notifications"
+   * is 149px, which is most of a 320px row once anything else is on it -- in
+   * My Day's title bar it squeezed the page heading to 0px wide. The glyph
+   * already carries the state (Bell vs BellOff) and the 44px box is the same
+   * pattern ui/dialog.tsx and ui/sheet.tsx use, so nothing is lost but the
+   * width. The portal, which has the room, does not pass this.
+   */
+  compact?: boolean;
 }
 
-export function PushToggle({ portalToken, className }: Props) {
+export function PushToggle({ portalToken, className, compact }: Props) {
   const [supported, setSupported] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -187,22 +198,40 @@ export function PushToggle({ portalToken, className }: Props) {
 
   if (!supported) return null;
   if (perm === "denied") {
+    // Also compact-able. This branch is easy to forget -- it is a `<span>`
+    // rather than the Button the other two return, so it inherits none of
+    // their sizing -- and it is 111px of unshrinkable text. That is what was
+    // actually flattening My Day's heading at 320px, not the "Enable
+    // notifications" button I first assumed: a browser that has denied
+    // permission renders THIS, and a headless one always has.
     return (
-      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-        <BellOff className="h-3 w-3" /> Notifications blocked
+      <span
+        className={
+          compact
+            ? "inline-flex h-11 w-11 items-center justify-center text-muted-foreground"
+            : "text-xs text-muted-foreground inline-flex items-center gap-1"
+        }
+        title={compact ? "Notifications blocked" : undefined}
+      >
+        <BellOff className={compact ? "h-4 w-4" : "h-3 w-3"} />
+        {compact ? <span className="sr-only">Notifications blocked</span> : " Notifications blocked"}
       </span>
     );
   }
 
+  const label = subscribed ? "Notifications on" : "Enable notifications";
   return subscribed ? (
     <Button
       size="sm"
       variant="ghost"
       onClick={disable}
       disabled={busy}
-      className={"min-h-[36px] " + (className ?? "")}
+      aria-label={compact ? label : undefined}
+      title={compact ? label : undefined}
+      className={(compact ? "min-h-11 w-11 px-0 " : "min-h-[36px] ") + (className ?? "")}
     >
-      <Bell className="h-4 w-4 mr-1" /> On
+      <Bell className={compact ? "h-4 w-4" : "h-4 w-4 mr-1"} />
+      {compact ? <span className="sr-only">{label}</span> : "On"}
     </Button>
   ) : (
     <Button
@@ -210,9 +239,12 @@ export function PushToggle({ portalToken, className }: Props) {
       variant="outline"
       onClick={enable}
       disabled={busy}
-      className={"min-h-[36px] " + (className ?? "")}
+      aria-label={compact ? label : undefined}
+      title={compact ? label : undefined}
+      className={(compact ? "min-h-11 w-11 px-0 " : "min-h-[36px] ") + (className ?? "")}
     >
-      <BellOff className="h-4 w-4 mr-1" /> Enable notifications
+      <BellOff className={compact ? "h-4 w-4" : "h-4 w-4 mr-1"} />
+      {compact ? <span className="sr-only">{label}</span> : "Enable notifications"}
     </Button>
   );
 }

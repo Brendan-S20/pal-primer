@@ -229,7 +229,89 @@ const BASE_STUBS: Record<string, Stub> = {
     nextInvoiceCents: 23_900,
   },
   getReviewQueueCount: { openCount: 4 },
-  getOnboardingStatus: { steps: [], completed: 0, total: 0, dismissed: true },
+  // ── The setup checklist on /dashboard ───────────────────────────────────
+  //
+  // Was `{ steps: [], completed: 0, total: 0, dismissed: true }` until
+  // 2026-09-14 — an entry that answers the call and renders nothing, because
+  // the component returns null on `dismissed` before it draws a row. So the
+  // sweep measured /dashboard at four widths with the checklist absent, and
+  // was green because nothing was there. A fixture that exists is not a
+  // fixture of the right shape; this is the CLAUDE.md lesson in its quieter
+  // costume, where the fault is the VALUE rather than the missing key.
+  //
+  // Deliberately MID-PROGRESS. A finished checklist renders every row with a
+  // line-through and NO button at all, so a fixture where everything is done
+  // measures the one state that has no controls in it. Three steps are open,
+  // and one of them ("clients") is the step that carries two buttons -- which
+  // is the widest row this component can produce and the only one that can
+  // push a control off a 360px screen.
+  getOnboardingStatus: {
+    completed: 4,
+    total: 7,
+    dismissed: false,
+    steps: [
+      {
+        id: "verify_email",
+        label: "Verify your email",
+        description:
+          "Confirm your address to unlock payments (Stripe). Everything else works meanwhile.",
+        done: true,
+        to: "/payments",
+        cta: "Verify",
+      },
+      {
+        id: "zones",
+        label: "Create service zones",
+        description: "Group properties by neighborhood or postal prefix so routes stay tight.",
+        done: true,
+        to: "/zones",
+        cta: "Add a zone",
+      },
+      {
+        id: "staff",
+        label: "Add your first tech",
+        description: "Invite at least one tech so visits can be assigned and dispatched.",
+        done: true,
+        to: "/settings/users",
+        cta: "Invite tech",
+      },
+      {
+        id: "dump_site",
+        label: "Add your dump site",
+        description:
+          "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
+        done: false,
+        to: "/waste-log",
+        cta: "Add dump site",
+      },
+      {
+        id: "clients",
+        label: "Add or import clients",
+        description: "Bring in at least one client (or upload a CSV to seed many at once).",
+        done: false,
+        to: "/clients/new",
+        cta: "Add client",
+        alt: { to: "/imports", cta: "Import CSV", gate: "/imports" },
+      },
+      {
+        id: "route",
+        label: "Assign your first route",
+        description:
+          "Assign visits to a tech from the Today board so the field crew has work loaded.",
+        done: false,
+        to: "/routes",
+        cta: "Open Today",
+      },
+      {
+        id: "billing",
+        label: "Connect Stripe (optional)",
+        description: "Bring your own Stripe key to collect payments and enable autopay.",
+        done: true,
+        to: "/settings/billing",
+        cta: "Set up billing",
+      },
+    ],
+  },
   listActiveAnnouncements: { rows: [] },
   getSuspensionState: null,
   listMyNotifications: {

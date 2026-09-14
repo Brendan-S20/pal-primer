@@ -21,6 +21,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 const PHONE = { width: 430, height: 932 };
 
@@ -32,7 +33,7 @@ test.describe("invoices open on invoices", () => {
     await installStubBackend(page);
     await page.goto("/invoices", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Invoices" }).first()).toBeVisible({
-      timeout: 20_000,
+      timeout: FIRST_PAINT_MS,
     });
     await page.waitForTimeout(800);
 
@@ -71,7 +72,7 @@ test.describe("invoices open on invoices", () => {
     await installStubBackend(page);
     await page.goto("/invoices", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("button", { name: /Outstanding/ }).first()).toBeVisible({
-      timeout: 20_000,
+      timeout: FIRST_PAINT_MS,
     });
 
     const tops = await page.evaluate(() => {
@@ -97,7 +98,7 @@ test.describe("invoices open on invoices", () => {
     await installStubBackend(page);
     await page.goto("/invoices", { waitUntil: "domcontentloaded" });
     const trigger = page.getByRole("button", { name: /^Filters/ });
-    await expect(trigger).toBeVisible({ timeout: 20_000 });
+    await expect(trigger).toBeVisible({ timeout: FIRST_PAINT_MS });
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     // Opening one has to reveal them, or the controls are simply gone.
@@ -117,7 +118,7 @@ test.describe("invoices open on invoices", () => {
     await installStubBackend(page);
     await page.goto("/invoices", { waitUntil: "domcontentloaded" });
     const card = page.getByRole("button", { name: /Outstanding/ }).first();
-    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toBeVisible({ timeout: FIRST_PAINT_MS });
     await card.click();
     await expect(card).toHaveAttribute("aria-pressed", "true");
   });
@@ -128,7 +129,7 @@ test.describe("invoices open on invoices", () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/invoices", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Invoices" }).first()).toBeVisible({
-      timeout: 20_000,
+      timeout: FIRST_PAINT_MS,
     });
     // Filters are open with no trigger in sight; the fold is a phone answer to
     // a phone problem.

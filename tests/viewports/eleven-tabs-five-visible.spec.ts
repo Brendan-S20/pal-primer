@@ -14,6 +14,7 @@
 import { test, expect } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 import { CLIENT_ID } from "./fixtures/dataset";
 
 const CLIENT_DETAIL = `/clients/${CLIENT_ID}`;
@@ -29,7 +30,7 @@ test.describe("the tab bar admits it continues", () => {
     await page.goto(CLIENT_DETAIL, { waitUntil: "domcontentloaded" });
 
     const list = page.getByRole("tablist").first();
-    await expect(list).toBeVisible({ timeout: 20_000 });
+    await expect(list).toBeVisible({ timeout: FIRST_PAINT_MS });
 
     // The premise. If the bar ever stops overflowing on a phone the fade is
     // pointless and this test should be the thing that says so.
@@ -52,7 +53,7 @@ test.describe("the tab bar admits it continues", () => {
     await page.goto(CLIENT_DETAIL, { waitUntil: "domcontentloaded" });
 
     const list = page.getByRole("tablist").first();
-    await expect(list).toBeVisible({ timeout: 20_000 });
+    await expect(list).toBeVisible({ timeout: FIRST_PAINT_MS });
     await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
     await page.waitForTimeout(300);
 
@@ -70,7 +71,7 @@ test.describe("the tab bar admits it continues", () => {
     await page.goto(CLIENT_DETAIL, { waitUntil: "domcontentloaded" });
 
     const list = page.getByRole("tablist").first();
-    await expect(list).toBeVisible({ timeout: 20_000 });
+    await expect(list).toBeVisible({ timeout: FIRST_PAINT_MS });
     expect(await list.getAttribute("data-overflow-end")).toBeNull();
     expect(await list.getAttribute("data-overflow-start")).toBeNull();
   });
