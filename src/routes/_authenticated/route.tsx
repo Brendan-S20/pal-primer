@@ -23,6 +23,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { useTabletTier } from "@/hooks/useTabletTier";
+import { useMyRole } from "@/hooks/useMyRole";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -197,6 +198,45 @@ function AppShell() {
   // one.
   const { mainBottomPadding, barThroughTablet } = useTabletTier();
   const myDayHeaderHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
+
+  // ── THE BAR THAT APPEARED AND DISAPPEARED AS YOU WALKED ─────────────────
+  //
+  // This header was hidden on My Day and nowhere else, so a technician moving
+  // between their own four tabs -- Today, Waste log, Alerts, More -- watched a
+  // 56px bar with a search field in it slide in and out from under their
+  // thumb. Reported as "it pops-up the search bar, that's not necessary... it
+  // should be generally fluid".
+  //
+  // It is not necessary, and that is the whole argument. Wherever the tab bar
+  // reaches, everything this header offers a TECH is already one tap away in
+  // it: Alerts is the bell, More is the sidebar, and the sidebar trigger is
+  // already hidden when the phone is set to bottom navigation. What is left is
+  // the command palette, which is a keyboard affordance on a device with no
+  // keyboard, over a product a tech navigates with four tabs.
+  //
+  // Office roles keep the header everywhere. They have eleven destinations and
+  // a different bar, and search is how they reach a client by name -- the
+  // complaint was never theirs, and taking it from them to make one rule
+  // shorter would be a worse product for a saving nobody asked for.
+  const { role } = useMyRole();
+  const shellHeaderHidden = role === "tech" ? myDayHeaderHidden : isMyDay ? myDayHeaderHidden : "";
+
+  // The header was also doing a second job nobody asked it to: on a native
+  // build it carries `nativeTopBarStyle`, so it is what holds the page clear of
+  // the status bar. My Day already knew that -- it draws its own bar with the
+  // same helper, which is why hiding the shell one there never pushed anything
+  // under the clock. /waste-log and /neighbors have no such bar of their own,
+  // so they need the inset here or the first row of the page renders under the
+  // time and the battery.
+  //
+  // Width-matched to `shellHeaderHidden` rather than applied always, because
+  // above the breakpoint the header IS rendered and would then be padded twice.
+  const mainTopInset =
+    shellHeaderHidden === ""
+      ? ""
+      : barThroughTablet
+        ? "max-lg:pt-[calc(1rem+env(safe-area-inset-top))]"
+        : "max-md:pt-[calc(1rem+env(safe-area-inset-top))]";
   // Sign out lives in the tab bar's More sheet wherever the tab bar reaches, so
   // the header avatar hides over exactly the same range. This was hardcoded
   // `max-md:hidden` while the bar itself was already following the hook, which
@@ -247,7 +287,7 @@ function AppShell() {
             // at all there — which is exactly what an inline paddingLeft did
             // before this, moving the sidebar toggle to x=0.
             className={`sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] backdrop-blur ${
-              isMyDay ? myDayHeaderHidden : ""
+              shellHeaderHidden
             }`}
           >
             {/* 28px (`h-7 w-7` from ui/sidebar.tsx) until 2026-08-19, when the
@@ -357,7 +397,7 @@ function AppShell() {
             // Measured on an iPhone 17 Pro: 39 controls inside a 54pt cutout
             // without it. Same env()-in-a-class pattern MobileTabBar and
             // InstallBanner already use.
-            className={`min-w-0 flex-1 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] pt-4 sm:pl-[calc(1.5rem+env(safe-area-inset-left))] sm:pr-[calc(1.5rem+env(safe-area-inset-right))] sm:pt-5 ${
+            className={`min-w-0 flex-1 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] pt-4 sm:pl-[calc(1.5rem+env(safe-area-inset-left))] sm:pr-[calc(1.5rem+env(safe-area-inset-right))] sm:pt-5 ${mainTopInset} ${
               // mainBottomPadding reserves the height of the tab bar. With the
               // bar switched off that reservation is just dead space at the
               // bottom of every page, so this falls back to the home-indicator
