@@ -1411,14 +1411,25 @@ function RoutesPage() {
                     <li key={`${w.visitId}-${w.reason}`}>
                       {/* A whole sentence is the control here, so the 44px
                           floor is met by giving the row height rather than by
-                          padding a glyph — `max-md:` and not `touch:`, because
-                          what has to clear the floor is a phone-width layout
-                          and the sweep measures by width, not by pointer type.
-                          Above md it stays a tight list of links. */}
+                          padding a glyph.
+
+                          This was `max-md:` until 2026-09-15, on the reasoning
+                          that "the sweep measures by width, not by pointer
+                          type". That was true of the default sweep, which only
+                          asks for 44px at or below 768px. It is NOT true under
+                          APPLE_SIZES, which sets `hasTouch` and runs the floor
+                          at every Apple size — so an iPad Pro at 1366px is a
+                          touch device with a 16px target, and these two buttons
+                          failed at 820, 844, 1024, 1180 and 1366.
+
+                          `touch:` is the rule the product actually has:
+                          `(pointer: coarse), (max-width: 767px)`. A finger on an
+                          iPad is still a finger. A mouse at 1366 still gets the
+                          tight list of links. */}
                       <button
                         type="button"
                         onClick={() => setDetailVisitId(w.visitId)}
-                        className="flex w-full items-center text-left text-xs text-destructive underline-offset-2 hover:underline max-md:min-h-11 max-md:py-1"
+                        className="flex w-full items-center text-left text-xs text-destructive underline-offset-2 hover:underline touch:min-h-11 touch:py-1"
                       >
                         {w.message}
                       </button>

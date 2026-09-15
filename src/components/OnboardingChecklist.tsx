@@ -56,7 +56,13 @@ export function OnboardingChecklist() {
         {data.steps.map((step) => (
           <li
             key={step.id}
-            className="flex items-start justify-between gap-4 rounded-md border p-3"
+            // flex-wrap so the controls drop to their own line when the row
+            // cannot hold both columns. Without it the row never wraps at all:
+            // the controls block below is shrink-0, so it always claims its
+            // max-content width and the INNER flex-wrap can never engage --
+            // the two are in tension, and shrink-0 wins. Found at 320px, where
+            // "Import CSV" ran to x=326 in a 320px viewport.
+            className="flex flex-wrap items-start justify-between gap-4 rounded-md border p-3"
           >
             <div className="flex items-start gap-3">
               {step.done ? (
@@ -79,7 +85,9 @@ export function OnboardingChecklist() {
             {!step.done && (
               // shrink-0 so the label column cannot squeeze the controls off
               // the card, and flex-wrap so two buttons stack rather than
-              // overflow at 360px. The label column carries no min-w-0 and
+              // overflow. This pair only works because the row above wraps:
+              // 360px fits and 320px did not, which is why the original note
+              // here named 360 and passed. The label column carries no min-w-0 and
               // does not need one: it is wrapping prose, so its min-content
               // width is its longest WORD. The rule in CLAUDE.md bites when a
               // value has no space in it to break on, which no copy here does.
