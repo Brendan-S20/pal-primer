@@ -602,12 +602,44 @@ The same command on the same commit completes elsewhere in 12.46 seconds, and
 the step passed on a later attempt in 24 seconds. A process killed by SIGBUS is
 a memory or filesystem fault, not a failing test.
 
+**It happened a second time the same day**, on #214, which is what turns this
+entry from an anecdote into a pattern. Same signal, different step — the "Build
+(and verify the service worker is real)" step of `Typecheck, lint, tests`:
+
+```
+✓ built in 9.24s
+sh: line 1: 93391 Bus error: 10           vite build
+##[error]Process completed with exit code 138.
+```
+
+Read those two lines together. **Vite reported success and the process was then
+killed.** Typecheck had already passed and all 3,625 unit tests had already
+passed on that same commit, in that same job, minutes earlier. There is no
+reading of that in which the diff is at fault.
+
+The single permitted re-run passed the identical step in 34 seconds — and, on
+the same machine within the same hour, `setup-node` came back down to 4m57s.
+Fault (1) and fault (2) are therefore not independent: the machine was slow and
+throwing bus errors in the same window, and recovered from both together. That
+is one underlying problem with two symptoms, which is the useful thing to know
+before chasing them separately.
+
 **3. The browser sweep ran out of its budget**, cancelled at 30m13s against
 `timeout-minutes: 30`, with the last of its three sweeps mid-run. That one is
 half mine — the case-spec step gained four specs on the 13th and 14th — and the
 budget is now 45 minutes, with the arithmetic in a comment in
 `sandboxes.yml`. But 19 minutes of a 30-minute budget spent before any test
 ran is what actually tipped it, so the raise is a splint and not a repair.
+
+**3b. A job cancelled mid-run with nothing superseding it.** On #214's first
+head the browser sweep was **cancelled** at 22:04Z, four minutes into "Measure
+the one-off cases", having already passed the public and signed-in sweeps. Both
+workflows use `concurrency: cancel-in-progress` keyed on `github.ref`, so a push
+cancels an in-flight run — but no push had happened, and no newer run existed
+for that ref. Nothing asked for that cancellation.
+
+Worth separating from (3): that one ran out of a budget, which is a number a
+human chose. This one was taken away while it was working, which is not.
 
 **4. And, separately, the container-restart race**, which predates all of this:
 `failed to execute http request: Get "http://127.0.0.1:54321/storage/v1/bucket":
@@ -617,7 +649,13 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
 
 - [ ] Look at the machine: disk health and free space first, then memory. A Mac
       that throws SIGBUS during a bundler and triples the time to unpack Node is
-      describing hardware, not configuration.
+      describing hardware, not configuration. **This is now the first thing on
+      this page rather than the last.** When it was written it rested on one bus
+      error; it now rests on five faults inside about nine hours on 2026-09-14 —
+      two SIGBUS, `setup-node` at 19 minutes against a normal 5, a sweep
+      cancelled while running, and the pre-existing container race. The two that
+      recovered did so *together*, which points at one sick machine rather than
+      four coincidences.
 - [ ] Update the Supabase CLI on the runner, which is forty minor versions
       behind and is the most likely fix for (4).
 - [ ] Decide whether one self-hosted runner is still the right shape. Every
