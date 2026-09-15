@@ -107,7 +107,7 @@ export async function registerPushNotifications(onToken: (token: string) => void
   if (platform() === "android" && !FCM_CONFIGURED) {
     console.warn(
       "[push] android/app/google-services.json is absent, so FCM cannot initialise. " +
-        "Skipping push registration — calling it would crash the app, not fail softly.",
+        "Skipping push registration: calling it would crash the app, not fail softly.",
     );
     return;
   }
