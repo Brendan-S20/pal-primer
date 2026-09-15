@@ -697,6 +697,12 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
       | invoices filters (CI) | stability timeout at 90s | passes locally |
       | `/get-started` at 402px | "execution context was destroyed" | 149 passed |
       | iPad Pro portrait clip check | `page.goto` timeout at 90s | 149 passed |
+      | the tech search bar (CI) | `toBeVisible()` after 1.7m | **5 passed in 42.9s** |
+      | the day map at 768px (CI) | `toBeVisible()` after 1.7m | **5 passed in 42.9s** |
+
+      The last two are the sharpest illustration in the set: on the runner they
+      burned 1.7 minutes each and failed; on the same source locally the whole
+      file passes in under forty-five seconds.
 
       None is a layout fault. All three are a timeout or a stability assertion,
       which are the first things to break when the machine cannot schedule
@@ -704,6 +710,26 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
       fails a whole run and is indistinguishable from a real finding until
       somebody re-runs it by hand — which is the second-order cost of the
       memory problem and the reason it is worth fixing rather than living with.
+
+      **And then it happened again, an hour later, on a one-character diff.**
+      CI run 35032585730 on `3002bbb`, 2026-09-15 23:15, in the "What ships
+      inside the native binary" step:
+
+      ```
+      transforming...✓ 760 modules transformed.
+      ... 89495 Bus error: 10           npm run build:native
+      ##[error]Process completed with exit code 138.
+      ```
+
+      That commit changes one character inside a string literal — an em dash to
+      a colon, to satisfy `check:em-dashes`. There is no reading of that diff in
+      which it produces a bus error.
+
+      This is the **third** SIGBUS on this runner and the first one that arrived
+      *after* the diagnosis above rather than before it. The prediction the
+      diagnosis makes is "Vite will keep dying at teardown while swap is full",
+      and it did, on a diff that cannot be blamed. Treat this entry as
+      confirmed rather than argued.
 
       - [ ] **Decide what to do about it.** Three options, in ascending order of
             cost: reboot to clear 15 GB of swap, which buys time and fixes
