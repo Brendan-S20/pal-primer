@@ -80,6 +80,8 @@ ios/screenshots/
 .swarm/
 .agents/
 ruvector.db
+agentdb.rvf
+agentdb.rvf.lock
 .claude/agents/
 .claude/commands/
 .claude/helpers/
