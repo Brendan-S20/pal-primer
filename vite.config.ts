@@ -5,6 +5,7 @@
 //     error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { loadEnv } from "vite";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
@@ -27,6 +28,27 @@ Object.assign(process.env, serverEnv);
 // the web product and not something to change as a side effect of fixing the
 // native one. `npm run build:native` sets it; `npm run build` is untouched.
 const NATIVE_BUILD = process.env.NATIVE_BUILD === "1";
+
+// ── DOES THIS BINARY HAVE A FIREBASE CONFIG? ──────────────────────────────
+//
+// Without `android/app/google-services.json`, Capacitor's push plugin calls
+// FirebaseMessaging.getInstance() and Firebase throws
+// "Default FirebaseApp is not initialized in this process". That exception is
+// raised on the native CapacitorPlugins thread, so `await
+// PushNotifications.register()` in TypeScript NEVER REJECTS -- it is uncaught,
+// and the process dies. No try/catch in src/ can prevent it.
+//
+// Measured on an emulator 2026-09-15: grant the notification permission and the
+// app is killed on launch, deterministically. Deny it and the app is fine,
+// because registerPushNotifications returns early. So the crash lands on
+// exactly the users who say yes, which is why nothing caught it.
+//
+// This flag is the honest signal, and it maintains itself: drop the real
+// google-services.json into android/app/ and push registration switches back on
+// at the next build with no code change. It does NOT gate iOS, which reaches
+// APNs through Capacitor without Firebase.
+const FCM_CONFIGURED =
+  NATIVE_BUILD && existsSync(path.resolve(process.cwd(), "android/app/google-services.json"));
 
 // ── WHERE THE CLIENT BUILD ACTUALLY WRITES, WHICH IS NOT ONE PLACE ───────
 //
@@ -220,6 +242,10 @@ export default defineConfig({
             // app.houndstack.com, so an iOS fix that reaches `src/` is live on
             // the web the moment it merges — see docs/ios-qa-results.md.
             "import.meta.env.VITE_NATIVE_BUNDLE": JSON.stringify("1"),
+            // See FCM_CONFIGURED above. "" when the Firebase config is absent,
+            // which makes registerPushNotifications skip register() on Android
+            // rather than crash the app.
+            "import.meta.env.VITE_FCM_CONFIGURED": JSON.stringify(FCM_CONFIGURED ? "1" : ""),
           },
         }
       : {}),

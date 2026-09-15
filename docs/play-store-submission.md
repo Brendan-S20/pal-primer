@@ -123,7 +123,7 @@ Everything here is from the audit on 2026-09-15 and is verified, not assumed.
 | **Deep links** | only `MAIN`/`LAUNCHER` | a decision + hosted `assetlinks.json` |
 | **Release signing** | absent | an upload key (§2b) |
 | **AAB build** | builds a debug APK | a gradle task (§2a) |
-| FCM push | `google-services.json` absent | a Firebase app |
+| **FCM push** | **absent — CRASHED the app until guarded 2026-09-15** | a Firebase app |
 | Launcher icon | stock adaptive-icon template | the HoundStack asset |
 | Back button | handler exists, never exercised | a running app |
 | Splash | correct, cream `#fdfaf1` | — |

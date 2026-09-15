@@ -141,10 +141,14 @@ platform is not failed for not having it.
 
 **Needs credentials or assets:**
 
-- **No `google-services.json`.** FCM cannot register without it, so push is
-  dead on Android in the same way it is dead on iOS without the APNs key. Same
-  three-step shape: create the Firebase app, download the file, add the server
-  key.
+- **No `google-services.json`. This CRASHED THE APP — see "The first run".**
+  This entry used to say push was "dead on Android in the same way it is dead on
+  iOS without the APNs key". That comparison was wrong, and the difference is
+  the whole point: on iOS a missing APNs key means push quietly does not arrive.
+  On Android a missing `google-services.json` meant the process died on launch
+  for any user who granted the notification permission. Guarded 2026-09-15; the
+  file is still needed for push to actually work. Same three-step shape: create
+  the Firebase app, download the file, add the server key.
 - The launcher icon and splash image are Capacitor's defaults.
 
 **Not looked at:**
@@ -237,3 +241,59 @@ anyway, which is a failure mode that same comment does not cover.
 - **`monkey` cannot launch this app.** `monkey -p consulting.thenorth.houndstack
   -c android.intent.category.LAUNCHER 1` exits `-5` even though the package is
   installed. `am start -n consulting.thenorth.houndstack/.MainActivity` works.
+
+## The crash the first run found — 2026-09-15
+
+Granting the notification permission **killed the app**, deterministically.
+
+```
+FATAL EXCEPTION: CapacitorPlugins
+Caused by: java.lang.IllegalStateException: Default FirebaseApp is not
+  initialized in this process consulting.thenorth.houndstack.
+    at com.google.firebase.messaging.FirebaseMessaging.getInstance
+    at com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin.register:103
+```
+
+`registerPushNotifications()` asks for the permission, and on `granted` calls
+`PushNotifications.register()`. That reaches `FirebaseMessaging.getInstance()`,
+which throws because there is no `google-services.json`.
+
+**Three things about it are worth keeping.**
+
+**It cannot be caught in TypeScript.** The exception is raised on the native
+`CapacitorPlugins` thread, so `await PushNotifications.register()` never
+rejects. A `try/catch` around it does nothing — checked, not assumed.
+
+**It lands only on users who say yes.** Deny the permission and
+`registerPushNotifications` returns at the `perm.receive !== "granted"` check
+before `register()` is reached. So the failure mode selects for the users who
+agreed to notifications, and an emulator with the permission denied looks
+perfectly healthy.
+
+**Nothing in the suite could have seen it.** 3,625 unit tests, a typecheck and
+four browser sweeps all pass with this present, because it is a native crash in
+a plugin the web bundle never loads. It took running the app.
+
+### The guard
+
+`FCM_CONFIGURED` in `src/lib/native-build.ts`, defined by `vite.config.ts` from
+whether `android/app/google-services.json` exists at build time.
+`registerPushNotifications` returns early on Android when it is false, and says
+so in the console rather than failing silently.
+
+It maintains itself: drop the real `google-services.json` into `android/app/`
+and push registration switches back on at the next build with no code change.
+iOS is deliberately not gated — it reaches APNs without Firebase.
+
+Verified on the emulator under the conditions that crashed: permission granted,
+**0** fatal exceptions where there was reliably 1, app alive and focused.
+
+**This is a guard, not the fix.** Push still does not work on Android and will
+not until the Firebase config exists.
+
+## Also verified in that run
+
+- **The hardware back button works as documented.** At the navigation root it
+  minimizes rather than exiting: process alive, pid unchanged, focus to the
+  launcher. `src/lib/native.ts` promised "never exit-blast the WebView" and it
+  does not. Previously listed as "has a handler and has never been exercised".

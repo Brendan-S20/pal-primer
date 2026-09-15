@@ -53,6 +53,27 @@
 export const IS_NATIVE_BUNDLE: boolean = import.meta.env.VITE_NATIVE_BUNDLE === "1";
 
 /**
+ * Does this binary carry a Firebase config, so push registration is safe?
+ *
+ * Android only. `android/app/google-services.json` is absent from this repo, and
+ * without it Capacitor's push plugin calls `FirebaseMessaging.getInstance()`,
+ * which throws `Default FirebaseApp is not initialized in this process` on the
+ * native CapacitorPlugins thread. That exception does NOT surface as a rejected
+ * promise in TypeScript -- it is uncaught, and the app dies. A try/catch around
+ * `PushNotifications.register()` does nothing.
+ *
+ * Measured on an emulator 2026-09-15: granting the notification permission kills
+ * the app on launch, every time. Denying it is fine, because
+ * `registerPushNotifications` returns before `register()`. So the crash hits
+ * precisely the users who agree to notifications.
+ *
+ * iOS is deliberately NOT gated on this: it reaches APNs through Capacitor
+ * without Firebase, and a missing APNs key there means push quietly does not
+ * arrive rather than a crash.
+ */
+export const FCM_CONFIGURED: boolean = import.meta.env.VITE_FCM_CONFIGURED === "1";
+
+/**
  * Inline style that lets a STICKY TOP BAR sit under the status bar properly.
  *
  * `sticky top-0` inside a `viewport-fit=cover` WebView sticks to the PHYSICAL

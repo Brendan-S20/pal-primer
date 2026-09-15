@@ -1,5 +1,6 @@
 // Runtime helpers that gracefully no-op on web and use Capacitor natively.
 import { Capacitor } from "@capacitor/core";
+import { FCM_CONFIGURED } from "@/lib/native-build";
 
 export const isNative = () => Capacitor.isNativePlatform();
 export const platform = () => Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
@@ -84,6 +85,33 @@ export async function getPositionNative(): Promise<NativePosition | null> {
 
 export async function registerPushNotifications(onToken: (token: string) => void) {
   if (!isNative()) return;
+
+  // ── ANDROID WITHOUT A FIREBASE CONFIG CRASHES, IT DOES NOT DEGRADE ──────
+  //
+  // `register()` below reaches FirebaseMessaging.getInstance(), which throws
+  // "Default FirebaseApp is not initialized in this process" when
+  // android/app/google-services.json is missing. It is raised on the native
+  // CapacitorPlugins thread, so the `await` NEVER REJECTS -- the exception is
+  // uncaught and the process dies. Wrapping this in try/catch does nothing;
+  // that was checked, not assumed.
+  //
+  // Measured on an emulator 2026-09-15: grant the notification permission and
+  // the app is killed on launch, deterministically. Deny it and nothing happens,
+  // because the permission check below returns first -- so the crash lands on
+  // exactly the users who say yes, which is why no test ever saw it.
+  //
+  // FCM_CONFIGURED is build-time and maintains itself: drop the real
+  // google-services.json into android/app/ and this switches back on at the next
+  // build with no code change here. iOS is untouched -- it reaches APNs without
+  // Firebase, where a missing key means push quietly does not arrive.
+  if (platform() === "android" && !FCM_CONFIGURED) {
+    console.warn(
+      "[push] android/app/google-services.json is absent, so FCM cannot initialise. " +
+        "Skipping push registration — calling it would crash the app, not fail softly.",
+    );
+    return;
+  }
+
   const { PushNotifications } = await import("@capacitor/push-notifications");
   const perm = await PushNotifications.requestPermissions();
   if (perm.receive !== "granted") return;
