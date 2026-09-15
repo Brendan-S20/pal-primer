@@ -335,6 +335,28 @@ jobs:
               echo "::error::a migration was refused while the stack came up — this is the SQL, not the runner. The CLI's own error is above; a fresh stack replays supabase/migrations/ as part of starting."
               exit 1
             fi
+            # Somebody else's stack owns the port. Same reasoning as the clause
+            # above, for the same reason: retrying cannot help, and the banner
+            # at the bottom would send you to `docker info`, which succeeds.
+            #
+            # Found on 2026-09-15. This job failed three times running with
+            #
+            #     Bind for 0.0.0.0:54322 failed: port is already allocated
+            #
+            # and the real cause was a DIFFERENT Supabase project's stack —
+            # ref eqzmqxtngbulzhimrymr — that had been up on the runner for five
+            # hours holding 54321-54327. `supabase stop` below could never have
+            # cleared it, because it only stops the project in this directory.
+            #
+            # Deliberately NOT `supabase stop --all`: the runner is also
+            # somebody's development machine, and a CI job that kills whatever
+            # else is running on it is a worse failure than the one it fixes.
+            # So this reports the truth and stops, and a human decides whether
+            # to free the ports or give this project its own in config.toml.
+            if grep -qE 'port is already allocated|Bind for 0\.0\.0\.0:' "start-$attempt.log"; then
+              echo "::error::a local Supabase port is already in use — this is NOT the migrations and NOT Docker being unhealthy. Another Supabase project's stack is running on this machine and holding 54321-54327. Find it with 'docker ps --format \"{{.Names}}\t{{.Ports}}\" | grep supabase', then stop that project's stack, or give this project its own ports in supabase/config.toml."
+              exit 1
+            fi
             echo "::warning::supabase start failed (attempt $attempt of 3); stopping the stack and retrying"
             supabase stop --no-backup >/dev/null 2>&1 || true
             sleep 20
