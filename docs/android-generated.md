@@ -22,8 +22,10 @@ The APK is 11MB and carries all 375 files of the web bundle, including the
 chunk that sets `viewport-fit=cover` at runtime — so the safe-area opt-in
 reaches Android as well.
 
-**What still has not been observed:** the app has never RUN. Not on a device,
-not on an emulator. Everything below about behaviour is still a claim.
+**It has now RUN — 2026-09-15.** This line used to say the app had never been
+launched, on a device or an emulator, and that everything below about behaviour
+was a claim. That is no longer true. See "The first run" at the end, which
+supersedes the edge-to-edge entry in the honest list below.
 
 ## The good news first
 
@@ -131,14 +133,11 @@ platform is not failed for not having it.
 
 **Unverifiable without a running device:**
 
-- **Edge-to-edge.** `targetSdkVersion` is 36, and Android enforces edge-to-edge
-  from API 35. The WebView will draw under the system bars, which is the exact
-  class of fault the iOS pass spent a day on (`ios.contentInset`, 62pt of dead
-  space, a `fixed` overlay that could not reach the top). Whether
-  `env(safe-area-inset-*)` resolves in Capacitor's Android WebView, and whether
-  the header and tab bar land correctly, is **unknown**. It is the first thing
-  to check on a device, and the geometry harness in `ios/UITests/Geometry.swift`
-  is the shape of the check to copy.
+- **Edge-to-edge — ANSWERED 2026-09-15, see "The first run".** This entry
+  predicted the WebView would draw under the system bars and land the header and
+  tab bar wrongly. It does not. Kept here, struck through rather than deleted,
+  because the prediction was reasonable and the reason it was wrong is the
+  useful part.
 
 **Needs credentials or assets:**
 
@@ -158,3 +157,83 @@ platform is not failed for not having it.
 - Nothing has run at Android viewport sizes. The Apple sweep covers 320-1366,
   which brackets most Android phones and tablets, but "brackets" is not
   "measured".
+
+---
+
+# The first run — 2026-09-15
+
+The app launched for the first time, on an emulator, and **it works**. No crash,
+and it renders correctly: HoundStack branding, the sign-in card, and the Google,
+Apple and Facebook buttons all present.
+
+**Rig.** `sdkmanager "emulator" "system-images;android-36;google_apis;arm64-v8a"`
+— **5.5GB** installed (1.2GB emulator, 4.3GB image), which is worth knowing
+before anyone budgets the 1.5GB this was first estimated at. AVD `HoundStack-QA`,
+Pixel 7 profile, Android 16 / SDK 36, 1080x2400 at density 420 (412x915dp),
+**gesture navigation active**, no display cutout by default.
+
+## Edge-to-edge: measured, and the prediction above was wrong
+
+Measured over the WebView DevTools protocol rather than from a screenshot:
+`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`, then
+`Runtime.evaluate`. `env()` cannot be read directly, so a hidden `position:fixed`
+element takes `padding: env(safe-area-inset-*)` and its computed padding is read
+back.
+
+| | |
+|---|---|
+| viewport meta in the Android bundle | `width=device-width, initial-scale=1, viewport-fit=cover` |
+| `env(safe-area-inset-*)`, all four | **`0px`** |
+| same, with a 48dp cutout active | **`0px`** |
+| window frame (`dumpsys window`) | `[0,0][1080,2400]` — the whole display |
+| window flags | `EDGE_TO_EDGE_ENFORCED`, `layoutInDisplayCutoutMode=always` |
+| WebView `innerHeight` | **839dp in a 915dp screen** |
+
+Two things follow, and they pull in opposite directions.
+
+**First, the good news.** The viewport meta IS correct in the Android bundle, so
+the `IS_NATIVE_BUNDLE` gating in `src/routes/__root.tsx` reaches Android as
+intended. And although the *window* is genuinely edge-to-edge, the *WebView* is
+inset by 76dp — Capacitor 8 applies the system-bar insets to the WebView
+container rather than exposing them to CSS. So `env() = 0` is the **correct**
+value: the content never enters the unsafe region. Nothing sits under the
+gesture bar, nothing is unreachable. **This is not a bug.**
+
+**Second, the part to worry about.** Every `pb-[env(safe-area-inset-bottom)]` in
+`src/` — the tab bar, the sheets, the lightbox, `PublicShell` — contributes
+exactly nothing on Android. The layout is correct *only* because Capacitor
+insets the container. If that behaviour changes, or somebody sets a different
+`layoutInDisplayCutoutMode`, those rules become load-bearing and are already
+zero — **and the class-list tests still pass, because the class IS there.**
+
+That is precisely the trap the comment at `src/routes/__root.tsx:89` describes
+for iOS, arriving on Android by a different mechanism. On iOS the fix was to add
+`viewport-fit=cover`; here the tag is already present and the insets are zero
+anyway, which is a failure mode that same comment does not cover.
+
+## What this run did NOT establish
+
+- **The cutout case is not settled.** The 76dp gap did not change when a 48dp
+  cutout was enabled and verified active
+  (`DisplayCutout{insets=Rect(0, 126 - 0, 0)}`). Either the inset is robust or
+  the app did not re-layout — `insetsChanged=false`. Do not quote this as proof
+  that notched devices are fine.
+- **`MobileTabBar` was never seen.** Reaching it needs a signed-in session, and
+  no credentials were used. The tab bar is the single most important surface for
+  this question and it remains unobserved.
+- Deep links, the hardware back button, and FCM are all untouched by this run.
+
+## Three things that will bite the next person
+
+- **The build fails after `npm ci`.** Gradle caches references to
+  `node_modules/@capacitor/*/android/build`, which `npm ci` deletes:
+  `Failed to create MD5 hash for file '.../id-to-file.tab' as it does not exist`.
+  Fix: `./gradlew --stop`, then remove `android/build`, `android/app/build` and
+  every `node_modules/@capacitor/*/android/build`.
+- **A timed-out `adb` call kills the emulator.** If an `adb` invocation is killed
+  mid-start it leaves the daemon broken and the emulator dies with
+  `Unable to connect to adb daemon on port: 5037`. Start
+  `adb -a server nodaemon` as a persistent process *before* launching.
+- **`monkey` cannot launch this app.** `monkey -p consulting.thenorth.houndstack
+  -c android.intent.category.LAUNCHER 1` exits `-5` even though the package is
+  installed. `am start -n consulting.thenorth.houndstack/.MainActivity` works.
