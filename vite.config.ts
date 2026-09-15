@@ -182,7 +182,121 @@ export default defineConfig({
   // so the two can coexist without either clobbering the other.
   ...(NATIVE_BUILD ? { nitro: false as const } : {}),
   vite: {
-    ...(NATIVE_BUILD ? { build: { outDir: "dist-native" } } : {}),
+    build: {
+      // ── THE BUILD ABORTS AT RANDOM INSIDE THE CSS MINIFIER ─────────────
+      //
+      // CI run 34252803499 on commit 1dc09931 of `main` died in the build
+      // step with SIGABRT and no JS frame:
+      //
+      //     ✓ 755 modules transformed.
+      //     thread '<unnamed>' panicked at .../src/printer.rs:350:30:
+      //     byte index 2 is out of bounds of ``
+      //     72429 Abort trap: 6   vite build
+      //
+      // That is a lightningcss bug, not a report about this stylesheet. Line
+      // 350 of printer.rs in the version we resolve (1.32.0) is, verbatim:
+      //
+      //     serialize_name(&ident[2..], self)?;
+      //
+      // inside `Printer::write_dashed_ident`, and column 30 is the slice. It
+      // strips the leading `--` off a custom property name, so it panics on
+      // exactly one input: an ident whose backing string is EMPTY. No parse
+      // of real CSS produces one — every dashed ident starts with `--` and is
+      // therefore at least two bytes — which is consistent with the failure
+      // being nondeterministic rather than input-dependent: the same content
+      // passed the same step an hour earlier, the failing commit builds clean
+      // locally, and that commit touched no CSS at all.
+      //
+      // ── WHY NOT JUST UPGRADE LIGHTNINGCSS, WHICH WOULD BE CHEAPER ──────
+      //
+      // Because there is no fixed version to upgrade to. That line is
+      // BYTE-IDENTICAL in 1.32.0, in 1.33.0 (latest at time of writing) and
+      // on master — same function, same line number, same unguarded
+      // `&ident[2..]` — so pinning forward buys nothing. Neither changelog
+      // mentions a printer panic and the issue tracker has no report of this
+      // one. Checked, not assumed; re-check before reverting this.
+      //
+      // ── WHAT THIS LINE ACTUALLY BUYS, WHICH IS NOT IMMUNITY ────────────
+      //
+      // Vite 8 inverted the default: `minifyCSS` uses lightningcss unless
+      // `cssMinify` is the literal string "esbuild" (see its
+      // `if (config.build.cssMinify === "esbuild")` — `true` falls through to
+      // lightningcss). So this project was on lightningcss for minification
+      // without ever asking for it. This opts out.
+      //
+      // It removes ONE of THREE lightningcss entry points. `npm run build`
+      // makes twelve calls into it, four from each of:
+      //
+      //   1. @tailwindcss/vite's own `optimize()`, during `transform`
+      //   2. Vite's `compileLightningCSS` (bundleAsync), during `transform`,
+      //      because @lovable.dev/vite-tanstack-config sets
+      //      `css.transformer: "lightningcss"` for dev/build parity
+      //   3. Vite's `minifyCSS`, during renderChunk — this one, now esbuild
+      //
+      // Neither 1 nor 2 is reachable from here without changing the CSS
+      // pipeline itself: (1) takes no options through the wrapper, and
+      // turning it off would also drop its nesting flattening and vendor
+      // prefixing; (2) is a deliberate choice by the wrapper. So this is a
+      // reduction in exposure, NOT a proof that the build can no longer
+      // abort. If it aborts again, that is where to look — and the stack
+      // being identical will not mean this change failed.
+      //
+      // The reason to believe #3 is the one that panicked is the CI log's
+      // ordering: 1 and 2 both run inside `transform`, and the panic printed
+      // after `✓ 755 modules transformed.`, which is the line that marks the
+      // end of that phase. Confirmed against the local call order by
+      // instrumenting lightningcss: minifyCSS is last in each of the two
+      // build passes. That is an inference from ordering, not a repro. The
+      // panic was never reproduced locally: forty consecutive builds BEFORE
+      // this change were clean, which puts the local rate under 1 in 40 and
+      // means the twelve clean builds after it prove nothing on their own.
+      // Only CI staying green over weeks will.
+      //
+      // ── WHAT IT COSTS, MEASURED — WHICH IS NOTHING ─────────────────────
+      //
+      // The trade was expected to be worse minification for a build that
+      // does not abort. It was measured instead of asserted, and there is no
+      // trade: the deployed CSS got SMALLER.
+      //
+      //                        lightningcss      esbuild        delta
+      //   assets/styles.css    145,406 raw       144,332 raw    -1,074
+      //                         22,912 gzip       22,854 gzip      -58
+      //   assets/map-tiles.css  15,095 raw        15,092 raw         -3
+      //                          6,393 gzip        6,394 gzip        +1
+      //   total                160,501 raw       159,424 raw    -1,077 (-0.67%)
+      //                         29,483 gzip       29,428 gzip      -55 (-0.19%)
+      //
+      // Nothing was dropped to get there. The two files have the same 1,962
+      // rule blocks, the same 293 distinct custom-property names (compared
+      // as sets, in both directions), and the same 89 `@property`, 25
+      // `@media`, 149 `@supports` and 7 `@keyframes`. The whole difference is
+      // four trailing semicolons and this, which lightningcss emitted:
+      //
+      //   a{color:inherit;-webkit-text-decoration:inherit;
+      //     -webkit-text-decoration:inherit;-webkit-text-decoration:inherit;
+      //     -webkit-text-decoration:inherit;-webkit-text-decoration:inherit;
+      //     text-decoration:inherit}
+      //
+      // Five identical prefixed declarations it did not dedupe; esbuild
+      // collapses them to one. No prefix coverage is lost — the `-webkit-`
+      // form is still there, and so is the unprefixed one after it.
+      //
+      // Numbers are from this commit's own build; re-measure rather than
+      // trusting them if the stylesheet has moved on.
+      //
+      // ── AND WHY esbuild IS NOW IN devDependencies ──────────────────────
+      //
+      // Vite 8 lists it as an OPTIONAL peer, so nothing installs it on
+      // Vite's behalf; `minifyCSS` does a lazy `import("esbuild")` that
+      // throws if it is absent. It was only present here because
+      // `react-email` happens to depend on a version that hoists to the root
+      // and dedupes into Vite's range. That is the same shape as the /sw.js
+      // fault documented at the top of this file — a contract we depend on
+      // and do not state — so the line above is now backed by a declared
+      // dependency rather than by somebody else's dependency tree.
+      cssMinify: "esbuild",
+      ...(NATIVE_BUILD ? { outDir: "dist-native" } : {}),
+    },
     // The SPA prerender boots a Vite PREVIEW server, and Vite's default host
     // binds the IPv6 wildcard `::`. On a host without IPv6 that throws
     // `EAFNOSUPPORT: address family not supported ::` and the whole native
