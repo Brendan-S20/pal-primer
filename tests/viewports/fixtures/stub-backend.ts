@@ -745,6 +745,44 @@ const BASE_STUBS: Record<string, Stub> = {
   listMyDayFieldStaff: {
     staff: fx.STAFF.map((s) => ({ id: s.id, display_name: s.display_name, role: s.role })),
   },
+  // ── THE TECHNICIAN'S OWN FORWARD VIEW ───────────────────────────────────
+  //
+  // Deliberately NOT a tidy week. The row most likely to break is the one that
+  // touches several zones with long names next to a two-digit count, so one day
+  // here does exactly that; another is partly worked, so the "N left" branch
+  // renders; and the dates are spread rather than consecutive, because "which
+  // days they work" is only a real answer if days off are absent rather than
+  // shown as zero.
+  getMyUpcomingDays: {
+    staff: { id: fx.STAFF[0].id, organization_id: fx.ORG_ID, display_name: "Dana Whitfield-Ramirez" },
+    days: [
+      {
+        date: fx.TODAY,
+        stops: 12,
+        done: 5,
+        zones: ["Grosse Pointe Woods & Harper Woods", "Downriver \u2014 Taylor"],
+        firstEta: `${fx.TODAY}T13:05:00.000Z`,
+        lastEta: `${fx.TODAY}T21:40:00.000Z`,
+      },
+      {
+        date: fx.day(1),
+        stops: 8,
+        done: 0,
+        zones: ["Southgate"],
+        firstEta: `${fx.day(1)}T13:15:00.000Z`,
+        lastEta: `${fx.day(1)}T19:50:00.000Z`,
+      },
+      // A gap here on purpose: day(2) is a day off and must simply not appear.
+      {
+        date: fx.day(3),
+        stops: 1,
+        done: 0,
+        zones: [],
+        firstEta: null,
+        lastEta: null,
+      },
+    ],
+  },
   getMyDay: () => {
     // ── ONE STOP IN EACH STATE, ON PURPOSE ──────────────────────────────
     //

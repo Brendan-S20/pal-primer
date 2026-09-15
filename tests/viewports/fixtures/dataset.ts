@@ -36,7 +36,10 @@ export const SIGNUP_URL =
   "https://app.houndstack.com/signup/whitfield-ramirez-yard-and-waste-services-llc";
 
 const iso = (d: Date) => d.toISOString();
-const day = (offset: number) => {
+/** A date `offset` days from today, org-local, as YYYY-MM-DD. Exported since
+ *  2026-09-14 so a fixture can place a day AFTER today without recomputing the
+ *  arithmetic and drifting from TODAY. */
+export const day = (offset: number) => {
   const d = new Date();
   d.setHours(12, 0, 0, 0);
   d.setDate(d.getDate() + offset);

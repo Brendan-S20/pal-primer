@@ -67,6 +67,29 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
 
     const dismissed = Boolean(org.data?.onboarding_dismissed_at);
 
+    // ── THE ORDER IS THE PRODUCT, NOT A LIST ────────────────────────────
+    //
+    // "Add or import clients" used to sit FIFTH, behind zones, staff and the
+    // dump site. What that meant in practice, measured on the only three real
+    // signups this app has had: one verified their email 85 seconds in, created
+    // two service zones by 4m17s, and then met "Add your dump site" -- and
+    // never signed in again. Not once in the 29 days since. The other two never
+    // got past the account.
+    //
+    // Nobody arrives wanting to tell a stranger where they unload. They arrive
+    // with a book of business. Clients is the step that makes every other
+    // screen in the product do something, so it comes first among the doing
+    // steps; everything else is arrangement of a thing you have not put in yet.
+    //
+    // The dump site keeps its place immediately BEFORE the first route rather
+    // than moving to the end, because that is where it pays: the planner routes
+    // to it, and a first route planned without one is the 116-minute version of
+    // the 22-minute day the step's own note describes. It is asked for once
+    // there is a route to improve.
+    //
+    // `staff` ticks itself -- bootstrapOrganization writes an owner staff row
+    // at signup -- so its position is cosmetic for a one-truck business, which
+    // is most of them.
     const steps: OnboardingStep[] = [
       {
         // Frictionless signup: verification is a to-do, not a wall — but
@@ -78,6 +101,33 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         done: Boolean((org.data as any)?.email_verified_at),
         to: "/payments",
         cta: "Verify",
+      },
+      {
+        // ── WHY THIS STEP HAS TWO BUTTONS ───────────────────────────────
+        //
+        // The description has promised the CSV since this checklist was
+        // written; the step offered one control and it went to the
+        // one-at-a-time form. An operator arriving with a book of business --
+        // the only kind of signup that already has customers to bring -- read
+        // "or upload a CSV to seed many at once" and was handed a form to fill
+        // in once per client.
+        //
+        // /imports is in the sidebar and the command palette, so this is not
+        // a missing feature; it is a missing door on the one screen that
+        // names it. The step it belongs to is also the step that matters:
+        // every organization in production that never added a client never
+        // came back either.
+        //
+        // Gated because /imports is owner+office_manager while /clients/new
+        // also admits dispatchers -- an ungated second button would offer a
+        // dispatcher a route that redirects them straight back.
+        id: "clients",
+        label: "Add or import clients",
+        description: "Bring in at least one client (or upload a CSV to seed many at once).",
+        done: (clients.count ?? 0) > 0,
+        to: "/clients/new",
+        cta: "Add client",
+        alt: { to: "/imports", cta: "Import CSV", gate: "/imports" },
       },
       {
         id: "zones",
@@ -125,33 +175,6 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         done: (dumps.count ?? 0) > 0,
         to: "/waste-log",
         cta: "Add dump site",
-      },
-      {
-        // ── WHY THIS STEP HAS TWO BUTTONS ───────────────────────────────
-        //
-        // The description has promised the CSV since this checklist was
-        // written; the step offered one control and it went to the
-        // one-at-a-time form. An operator arriving with a book of business --
-        // the only kind of signup that already has customers to bring -- read
-        // "or upload a CSV to seed many at once" and was handed a form to fill
-        // in once per client.
-        //
-        // /imports is in the sidebar and the command palette, so this is not
-        // a missing feature; it is a missing door on the one screen that
-        // names it. The step it belongs to is also the step that matters:
-        // every organization in production that never added a client never
-        // came back either.
-        //
-        // Gated because /imports is owner+office_manager while /clients/new
-        // also admits dispatchers -- an ungated second button would offer a
-        // dispatcher a route that redirects them straight back.
-        id: "clients",
-        label: "Add or import clients",
-        description: "Bring in at least one client (or upload a CSV to seed many at once).",
-        done: (clients.count ?? 0) > 0,
-        to: "/clients/new",
-        cta: "Add client",
-        alt: { to: "/imports", cta: "Import CSV", gate: "/imports" },
       },
       {
         id: "route",

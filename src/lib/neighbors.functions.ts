@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { resolveCaller, requirePermission } from "@/lib/authz.server";
+import { resolveCaller } from "@/lib/authz.server";
 import { hasPermission } from "@/lib/permissions";
 
 // Door-to-door canvassing is a FIELD activity: the /neighbors route admits
@@ -14,9 +14,101 @@ import { hasPermission } from "@/lib/permissions";
 async function resolveMemberOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
 }
-async function resolveSeederOrgId(supabase: any, userId: string): Promise<string> {
-  return (await requirePermission(supabase, userId, "view_client_directory")).orgId;
+/**
+ * Who may seed doors around a given client.
+ *
+ * The directory holders may seed around anyone. A technician may seed around a
+ * client THEY ARE ASSIGNED TO -- which is the canvassing case as it actually
+ * happens: you are at the house, you knock next door. That is not a widening of
+ * the client directory, because it grants nothing the tech could not already
+ * read: My Day hands them that client's name, address and gate code to do the
+ * work with.
+ *
+ * Reported from an iPhone as "I can't select a client to go off of for
+ * neighbors/doors" -- the picker was hidden behind view_client_directory, and
+ * this function was the reason it would not have worked even if shown.
+ */
+async function resolveSeederOrgId(
+  supabase: any,
+  userId: string,
+  clientId: string,
+): Promise<string> {
+  const caller = await resolveCaller(supabase, userId);
+  if (hasPermission(caller.role, "view_client_directory")) return caller.orgId;
+
+  const { data: staffRow } = await supabase
+    .from("staff")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (staffRow?.id) {
+    const { data: mine } = await supabase
+      .from("visits")
+      .select("id")
+      .eq("organization_id", caller.orgId)
+      .eq("assigned_staff_id", staffRow.id)
+      .eq("client_id", clientId)
+      .limit(1)
+      .maybeSingle();
+    if (mine) return caller.orgId;
+  }
+  throw new Error("Not authorized");
 }
+
+/**
+ * The clients a caller may seed canvassing doors around.
+ *
+ * Directory holders get the roster. Everyone else gets the clients on their own
+ * work -- distinct clients from the visits assigned to them -- so a technician
+ * has a picker with real names in it without the client list being handed to a
+ * role the product deliberately keeps it from.
+ */
+export const listCanvassSeedClients = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const caller = await resolveCaller(supabase, userId);
+
+    if (hasPermission(caller.role, "view_client_directory")) {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, display_name")
+        .eq("organization_id", caller.orgId)
+        .eq("active", true)
+        .order("display_name")
+        .limit(500);
+      if (error) throw new Error(error.message);
+      return { clients: (data ?? []) as Array<{ id: string; display_name: string }>, scope: "org" };
+    }
+
+    const { data: staffRow } = await supabase
+      .from("staff")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!staffRow?.id) return { clients: [], scope: "mine" as const };
+
+    const { data, error } = await supabase
+      .from("visits")
+      .select("client_id, clients(display_name)")
+      .eq("organization_id", caller.orgId)
+      .eq("assigned_staff_id", staffRow.id)
+      .not("client_id", "is", null)
+      .limit(500);
+    if (error) throw new Error(error.message);
+
+    const seen = new Map<string, string>();
+    for (const r of (data ?? []) as any[]) {
+      const name = r.clients?.display_name;
+      if (r.client_id && name && !seen.has(r.client_id)) seen.set(r.client_id, name);
+    }
+    return {
+      clients: [...seen.entries()]
+        .map(([id, display_name]) => ({ id, display_name }))
+        .sort((a, b) => a.display_name.localeCompare(b.display_name)),
+      scope: "mine" as const,
+    };
+  });
 
 export type NeighborLead = {
   id: string;
@@ -140,7 +232,7 @@ export const seedNeighborsForClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => seedSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveSeederOrgId(context.supabase, context.userId);
+    const orgId = await resolveSeederOrgId(context.supabase, context.userId, data.clientId);
     const { data: prop } = await context.supabase
       .from("properties")
       .select("street, city, region, postal_code, latitude, longitude")

@@ -57,6 +57,7 @@ import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedNeighborsRouteImport } from './routes/_authenticated/neighbors'
+import { Route as AuthenticatedMyScheduleRouteImport } from './routes/_authenticated/my-schedule'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
@@ -374,6 +375,11 @@ const AuthenticatedNotificationsRoute =
 const AuthenticatedNeighborsRoute = AuthenticatedNeighborsRouteImport.update({
   id: '/neighbors',
   path: '/neighbors',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMyScheduleRoute = AuthenticatedMyScheduleRouteImport.update({
+  id: '/my-schedule',
+  path: '/my-schedule',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedMyDayRoute = AuthenticatedMyDayRouteImport.update({
@@ -828,6 +834,7 @@ export interface FileRoutesByFullPath {
   '/leads': typeof AuthenticatedLeadsRoute
   '/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/my-day': typeof AuthenticatedMyDayRoute
+  '/my-schedule': typeof AuthenticatedMyScheduleRoute
   '/neighbors': typeof AuthenticatedNeighborsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -950,6 +957,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof AuthenticatedInventoryRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/my-day': typeof AuthenticatedMyDayRoute
+  '/my-schedule': typeof AuthenticatedMyScheduleRoute
   '/neighbors': typeof AuthenticatedNeighborsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -1075,6 +1083,7 @@ export interface FileRoutesById {
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
+  '/_authenticated/my-schedule': typeof AuthenticatedMyScheduleRoute
   '/_authenticated/neighbors': typeof AuthenticatedNeighborsRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
@@ -1203,6 +1212,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/messages'
     | '/my-day'
+    | '/my-schedule'
     | '/neighbors'
     | '/notifications'
     | '/onboarding'
@@ -1325,6 +1335,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/leads'
     | '/my-day'
+    | '/my-schedule'
     | '/neighbors'
     | '/notifications'
     | '/onboarding'
@@ -1449,6 +1460,7 @@ export interface FileRouteTypes {
     | '/_authenticated/leads'
     | '/_authenticated/messages'
     | '/_authenticated/my-day'
+    | '/_authenticated/my-schedule'
     | '/_authenticated/neighbors'
     | '/_authenticated/notifications'
     | '/_authenticated/onboarding'
@@ -1927,6 +1939,13 @@ declare module '@tanstack/react-router' {
       path: '/neighbors'
       fullPath: '/neighbors'
       preLoaderRoute: typeof AuthenticatedNeighborsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/my-schedule': {
+      id: '/_authenticated/my-schedule'
+      path: '/my-schedule'
+      fullPath: '/my-schedule'
+      preLoaderRoute: typeof AuthenticatedMyScheduleRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/my-day': {
@@ -2594,6 +2613,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRouteWithChildren
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
+  AuthenticatedMyScheduleRoute: typeof AuthenticatedMyScheduleRoute
   AuthenticatedNeighborsRoute: typeof AuthenticatedNeighborsRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
@@ -2628,6 +2648,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedMessagesRoute: AuthenticatedMessagesRouteWithChildren,
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
+  AuthenticatedMyScheduleRoute: AuthenticatedMyScheduleRoute,
   AuthenticatedNeighborsRoute: AuthenticatedNeighborsRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,

@@ -12,6 +12,7 @@ import {
   MapPin,
   Route as RouteIcon,
   Truck,
+  CalendarDays,
   Trash2,
   MessageSquare,
   MessageCircleWarning,
@@ -94,6 +95,11 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "Field",
     items: [
       { title: "My day", url: "/my-day", icon: Truck },
+      // Directly under My day, because it answers the question My day raises:
+      // this is today, what about Thursday. Filtered by canAccess like every
+      // other item, and the tab bar's More sheet is built from this list, so
+      // adding it here is also how a technician on a phone reaches it.
+      { title: "My schedule", url: "/my-schedule", icon: CalendarDays },
       { title: "Waste log", url: "/waste-log", icon: Trash2 },
       { title: "Messages", url: "/messages", icon: MessageSquare },
       { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
