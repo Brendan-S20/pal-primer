@@ -647,15 +647,70 @@ context deadline exceeded` on the database job, three occurrences, each after
 every migration had already applied, each cleared by a single re-run. The
 Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
 
-- [ ] Look at the machine: disk health and free space first, then memory. A Mac
-      that throws SIGBUS during a bundler and triples the time to unpack Node is
-      describing hardware, not configuration. **This is now the first thing on
-      this page rather than the last.** When it was written it rested on one bus
-      error; it now rests on five faults inside about nine hours on 2026-09-14 —
-      two SIGBUS, `setup-node` at 19 minutes against a normal 5, a sweep
-      cancelled while running, and the pre-existing container race. The two that
-      recovered did so *together*, which points at one sick machine rather than
+- [x] **Measured 2026-09-15. It is MEMORY, and it is not close.** This asked for
+      disk health first, then memory. Disk is fine — 69Gi free on root, 199Gi on
+      `RufloLocal`, both about 10-15% used. Memory is not:
+
+      | | |
+      |---|---|
+      | physical RAM | **16 GB** |
+      | swap | **15.4 GB used of 16.4 GB — 94% full** |
+      | swapouts since boot | **277,844,036** |
+      | swapins since boot | 265,362,767 |
+      | load average | **59-72 on 8 cores** |
+      | uptime | 17 days |
+
+      A quarter of a billion swapouts and a 94%-full swap file is not a busy
+      machine, it is a machine that has been thrashing for a long time. And it
+      explains **every** fault in this section with one mechanism rather than
       four coincidences.
+
+      **Why SIGBUS specifically.** Vite, esbuild and rolldown all read through
+      `mmap`. When the system cannot back a memory-mapped page — which is what
+      an exhausted swap file means — the access raises SIGBUS, not ENOMEM. That
+      is exactly the shape of fault (2): *"Vite reported SUCCESS and the process
+      was then killed."* The build finished, and the teardown touched a page the
+      kernel could no longer produce.
+
+      The same pressure explains `setup-node` at 19 minutes against a normal 5
+      (unpacking a tarball while paging), a browser sweep that overran its
+      budget, and a viewport spec that failed on an assertion about *geometric
+      stability*, which is the first thing to break when frames arrive late.
+
+      **What is actually on this machine**, measured while CI was queued: Docker
+      Desktop with 12 containers, an Android emulator, a Playwright sweep,
+      Chrome, Finder, and `ChatGPT.app` at 68% CPU. The self-hosted runner is
+      sharing 16 GB with an interactive desktop.
+
+      **In fairness, some of that load was mine** — the emulator and the sweep
+      were my doing, and I stopped the emulator on finding this. But swap does
+      not reach 94% and a quarter-billion swapouts in one afternoon; that is 17
+      days of accumulation, and it was already true on 2026-09-14 when the two
+      bus errors landed.
+
+      **Three flakes in one afternoon, all the same shape.** Collected while
+      doing other work on 2026-09-15, and each one re-run to prove it rather
+      than assumed:
+
+      | spec | failure | on re-run |
+      |---|---|---|
+      | invoices filters (CI) | stability timeout at 90s | passes locally |
+      | `/get-started` at 402px | "execution context was destroyed" | 149 passed |
+      | iPad Pro portrait clip check | `page.goto` timeout at 90s | 149 passed |
+
+      None is a layout fault. All three are a timeout or a stability assertion,
+      which are the first things to break when the machine cannot schedule
+      promptly. `playwright.config.ts` has `retries: 0`, so any one of them
+      fails a whole run and is indistinguishable from a real finding until
+      somebody re-runs it by hand — which is the second-order cost of the
+      memory problem and the reason it is worth fixing rather than living with.
+
+      - [ ] **Decide what to do about it.** Three options, in ascending order of
+            cost: reboot to clear 15 GB of swap, which buys time and fixes
+            nothing; stop running CI on the machine somebody is also using, which
+            is the honest fix and overlaps with the runner-shape question below;
+            or more RAM, since 16 GB does not fit Docker plus an emulator plus a
+            browser sweep plus a desktop.
 - [ ] Update the Supabase CLI on the runner, which is forty minor versions
       behind and is the most likely fix for (4).
 - [ ] Decide whether one self-hosted runner is still the right shape. Every
