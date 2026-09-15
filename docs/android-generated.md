@@ -149,7 +149,15 @@ platform is not failed for not having it.
   for any user who granted the notification permission. Guarded 2026-09-15; the
   file is still needed for push to actually work. Same three-step shape: create
   the Firebase app, download the file, add the server key.
-- The launcher icon and splash image are Capacitor's defaults.
+- ~~The launcher icon and splash image are Capacitor's defaults.~~ The splash
+  was fixed on 2026-08-22 (see above). **The launcher icon was done on
+  2026-09-15**: the hound-in-H from `public/pwa-512-maskable.png`, generated at
+  all five densities. The mark is scaled to 72dp of the 108dp adaptive canvas
+  and padded out with the same cream, because only that centre 72dp is
+  guaranteed visible -- a full-bleed foreground is cropped differently by every
+  launcher's mask. The background layer moved from the template's `#FFFFFF` to
+  `#fdfaf1`, so the icon, the boot splash and the first screen are one colour.
+  Verified on the emulator, not just in the file sizes.
 
 **Not looked at:**
 

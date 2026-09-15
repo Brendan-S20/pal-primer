@@ -124,7 +124,7 @@ Everything here is from the audit on 2026-09-15 and is verified, not assumed.
 | **Release signing** | absent | an upload key (§2b) |
 | **AAB build** | builds a debug APK | a gradle task (§2a) |
 | **FCM push** | **absent — CRASHED the app until guarded 2026-09-15** | a Firebase app |
-| Launcher icon | stock adaptive-icon template | the HoundStack asset |
+| Launcher icon | ~~stock template~~ **done 2026-09-15** | — |
 | Back button | handler exists, never exercised | a running app |
 | Splash | correct, cream `#fdfaf1` | — |
 | Permissions | 7 declared, test-enforced | — |

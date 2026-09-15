@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- The adaptive icon's background layer. Was #FFFFFF from the Android Studio
+       template, which put a white square behind a cream mark on every launcher
+       that applies a mask larger than the art. #fdfaf1 is the same cream as the
+       splash, colors.xml and the iOS launch screen, so the icon, the boot splash
+       and the first screen are one colour. -->
+    <color name="ic_launcher_background">#fdfaf1</color>
 </resources>
