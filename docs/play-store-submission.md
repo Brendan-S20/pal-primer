@@ -10,9 +10,15 @@ agree, this file says so and points there rather than restating it; where Play
 differs from the App Store, the difference is the whole point of the section.
 
 **Read `docs/android-generated.md` first.** It records what `npx cap add android`
-produced and what had to be fixed. The single most important line in it is still
-true as of today: **the app has never run.** Not on a device, not on an emulator.
-Everything below about behaviour is a claim about a binary nobody has launched.
+produced, what had to be fixed, and — under "The first run" — what happened when
+it was finally launched.
+
+This paragraph said "the app has never run" when this file was written on
+2026-09-15, and stopped being true a few hours later on the same day. It has now
+run on an emulator: it does not crash, it renders correctly, and edge-to-edge,
+the tab bar, the back button and the launcher icon were all measured rather than
+assumed. What it has NOT done is run on physical hardware, which is a different
+and smaller claim — see §3.
 
 ---
 

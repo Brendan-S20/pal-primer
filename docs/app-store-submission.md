@@ -225,9 +225,11 @@ it does
 [ ] Apple Developer account active
 [x] Bundle ID consulting.thenorth.houndstack registered — confirmed in App
       Store Connect 2026-08-24. App record exists (Apple ID 6804336787, SKU
-      consulting.thenorth.houndstack, primary category Business, secondary
-      Utilities). The record was created THROUGH Xcode Cloud, which matters
-      for the workflow trap in docs/ios-build.md.
+      consulting.thenorth.houndstack). The record was created THROUGH Xcode
+      Cloud, which matters for the workflow trap in docs/ios-build.md.
+      Categories were Business / Utilities when this was written on 2026-08-24;
+      the owner set them to **Productivity then Business** on 2026-09-15, which
+      is what §5 of docs/owner-actions-before-submission.md had been asking for.
 [ ] Push Notifications capability enabled, APNs key created, server env set
       (see docs/ios-build.md; push is code-complete but not provisioned)
 [ ] App icon renders correctly at every size in Xcode's asset preview
