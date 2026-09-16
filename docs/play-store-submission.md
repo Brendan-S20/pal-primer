@@ -183,7 +183,9 @@ decision about link behaviour as much as a manifest change.
 - [ ] Data safety form completed.
 - [ ] IARC content rating questionnaire completed.
 - [ ] Privacy policy URL in the listing.
-- [ ] Launcher icon is HoundStack's, not the template's.
+- [x] **Done 2026-09-15.** Launcher icon is the hound-in-H at all five
+      densities, scaled into the 72dp zone adaptive icons actually guarantee and
+      padded with `#fdfaf1`. Verified on a launcher, not just in file sizes.
 - [ ] Internal testing track install verified on a real handset.
 
 Screenshots: Play's requirements differ from Apple's in sizes and counts, and
