@@ -95,8 +95,7 @@ describe("the schema gate can be scheduled", () => {
 
 describe("psql is found rather than assumed", () => {
   const step = migrations.steps.find((s) => s.name === "Find psql") as
-    | { name: string; run: string }
-    | undefined;
+    { name: string; run: string } | undefined;
 
   it("has a step that looks for it", () => {
     expect(step, "no `Find psql` step in the migrations job").toBeTruthy();
@@ -128,9 +127,7 @@ describe("psql is found rather than assumed", () => {
     expect(searched, "Apple Silicon prefix missing from the search").toContain(
       "/opt/homebrew/opt/libpq/bin",
     );
-    expect(searched, "Intel prefix missing from the search").toContain(
-      "/usr/local/opt/libpq/bin",
-    );
+    expect(searched, "Intel prefix missing from the search").toContain("/usr/local/opt/libpq/bin");
   });
 
   it("puts what it finds on PATH for the later steps", () => {
