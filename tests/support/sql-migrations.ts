@@ -32,8 +32,13 @@ export const readMigration = (f: string): string => readFileSync(join(MIGRATIONS
  *  The prose in these migrations quotes the very pattern being banned, so a
  *  rule that reads comments reports its own documentation as a violation. */
 export function stripLineComments(sql: string): string {
+  // `/\r?\n/` rather than `"\n"`: a Windows runner joined the pool on
+  // 2026-09-16 and Git there checks out CRLF, which left a trailing \r on
+  // every line and made every anchored pattern below miss. `.gitattributes`
+  // now pins eol=lf so this should never see CRLF again — this is the belt to
+  // that brace, in the one helper every SQL-reading suite goes through.
   return sql
-    .split("\n")
+    .split(/\r?\n/)
     .map((line) => {
       let out = "";
       let quote: string | null = null;

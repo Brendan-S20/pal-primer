@@ -1,0 +1,37 @@
+# ── WHY THIS FILE EXISTS ───────────────────────────────────────────────────
+#
+# A Windows self-hosted runner joined the pool on 2026-09-16. Git on Windows
+# checks out text with CRLF by default, and a large part of this repo's test
+# suite PARSES TEXT: tests/support/sql-migrations.ts reads every file in
+# supabase/migrations/ and splits it into lines, and several suites then match
+# line-anchored patterns against the result.
+#
+# With CRLF every one of those lines carries a trailing \r, every anchored
+# pattern misses, and the suites fail with assertions about policies and
+# guards that say nothing whatsoever about line endings. Run 35142420876:
+# Typecheck passed, Tests failed, and the failures were exactly the suites that
+# read SQL.
+#
+# So line endings are pinned here rather than left to whichever machine picked
+# up the job. The parser was ALSO made CRLF-tolerant in the same commit -- this
+# file makes the checkout deterministic, that change makes it not matter.
+
+* text=auto eol=lf
+
+# Windows batch files are the one thing that genuinely needs CRLF: cmd.exe can
+# mis-parse a LF-only .bat. gradlew.bat is the live example here.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Leave binaries alone. `text=auto` detects most of these, but the launcher
+# icons and any future keystore are worth being explicit about -- a corrupted
+# PNG from newline translation is a confusing thing to debug.
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.webp  binary
+*.pdf   binary
+*.jks   binary
+*.keystore binary
+*.p12   binary
+*.node  binary
