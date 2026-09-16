@@ -176,7 +176,10 @@ decision about link behaviour as much as a manifest change.
 - [ ] A Play Console account exists and the app is created.
 - [ ] Upload key generated and stored **outside the repo directory**.
 - [ ] `bundleRelease` produces a signed `.aab`.
-- [ ] The app has **actually run**, and edge-to-edge is measured rather than assumed.
+- [x] **Done 2026-09-15.** The app has run on an emulator and edge-to-edge is
+      measured, not assumed: the window is edge-to-edge, Capacitor insets the
+      WebView to 839dp of a 915dp screen, and `MobileTabBar` sits 75.8dp clear
+      of the gesture bar with every control over the 44px floor.
 - [ ] Data safety form completed.
 - [ ] IARC content rating questionnaire completed.
 - [ ] Privacy policy URL in the listing.

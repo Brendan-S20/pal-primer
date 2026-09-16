@@ -24,6 +24,12 @@ Google and Facebook are live too. `npm run check:oauth` reports all three.
 it lapses, Sign in with Apple stops at Apple, invisibly to the app.
 `npm run apple:secret` prints the date when it generates one.
 
+**Parked by the owner on 2026-09-15**, deliberately rather than forgotten. It is
+recorded here because the failure mode is silent: nothing in this repo can
+detect a lapsed Apple secret, so the only thing standing between you and a
+sign-in method that stops working is a calendar entry. Worth making once the
+launch settles.
+
 ## 2. Move the `.p8` out of the repo directory — DONE
 
 - [x] Gone from the repo root, and nothing leaked. Re-verified 2026-08-30:
@@ -71,9 +77,8 @@ bundle to run. If a Test action is ever added back, it will fail the same way.
 
 ## 5. Category — DECIDED: Productivity
 
-- [ ] Set it in App Store Connect. `docs/app-store-submission.md` already says
-      Productivity; App Store Connect said Utilities, so ASC is the one to
-      change.
+- [x] **Done, 2026-09-15.** Set in App Store Connect, as Productivity then
+      Business. The doc and the console agree again.
 
 ## 6. Allow the app's redirect URL in Supabase — DONE
 
@@ -159,8 +164,9 @@ you are happy.
 
 Still open, and both still need you:
 
-- [ ] `brendancreataco@gmail.com` holds **owner** on the demo org. Keep or
-      remove. Unchanged — this was not part of the relocation.
+- [x] **Keep. Decided 2026-09-15.** `brendancreataco@gmail.com` holds owner on
+      the demo org. It costs nothing and it exercises the Google sign-in path
+      with a second real account, which no automated check does.
 - [x] **The two franchise locations were on `America/Chicago`. Settled
       2026-09-12: both are Eastern.** You decided they were not a deliberate
       fixture, and the evidence agreed -- their own customers average
@@ -191,10 +197,14 @@ value at a time.
 | `road_factor` | 1.45 on the parent, 1.30 on everyone else | **1.35 everywhere, including the column default** | 3,168 measured OSRM legs give a median of 1.354. Both values in use were wrong, in opposite directions. |
 | `timezone` | `America/Chicago` on both locations | `America/New_York` | above |
 
-- [ ] **`park_walk_min` is still 6 on the parent and 2 on every other
-      organization** -- the fourth value from that same statement, and the only
-      one left. 6 minutes is a city figure: find a space, walk back. 2 is a
-      suburban driveway.
+- [x] **Dropped, 2026-09-15.** `park_walk_min` stays 6 on the parent and 2
+      elsewhere. Owner's call, and a reasonable one: it pulls in more variables
+      than the difference is worth, and the difference is four minutes on demo
+      data. The measurement attempt below is kept because it explains WHY it
+      could not be settled with evidence, which is the part worth not
+      repeating. **`park_walk_min` is 6 on the parent and 2 on every other
+      organization** -- the fourth value from that same statement. 6 minutes is
+      a city figure: find a space, walk back. 2 is a suburban driveway.
 
       I tried to measure it rather than guess and could not. There is no
       `arrived_at`, but the gap between one visit's `completed_at` and the next
@@ -211,7 +221,8 @@ value at a time.
 
 Live and verified from our side. One thing is still not checkable from here:
 
-- [ ] Confirm the Meta app is **Live**, not Development, once review completes.
+- [x] **Live, confirmed 2026-09-15.** Review completed and the app is Live, so
+      it now works for buyers with no role on the Meta app.
 
 In Development it works for anyone with a role on the app and fails for every
 real buyer, and the two are indistinguishable to an unauthenticated request —
@@ -361,10 +372,12 @@ that a merged fix may simply not be deployed yet. Nothing asserts on the id:
 the check has no way to know which deployment SHOULD be live. It just stops
 "not deployed" and "deployed and broken" from looking identical.
 
-- [ ] Decide whether pushes to `main` should deploy automatically. Today every
-      release is a manual step, so merged work sits until somebody presses the
-      button, and the deployment gate on `main` grades whatever happens to be
-      live rather than the commit it is attached to.
+- [x] **Decided 2026-09-15: no, and commit straight to `main`.** Through launch
+      the workflow is commits to `main` rather than feature branches, with
+      releases staying a manual step. Branches come back when the product is
+      stable and the work turns into hot fixes or a 1.1. The deployment gate
+      still grades whatever is live rather than the commit it is attached to —
+      that is understood and accepted for now, not overlooked.
 
 **One observation worth keeping, which is NOT the cause.** Nitro records
 `/sw.js` in that embedded manifest with `size: 21373` while the file on disk is
@@ -443,8 +456,12 @@ a drifted quantity indefinitely. The direction that matters is deactivating an
 employee and going on charging for the seat, on an invoice the customer has no
 reason to question. The opposite direction only costs us money.
 
-- [ ] Decide whether the nightly run should reconcile seats for every org with a
-      live subscription.
+- [x] **Decided 2026-09-15: no nightly job.** Reconciliation stays event-driven.
+      The owner's reasoning, and it is the right one: every change that moves a
+      seat count is initiated through this product, so the record already exists
+      at the moment it happens and a nightly sweep re-derives what is already
+      known. The 2026-09-09 warning on the users page stays, because that is
+      what makes a failed event visible rather than silent.
 
 It is perhaps fifteen lines in `src/routes/api/public/hooks/nightly.ts`, calling
 the `syncOrgSeatQuantity` that already exists. What makes it yours rather than
@@ -771,9 +788,11 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
             browser sweep plus a desktop.
 - [ ] Update the Supabase CLI on the runner, which is forty minor versions
       behind and is the most likely fix for (4).
-- [ ] Decide whether one self-hosted runner is still the right shape. Every
-      check in both workflows queues behind every other, so one slow step
-      delays everything, and one unhealthy machine stops all of it.
+- [x] **Decided 2026-09-15: one runner is enough, a second is not the answer.**
+      The queueing is real but it is a symptom — see the memory measurement
+      above. A second runner on the same host would inherit the same exhausted
+      swap; a second HOST is a different proposal and belongs with the decision
+      immediately above, not here.
 
 ## Things you do NOT need to do
 
