@@ -38,6 +38,50 @@ Two things the docs add that are worth knowing:
   30452: "Deleting and resubmitting places the request in the same queue as a
   new submission." Correcting the rejected request in place keeps its position.
 
+### Re-verified 2026-09-16 against Twilio's live docs, and one trap found
+
+Checked through the Twilio documentation tools rather than from memory, because
+this file rests on a reading of the spec and specs move.
+
+**The substance holds. The quote does not.** Twilio's 30482 page was modified
+**2026-09-14**, two weeks after this file was written, and the description has
+been reworded. It now opens:
+
+> This error occurs when the business email in a Toll-Free verification
+> submission **cannot be verified as associated with the business**. Use the
+> official business domain where available.
+
+rather than the "uses a free or personal email provider instead of your business
+domain" quoted above. Softer framing, same requirement, and the second remedy
+this file already records — publishing a free address on the site — is still
+there verbatim. Nothing below needs changing. The quoted line is simply no
+longer word-for-word, which matters only if somebody goes looking for it.
+
+**The trap: the obvious fix for 30482 can trigger 30483.** Error 30483,
+"Contact must be a business representative", lists among its causes:
+
+> You entered a generic role or title, such as **Admin or Support**, instead of
+> an authorized business representative.
+
+and among its solutions:
+
+> Make sure the contact details you submit belong to that business
+> representative, **including `businessContactEmail`**.
+
+So setting `BusinessContactEmail` to `support@houndstack.com` — the obvious
+reading of "use an official domain", and the address already visible in the
+screenshot — swaps a 30482 rejection for a plausible 30483 one. A shared
+mailbox is not the named representative's address.
+
+**Use a person's address on the business domain**, matching the
+`businessContactFirstName` / `businessContactLastName` on the same submission.
+`support@` is the right address for the HELP response and the wrong one for this
+field.
+
+This is inference from two error pages read together, not something Twilio
+states as a rule — but it costs one character of care to avoid and a rejection
+cycle to discover.
+
 ## 30507 — Opt-In Does Not Match the Use Case
 
 Three separate mismatches. The first is almost certainly the trigger.
