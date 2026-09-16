@@ -77,7 +77,15 @@ does need:
 - **git**, **curl** and **tar**, which the runner installer itself requires.
 - About **2 GB** of free disk for `node_modules` plus build output, and more if
   you keep several workspaces.
-- Enough RAM for the Vite build. It peaks around 1.5 GB.
+- **RAM, and this line used to understate it badly.** It said "enough RAM for
+  the Vite build, it peaks around 1.5 GB", which is true of the build's own
+  footprint and close to useless as a requirement. What matters is 1.5 GB
+  **free at the moment the build runs**, on a machine that is also holding
+  Docker, a browser sweep and whatever you have open. On 2026-09-15 this
+  machine had 16 GB of RAM, a swap file **94% full**, 277 million swapouts and
+  a load average of 59-73 on 8 cores — and the builds died. See
+  `docs/owner-actions-before-submission.md` §12, and the sixth entry under
+  "Reading a failure" below.
 
 The whole job is roughly three minutes: `npm ci` 17s, typecheck 47s, tests 33s,
 build 37s, dead-machinery 2s, lint 34s.
@@ -102,9 +110,10 @@ Worth knowing before the first surprising result.
 
 ## Reading a failure
 
-Five things that look alike on the Actions page and are not. Written on
+Six things that look alike on the Actions page and are not. Written on
 2026-09-09 after a day of hitting four of them, including two I diagnosed
-wrongly first. The discriminator is given for each, because guessing costs a
+wrongly first; a sixth was added on 2026-09-15 after a day of hitting only that
+one, eight times. The discriminator is given for each, because guessing costs a
 ten-minute run.
 
 **Never picked up.** The job sits `queued` with no `runner_id`, no steps and no
@@ -129,6 +138,42 @@ That is normal here. I called it wedged at four minutes and was wrong; the same
 step then completed successfully at 6m39s. Before concluding a step has hung,
 compare it against a step that completed on the same machine rather than
 against a hosted baseline.
+
+**The machine is out of memory.** The newest of these and the hardest to see,
+because it does not present as a resource problem — it presents as your code
+being broken, in three different disguises:
+
+```
+✓ built in 9.24s
+sh: line 1: 93391 Bus error: 10           vite build
+##[error]Process completed with exit code 138.
+```
+
+Exit 138 is SIGBUS. Vite, esbuild and rolldown all read through `mmap`, and when
+the kernel cannot back a memory-mapped page the access raises SIGBUS rather than
+ENOMEM. Read those two lines together: **the build reported success and was then
+killed.** Nothing about a diff does that.
+
+The same pressure also produces Playwright specs failing on `toBeVisible()` or
+`page.goto` after 90 seconds, and viewport specs failing on assertions about
+geometric *stability* — the first thing to break when frames arrive late. On
+2026-09-15 this machine produced **eight such failures in one day**: three
+SIGBUS builds and five viewport flakes. Every one passed on a re-run. One of
+them cost an afternoon chasing a search bar that was never involved.
+
+**The discriminator** is two commands, and it is worth running them before
+reading anything else:
+
+```
+sysctl vm.swapusage        # swap above ~50% used is the tell
+uptime                     # load far above your core count
+```
+
+Both `ci.yml` and `sandboxes.yml` now run this automatically and emit a
+`::warning::` with the numbers, so recent runs carry their own answer. If you
+see that warning above a failure, **re-run once before believing the failure**.
+`retries: 0` in `playwright.config.ts` means a single flake fails a whole run
+and is indistinguishable from a real finding until somebody does.
 
 **Queued behind another workflow.** `ci.yml` shows nothing in progress and
 three runs queued, which reads exactly like a dead runner. It is one runner and
