@@ -582,6 +582,32 @@ spread against an effect of 3-6%, so the number was reporting which stop
 happened to sort first. Fixed by trying every start; the figures above are from
 after that.
 
+## 11b. The Auth server's connection cap — NEW, and it is a launch item
+
+Found on 2026-09-16 by running Supabase's PERFORMANCE advisor, which had never
+been run against this project. Recorded nowhere before now.
+
+> Your project's Auth server is configured to use at most **10 connections**.
+> Increasing the instance size without manually adjusting this number will not
+> improve the performance of the Auth server. Switch to a percentage based
+> connection allocation strategy instead.
+
+Supabase's own remediation link is the *going into production* guide, which is
+the transition this product is making right now. It is inert while one demo
+tenant signs in. It becomes the ceiling on concurrent sign-ins the moment real
+ones do, and the trap in that sentence is the expensive one: paying for a bigger
+instance and getting no more Auth throughput, because the allocation is absolute
+rather than proportional.
+
+- [ ] Switch Auth to percentage-based connection allocation in the Supabase
+      dashboard, before the first real sign-in load rather than after.
+
+**The security advisor was re-run at the same time and nothing regressed** — the
+6 anon-executable functions are the same 6, the 9 deny-all tables the same 9, no
+ERROR-level findings. Compared by name rather than by count, because
+`docs/security-advisor-triage.md` opens by warning that the count moves. The
+full re-run is recorded at the end of that file.
+
 ## 12. The `Mac0s` CI runner — NEW to this list, and the newest of these entries
 
 Every workflow in this repo runs on one self-hosted Mac. Three separate faults

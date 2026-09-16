@@ -241,3 +241,57 @@ production.
   computed and discarded; `aiAvailableFor` gates on `phase === "paid"` whether
   the flag is true or false. `TRIAL_ENFORCEMENT` is `true` and pinned by a test,
   but flipping it today would change no observable behaviour.
+
+---
+
+# Re-run 2026-09-16, and what the PERFORMANCE advisor says
+
+The security advisor was re-run against production through the Supabase MCP
+tools. **Nothing regressed**, and the check was done by NAME rather than by
+count, because this file's own opening warns that the count moves:
+
+| lint | level | count | state |
+|---|---|---|---|
+| `anon_security_definer_function_executable` | WARN | 6 | **the same 6**, §3 — none added, none removed |
+| `authenticated_security_definer_function_executable` | WARN | 90 | §2, by design |
+| `rls_enabled_no_policy` | INFO | 9 | **the same 9**, §4, `roadmap_vote_throttle` included |
+| `extension_in_public` | WARN | 1 | §5, `pg_net` |
+
+No ERROR-level findings. §1's real one (`staff_start_point`) does not reappear.
+
+## The performance advisor had never been run, and found one thing that matters
+
+Three of its four findings are noise or known:
+
+- **`unindexed_foreign_keys`, 78.** CLAUDE.md quotes this as its example of a
+  number that "describes a database, not this change" — it says 93 there, and it
+  is 78 now, which is the same point making itself.
+- **`no_primary_key`, 1.** `backup.demo_geo_20260830`, a backup table from the
+  Detroit relocation. Correct as it is.
+- **`unused_index`, 23.** Unused since the last statistics reset, which on a
+  product with one demo tenant means "not exercised yet" far more than it means
+  "not needed". Not actionable before real traffic.
+
+**The fourth is a launch item and is recorded nowhere else:**
+
+> Your project's Auth server is configured to use at most **10 connections**.
+> Increasing the instance size without manually adjusting this number will not
+> improve the performance of the Auth server. Switch to a percentage based
+> connection allocation strategy instead.
+
+Supabase's own remediation link for it is the *going into production* guide,
+which is exactly the transition this product is making. It is inert while one
+demo tenant signs in and becomes the ceiling on concurrent sign-ins the moment
+real ones do — and the trap named in the text is the expensive one: paying for a
+larger instance and getting no more Auth throughput, because the cap is absolute
+rather than proportional.
+
+It is a project setting in the Supabase dashboard, so it is an owner action. See
+`docs/owner-actions-before-submission.md`.
+
+## Re-running these
+
+Both advisors are one call each through the Supabase MCP tools, and worth
+running after any DDL change — the security one catches a table that gained RLS
+without a policy, which is the failure this file exists to triage. Compare by
+NAME against the sections above, never by count.
