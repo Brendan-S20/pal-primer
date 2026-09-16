@@ -731,6 +731,38 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
       and it did, on a diff that cannot be blamed. Treat this entry as
       confirmed rather than argued.
 
+      **This probably also explains #216, which is open as a lightningcss bug.**
+      That PR swaps the CSS minifier to escape a SIGABRT inside lightningcss,
+      and its own investigation is what makes the case. Read its three findings
+      together:
+
+      - The panic is `serialize_name(&ident[2..])` on an ident whose backing
+        string is **empty** — and the PR says plainly that is an input **"no
+        parse of real CSS produces, since every dashed ident starts with `--`
+        and is therefore at least two bytes."**
+      - It was **never reproduced locally**: "Forty consecutive builds *before*
+        this change were clean." Every observation is from CI run
+        34252803499 — on this runner.
+      - The line is byte-identical in 1.32.0, 1.33.0 and master, no changelog
+        mentions it, and **the issue tracker has no report of it.** For a
+        library this widely used, nobody else hitting it is itself evidence.
+
+      An impossible input, arriving nondeterministically, only on the one
+      machine that is demonstrably truncating file writes and raising SIGBUS,
+      is better explained by memory corruption than by a bug in the parser. The
+      truncated 10.8MB `rolldown` binary found on 2026-09-15 is the same shape
+      of fault: a byte sequence that should not exist, on the same host.
+
+      **This is not an argument against merging #216.** It measures smaller CSS
+      output, it removes one of three lightningcss entry points, and it is well
+      evidenced. It is an argument about what it *is*: the PR already says
+      "this is a reduction in exposure, not a proof that the build can no longer
+      abort", and that sentence is likely more literally true than it was
+      written to be. If the aborts continue after it merges, the answer is not
+      the remaining two entry points — it is this section.
+
+      Nothing has been reported upstream, and on this reading nothing should be.
+
       - [ ] **Decide what to do about it.** Three options, in ascending order of
             cost: reboot to clear 15 GB of swap, which buys time and fixes
             nothing; stop running CI on the machine somebody is also using, which
