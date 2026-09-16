@@ -57,27 +57,21 @@ describe("the schema gate can be scheduled", () => {
     );
   });
 
-  it("differs from verify by exactly the UNIX_RUNNER prefix, and nothing else", () => {
-    // This used to assert the two were IDENTICAL, on the reasoning that "two
-    // jobs with two different spellings is how half of CI ends up on a machine
-    // nobody meant to point it at". That reasoning was right for one runner and
-    // is wrong for two: verify is every-step-portable and is the longest job in
-    // the repo, so it SHOULD be free to use either machine, and this job should
-    // not.
+  it("uses the same expression as verify, which is true again and for a new reason", () => {
+    // This asserted identity, then briefly asserted a deliberate difference,
+    // and is back to identity. The history is the useful part.
     //
-    // The concern behind it survives, though — the spellings must differ
-    // DELIBERATELY rather than drift. So the difference is pinned to exactly
-    // the prefix, which means a change to either one still has to be made to
-    // both.
-    expect(migrations["runs-on"]).toBe(
-      "${{ vars.UNIX_RUNNER || " + verify["runs-on"].replace("${{ ", ""),
-    );
-  });
-
-  it("leaves verify free to use either runner, which is the point of the second one", () => {
-    // If this ever grows a UNIX_RUNNER prefix, the Windows machine goes idle
-    // and the Mac goes back to carrying a ~40 minute job at 90%+ swap.
-    expect(verify["runs-on"]).toBe("${{ vars.CI_RUNNER || 'ubuntu-latest' }}");
+    // A Windows runner joined on 2026-09-16 and `verify` was left free to use
+    // it, on the reasoning that every STEP in that job is `npm run` and
+    // therefore portable. The steps were portable. The SUITE was not: 86 of
+    // 271 test files fail on Windows, mostly on path separators --
+    // `src\components/RouteMap.tsx` against `src/components/RouteMap.tsx`.
+    //
+    // So both jobs point at UNIX_RUNNER again. The original reasoning for this
+    // assertion still holds -- two jobs with two spellings is how half of CI
+    // ends up somewhere nobody meant -- and it now also guards against
+    // re-splitting them before the suite can actually survive the split.
+    expect(migrations["runs-on"]).toBe(verify["runs-on"]);
   });
 
   it("still falls back to hosted runners when the variable is unset", () => {

@@ -35,7 +35,27 @@ jobs:
     # So the switch back is Settings → Secrets and variables → Actions →
     # Variables → delete `CI_RUNNER`. One click, no PR, effective on the next
     # run. See docs/self-hosted-runner.md.
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # ── VERIFY IS PINNED TO UNIX TOO, AND THIS IS A RETREAT ─────────────
+    #
+    # It was left on the plain CI_RUNNER line on 2026-09-16 on the reasoning
+    # that every STEP in this job is `npm run` or `npx` and therefore portable.
+    # That was true of the steps and false of the job: 86 of 271 TEST FILES
+    # fail on Windows, and the reason is not subtle --
+    #
+    #     expected [ 'src\components/RouteMap.tsx' ]
+    #       to deeply equal [ 'src/components/RouteMap.tsx' ]
+    #
+    # Path separators, in a suite where a great many tests walk `src/` and
+    # assert on the paths they find. A CRLF fault was found and fixed first
+    # (.gitattributes, and /\r?\n/ in tests/support/sql-migrations.ts); it was
+    # real and it was the smaller half.
+    #
+    # So this comes back to the Mac until the suite is genuinely
+    # platform-agnostic. A red CI is worse than an idle runner. The work to
+    # undo this is worth doing -- it is the longest job in the repo and the Mac
+    # is the machine with the memory problem -- but it is a project, not a
+    # line, and it should not be discovered by leaving main red.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     # A hosted runner is destroyed after each job; a self-hosted one is not, so
     # a wedged step there holds the machine until someone notices.
     #
