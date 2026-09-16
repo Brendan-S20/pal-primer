@@ -254,8 +254,11 @@ jobs:
           # macOS has vm.swapusage; Linux runners have /proc/meminfo. If
           # neither is readable this says so rather than passing quietly -- an
           # unrun check and a clean one must not look alike.
-          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
-          load1=$(uptime | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          # Portable: Git Bash on Windows has neither getconf nor uptime, and
+          # every probe below is allowed to come back empty rather than fail.
+          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "?")
+          load1=$(uptime 2>/dev/null | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          [ -n "$load1" ] || load1="?"
           if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
             used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
             total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')
@@ -533,8 +536,11 @@ jobs:
           # macOS has vm.swapusage; Linux runners have /proc/meminfo. If
           # neither is readable this says so rather than passing quietly -- an
           # unrun check and a clean one must not look alike.
-          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
-          load1=$(uptime | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          # Portable: Git Bash on Windows has neither getconf nor uptime, and
+          # every probe below is allowed to come back empty rather than fail.
+          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "?")
+          load1=$(uptime 2>/dev/null | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          [ -n "$load1" ] || load1="?"
           if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
             used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
             total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')

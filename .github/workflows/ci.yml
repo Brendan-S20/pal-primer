@@ -108,9 +108,24 @@ jobs:
       # has no disk guard to sit beside, which is part of why the gap lasted.
       # docs/owner-actions-before-submission.md §12 is the write-up.
       - name: What the machine had left
+        # CANNOT fail a build. It did on 2026-09-16: a Windows self-hosted
+        # runner joined the pool, `runs-on: self-hosted` matched it, and this
+        # step died on shell syntax it does not have -- skipping Typecheck,
+        # Tests, Build and Lint, none of which care what OS they are on. The
+        # comment below already said it warns and never fails; that was the
+        # intent and not the implementation.
+        #
+        # `shell: bash` uses Git Bash on Windows, which the runner has because
+        # actions/checkout needs it. `continue-on-error` is the belt to that
+        # brace: a diagnostic must never be the reason a check did not run.
+        continue-on-error: true
+        shell: bash
         run: |
-          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
-          load1=$(uptime | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          # Portable: Git Bash on Windows has neither getconf nor uptime, and
+          # every probe below is allowed to come back empty rather than fail.
+          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "?")
+          load1=$(uptime 2>/dev/null | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          [ -n "$load1" ] || load1="?"
           if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
             used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
             total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')
@@ -130,8 +145,9 @@ jobs:
               echo "no swap configured; load ${load1} on ${cores} cores"
             fi
           else
-            echo "::warning::could not read swap usage on this runner (no vm.swapusage, no /proc/meminfo), so memory pressure was NOT checked for this run"
+            echo "::warning::could not read swap usage on this runner (no vm.swapusage, no /proc/meminfo), so memory pressure was NOT checked for this run. cores=${cores}, load=${load1}"
           fi
+          exit 0
 
       - name: Typecheck
         run: npx tsc --noEmit
