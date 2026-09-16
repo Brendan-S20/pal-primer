@@ -83,6 +83,21 @@ and name the offending file and line rather than counting violations:
 What is NOT enforced, and still has to be looked at: whether a thing is
 centred, and whether a layout is merely cramped rather than broken.
 
+**There is a second agent on this repo, and it reads a different file.** `main`
+deploys from Lovable, whose own AI agent can edit `src/` from a browser. It does
+not read this file — it reads the project's *knowledge*, which was **empty until
+2026-09-16** and now holds a condensed version of the rules above, section 2 of
+`docs/app-store-submission.md`, and the migration rule. Set on project
+`da34c6c7-a052-492e-a400-8085bfb98730` via the Lovable MCP tools
+(`get_project_knowledge` / `set_project_knowledge`).
+
+So **a change to the enforced rules above is a change in two places.** The tests
+will catch an agent that breaks a rule, but only after it has written the code
+and somebody has pushed it; the knowledge is what stops it being written. If you
+add a sixth rule, or retire one, update both. Two copies of a rule is the setup
+for exactly the drift this file keeps finding elsewhere, and the only defence is
+knowing the second copy exists.
+
 **A value with no space in it — an address, a link, an id — used to be on that
 list**, described here as impossible to check mechanically, because telling a
 40-character signup URL from an eight-character promo code means knowing the
