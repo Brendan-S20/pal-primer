@@ -224,6 +224,60 @@ jobs:
           fi
           echo "$((avail_kb / 1048576)) GiB free"
 
+          # ── AND ROOM IN MEMORY, WHICH IS WHAT ACTUALLY BIT US ───────────
+          #
+          # This WARNS and never fails, deliberately. Read why before
+          # changing it to an error.
+          #
+          # On 2026-09-15 this runner was measured at 15.4 GB of swap used of
+          # 16.4 GB -- 94% -- with 277 million swapouts and a load average of
+          # 59-73 on 8 cores, after 17 days uptime. That one condition produced
+          # EIGHT failures in a single day that all looked like code: five
+          # viewport specs failing on timeouts or stability assertions, and
+          # three builds dying with SIGBUS. Every one was re-run and passed.
+          # One sent somebody down a wrong diagnosis about a search bar that
+          # had nothing to do with it.
+          #
+          # Vite, esbuild and rolldown read through mmap. When the kernel
+          # cannot back a memory-mapped page -- which is what an exhausted swap
+          # file means -- the access raises SIGBUS, not ENOMEM. That is why
+          # "✓ built in 9.24s" is followed by "Bus error: 10": the build
+          # finished and the teardown touched a page that no longer existed.
+          #
+          # Failing here would be the wrong trade. The condition is not caused
+          # by the diff, so blocking the diff on it adds a ninth failure mode
+          # to a machine that already manufactures eight. What is worth having
+          # is the number IN THE LOG, so the next unexplained timeout is an
+          # explained one. docs/owner-actions-before-submission.md §12 is the
+          # write-up.
+          #
+          # macOS has vm.swapusage; Linux runners have /proc/meminfo. If
+          # neither is readable this says so rather than passing quietly -- an
+          # unrun check and a clean one must not look alike.
+          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
+          load1=$(uptime | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
+            used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
+            total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')
+            pct=$(awk -v u="$used" -v t="$total" 'BEGIN{printf "%d", (t>0? u*100/t : 0)}')
+            echo "swap ${pct}% used (${used}M of ${total}M), load ${load1} on ${cores} cores"
+            if [ "$pct" -ge 50 ]; then
+              echo "::warning::Swap is ${pct}% full on this runner (${used}M of ${total}M), load ${load1} on ${cores} cores. Timeouts, stability-assertion failures and SIGBUS in this run are more likely to be the machine than the diff -- re-run once before believing any of them. See docs/owner-actions-before-submission.md §12."
+            fi
+          elif [ -r /proc/meminfo ]; then
+            st=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
+            sf=$(awk '/SwapFree/{print $2}' /proc/meminfo)
+            if [ "${st:-0}" -gt 0 ]; then
+              pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
+              echo "swap ${pct}% used, load ${load1} on ${cores} cores"
+              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+            else
+              echo "no swap configured; load ${load1} on ${cores} cores"
+            fi
+          else
+            echo "::warning::could not read swap usage on this runner (no vm.swapusage, no /proc/meminfo), so memory pressure was NOT checked for this run"
+          fi
+
       # `db reset` drops the local database and replays supabase/migrations/
       # from nothing. That is a stronger claim than anything in ci.yml, which
       # only ever compares the repo against a database built incrementally over
@@ -448,6 +502,60 @@ jobs:
             exit 1
           fi
           echo "$((avail_kb / 1048576)) GiB free"
+
+          # ── AND ROOM IN MEMORY, WHICH IS WHAT ACTUALLY BIT US ───────────
+          #
+          # This WARNS and never fails, deliberately. Read why before
+          # changing it to an error.
+          #
+          # On 2026-09-15 this runner was measured at 15.4 GB of swap used of
+          # 16.4 GB -- 94% -- with 277 million swapouts and a load average of
+          # 59-73 on 8 cores, after 17 days uptime. That one condition produced
+          # EIGHT failures in a single day that all looked like code: five
+          # viewport specs failing on timeouts or stability assertions, and
+          # three builds dying with SIGBUS. Every one was re-run and passed.
+          # One sent somebody down a wrong diagnosis about a search bar that
+          # had nothing to do with it.
+          #
+          # Vite, esbuild and rolldown read through mmap. When the kernel
+          # cannot back a memory-mapped page -- which is what an exhausted swap
+          # file means -- the access raises SIGBUS, not ENOMEM. That is why
+          # "✓ built in 9.24s" is followed by "Bus error: 10": the build
+          # finished and the teardown touched a page that no longer existed.
+          #
+          # Failing here would be the wrong trade. The condition is not caused
+          # by the diff, so blocking the diff on it adds a ninth failure mode
+          # to a machine that already manufactures eight. What is worth having
+          # is the number IN THE LOG, so the next unexplained timeout is an
+          # explained one. docs/owner-actions-before-submission.md §12 is the
+          # write-up.
+          #
+          # macOS has vm.swapusage; Linux runners have /proc/meminfo. If
+          # neither is readable this says so rather than passing quietly -- an
+          # unrun check and a clean one must not look alike.
+          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
+          load1=$(uptime | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
+            used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
+            total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')
+            pct=$(awk -v u="$used" -v t="$total" 'BEGIN{printf "%d", (t>0? u*100/t : 0)}')
+            echo "swap ${pct}% used (${used}M of ${total}M), load ${load1} on ${cores} cores"
+            if [ "$pct" -ge 50 ]; then
+              echo "::warning::Swap is ${pct}% full on this runner (${used}M of ${total}M), load ${load1} on ${cores} cores. Timeouts, stability-assertion failures and SIGBUS in this run are more likely to be the machine than the diff -- re-run once before believing any of them. See docs/owner-actions-before-submission.md §12."
+            fi
+          elif [ -r /proc/meminfo ]; then
+            st=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
+            sf=$(awk '/SwapFree/{print $2}' /proc/meminfo)
+            if [ "${st:-0}" -gt 0 ]; then
+              pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
+              echo "swap ${pct}% used, load ${load1} on ${cores} cores"
+              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+            else
+              echo "no swap configured; load ${load1} on ${cores} cores"
+            fi
+          else
+            echo "::warning::could not read swap usage on this runner (no vm.swapusage, no /proc/meminfo), so memory pressure was NOT checked for this run"
+          fi
 
       # A self-hosted runner keeps its workspace between jobs, so the browser is
       # usually already there and this is a no-op after the first run.
