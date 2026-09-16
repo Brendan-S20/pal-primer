@@ -93,7 +93,24 @@ jobs:
   # the assertion that both answers are literally true or false.
   changes:
     name: What this change can affect
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    #
+    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
+    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
+    # dispatches to whichever is idle. The steps below need a Unix shell and
+    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
+    # would fail on that box in a way that reads like a broken migration
+    # rather than a broken match.
+    #
+    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
+    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
+    # is untouched: clear both variables and everything returns to hosted
+    # runners with no edit to this file.
+    #
+    # ci.yml's `verify` job deliberately does NOT have this line. Every step
+    # in it is `npm run` and portable, which is the point -- it is the long
+    # one, and the whole reason for a second machine.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     outputs:
       database: ${{ steps.decide.outputs.database }}
@@ -165,7 +182,24 @@ jobs:
     name: A database built from the migrations alone
     # Follows CI_RUNNER exactly like ci.yml — see docs/self-hosted-runner.md.
     # Deleting that repository variable puts this back on hosted runners.
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    #
+    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
+    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
+    # dispatches to whichever is idle. The steps below need a Unix shell and
+    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
+    # would fail on that box in a way that reads like a broken migration
+    # rather than a broken match.
+    #
+    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
+    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
+    # is untouched: clear both variables and everything returns to hosted
+    # runners with no edit to this file.
+    #
+    # ci.yml's `verify` job deliberately does NOT have this line. Every step
+    # in it is `npm run` and portable, which is the point -- it is the long
+    # one, and the whole reason for a second machine.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -455,7 +489,24 @@ jobs:
     # always meant to be: on whether this job's own inputs moved.
     needs: changes
     if: needs.changes.outputs.viewports == 'true'
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    #
+    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
+    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
+    # dispatches to whichever is idle. The steps below need a Unix shell and
+    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
+    # would fail on that box in a way that reads like a broken migration
+    # rather than a broken match.
+    #
+    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
+    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
+    # is untouched: clear both variables and everything returns to hosted
+    # runners with no edit to this file.
+    #
+    # ci.yml's `verify` job deliberately does NOT have this line. Every step
+    # in it is `npm run` and portable, which is the point -- it is the long
+    # one, and the whole reason for a second machine.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     # 45, raised from 30 on 2026-09-14 after this job was cancelled at 30m13s
     # with the last step mid-run. Raising a ceiling is usually how a real
     # slowdown gets hidden, so here is the arithmetic it was raised against,

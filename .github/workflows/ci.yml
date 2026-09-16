@@ -281,7 +281,24 @@ jobs:
     #
     # Set the repository variable `CI_RUNNER` back to empty and this returns to
     # hosted runners with no PR needed, exactly like `verify`.
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    #
+    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
+    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
+    # dispatches to whichever is idle. The steps below need a Unix shell and
+    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
+    # would fail on that box in a way that reads like a broken migration
+    # rather than a broken match.
+    #
+    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
+    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
+    # is untouched: clear both variables and everything returns to hosted
+    # runners with no edit to this file.
+    #
+    # ci.yml's `verify` job deliberately does NOT have this line. Every step
+    # in it is `npm run` and portable, which is the point -- it is the long
+    # one, and the whole reason for a second machine.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     # Skipped on pull requests, and this costs nothing real: every step below
     # already carried `continue-on-error: ${{ github.event_name ==

@@ -68,6 +68,50 @@ a runbook and not a script.
 
 Then push anything, or re-run a failed job, and watch it land locally.
 
+## There are two runners now, and only one of them is Unix
+
+Added 2026-09-16. A Windows machine joined the pool:
+
+| runner | labels |
+|---|---|
+| `Mac0s` | `self-hosted`, `macOS`, `X64` |
+| `DESKTOP-JUC6SL1` | `self-hosted`, `X64`, **`Windows`** |
+
+`CI_RUNNER` is `self-hosted`, which matches **both**, so GitHub dispatches each
+job to whichever is idle. That is fine for jobs that are genuinely portable and
+a trap for the rest.
+
+**What happened the first time.** CI landed on the Windows box and failed at
+step 5 of 13 — a diagnostic step that assumed bash. `npm ci` had already
+succeeded; Typecheck, Tests, Build, Dead machinery, Em dashes, the native bundle
+check, the OAuth check and Lint were all **skipped**, and none of them cares what
+OS it is on. A diagnostic stopped every real check from running.
+
+**The routing now:**
+
+```yaml
+runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+```
+
+on the jobs that need Unix tooling — `ci.yml`'s `migrations` (psql) and all three
+of `sandboxes.yml` (Docker, the Supabase CLI, a bash gate, a bash disk guard).
+`UNIX_RUNNER` is `macOS`, a label only the Mac carries.
+
+`ci.yml`'s `verify` deliberately keeps the plain `CI_RUNNER` line. Every step in
+it is `npm run` or `npx`, it is the longest job in the repo at roughly forty
+minutes, and it is the one that produces the SIGBUS builds on a Mac at 93% swap.
+Letting it use either machine is the entire reason for a second machine.
+
+**The escape hatch still works.** Clear both variables and everything returns to
+GitHub-hosted runners with no edit to any workflow — `UNIX_RUNNER` is checked
+first but falls through the same way.
+
+**Still Mac-only, and worth revisiting:** the `viewports` job. Its only
+Unix-specific step is the disk guard; Playwright itself runs on Windows. It is
+pinned because browser installation and dev-server startup on that box are
+unverified, not because they are known to fail. It is the second-longest job, so
+it is the next candidate if the Mac stays saturated.
+
 ## What the machine needs
 
 The `verify` job installs its own Node — `actions/setup-node@v4` downloads
