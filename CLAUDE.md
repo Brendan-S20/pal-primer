@@ -45,7 +45,7 @@ and do not quietly narrow the scope to the widths that happened to work.
 
 ### Some of this is enforced, so you find out before review
 
-Four of the rules above are checked by tests that scan the whole of `src/`
+Five of the rules above are checked by tests that scan the whole of `src/`
 and name the offending file and line rather than counting violations:
 
 - `tests/hover-does-not-exist-on-a-touchscreen.test.ts` — a `group-hover:`
@@ -66,6 +66,19 @@ and name the offending file and line rather than counting violations:
   fails is the wrapper in between — the `flex-1` div with nothing else on it —
   and that is what the failure message points at. Deliberately silent on
   `whitespace-nowrap` alone, on `flex-col`, on grids, and on `shrink-0`.
+- `tests/a-thumb-is-not-a-screen-width.test.ts` — touch-target SIZING is
+  spelled `touch:`, never `max-md:`. The distinction is the one
+  `docs/ipad-was-never-measured.md` was written about: `max-md:` is a guess
+  about WIDTH standing in for a fact about INPUT, and it is wrong on every
+  iPad, which is 744–1366px and all of it touch. **This one is a ratchet
+  rather than a cleanup** — there were zero violations when it landed. It
+  exists because the rule was learned in #115, fixed with the `touch:` variant
+  in `src/styles.css`, and then broken again by #207, which spelled a new
+  control's floor `max-md:min-h-11` and left two 16px buttons on every iPad
+  size for two days. Deliberately silent on `max-md:` for layout
+  (`max-md:flex-col`, `max-md:hidden`) and on the `max-md:` hover escapes the
+  first test in this list *requires*: show-or-hide may key on width, how big a
+  thing is for a finger may not.
 
 What is NOT enforced, and still has to be looked at: whether a thing is
 centred, and whether a layout is merely cramped rather than broken.
@@ -73,7 +86,7 @@ centred, and whether a layout is merely cramped rather than broken.
 **A value with no space in it — an address, a link, an id — used to be on that
 list**, described here as impossible to check mechanically, because telling a
 40-character signup URL from an eight-character promo code means knowing the
-value. That is true of PARSING, which is why the four tests above stop short of
+value. That is true of PARSING, which is why the five tests above stop short of
 it: the class list is identical either way and the JSX only says
 `{org.signupUrl}`. It is not true of MEASURING. At render time the string has a
 width and the box has a width, and a browser knows both. See the next section.
