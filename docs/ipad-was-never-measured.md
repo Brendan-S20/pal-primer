@@ -201,10 +201,25 @@ list and a 40px measurement.
 ## How to run it
 
 ```bash
-npm run test:viewports:apple    # 11 Apple sizes, touch emulated
-npm run test:viewports:auth     # the canonical four widths — the CI gate
+npm run test:viewports:apple:sweeps   # 11 Apple sizes, touch emulated — the CI step
+npm run test:viewports:auth           # the canonical four widths
+npm run test:viewports:apple          # unfiltered: also re-runs the one-off cases
+                                      # and regenerates the App Store screenshots
 ```
 
-The CI gate is deliberately unchanged: same four widths, same desktop pointer,
-same runtime. The Apple pass is the wider net, and it is slower (~9 minutes)
-because it is 11 sizes rather than 4.
+**The CI gate used to be deliberately unchanged, and stopped being so on
+2026-09-17.** That sentence stood here for weeks and described a real decision
+— the four canonical widths, a desktop pointer, the same runtime — taken on the
+reasoning that the Apple pass was the wider net you cast by hand.
+
+What that reasoning did not survive is #207, which spelled a new control's
+touch floor `max-md:min-h-11` and put two 16.0px buttons on every iPad size for
+two days. The canonical gate agreed the page was fine, because it only asks for
+44px at or below 768px. The net that catches this is only a net while somebody
+is holding it, and for two days nobody was.
+
+So `sandboxes.yml` now runs the eleven sizes as a step of its own, additive to
+the four widths rather than replacing them — the Apple list stops at 1366, so
+the desktop end still needs the canonical sweep. It landed green: 462
+assertions, 8.4 minutes measured, zero failures. It is a ratchet, not a
+cleanup.

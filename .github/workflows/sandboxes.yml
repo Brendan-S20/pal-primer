@@ -700,7 +700,7 @@ jobs:
       # 1920 and 1280 — the Apple list stops at 1366. The desktop end still
       # needs the step above it.
       #
-      # This lands green: 402 assertions, 8.1 minutes, zero failures. So it
+      # This lands green: 462 assertions, 8.4 minutes, zero failures. So it
       # is a ratchet in the same sense as
       # `tests/a-thumb-is-not-a-screen-width.test.ts` — it is not here to
       # find today's bugs, it is here because this exact regression class has
