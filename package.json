@@ -29,6 +29,7 @@
     "measure:routing": "node scripts/how-good-is-the-routing.mjs",
     "check:pwa": "node scripts/check-pwa-output.mjs",
     "test:viewports:apple": "APPLE_SIZES=1 playwright test",
+    "test:viewports:apple:sweeps": "APPLE_SIZES=1 playwright test every-public-page every-signed-in-page",
     "check:oauth": "node scripts/check-oauth-providers.mjs",
     "apple:secret": "node scripts/apple-client-secret.mjs",
     "check:pwa:live": "node scripts/check-pwa-live.mjs"

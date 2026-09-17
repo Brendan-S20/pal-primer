@@ -681,6 +681,57 @@ jobs:
       - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes
         run: npm run test:viewports:auth
 
+      # ── ELEVEN REAL DEVICES, AND A POINTER THAT IS NOT A MOUSE ───────────
+      #
+      # The two steps above are a contract; this one is a census. rules.ts
+      # says so itself, and the record backs it: "every real fault found on
+      # the device during the 2026-08 iOS pass was at a size not in that
+      # list." 360/768/1280/1920 are four round numbers no Apple device has.
+      #
+      # APPLE_SIZES=1 SUBSTITUTES the width list rather than extending it —
+      # 320 through 1366, with the real heights, so a short landscape
+      # viewport is its own case — and sets `hasTouch`, which makes Chromium
+      # report `pointer: coarse` and `hover: none`. That second half is the
+      # one that matters. On 2026-08-21 a sweep reported 382 passed / 0
+      # failed at iPad viewports while emulating a MOUSE, and the same code
+      # failed 105 of them the moment touch was turned on.
+      #
+      # It is ADDITIVE, not a replacement, because the substitution loses
+      # 1920 and 1280 — the Apple list stops at 1366. The desktop end still
+      # needs the step above it.
+      #
+      # This lands green: 402 assertions, 8.1 minutes, zero failures. So it
+      # is a ratchet in the same sense as
+      # `tests/a-thumb-is-not-a-screen-width.test.ts` — it is not here to
+      # find today's bugs, it is here because this exact regression class has
+      # now shipped TWICE (#115, then #207 re-spelling the fix the variant
+      # had just replaced) and was caught both times by running this by hand.
+      # Nothing ran it on a schedule. `the-sweeps-are-not-the-whole-suite`
+      # does not catch the gap: it asserts every SPEC is named by a step in
+      # this file, and these are the same two specs in a different MODE.
+      #
+      # Budget: the job's arithmetic above totals 19-24 minutes against a
+      # 45-minute ceiling. This adds ~8, so 27-32. Still margin, and less of
+      # it — if a third mode is ever added, raise the ceiling deliberately or
+      # split the job rather than discovering it at 45m01s.
+      #
+      # It runs `:apple:sweeps`, NOT `:apple`, and the difference is eight
+      # wasted minutes and a pile of images. `test:viewports:apple` is
+      # `APPLE_SIZES=1 playwright test` with no filter, and only 3 of the 20
+      # specs here read that variable. The other 17 are the one-off cases,
+      # which ignore it and would re-run, identically, what the step below
+      # already ran. The third is `app-store-screenshots`, which is on the
+      # EXEMPT list in `the-sweeps-are-not-the-whole-suite` precisely because
+      # it "produces the App Store Connect images on demand" — regenerating
+      # those on every push to main is not a test, it is a side effect.
+      #
+      # So `:apple` stays what it is, the tool you run by hand, and CI gets a
+      # script that names the two specs the mode actually changes. The 8.1
+      # minutes above is the measured cost of THAT command; the unfiltered
+      # one was never measured and should not be.
+      - name: Sweep eleven Apple sizes with touch — public and signed-in
+        run: npm run test:viewports:apple:sweeps
+
       # ── THE SWEEPS ARE NOT ALL OF IT ─────────────────────────────────────
       #
       # The two steps above run by filename pattern, and for five months
