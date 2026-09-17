@@ -707,8 +707,11 @@ jobs:
       # now shipped TWICE (#115, then #207 re-spelling the fix the variant
       # had just replaced) and was caught both times by running this by hand.
       # Nothing ran it on a schedule. `the-sweeps-are-not-the-whole-suite`
-      # does not catch the gap: it asserts every SPEC is named by a step in
-      # this file, and these are the same two specs in a different MODE.
+      # did not catch the gap, and could not: it asked whether every SPEC is
+      # named by a step in this file, and these are the same two specs in a
+      # different MODE. It now also asserts that a spec reading APPLE_SIZES is
+      # selected by a step that SETS it, so deleting the step below fails that
+      # rule by name rather than quietly returning this job to four widths.
       #
       # Budget: the job's arithmetic above totals 19-24 minutes against a
       # 45-minute ceiling. This adds ~8, so 27-32. Still margin, and less of

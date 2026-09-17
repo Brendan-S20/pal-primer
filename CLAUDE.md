@@ -158,9 +158,12 @@ Six things about it are worth knowing before you trust or extend it:
   Before this landed nothing ran either on a schedule, which is how #207 left
   two 16px buttons on every iPad size for two days — it was found by a person
   typing the command. `the-sweeps-are-not-the-whole-suite` could not catch
-  that: it asserts every SPEC is named by a step in `sandboxes.yml`, and this
-  is the same two specs in a different MODE. Coverage of files is not
-  coverage of configurations.
+  that at the time: it asserted every SPEC is named by a step in
+  `sandboxes.yml`, and this is the same two specs in a different MODE.
+  Coverage of files is not coverage of configurations. It now checks the
+  configuration too — a spec whose source reads `APPLE_SIZES` must be
+  selected by a step whose script SETS it — so the hole this bullet
+  describes is closed rather than merely documented.
 - **Signed out is not a blank page here — it is `/auth`.** So the blank-page
   guard below is not enough for the authenticated half: `/auth` renders
   perfectly and clears every size threshold. Each surface therefore proves
