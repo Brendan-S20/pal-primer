@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   listOrgUsers,
   changeUserRole,
@@ -172,7 +172,7 @@ function UsersPage() {
                     const runsRoutes = Boolean(staff?.is_field_tech);
                     const offToday = runsRoutes && !staff?.routing_available;
                     return (
-                      <>
+                      <Fragment key={u.user_id}>
                         <tr key={u.user_id}>
                           <td className="py-3">
                             {u.staff_id ? (
@@ -257,7 +257,7 @@ function UsersPage() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                   {(data?.users ?? []).length === 0 && (
