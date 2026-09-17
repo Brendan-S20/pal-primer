@@ -566,6 +566,31 @@ jobs:
     # — it is written down in the PR that raised this, and a job that keeps
     # needing 45 minutes to do 20 minutes of work is a machine to look at, not a
     # ceiling to raise again.
+    #
+    # ── MEASURED AGAIN ON 2026-09-17, AND BOTH NUMBERS ABOVE HAVE MOVED ──
+    #
+    # The figures above were taken on the machine these specs were written on.
+    # The runner is now native arm64, and the same work is roughly twice as
+    # fast: the one-off cases ran in 225s against the 7.0-9.2 min recorded
+    # above, and the two canonical sweeps in 94s and 190s.
+    #
+    # setup-node moved further, and in a way worth knowing before diagnosing
+    # it. On three consecutive runs it took 0s, 1s and 1s — the toolchain is
+    # already on the box, so there is nothing to install. Then the run after
+    # the machine was rebooted took 1205s: twenty minutes, on a cold tool and
+    # npm cache, with an 89s cache save afterwards that leaves the next run
+    # warm again.
+    #
+    # So a twenty-minute setup-node is NOT the symptom described above. The
+    # paragraph above is about a runner with exhausted swap throwing SIGBUS,
+    # and it is still right about that. A cold cache after a reboot looks
+    # similar in the log and is self-correcting on the next run. Check which
+    # one you have before treating a slow job as a sick machine.
+    #
+    # With the eleven-size Apple step added, the run that included the cold
+    # start finished in 39m07s of the 45m ceiling. Strip the cold start and
+    # the same job is about 19 minutes. The ceiling is not the thing under
+    # pressure.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
