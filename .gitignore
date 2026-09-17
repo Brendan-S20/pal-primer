@@ -92,3 +92,9 @@ agentdb.rvf.lock
 # Per-machine Claude Code settings, which is where the Ruflo hooks live so
 # that the tracked .claude/settings.json stays the shared one.
 .claude/settings.local.json
+
+# The Supabase CLI's own scratch directory. `cli-latest` is a version-check
+# cache it rewrites on every invocation, so tracking it means every `supabase`
+# command a developer runs shows up as a modified file. It was committed in
+# #113 by accident rather than by decision.
+supabase/.temp/
