@@ -115,7 +115,7 @@ geometry: no horizontal page scroll, no control off the side, no control under
 long-value fault above. Run it with `npm run test:viewports`; it needs a dev
 server, which the Playwright config starts for you.
 
-Four things about it are worth knowing before you trust or extend it:
+Six things about it are worth knowing before you trust or extend it:
 
 - **It does not replace the static tests.** Those name a file and a line, which
   a screenshot cannot, and they run in seconds with no server. The browser
@@ -144,6 +144,23 @@ Four things about it are worth knowing before you trust or extend it:
   something inside a scroll container that cannot affect the page; on
   `/clients` the real cause was a 1x1 `sr-only` span escaping a `position:
   static` scroller.
+- **Eleven Apple sizes with touch ON is a different check, and as of
+  2026-09-17 it is in CI.** `APPLE_SIZES=1` substitutes the width list — 320
+  to 1366, with the real heights, so a short landscape viewport is its own
+  case — and sets `hasTouch`, which makes Chromium report `pointer: coarse`
+  and `hover: none`. The second half is the half that finds things: on
+  2026-08-21 a sweep reported 382 passed / 0 failed at iPad viewports while
+  emulating a MOUSE, and the same code failed 105 of them the moment touch
+  was turned on. Run it with `npm run test:viewports:apple:sweeps`. The older
+  `npm run test:viewports:apple` is the unfiltered on-demand version: only 3
+  of the 20 specs read the variable, so it re-runs seventeen one-off cases
+  unchanged and regenerates the App Store screenshots as a side effect.
+  Before this landed nothing ran either on a schedule, which is how #207 left
+  two 16px buttons on every iPad size for two days — it was found by a person
+  typing the command. `the-sweeps-are-not-the-whole-suite` could not catch
+  that: it asserts every SPEC is named by a step in `sandboxes.yml`, and this
+  is the same two specs in a different MODE. Coverage of files is not
+  coverage of configurations.
 - **Signed out is not a blank page here — it is `/auth`.** So the blank-page
   guard below is not enough for the authenticated half: `/auth` renders
   perfectly and clears every size threshold. Each surface therefore proves
@@ -174,6 +191,41 @@ A green test run is still not a substitute for opening the page at 360px.
 Prior art worth reading rather than rediscovering: `docs/mobile-ux-audit.md`
 (2026-07-23) audited the staff app against this standard and its findings are
 still the best map of where the weak points are.
+
+## A list renders by key, and `<>` cannot carry one.
+
+`{rows.map(r => <>…</>)}` has no key. Not a missing one — an impossible one:
+React keys the direct child of the array, that child is the fragment, and the
+shorthand takes no props. Write `<Fragment key={r.id}>`.
+
+**Why this is stated as a rule rather than left to React's warning:** because
+the warning was there, in the output, and nothing acted on it.
+`settings.users.tsx` mapped the user list to a bare `<>` holding two rows, and
+put a key on each of the rows inside it. Those keys are inert — the rows are
+static siblings in a fixed position, not a list — but they are why it passed
+review. The file does not read like it forgot about keys. It reads like it
+thought about them twice.
+
+The cost is not cosmetic. Every row on that page owns state React attaches
+positionally: the expanded-panel set, a `<Select>` for the role, a button
+whose label reads from the row. Deactivate somebody, the list refetches and
+re-sorts, and the open panel and the dropdown stay at their old offsets —
+now belonging to whoever moved into that position.
+
+It was found on 2026-09-17 in the dev-server log of an APPLE_SIZES sweep that
+reported 402 passed. The sweep measures geometry and does not read the
+console, so "React is logging a correctness error on every render" and "all
+green" were the same run.
+
+`tests/a-fragment-cannot-carry-the-key.test.ts` enforces it, and **parses
+rather than greps**, because the question is about position and not spelling:
+a text scan for `<>` finds component returns too, and the one written first
+flagged three sites of which two were exactly that. It is mutation-tested
+against the real file as it shipped — the pre-fix version fails it, the
+post-fix version passes — rather than against a reconstruction. Deliberately
+silent on a component's own `return (<>…</>)`, on a fragment passed as a
+prop, on `<Fragment key={…}>`, and on a nested helper's return inside a map
+callback.
 
 ## Every migration replays into an empty database. All of them, in order.
 

@@ -78,7 +78,16 @@ async function settle(page: Page, route: string) {
   ).toBeGreaterThan(200);
 }
 
-for (const { w, h, label } of (process.env.APPLE_SIZES === "1" ? APPLE_SIZES : WIDTHS)) {
+const APPLE = process.env.APPLE_SIZES === "1";
+const SIZES = APPLE ? APPLE_SIZES : WIDTHS;
+
+// `hasTouch` makes Chromium report `pointer: coarse` and `hover: none`, which
+// is what the `touch:` variant in src/styles.css keys on. Without it the Apple
+// pass measures real device sizes with a cursor, which is the exact blind spot
+// that let 105 iPad failures read as 382 passed on 2026-08-21.
+test.use({ hasTouch: APPLE });
+
+for (const { w, h, label } of SIZES) {
   test.describe(label, () => {
     for (const route of ROUTES) {
       test(`${route} does not scroll the page sideways`, async ({ page }) => {
@@ -113,7 +122,7 @@ for (const { w, h, label } of (process.env.APPLE_SIZES === "1" ? APPLE_SIZES : W
 // The rule, its three exclusions and the story of the 154px false positive are
 // all in `rules.ts`, above `findSilentlyClippedText`.
 test.describe("nothing is cut off with no way to read it", () => {
-  for (const { w, h, label } of (process.env.APPLE_SIZES === "1" ? APPLE_SIZES : WIDTHS)) {
+  for (const { w, h, label } of SIZES) {
     test(`${label} clips nothing silently`, async ({ page }) => {
       await page.setViewportSize({ width: w, height: h });
       const found: string[] = [];
@@ -127,18 +136,35 @@ test.describe("nothing is cut off with no way to read it", () => {
   }
 });
 
-// Touch sizing is a phone-and-tablet rule: hover does not exist there and a
-// finger is not a cursor. Above the md breakpoint a 32px icon button is fine,
-// so asserting 44px at 1280 would be inventing a rule the product does not have.
-test.describe("touch targets below the md breakpoint", () => {
-  for (const route of ROUTES) {
-    test(`${route} has no control under 44px`, async ({ page }) => {
-      await page.setViewportSize({ width: 360, height: 780 });
-      await page.goto(route);
-      await settle(page, route);
+// Touch sizing is a rule about the POINTER, not about the screen. On the
+// canonical widths, width is the only signal there is, so this asserts at
+// 360 and leaves a 32px icon button alone at 1280.
+//
+// The Apple pass has the other signal. `hasTouch` is on, every size in the
+// list is a device somebody holds, and an iPad Pro at 1366px is driven by
+// the same finger as a 320px phone. So the floor applies at all of them.
+//
+// This block ran at a hardcoded 360px and nowhere else until 2026-09-17,
+// under a comment reasoning that "asserting 44px at 1280 would be inventing
+// a rule the product does not have". That is the reasoning
+// `docs/ipad-was-never-measured.md` exists to refute — 744 to 1366px is an
+// iPad and all of it is touch — and it is the same shape as the comment
+// above #207's class list, which named `touch:` and then argued itself out
+// of it. The signed-in sweep had already been fixed to run the floor at
+// every Apple size; this half had not, so the public routes were measured
+// at iPad sizes with a mouse.
+test.describe("touch targets", () => {
+  const sizes = APPLE ? APPLE_SIZES : [{ w: 360, h: 780, label: "360×780" }];
+  for (const { w, h, label } of sizes) {
+    for (const route of ROUTES) {
+      test(`${route} has no control under 44px at ${label}`, async ({ page }) => {
+        await page.setViewportSize({ width: w, height: h });
+        await page.goto(route);
+        await settle(page, route);
 
-      const small = await findControlsUnder44px(page);
-      expect(small, `${route} at 360px has controls below the 44px floor`).toEqual([]);
-    });
+        const small = await findControlsUnder44px(page);
+        expect(small, `${route} at ${w}px has controls below the 44px floor`).toEqual([]);
+      });
+    }
   }
 });
