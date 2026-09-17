@@ -1,1 +1,36 @@
 project_id = "vsxzrbxublqrcfnxfwcu"
+
+# ── WHY THIS PROJECT DOES NOT USE THE DEFAULT PORTS ────────────────────────
+#
+# The Supabase CLI defaults to 54321-54327 for every project on a machine, so
+# two projects cannot have a stack up at once. That is not hypothetical here:
+# another project's stack (ref eqzmqxtngbulzhimrymr) runs on this development
+# machine, Docker restarts it automatically at login, and it holds those ports.
+#
+# The database job in .github/workflows/sandboxes.yml failed on exactly that
+# for two days running:
+#
+#     Bind for 0.0.0.0:54322 failed: port is already allocated
+#
+# and it is the only check that can answer whether these migrations BUILD a
+# database rather than merely agree with one, so losing it is expensive.
+#
+# The other fix was "stop the other project's stack", which works until the
+# next reboot and asks a person to remember. This asks nobody to remember.
+# 544xx rather than 543xx: one digit off the default, so the mapping stays
+# obvious, and far enough that a third project can take 545xx.
+[api]
+port = 54421
+
+[db]
+port = 54422
+shadow_port = 54420
+
+[studio]
+port = 54423
+
+[inbucket]
+port = 54424
+
+[analytics]
+port = 54427

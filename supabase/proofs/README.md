@@ -12,7 +12,7 @@ These build the tenant themselves, in a transaction that always ends in
 
 ```bash
 supabase db reset
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" \
   -v ON_ERROR_STOP=1 -f supabase/proofs/20260825060000-tech-column-write.sql
 ```
 

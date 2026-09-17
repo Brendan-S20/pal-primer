@@ -138,11 +138,11 @@ export default defineConfig({
         // suite, in a file that has nothing to do with either. Scoping the
         // values to this server keeps them out of every other runner.
         env: {
-          SUPABASE_URL: "http://127.0.0.1:54321",
+          SUPABASE_URL: "http://127.0.0.1:54421",
           SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
           SUPABASE_PROJECT_ID: "localdev",
           SERVICE_ROLE_KEY: "sb_secret_placeholder",
-          VITE_SUPABASE_URL: "http://127.0.0.1:54321",
+          VITE_SUPABASE_URL: "http://127.0.0.1:54421",
           VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
           VITE_SUPABASE_PROJECT_ID: "localdev",
         },

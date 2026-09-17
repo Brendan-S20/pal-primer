@@ -445,7 +445,7 @@ jobs:
             # So this reports the truth and stops, and a human decides whether
             # to free the ports or give this project its own in config.toml.
             if grep -qE 'port is already allocated|Bind for 0\.0\.0\.0:' "start-$attempt.log"; then
-              echo "::error::a local Supabase port is already in use — this is NOT the migrations and NOT Docker being unhealthy. Another Supabase project's stack is running on this machine and holding 54321-54327. Find it with 'docker ps --format \"{{.Names}}\t{{.Ports}}\" | grep supabase', then stop that project's stack, or give this project its own ports in supabase/config.toml."
+              echo "::error::a local Supabase port is already in use — this is NOT the migrations and NOT Docker being unhealthy. Another Supabase project's stack is running on this machine and holding 54321-54327. Find it with 'docker ps --format \"{{.Names}}\t{{.Ports}}\" | grep supabase', This project already HAS its own ports (54421-54427, set in supabase/config.toml after this bit twice); if you are seeing this, something is holding one of THOSE, so find it with lsof -iTCP:54422 -sTCP:LISTEN."
               exit 1
             fi
             echo "::warning::supabase start failed (attempt $attempt of 3); stopping the stack and retrying"
