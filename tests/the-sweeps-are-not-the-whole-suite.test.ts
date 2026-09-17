@@ -137,4 +137,53 @@ describe("every viewport spec is run by something", () => {
       expect(why.length, `${file} is exempted with no reason`).toBeGreaterThan(30);
     }
   });
+
+  // ── AND COVERAGE OF FILES IS NOT COVERAGE OF CONFIGURATIONS ─────────────
+  //
+  // The rules above ask whether every SPEC is named by a step. Every one of
+  // them was green throughout the three weeks that
+  // `every-public-page-at-every-width` and `every-signed-in-page-at-every-
+  // width` ran in CI at four widths and NEVER under APPLE_SIZES=1 — the mode
+  // that swaps in eleven real device sizes and, more to the point, sets
+  // `hasTouch`. Both specs were named by a step. Both ran. Neither ran in the
+  // configuration that finds iPad faults, and nothing here could tell.
+  //
+  // That is not hypothetical either. #207 spelled a touch floor `max-md:` and
+  // put two 16.0px buttons on every iPad size for two days; the four-width
+  // sweep agreed the page was fine, because it only asks for 44px at or below
+  // 768. What caught it was a person running the Apple pass by hand.
+  //
+  // So: a spec that BRANCHES on an environment variable has more than one
+  // behaviour, and a step that never sets the variable exercises exactly one
+  // of them.
+  it("runs every spec that branches on APPLE_SIZES in the mode it branches into", () => {
+    const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
+    const appleScripts = stepsInCi().filter((s) => /APPLE_SIZES=1/.test(pkg.scripts[s] ?? ""));
+
+    // Tripwire, same reasoning as above: if no step sets it, the filter below
+    // has nothing to match and the rule would pass by measuring nothing.
+    expect(
+      appleScripts.length,
+      "no step in sandboxes.yml sets APPLE_SIZES=1, so the eleven-size/touch mode runs nowhere",
+    ).toBeGreaterThanOrEqual(1);
+
+    const covered = appleScripts.flatMap((script) => {
+      const args = (pkg.scripts[script] ?? "").trim().split(/\s+/);
+      return args.slice(args.indexOf("test") + 1).filter((a) => !a.startsWith("-"));
+    });
+
+    const unswept = specNames()
+      .filter((f) => !(f in EXEMPT))
+      .filter((f) => /APPLE_SIZES/.test(read(`tests/viewports/${f}`)))
+      .filter((f) => !covered.some((r) => new RegExp(r).test(`tests/viewports/${f}`)))
+      .map(
+        (f) =>
+          `tests/viewports/${f} reads APPLE_SIZES, and no step that SETS it selects the file. ` +
+          `It runs in CI, but only ever in its default mode — which is how eleven iPhone and ` +
+          `iPad sizes with pointer:coarse went unmeasured for three weeks while every rule ` +
+          `in this file stayed green.`,
+      );
+
+    expect(unswept).toEqual([]);
+  });
 });
