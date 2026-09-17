@@ -474,6 +474,41 @@ jobs:
       - name: The RLS and portal-auth backstops, finally executed
         run: npm run test:db
 
+      # ── AND THE PROOFS, WHICH THIS WORKFLOW WATCHED WITHOUT RUNNING ─────
+      #
+      # `supabase/proofs/**` has been in this file's `paths:` filter and in the
+      # `changes` gate since they were written, so editing a proof has always
+      # started this job. Nothing in the job ever executed one. A proof could
+      # have rotted at any point in the three weeks since 2026-08-25 and the
+      # only signal would have been a green tick.
+      #
+      # They are not migrations and cannot be. A migration's own `DO $verify$`
+      # asserts what the file ESTABLISHES from any starting state; a proof acts
+      # out an exploit, which needs a tenant, a technician and a visit that a
+      # replay into an empty database does not have. Each one builds its own
+      # fixture and ends in ROLLBACK, so they leave nothing behind and can run
+      # in any order against the database the step above just built.
+      #
+      # ON_ERROR_STOP=1 because psql's default is to keep going after an error
+      # and exit 0, which would make this step a decoration.
+      - name: The proofs, which are evidence rather than schema
+        run: |
+          set -o pipefail
+          eval "$(supabase status -o env | grep -E '^DB_URL=')"
+          : "${DB_URL:?supabase status did not report a DB_URL}"
+          failed=0
+          for f in supabase/proofs/*.sql; do
+            [ -e "$f" ] || continue
+            echo "── $(basename "$f")"
+            if psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"; then
+              echo "   ok"
+            else
+              echo "::error file=$f::proof failed — this is an exploit that is no longer prevented, or a fixture that no longer builds"
+              failed=1
+            fi
+          done
+          exit $failed
+
       - name: Stop the stack
         if: always()
         run: supabase stop --no-backup || true
