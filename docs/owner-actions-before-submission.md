@@ -812,8 +812,14 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
             is the honest fix and overlaps with the runner-shape question below;
             or more RAM, since 16 GB does not fit Docker plus an emulator plus a
             browser sweep plus a desktop.
-- [ ] Update the Supabase CLI on the runner, which is forty minor versions
-      behind and is the most likely fix for (4).
+- [ ] Update the Supabase CLI on the runner, v2.78.1 against v2.117.0. It was
+      listed here as "the most likely fix for (4)", the container-restart race.
+      **It was not**, and that should be recorded before somebody updates it and
+      believes the update fixed something. (4) was a PORT COLLISION: another
+      project's stack held 54321-54327, Docker restarted it at every login, and
+      no CLI version would have changed that. Fixed 2026-09-17 by giving this
+      project 54421-54427 in `supabase/config.toml`. The update is still worth
+      doing on its own merits; it is no longer a fix for anything named here.
 - [x] **Decided 2026-09-15: one runner is enough, a second is not the answer.**
       The queueing is real but it is a symptom — see the memory measurement
       above. A second runner on the same host would inherit the same exhausted
