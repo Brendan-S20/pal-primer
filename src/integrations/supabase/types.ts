@@ -4621,6 +4621,24 @@ export type Database = {
           },
         ]
       }
+      roadmap_vote_throttle: {
+        Row: {
+          ip_hash: string
+          votes: number
+          window_started_at: string
+        }
+        Insert: {
+          ip_hash: string
+          votes?: number
+          window_started_at?: string
+        }
+        Update: {
+          ip_hash?: string
+          votes?: number
+          window_started_at?: string
+        }
+        Relationships: []
+      }
       roadmap_votes: {
         Row: {
           created_at: string
@@ -5911,9 +5929,10 @@ export type Database = {
       }
       bootstrap_organization: {
         Args: {
-          _display_name: string
+          _display_name?: string
           _org_name: string
           _ref_code?: string
+          _timezone?: string
           _utm?: Json
         }
         Returns: string
