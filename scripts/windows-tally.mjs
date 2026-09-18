@@ -29,9 +29,10 @@
 
 import { readFileSync } from "node:fs";
 
-const path = process.argv[2];
-if (!path) {
-  console.error("usage: node scripts/windows-tally.mjs <vitest-log>");
+const jsonPath = process.argv[2];
+const path = process.argv[3];
+if (!jsonPath || !path) {
+  console.error("usage: node scripts/windows-tally.mjs <vitest-json> <vitest-log>");
   process.exit(2);
 }
 
@@ -63,6 +64,57 @@ function decode(buf) {
  *  run log -- which GitHub withholds until every job in the run finishes. */
 function annotate(level, title, body) {
   console.log(`::${level} title=${title}::${String(body).replace(/\r?\n/g, "%0A")}`);
+}
+
+// ── PREFER THE JSON, BECAUSE THE TEXT LOG IS NOT TRUSTWORTHY HERE ────────
+//
+// The text log is produced by `npm test > win.log 2>&1`, and on the Windows
+// runner that came back as 4,169 characters -- roughly the last forty lines
+// of a run with thousands of tests. Whatever truncates it (a reporter that
+// rewrites lines, PowerShell's handling of a native command's stream), the
+// consequence is that the summary vitest prints at the END is the part most
+// likely to be missing. Scraping it for a tally was always fragile and was
+// wrong on three consecutive runs.
+//
+// `--reporter=json --outputFile.json=` is written by vitest itself, straight
+// to a file, with no shell redirection in the path. No encoding surprise, no
+// truncation, and exact counts instead of a parsed sentence.
+//
+// The text log is still passed in, and still used, for the DIAGNOSTIC tail
+// when something went wrong. Structured for the number, human-readable for
+// the reason.
+try {
+  const j = JSON.parse(readFileSync(jsonPath, "utf8"));
+  const failedTests = j.numFailedTests ?? 0;
+  const failedSuites = j.numFailedTestSuites ?? 0;
+  const line = `Test Files ${j.numTotalTestSuites - failedSuites} passed, ${failedSuites} failed | Tests ${j.numPassedTests ?? 0} passed, ${failedTests} failed`;
+  console.log(`::notice title=Windows suite::${line}`);
+
+  if (failedSuites === 0 && failedTests === 0) {
+    console.log("No failing files on Windows.");
+    console.log("If this holds, this job has done its job: drop `continue-on-error` from");
+    console.log("`windows-probe`, clear the `UNIX_RUNNER` variable, and let the long job");
+    console.log("run on whichever machine is free.");
+    process.exit(0);
+  }
+
+  const failing = (j.testResults ?? []).filter((r) => r.status === "failed");
+  console.log(`${failedSuites} file(s) and ${failedTests} test(s) failing on Windows.`);
+  for (const r of failing.slice(0, 40)) {
+    console.log(`  ${r.name ?? "(unnamed)"}`);
+    const msgs = (r.assertionResults ?? []).filter((a) => a.status === "failed");
+    for (const m of msgs.slice(0, 2)) {
+      console.log(`      ${(m.failureMessages ?? [])[0]?.split("\n")[0] ?? m.title ?? ""}`.slice(0, 220));
+    }
+  }
+  if (failing.length > 40) console.log(`  ... and ${failing.length - 40} more`);
+  process.exit(0);
+} catch (err) {
+  if (err?.code !== "ENOENT") {
+    console.log(`::warning title=Windows suite::json at ${jsonPath} unreadable (${err.message}); falling back to the text log.`);
+  } else {
+    console.log(`::warning title=Windows suite::no json at ${jsonPath}; vitest did not get far enough to write one. Falling back to the text log.`);
+  }
 }
 
 let log = "";

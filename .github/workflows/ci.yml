@@ -351,16 +351,27 @@ jobs:
       # The default reporter writes the tally the script below looks for, and
       # writes it the same way when redirected to a file with no TTY, which is
       # the only mode this step ever runs in.
-      - name: Run the suite and keep the log
+      # Two reporters. The JSON is the MEASUREMENT and the text log is the
+      # DIAGNOSTIC, and they are separate because the log cannot be trusted
+      # for the former: on this runner `npm test > win.log 2>&1` produced 4,169
+      # characters of a run with thousands of tests -- about the last forty
+      # lines -- so the summary vitest prints at the END is exactly the part
+      # most likely to be missing. Three runs in a row reported "no tally
+      # line" for that reason.
+      #
+      # `--outputFile.json=` is written by vitest straight to disk with no
+      # shell redirection in the path: no encoding surprise, no truncation,
+      # and exact counts rather than a parsed sentence.
+      - name: Run the suite, keeping both a tally and a log
         continue-on-error: true
-        run: npm test > win.log 2>&1
+        run: npm test -- --reporter=default --reporter=json --outputFile.json=win.json > win.log 2>&1
 
       # `if: always()` so a suite that dies mid-run is still counted -- the
       # script distinguishes "no failures" from "never got far enough to
       # count", and those must not look alike.
       - name: Report the tally
         if: always()
-        run: node scripts/windows-tally.mjs win.log
+        run: node scripts/windows-tally.mjs win.json win.log
   migrations:
     name: Migrations applied to the live database
     # ── THIS USED TO SAY "deliberately NOT following CI_RUNNER" ───────────

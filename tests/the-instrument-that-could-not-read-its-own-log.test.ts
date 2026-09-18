@@ -34,9 +34,21 @@ import { describe, expect, it } from "vitest";
 const SCRIPT = join(import.meta.dirname, "..", "scripts", "windows-tally.mjs");
 const dir = mkdtempSync(join(tmpdir(), "tally-"));
 
+/** Text-log path: point the JSON argument at a file that does not exist, so
+ *  the script falls back to scraping, which is the behaviour these cases are
+ *  about. */
 function run(file: string): string {
-  return execFileSync(process.execPath, [SCRIPT, file], { encoding: "utf8" });
+  return execFileSync(process.execPath, [SCRIPT, join(dir, "absent.json"), file], { encoding: "utf8" });
 }
+
+/** Structured path: what the workflow actually uses. */
+function runJson(obj: unknown): string {
+  const p = join(dir, `t${jsonSeq++}.json`);
+  writeFileSync(p, JSON.stringify(obj));
+  return execFileSync(process.execPath, [SCRIPT, p, join(dir, "absent.log")], { encoding: "utf8" });
+}
+
+let jsonSeq = 0;
 
 const PASSING = ["RUN  v4.1.10", " Test Files  270 passed | 3 skipped (273)", "      Tests  3638 passed (3677)", ""].join("\n");
 
@@ -106,5 +118,46 @@ describe("when there are failures it says which, and of what kind", () => {
     // path became a string, the other is a working copy .gitattributes never
     // renormalised.
     expect(run(write("h.log", FAILING, "utf8"))).toMatch(/[1-9]\d* line\(s\) show mixed path separators/);
+  });
+});
+
+// ── THE JSON IS THE MEASUREMENT; THE LOG IS ONLY THE DIAGNOSTIC ───────────
+//
+// The text log stopped being trustworthy the moment the Windows runner
+// returned 4,169 characters for a run of thousands of tests -- the last forty
+// lines, with the summary vitest prints at the end missing. So the number now
+// comes from `--reporter=json`, written by vitest straight to disk with no
+// shell in the path, and the log is kept only for the human-readable tail
+// when something went wrong.
+describe("the tally reads vitest's own json in preference to the log", () => {
+  it("reports a clean run from the json", () => {
+    const out = runJson({ numTotalTestSuites: 272, numFailedTestSuites: 0, numPassedTests: 3650, numFailedTests: 0, testResults: [] });
+    expect(out).toContain("0 failed");
+    expect(out).toMatch(/UNIX_RUNNER/);
+  });
+
+  it("reports failures from the json, naming the files", () => {
+    const out = runJson({
+      numTotalTestSuites: 272,
+      numFailedTestSuites: 1,
+      numPassedTests: 3600,
+      numFailedTests: 2,
+      testResults: [
+        { name: "tests/six-helpers.test.ts", status: "failed",
+          assertionResults: [{ status: "failed", title: "reads the window", failureMessages: ["ENOENT: no such file or directory"] }] },
+      ],
+    });
+    expect(out).toContain("tests/six-helpers.test.ts");
+    expect(out).toContain("ENOENT");
+    expect(out).not.toMatch(/UNIX_RUNNER/);
+  });
+
+  it("falls back to the log when vitest never wrote the json, and says so", () => {
+    // The case that matters: a run that died before producing structured
+    // output must not be reported as a clean one.
+    const out = run(join(dir, "also-absent.log"));
+    expect(out).toMatch(/no json at/);
+    expect(out).toMatch(/NOT zero failures/);
+    expect(out).not.toMatch(/UNIX_RUNNER/);
   });
 });
