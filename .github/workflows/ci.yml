@@ -341,9 +341,19 @@ jobs:
 
       # Redirection works in both PowerShell and bash. `continue-on-error`
       # rather than `|| true`, because `||` is not PowerShell.
+      # Plain `npm test`. It said `--reporter=basic` for exactly one run, and
+      # that reporter does not exist in vitest 4 -- it fails inside
+      # `loadCustomReporterModule` before a single test runs, on every
+      # platform. The probe therefore measured nothing twice in a row, the
+      # second time for a reason that had nothing to do with Windows and would
+      # have reproduced on this laptop in four seconds.
+      #
+      # The default reporter writes the tally the script below looks for, and
+      # writes it the same way when redirected to a file with no TTY, which is
+      # the only mode this step ever runs in.
       - name: Run the suite and keep the log
         continue-on-error: true
-        run: npm test -- --reporter=basic > win.log 2>&1
+        run: npm test > win.log 2>&1
 
       # `if: always()` so a suite that dies mid-run is still counted -- the
       # script distinguishes "no failures" from "never got far enough to
