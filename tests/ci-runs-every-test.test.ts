@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +19,7 @@ import { join } from "node:path";
 // Deliberately checks the SHIPPED script rather than re-deriving the answer:
 // a test that restates the rule agrees with itself no matter what CI runs.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
 describe("the test runner discovers its own files", () => {

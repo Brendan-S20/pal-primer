@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +21,7 @@ import { join } from "node:path";
 // guards DO — those tests exist and hold up; what was missing is that they are
 // plugged in.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");

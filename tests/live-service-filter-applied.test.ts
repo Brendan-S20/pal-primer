@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ import { join } from "node:path";
 // is the built-and-uncalled pattern the dead-machinery check exists for, and it
 // cannot see TypeScript.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 /** The `.from("subscriptions")` query chain, so an import line cannot satisfy

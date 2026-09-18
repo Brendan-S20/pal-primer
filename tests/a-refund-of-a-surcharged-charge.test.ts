@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { splitRefund } from "@/lib/refund-split";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /** SQL with its comments removed. These migrations explain the defect they fix
  *  in prose, so `DO NOTHING` appears in the file describing what was replaced —

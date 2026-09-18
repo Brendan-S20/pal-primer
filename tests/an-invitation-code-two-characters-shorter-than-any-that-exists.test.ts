@@ -49,6 +49,7 @@
 // and those letters are absent from the alphabet precisely so that nobody has
 // to fold them.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -58,7 +59,7 @@ import {
   normalizeFranchiseCode,
 } from "@/lib/franchise-membership.functions";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 const codeOnly = (src: string) =>

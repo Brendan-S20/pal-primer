@@ -55,6 +55,7 @@
 // `user_roles` row were invisible here before and still are; that is a change
 // to what the page MEANS, not to how much of it you can see.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
@@ -64,7 +65,7 @@ import {
   type PlatformUserRow,
 } from "@/lib/platform-directory.functions";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 
 const codeOnly = (src: string) =>

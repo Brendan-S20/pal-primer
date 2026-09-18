@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ import { join } from "node:path";
 // and refresh_active_seat_count are trigger-maintained and RECOUNT rather than
 // increment, and both audit at exactly zero drift. That is not luck.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {

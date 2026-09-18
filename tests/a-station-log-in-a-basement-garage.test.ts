@@ -30,6 +30,7 @@
 // 4pm would have claimed 4pm — a confident, specific, wrong answer to the exact
 // question a proof-of-service record exists to settle.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +38,7 @@ import { join } from "node:path";
 // the same reason every file read below is a thunk.
 import type { SyncCallers } from "@/lib/offline/sync";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 // LAZY. Resolved inside the `it` that needs them, never in a `describe` body:
 // a throw during collection makes vitest report "no tests" rather than N

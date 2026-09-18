@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ import { join } from "node:path";
 // rather than restating the rule — a test that restates it agrees with itself
 // no matter what the database does.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function latestDefinitionOf(fnName: string): string {

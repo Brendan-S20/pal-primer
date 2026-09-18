@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ import { ROLE_PERMISSIONS } from "@/lib/permissions";
 // than restating either — the repo has a history of tests that agreed with
 // themselves while production differed.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 /** The last migration that defines policies on the table — migrations are an

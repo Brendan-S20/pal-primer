@@ -47,11 +47,12 @@
 // counts and mounts nothing, rather than meeting an empty "Settlement
 // statements" card on its settings page.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 const codeOnly = (src: string) =>

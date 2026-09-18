@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error - plain ESM script, no types
 import { expectedObjects, sqlCode } from "../scripts/check-baseline-objects.mjs";
@@ -180,7 +181,7 @@ describe("the whole repo replays to something checkable", () => {
     // a green tick over an empty set — the exact vacuity this suite guards
     // against elsewhere.
     const { readdirSync, readFileSync } = require("node:fs");
-    const dir = new URL("../supabase/migrations", import.meta.url).pathname;
+    const dir = fileURLToPath(new URL("../supabase/migrations", import.meta.url));
     const files = readdirSync(dir)
       .filter((f: string) => f.endsWith(".sql"))
       .sort()
@@ -198,7 +199,7 @@ describe("the whole repo replays to something checkable", () => {
     // report live schema as missing — the false positives that get a check
     // ignored.
     const { readdirSync, readFileSync } = require("node:fs");
-    const dir = new URL("../supabase/migrations", import.meta.url).pathname;
+    const dir = fileURLToPath(new URL("../supabase/migrations", import.meta.url));
     const files = readdirSync(dir)
       .filter((f: string) => f.endsWith(".sql"))
       .sort()
@@ -210,7 +211,7 @@ describe("the whole repo replays to something checkable", () => {
 
   it("expects the function whose absence started all of this", () => {
     const { readdirSync, readFileSync } = require("node:fs");
-    const dir = new URL("../supabase/migrations", import.meta.url).pathname;
+    const dir = fileURLToPath(new URL("../supabase/migrations", import.meta.url));
     const files = readdirSync(dir)
       .filter((f: string) => f.endsWith(".sql"))
       .sort()

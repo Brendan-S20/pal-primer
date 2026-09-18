@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ import { AI_FEATURES } from "@/lib/ai-usage";
 // There are three ways into the model and someone adding a fourth will not
 // read this comment — but they will run the suite.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 /** Comments are not code — a rule this repo has had to learn three times. */

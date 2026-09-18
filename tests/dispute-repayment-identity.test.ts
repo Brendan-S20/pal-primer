@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +19,7 @@ import { join } from "node:path";
 // Equal amounts are not a corner case: a location billing a flat monthly rate
 // disputes the same figure every time.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {

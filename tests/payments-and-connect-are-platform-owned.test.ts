@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ import { ROLE_PERMISSIONS } from "@/lib/permissions";
 // measuring nothing, so each assertion below is anchored to text that would
 // actually have to change for the defect to return.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {

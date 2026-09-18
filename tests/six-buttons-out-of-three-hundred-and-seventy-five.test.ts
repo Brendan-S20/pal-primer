@@ -28,10 +28,11 @@
 // is a correctness point rather than a style preference, and it is why the
 // assertions below insist on the `min-` form.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 const button = () => read("src/components/ui/button.tsx");
 

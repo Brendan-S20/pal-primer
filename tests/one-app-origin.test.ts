@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -26,7 +27,7 @@ import { repoRelative } from "./support/repo-paths";
 // got depended on which file built it, so a change at the CDN fixed some links
 // and broke others. Now it is one constant, and one probe that catches the flip.
 
-const SRC = new URL("../src", import.meta.url).pathname;
+const SRC = fileURLToPath(new URL("../src", import.meta.url));
 const ORIGINAL = { ...process.env };
 
 afterEach(() => {
@@ -227,7 +228,7 @@ describe("a URL written for someone else to call names the right host", () => {
   const ENDPOINT_COMMENT =
     /^[ \t]*(?:\/\/|--|#|\*)[ \t]*(GET|POST|PUT|PATCH|DELETE|OPTIONS)[ \t]+(https?:\/\/[^\s)"'`]+)/gim;
 
-  const ROOT = new URL("..", import.meta.url).pathname;
+  const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
   const documented = (): { file: string; line: number; verb: string; url: string }[] => {
     const out: { file: string; line: number; verb: string; url: string }[] = [];
@@ -301,7 +302,7 @@ describe("the script and the module agree on the default", () => {
     // changes the module's default when the CDN redirect is fixed and forgets
     // the script, the script would keep probing the old host and keep passing.
     const src = readFileSync(
-      new URL("../scripts/check-app-origin.mjs", import.meta.url).pathname,
+      fileURLToPath(new URL("../scripts/check-app-origin.mjs", import.meta.url)),
       "utf8",
     );
     const m = /const FALLBACK = "([^"]+)"/.exec(src);
@@ -315,7 +316,7 @@ describe("the script and the module agree on the default", () => {
 
   it("probes the path the native app actually calls", () => {
     const src = readFileSync(
-      new URL("../scripts/check-app-origin.mjs", import.meta.url).pathname,
+      fileURLToPath(new URL("../scripts/check-app-origin.mjs", import.meta.url)),
       "utf8",
     );
     // A preflight against a path that is not under the CORS prefix would answer

@@ -55,11 +55,12 @@
 //    the owner decision of 2026-07-30 is that a franchisee cannot detach
 //    itself. The wrapper must not become the thing that lets them.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 /** Negative assertions run against source with comment lines stripped, so the

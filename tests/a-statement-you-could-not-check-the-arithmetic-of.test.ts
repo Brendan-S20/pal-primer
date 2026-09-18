@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -84,7 +85,7 @@ import {
 // the database has `payments_collected_by_parent` set, so every live payment
 // was collected by the org that earned it.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 const row = (over: Partial<SettlementRow>): SettlementRow => ({

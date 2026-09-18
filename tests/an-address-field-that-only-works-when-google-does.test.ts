@@ -32,12 +32,13 @@
 // class list either way is identical. So AddressAutocomplete.tsx computes what
 // it renders as a value, once, and this file asserts on the value.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, beforeEach } from "vitest";
 import { addressControlState } from "@/components/AddressAutocomplete";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /** Every combination of the four provider-driven flags. The point of the
  *  fallback is that NONE of them can produce a popup, so it is worth trying

@@ -41,10 +41,11 @@
 // be the DISPUTED amount over the charge total, not the charge total over
 // itself — otherwise a $20 dispute on a $200 charge hands back the entire fee.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 // Lazy: a read resolved in a describe body turns a missing file into an
 // import-time throw, and vitest reports that as "no tests" — which reads as a
 // pass. The mutation test for this file stashes src/.

@@ -27,11 +27,12 @@
 //     highlight also has to follow the arrow keys, so the selected row is
 //     driven by `active` state, not by a `hover:` class.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SRC = readFileSync(join(ROOT, "src/components/AddressAutocomplete.tsx"), "utf8");
 
 function element(tag: string, role: string): string {

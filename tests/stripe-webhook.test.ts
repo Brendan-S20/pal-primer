@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
 
@@ -190,7 +191,7 @@ describe("a Connect event cannot reach another tenant's records", () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const src = readFileSync(
-      join(new URL("..", import.meta.url).pathname, "src/routes/api/public/hooks/stripe.ts"),
+      join(fileURLToPath(new URL("..", import.meta.url)), "src/routes/api/public/hooks/stripe.ts"),
       "utf8",
     );
     const code = src

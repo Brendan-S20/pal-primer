@@ -37,11 +37,12 @@
 // at the wrong place. The honest statement is narrower: the screen tells the
 // truth about what the button does.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 describe("the settlement screen says who moves the money", () => {

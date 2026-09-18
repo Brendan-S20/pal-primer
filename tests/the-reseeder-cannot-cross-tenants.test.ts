@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -29,7 +30,7 @@ import { sqlCode } from "../scripts/check-baseline-objects.mjs";
 // It reads the NEWEST migration that defines the function, so a later rewrite
 // is checked rather than grandfathered.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const MARKER = "CREATE OR REPLACE FUNCTION public.seed_demo_org";
 

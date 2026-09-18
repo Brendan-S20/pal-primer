@@ -35,11 +35,12 @@
 // the caller's own role on the server. That flag is presentation. The
 // authorization is `joinFranchise`, and then the SQL, in that order.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { ROLE_PERMISSIONS } from "../src/lib/permissions";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 
 const codeOnly = (src: string) =>

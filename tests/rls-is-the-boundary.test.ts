@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ import { ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
 // list of tables and the permission each one is entitled to has to be edited by
 // a human, and editing it is the moment to think.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {

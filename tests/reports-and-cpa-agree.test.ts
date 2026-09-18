@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +26,7 @@ import { arPositionAsOf, billedDay, billedInPeriod, outstandingAsOf } from "@/li
 // These tests were missing when the change landed. They are the point: a money
 // figure with no test is a money figure nobody will notice going wrong.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const TZ = "America/Chicago";
 

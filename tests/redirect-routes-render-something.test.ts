@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -31,7 +32,7 @@ import { join } from "node:path";
 // they are deciding whether to trust us with their payouts — as a white screen
 // with no message and no way forward.
 
-const ROUTES = new URL("../src/routes", import.meta.url).pathname;
+const ROUTES = fileURLToPath(new URL("../src/routes", import.meta.url));
 
 function routeFiles(dir: string): string[] {
   const out: string[] = [];
@@ -72,7 +73,7 @@ describe("every route that redirects can still render", () => {
 
 describe("the fallback recovers rather than just filling space", () => {
   const src = readFileSync(
-    new URL("../src/components/RedirectFallback.tsx", import.meta.url).pathname,
+    fileURLToPath(new URL("../src/components/RedirectFallback.tsx", import.meta.url)),
     "utf8",
   );
 

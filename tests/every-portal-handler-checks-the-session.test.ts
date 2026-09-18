@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -24,7 +25,7 @@ import { readFileSync } from "node:fs";
 // second skip_visit nothing had called since July. Handler twenty-three is the
 // one to worry about, and nothing mechanical was stopping it.
 
-const SRC = new URL("../src/lib/portal.functions.ts", import.meta.url).pathname;
+const SRC = fileURLToPath(new URL("../src/lib/portal.functions.ts", import.meta.url));
 const source = readFileSync(SRC, "utf8");
 
 /** Each `export const NAME = createServerFn…` block, to the start of the next. */

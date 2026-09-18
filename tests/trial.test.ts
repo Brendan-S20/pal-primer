@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -253,7 +254,7 @@ describe("expiry locks out new accounts, and only new accounts", () => {
     // enforcement off for that path. There are only two callers; both are
     // checked here by reading them, because there is no type-level way to
     // require a field that older tests are allowed to omit.
-    const root = new URL("..", import.meta.url).pathname;
+    const root = fileURLToPath(new URL("..", import.meta.url));
     for (const f of ["src/lib/ai-access.server.ts", "src/lib/trial.functions.ts"]) {
       const src = readFileSync(join(root, f), "utf8");
       const call = src.slice(src.indexOf("trialStateFor({"));

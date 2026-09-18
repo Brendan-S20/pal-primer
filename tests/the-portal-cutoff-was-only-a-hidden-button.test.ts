@@ -43,6 +43,7 @@
 // is checked against a floor first, so a parser that quietly stopped matching
 // fails loudly instead of finding nothing to complain about.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
@@ -52,7 +53,7 @@ import {
   stripLineComments,
 } from "./support/sql-migrations";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 // Lazy. A read resolved in a describe body turns a missing file into an
 // import-time throw, and vitest reports that as "no tests" — which reads as a
 // pass. The mutation test for this file stashes src/ and supabase/.

@@ -39,6 +39,7 @@
 // no default — and the pair being swapped is the failure this file exists to
 // catch, because every figure still looks like a plausible number.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
@@ -50,7 +51,7 @@ import {
   type SettlementRow,
 } from "../src/lib/franchise-settlement";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 /** Whole-line comments dropped: every file here explains the bug it fixes,
  *  quoting the column names and the wrong behaviour it replaced. */

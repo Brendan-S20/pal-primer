@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -615,7 +616,7 @@ describe("the freshness check reads the clock itself", () => {
 
 describe("my-day does not hand it a stored clock", () => {
   const src = readFileSync(
-    join(new URL("..", import.meta.url).pathname, "src/routes/_authenticated/my-day.tsx"),
+    join(fileURLToPath(new URL("..", import.meta.url)), "src/routes/_authenticated/my-day.tsx"),
     "utf8",
   );
   const call = (() => {

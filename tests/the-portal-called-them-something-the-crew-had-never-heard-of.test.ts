@@ -32,6 +32,7 @@
 // change and nobody maintains is worse than a missing one, because it reads as
 // current — so its absence is the assertion, and it has to stay absent.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
@@ -41,7 +42,7 @@ import {
   stripLineComments,
 } from "./support/sql-migrations";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 // Lazy: a read resolved in a describe body turns a missing file into an
 // import-time throw, and vitest reports that as "no tests" — which reads as a
 // pass. The mutation test for this file stashes src/ and supabase/.

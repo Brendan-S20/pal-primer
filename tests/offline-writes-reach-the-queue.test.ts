@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -206,7 +207,7 @@ describe("withDeadline", () => {
 // runOrQueue can be perfectly correct and perfectly unreachable — which is
 // precisely what happened to the queue it feeds.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const code = (src: string) =>
   src

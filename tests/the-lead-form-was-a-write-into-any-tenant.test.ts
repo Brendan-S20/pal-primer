@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,7 +29,7 @@ import { join } from "node:path";
 // written that way first and the probe caught it; without the probe the lead
 // form would have shipped silently dead.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const files = readdirSync(MIGRATIONS)
   .filter((f) => f.endsWith(".sql"))

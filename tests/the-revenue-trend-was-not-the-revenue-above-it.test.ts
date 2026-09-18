@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -73,7 +74,7 @@ import {
 // the whole database, and `franchise_adjustments` is empty. So fault 1 is
 // latent in production and is pinned here arithmetically instead.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 const PARENT = "342d4d1e-56f7-4b6e-ad40-524d370e1a36";

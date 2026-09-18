@@ -33,10 +33,11 @@
 // and lands it there as a DRAFT rather than recomputing on the way out, so the
 // figures are read before they are issued again.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 
 /** Comments dropped — block and line, JSX and TypeScript alike.

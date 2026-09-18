@@ -12,10 +12,11 @@
 // CREATE/ALTER/DROP POLICY means, what fields it carries — differs between the
 // two rules and stays in each test file.
 
+import { fileURLToPath } from "node:url";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("../..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 /** Read lazily. A file read resolved while the module is loading turns a

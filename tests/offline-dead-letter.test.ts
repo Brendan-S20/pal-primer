@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ import { join } from "node:path";
 // yard has no signal is the opposite of the point) and a server that will
 // never accept this action (give up, so the queue moves).
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 /** Comments are not code — a rule this repo has had to learn twice. */

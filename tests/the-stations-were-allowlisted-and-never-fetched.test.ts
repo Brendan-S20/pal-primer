@@ -44,11 +44,12 @@
 // exactly like a station nobody had touched, on the screen where the only way
 // to tell one grey bin from the next is what the app says about it.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 // LAZY, every one of them. The mutation test for this file stashes src/, so
 // these paths are briefly absent by design — and a read (or an import) in a

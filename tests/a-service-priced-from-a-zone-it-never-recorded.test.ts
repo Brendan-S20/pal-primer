@@ -33,11 +33,12 @@
 // QA round 1.5 — same question, about the field that sets the price rather
 // than the field that sets the dog count.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { blankSubscriptionFormValues } from "../src/lib/subscription-form";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 const codeOnly = (src: string) =>
   src

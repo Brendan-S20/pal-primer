@@ -35,11 +35,12 @@
 // every entry — and any function created after that sweep must carry its own
 // REVOKE or fail here.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 // LAZY, every one of them. Resolved inside the `it` that needs them and never
 // in a `describe` body: a throw during collection makes vitest report "no

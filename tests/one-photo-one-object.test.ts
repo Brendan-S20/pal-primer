@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ import { join } from "node:path";
 // Orphans are referenced by nothing, collected by nothing, and billed to the
 // organization for ever.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 /** Comments are not code — both files now explain the defect in prose. */

@@ -40,11 +40,12 @@
 // takes somebody else's. The only thing that said so was placeholder text,
 // which disappears the moment anyone types.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { activityChanges, fieldLabel, formatActivityValue } from "../src/lib/activity-diff";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 const codeOnly = (src: string) =>
   src

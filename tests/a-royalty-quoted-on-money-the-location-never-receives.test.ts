@@ -41,12 +41,13 @@
 // the previous round of this went wrong, so the new sentence sits BESIDE the
 // phrase rather than replacing it.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PLATFORM_FEE_BPS } from "../src/lib/platform-fee";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 
 const route = read("src/routes/_authenticated/franchise.tsx");

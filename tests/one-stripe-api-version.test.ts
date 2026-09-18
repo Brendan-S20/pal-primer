@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ import { STRIPE_API_VERSION } from "@/lib/stripe-client.server";
 // arrives as JSON and is cast — so the only symptom of a field that moved
 // between versions is `undefined`, at runtime, in money code.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const HELPER = "src/lib/stripe-client.server.ts";
 
 function walk(dir: string, out: string[] = []): string[] {

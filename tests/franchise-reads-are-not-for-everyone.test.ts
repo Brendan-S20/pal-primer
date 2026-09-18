@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ import { ROLE_PERMISSIONS } from "@/lib/permissions";
 // That shape has now appeared five times in this codebase, which is why the
 // last test here checks the helper itself rather than these two tables.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {

@@ -41,11 +41,12 @@
 // Audit tab rendered `{r.action}`. The fix for the finding shipped and was
 // never wired to the screen the finding was about.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { humanizeAuditAction } from "../src/lib/humanize";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 
 const codeOnly = (src: string) =>

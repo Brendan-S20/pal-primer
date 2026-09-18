@@ -48,6 +48,7 @@
 // must carry its own REVOKE, or this fails naming it. Without that, thirty-four
 // becomes thirty-five the first time somebody writes a trigger.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
@@ -57,7 +58,7 @@ import {
   stripLineComments,
 } from "./support/sql-migrations";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const THIS_MIGRATION = "20260812190000_a-trigger-function-is-not-an-rpc.sql";
 
 /** Every trigger function this directory creates: a CREATE FUNCTION whose

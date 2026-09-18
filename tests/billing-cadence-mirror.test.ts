@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,7 +23,7 @@ import { join } from "node:path";
 // Verified once by hand against the live database when written: 267 clients
 // checked, 0 disagreements between the two implementations.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 /** The latest migration that (re)defines the function — migrations are an

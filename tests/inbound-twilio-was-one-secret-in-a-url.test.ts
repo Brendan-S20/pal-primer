@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -23,7 +24,7 @@ import {
 // was `?s=<the platform secret>`, so every multi-turn call wrote the master
 // credential into Twilio's stored call log.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const SMS = "src/routes/api/public/hooks/twilio.ts";
 const VOICE = "src/routes/api/public/hooks/twilio-voice.ts";

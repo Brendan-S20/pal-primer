@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ import { isInvoiceOverdue, summarizeAr } from "@/lib/ar";
 // behaviour is what was wrong. The two source scans at the end exist because a
 // new call site can reintroduce the bug without touching anything tested here.
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /** 2026-08-01 02:00Z — the instant the live probe used. 9pm on July 31st in
  *  Chicago, and already August in UTC. */

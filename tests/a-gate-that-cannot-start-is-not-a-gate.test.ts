@@ -30,11 +30,12 @@
 // is not there, says so with the command to run rather than dying on an ENOENT
 // three steps later.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { load } from "js-yaml";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const raw = readFileSync(ROOT + ".github/workflows/ci.yml", "utf8");
 const wf = load(raw) as {
   jobs: Record<string, { "runs-on": string; if?: string; steps: Array<Record<string, unknown>> }>;

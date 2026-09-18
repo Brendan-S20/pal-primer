@@ -33,11 +33,12 @@
 // And the negative half, which matters just as much: the public routes must
 // NOT use it. See the comment in signup.$slug.tsx.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 /** Every surface in the staff app where somebody types a street address. */

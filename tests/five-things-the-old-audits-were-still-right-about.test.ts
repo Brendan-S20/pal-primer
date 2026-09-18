@@ -48,10 +48,11 @@
 // form still sending it, and a hand-picked size is worse than none — the tech
 // reading it in the field cannot tell a guess from a measurement.
 
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(ROOT + p, "utf8");
 /** Whole-line comments dropped: every file here explains the bug it fixes,
  *  naming the class or column it bans. */
