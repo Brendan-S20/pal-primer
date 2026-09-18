@@ -23,6 +23,7 @@
 // Run after `npm run build`. Skips silently when there is no build to inspect,
 // so it can sit in a CI chain that does not always build.
 
+import { toPosix } from "./posix-path.mjs";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -107,7 +108,7 @@ if (existsSync(SW)) {
     for (const name of readdirSync(dir)) {
       const p = join(dir, name);
       if (statSync(p).isDirectory()) walk(p);
-      else cacheable.push(relative(OUT, p));
+      else cacheable.push(toPosix(relative(OUT, p)));
     }
   };
   walk(OUT);

@@ -29,6 +29,7 @@
 // finding, so the first thing checked is that there is a real bundle with a
 // bootable index.html in it. A scan that measured nothing must not be green.
 
+import { toPosix } from "./posix-path.mjs";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -81,7 +82,7 @@ function walk(dir, out = []) {
 
 // ── 0. there must be something to check ──────────────────────────────────
 if (!existsSync(BUNDLE)) {
-  console.error(`✗ no native bundle at ${relative(ROOT, BUNDLE)}`);
+  console.error(`✗ no native bundle at ${toPosix(relative(ROOT, BUNDLE))}`);
   console.error("  Run `npm run build:native` first. Every check below passes");
   console.error("  on an empty directory, so this is an error rather than a skip.");
   process.exit(1);
@@ -119,7 +120,7 @@ for (const f of textFiles) {
   const hits = src.match(PREVIEW_URL);
   if (hits) {
     fail.push(
-      `${relative(ROOT, f)} contains a preview-host URL: ${[...new Set(hits)].join(", ")}\n` +
+      `${toPosix(relative(ROOT, f))} contains a preview-host URL: ${[...new Set(hits)].join(", ")}\n` +
         "    A binary that fetches or navigates to a preview domain depends on an\n" +
         "    environment nobody promises to keep alive.",
     );
@@ -146,7 +147,7 @@ for (const f of textFiles) {
 
   if (real.length) {
     fail.push(
-      `the real PlanPicker is in the bundle: ${real.map((f) => relative(ROOT, f)).join(", ")}\n` +
+      `the real PlanPicker is in the bundle: ${real.map((f) => toPosix(relative(ROOT, f))).join(", ")}\n` +
         "    It queries the platform plan catalog, which is the SaaS purchase UI\n" +
         "    App Review must not find in the binary. The runtime gate hiding it is\n" +
         "    not the same claim as it not being there.",
@@ -232,7 +233,7 @@ for (const f of walk(SRC).filter((f) => /\.(ts|tsx)$/.test(f))) {
   const hits = src.match(WEB_CHECKOUT_URL);
   if (hits) {
     fail.push(
-      `${relative(ROOT, f)} links to web SaaS billing: ${[...new Set(hits)].join(", ")}\n` +
+      `${toPosix(relative(ROOT, f))} links to web SaaS billing: ${[...new Set(hits)].join(", ")}\n` +
         "    In a native shell that navigates out of the app, and a plan-purchase\n" +
         "    page reached from inside the binary is what guideline 3.1.1 is about.\n" +
         "    Customer invoice and portal payment paths are deliberately NOT matched\n" +

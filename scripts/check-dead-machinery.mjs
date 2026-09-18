@@ -48,6 +48,7 @@
 //   node scripts/check-dead-machinery.mjs
 //   node scripts/check-dead-machinery.mjs --json      (machine-readable)
 
+import { toPosix } from "./posix-path.mjs";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -505,7 +506,7 @@ function scanFunctions() {
       if (!createdSigs.has(m[1])) createdSigs.set(m[1], new Set());
       createdSigs.get(m[1]).add(key);
       defined.set(m[1], {
-        file: relative(ROOT, file),
+        file: toPosix(relative(ROOT, file)),
         // A trigger function is invoked by the trigger, never by name from the
         // app. Flagging those would be pure noise.
         returnsTrigger: /trigger/i.test(m[3]),
@@ -630,7 +631,7 @@ function checkUninvokedEndpoints(baseline) {
       const code = tsCode(readFileSync(f, "utf8"));
       return /createFileRoute\s*\(/.test(code) && /\bhandlers\s*:/.test(code);
     })
-    .map((f) => relative(ROOT, f))
+    .map((f) => toPosix(relative(ROOT, f)))
     // Preview/debug routes are opened by a human with a browser; there is no
     // scheduler to declare and never will be.
     .filter((f) => !/preview\.tsx?$/.test(f));
@@ -852,7 +853,7 @@ function checkWriteOnlyColumns(baseline) {
 
   for (const file of migrationFiles()) {
     const { writes, declared, reads } = columnWritesAndReads(sqlCode(readFileSync(file, "utf8")));
-    for (const col of writes) if (!written.has(col)) written.set(col, relative(ROOT, file));
+    for (const col of writes) if (!written.has(col)) written.set(col, toPosix(relative(ROOT, file)));
     for (const col of declared) declaredHere.add(col);
     readable.push(reads);
   }

@@ -50,6 +50,7 @@
 // the next real finding in one of them disappears. A marker exempts the string
 // it sits on and nothing else, and it has to carry a reason.
 
+import { toPosix } from "./posix-path.mjs";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
@@ -176,7 +177,7 @@ export function scanSource(rel, src) {
 export function scanRepo() {
   const all = [];
   for (const file of walk(SRC)) {
-    const rel = relative(ROOT, file);
+    const rel = toPosix(relative(ROOT, file));
     all.push(...scanSource(rel, readFileSync(file, "utf8")));
   }
   return all;
