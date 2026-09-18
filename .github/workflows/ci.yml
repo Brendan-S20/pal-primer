@@ -321,29 +321,36 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # NO `shell:` ANYWHERE IN THIS JOB, AND THAT IS THE FIX.
+      #
+      # The first version of this job said `shell: bash` on both steps. The
+      # runner answered `##[error]bash: command not found` -- Git Bash is not
+      # on its PATH -- so `npm ci` never ran, the suite never ran, and the job
+      # reported a failure that said nothing about Windows compatibility.
+      #
+      # Omitting `shell:` uses the platform default, which is PowerShell here
+      # and bash on a Unix runner, and every line below is written to work in
+      # both. The parsing that genuinely needed a shell now lives in Node,
+      # which `setup-node` has just installed.
+      #
+      # Worth knowing elsewhere: `verify` has a memory-preflight step that is
+      # also `shell: bash`. It is fine today because that job is pinned to
+      # macOS -- but it is `continue-on-error` with `exit 0`, so if the pin
+      # were ever cleared it would fail exactly like this and still read green.
       - run: npm ci
-        shell: bash
 
-      # `|| true` then a deliberate read of the tally, so the step reports the
-      # NUMBER rather than just a red cross. A bare `npm test` here would tell
-      # us it failed, which we already know, and not how far off we are.
-      - name: Count what still fails
-        shell: bash
-        run: |
-          set -o pipefail
-          npm test -- --reporter=basic > win.log 2>&1 || true
-          tail -40 win.log
-          line=$(grep -E "^\s*Test Files" win.log | tail -1 || true)
-          echo "::notice title=Windows suite::${line:-no tally line found}"
-          if grep -qE "Test Files\s+[0-9]+ failed" win.log; then
-            echo "Still failing on Windows. The first few, by file:"
-            grep -E "^\s*(FAIL|×)" win.log | head -25 || true
-          elif [ -n "$line" ]; then
-            echo "No failures reported. If this holds, this job has done its job:"
-            echo "  drop continue-on-error, clear UNIX_RUNNER, delete this comment."
-          else
-            echo "::warning::No tally line at all -- the run did not get far enough to count."
-          fi
+      # Redirection works in both PowerShell and bash. `continue-on-error`
+      # rather than `|| true`, because `||` is not PowerShell.
+      - name: Run the suite and keep the log
+        continue-on-error: true
+        run: npm test -- --reporter=basic > win.log 2>&1
+
+      # `if: always()` so a suite that dies mid-run is still counted -- the
+      # script distinguishes "no failures" from "never got far enough to
+      # count", and those must not look alike.
+      - name: Report the tally
+        if: always()
+        run: node scripts/windows-tally.mjs win.log
   migrations:
     name: Migrations applied to the live database
     # ── THIS USED TO SAY "deliberately NOT following CI_RUNNER" ───────────
