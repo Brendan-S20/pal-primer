@@ -43,6 +43,7 @@
 // way is not "the calendar calls techColorMap" — it does not, it takes the map
 // as a prop — but that no file in the schedule folder knows a colour at all.
 
+import { toPosix } from "./support/repo-paths";
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -82,7 +83,11 @@ describe("a technician is the same colour here as on the map", () => {
         if (e.isDirectory()) walk(join(dir, e.name));
         else if (e.name.endsWith(".tsx") || e.name.endsWith(".ts")) {
           if (/TECH_COLORS/.test(readFileSync(join(root, dir, e.name), "utf8"))) {
-            files.push(`${dir}/${e.name}`);
+            // `dir` was built with join(), so on Windows it is `src\components`
+            // while this template splices a literal `/`. That mix is what
+            // produced `src\components/RouteMap.tsx` against an expected
+            // `src/components/RouteMap.tsx`. See tests/support/repo-paths.ts.
+            files.push(toPosix(`${dir}/${e.name}`));
           }
         }
       }

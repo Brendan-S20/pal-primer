@@ -316,7 +316,42 @@ jobs:
     continue-on-error: true
     timeout-minutes: 60
     steps:
+      # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT ────────────────────
+      #
+      # `.gitattributes` says `* text=auto eol=lf`, and a FRESH clone honours
+      # it. This runner's workspace is not fresh: it is reused between runs,
+      # and `git checkout --force` will not rewrite a working file whose
+      # content already matches the index. So the CRLF written by a checkout
+      # that predates `.gitattributes` is still sitting there.
+      #
+      # It cost four of the ten remaining failures, and none of them looks
+      # like a line-ending fault at the assertion:
+      #
+      #     indexOf('.from("subscriptions")\n      .update(')    ->  -1
+      #     /export const SMS_CONSENT_TEXT =\n(.*?);\n/s.exec()  ->  null
+      #
+      # A test searching for a literal newline finds nothing in a file that
+      # has CRLF, and vitest reports "expected -1 to be greater than -1",
+      # which reads like a missing export rather than a missing carriage
+      # return. That is why this is worth a comment rather than a one-liner.
+      #
+      # Both halves are needed. The config makes the NEXT fetch write LF; the
+      # renormalise fixes a workspace that is already wrong, which the config
+      # alone cannot do because git believes those files are already correct.
+      - name: Make git write LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
       - uses: actions/checkout@v4
+      # Re-stage every file so git re-applies .gitattributes, then restore.
+      # `git status --porcelain` afterwards should print nothing; if it prints
+      # a wall of modified files, THAT is the line-ending drift being fixed,
+      # and it is worth seeing rather than swallowing.
+      - name: Renormalise a workspace checked out before .gitattributes
+        run: |
+          git rm --cached -r -q .
+          git reset --hard
+          git status --porcelain
       - uses: actions/setup-node@v4
         with:
           node-version: 22
