@@ -58,21 +58,45 @@ describe("the schema gate can be scheduled", () => {
     );
   });
 
-  it("uses the same expression as verify, which is true again and for a new reason", () => {
-    // This asserted identity, then briefly asserted a deliberate difference,
-    // and is back to identity. The history is the useful part.
+  it("no longer matches verify, because the condition it was waiting for happened", () => {
+    // Identity, then a deliberate difference, then identity again, and now a
+    // deliberate difference for the third time. The history is still the
+    // useful part, so here is the entry that changed it.
     //
-    // A Windows runner joined on 2026-09-16 and `verify` was left free to use
-    // it, on the reasoning that every STEP in that job is `npm run` and
-    // therefore portable. The steps were portable. The SUITE was not: 86 of
-    // 271 test files fail on Windows, mostly on path separators --
-    // `src\components/RouteMap.tsx` against `src/components/RouteMap.tsx`.
+    // The previous version of this test said it "guards against re-splitting
+    // them before the suite can actually survive the split". That was the
+    // right guard and this is it being satisfied rather than removed.
     //
-    // So both jobs point at UNIX_RUNNER again. The original reasoning for this
-    // assertion still holds -- two jobs with two spellings is how half of CI
-    // ends up somewhere nobody meant -- and it now also guards against
-    // re-splitting them before the suite can actually survive the split.
-    expect(migrations["runs-on"]).toBe(verify["runs-on"]);
+    // On 2026-09-18 the Windows runner ran the whole suite:
+    //
+    //     Suites 1163 passed, 0 failed | Tests 3653 passed, 0 failed
+    //
+    // the same test count as macOS. Getting there took six fixes and they
+    // were all one rule -- a path that stopped being a path and became a
+    // string that was compared, keyed, printed or matched:
+    //
+    //   * `new URL(..).pathname` returning `/C:/repo/`         (81 sites)
+    //   * a built path spliced against a literal slash          (22 sites)
+    //   * CRLF in a reused workspace `.gitattributes` missed    (4 tests)
+    //   * baseline JSON keyed by forward-slash paths            (9 sites)
+    //   * `/\/src\//` regexes that silently never matched        (4 sites)
+    //   * an entry-point regex, which cost nine unrelated files
+    //
+    // `windows-probe` gates it now, so a seventh cannot arrive unnoticed.
+    //
+    // ── WHY THEY ARE DIFFERENT RATHER THAN BOTH FREE ──────────────────────
+    //
+    // `verify` follows CI_RUNNER and can go to either machine. `migrations`
+    // must NOT: it guards SUPABASE_DB_URL with bash `[ -z ... ]` and no
+    // `shell:` override, and it decrypts a production credential, which is a
+    // question about more than portability.
+    //
+    // The original worry -- two jobs, two spellings, half of CI somewhere
+    // nobody meant -- is answered by asserting the difference explicitly here
+    // rather than by forcing them to be equal.
+    expect(verify["runs-on"]).toBe("${{ vars.CI_RUNNER || 'ubuntu-latest' }}");
+    expect(migrations["runs-on"]).not.toBe(verify["runs-on"]);
+    expect(migrations["runs-on"]).toContain("UNIX_RUNNER");
   });
 
   it("still falls back to hosted runners when the variable is unset", () => {

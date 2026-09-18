@@ -55,7 +55,25 @@ jobs:
     # undo this is worth doing -- it is the longest job in the repo and the Mac
     # is the machine with the memory problem -- but it is a project, not a
     # line, and it should not be discovered by leaving main red.
-    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    # ── UNPINNED 2026-09-18, AND ONLY THIS JOB ──────────────────────────
+    #
+    # `UNIX_RUNNER` was set to macOS because 86 of 271 test files failed on
+    # Windows. They no longer do: six causes, all one rule -- a path that
+    # stopped being a path and became a string that was compared, keyed,
+    # printed or matched. `windows-probe` now gates that and is green.
+    #
+    # So this job follows `CI_RUNNER`, which matches BOTH runners, and the
+    # forty-minute job runs on whichever is free. That is the point of the
+    # whole exercise: the Mac was measured at 91% swap and load 86 on 8
+    # cores while this was being written.
+    #
+    # `migrations` below is NOT unpinned and must not be. It guards
+    # `SUPABASE_DB_URL` with bash `[ -z ... ]` tests and no `shell:`
+    # override, and it decrypts a production credential -- where that
+    # happens is a decision with more than portability in it. The database
+    # job in sandboxes.yml stays for a plainer reason: Docker, psql and the
+    # Supabase CLI are not on the Windows box.
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     # A hosted runner is destroyed after each job; a self-hosted one is not, so
     # a wedged step there holds the machine until someone notices.
     #
@@ -127,47 +145,32 @@ jobs:
       # sandboxes.yml carries the same check beside its disk guard. This job
       # has no disk guard to sit beside, which is part of why the gap lasted.
       # docs/owner-actions-before-submission.md §12 is the write-up.
+      # ── THE COMMENT THAT USED TO BE HERE WAS WRONG ──────────────────────
+      #
+      # This step was `shell: bash`, under a note asserting that Git Bash is
+      # on the PATH "because actions/checkout needs it". Reasonable, and
+      # false. Measured on DESKTOP-JUC6SL1 on 2026-09-18:
+      #
+      #     ##[error]bash: command not found
+      #
+      # Git IS installed there -- the logs reference
+      # `C:\Program Files\Git\usr\bin\tar.exe` -- but `bash` is not on the
+      # PATH the runner invokes steps with.
+      #
+      # That mattered the moment this job stopped being pinned to the Mac.
+      # The step carries `continue-on-error` and exits zero, so on Windows it
+      # would have failed GREEN: the check whose whole purpose is to put a
+      # number in the log, silently putting nothing there, and its silence
+      # indistinguishable from a healthy machine.
+      #
+      # `scripts/runner-headroom.mjs` reads swap per platform -- sysctl on
+      # darwin, /proc/meminfo on linux, the pagefile on win32 -- and says so
+      # explicitly when it cannot read it, because an unread number and a good
+      # one must not look alike. Node is the one interpreter this job can rely
+      # on, since `setup-node` ran two steps ago.
       - name: What the machine had left
-        # CANNOT fail a build. It did on 2026-09-16: a Windows self-hosted
-        # runner joined the pool, `runs-on: self-hosted` matched it, and this
-        # step died on shell syntax it does not have -- skipping Typecheck,
-        # Tests, Build and Lint, none of which care what OS they are on. The
-        # comment below already said it warns and never fails; that was the
-        # intent and not the implementation.
-        #
-        # `shell: bash` uses Git Bash on Windows, which the runner has because
-        # actions/checkout needs it. `continue-on-error` is the belt to that
-        # brace: a diagnostic must never be the reason a check did not run.
         continue-on-error: true
-        shell: bash
-        run: |
-          # Portable: Git Bash on Windows has neither getconf nor uptime, and
-          # every probe below is allowed to come back empty rather than fail.
-          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "?")
-          load1=$(uptime 2>/dev/null | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
-          [ -n "$load1" ] || load1="?"
-          if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
-            used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
-            total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')
-            pct=$(awk -v u="$used" -v t="$total" 'BEGIN{printf "%d", (t>0? u*100/t : 0)}')
-            echo "swap ${pct}% used (${used}M of ${total}M), load ${load1} on ${cores} cores"
-            if [ "$pct" -ge 50 ]; then
-              echo "::warning::Swap is ${pct}% full on this runner (${used}M of ${total}M), load ${load1} on ${cores} cores. A SIGBUS, a timeout or a stability-assertion failure in this run is more likely to be the machine than the diff -- re-run once before believing it. See docs/owner-actions-before-submission.md §12."
-            fi
-          elif [ -r /proc/meminfo ]; then
-            st=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
-            sf=$(awk '/SwapFree/{print $2}' /proc/meminfo)
-            if [ "${st:-0}" -gt 0 ]; then
-              pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
-              echo "swap ${pct}% used, load ${load1} on ${cores} cores"
-              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat a SIGBUS or a timeout here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
-            else
-              echo "no swap configured; load ${load1} on ${cores} cores"
-            fi
-          else
-            echo "::warning::could not read swap usage on this runner (no vm.swapusage, no /proc/meminfo), so memory pressure was NOT checked for this run. cores=${cores}, load=${load1}"
-          fi
-          exit 0
+        run: node scripts/runner-headroom.mjs
 
       - name: Typecheck
         run: npx tsc --noEmit
@@ -313,7 +316,10 @@ jobs:
     # what it answers, and it runs on the machine that is otherwise idle, so it
     # costs the Mac nothing.
     runs-on: [self-hosted, Windows]
-    continue-on-error: true
+    # `continue-on-error` removed 2026-09-18, on the run that came back
+    # `Suites 1163 passed, 0 failed | Tests 3653 passed, 0 failed` -- the same
+    # test count as macOS. The job's own comment named this as the exit
+    # condition and this is it being taken.
     timeout-minutes: 60
     steps:
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT ────────────────────
