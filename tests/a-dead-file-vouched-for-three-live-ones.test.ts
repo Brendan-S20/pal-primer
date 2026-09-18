@@ -153,13 +153,31 @@ describe("it did not get slow doing it", () => {
     //
     // The budget is deliberately NOT raised. A bigger number would buy
     // tolerance by giving up the range where the real regression lives.
+    // `execFileSync` THROWS on a non-zero exit, and the thrown Error's message
+    // is the useless one-liner `Command failed: node scripts/...`. The script's
+    // own diagnosis -- which names the files it believes are unwired -- is on
+    // the error's `stdout` and `stderr`, and was being discarded.
+    //
+    // That cost two wrong guesses at a Windows failure: the probe reported
+    // `Command failed` three runs running, and the thing that would have said
+    // WHY was sitting on an object nobody read. A test that runs a subprocess
+    // owes you its output when it fails, on every platform.
     const time = () => {
       const started = Date.now();
-      const out = execFileSync("node", ["scripts/check-dead-machinery.mjs"], {
-        cwd: root,
-        encoding: "utf8",
-      });
-      return { ms: Date.now() - started, out };
+      try {
+        const out = execFileSync("node", ["scripts/check-dead-machinery.mjs"], {
+          cwd: root,
+          encoding: "utf8",
+        });
+        return { ms: Date.now() - started, out };
+      } catch (err) {
+        const e = err as { stdout?: string; stderr?: string; status?: number };
+        throw new Error(
+          `check-dead-machinery.mjs exited ${e.status ?? "?"}.\n` +
+            `--- its stdout ---\n${e.stdout ?? "(none)"}\n` +
+            `--- its stderr ---\n${e.stderr ?? "(none)"}`,
+        );
+      }
     };
     const first = time();
     const best = first.ms < 30_000 ? first : time();
