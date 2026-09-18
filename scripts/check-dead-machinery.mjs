@@ -979,7 +979,10 @@ function checkUnwiredServerFns(baseline) {
   const dead = [];
 
   for (const [path, code] of files) {
-    if (!path.includes("/lib/")) continue;
+    // `path` is absolute and built with join(), so on Windows this was false
+    // for every file: the rule skipped the lot and reported nothing wrong.
+    // A check that passes by never looking is worse than one that fails.
+    if (!toPosix(path).includes("/lib/")) continue;
     // `export const NAME = createServerFn(` — the entry-point form. A plain
     // exported helper is ordinary TypeScript and out of scope.
     for (const m of code.matchAll(/export\s+const\s+(\w+)\s*=\s*createServerFn\b/g)) {

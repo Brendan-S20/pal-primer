@@ -1,3 +1,4 @@
+import { toPosix } from "./support/repo-paths";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -45,7 +46,9 @@ function sourceFiles(): Array<{ path: string; code: string }> {
           .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
           .replace(/\/\*[\s\S]*?\*\//g, "")
           .replace(/^[ \t]*\/\/.*$/gm, "");
-        out.push({ path: p.slice(process.cwd().length + 1), code });
+        // Normalised HERE rather than at each comparison, because `path` is
+        // consumed several times below against forward-slash literals.
+        out.push({ path: toPosix(p.slice(process.cwd().length + 1)), code });
       }
     }
   };

@@ -1,3 +1,4 @@
+import { toPosix } from "./support/repo-paths";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -61,7 +62,10 @@ describe("every route that redirects can still render", () => {
   });
 
   for (const file of redirecting) {
-    const short = file.slice(file.indexOf("src/routes"));
+    // Same shape as one-app-origin: on Windows `indexOf("src/routes")` is -1
+    // and `slice(-1)` returns the last CHARACTER of the path.
+    const posix = toPosix(file);
+    const short = posix.slice(posix.indexOf("src/routes"));
     it(`${short} declares a component`, () => {
       expect(
         readFileSync(file, "utf8"),

@@ -1,3 +1,4 @@
+import { toPosix } from "./support/repo-paths";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -166,7 +167,10 @@ function allFiles(dir: string): string[] {
 }
 
 describe("nothing writes the host by hand", () => {
-  const files = tsFiles(SRC).filter((f) => !f.endsWith("/lib/app-origin.ts"));
+  // `toPosix` on both sides. On Windows the path ends `\lib\app-origin.ts`,
+  // so this exclusion missed and the module that DEFINES the host was flagged
+  // by the rule against hardcoding the host.
+  const files = tsFiles(SRC).filter((f) => !toPosix(f).endsWith("/lib/app-origin.ts"));
 
   it("finds the source files at all", () => {
     expect(files.length).toBeGreaterThan(100);
@@ -175,7 +179,13 @@ describe("nothing writes the host by hand", () => {
   for (const file of files) {
     const code = tsCode(readFileSync(file, "utf8"));
     if (!/houndstack\.com/.test(code)) continue;
-    const short = file.slice(file.indexOf("src/"));
+    // Also `toPosix`, and this one produced the strangest message of the day.
+    // On Windows `indexOf("src/")` is -1, so `slice(-1)` returns the LAST
+    // CHARACTER of the path -- and the failure read `s writes an app host into
+    // code`, which looks like a truncated filename and is in fact the whole
+    // value of `short`.
+    const posix = toPosix(file);
+    const short = posix.slice(posix.indexOf("src/"));
     it(`${short} does not hardcode an app host`, () => {
       expect(
         code,
