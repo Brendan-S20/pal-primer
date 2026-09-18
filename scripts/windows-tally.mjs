@@ -35,12 +35,45 @@ if (!path) {
   process.exit(2);
 }
 
+/**
+ * Decode the log whatever the shell wrote it as.
+ *
+ * PowerShell's `>` does not write UTF-8. Windows PowerShell writes UTF-16LE,
+ * and a UTF-16 file read as UTF-8 comes back as readable-looking characters
+ * separated by NULs -- so it does not throw, does not look obviously wrong in
+ * a truncated dump, and matches no regex this script has. It would report "no
+ * tally line" on a suite that ran perfectly.
+ *
+ * Detected by BOM first, then by NUL density, because a redirect can be
+ * BOM-less. `Buffer` is used rather than `readFileSync(path, "utf8")` for
+ * exactly this reason.
+ */
+function decode(buf) {
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return { text: buf.toString("utf16le"), how: "utf16le (BOM)" };
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return { text: buf.swap16().toString("utf16le"), how: "utf16be (BOM)" };
+  const sample = buf.subarray(0, Math.min(buf.length, 4096));
+  const nuls = sample.filter((b) => b === 0).length;
+  if (sample.length > 16 && nuls / sample.length > 0.25) {
+    return { text: buf.toString("utf16le"), how: "utf16le (no BOM, inferred from NUL density)" };
+  }
+  return { text: buf.toString("utf8"), how: "utf8" };
+}
+
+/** Emit a multi-line annotation, so the diagnosis is readable without the
+ *  run log -- which GitHub withholds until every job in the run finishes. */
+function annotate(level, title, body) {
+  console.log(`::${level} title=${title}::${String(body).replace(/\r?\n/g, "%0A")}`);
+}
+
 let log = "";
+let encoding = "utf8";
 try {
-  log = readFileSync(path, "utf8");
+  const buf = readFileSync(path);
+  const d = decode(buf);
+  log = d.text;
+  encoding = d.how;
 } catch (err) {
-  console.log(`::warning title=Windows suite::no log at ${path} (${err.code ?? "unreadable"}).`);
-  console.log("The suite did not get far enough to write one. That is not zero failures.");
+  annotate("warning", "Windows suite", `no log at ${path} (${err.code ?? "unreadable"}).\nThe suite did not get far enough to write one. That is NOT zero failures.`);
   process.exit(0);
 }
 
@@ -51,10 +84,15 @@ const files = lines.filter((l) => /^\s*Test Files\s/.test(l)).pop();
 const tests = lines.filter((l) => /^\s*Tests\s/.test(l)).pop();
 
 if (!files) {
-  console.log("::warning title=Windows suite::no tally line in the log.");
-  console.log("The run did not reach the point of counting. Distinct from zero failures.");
-  console.log("Last 30 lines:");
-  console.log(lines.filter(Boolean).slice(-30).join("\n"));
+  const tail = lines.filter(Boolean).slice(-24).join("\n");
+  annotate(
+    "warning",
+    "Windows suite",
+    `no tally line. The run did not reach the point of counting, which is NOT zero failures.\n` +
+      `log bytes: ${log.length}, decoded as: ${encoding}\n--- last lines ---\n${tail}`,
+  );
+  console.log(`decoded as: ${encoding}`);
+  console.log(tail);
   process.exit(0);
 }
 
