@@ -114,8 +114,16 @@ try {
   // finally produced a number could not say WHICH tests it was about.
   const detail = failing.slice(0, 30).map((r) => {
     const first = (r.assertionResults ?? []).find((a) => a.status === "failed");
-    const why = (first?.failureMessages ?? [])[0]?.split("\n")[0] ?? first?.title ?? "";
-    return `  ${r.name ?? "(unnamed)"}\n      ${why}`.slice(0, 300);
+    // EIGHT lines, not one. The first version took `.split("\n")[0]`, which
+    // for a test that shells out is the string `Error: <script> exited 1.` --
+    // and the script's own diagnosis, the part naming what it objected to, is
+    // on the lines after it. Three runs reported "exited 1" and nothing else
+    // while the answer sat two lines below, already captured.
+    const why = ((first?.failureMessages ?? [])[0] ?? first?.title ?? "")
+      .split("\n")
+      .slice(0, 8)
+      .join("\n      ");
+    return `  ${r.name ?? "(unnamed)"}\n      ${why}`.slice(0, 900);
   });
   const more = failing.length > 30 ? `\n  ... and ${failing.length - 30} more` : "";
 

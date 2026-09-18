@@ -345,8 +345,13 @@ function reachableAppFiles() {
     edges.set(path, out);
   }
 
+  // `startsWith(join(...))` is platform-correct and needs nothing. The REGEX
+  // does: its leading `\/` never matches `...\router.tsx`, so on Windows the
+  // three bootstraps were not roots, and everything reachable only through
+  // them -- RouteError, error-page, cors.server -- left the graph with them.
   const isRoot = (f) =>
-    f.startsWith(join(SRC, "routes")) || /\/(router|server|start|routeTree\.gen)\.(ts|tsx)$/.test(f);
+    f.startsWith(join(SRC, "routes")) ||
+    /\/(router|server|start|routeTree\.gen)\.(ts|tsx)$/.test(toPosix(f));
   const seen = new Set([...known].filter(isRoot));
   const queue = [...seen];
   while (queue.length) {
@@ -1027,7 +1032,10 @@ function checkUnreachableModules(baseline) {
   const reachable = reachableAppFiles();
   return appSources()
     .filter((f) => !reachable.has(f))
-    .filter((f) => !UNREACHABLE_EXEMPT.some((re) => re.test(f)))
+    // Same fault as isRoot: both exemptions are `/\/src\/.../` regexes, and
+    // neither matched a backslashed path, so all twenty `components/ui/`
+    // files and the Lovable shim were reported as dead.
+    .filter((f) => !UNREACHABLE_EXEMPT.some((re) => re.test(toPosix(f))))
     .map((f) => toPosix(f).replace(/^.*\/src\//, "src/"))
     .filter((rel) => !baseline.unreachable_modules?.[rel])
     .map((rel) => ({
