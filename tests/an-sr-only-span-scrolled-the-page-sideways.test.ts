@@ -54,6 +54,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 
@@ -142,7 +143,7 @@ function escapees(): { scrollers: number; withSrOnly: number; bad: Escape[] } {
             withSrOnly++;
             if (!POSITIONED.some((p) => has(cls, p))) {
               bad.push({
-                file: file.slice(root.length + 1),
+                file: repoRelative(file, root),
                 line: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1,
                 container: cls.join(" "),
               });

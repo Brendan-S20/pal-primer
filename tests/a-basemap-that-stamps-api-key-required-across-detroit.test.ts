@@ -14,7 +14,8 @@
 // host whose terms changed underneath them.
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, "src");
@@ -48,7 +49,7 @@ describe("no basemap that needs a key we do not have", () => {
     it(`does not fetch tiles from ${host}`, () => {
       const hits = files.filter((f) => codeOnly(readFileSync(f, "utf8")).includes(host));
       expect(
-        hits.map((f) => relative(ROOT, f)),
+        hits.map((f) => repoRelative(f, ROOT)),
         `${host} ${why}. A tile host that degrades without a key fails silently: ` +
           `the map still draws, so nothing alerts and only a human looking at it notices.`,
       ).toEqual([]);
@@ -65,7 +66,7 @@ describe("no basemap that needs a key we do not have", () => {
     const offenders = files
       .filter((f) => !/\.server\.ts$/.test(f))
       .filter((f) => /nominatim\.openstreetmap\.org/.test(codeOnly(readFileSync(f, "utf8"))))
-      .map((f) => relative(ROOT, f));
+      .map((f) => repoRelative(f, ROOT));
     expect(
       offenders,
       "these reach Nominatim from client code. They cannot send the User-Agent " +
@@ -85,7 +86,7 @@ describe("no basemap that needs a key we do not have", () => {
     const offenders: string[] = [];
     for (const f of files) {
       const src = codeOnly(readFileSync(f, "utf8"));
-      for (const cdn of CDNS) if (src.includes(cdn)) offenders.push(`${relative(ROOT, f)} -> ${cdn}`);
+      for (const cdn of CDNS) if (src.includes(cdn)) offenders.push(`${repoRelative(f, ROOT)} -> ${cdn}`);
     }
     expect(
       offenders,

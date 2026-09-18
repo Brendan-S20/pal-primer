@@ -51,6 +51,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -141,7 +142,7 @@ describe("the deleted ones are gone, not just unexported", () => {
   it.each(DELETED)("%s is not imported anywhere either", (name) => {
     const importers = ALL.filter((f) =>
       new RegExp(`\\b${name}\\b`).test(codeOnly(readFileSync(f, "utf8"))),
-    ).map((f) => f.slice(root.length + 1));
+    ).map((f) => repoRelative(f, root));
     expect(importers).toEqual([]);
   });
 

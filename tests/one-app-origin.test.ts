@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { appOrigin, appUrl } from "@/lib/app-origin";
+import { repoRelative } from "./support/repo-paths";
 
 // A CORS preflight may not follow a redirect — the Fetch spec makes it a
 // network error — so whichever app host redirects is a host the native app
@@ -246,7 +247,7 @@ describe("a URL written for someone else to call names the right host", () => {
         }
         for (const m of text.matchAll(ENDPOINT_COMMENT)) {
           out.push({
-            file: file.slice(ROOT.length),
+            file: repoRelative(file, ROOT),
             line: text.slice(0, m.index).split("\n").length,
             verb: m[1],
             url: m[2],

@@ -96,6 +96,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 
@@ -275,7 +276,7 @@ const wholeApp = (): Scan => {
   if (cached) return cached;
   const total: Scan = { candidates: 0, inAFlexRow: 0, trapped: [] };
   for (const file of tsxFiles(join(root, "src"))) {
-    const one = analyse(file.slice(root.length + 1), readFileSync(file, "utf8"));
+    const one = analyse(repoRelative(file, root), readFileSync(file, "utf8"));
     total.candidates += one.candidates;
     total.inAFlexRow += one.inAFlexRow;
     total.trapped.push(...one.trapped);

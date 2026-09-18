@@ -17,6 +17,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const ROOT = resolve(__dirname, "..");
 const SRC = resolve(ROOT, "src");
@@ -59,7 +60,7 @@ describe("a touch size cannot be cancelled at a width breakpoint", () => {
         // Only a line that ALSO sets a touch floor is cancelling one. A
         // `md:h-9` on something that was never 44pt is just a size.
         if (!/\b(h-11|w-11|min-h-11|min-w-11|min-h-\[2\.75rem\])\b/.test(line)) return;
-        offenders.push(`${f.replace(ROOT + "/", "")}:${i + 1}\n    ${line.trim().slice(0, 120)}`);
+        offenders.push(`${repoRelative(f, ROOT)}:${i + 1}\n    ${line.trim().slice(0, 120)}`);
       });
     }
     expect(

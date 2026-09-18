@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const ROOT = join(__dirname, "..");
 const SRC = join(ROOT, "src");
@@ -48,7 +49,7 @@ describe("trial enforcement is computed and not applied", () => {
       .filter((f) => f !== join(SRC, "lib", "trial.ts"))
       .flatMap((f) => {
         const src = readFileSync(f, "utf8");
-        return /\.restricted\b/.test(src) ? [f.slice(ROOT.length + 1)] : [];
+        return /\.restricted\b/.test(src) ? [repoRelative(f, ROOT)] : [];
       });
 
     expect(

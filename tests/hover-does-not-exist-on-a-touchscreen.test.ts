@@ -32,6 +32,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 
@@ -91,7 +92,7 @@ const reveals = (): Reveal[] => {
       for (const m of line.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
         const classes = m[1] ?? m[2] ?? "";
         if (REVEAL.test(classes)) {
-          found.push({ file: file.slice(root.length + 1), line: i + 1, classes });
+          found.push({ file: repoRelative(file, root), line: i + 1, classes });
         }
       }
     });

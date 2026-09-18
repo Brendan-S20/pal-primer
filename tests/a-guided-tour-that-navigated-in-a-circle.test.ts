@@ -37,6 +37,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const ROOT = resolve(__dirname, "..");
 const TOUR = resolve(ROOT, "src/components/OnboardingTour.tsx");
@@ -84,7 +85,7 @@ describe("the guided tour's steps point at pages that exist and stay put", () =>
       const head = src.slice(0, src.indexOf("component:") + 1 || src.length);
       expect(
         /throw\s+redirect\s*\(/.test(head),
-        `the tour sends people to "${route}", but ${file.replace(ROOT + "/", "")} ` +
+        `the tour sends people to "${route}", but ${repoRelative(file, ROOT)} ` +
           `redirects away from it on load. Point the step at the destination ` +
           `instead: the card names one area while the URL and the spotlight ` +
           `are on another.`,

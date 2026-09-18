@@ -265,6 +265,85 @@ jobs:
         run: npx eslint .
         continue-on-error: true
 
+
+  # ── A MEASUREMENT, WITH AN EXPIRY DATE ────────────────────────────────────
+  #
+  # This job exists to answer one question with a number: how much of the suite
+  # still fails on Windows? It is NOT a gate, and `continue-on-error` below is
+  # the reason it needs this comment rather than a line of it.
+  #
+  # ── WHY IT IS WORTH A JOB ─────────────────────────────────────────────────
+  #
+  # A second self-hosted runner joined on 2026-09-16 and has been idle ever
+  # since, because `UNIX_RUNNER = macOS` pins every test job to the Mac. That
+  # Mac was measured at 94% swap a few hours after a reboot on 2026-09-17, and
+  # that condition has already manufactured eight CI failures in one day that
+  # looked like code and were not. Moving the forty-minute job to the idle box
+  # is the only fix that does not involve buying memory.
+  #
+  # What stopped it was 86 of 271 test files failing on Windows, every one of
+  # them on path spelling rather than on the thing it tested:
+  #
+  #     expected [ "src\components/RouteMap.tsx" ] to equal [ "src/components/RouteMap.tsx" ]
+  #
+  # `tests/support/repo-paths.ts` now normalises that at the 21 places a built
+  # path became a string. This job measures what that bought.
+  #
+  # ── WHY continue-on-error, AND WHAT MUST HAPPEN NEXT ──────────────────────
+  #
+  # Because the honest state today is "unknown on Windows", and a job that
+  # turns an unknown into a red main teaches nothing the log would not. But a
+  # permanently non-blocking job is exactly the shape this repo keeps finding
+  # and deleting -- machinery that runs, is watched by nobody, and reads as
+  # coverage. So this one is explicitly temporary and has two exits:
+  #
+  #   * It goes green -> delete `continue-on-error`, point `UNIX_RUNNER` at
+  #     nothing, and let the long job run on whichever machine is free.
+  #   * It stays red -> the failures are named in the summary below. Fix or
+  #     delete this job. Do not leave it here reporting into nothing.
+  #
+  # `[self-hosted, Windows]` addresses DESKTOP-JUC6SL1 specifically. Plain
+  # `self-hosted` matches BOTH runners and would sometimes measure the Mac,
+  # which would pass and prove nothing -- the same trap as a sweep that
+  # measures the login screen twenty times.
+  windows-probe:
+    name: How much of the suite runs on the other machine
+    # No `needs:` -- ci.yml has no `changes` job (that one lives in
+    # sandboxes.yml), so this runs whenever CI does. It is cheap relative to
+    # what it answers, and it runs on the machine that is otherwise idle, so it
+    # costs the Mac nothing.
+    runs-on: [self-hosted, Windows]
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        shell: bash
+
+      # `|| true` then a deliberate read of the tally, so the step reports the
+      # NUMBER rather than just a red cross. A bare `npm test` here would tell
+      # us it failed, which we already know, and not how far off we are.
+      - name: Count what still fails
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test -- --reporter=basic > win.log 2>&1 || true
+          tail -40 win.log
+          line=$(grep -E "^\s*Test Files" win.log | tail -1 || true)
+          echo "::notice title=Windows suite::${line:-no tally line found}"
+          if grep -qE "Test Files\s+[0-9]+ failed" win.log; then
+            echo "Still failing on Windows. The first few, by file:"
+            grep -E "^\s*(FAIL|×)" win.log | head -25 || true
+          elif [ -n "$line" ]; then
+            echo "No failures reported. If this holds, this job has done its job:"
+            echo "  drop continue-on-error, clear UNIX_RUNNER, delete this comment."
+          else
+            echo "::warning::No tally line at all -- the run did not get far enough to count."
+          fi
   migrations:
     name: Migrations applied to the live database
     # ── THIS USED TO SAY "deliberately NOT following CI_RUNNER" ───────────

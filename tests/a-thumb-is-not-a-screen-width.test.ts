@@ -65,6 +65,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 
@@ -92,7 +93,7 @@ function violations(): string[] {
       const m = line.match(WIDTH_GATED_TOUCH_SIZE);
       if (m) {
         found.push(
-          `${file.slice(root.length + 1)}:${i + 1}  ${m[0]}\n` +
+          `${repoRelative(file, root)}:${i + 1}  ${m[0]}\n` +
             `      A finger is the same size on an iPad as on a phone. Use ` +
             `\`touch:\` — it is \`(pointer: coarse), (max-width: 767px)\`, a strict ` +
             `superset of \`max-md:\`, so nothing below 768px changes and iPads ` +

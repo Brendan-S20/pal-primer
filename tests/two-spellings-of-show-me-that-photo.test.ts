@@ -37,6 +37,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -142,7 +143,7 @@ describe("one photo viewer", () => {
         const tag = code.slice(open, close > open ? close + 1 : at + 60);
         if (!/onClick=/.test(tag)) continue;
         if (!/<img\b/.test(code.slice(at, at + 400))) continue;
-        offenders.push(`${file.replace(root + "/", "")}  ${tag.replace(/\s+/g, " ").slice(0, 90)}`);
+        offenders.push(`${repoRelative(file, root)}  ${tag.replace(/\s+/g, " ").slice(0, 90)}`);
       }
     }
     expect(

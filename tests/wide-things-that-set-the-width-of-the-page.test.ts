@@ -47,6 +47,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 
@@ -101,7 +102,7 @@ const wideTables = (): WideTable[] => {
       // are deliberately exempt; requiring a scroller on them would be noise.
       if (cols < 4) return;
       found.push({
-        file: file.slice(root.length + 1),
+        file: repoRelative(file, root),
         line: i + 1,
         cols,
         before: lines.slice(Math.max(0, i - LOOKBACK), i).join("\n"),
@@ -310,7 +311,7 @@ describe("a table in a scroll container still has to be wider than the container
         const cols = (after.match(/<th\b/g) ?? []).length;
         if (cols < 4 || /min-w-/.test(cls)) continue;
         const line = code.slice(0, m.index).split("\n").length;
-        stranded.push(`${f.replace(root + "/", "")}:${line}  ${cols} columns  ${cls.slice(0, 60)}`);
+        stranded.push(`${repoRelative(f, root)}:${line}  ${cols} columns  ${cls.slice(0, 60)}`);
       }
     }
     expect(

@@ -27,6 +27,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..", "src");
 
@@ -64,7 +65,7 @@ describe("a link a customer will open is not built from the page origin", () => 
         // wrapped template literal.
         const window_ = line + "\n" + (lines[i + 1] ?? "");
         if (OUTWARD.test(window_)) {
-          offenders.push(`${file.slice(root.length + 1)}:${i + 1}  ${line.trim().slice(0, 90)}`);
+          offenders.push(`${repoRelative(file, root)}:${i + 1}  ${line.trim().slice(0, 90)}`);
         }
       });
     }
@@ -101,7 +102,7 @@ describe("a link a customer will open is not built from the page origin", () => 
         // Falling back to the canonical origin means the canonical origin was
         // what was wanted; the browser branch is the mistake.
         if (/appOrigin\(\)|appUrl\(/.test(line)) {
-          offenders.push(`${file.slice(root.length + 1)}:${i + 1}  ${line.trim().slice(0, 90)}`);
+          offenders.push(`${repoRelative(file, root)}:${i + 1}  ${line.trim().slice(0, 90)}`);
         }
       });
     }
@@ -120,7 +121,7 @@ describe("a link a customer will open is not built from the page origin", () => 
       src.split("\n").forEach((line, i) => {
         if (!/return_?[Uu]rl/.test(line)) return;
         if (!line.includes("window.location.origin")) return;
-        offenders.push(`${file.slice(root.length + 1)}:${i + 1}`);
+        offenders.push(`${repoRelative(file, root)}:${i + 1}`);
       });
     }
     expect(

@@ -66,6 +66,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import ts from "typescript";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 
@@ -138,7 +139,7 @@ export function findKeylessFragments(text: string, filename = "x.tsx"): string[]
 function violations(): string[] {
   const out: string[] = [];
   for (const file of sourceFiles(join(root, "src"))) {
-    for (const hit of findKeylessFragments(readFileSync(file, "utf8"), file.slice(root.length + 1))) {
+    for (const hit of findKeylessFragments(readFileSync(file, "utf8"), repoRelative(file, root))) {
       out.push(
         `${hit}  a .map() returns <>, which cannot take a key\n` +
           `      React keys the direct child of the array, and that is this fragment. Any ` +

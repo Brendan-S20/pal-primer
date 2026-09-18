@@ -47,6 +47,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -71,7 +72,7 @@ describe("a horizontal scroll container must be able to contain what it scrolls"
         // pills has nothing positioned inside it to escape, and demanding
         // `relative` everywhere would be a rule nobody believes.
         const wrapsTable = lines.slice(i + 1, i + 4).some((l) => l.includes("<table"));
-        if (wrapsTable) offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1}`);
+        if (wrapsTable) offenders.push(`${repoRelative(file, ROOT)}:${i + 1}`);
       });
     }
     expect(

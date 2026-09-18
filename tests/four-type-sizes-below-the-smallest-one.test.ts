@@ -30,6 +30,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 const root = join(import.meta.dirname, "..");
 const styles = readFileSync(join(root, "src/styles.css"), "utf8");
@@ -72,7 +73,7 @@ describe("the type scale is declared, not improvised", () => {
       const src = readFileSync(f, "utf8");
       for (const m of src.match(/text-\[\d+px\]/g) ?? []) {
         if (m === "text-[15px]") continue;
-        offenders.push(`${f.slice(root.length + 1)}: ${m}`);
+        offenders.push(`${repoRelative(f, root)}: ${m}`);
       }
     }
     expect(offenders).toEqual([]);
