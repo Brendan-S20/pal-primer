@@ -995,7 +995,7 @@ function checkUnwiredServerFns(baseline) {
         dead.push({
           kind: "server fn",
           name,
-          where: path.replace(/^.*\/src\//, "src/"),
+          where: toPosix(path).replace(/^.*\/src\//, "src/"),
           why: "exported createServerFn that no other file mentions — no UI can reach it",
         });
         continue;
@@ -1003,11 +1003,11 @@ function checkUnwiredServerFns(baseline) {
       // Mentioned, but only by files that are themselves unreachable. Naming
       // them matters: the fix is usually to the importer, not to this function.
       if (!mentions.some(([other]) => reachable.has(other))) {
-        const via = mentions.map(([o]) => o.replace(/^.*\/src\//, "src/")).join(", ");
+        const via = mentions.map(([o]) => toPosix(o).replace(/^.*\/src\//, "src/")).join(", ");
         dead.push({
           kind: "server fn",
           name,
-          where: path.replace(/^.*\/src\//, "src/"),
+          where: toPosix(path).replace(/^.*\/src\//, "src/"),
           why: `only mentioned by unreachable file(s) — ${via} — so no UI can reach it either`,
         });
       }
@@ -1028,7 +1028,7 @@ function checkUnreachableModules(baseline) {
   return appSources()
     .filter((f) => !reachable.has(f))
     .filter((f) => !UNREACHABLE_EXEMPT.some((re) => re.test(f)))
-    .map((f) => f.replace(/^.*\/src\//, "src/"))
+    .map((f) => toPosix(f).replace(/^.*\/src\//, "src/"))
     .filter((rel) => !baseline.unreachable_modules?.[rel])
     .map((rel) => ({
       kind: "module",
