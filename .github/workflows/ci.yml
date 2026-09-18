@@ -372,6 +372,21 @@ jobs:
       - name: Report the tally
         if: always()
         run: node scripts/windows-tally.mjs win.json win.log
+
+      # Artifacts are downloadable as soon as THIS job finishes, unlike step
+      # logs, which GitHub withholds until every job in the run does. With the
+      # Mac jobs running forty minutes longer, that is the difference between
+      # reading the result now and reading it after it stopped mattering.
+      - name: Keep the raw result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-suite-result
+          path: |
+            win.json
+            win.log
+          if-no-files-found: warn
+          retention-days: 7
   migrations:
     name: Migrations applied to the live database
     # ── THIS USED TO SAY "deliberately NOT following CI_RUNNER" ───────────

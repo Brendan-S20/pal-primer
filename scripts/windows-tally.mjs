@@ -87,7 +87,11 @@ try {
   const j = JSON.parse(readFileSync(jsonPath, "utf8"));
   const failedTests = j.numFailedTests ?? 0;
   const failedSuites = j.numFailedTestSuites ?? 0;
-  const line = `Test Files ${j.numTotalTestSuites - failedSuites} passed, ${failedSuites} failed | Tests ${j.numPassedTests ?? 0} passed, ${failedTests} failed`;
+  // `numTotalTestSuites` counts SUITES -- describe blocks -- not files. The
+  // first version of this line called them "Test Files" and reported "1112
+  // passed" for a repo with 275 test files, which is the kind of number that
+  // gets quoted back later as though it meant something. Say what it is.
+  const line = `Suites ${j.numTotalTestSuites - failedSuites} passed, ${failedSuites} failed | Tests ${j.numPassedTests ?? 0} passed, ${failedTests} failed`;
   console.log(`::notice title=Windows suite::${line}`);
 
   if (failedSuites === 0 && failedTests === 0) {
@@ -99,15 +103,26 @@ try {
   }
 
   const failing = (j.testResults ?? []).filter((r) => r.status === "failed");
-  console.log(`${failedSuites} file(s) and ${failedTests} test(s) failing on Windows.`);
-  for (const r of failing.slice(0, 40)) {
-    console.log(`  ${r.name ?? "(unnamed)"}`);
-    const msgs = (r.assertionResults ?? []).filter((a) => a.status === "failed");
-    for (const m of msgs.slice(0, 2)) {
-      console.log(`      ${(m.failureMessages ?? [])[0]?.split("\n")[0] ?? m.title ?? ""}`.slice(0, 220));
-    }
-  }
-  if (failing.length > 40) console.log(`  ... and ${failing.length - 40} more`);
+  const head = `${failedSuites} suite(s) and ${failedTests} test(s) failing on Windows, in these files:`;
+
+  // Built once and emitted TWICE: to stdout for whoever opens the log, and as
+  // an annotation for whoever cannot. GitHub withholds a run's step logs until
+  // every job in it finishes, and the Mac jobs run for forty minutes after
+  // this one is done -- so a failure list that exists only in the log is a
+  // failure list nobody reads until the information is stale. The warning
+  // branch already annotated; this branch did not, which meant the run that
+  // finally produced a number could not say WHICH tests it was about.
+  const detail = failing.slice(0, 30).map((r) => {
+    const first = (r.assertionResults ?? []).find((a) => a.status === "failed");
+    const why = (first?.failureMessages ?? [])[0]?.split("\n")[0] ?? first?.title ?? "";
+    return `  ${r.name ?? "(unnamed)"}\n      ${why}`.slice(0, 300);
+  });
+  const more = failing.length > 30 ? `\n  ... and ${failing.length - 30} more` : "";
+
+  console.log(head);
+  for (const d of detail) console.log(d);
+  if (more) console.log(more.trim());
+  annotate("warning", "Windows failures", `${head}\n${detail.join("\n")}${more}`);
   process.exit(0);
 } catch (err) {
   if (err?.code !== "ENOENT") {
