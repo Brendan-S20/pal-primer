@@ -9,18 +9,20 @@
 # broken app -- an empty page, an invalid login, twenty identical timeouts --
 # so the sequence is written down once and run rather than remembered.
 #
-# ── THE PORT CONSTRAINT, WHICH IS REAL AND NOT YET SOLVED ─────────────────
+# ── THE PORT CONSTRAINT, SOLVED ON 2026-09-19 ─────────────────────────────
 #
 # `supabase/config.toml` puts the local stack on 54421-54427, and CI's
-# database job reads the SAME file on the SAME machine. So this cannot run
-# while `sandboxes.yml`'s database job is running: both call `supabase start`
-# and the second one loses.
+# database job used to read the SAME file on the SAME machine, so this could
+# not run while `sandboxes.yml`'s database job was running: both called
+# `supabase start` and the second one lost.
 #
-# That is a genuine limitation rather than an oversight, and the fix is to
-# give CI its own port range. It has not been done because changing how CI
-# starts its database to suit a local convenience is the wrong way round, and
-# the job that needs it is the one that proves migrations replay from nothing.
-# Until then: check `gh run list` first, which is what the guard below does.
+# CI now patches ITS checkout of config.toml onto 54521-54527 with its own
+# project_id ("<id>-ci") — see the "Give this job its own Supabase ports"
+# step in sandboxes.yml. Distinct project_id, not just distinct ports,
+# because the CLI names every container, volume and network after it: two
+# stacks with one id are one stack. This file needed no change for that; it
+# reads `supabase status`, which reports whatever the config in THIS
+# directory says, and this directory keeps 54421-54427.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."

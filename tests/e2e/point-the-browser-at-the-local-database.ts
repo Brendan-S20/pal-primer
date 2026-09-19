@@ -1,30 +1,42 @@
-// The browser half of this app cannot be configured, so it is proxied.
+// The browser half of this app could not be configured, so it was proxied.
 //
 // ── THE FINDING ───────────────────────────────────────────────────────────
 //
-// `src/integrations/supabase/client.ts` does not read an environment
-// variable. It hardcodes them:
+// Until 2026-09-19, `src/integrations/supabase/client.ts` did not read an
+// environment variable. It hardcoded them:
 //
 //     const SUPABASE_URL = "https://api.houndstack.com";
 //     const SUPABASE_PUBLISHABLE_KEY = "eyJ...";
 //
-// So every request the BROWSER makes goes to production, whatever the dev
+// So every request the BROWSER made went to production, whatever the dev
 // server was started with. The server half (`client.server.ts`) does read
-// `process.env.SUPABASE_URL`, so a local run is split down the middle: server
-// functions reach the local database, the browser reaches the live one.
+// `process.env.SUPABASE_URL`, so a local run was split down the middle: server
+// functions reached the local database, the browser reached the live one.
 //
 // That is why the first working sign-in failed with `Invalid login
 // credentials` for a user the seed had created and successfully signed in as
 // seconds earlier. The seed talked to localhost. The browser talked to
 // production, where that user does not exist and never should.
 //
-// ── WHY THIS PROXIES RATHER THAN FIXING THE FILE ─────────────────────────
+// ── THE FILE IS NOW FIXED, AND THIS PROXY DELIBERATELY STAYS ──────────────
 //
-// Making the client read an env var is a change to shipping code for the
-// benefit of a test, on a file the Lovable agent also edits, and it would
-// change how the deployed app resolves its own backend. A test that needs
-// production code rearranged to accommodate it should earn that first.
-// Playwright's routing keeps the blast radius inside the test process.
+// client.ts now honors VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY in
+// `vite dev` (and only there — the override is behind import.meta.env.DEV, so
+// production ships the literals, always). playwright.e2e.config.ts passes the
+// local values to its dev server, so in a normal run the browser goes to the
+// local stack directly and no route registered here ever matches.
+//
+// It stays because client.ts says of itself "This file is automatically
+// generated" and the Lovable agent edits it from a browser. If a regeneration
+// drops the env reads, requests to api.houndstack.com reappear — and this
+// proxy turns them back to localhost, so the E2E suite keeps testing the
+// right database instead of silently writing to production while every spec
+// stays green. The LOUD signal for that stomp is
+// tests/the-browser-client-can-be-pointed-at-a-local-database.test.ts, which
+// pins the shape of the fix; this file is the quiet backstop that keeps a
+// stomped run harmless. Both halves matter: a backstop without the test is a
+// silent revert, a test without the backstop is one bad merge away from an
+// E2E suite that writes to production.
 //
 // ── AND WHY IT FETCHES RATHER THAN REDIRECTS ─────────────────────────────
 //

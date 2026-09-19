@@ -36,7 +36,10 @@ function SchedulingSettings() {
   const updSettings = useServerFn(updateDispatchSettings);
   const qc = useQueryClient();
 
-  const { data } = useQuery({ queryKey: ["dispatch-settings"], queryFn: () => getSettings() });
+  const { data, error } = useQuery({
+    queryKey: ["dispatch-settings"],
+    queryFn: () => getSettings(),
+  });
   const settings: any = data?.settings ?? {
     workday_start: "08:00",
     workday_end: "17:00",
@@ -106,6 +109,34 @@ function SchedulingSettings() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // ── NOTHING RENDERS UNTIL THE SETTINGS HAVE ARRIVED ─────────────────────
+  //
+  // Every field on this page is UNCONTROLLED — `defaultValue`, which React
+  // reads exactly once, at mount. Until 2026-09-19 the form rendered
+  // immediately with the fallback above, the query answered a moment later,
+  // and the re-render changed nothing the person could see: after any refresh
+  // this page showed "Normal" traffic and a 90-day horizon while the database
+  // held whatever had been saved. The save side worked the whole time, so the
+  // page looked broken in exactly the direction that makes an owner re-enter
+  // their settings and conclude saving is flaky.
+  //
+  // Found by tests/e2e/a-setting-survives-a-refresh.spec.ts, whose write
+  // reached Postgres and whose reload then read "normal" off this form. The
+  // fallback object above still matters — it is what a workspace with no row
+  // yet edits against — but it may only reach the inputs once the query has
+  // said that empty is what there is. (This gate sits after the hooks above
+  // because an early return between hooks breaks React's rules of hooks.)
+  if (error) {
+    return (
+      <p className="p-4 text-sm text-destructive">
+        Scheduling settings could not be loaded: {(error as Error).message}
+      </p>
+    );
+  }
+  if (!data) {
+    return <p className="p-4 text-sm text-muted-foreground">Loading scheduling settings…</p>;
+  }
 
   return (
     <div className="space-y-6">

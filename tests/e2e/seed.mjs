@@ -77,7 +77,10 @@ if (!ANON) {
 const db = createClient(URL_, KEY, { auth: { autoRefreshToken: false, persistSession: false } });
 
 /** Fixed rather than random, so a failing run can be re-run and inspected, and
- *  so the Playwright side can hardcode them without a handshake file. */
+ *  so the Playwright side can hardcode them without a handshake file.
+ *  ORG_NAME has a second copy: tests/e2e/service-db.ts (E2E_ORG_NAME) — this
+ *  file cannot be imported without running the seed, so the specs carry their
+ *  own. Change one, change both. */
 export const OWNER = { email: "owner@e2e.houndstack.test", password: "e2e-owner-password-1" };
 const ORG_NAME = "E2E Demo Yard";
 
@@ -181,6 +184,21 @@ async function ensureFieldTech(userId, orgId) {
 const userId = await ensureUser();
 const orgId = await ensureOrg(userId);
 await ensureFieldTech(userId, orgId);
+
+// The seeded owner has SEEN THE TOUR. A fresh account gets the full-screen
+// onboarding overlay (OnboardingTour.tsx, z-[100], a dialog that intercepts
+// every pointer event), which the render-only specs never noticed and the
+// first behavioural spec hit immediately: every click on /invoices timed out
+// against "Guided tour subtree intercepts pointer events". The tour keys off
+// auth user_metadata.tour_seen_at, so stamping it here is the product's own
+// "seen on another device" path rather than a test-side hack — and a spec
+// that wants to test the tour itself should create its own fresh user.
+{
+  const { error } = await db.auth.admin.updateUserById(userId, {
+    user_metadata: { tour_seen_at: new Date().toISOString() },
+  });
+  if (error) throw new Error(`stamping tour_seen_at: ${error.message}`);
+}
 
 // ── CALLED AS THE OWNER, NOT AS service_role, AND THAT IS NOT A DETAIL ───
 //
