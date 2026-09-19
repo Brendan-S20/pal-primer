@@ -137,14 +137,25 @@ export default defineConfig({
         // That is a nasty trap: running the browser sweep would break the unit
         // suite, in a file that has nothing to do with either. Scoping the
         // values to this server keeps them out of every other runner.
+        //
+        // And deliberately NO VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY
+        // here, which this block set until 2026-09-19. The browser client
+        // (src/integrations/supabase/client.ts) now honors those in `vite dev`,
+        // so setting them would point every browser request at 127.0.0.1:54421
+        // — where the stub is NOT: fixtures/stub-backend.ts intercepts
+        // `https://api.houndstack.com/**`, and its network fence passes
+        // localhost through untouched. The sweep would then measure the app
+        // failing to reach a database instead of the fixture, or, worse, a
+        // real local stack if one happens to be up. Left unset, the client
+        // falls back to the production URL and the stub answers it, exactly
+        // as it always has. The server-side SUPABASE_URL below is different:
+        // client.server.ts requires it to boot, and no server function's
+        // answer is measured by these sweeps.
         env: {
           SUPABASE_URL: "http://127.0.0.1:54421",
           SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
           SUPABASE_PROJECT_ID: "localdev",
           SERVICE_ROLE_KEY: "sb_secret_placeholder",
-          VITE_SUPABASE_URL: "http://127.0.0.1:54421",
-          VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
-          VITE_SUPABASE_PROJECT_ID: "localdev",
         },
       },
 });
