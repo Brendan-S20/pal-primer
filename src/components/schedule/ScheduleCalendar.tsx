@@ -55,6 +55,8 @@
 import { Fragment, useState } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { TechAvatar } from "@/components/schedule/TechAvatar";
+import { orgLocalMinutes } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 
 export type CalendarVisit = {
   id: string;
@@ -191,10 +193,14 @@ function prettyStatus(status: string) {
  *  optimized, otherwise the subscription's window, otherwise the property's.
  *  Null is not "midnight" — it is the whole point of the Anytime group below,
  *  and sorting it as 0 would put every un-timed visit at the top of the day. */
-function startMinutes(v: CalendarVisit): number | null {
+function startMinutes(v: CalendarVisit, tz: string): number | null {
   if (v.eta_start) {
-    const d = new Date(v.eta_start);
-    if (!Number.isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+    // On the ORG's clock, not the device's — this is the sort key and the
+    // row bucket for the whole grid, so a device in another timezone used to
+    // move visits between rows, not just mislabel them. The window fallback
+    // below is a `time` column (wall clock, no zone) and needs no conversion.
+    const mins = orgLocalMinutes(v.eta_start, tz);
+    if (mins != null) return mins;
   }
   const raw = v.subscriptions?.earliest_time ?? v.properties?.earliest_service_time ?? null;
   const m = raw ? /^(\d{1,2}):(\d{2})/.exec(raw) : null;
@@ -228,11 +234,12 @@ function VisitChip({
    *  cut-off to be past. */
   hiddenOnPhone?: boolean;
 }) {
+  const tz = useOrgTimezone();
   const name = visit.clients?.display_name ?? "Unnamed customer";
   const who = visit.staff?.display_name ?? null;
   const street = visit.properties?.street ?? null;
   const city = visit.properties?.city ?? null;
-  const mins = startMinutes(visit);
+  const mins = startMinutes(visit, tz);
   // One line under the name, in the order a dispatcher reads it: when, then
   // where. Both are optional and either alone is worth a line; neither leaves
   // the chip a single line tall, which is what a day with no routing looks
@@ -348,6 +355,7 @@ export function ScheduleCalendar({
   onPickDay: (d: string) => void;
   onOpenVisit: (visitId: string) => void;
 }) {
+  const tz = useOrgTimezone();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { days, leadingBlanks } = calendarWindow(day, range);
 
@@ -362,8 +370,8 @@ export function ScheduleCalendar({
   // a column of chips that is not in time order cannot be read down.
   for (const list of byDay.values()) {
     list.sort((a, b) => {
-      const am = startMinutes(a);
-      const bm = startMinutes(b);
+      const am = startMinutes(a, tz);
+      const bm = startMinutes(b, tz);
       if (am !== bm) return (am ?? 1e6) - (bm ?? 1e6);
       return (a.sequence ?? 9999) - (b.sequence ?? 9999);
     });
@@ -472,7 +480,7 @@ export function ScheduleCalendar({
             // Where the timed work stops and "sometime today" begins. Only
             // drawn when the day has both, because a heading over all of it or
             // none of it says nothing.
-            const firstUntimed = list.findIndex((v) => startMinutes(v) == null);
+            const firstUntimed = list.findIndex((v) => startMinutes(v, tz) == null);
             const showAnytime = !isMonth && firstUntimed > 0;
             const isToday = d === todayIso;
             return (

@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
+import { orgLocalTime } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { AiSection, DispatchPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -2142,6 +2144,7 @@ function VisitCardView({
   hovered?: boolean;
   onHover?: (id: string | null) => void;
 }) {
+  const tz = useOrgTimezone();
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
   const canComplete =
@@ -2208,15 +2211,7 @@ function VisitCardView({
           )}
           {(visit.eta_start || visit.travel_min != null) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
-              {visit.eta_start && (
-                <span>
-                  ETA{" "}
-                  {new Date(visit.eta_start).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              )}
+              {visit.eta_start && <span>ETA {orgLocalTime(visit.eta_start, tz)}</span>}
               {visit.travel_km != null && <span>· {Number(visit.travel_km).toFixed(1)} km</span>}
               {visit.travel_min != null && (
                 <span>· {Math.round(Number(visit.travel_min))} min drive</span>
@@ -2282,6 +2277,7 @@ function VisitCardView({
 }
 
 function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
+  const tz = useOrgTimezone();
   const perTech = staff.map((s: any) => {
     const mine = visits.filter((v) => v.assigned_staff_id === s.id);
     const done = mine.filter((v) => v.status === "completed").length;
@@ -2352,13 +2348,7 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
                     {t.done}/{t.total} · ${(t.bookedValue / 100).toFixed(0)}
                     {t.late > 0 && <span className="ml-2 text-destructive">{t.late} late</span>}
                     {t.projectedEnd && (
-                      <span className="ml-2">
-                        ends{" "}
-                        {t.projectedEnd.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
+                      <span className="ml-2">ends {orgLocalTime(t.projectedEnd, tz)}</span>
                     )}
                   </span>
                 </div>

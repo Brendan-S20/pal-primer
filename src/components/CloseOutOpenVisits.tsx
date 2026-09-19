@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
+import { orgLocalDayTime } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 import {
   listVisitsAwaitingCloseOut,
   confirmOpenVisit,
@@ -37,6 +39,7 @@ function toLocalInputValue(d: Date): string {
 }
 
 export function CloseOutOpenVisits() {
+  const tz = useOrgTimezone();
   const qc = useQueryClient();
   const listFn = useServerFn(listVisitsAwaitingCloseOut);
   const confirmFn = useServerFn(confirmOpenVisit);
@@ -90,11 +93,7 @@ export function CloseOutOpenVisits() {
   if (!visit) return null;
 
   const startedLabel = visit.started_at
-    ? new Date(visit.started_at).toLocaleString(undefined, {
-        weekday: "short",
-        hour: "numeric",
-        minute: "2-digit",
-      })
+    ? orgLocalDayTime(visit.started_at, tz)
     : "an unrecorded time";
   const where =
     visit.clients?.display_name ||

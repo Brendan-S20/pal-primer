@@ -26,14 +26,17 @@ import {
 } from "@/lib/visits.functions";
 import { listClientHolds } from "@/lib/clients.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { formatVisitDuration } from "@/lib/visit-lifecycle";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
-function fmtWindow(v: any): string {
-  if (v.eta_start && v.eta_end) return `${formatTime(v.eta_start)} - ${formatTime(v.eta_end)}`;
+function fmtWindow(v: any, tz: string): string {
+  // ETAs are instants and read on the ORG's clock; the service/property
+  // windows below are `time` columns (wall clock, no zone) and stay as-is.
+  if (v.eta_start && v.eta_end) return `${formatTime(v.eta_start, tz)} - ${formatTime(v.eta_end, tz)}`;
   // The arrival window lives on the service (UX round 4); the property
   // window is a legacy fallback for rows whose service has none.
   const sub = v.subscriptions;
@@ -64,6 +67,7 @@ export function VisitsTab({
   subscriptions?: any[];
   canCorrect?: boolean;
 }) {
+  const tz = useOrgTimezone();
   const [statusFilter, setStatusFilter] = useState("all");
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [detailVisit, setDetailVisit] = useState<any | null>(null);
@@ -572,10 +576,10 @@ function VisitTable({
                     </span>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{fmtWindow(v)}</td>
+                <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{fmtWindow(v, tz)}</td>
                 <td className="whitespace-nowrap px-4 py-2.5">
                   {v.started_at ? (
-                    formatTime(v.started_at)
+                    formatTime(v.started_at, tz)
                   ) : done || inProgress ? (
                     <span className="text-xs italic text-muted-foreground">Arrival not recorded</span>
                   ) : (
@@ -584,7 +588,7 @@ function VisitTable({
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5">
                   {v.completed_at ? (
-                    formatTime(v.completed_at)
+                    formatTime(v.completed_at, tz)
                   ) : done ? (
                     <span className="text-xs italic text-muted-foreground">
                       Completion not recorded
@@ -789,14 +793,14 @@ function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => 
                             key={v.id}
                             type="button"
                             onClick={() => onOpen(v)}
-                            title={`${v.properties?.street ?? "Visit"} - ${fmtWindow(v)}`}
+                            title={`${v.properties?.street ?? "Visit"} - ${fmtWindow(v, tz)}`}
                             aria-label={`${statusLabel(v.status)} visit at ${v.properties?.street ?? "unknown property"} on ${formatDay(v.scheduled_on)}`}
                             className={cn(
                               "block w-full truncate rounded-md px-1.5 py-0.5 text-left text-xs font-medium",
                               CHIP_TONES[v.status] ?? "bg-muted text-muted-foreground",
                             )}
                           >
-                            {v.properties?.street ?? (v.eta_start ? formatTime(v.eta_start) : "Visit")}
+                            {v.properties?.street ?? (v.eta_start ? formatTime(v.eta_start, tz) : "Visit")}
                           </button>
                         ))}
                         {hiddenCount > 0 && (
@@ -861,6 +865,7 @@ function VisitDetailDrawer({
   serviceById: Map<string, any>;
   canCorrect: boolean;
 }) {
+  const tz = useOrgTimezone();
   const qc = useQueryClient();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const correctFn = useServerFn(correctVisitTimestamps);
@@ -977,15 +982,15 @@ function VisitDetailDrawer({
           </div>
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Scheduled window</dt>
-            <dd>{fmtWindow(v)}</dd>
+            <dd>{fmtWindow(v, tz)}</dd>
           </div>
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Actual start</dt>
-            <dd>{v.started_at ? formatTime(v.started_at) : "Arrival not recorded"}</dd>
+            <dd>{v.started_at ? formatTime(v.started_at, tz) : "Arrival not recorded"}</dd>
           </div>
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Actual completion</dt>
-            <dd>{v.completed_at ? formatTime(v.completed_at) : "Completion not recorded"}</dd>
+            <dd>{v.completed_at ? formatTime(v.completed_at, tz) : "Completion not recorded"}</dd>
           </div>
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Duration</dt>

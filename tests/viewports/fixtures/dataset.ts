@@ -23,6 +23,8 @@
  * measures boxes.
  */
 
+import { zonedTimeToUtc } from "../../../src/lib/route-window";
+
 export const ORG_ID = "aaaaaaaa-0000-4000-8000-00000000a001";
 export const TENANT_B_ID = "aaaaaaaa-0000-4000-8000-00000000a002";
 export const CLIENT_ID = "bbbbbbbb-0000-4000-8000-00000000b001";
@@ -208,16 +210,19 @@ export function visitsBetween(from: string, to: string) {
         // surfaces, a label that production always draws and this dataset never
         // did. A fixture that is tidier than reality measures nothing; one that
         // is the WRONG SHAPE measures the fallback.
-        // LOCAL time, deliberately no `Z`. `new Date("2026-09-13T08:15:00")`
-        // is 08:15 in the browser's zone, which is what production means: the
-        // optimizer writes an ETA for the business's own working day, and
-        // `findRouteWarnings` compares it against LOCAL midnight of
-        // `scheduled_on`. An absolute `…Z` here reads as 03:15 in a US zone
-        // and makes every stop look like it arrives before the day starts.
-        // The zone itself is pinned in playwright.config.ts; see the note
-        // there for what leaving it to the host cost.
-        eta_start: `${on}T${etaFrom}:00`,
-        eta_end: `${on}T${etaTo}:00`,
+        // A REAL INSTANT, derived from the fixture org's own timezone — the
+        // exact expression the optimizer uses (route-window.ts's
+        // zonedTimeToUtc mirrors the SQL `AT TIME ZONE org.timezone`). Until
+        // 2026-09-19 these were local-naive strings ("…T08:15:00", no Z),
+        // which rendered as the intended wall clock only because the browser
+        // zone pinned in playwright.config.ts happens to equal
+        // ORGANIZATION.timezone. The renderers now format on the ORG's clock,
+        // so a naive string would keep the sweep green by coincidence and let
+        // it go silently wrong the day either zone changes. An instant built
+        // from the org's zone renders 08:15 whatever the device is set to —
+        // which is now also true of production.
+        eta_start: zonedTimeToUtc(on, etaFrom, ORGANIZATION.timezone).toISOString(),
+        eta_end: zonedTimeToUtc(on, etaTo, ORGANIZATION.timezone).toISOString(),
         travel_km: 3.4 + (n % 7),
         travel_min: implausible ? 45 : 9 + (n % 13),
         window_violated: n % 11 === 0,

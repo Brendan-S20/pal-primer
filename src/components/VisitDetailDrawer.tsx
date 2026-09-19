@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { orgLocalTime } from "@/lib/org-day";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sheet,
@@ -89,6 +91,7 @@ export function VisitDetailDrawer({
   onOpenChange: (open: boolean) => void;
 }) {
   const open = !!visitId;
+  const tz = useOrgTimezone();
   const qc = useQueryClient();
   const getDetail = useServerFn(getVisitDetail);
   // This drawer opens from /routes and /dashboard, and ROUTE_ROLES excludes
@@ -343,15 +346,7 @@ export function VisitDetailDrawer({
 
             {(v.eta_start || v.travel_min != null) && (
               <section className="rounded-md border p-2 text-xs">
-                {v.eta_start && (
-                  <div>
-                    ETA{" "}
-                    {new Date(v.eta_start).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                )}
+                {v.eta_start && <div>ETA {orgLocalTime(v.eta_start, tz)}</div>}
                 {v.travel_km != null && (
                   <div>
                     Drive {Number(v.travel_km).toFixed(1)} km ·{" "}
