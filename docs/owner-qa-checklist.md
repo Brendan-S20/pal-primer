@@ -20,10 +20,33 @@ data and throws nothing to the console — `/clients`, `/routes`, `/invoices`,
 is the half of this list that was "open it and see if it works".
 
 **What it does not cover yet, and the distinction matters:** rendering with
-real data is not the same as *working*. Taking a payment and watching the
-invoice flip, walking a queue until it empties, changing a setting and
-confirming it survives a refresh — those are written next, and the harness
-that makes them possible is the part that was hard.
+real data is not the same as *working*. The first four behavioural round
+trips landed 2026-09-19, each asserting the database half as well as the
+screen:
+
+- **Mark paid flips the invoice** (`the-invoice-flips-to-paid-and-postgres-agrees`):
+  the ••• → Mark paid path, the "Open" chip count dropping and staying dropped
+  through a reload, and Postgres gaining a `payments` row that says
+  `manual_mark_paid` against an invoice now `paid`. The Stripe card form is
+  not this — that stays with the one real charge below.
+- **The review queue empties** (`the-review-queue-empties-and-stays-empty`):
+  a planted item is worked through "Record a decision", the named empty state
+  survives a reload, and the item reappears under Resolved wearing the note.
+  Planted, because the seeded fixture is deliberately too healthy to trip
+  `detect_review_items`.
+- **A dispute is witnessed, not worked** (`a-dispute-is-witnessed-not-worked`):
+  the checklist line "open one, work it, confirm it leaves the queue" is
+  untestable BY DESIGN — outcomes come from Stripe, and the page's only write
+  is the analytics switch, which is what round-trips.
+- **A setting survives a refresh** (`a-setting-survives-a-refresh`):
+  /settings/scheduling, one onChange control and one onBlur control. Its
+  first run found that the page never showed saved values after a reload —
+  uncontrolled inputs mounted before the query answered — which is exactly
+  the fault this checklist item exists to catch, now fixed.
+
+Everything else on the list — the Jobber CSV, DNA, weather, bulk bars, the
+remaining settings screens — is reachable from the same harness and still
+unwritten.
 
 **What stays with a person, permanently:**
 
