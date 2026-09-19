@@ -18,7 +18,10 @@ project_id = "vsxzrbxublqrcfnxfwcu"
 # The other fix was "stop the other project's stack", which works until the
 # next reboot and asks a person to remember. This asks nobody to remember.
 # 544xx rather than 543xx: one digit off the default, so the mapping stays
-# obvious, and far enough that a third project can take 545xx.
+# obvious. 545xx is TAKEN: the database job in sandboxes.yml rewrites its own
+# checkout's copy of this file to 54521-54527 (and project_id to "<id>-ci"),
+# so CI and `npm run test:e2e` can run at the same time on the one machine
+# that hosts both. A third project on this machine should take 546xx.
 [api]
 port = 54421
 

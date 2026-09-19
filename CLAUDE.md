@@ -270,16 +270,27 @@ Postgres, real RLS, real sign-in through the two-stage form.
   diagnoses came out of that. `tests/e2e/sign-in.ts` waits for a React fiber
   rather than a timeout, because a sleep passes today and rots into a flake on
   a slower machine.
-- **The browser cannot be pointed anywhere.**
-  `src/integrations/supabase/client.ts` hardcodes `https://api.houndstack.com`
+- **The browser could not be pointed anywhere, and now can be — in dev only.**
+  `src/integrations/supabase/client.ts` hardcoded `https://api.houndstack.com`
   and the production anon key, while `client.server.ts` reads
-  `process.env.SUPABASE_URL`. So a local run is split down the middle: server
+  `process.env.SUPABASE_URL`. So a local run was split down the middle: server
   functions on the local database, the browser on the live one. That is why
   credentials the seed had just used successfully came back `Invalid login
-  credentials`. The suite proxies it in-process rather than changing shipping
-  code — see `tests/e2e/point-the-browser-at-the-local-database.ts` — but
-  **nobody can currently run this app against a local database without that
-  trick**, which is worth knowing before debugging anything locally.
+  credentials`. Since 2026-09-19 the client honors `VITE_SUPABASE_URL` /
+  `VITE_SUPABASE_PUBLISHABLE_KEY` — but only behind `import.meta.env.DEV`, so
+  the override is compiled out of every production build and no build
+  environment can repoint the shipped app. Three things guard the fix,
+  because the file says of itself "automatically generated" and the Lovable
+  agent edits it: `tests/the-browser-client-can-be-pointed-at-a-local-database.test.ts`
+  pins the shape and fails loudly on a regeneration that drops it; the E2E
+  in-process proxy (`tests/e2e/point-the-browser-at-the-local-database.ts`)
+  stays as the backstop that keeps a stomped run harmless rather than writing
+  to production; and the Lovable project knowledge carries the same rule.
+  One consequence for the viewport sweeps: `playwright.config.ts` must NOT
+  set the two `VITE_SUPABASE_*` variables for its dev server, because the
+  stub intercepts `https://api.houndstack.com/**` and the network fence
+  passes localhost through — pointing the browser at 127.0.0.1 would send
+  every request past the fixture.
 
 ### What it covers, and what it deliberately does not
 
@@ -293,13 +304,18 @@ Two items stay with a person permanently. One real Stripe charge, because
 test mode proves the integration and not that money moved. And an install on
 a physical handset, because an emulator is not a phone.
 
-### One limitation, stated rather than hidden
+### One limitation that no longer holds
 
 `supabase/config.toml` puts the local stack on 54421-54427, and CI's database
-job reads the same file on the same machine — so this cannot run while
-`sandboxes.yml`'s database job is running. Giving CI its own port range is the
-fix; it has not been done because changing how CI starts its database to suit
-a local convenience is the wrong way round.
+job used to read the same file on the same machine — so E2E could not run
+while `sandboxes.yml`'s database job was running. Since 2026-09-19 that job
+rewrites its own checkout's config.toml onto 54521-54527 with its own
+project_id (`<id>-ci`) before `supabase start`. The project_id matters as
+much as the ports: the CLI names every container, volume and network after
+it, so two stacks sharing an id are one stack. The step fails loudly if the
+patterns stop matching config.toml, because a silent no-op there puts both
+stacks back on shared ports. 545xx is therefore taken; a third project on
+this machine takes 546xx.
 
 ## Every migration replays into an empty database. All of them, in order.
 
