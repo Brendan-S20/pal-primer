@@ -1,5 +1,41 @@
 # Owner QA Checklist (post round-5)
 
+## Most of this is now run by a machine
+
+**Added 2026-09-19.** Everything below was marked "needs the owner's hands".
+Most of it did not; it needed a database that remembers. The viewport sweeps
+run against `tests/viewports/fixtures/stub-backend.ts`, which says of itself
+`// Writes. Nothing here writes anywhere` — correct for measuring geometry,
+and the reason a checklist full of round trips was out of its reach.
+
+`npm run test:e2e` starts a local Supabase, replays all 325 migrations, seeds
+a real tenant through the product's own `seed_demo_org`, and drives a browser
+against it. Ten clients, 149 visits, 34 invoices, RLS live, signed in through
+the real two-stage form.
+
+**What it covers today:** every route named on this list renders with real
+data and throws nothing to the console — `/clients`, `/routes`, `/invoices`,
+`/my-day`, `/neighbors`, `/my-schedule`, `/disputes`, `/review`,
+`/pricing-drift`, `/tax-reports`, `/profile`, and two settings screens. That
+is the half of this list that was "open it and see if it works".
+
+**What it does not cover yet, and the distinction matters:** rendering with
+real data is not the same as *working*. Taking a payment and watching the
+invoice flip, walking a queue until it empties, changing a setting and
+confirming it survives a refresh — those are written next, and the harness
+that makes them possible is the part that was hard.
+
+**What stays with a person, permanently:**
+
+- **One real Stripe charge.** Test mode proves the integration. It does not
+  prove money moved. Only a real card on the real account does that, once.
+- **An install on a physical handset.** An emulator is not a phone, and the
+  difference is the entire reason to do it.
+
+Two items out of twenty-two. Everything else is reachable from a script.
+
+---
+
 ## Desktop — office flows
 - [ ] Invoice popup → Take payment (saved card AND new card) → flips to Paid
       instantly; dashboard AR, client Outstanding, credit tile all update.

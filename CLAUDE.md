@@ -230,6 +230,77 @@ silent on a component's own `return (<>…</>)`, on a fragment passed as a
 prop, on `<Fragment key={…}>`, and on a nested helper's return inside a map
 callback.
 
+## A stub backend cannot answer a question about writing.
+
+`tests/viewports/` measures twenty authenticated surfaces and is right to run
+against `fixtures/stub-backend.ts`, which says of itself `// Writes. Nothing
+here writes anywhere`. Geometry does not need a database, and a sweep that
+could write could corrupt itself between cases.
+
+But it means the whole of `docs/owner-qa-checklist.md` was out of reach, and
+that list is what stands between this product and being live. Nearly every
+item on it is a ROUND TRIP: change a value and refresh, take a payment and
+watch the invoice flip, work a queue and watch it empty. A stub returns the
+fixture regardless of who asked, so it cannot tell a working page from one
+whose query is wrong, or a policy scoped to the right tenant from one scoped
+to none.
+
+`npm run test:e2e` is the other half. It starts a local Supabase, checks the
+migration count, seeds a tenant, and drives a browser against it — real
+Postgres, real RLS, real sign-in through the two-stage form.
+
+### Five things it had to learn, which are written into the files
+
+- **The seeder refuses a service-role caller.** `seed_demo_org` checks
+  `auth.uid()` against the caller's role, and a service-role request has none,
+  so the most privileged key in the system is the one identity it rejects.
+  The seed signs in as the owner instead, which means the fixture is built
+  through the same path the product's own Reseed button takes.
+- **It refuses an org with no field technician**, correctly: an org with
+  visits and nobody to run them is a state the product cannot reach, so
+  seeding one would build a fixture tidier than reality — the exact failure
+  `docs/mobile-ux-audit.md` records the viewport fixtures making.
+- **A trigger silently overrode an insert.** `is_field_tech: true` stored as
+  `false`, because it is derived from `role` unless `is_field_tech_overridden`
+  says a human decided. No error; just a row that did not say what was
+  written.
+- **Server-rendered HTML types fine and does nothing.** `page.goto()` resolves
+  on `load`, before React attaches, so keystrokes land in the DOM while state
+  stays empty and a server-rendered `disabled` never lifts. Two wrong
+  diagnoses came out of that. `tests/e2e/sign-in.ts` waits for a React fiber
+  rather than a timeout, because a sleep passes today and rots into a flake on
+  a slower machine.
+- **The browser cannot be pointed anywhere.**
+  `src/integrations/supabase/client.ts` hardcodes `https://api.houndstack.com`
+  and the production anon key, while `client.server.ts` reads
+  `process.env.SUPABASE_URL`. So a local run is split down the middle: server
+  functions on the local database, the browser on the live one. That is why
+  credentials the seed had just used successfully came back `Invalid login
+  credentials`. The suite proxies it in-process rather than changing shipping
+  code — see `tests/e2e/point-the-browser-at-the-local-database.ts` — but
+  **nobody can currently run this app against a local database without that
+  trick**, which is worth knowing before debugging anything locally.
+
+### What it covers, and what it deliberately does not
+
+Thirteen QA-list routes render with real data and log nothing to the console.
+That is the half of the list that was "open it and see". Behaviour — payment
+flips the invoice, a queue empties, a setting survives a refresh — is the next
+piece of work, and the distinction is worth keeping: **rendering with real
+data is not the same as working.**
+
+Two items stay with a person permanently. One real Stripe charge, because
+test mode proves the integration and not that money moved. And an install on
+a physical handset, because an emulator is not a phone.
+
+### One limitation, stated rather than hidden
+
+`supabase/config.toml` puts the local stack on 54421-54427, and CI's database
+job reads the same file on the same machine — so this cannot run while
+`sandboxes.yml`'s database job is running. Giving CI its own port range is the
+fix; it has not been done because changing how CI starts its database to suit
+a local convenience is the wrong way round.
+
 ## Every migration replays into an empty database. All of them, in order.
 
 `supabase db reset` drops the local database and replays
