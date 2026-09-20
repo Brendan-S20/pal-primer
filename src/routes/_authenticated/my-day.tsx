@@ -147,7 +147,6 @@ function todayISO() {
   return local.toISOString().slice(0, 10);
 }
 
-
 function MyDay() {
   const { date: dateParam, staff: staffParam } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -721,11 +720,7 @@ function MyDay() {
                   list and a folded map, which are not far apart at 16px. Still
                   44px tall -- the height is now the padding plus the label
                   rather than a fixed square, so min-h-11 states it outright. */}
-              <div
-                className="flex shrink-0 rounded-lg border p-0.5"
-                role="group"
-                aria-label="View"
-              >
+              <div className="flex shrink-0 rounded-lg border p-0.5" role="group" aria-label="View">
                 {(["list", "map"] as const).map((v) => (
                   <button
                     key={v}
@@ -906,7 +901,6 @@ function MyDay() {
     </div>
   );
 }
-
 
 /**
  * The whole day on one map.
@@ -1246,7 +1240,6 @@ function mapsUrl(p: any): string {
   const q = encodeURIComponent([p?.street, p?.city, p?.postal_code].filter(Boolean).join(", "));
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
-
 
 /** "HH:MM[:SS]" wall-clock (property service window) → "8:00 AM". */
 function fmtWindowTime(hhmm: string): string {

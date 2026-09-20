@@ -33,7 +33,6 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-
 test("the whole chain: migrations, seed, server env, browser", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (m) => {

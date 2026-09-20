@@ -91,13 +91,23 @@ function readConst(file, re) {
   return m?.[1] ?? null;
 }
 
+// This check asks questions of PRODUCTION's auth config, so what it wants
+// from client.ts is the production fallback literal — the string after `||`
+// — not whatever a dev environment might inject. Since 2026-09-19 the two
+// constants read `(import.meta.env.DEV && import.meta.env.VITE_...) ||
+// "<literal>"` (see tests/the-browser-client-can-be-pointed-at-a-local-
+// database.test.ts, which pins that shape), so the regex anchors on the
+// declaration and captures the LAST quoted string in the initializer. It
+// still matches the plain `const X = "literal"` form, so a regeneration of
+// client.ts back to bare literals does not break this script — the shape
+// test breaks instead, loudly, which is its job.
 const SUPABASE_URL = readConst(
   "src/integrations/supabase/client.ts",
-  /const SUPABASE_URL\s*=\s*["']([^"']+)["']/,
+  /const SUPABASE_URL\s*=[^;]*["']([^"']+)["']\s*;/,
 );
 const ANON = readConst(
   "src/integrations/supabase/client.ts",
-  /const SUPABASE_PUBLISHABLE_KEY\s*=\s*["']([^"']+)["']/,
+  /const SUPABASE_PUBLISHABLE_KEY\s*=[^;]*["']([^"']+)["']\s*;/,
 );
 
 if (!SUPABASE_URL || !ANON) {
@@ -143,7 +153,13 @@ for (const provider of OFFERED) {
     // UNKNOWN, not BROKEN. This step gates a release, so it must fail on a
     // provider that rejects us and never on a flaky network: an unreachable
     // host says nothing about whether the button works.
-    rows.push({ provider, enabled, live, verdict: "UNKNOWN", detail: `authorize unreachable: ${e.message}` });
+    rows.push({
+      provider,
+      enabled,
+      live,
+      verdict: "UNKNOWN",
+      detail: `authorize unreachable: ${e.message}`,
+    });
     continue;
   }
 
@@ -160,17 +176,30 @@ for (const provider of OFFERED) {
 
   const location = res.headers.get("location");
   if (!location) {
-    rows.push({ provider, enabled, live, verdict: "BROKEN", detail: `no redirect from authorize (${res.status})` });
+    rows.push({
+      provider,
+      enabled,
+      live,
+      verdict: "BROKEN",
+      detail: `no redirect from authorize (${res.status})`,
+    });
     continue;
   }
 
   // Step 3 — the hop the app cannot make. Ask the provider.
-  let providerRes, body = "";
+  let providerRes,
+    body = "";
   try {
     providerRes = await fetch(location, { redirect: "manual" });
     body = await providerRes.text();
   } catch (e) {
-    rows.push({ provider, enabled, live, verdict: "UNKNOWN", detail: `provider unreachable: ${e.message}` });
+    rows.push({
+      provider,
+      enabled,
+      live,
+      verdict: "UNKNOWN",
+      detail: `provider unreachable: ${e.message}`,
+    });
     continue;
   }
 
@@ -212,7 +241,10 @@ for (const provider of OFFERED) {
   try {
     const authError = new URL(nextLocation, location).searchParams.get("authError");
     if (authError) {
-      decodedError = Buffer.from(authError, "base64").toString("utf8").replace(/[^\x20-\x7e]+/g, " ").trim();
+      decodedError = Buffer.from(authError, "base64")
+        .toString("utf8")
+        .replace(/[^\x20-\x7e]+/g, " ")
+        .trim();
     }
   } catch {
     /* not a URL we can parse; the string checks below still apply */
@@ -250,7 +282,7 @@ for (const provider of OFFERED) {
   const mismatch =
     haystack.includes("redirect_uri_mismatch") ||
     haystack.includes("invalid redirect_uri") ||
-    haystack.includes("url blocked") ||                 // Meta
+    haystack.includes("url blocked") || // Meta
     haystack.includes("invalid_client") ||
     haystack.includes("invalid_request") ||
     /\/oauth\/error|\/signin\/oauth\/error|[?&]error=/.test(nextLocation) ||
@@ -289,7 +321,9 @@ for (const provider of OFFERED) {
 
 const pad = (s, n) => String(s).padEnd(n);
 console.log("");
-console.log(pad("PROVIDER", 12) + pad("SUPABASE", 10) + pad("BUTTON", 10) + pad("VERDICT", 10) + "DETAIL");
+console.log(
+  pad("PROVIDER", 12) + pad("SUPABASE", 10) + pad("BUTTON", 10) + pad("VERDICT", 10) + "DETAIL",
+);
 console.log("-".repeat(100));
 for (const r of rows) {
   console.log(

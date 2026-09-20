@@ -249,9 +249,7 @@ function VisitChip({
   // so putting it on every chip would cost a 96px column its street name to
   // repeat what the client list already says.
   const oneTime = visit.subscriptions?.frequency === "one_time" ? "One-time" : null;
-  const second = [mins == null ? null : clock(mins), oneTime, street]
-    .filter(Boolean)
-    .join(" · ");
+  const second = [mins == null ? null : clock(mins), oneTime, street].filter(Boolean).join(" · ");
   const dayLabel = new Date(`${visit.scheduled_on}T00:00:00`).toLocaleDateString(undefined, {
     weekday: "long",
     month: "short",

@@ -71,9 +71,7 @@ function MySchedulePage() {
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
           <CalendarDays className="mx-auto mb-3 h-8 w-8 opacity-60" />
           <p>You have no visits assigned in the next two weeks.</p>
-          <p className="mt-1 text-xs">
-            Days appear here as soon as work is assigned to you.
-          </p>
+          <p className="mt-1 text-xs">Days appear here as soon as work is assigned to you.</p>
         </div>
       )}
 

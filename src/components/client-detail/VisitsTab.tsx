@@ -36,7 +36,8 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 function fmtWindow(v: any, tz: string): string {
   // ETAs are instants and read on the ORG's clock; the service/property
   // windows below are `time` columns (wall clock, no zone) and stay as-is.
-  if (v.eta_start && v.eta_end) return `${formatTime(v.eta_start, tz)} - ${formatTime(v.eta_end, tz)}`;
+  if (v.eta_start && v.eta_end)
+    return `${formatTime(v.eta_start, tz)} - ${formatTime(v.eta_end, tz)}`;
   // The arrival window lives on the service (UX round 4); the property
   // window is a legacy fallback for rows whose service has none.
   const sub = v.subscriptions;
@@ -105,7 +106,8 @@ export function VisitsTab({
 
   const properties = useMemo(() => {
     const set = new Map<string, string>();
-    for (const v of visits) if (v.property_id && v.properties?.street) set.set(v.property_id, v.properties.street);
+    for (const v of visits)
+      if (v.property_id && v.properties?.street) set.set(v.property_id, v.properties.street);
     return [...set.entries()];
   }, [visits]);
 
@@ -180,9 +182,7 @@ export function VisitsTab({
   const bulkReassignM = useMutation({
     mutationFn: async (ids: string[]) => {
       const results = await Promise.allSettled(
-        ids.map((visitId) =>
-          bulkReassignFn({ data: { visitId, staffId: bulkStaffId || null } }),
-        ),
+        ids.map((visitId) => bulkReassignFn({ data: { visitId, staffId: bulkStaffId || null } })),
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
       return { ok, failed: results.length - ok };
@@ -451,11 +451,27 @@ export function VisitsTab({
         <VisitCalendar visits={filtered} onOpen={setDetailVisit} />
       ) : grouped ? (
         <>
-          <VisitGroup title={`Upcoming (${upcoming.length})`} visits={upcoming} onOpen={setDetailVisit} serviceById={serviceById} selection={selection} />
-          <VisitGroup title={`Past (${past.length})`} visits={past} onOpen={setDetailVisit} serviceById={serviceById} />
+          <VisitGroup
+            title={`Upcoming (${upcoming.length})`}
+            visits={upcoming}
+            onOpen={setDetailVisit}
+            serviceById={serviceById}
+            selection={selection}
+          />
+          <VisitGroup
+            title={`Past (${past.length})`}
+            visits={past}
+            onOpen={setDetailVisit}
+            serviceById={serviceById}
+          />
         </>
       ) : (
-        <VisitTable visits={filtered} onOpen={setDetailVisit} serviceById={serviceById} selection={selection} />
+        <VisitTable
+          visits={filtered}
+          onOpen={setDetailVisit}
+          serviceById={serviceById}
+          selection={selection}
+        />
       )}
 
       <VisitDetailDrawer
@@ -500,7 +516,12 @@ function VisitGroup({
           Nothing here with the current filters.
         </p>
       ) : (
-        <VisitTable visits={visits} onOpen={onOpen} serviceById={serviceById} selection={selection} />
+        <VisitTable
+          visits={visits}
+          onOpen={onOpen}
+          serviceById={serviceById}
+          selection={selection}
+        />
       )}
     </section>
   );
@@ -577,12 +598,16 @@ function VisitTable({
                     </span>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{fmtWindow(v, tz)}</td>
+                <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                  {fmtWindow(v, tz)}
+                </td>
                 <td className="whitespace-nowrap px-4 py-2.5">
                   {v.started_at ? (
                     formatTime(v.started_at, tz)
                   ) : done || inProgress ? (
-                    <span className="text-xs italic text-muted-foreground">Arrival not recorded</span>
+                    <span className="text-xs italic text-muted-foreground">
+                      Arrival not recorded
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">Not started</span>
                   )}
@@ -626,7 +651,9 @@ function VisitTable({
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                  {service ? `${service.frequency === "one_time" ? "One time" : "Recurring"} service` : "-"}
+                  {service
+                    ? `${service.frequency === "one_time" ? "One time" : "Recurring"} service`
+                    : "-"}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                   {v.properties?.street ?? "-"}
@@ -802,7 +829,8 @@ function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => 
                               CHIP_TONES[v.status] ?? "bg-muted text-muted-foreground",
                             )}
                           >
-                            {v.properties?.street ?? (v.eta_start ? formatTime(v.eta_start, tz) : "Visit")}
+                            {v.properties?.street ??
+                              (v.eta_start ? formatTime(v.eta_start, tz) : "Visit")}
                           </button>
                         ))}
                         {hiddenCount > 0 && (
@@ -931,8 +959,7 @@ function VisitDetailDrawer({
     onError: (e) => toast.error((e as Error).message),
   });
   const reassignMut = useMutation({
-    mutationFn: () =>
-      reassignFn({ data: { visitId: v.id, staffId: newStaffId || null } }),
+    mutationFn: () => reassignFn({ data: { visitId: v.id, staffId: newStaffId || null } }),
     onSuccess: () => afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned"),
     onError: (e) => toast.error((e as Error).message),
   });
@@ -963,7 +990,8 @@ function VisitDetailDrawer({
   const durText = formatVisitDuration(v.started_at, v.completed_at);
   // Missed visits can be retroactively completed (it was serviced) or
   // rescheduled (make-up) — the only recovery from the terminal state.
-  const canComplete = v.status === "scheduled" || v.status === "in_progress" || v.status === "missed";
+  const canComplete =
+    v.status === "scheduled" || v.status === "in_progress" || v.status === "missed";
   const canReschedule = scheduled || missed;
 
   return (
@@ -1026,7 +1054,8 @@ function VisitDetailDrawer({
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             {missed && (
               <p className="text-xs text-muted-foreground">
-                This visit was marked missed. If it was serviced, mark it completed; otherwise reschedule a make-up.
+                This visit was marked missed. If it was serviced, mark it completed; otherwise
+                reschedule a make-up.
               </p>
             )}
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1266,7 +1295,12 @@ function VisitDetailDrawer({
                   <Button type="submit" size="sm" disabled={mut.isPending || !reason.trim()}>
                     {mut.isPending ? "Saving…" : "Save correction"}
                   </Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setCorrecting(false)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setCorrecting(false)}
+                  >
                     <X className="mr-1 h-3.5 w-3.5" /> Cancel
                   </Button>
                 </div>

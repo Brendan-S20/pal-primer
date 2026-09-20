@@ -99,9 +99,9 @@ test.describe("every route the QA list names, against real data", () => {
       const errors = await openSignedIn(page, path);
 
       // `.filter({ visible: true })` before `.first()`. Without it, a match in
-        // a collapsed nav wins the race and the assertion fails on a page that
-        // is drawing the right thing -- which is exactly how
-        // /settings/client-portal failed the first time this ran.
+      // a collapsed nav wins the race and the assertion fails on a page that
+      // is drawing the right thing -- which is exactly how
+      // /settings/client-portal failed the first time this ran.
       await expect(
         page.getByText(proof).filter({ visible: true }).first(),
         `${path} drew nothing that identifies it. A blank or error page satisfies every ` +

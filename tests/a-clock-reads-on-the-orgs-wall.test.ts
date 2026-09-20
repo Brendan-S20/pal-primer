@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  orgLocalDayTime,
-  orgLocalMinutes,
-  orgLocalTime,
-} from "@/lib/org-day";
+import { orgLocalDayTime, orgLocalMinutes, orgLocalTime } from "@/lib/org-day";
 
 // Until 2026-09-19 every visit-time label rendered on the DEVICE's clock —
 // three private copies of `toLocaleTimeString([])` and several inline calls,
@@ -17,7 +13,7 @@ import {
 // puts U+202F (narrow no-break space) before AM/PM. The normalizer below makes
 // the assertions about the CLOCK, not about which space ICU chose this year.
 
-const plain = (s: string) => s.replace(/[  ]/g, " ");
+const plain = (s: string) => s.replace(/[\u202f\u00a0]/g, " ");
 
 describe("orgLocalTime reads an instant on the organization's wall clock", () => {
   it("winter (CST, UTC-6): 14:00Z is 8:00 AM in Chicago", () => {
@@ -32,7 +28,7 @@ describe("orgLocalTime reads an instant on the organization's wall clock", () =>
     expect(plain(orgLocalTime("2026-07-15T13:00:00Z", "America/New_York"))).toBe("9:00 AM");
   });
 
-  it("returns \"\" for garbage and for nothing, because every caller branches on falsiness", () => {
+  it('returns "" for garbage and for nothing, because every caller branches on falsiness', () => {
     expect(orgLocalTime("not a date", "America/Chicago")).toBe("");
     expect(orgLocalTime(null, "America/Chicago")).toBe("");
     expect(orgLocalTime(undefined, "America/Chicago")).toBe("");

@@ -111,9 +111,7 @@ test("a chargeback shows up read-only, and the one switch survives a refresh", a
         : "Open disputes are now counted in your analytics",
     ),
   ).toBeVisible({ timeout: 20_000 });
-  await expect
-    .poll(() => disputesInAnalytics(orgId), { timeout: 20_000 })
-    .toBe(!before);
+  await expect.poll(() => disputesInAnalytics(orgId), { timeout: 20_000 }).toBe(!before);
 
   // The refresh half: the flipped label came out of Postgres.
   await page.reload();
@@ -121,7 +119,5 @@ test("a chargeback shows up read-only, and the one switch survives a refresh", a
 
   // Put it back the way it was found.
   await page.getByRole("switch").click();
-  await expect
-    .poll(() => disputesInAnalytics(orgId), { timeout: 20_000 })
-    .toBe(before);
+  await expect.poll(() => disputesInAnalytics(orgId), { timeout: 20_000 }).toBe(before);
 });

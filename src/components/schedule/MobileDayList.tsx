@@ -98,11 +98,17 @@ export function MobileDayList({
     const out: Array<{ key: string; name: string; unassigned?: boolean; items: Visit[] }> = [];
     const un = byTech.get(null);
     if (un?.length) {
-      out.push({ key: "__unassigned__", name: "Unassigned", unassigned: true, items: [...un].sort(bySeq) });
+      out.push({
+        key: "__unassigned__",
+        name: "Unassigned",
+        unassigned: true,
+        items: [...un].sort(bySeq),
+      });
     }
     for (const s of staff) {
       const items = byTech.get(s.id);
-      if (items?.length) out.push({ key: s.id, name: s.display_name ?? "Tech", items: [...items].sort(bySeq) });
+      if (items?.length)
+        out.push({ key: s.id, name: s.display_name ?? "Tech", items: [...items].sort(bySeq) });
     }
     return out;
   }, [visits, staff]);
