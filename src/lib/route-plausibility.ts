@@ -9,6 +9,7 @@
 // changes. See src/lib/measures.ts.
 
 import { kmToMiles } from "@/lib/measures";
+import { DEFAULT_ORG_TIMEZONE, orgLocalDay, orgLocalMinutes } from "@/lib/org-day";
 
 export const DEFAULT_MAX_DRIVE_MINUTES = 240;
 export const DEFAULT_WORKDAY_START_MINUTES = 8 * 60; // 08:00
@@ -43,10 +44,19 @@ function fmtHours(min: number): string {
  */
 export function findRouteWarnings(
   visits: RouteVisit[],
-  opts: { maxDriveMinutes?: number; workdayStartMinutes?: number } = {},
+  opts: {
+    maxDriveMinutes?: number;
+    workdayStartMinutes?: number;
+    /** The ORG's IANA zone. Same convention as org-day.ts: the default exists
+     *  for safety, and a caller that does not know the timezone is a caller
+     *  that should be fetching it — the board reads it from the same
+     *  `getDispatchSettings` row the other two thresholds come from. */
+    timezone?: string;
+  } = {},
 ): RouteWarning[] {
   const limit = opts.maxDriveMinutes ?? DEFAULT_MAX_DRIVE_MINUTES;
   const workdayStart = opts.workdayStartMinutes ?? DEFAULT_WORKDAY_START_MINUTES;
+  const tz = opts.timezone || DEFAULT_ORG_TIMEZONE;
   const warnings: RouteWarning[] = [];
 
   for (const v of visits) {
@@ -77,13 +87,30 @@ export function findRouteWarnings(
     // optimizer starts the day at workdayStart; even the FIRST stop can't
     // arrive sooner than workdayStart + its drive. If it does, the ETA is
     // stale/wrong (not derived from the shown drive) — the exact repro.
+    //
+    // Measured on the ORG's clock, because that is the clock both operands
+    // live on: `workdayStart` is minutes into the org's workday (a wall-clock
+    // setting), and the stored `eta_start` is a correct instant anchored at
+    // `(day + workday_start) AT TIME ZONE org.timezone` by optimize_route_v2
+    // (the seed's naive strings were the last exception, fixed in
+    // 20260919230000). This used to subtract the DEVICE's midnight of
+    // `scheduled_on` instead, so a dispatcher one zone east of the org read
+    // every correct 8:xx AM first stop as an hour later into the day — or,
+    // east enough, as the wrong day entirely — and the board flagged or
+    // cleared ETAs based on where the laptop was, not where the truck was.
     if (v.eta_start && driveMin != null && v.scheduled_on) {
-      const eta = new Date(v.eta_start).getTime();
-      const dayStart = new Date(`${v.scheduled_on}T00:00:00`).getTime();
-      const minutesIntoDay = (eta - dayStart) / 60000;
-      const elapsedSinceWorkdayStart = minutesIntoDay - workdayStart;
+      const minutesIntoDay = orgLocalMinutes(v.eta_start, tz);
+      // Only an ETA that falls ON the scheduled day is measurable against that
+      // day's workday start — the role the old `minutesIntoDay >= 0` guard
+      // played, now decided by the org's calendar instead of the device's.
+      // (An ETA on the wrong day outright is a different fault this check has
+      // never claimed to catch.) `orgLocalDay` returns YYYY-MM-DD, the shape
+      // `scheduled_on` already has, so this is a string compare, no parsing.
+      const sameDay = orgLocalDay(v.eta_start, tz) === v.scheduled_on;
+      const elapsedSinceWorkdayStart =
+        minutesIntoDay == null ? null : minutesIntoDay - workdayStart;
       // Arrival implies less elapsed time than the drive alone requires.
-      if (minutesIntoDay >= 0 && elapsedSinceWorkdayStart < driveMin) {
+      if (sameDay && elapsedSinceWorkdayStart != null && elapsedSinceWorkdayStart < driveMin) {
         warnings.push({
           visitId: v.id,
           clientName: name,

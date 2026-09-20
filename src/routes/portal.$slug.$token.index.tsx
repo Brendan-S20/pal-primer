@@ -2,9 +2,15 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarDays, Sparkles, ArrowRight, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  usePortalCtx, EmptyBox, fmtDay, fmtDayShort, fmtTime, relativeFromToday,
+  usePortalCtx,
+  usePortalTimezone,
+  EmptyBox,
+  fmtDay,
+  fmtDayShort,
+  relativeFromToday,
   money,
 } from "@/lib/portal-ui";
+import { orgLocalTime } from "@/lib/org-day";
 
 export const Route = createFileRoute("/portal/$slug/$token/")({
   component: PortalHome,
@@ -12,12 +18,16 @@ export const Route = createFileRoute("/portal/$slug/$token/")({
 
 function PortalHome() {
   const { token, slug, visitsQ, historyQ, invoicesQ, clientQ } = usePortalCtx();
+  // ETAs are instants and print on the ORG's clock, not the reader's device.
+  const tz = usePortalTimezone();
   const c = clientQ.data as any;
   const visits = (visitsQ.data ?? []) as any[];
   const nextVisit = visits[0];
   // Multi-property clients (#29): label which property the next visit is at.
   const distinctAddrs = new Set(
-    visits.map((v) => `${v.street ?? ""}|${v.city ?? ""}|${v.postal_code ?? ""}`).filter((s) => s !== "||"),
+    visits
+      .map((v) => `${v.street ?? ""}|${v.city ?? ""}|${v.postal_code ?? ""}`)
+      .filter((s) => s !== "||"),
   );
   const showProperty = distinctAddrs.size > 1;
   const nextAddr = nextVisit
@@ -43,9 +53,20 @@ function PortalHome() {
               <div className="mt-0.5 text-sm font-medium text-foreground">{nextAddr}</div>
             )}
             <div className="mt-1 text-sm text-muted-foreground flex flex-wrap gap-x-3">
-              {nextVisit.eta_start && <span>Arriving {fmtTime(nextVisit.eta_start)}–{fmtTime(nextVisit.eta_end)}</span>}
-              {relativeFromToday(nextVisit.scheduled_on) && <span>{relativeFromToday(nextVisit.scheduled_on)}</span>}
-              {nextVisit.tech_name && <span>with <strong>{nextVisit.tech_name}</strong></span>}
+              {nextVisit.eta_start && (
+                <span>
+                  Arriving {orgLocalTime(nextVisit.eta_start, tz)}–
+                  {orgLocalTime(nextVisit.eta_end, tz)}
+                </span>
+              )}
+              {relativeFromToday(nextVisit.scheduled_on) && (
+                <span>{relativeFromToday(nextVisit.scheduled_on)}</span>
+              )}
+              {nextVisit.tech_name && (
+                <span>
+                  with <strong>{nextVisit.tech_name}</strong>
+                </span>
+              )}
             </div>
             <div className="mt-3">
               <Link to="/portal/$slug/$token/visits" params={{ slug, token }}>
@@ -56,8 +77,11 @@ function PortalHome() {
             </div>
           </div>
         ) : (
-          <EmptyBox icon={<CalendarDays className="h-6 w-6" />}
-            title="No visits scheduled" body="Text us to get on the route." />
+          <EmptyBox
+            icon={<CalendarDays className="h-6 w-6" />}
+            title="No visits scheduled"
+            body="Text us to get on the route."
+          />
         )}
       </section>
 
@@ -71,11 +95,10 @@ function PortalHome() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="font-medium">
-                  {openCount} open invoice{openCount === 1 ? "" : "s"} · {money(billing!.openTotalCents)}
+                  {openCount} open invoice{openCount === 1 ? "" : "s"} ·{" "}
+                  {money(billing!.openTotalCents)}
                   {overdueCount > 0 && (
-                    <span className="ml-1 text-destructive">
-                      · {overdueCount} overdue
-                    </span>
+                    <span className="ml-1 text-destructive">· {overdueCount} overdue</span>
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -100,19 +123,24 @@ function PortalHome() {
           <Camera className="h-4 w-4" /> Recent service
         </h2>
         {recent.length === 0 ? (
-          <EmptyBox icon={<Camera className="h-6 w-6" />}
+          <EmptyBox
+            icon={<Camera className="h-6 w-6" />}
             title="No completed visits yet"
-            body="After your first visit we'll post before/after photos here." />
+            body="After your first visit we'll post before/after photos here."
+          />
         ) : (
           <ul className="space-y-2">
             {recent.map((r) => (
-              <li key={r.visit_id} className="flex items-center justify-between rounded-md border bg-card p-3 text-sm">
+              <li
+                key={r.visit_id}
+                className="flex items-center justify-between rounded-md border bg-card p-3 text-sm"
+              >
                 <div>
                   <div className="font-medium">{fmtDayShort(r.scheduled_on)}</div>
                   <div className="text-xs text-muted-foreground capitalize">{r.status}</div>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {(r.photo_paths?.length ?? 0)} photo{(r.photo_paths?.length ?? 0) === 1 ? "" : "s"}
+                  {r.photo_paths?.length ?? 0} photo{(r.photo_paths?.length ?? 0) === 1 ? "" : "s"}
                 </div>
               </li>
             ))}

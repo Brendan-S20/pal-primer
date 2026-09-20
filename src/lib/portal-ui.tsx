@@ -3,6 +3,7 @@
  * React Query caches by key so switching tabs is instant. */
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { DEFAULT_ORG_TIMEZONE, orgLocalTime } from "@/lib/org-day";
 import { frequencyLabel } from "@/lib/frequency-request";
 import { stationDisplayName } from "@/lib/dna-linkage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -103,10 +104,55 @@ export function fmtDayShort(s: string | null | undefined) {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-export function fmtTime(s: string | null | undefined) {
-  const d = toDate(s);
-  if (!d) return "";
-  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+// There is deliberately no fmtTime here anymore. It was the portal's own
+// private copy of `toLocaleTimeString` with no timeZone — the fourth such copy
+// this codebase has retired — and it rendered every ETA and completion time on
+// the DEVICE's clock. "Arriving 8:00 AM" means the truck's 8:00 AM: a customer
+// checking their yard's portal from a business trip two zones east was told
+// 10:00 AM, and the staff surfaces had already moved to the org's clock on
+// 2026-09-19, so the two apps disagreed about the same visit. Instants now go
+// through `orgLocalTime(instant, tz)` from org-day.ts with the tz from
+// `usePortalTimezone()` below — DATE columns (scheduled_on, due_on) stay with
+// fmtDay/fmtDayShort, which need no zone.
+
+/** Weekday + clock + named zone for the change cutoff, on the ORG's clock:
+ *  "Friday at 7:00 PM CDT". "" for garbage, like every helper in org-day.ts.
+ *
+ *  This line used to render device-local, with a written rationale: the
+ *  reader is the one being told when THEY have until, so their own clock is
+ *  the honest one. That loses, and here is why. The deadline is ENFORCED on
+ *  the org's clock — portal_change_deadline computes it in the org's timezone
+ *  and the skip/reschedule RPCs refuse against that same instant — and a
+ *  device-local print with no zone name gives the reader no way to tell whose
+ *  clock they are looking at. Every other time on the page is now org-local
+ *  (the ETA window above this line is the truck's morning, not the reader's),
+ *  so a customer who travels reads "arriving 8:00 AM" org-local and "changes
+ *  until 7:00 PM" device-local in the same card and cannot know the second one
+ *  switched frames. Worst case the device clock runs AHEAD of the org's: the
+ *  un-named device-local print then reads later than the real deadline, and
+ *  the customer misses it trusting a sentence that was technically their own
+ *  time. Org-local WITH THE ZONE NAMED is unambiguous in every frame: a reader
+ *  in the org's zone sees their own wall clock plus a familiar "CDT", and a
+ *  travelling reader sees exactly which clock governs. (`pastCutoff` above
+ *  compares raw instants and never cared which zone anything printed in.) */
+function fmtCutoff(s: string | null | undefined, tz: string): string {
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  const zone = tz || DEFAULT_ORG_TIMEZONE;
+  // Weekday and zone abbreviation come from their own formatters (device
+  // locale, org zone — same split as org-day.ts); the clock itself is the one
+  // canonical helper so this can never drift from the ETA line above it.
+  const weekday = new Intl.DateTimeFormat(undefined, { timeZone: zone, weekday: "long" }).format(d);
+  const zoneName =
+    new Intl.DateTimeFormat(undefined, {
+      timeZone: zone,
+      hour: "numeric",
+      timeZoneName: "short",
+    })
+      .formatToParts(d)
+      .find((p) => p.type === "timeZoneName")?.value ?? "";
+  return `${weekday} at ${orgLocalTime(s, zone)}${zoneName ? ` ${zoneName}` : ""}`;
 }
 
 export function relativeFromToday(s: string | null | undefined): string {
@@ -889,6 +935,29 @@ export function usePortalCtx(): PortalCtx {
   return v;
 }
 
+/**
+ * The ORGANIZATION's timezone, for portal components that print an instant
+ * (`orgLocalTime` / `fmtCutoff`). The portal twin of `useOrgTimezone()` in
+ * useOrgToday.ts, and a hook rather than a prop for the same reason given
+ * there: threading `tz` through every row component means every future
+ * consumer has to remember to pass it, and forgetting silently reintroduces
+ * device-local rendering — the failure mode this exists to fix.
+ *
+ * The portal has no staff session, so the zone can't come from `getMyOrg`; it
+ * rides on the branding that `portalContext` already returns on every load
+ * (verified or not), widened in portal-auth.server.ts. By the time anything
+ * that prints a time renders, the verify gate has already resolved that query,
+ * so this adds no fetch. Falls back to the same SQL column default as
+ * org-day.ts rather than to the device — a wrong-but-stable clock beats one
+ * that changes with whoever is reading.
+ */
+export function usePortalTimezone(): string {
+  const { contextQ } = usePortalCtx();
+  const branding = (contextQ.data as { branding?: { timezone?: string | null } | null } | undefined)
+    ?.branding;
+  return branding?.timezone || DEFAULT_ORG_TIMEZONE;
+}
+
 /* ────────────────────────── reusable UI ───────────────────────── */
 
 export function EmptyBox({
@@ -987,6 +1056,7 @@ function VisitRow({
   onSkip: (reason: string) => void;
   onReschedule: (newDate: string) => void;
 }) {
+  const tz = usePortalTimezone();
   const [skipOpen, setSkipOpen] = useState(false);
   const [reschedOpen, setReschedOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -1004,14 +1074,14 @@ function VisitRow({
   // timezone, and the same function is what the writers refuse against. See
   // 20260812120000_the-portal-cutoff-was-only-a-hidden-button.sql.
   //
-  // Comparing two instants, so the browser's timezone is only ever used to
-  // PRINT this — which is right, since the reader is the one being told when
-  // they have until.
+  // Comparing two instants, so no timezone is involved in `pastCutoff` at all.
+  // The PRINTED copy is org-local with the zone named — `fmtCutoff` up top
+  // carries the adjudication of the device-local rendering this replaces.
   const cutoff = v.changes_allowed_until ? new Date(v.changes_allowed_until) : null;
   const pastCutoff = cutoff ? Date.now() > cutoff.getTime() : false;
 
   const cutoffCopy = cutoff
-    ? `Changes allowed until ${cutoff.toLocaleDateString(undefined, { weekday: "long" })} at ${cutoff.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`
+    ? `Changes allowed until ${fmtCutoff(v.changes_allowed_until, tz)}.`
     : "";
 
   return (
@@ -1022,7 +1092,8 @@ function VisitRow({
           <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
             {v.eta_start && (
               <span className="inline-flex items-center gap-1">
-                <Clock className="h-3 w-3" /> arriving {fmtTime(v.eta_start)}–{fmtTime(v.eta_end)}
+                <Clock className="h-3 w-3" /> arriving {orgLocalTime(v.eta_start, tz)}–
+                {orgLocalTime(v.eta_end, tz)}
               </span>
             )}
             {relativeFromToday(v.scheduled_on) && (
@@ -1558,6 +1629,7 @@ export function ServiceHistorySection({
   onReport: (visitId: string, category: string, message: string) => void;
   reporting: boolean;
 }) {
+  const tz = usePortalTimezone();
   const [urls, setUrls] = useState<Record<string, string>>({});
   // WHICH photo of WHICH visit, rather than one URL string. The bare-URL
   // version could only ever show the single photo that was tapped; a customer
@@ -1616,7 +1688,7 @@ export function ServiceHistorySection({
                       <>
                         <span className="inline-flex items-center gap-1 text-emerald-700">
                           <CheckCircle2 className="h-3 w-3" /> Completed
-                          {r.completed_at && <> at {fmtTime(r.completed_at)}</>}
+                          {r.completed_at && <> at {orgLocalTime(r.completed_at, tz)}</>}
                         </span>
                         {r.tech_name && (
                           <span>

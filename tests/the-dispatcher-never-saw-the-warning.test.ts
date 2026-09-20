@@ -30,6 +30,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { findRouteWarnings } from "@/lib/route-plausibility";
+import { zonedTimeToUtc } from "@/lib/route-window";
 
 const root = join(import.meta.dirname, "..");
 const routes = readFileSync(join(root, "src/routes/_authenticated/routes.tsx"), "utf8");
@@ -89,19 +90,24 @@ describe("the org's thresholds actually change the answer", () => {
   });
 
   it("an early start changes what counts as an impossible arrival", () => {
-    // Arrives 07:00, 60-minute drive. Against an 08:00 start that is
-    // impossible; against a 06:00 start it is an hour of driving from open.
+    // Arrives 07:00 ON THE ORG'S CLOCK, 60-minute drive. Against an 08:00
+    // start that is impossible; against a 06:00 start it is an hour of driving
+    // from open. The instant is derived from a declared zone and the zone is
+    // passed, because the check now measures on the org's clock — a naive
+    // "2026-08-07T07:00:00" here would mean a different wall clock on every
+    // runner, which is the exact fault the timezone option removes.
+    const tz = "America/Chicago";
     const early = [
       {
         id: "v2",
         clientName: "Early Bird",
         travel_min: 60,
-        eta_start: "2026-08-07T07:00:00",
+        eta_start: zonedTimeToUtc("2026-08-07", "07:00", tz).toISOString(),
         scheduled_on: "2026-08-07",
       },
     ];
-    expect(findRouteWarnings(early, { workdayStartMinutes: 8 * 60 })).toHaveLength(1);
-    expect(findRouteWarnings(early, { workdayStartMinutes: 6 * 60 })).toHaveLength(0);
+    expect(findRouteWarnings(early, { workdayStartMinutes: 8 * 60, timezone: tz })).toHaveLength(1);
+    expect(findRouteWarnings(early, { workdayStartMinutes: 6 * 60, timezone: tz })).toHaveLength(0);
   });
 });
 
@@ -115,6 +121,9 @@ describe("the routes board renders them", () => {
     expect(routes).toMatch(/getDispatchSettings/);
     expect(routes).toMatch(/maxDriveMinutes: s\?\.max_drive_minutes \?\? undefined/);
     expect(routes).toMatch(/workdayStartMinutes: startMin/);
+    // The zone is the third threshold: without it the ETA check measures
+    // "minutes into the day" on whatever clock the dispatcher's device keeps.
+    expect(routes).toMatch(/timezone: s\?\.timezone \?\? undefined/);
   });
 
   it("guards the parse with isFinite, so midnight survives", () => {

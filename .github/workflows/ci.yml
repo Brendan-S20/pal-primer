@@ -115,7 +115,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # npm cache on HOSTED runners only. On the self-hosted machines the
+          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
+          # nothing -- and its POST-RUN SAVE is what has now killed three
+          # otherwise-green jobs: every work step succeeds, then the save
+          # crawls on a machine at 90%+ swap until the job's timeout cancels
+          # it, and the check reports failure over bookkeeping. The expression
+          # reads empty (= caching off) whenever a self-hosted runner variable
+          # is set, and 'npm' on the hosted fallback, where a fresh VM really
+          # does need the cache.
+          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
 
       # npm, not bun: package-lock.json resolves to the public registry, which
       # is reachable from CI.
@@ -361,7 +370,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # npm cache on HOSTED runners only. On the self-hosted machines the
+          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
+          # nothing -- and its POST-RUN SAVE is what has now killed three
+          # otherwise-green jobs: every work step succeeds, then the save
+          # crawls on a machine at 90%+ swap until the job's timeout cancels
+          # it, and the check reports failure over bookkeeping. The expression
+          # reads empty (= caching off) whenever a self-hosted runner variable
+          # is set, and 'npm' on the hosted fallback, where a fresh VM really
+          # does need the cache.
+          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
       # NO `shell:` ANYWHERE IN THIS JOB, AND THAT IS THE FIX.
       #
       # The first version of this job said `shell: bash` on both steps. The
@@ -741,7 +759,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # npm cache on HOSTED runners only. On the self-hosted machines the
+          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
+          # nothing -- and its POST-RUN SAVE is what has now killed three
+          # otherwise-green jobs: every work step succeeds, then the save
+          # crawls on a machine at 90%+ swap until the job's timeout cancels
+          # it, and the check reports failure over bookkeeping. The expression
+          # reads empty (= caching off) whenever a self-hosted runner variable
+          # is set, and 'npm' on the hosted fallback, where a fresh VM really
+          # does need the cache.
+          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
 
       - run: npm ci
 
