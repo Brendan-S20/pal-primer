@@ -430,7 +430,7 @@ function NeighborsPage() {
         // of a 360px phone instead of below a screenful of tiles.
         <>
           <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No doors on the list yet — start below. The funnel and Walk mode appear with the first
+            No doors on the list yet. Start below: the funnel and Walk mode appear with the first
             door.
           </div>
           <div className="grid gap-4 md:grid-cols-2">
