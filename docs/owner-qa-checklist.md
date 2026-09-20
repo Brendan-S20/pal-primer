@@ -20,9 +20,35 @@ data and throws nothing to the console — `/clients`, `/routes`, `/invoices`,
 is the half of this list that was "open it and see if it works".
 
 **What it does not cover yet, and the distinction matters:** rendering with
-real data is not the same as *working*. The first four behavioural round
-trips landed 2026-09-19, each asserting the database half as well as the
-screen:
+real data is not the same as *working*. Eleven behavioural round trips now
+run as tests (2026-09-19/20), each asserting the database half as well as the
+screen. The second wave, 2026-09-20 — every spec named for its sentence:
+the board completes a visit (office_complete_visit, the activity row, one
+fewer Complete after a reload); the day strip lands My Day on the tapped
+date; fixing a price clears the pricing-drift group **and found that page
+broken twice over in production shape — an ambiguous zones embed and a
+column that does not exist, stacked so it had never built a report — both
+fixed**; the accountant's income CSV downloads and its Total row matches a
+service-role sum of payments; three more settings survive a refresh (online
+signup, the portal cutoff — with the org's contact address kept empty so the
+save cannot geocode against live Nominatim — and Work days, whose QA wording
+still points at a dispatch panel the control left); Total units propagates
+into the subscription's unit_count with the honest caveat that the seeded
+zone carries no commercial rates so the price correctly holds; bulk-bar
+selections die on every filter switch and concerns bulk-resolve empties the
+queue; and a platform admin (granted and revoked inside the one spec that
+needs it, because admins land on /platform at every sign-in) edits a plan's
+monthly and annual prices with the audit row to show for it.
+
+Still deliberately manual, each for a stated reason: the Stripe card form
+(test mode, then the one real charge), the Jobber CSV and DNA photo flows
+(file uploads), weather (a live provider to stub first), clients bulk-archive
+(restore is per-client and asymmetric), /settings/franchise (its only round
+trip is joining a franchise, which the list itself calls the one with
+consequences), the link-share card (needs the production URL), and the phone
+items below.
+
+The first wave, 2026-09-19:
 
 - **Mark paid flips the invoice** (`the-invoice-flips-to-paid-and-postgres-agrees`):
   the ••• → Mark paid path, the "Open" chip count dropping and staying dropped

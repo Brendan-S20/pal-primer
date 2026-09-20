@@ -200,6 +200,16 @@ await ensureFieldTech(userId, orgId);
   if (error) throw new Error(`stamping tour_seen_at: ${error.message}`);
 }
 
+// The owner is NOT a platform admin. the-platform-edits-a-plan.spec.ts grants
+// that for its own run and removes it in a finally, because auth.tsx routes
+// platform admins to /platform at every sign-in — but a run killed hard
+// enough skips even a finally, and a leftover row would hijack every other
+// spec's signIn(). The seed is the net under that wire.
+{
+  const { error } = await db.from("platform_admins").delete().eq("user_id", userId);
+  if (error) throw new Error(`clearing platform_admins: ${error.message}`);
+}
+
 // ── CALLED AS THE OWNER, NOT AS service_role, AND THAT IS NOT A DETAIL ───
 //
 // The first version of this called `seed_demo_org` with the service-role
@@ -228,12 +238,19 @@ if (seedErr) throw new Error(`seed_demo_org: ${seedErr.message}`);
 // nothing, and it would present downstream as a dozen unrelated UI failures.
 const counts = {};
 for (const t of ["clients", "visits", "invoices"]) {
-  const { count } = await db.from(t).select("*", { count: "exact", head: true }).eq("organization_id", orgId);
+  const { count } = await db
+    .from(t)
+    .select("*", { count: "exact", head: true })
+    .eq("organization_id", orgId);
   counts[t] = count ?? 0;
 }
 console.log(`org ${orgId}  user ${userId}`);
 console.log(`seed_demo_org -> ${JSON.stringify(seeded)}`);
-console.log(`rows: ${Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(" ")}`);
+console.log(
+  `rows: ${Object.entries(counts)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ")}`,
+);
 
 if (Object.values(counts).every((n) => n === 0)) {
   console.error("The seed produced no rows. Downstream this looks like a dozen broken pages.");
