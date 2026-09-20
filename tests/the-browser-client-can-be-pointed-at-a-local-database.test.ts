@@ -34,9 +34,7 @@ const SRC = readFileSync("src/integrations/supabase/client.ts", "utf8")
 
 describe("the browser Supabase client", () => {
   it("reads VITE_SUPABASE_URL in dev, so a local run is not split down the middle", () => {
-    expect(SRC).toMatch(
-      /import\.meta\.env\.DEV\s*&&\s*import\.meta\.env\.VITE_SUPABASE_URL/,
-    );
+    expect(SRC).toMatch(/import\.meta\.env\.DEV\s*&&\s*import\.meta\.env\.VITE_SUPABASE_URL/);
   });
 
   it("reads VITE_SUPABASE_PUBLISHABLE_KEY the same way, because a local stack rejects the production anon key", () => {
@@ -51,9 +49,8 @@ describe("the browser Supabase client", () => {
     // variant: a value injected at build time would move where the shipped
     // app sends every user's data, silently.
     const reads = SRC.match(/import\.meta\.env\.VITE_SUPABASE_\w+/g) ?? [];
-    const guarded = SRC.match(
-      /import\.meta\.env\.DEV\s*&&\s*import\.meta\.env\.VITE_SUPABASE_\w+/g,
-    ) ?? [];
+    const guarded =
+      SRC.match(/import\.meta\.env\.DEV\s*&&\s*import\.meta\.env\.VITE_SUPABASE_\w+/g) ?? [];
     expect(reads.length).toBeGreaterThan(0);
     expect(guarded.length).toBe(reads.length);
   });

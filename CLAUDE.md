@@ -317,6 +317,13 @@ patterns stop matching config.toml, because a silent no-op there puts both
 stacks back on shared ports. 545xx is therefore taken; a third project on
 this machine takes 546xx.
 
+And the isolation bought more than coexistence: **the sandboxes database job
+now runs this whole E2E suite** after the proofs, on the stack it just built
+from the migrations — seed, dev server, browser, RLS live. A change to
+`tests/e2e/**` or `playwright.e2e.config.ts` routes to that job on a PR; a
+push to main always runs it. `reuseExistingServer` is off under CI for the
+same orphaned-dev-server reason playwright.config.ts documents.
+
 ## Every migration replays into an empty database. All of them, in order.
 
 `supabase db reset` drops the local database and replays

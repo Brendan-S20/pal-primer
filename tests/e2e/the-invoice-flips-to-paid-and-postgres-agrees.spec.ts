@@ -65,9 +65,7 @@ test("mark paid flips the invoice, records a payment, and survives a refresh", a
   // contains an element whose exact text is "Open". The filter chip and the
   // "Open invoices" stat card are not rows, and the "Open full invoice" menu
   // item renders in a portal outside the table.
-  const openRows = page
-    .getByRole("row")
-    .filter({ has: page.getByText("Open", { exact: true }) });
+  const openRows = page.getByRole("row").filter({ has: page.getByText("Open", { exact: true }) });
 
   await expect
     .poll(async () => openRows.count(), {
@@ -90,15 +88,11 @@ test("mark paid flips the invoice, records a payment, and survives a refresh", a
   await expect(page.getByText("Invoice marked paid")).toBeVisible({ timeout: 20_000 });
 
   // The flip, in place: one fewer row wearing an "Open" chip.
-  await expect
-    .poll(async () => openRows.count(), { timeout: 20_000 })
-    .toBe(openBefore - 1);
+  await expect.poll(async () => openRows.count(), { timeout: 20_000 }).toBe(openBefore - 1);
 
   // The database half: exactly one new payments row that says where it came
   // from, and the invoice it points at really is 'paid' with a paid_at.
-  await expect
-    .poll(() => manualPaidCount(orgId), { timeout: 20_000 })
-    .toBe(paymentsBefore + 1);
+  await expect.poll(() => manualPaidCount(orgId), { timeout: 20_000 }).toBe(paymentsBefore + 1);
 
   const { data: payment, error: payErr } = await db
     .from("payments")
@@ -123,7 +117,5 @@ test("mark paid flips the invoice, records a payment, and survives a refresh", a
   // And the refresh: the state above came out of Postgres, so a full reload
   // must show the same one-fewer-open list, not a cache that forgot.
   await page.reload();
-  await expect
-    .poll(async () => openRows.count(), { timeout: 30_000 })
-    .toBe(openBefore - 1);
+  await expect.poll(async () => openRows.count(), { timeout: 30_000 }).toBe(openBefore - 1);
 });

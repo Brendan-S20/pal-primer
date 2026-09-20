@@ -84,7 +84,14 @@ export default defineConfig({
     : {
         command: `npx vite dev --port ${PORT} --host 127.0.0.1`,
         url: `${BASE}/auth`,
-        reuseExistingServer: true,
+        // Locally, adopting a dev server already on 5601 saves a cold start.
+        // In CI it is a way to go green against code that is not the code
+        // under test — the runner is also somebody's development machine, so
+        // the port may be held by another branch or an orphaned process. The
+        // viewport config learned this on 2026-08-29 (58 tests reported
+        // failures belonging to a checkout the runner never built); same
+        // rule here, for the same reason, now that this suite runs in CI.
+        reuseExistingServer: !process.env.CI,
         timeout: 180_000,
         env: {
           SUPABASE_URL: process.env.SUPABASE_URL ?? "",

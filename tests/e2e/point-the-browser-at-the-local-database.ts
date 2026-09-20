@@ -97,7 +97,9 @@ export async function pointTheBrowserAtTheLocalDatabase(
       res = await fetch(target, {
         method: req.method(),
         headers,
-        body: ["GET", "HEAD"].includes(req.method()) ? undefined : (req.postDataBuffer() ?? undefined),
+        body: ["GET", "HEAD"].includes(req.method())
+          ? undefined
+          : (req.postDataBuffer() ?? undefined),
         redirect: "manual",
       });
     } catch (err) {

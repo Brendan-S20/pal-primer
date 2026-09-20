@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
+import { orgLocalTime } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -144,7 +146,6 @@ function todayISO() {
   const local = new Date(d.getTime() - off * 60_000);
   return local.toISOString().slice(0, 10);
 }
-
 
 function MyDay() {
   const { date: dateParam, staff: staffParam } = Route.useSearch();
@@ -719,11 +720,7 @@ function MyDay() {
                   list and a folded map, which are not far apart at 16px. Still
                   44px tall -- the height is now the padding plus the label
                   rather than a fixed square, so min-h-11 states it outright. */}
-              <div
-                className="flex shrink-0 rounded-lg border p-0.5"
-                role="group"
-                aria-label="View"
-              >
+              <div className="flex shrink-0 rounded-lg border p-0.5" role="group" aria-label="View">
                 {(["list", "map"] as const).map((v) => (
                   <button
                     key={v}
@@ -904,7 +901,6 @@ function MyDay() {
     </div>
   );
 }
-
 
 /**
  * The whole day on one map.
@@ -1245,12 +1241,6 @@ function mapsUrl(p: any): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
-function fmtClock(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
 /** "HH:MM[:SS]" wall-clock (property service window) → "8:00 AM". */
 function fmtWindowTime(hhmm: string): string {
   const m = /^(\d{1,2}):(\d{2})/.exec(hhmm);
@@ -1263,11 +1253,13 @@ function fmtWindowTime(hhmm: string): string {
 }
 
 /** The best per-card time label: a computed ETA if the route was optimized,
- *  else the property's configured service window, else nothing. */
-function visitWindowLabel(visit: any): string | null {
+ *  else the property's configured service window, else nothing. ETAs are
+ *  instants, rendered on the ORG's clock; the window fallback is a `time`
+ *  column and stays timezone-free. */
+function visitWindowLabel(visit: any, tz: string): string | null {
   if (visit?.eta_start) {
-    const start = fmtClock(visit.eta_start);
-    const end = visit?.eta_end ? fmtClock(visit.eta_end) : "";
+    const start = orgLocalTime(visit.eta_start, tz);
+    const end = visit?.eta_end ? orgLocalTime(visit.eta_end, tz) : "";
     if (start) return end ? `ETA ${start}–${end}` : `ETA ${start}`;
   }
   const p = visit?.properties;
@@ -1386,6 +1378,7 @@ function VisitCard({
   // has to say it. (Q-11 is whether it should queue at all; until that is
   // answered, refusing honestly beats failing with a network error.)
   const cardOnline = useOnline();
+  const tz = useOrgTimezone();
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -1704,12 +1697,12 @@ function VisitCard({
               code and no key it was the block's only occupant, which drew a
               framed panel around one word. The block is for things you have to
               read correctly to get in. */}
-          {(visitWindowLabel(visit) || p?.yard_size) && (
+          {(visitWindowLabel(visit, tz) || p?.yard_size) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-              {visitWindowLabel(visit) && (
+              {visitWindowLabel(visit, tz) && (
                 <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                   <Clock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  {visitWindowLabel(visit)}
+                  {visitWindowLabel(visit, tz)}
                 </span>
               )}
               {p?.yard_size && (
@@ -1762,12 +1755,7 @@ function VisitCard({
                       every skip recorded before `skipped_at` existed, so it is
                       rendered only when present rather than falling back to a
                       row timestamp that would mean something else. */}
-                  {visit.skipped_at
-                    ? ` at ${new Date(visit.skipped_at).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}`
-                    : ""}
+                  {visit.skipped_at ? ` at ${orgLocalTime(visit.skipped_at, tz)}` : ""}
                   {visit.skip_reason_code
                     ? ` (${SKIP_REASON_LABELS[visit.skip_reason_code as keyof typeof SKIP_REASON_LABELS] ?? visit.skip_reason_code})`
                     : ""}

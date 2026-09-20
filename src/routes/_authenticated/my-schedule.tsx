@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarDays, MapPin } from "lucide-react";
 import { getMyUpcomingDays, type UpcomingDay } from "@/lib/my-day.functions";
+import { orgLocalTime } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { APP_NAME } from "@/lib/scoop";
 
 /**
@@ -43,12 +45,8 @@ const fmtDay = (iso: string) =>
     day: "numeric",
   });
 
-const fmtClock = (iso: string | null) =>
-  iso
-    ? new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-    : null;
-
 function MySchedulePage() {
+  const tz = useOrgTimezone();
   const fn = useServerFn(getMyUpcomingDays);
   const { data, isLoading } = useQuery({
     queryKey: ["my-upcoming-days"],
@@ -73,9 +71,7 @@ function MySchedulePage() {
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
           <CalendarDays className="mx-auto mb-3 h-8 w-8 opacity-60" />
           <p>You have no visits assigned in the next two weeks.</p>
-          <p className="mt-1 text-xs">
-            Days appear here as soon as work is assigned to you.
-          </p>
+          <p className="mt-1 text-xs">Days appear here as soon as work is assigned to you.</p>
         </div>
       )}
 
@@ -85,8 +81,8 @@ function MySchedulePage() {
       <ul aria-label="Your upcoming days" className="space-y-2">
         {days.map((d) => {
           const left = d.stops - d.done;
-          const first = fmtClock(d.firstEta);
-          const last = fmtClock(d.lastEta);
+          const first = orgLocalTime(d.firstEta, tz) || null;
+          const last = orgLocalTime(d.lastEta, tz) || null;
           return (
             <li key={d.date}>
               {/* The whole row is the link. A tech reading "Thursday, 6 stops"

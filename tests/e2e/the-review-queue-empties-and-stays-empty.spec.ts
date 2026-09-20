@@ -73,10 +73,14 @@ test("working the one open item empties the queue, and the decision sticks", asy
   await signIn(page);
   await page.goto("/review");
 
-  await expect(page.getByRole("heading", { name: "Needs review" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Needs review" })).toBeVisible({
+    timeout: 30_000,
+  });
   // exact, because the card's own reason copy contains the phrase in lowercase
   // and an inexact getByText matches both.
-  await expect(page.getByText("Left in progress", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Left in progress", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
 
   await page.getByRole("button", { name: "Record a decision" }).click();
   await page.getByLabel(/what did you find/i).fill(NOTE);
@@ -110,6 +114,8 @@ test("working the one open item empties the queue, and the decision sticks", asy
   // The item did not vanish; it moved. The Resolved filter shows it wearing
   // the note that was typed.
   await page.getByRole("button", { name: "Resolved", exact: true }).click();
-  await expect(page.getByText("Left in progress", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Left in progress", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(page.getByText(NOTE)).toBeVisible();
 });

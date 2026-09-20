@@ -17,15 +17,11 @@
 import { useMemo } from "react";
 import { ChevronRight, CloudRain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { orgLocalTime } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 
 type Visit = any;
 type Staff = any;
-
-function fmtClock(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
 
 /** "HH:MM[:SS]" wall-clock → "8:00 AM". */
 function fmtWindowTime(hhmm: string): string {
@@ -40,11 +36,13 @@ function fmtWindowTime(hhmm: string): string {
 
 /** Best time label for a row: computed ETA if the route was optimized, else
  *  the configured service window (service first, legacy property fallback —
- *  same precedence as the board's VisitCardView). */
-function timeLabel(v: Visit): string | null {
+ *  same precedence as the board's VisitCardView). ETAs are instants and render
+ *  on the ORG's clock; the windows below are `time` columns — wall clock with
+ *  no zone — and stay as they are. */
+function timeLabel(v: Visit, tz: string): string | null {
   if (v?.eta_start) {
-    const start = fmtClock(v.eta_start);
-    const end = v?.eta_end ? fmtClock(v.eta_end) : "";
+    const start = orgLocalTime(v.eta_start, tz);
+    const end = v?.eta_end ? orgLocalTime(v.eta_end, tz) : "";
     if (start) return end ? `ETA ${start}–${end}` : `ETA ${start}`;
   }
   const sub = v?.subscriptions;
@@ -87,6 +85,7 @@ export function MobileDayList({
   staff: Staff[];
   onOpen: (visitId: string) => void;
 }) {
+  const tz = useOrgTimezone();
   const groups = useMemo(() => {
     const byTech = new Map<string | null, Visit[]>();
     for (const v of visits) {
@@ -99,11 +98,17 @@ export function MobileDayList({
     const out: Array<{ key: string; name: string; unassigned?: boolean; items: Visit[] }> = [];
     const un = byTech.get(null);
     if (un?.length) {
-      out.push({ key: "__unassigned__", name: "Unassigned", unassigned: true, items: [...un].sort(bySeq) });
+      out.push({
+        key: "__unassigned__",
+        name: "Unassigned",
+        unassigned: true,
+        items: [...un].sort(bySeq),
+      });
     }
     for (const s of staff) {
       const items = byTech.get(s.id);
-      if (items?.length) out.push({ key: s.id, name: s.display_name ?? "Tech", items: [...items].sort(bySeq) });
+      if (items?.length)
+        out.push({ key: s.id, name: s.display_name ?? "Tech", items: [...items].sort(bySeq) });
     }
     return out;
   }, [visits, staff]);
@@ -133,7 +138,7 @@ export function MobileDayList({
           <ol className="divide-y">
             {g.items.map((v, i) => {
               const p = v.properties;
-              const t = timeLabel(v);
+              const t = timeLabel(v, tz);
               return (
                 <li key={v.id}>
                   <button

@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
+import { orgLocalTime } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { AiSection, DispatchPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -201,8 +203,7 @@ function RoutesPage() {
    *  on screen together, which is most of what the linked hover is for.
    *  Off below `lg`, where side-by-side would give each half ~380px. */
   const [sideBySide, setSideBySide] = useState<boolean>(
-    () =>
-      typeof localStorage === "undefined" || localStorage.getItem("routes.sideBySide") !== "0",
+    () => typeof localStorage === "undefined" || localStorage.getItem("routes.sideBySide") !== "0",
   );
   const setSideBySidePersist = (v: boolean) => {
     setSideBySide(v);
@@ -561,8 +562,7 @@ function RoutesPage() {
   });
   const routeWarnings = useMemo(() => {
     const s = dispatchQ.data?.settings as
-      | { max_drive_minutes?: number | null; workday_start?: string | null }
-      | undefined;
+      { max_drive_minutes?: number | null; workday_start?: string | null } | undefined;
     // "08:30:00" -> 510. Left undefined when unset so the helper's default
     // applies rather than a silent 0, which would flag every stop.
     const startMin = (() => {
@@ -613,7 +613,8 @@ function RoutesPage() {
     () =>
       (visits as any[]).filter((v) => {
         if (fTeam === "unassigned" && v.assigned_staff_id) return false;
-        if (fTeam !== "all" && fTeam !== "unassigned" && v.assigned_staff_id !== fTeam) return false;
+        if (fTeam !== "all" && fTeam !== "unassigned" && v.assigned_staff_id !== fTeam)
+          return false;
         if (fStatus !== "all" && v.status !== fStatus) return false;
         // A visit generated from a subscription is recurring; one booked ad hoc
         // has no subscription behind it.
@@ -678,8 +679,7 @@ function RoutesPage() {
   });
 
   const bulkRescheduleMut = useMutation({
-    mutationFn: (toDate: string) =>
-      bulkRescheduleFn({ data: { visitIds: [...selected], toDate } }),
+    mutationFn: (toDate: string) => bulkRescheduleFn({ data: { visitIds: [...selected], toDate } }),
     onSuccess: (r: any) => {
       // `skipped` is not an error and is never swallowed: a weekly client moved
       // exactly a week already has a visit there, and silence would read as
@@ -1013,10 +1013,10 @@ function RoutesPage() {
                 key={m}
                 onClick={() => setViewModePersist(m)}
                 // MEASURED 2026-08-19: 36.0px. `max-md:py-2.5` was an attempt at
-                  // this and it fell four short — padding around a 16px line
-                  // cannot be reasoned to 44 without doing the arithmetic, and
-                  // nobody had. A minimum states the intent directly.
-                  className={`px-3 py-1.5 touch:min-h-11 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                // this and it fell four short — padding around a 16px line
+                // cannot be reasoned to 44 without doing the arithmetic, and
+                // nobody had. A minimum states the intent directly.
+                className={`px-3 py-1.5 touch:min-h-11 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {m === "map" ? "Map" : "Board"}
               </button>
@@ -1120,8 +1120,8 @@ function RoutesPage() {
                 <div className="border-b px-3 py-2">
                   <div className="text-sm font-medium">Who runs routes</div>
                   <div className="text-2xs text-muted-foreground">
-                    Everyone switched on here gets a lane on the board and can be assigned
-                    work. Everyone else stays in the office.
+                    Everyone switched on here gets a lane on the board and can be assigned work.
+                    Everyone else stays in the office.
                   </div>
                 </div>
                 <div className="max-h-72 overflow-y-auto">
@@ -1366,21 +1366,21 @@ function RoutesPage() {
           }
         >
           {viewMode === "map" && (
-          <div className={sideBySide ? "xl:sticky xl:top-4" : ""}>
-            <MapPanel
-              baseStyle={baseStyle}
-              onBaseStyle={setBaseStylePersist}
-              hoveredVisitId={hoveredVisitId}
-              onHoverVisit={setHoveredVisitId}
-              visits={visits}
-              staff={staff}
-              onOpenVisit={setDetailVisitId}
-              onGeocode={() => geocodeMut.mutate()}
-              geocoding={geocodeMut.isPending}
-              compact={compact}
-              drawRoutes
-            />
-          </div>
+            <div className={sideBySide ? "xl:sticky xl:top-4" : ""}>
+              <MapPanel
+                baseStyle={baseStyle}
+                onBaseStyle={setBaseStylePersist}
+                hoveredVisitId={hoveredVisitId}
+                onHoverVisit={setHoveredVisitId}
+                visits={visits}
+                staff={staff}
+                onOpenVisit={setDetailVisitId}
+                onGeocode={() => geocodeMut.mutate()}
+                geocoding={geocodeMut.isPending}
+                compact={compact}
+                drawRoutes
+              />
+            </div>
           )}
           {/* Tech load is a FIELD-worker report (C3/I4): only capability-flagged
               field workers are route runners. Non-field roles stay on the board
@@ -1403,8 +1403,8 @@ function RoutesPage() {
               <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-destructive">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  {routeWarnings.length} implausible{" "}
-                  {routeWarnings.length === 1 ? "stop" : "stops"} on this route
+                  {routeWarnings.length} implausible {routeWarnings.length === 1 ? "stop" : "stops"}{" "}
+                  on this route
                 </div>
                 <ul className="mt-2 space-y-1">
                   {routeWarnings.map((w) => (
@@ -1490,10 +1490,7 @@ function RoutesPage() {
                     Hide tech load
                   </button>
                 </div>
-                <HeatmapPanel
-                  visits={visits}
-                  staff={staff.filter((s: any) => s.is_field_tech)}
-                />
+                <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
               </div>
             ) : (
               <button
@@ -1519,47 +1516,24 @@ function RoutesPage() {
             </div>
 
             <div className="max-md:hidden">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-          >
-            <div
-              className={
-                boardLayout === "rows"
-                  ? "grid gap-4 grid-cols-1"
-                  : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-              }
-            >
-              <Column
-                id={UNASSIGNED}
-                title="Unassigned"
-                items={columns[UNASSIGNED] ?? []}
-                tone="muted"
-                layout={boardLayout}
-                onComplete={(id) => completeMut.mutate(id)}
-                completingId={completeMut.isPending ? (completeMut.variables as string) : null}
-                onOpen={setDetailVisitId}
-                selectedIds={selected}
-                onToggleSelect={toggleSelect}
-                onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
-                selectionActive={selectionActive}
-                hoveredVisitId={hoveredVisitId}
-                onHover={setHoveredVisitId}
-              />
-              {staff.map((s: any) => {
-                const offRoutes = s.is_field_tech && !s.routing_available;
-                const away = offToday.has(s.id);
-                return (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+              >
+                <div
+                  className={
+                    boardLayout === "rows"
+                      ? "grid gap-4 grid-cols-1"
+                      : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                  }
+                >
                   <Column
-                    key={s.id}
-                    id={s.id}
-                    title={s.display_name}
-                    subtitle={s.role ? humanizeRole(s.role) : undefined}
-                    offRoutes={offRoutes}
-                    offToday={away}
-                    items={columns[s.id] ?? []}
+                    id={UNASSIGNED}
+                    title="Unassigned"
+                    items={columns[UNASSIGNED] ?? []}
+                    tone="muted"
                     layout={boardLayout}
                     onComplete={(id) => completeMut.mutate(id)}
                     completingId={completeMut.isPending ? (completeMut.variables as string) : null}
@@ -1570,65 +1544,92 @@ function RoutesPage() {
                     selectionActive={selectionActive}
                     hoveredVisitId={hoveredVisitId}
                     onHover={setHoveredVisitId}
-                    laneAction={
-                      <button
-                        onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
-                        // 18px from `py-0.5` around a 3xs line. Moving a
-                        // whole lane's work because someone called in sick is
-                        // not a control to aim at.
-                        className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground touch:min-h-11 touch:px-3"
-                        title={`${s.display_name} is out, move their work`}
-                      >
-                        Cover
-                      </button>
-                    }
                   />
-                );
-              })}
-              {/* Non-techs who still hold work. Last, read-only, and only ever
+                  {staff.map((s: any) => {
+                    const offRoutes = s.is_field_tech && !s.routing_available;
+                    const away = offToday.has(s.id);
+                    return (
+                      <Column
+                        key={s.id}
+                        id={s.id}
+                        title={s.display_name}
+                        subtitle={s.role ? humanizeRole(s.role) : undefined}
+                        offRoutes={offRoutes}
+                        offToday={away}
+                        items={columns[s.id] ?? []}
+                        layout={boardLayout}
+                        onComplete={(id) => completeMut.mutate(id)}
+                        completingId={
+                          completeMut.isPending ? (completeMut.variables as string) : null
+                        }
+                        onOpen={setDetailVisitId}
+                        selectedIds={selected}
+                        onToggleSelect={toggleSelect}
+                        onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                        selectionActive={selectionActive}
+                        hoveredVisitId={hoveredVisitId}
+                        onHover={setHoveredVisitId}
+                        laneAction={
+                          <button
+                            onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
+                            // 18px from `py-0.5` around a 3xs line. Moving a
+                            // whole lane's work because someone called in sick is
+                            // not a control to aim at.
+                            className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground touch:min-h-11 touch:px-3"
+                            title={`${s.display_name} is out, move their work`}
+                          >
+                            Cover
+                          </button>
+                        }
+                      />
+                    );
+                  })}
+                  {/* Non-techs who still hold work. Last, read-only, and only ever
                   rendered when they actually have visits — so a healthy org
                   never sees this at all. */}
-              {stranded.map((s: any) => (
-                <Column
-                  key={s.id}
-                  id={s.id}
-                  title={s.display_name}
-                  notRoutable
-                  notRoutableHint={
-                    canManageCrew ? (
-                      <>Still holding work. Drag it to a tech, or let them run routes.</>
-                    ) : undefined
-                  }
-                  laneAction={
-                    canManageCrew ? (
-                      <button
-                        onClick={() => routingMut.mutate({ staffId: s.id, isFieldTech: true })}
-                        disabled={routingMut.isPending}
-                        className="rounded border border-rose-300 px-1.5 py-0.5 text-3xs text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                        title={`Let ${s.display_name} run routes`}
-                      >
-                        Let them run routes
-                      </button>
-                    ) : undefined
-                  }
-                  items={columns[s.id] ?? []}
-                  layout={boardLayout}
-                  onComplete={(id) => completeMut.mutate(id)}
-                  completingId={completeMut.isPending ? (completeMut.variables as string) : null}
-                  onOpen={setDetailVisitId}
-                  selectedIds={selected}
-                  onToggleSelect={toggleSelect}
-                  onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
-                  selectionActive={selectionActive}
-                  hoveredVisitId={hoveredVisitId}
-                  onHover={setHoveredVisitId}
-                />
-              ))}
-            </div>
-            <DragOverlay>
-              {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
-            </DragOverlay>
-          </DndContext>
+                  {stranded.map((s: any) => (
+                    <Column
+                      key={s.id}
+                      id={s.id}
+                      title={s.display_name}
+                      notRoutable
+                      notRoutableHint={
+                        canManageCrew ? (
+                          <>Still holding work. Drag it to a tech, or let them run routes.</>
+                        ) : undefined
+                      }
+                      laneAction={
+                        canManageCrew ? (
+                          <button
+                            onClick={() => routingMut.mutate({ staffId: s.id, isFieldTech: true })}
+                            disabled={routingMut.isPending}
+                            className="rounded border border-rose-300 px-1.5 py-0.5 text-3xs text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                            title={`Let ${s.display_name} run routes`}
+                          >
+                            Let them run routes
+                          </button>
+                        ) : undefined
+                      }
+                      items={columns[s.id] ?? []}
+                      layout={boardLayout}
+                      onComplete={(id) => completeMut.mutate(id)}
+                      completingId={
+                        completeMut.isPending ? (completeMut.variables as string) : null
+                      }
+                      onOpen={setDetailVisitId}
+                      selectedIds={selected}
+                      onToggleSelect={toggleSelect}
+                      onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                      selectionActive={selectionActive}
+                      hoveredVisitId={hoveredVisitId}
+                      onHover={setHoveredVisitId}
+                    />
+                  ))}
+                </div>
+                <DragOverlay>
+                  {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
+                </DragOverlay>
+              </DndContext>
             </div>
           </div>
         </div>
@@ -1669,9 +1670,7 @@ function RoutesPage() {
       {selectionActive && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 p-3 shadow-lg backdrop-blur">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 text-xs">
-            <span className="font-medium">
-              {selected.size} selected
-            </span>
+            <span className="font-medium">{selected.size} selected</span>
             <select
               className="h-8 rounded-md border bg-background px-2"
               defaultValue=""
@@ -1721,7 +1720,9 @@ function RoutesPage() {
           <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl">
             <h2 className="text-base font-semibold">{coverFor.name} is out</h2>
             {coverQuery.isLoading ? (
-              <p className="mt-3 text-sm text-muted-foreground">Checking what they&apos;re holding…</p>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Checking what they&apos;re holding…
+              </p>
             ) : (coverQuery.data?.total ?? 0) === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">
                 They have no upcoming work. Nothing to move.
@@ -1780,7 +1781,6 @@ function RoutesPage() {
   );
 }
 
-
 /** Toggleable weekday chips for the org's operating days (0=Sun..6=Sat). */
 function MapPanel({
   baseStyle,
@@ -1824,7 +1824,9 @@ function MapPanel({
   const missing = visits.length - mappable;
   return (
     <div className={`rounded-lg border bg-card ${compact ? "p-2.5" : "p-4"}`}>
-      <div className={`flex flex-wrap items-center justify-between gap-2 ${compact ? "mb-2" : "mb-3"}`}>
+      <div
+        className={`flex flex-wrap items-center justify-between gap-2 ${compact ? "mb-2" : "mb-3"}`}
+      >
         <div>
           <h2 className="text-sm font-semibold">Map</h2>
           <p className="text-2xs text-muted-foreground">
@@ -2142,6 +2144,7 @@ function VisitCardView({
   hovered?: boolean;
   onHover?: (id: string | null) => void;
 }) {
+  const tz = useOrgTimezone();
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
   const canComplete =
@@ -2176,9 +2179,7 @@ function VisitCardView({
             checked={Boolean(selected)}
             aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) =>
-              onToggleSelect(visit.id, e as unknown as React.MouseEvent)
-            }
+            onChange={(e) => onToggleSelect(visit.id, e as unknown as React.MouseEvent)}
             // 13px, and the bulk-select control on every stop card. The
             // square stays 13px — a 44px checkbox is a different component,
             // not a bigger one — and an out-of-flow ::before takes the tap,
@@ -2208,15 +2209,7 @@ function VisitCardView({
           )}
           {(visit.eta_start || visit.travel_min != null) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
-              {visit.eta_start && (
-                <span>
-                  ETA{" "}
-                  {new Date(visit.eta_start).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              )}
+              {visit.eta_start && <span>ETA {orgLocalTime(visit.eta_start, tz)}</span>}
               {visit.travel_km != null && <span>· {Number(visit.travel_km).toFixed(1)} km</span>}
               {visit.travel_min != null && (
                 <span>· {Math.round(Number(visit.travel_min))} min drive</span>
@@ -2282,6 +2275,7 @@ function VisitCardView({
 }
 
 function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
+  const tz = useOrgTimezone();
   const perTech = staff.map((s: any) => {
     const mine = visits.filter((v) => v.assigned_staff_id === s.id);
     const done = mine.filter((v) => v.status === "completed").length;
@@ -2352,13 +2346,7 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
                     {t.done}/{t.total} · ${(t.bookedValue / 100).toFixed(0)}
                     {t.late > 0 && <span className="ml-2 text-destructive">{t.late} late</span>}
                     {t.projectedEnd && (
-                      <span className="ml-2">
-                        ends{" "}
-                        {t.projectedEnd.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
+                      <span className="ml-2">ends {orgLocalTime(t.projectedEnd, tz)}</span>
                     )}
                   </span>
                 </div>

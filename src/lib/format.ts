@@ -46,13 +46,20 @@ export function surchargeSplit(
   return { chargedCents: base + fee, baseCents: base, feeCents: fee };
 }
 
-/** "Jul 20, 3:42 PM" for timestamps. */
-export function formatDateTime(iso: string | null | undefined): string {
+/** "Jul 20, 3:42 PM" for timestamps.
+ *
+ * `tz` renders the instant on the ORGANIZATION's clock instead of the
+ * device's — pass it (from `useOrgTimezone()`) for anything about a visit or
+ * the schedule. Omitted, the device clock applies, which remains right for
+ * timestamps about the reader's own actions (a note they just wrote, an
+ * activity entry they just caused). */
+export function formatDateTime(iso: string | null | undefined, tz?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const sameYear = d.getFullYear() === new Date().getFullYear();
   return d.toLocaleString([], {
+    ...(tz ? { timeZone: tz } : {}),
     month: "short",
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),
@@ -61,12 +68,16 @@ export function formatDateTime(iso: string | null | undefined): string {
   });
 }
 
-/** "3:42 PM". */
-export function formatTime(iso: string | null | undefined): string {
+/** "3:42 PM". Same `tz` contract as `formatDateTime` above. */
+export function formatTime(iso: string | null | undefined, tz?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString([], {
+    ...(tz ? { timeZone: tz } : {}),
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 /** Arrival window: "8:00 AM – 12:00 PM", "After 8:00 AM", "By 12:00 PM",

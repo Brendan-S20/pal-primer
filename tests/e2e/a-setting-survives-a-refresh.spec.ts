@@ -47,9 +47,9 @@ test("scheduling settings save on change and on blur, and a refresh agrees", asy
 
   await signIn(page);
   await page.goto("/settings/scheduling");
-  await expect(
-    page.getByText("How far ahead the schedule is built"),
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("How far ahead the schedule is built")).toBeVisible({
+    timeout: 30_000,
+  });
 
   // ── The select, which saves onChange ────────────────────────────────────
   //
@@ -57,7 +57,9 @@ test("scheduling settings save on change and on blur, and a refresh agrees", asy
   // Label carries no htmlFor, so getByLabel cannot bind to it.
   const traffic = page.locator('select:has(option[value="heavy"])');
   await traffic.selectOption(nextTraffic);
-  await expect(page.getByText("Scheduling settings saved").first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Scheduling settings saved").first()).toBeVisible({
+    timeout: 20_000,
+  });
   await expect
     .poll(async () => (await orgSettings(orgId)).traffic_profile, { timeout: 20_000 })
     .toBe(nextTraffic);
@@ -78,9 +80,9 @@ test("scheduling settings save on change and on blur, and a refresh agrees", asy
   // they show after a reload is what came back out of Postgres — a page that
   // saved into the void would render its old defaults here.
   await page.reload();
-  await expect(
-    page.getByText("How far ahead the schedule is built"),
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("How far ahead the schedule is built")).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.locator('select:has(option[value="heavy"])')).toHaveValue(nextTraffic);
   await expect(page.locator('input[type="number"][max="365"]')).toHaveValue(String(nextDays));
 });

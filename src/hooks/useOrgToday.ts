@@ -56,3 +56,24 @@ export function useOrgToday(): string {
     DEFAULT_ORG_TIMEZONE;
   return orgToday(tz);
 }
+
+/**
+ * The organization's timezone itself, for components that render an INSTANT
+ * on the org's clock (`orgLocalTime` and friends in org-day.ts) rather than a
+ * day judgement. Same `["my-org"]` query, so it adds no fetch and, like the
+ * hook above, works offline — the shell loader resolves it and the key is in
+ * PERSISTABLE_QUERY_ROOTS, which matters because My Day is the offline
+ * surface. Same portal caveat too: no session there, no this.
+ */
+export function useOrgTimezone(): string {
+  const fn = useServerFn(getMyOrg);
+  const { data } = useQuery({
+    queryKey: ["my-org"],
+    queryFn: () => fn(),
+    staleTime: 60_000,
+  });
+  return (
+    (data?.organization as { timezone?: string | null } | undefined)?.timezone ||
+    DEFAULT_ORG_TIMEZONE
+  );
+}

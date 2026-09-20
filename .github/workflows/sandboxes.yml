@@ -66,6 +66,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "supabase/proofs/**"
+      - "tests/e2e/**"
+      - "playwright.e2e.config.ts"
       - "tests/viewports/**"
       - "playwright.config.ts"
       - ".github/workflows/sandboxes.yml"
@@ -158,7 +160,10 @@ jobs:
           viewports=false
           while IFS= read -r f; do
             case "$f" in
+              # The E2E suite runs inside the database job (it needs the
+              # stack that job builds), so its inputs route there too.
               supabase/migrations/*|supabase/proofs/*)     database=true ;;
+              tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
               .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
@@ -561,6 +566,42 @@ jobs:
             fi
           done
           exit $failed
+
+      # ── THE BEHAVIOURAL E2E SUITE, ON THE STACK THIS JOB JUST BUILT ──────
+      #
+      # Until 2026-09-19 this suite could not run in CI at all: it and this
+      # job fought over one config.toml's ports and one project id. The step
+      # above that patches CI onto 54521-54527 is what makes this line
+      # possible, and this line is most of why that step was worth writing.
+      #
+      # `npm run test:e2e` reads `supabase status` from THIS checkout, so it
+      # lands on the patched CI stack; it seeds a tenant through the product's
+      # own seed_demo_org, starts a dev server with the local credentials, and
+      # drives a browser through the QA list's round trips — mark-paid flips
+      # an invoice and writes the payment row, the review queue empties and
+      # the decision survives a reload, settings save and survive a refresh —
+      # with RLS live. The first behavioural spec run caught a real bug
+      # (settings.scheduling rendering defaults over saved values) on its
+      # first execution; this step exists so the next one is caught before a
+      # merge rather than after.
+      #
+      # It runs AFTER the proofs: those need the empty replayed schema, and
+      # the seed writes a tenant into it. Order matters in one direction only.
+      - name: The QA list's behavioural half, against that same database
+        run: |
+          npx playwright install chromium
+          npm run test:e2e
+
+      - name: Keep what the E2E suite saw when it failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures
+          path: |
+            test-results/
+            e2e.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Stop the stack
         if: always()

@@ -71,6 +71,94 @@ export function orgToday(tz: string = DEFAULT_ORG_TIMEZONE, now: Date = new Date
   return orgLocalDay(now, tz);
 }
 
+/**
+ * The same question one unit finer: what does this instant READ AS, on the
+ * organization's own clock?
+ *
+ * Until 2026-09-19 every visit-time label in the product answered it with the
+ * DEVICE's clock — three private copies of the same `toLocaleTimeString([])`
+ * helper plus several inline calls, none passing a timeZone. A Chicago org
+ * viewed from an Eastern-time browser showed every ETA an hour late, and the
+ * demo org (whose seed compounded it by writing workday times as UTC) showed
+ * 3:30 AM. Production STORES the right instant — optimize_route_v2 anchors
+ * `(day + workday_start) AT TIME ZONE org.timezone`, mirrored by
+ * `zonedTimeToUtc` in route-window.ts — so rendering is the only side that
+ * was wrong, and these are the one place it is decided now.
+ *
+ * Same conventions as `orgLocalDay` above: the tz default exists for safety
+ * and every caller should pass one (`useOrgTimezone()` makes that one line);
+ * unparseable input returns "" (or null for the minutes form), because every
+ * caller branches on falsiness rather than rendering "Invalid Date".
+ *
+ * NOT for Postgres `time` columns ("08:00:00" strings — arrival windows,
+ * workday bounds). Those are wall clock with no zone: `formatClock` in
+ * format.ts handles them and needs no timezone. Conflating the two is the
+ * easiest mistake here.
+ */
+const timeFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function timeFormatterFor(tz: string, style: "time" | "daytime" | "parts"): Intl.DateTimeFormat {
+  const key = `${tz}|${style}`;
+  let f = timeFormatters.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat(
+      style === "parts" ? "en-GB" : undefined,
+      style === "time"
+        ? { timeZone: tz, hour: "numeric", minute: "2-digit" }
+        : style === "daytime"
+          ? { timeZone: tz, weekday: "short", hour: "numeric", minute: "2-digit" }
+          : { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false },
+    );
+    timeFormatters.set(key, f);
+  }
+  return f;
+}
+
+/** "3:42 PM", on the organization's clock. */
+export function orgLocalTime(
+  instant: string | number | Date | null | undefined,
+  tz: string = DEFAULT_ORG_TIMEZONE,
+): string {
+  if (instant == null || instant === "") return "";
+  const d = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(d.getTime())) return "";
+  return timeFormatterFor(tz || DEFAULT_ORG_TIMEZONE, "time").format(d);
+}
+
+/** "Sat, 3:42 PM", on the organization's clock. */
+export function orgLocalDayTime(
+  instant: string | number | Date | null | undefined,
+  tz: string = DEFAULT_ORG_TIMEZONE,
+): string {
+  if (instant == null || instant === "") return "";
+  const d = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(d.getTime())) return "";
+  return timeFormatterFor(tz || DEFAULT_ORG_TIMEZONE, "daytime").format(d);
+}
+
+/**
+ * Minutes past midnight on the organization's clock, or null.
+ *
+ * For code that BUCKETS by time rather than printing it — ScheduleCalendar's
+ * row grouping and sort order use this, so getting it wrong moves visits
+ * between rows rather than mislabeling them. en-GB with hour12:false because
+ * "24" is what some locales print for midnight under hour12:false ("24:05");
+ * normalized below so midnight is 0.
+ */
+export function orgLocalMinutes(
+  instant: string | number | Date | null | undefined,
+  tz: string = DEFAULT_ORG_TIMEZONE,
+): number | null {
+  if (instant == null || instant === "") return null;
+  const d = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = timeFormatterFor(tz || DEFAULT_ORG_TIMEZONE, "parts").formatToParts(d);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? NaN);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+  return (hour % 24) * 60 + minute;
+}
+
 /** How many whole days ago `instant` was, counted in the organization's own
  *  calendar rather than in elapsed hours.
  *
