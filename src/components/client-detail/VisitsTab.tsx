@@ -517,6 +517,7 @@ function VisitTable({
   serviceById: Map<string, any>;
   selection?: TableSelection;
 }) {
+  const tz = useOrgTimezone();
   return (
     <div className="relative overflow-x-auto rounded-lg border bg-card shadow-sm">
       <table className="w-full text-sm min-w-[990px]">
@@ -681,6 +682,7 @@ function statusLabel(s: string): string {
 }
 
 function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => void }) {
+  const tz = useOrgTimezone();
   const [month, setMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
