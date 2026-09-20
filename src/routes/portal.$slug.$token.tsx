@@ -13,15 +13,16 @@ import { PushToggle } from "@/components/PushToggle";
 import {
   PortalProvider,
   usePortalCtx,
+  usePortalTimezone,
   PortalVerifyGate,
   PortalDeadEnd,
   money,
   fmtDayShort,
-  fmtTime,
   friendlyFrequency,
   isHex,
   relativeFromToday,
 } from "@/lib/portal-ui";
+import { orgLocalTime } from "@/lib/org-day";
 
 export const Route = createFileRoute("/portal/$slug/$token")({
   head: () => ({
@@ -74,6 +75,8 @@ function PortalLayout() {
 
 function PortalShell() {
   const { token, slug, clientQ, contextQ, verified } = usePortalCtx();
+  // The header's ETA window is an instant pair; it reads on the ORG's clock.
+  const tz = usePortalTimezone();
 
   // Auth gate (finding #4): resolve the session before anything else.
   if (contextQ.isLoading) {
@@ -181,7 +184,8 @@ function PortalShell() {
                       {nextVisitEtaStart && (
                         <>
                           {" "}
-                          · {fmtTime(nextVisitEtaStart)}–{fmtTime(nextVisitEtaEnd)}
+                          · {orgLocalTime(nextVisitEtaStart, tz)}–
+                          {orgLocalTime(nextVisitEtaEnd, tz)}
                         </>
                       )}
                       {relativeFromToday(nextVisitDate) && (

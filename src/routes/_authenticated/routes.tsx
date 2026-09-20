@@ -562,7 +562,12 @@ function RoutesPage() {
   });
   const routeWarnings = useMemo(() => {
     const s = dispatchQ.data?.settings as
-      { max_drive_minutes?: number | null; workday_start?: string | null } | undefined;
+      | {
+          max_drive_minutes?: number | null;
+          workday_start?: string | null;
+          timezone?: string | null;
+        }
+      | undefined;
     // "08:30:00" -> 510. Left undefined when unset so the helper's default
     // applies rather than a silent 0, which would flag every stop.
     const startMin = (() => {
@@ -582,6 +587,13 @@ function RoutesPage() {
       {
         maxDriveMinutes: s?.max_drive_minutes ?? undefined,
         workdayStartMinutes: startMin,
+        // The ETA check measures "minutes into the day" on the ORG's clock —
+        // an instant compared against a wall-clock workday start. Without the
+        // zone the helper falls back to the column default, and a dispatcher's
+        // device east of the org would read every correct 8 AM ETA as
+        // implausible. Same row as the two thresholds above, so the warning
+        // and the setting can never disagree here either.
+        timezone: s?.timezone ?? undefined,
       },
     );
   }, [visits, dispatchQ.data]);

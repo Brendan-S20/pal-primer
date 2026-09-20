@@ -86,15 +86,16 @@ describe.skipIf(!enabled)("DB backstop for portal auth (finding #4)", () => {
   // contact we send the OTP to, and only for an active client" — did not go
   // away; it moved tiers. resolveContact() in src/lib/portal-auth.server.ts
   // does it with the direct service-role SELECT below, which additionally
-  // carries the org branding (portal_slug / logo_url / brand_color) that the
-  // RPC could not return, and is why it was replaced. So the case is retargeted
-  // at the query the server now actually runs, spelled the same way it is
-  // spelled in the app.
+  // carries the org branding (portal_slug / logo_url / brand_color, and since
+  // the portal moved to org-clock rendering, timezone) that the RPC could not
+  // return, and is why it was replaced. So the case is retargeted at the query
+  // the server now actually runs, spelled the same way it is spelled in the
+  // app.
   it("a portal token resolves to the contact + org branding for OTP delivery", async () => {
     const { data, error } = await admin
       .from("clients")
       .select(
-        "id, organization_id, display_name, primary_phone, primary_email, active, organizations(name, portal_slug, logo_url, brand_color)",
+        "id, organization_id, display_name, primary_phone, primary_email, active, organizations(name, portal_slug, logo_url, brand_color, timezone)",
       )
       .eq("portal_token", portalToken)
       .maybeSingle();
@@ -134,7 +135,11 @@ describe.skipIf(!enabled)("DB backstop for portal auth (finding #4)", () => {
     // service_role (auth.uid() IS NULL) would fail the gate, so drive the same
     // effect the RPC guarantees and assert its shape via a direct check:
     // rotate + revoke in one transaction-equivalent sequence.
-    const { data: before } = await admin.from("clients").select("portal_token").eq("id", clientId).single();
+    const { data: before } = await admin
+      .from("clients")
+      .select("portal_token")
+      .eq("id", clientId)
+      .single();
     const oldToken = (before as any).portal_token;
 
     // Owner path is exercised in the app-layer test; here we assert the RPC
@@ -143,13 +148,24 @@ describe.skipIf(!enabled)("DB backstop for portal auth (finding #4)", () => {
     // possible, so verify the revoke logic via the same UPDATE the RPC runs.
     const newTok = cryptoRandomUuid();
     await admin.from("clients").update({ portal_token: newTok }).eq("id", clientId);
-    await admin.from("portal_sessions").update({ revoked_at: new Date().toISOString() })
-      .eq("client_id", clientId).is("revoked_at", null);
+    await admin
+      .from("portal_sessions")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("client_id", clientId)
+      .is("revoked_at", null);
 
-    const { data: after } = await admin.from("clients").select("portal_token").eq("id", clientId).single();
+    const { data: after } = await admin
+      .from("clients")
+      .select("portal_token")
+      .eq("id", clientId)
+      .single();
     expect((after as any).portal_token).not.toBe(oldToken);
 
-    const { data: sess } = await admin.from("portal_sessions").select("revoked_at").eq("id", sessionId).single();
+    const { data: sess } = await admin
+      .from("portal_sessions")
+      .select("revoked_at")
+      .eq("id", sessionId)
+      .single();
     expect((sess as any).revoked_at).not.toBeNull();
 
     portalToken = newTok;

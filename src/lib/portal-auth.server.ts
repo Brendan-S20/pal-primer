@@ -59,6 +59,13 @@ export type OrgBranding = {
   org_slug: string | null;
   logo_url: string | null;
   brand_color: string | null;
+  // The org's IANA timezone rides with the branding because it answers the
+  // same question the logo does: WHOSE portal is this? Every visit instant the
+  // portal prints — ETA windows, completion times, the change cutoff — must
+  // read on this clock, and the portal has no staff session and no ["my-org"]
+  // query to fetch it from, so the one lookup that already reaches every
+  // portal page (this one) carries it. See org-day.ts for the rendering side.
+  org_timezone: string | null;
 };
 
 type ContactRow = OrgBranding & {
@@ -77,7 +84,7 @@ async function resolveContact(token: string): Promise<ContactRow | null> {
   const { data, error } = await supabaseAdmin
     .from("clients")
     .select(
-      "id, organization_id, display_name, primary_phone, primary_email, active, organizations(name, portal_slug, logo_url, brand_color)",
+      "id, organization_id, display_name, primary_phone, primary_email, active, organizations(name, portal_slug, logo_url, brand_color, timezone)",
     )
     .eq("portal_token", token)
     .maybeSingle();
@@ -94,6 +101,7 @@ async function resolveContact(token: string): Promise<ContactRow | null> {
     org_slug: org?.portal_slug ?? null,
     logo_url: org?.logo_url ?? null,
     brand_color: org?.brand_color ?? null,
+    org_timezone: org?.timezone ?? null,
   };
 }
 
@@ -121,6 +129,9 @@ export type PortalBranding = {
   orgSlug: string | null;
   logoUrl: string | null;
   brandColor: string | null;
+  /** IANA zone the org's clocks read in. Null only if the column is somehow
+   *  unset; readers fall back to DEFAULT_ORG_TIMEZONE, never to the device. */
+  timezone: string | null;
 };
 
 export type PortalContact = {
@@ -131,7 +142,13 @@ export type PortalContact = {
 };
 
 function brandingOf(c: OrgBranding): PortalBranding {
-  return { orgName: c.org_name, orgSlug: c.org_slug, logoUrl: c.logo_url, brandColor: c.brand_color };
+  return {
+    orgName: c.org_name,
+    orgSlug: c.org_slug,
+    logoUrl: c.logo_url,
+    brandColor: c.brand_color,
+    timezone: c.org_timezone,
+  };
 }
 
 /** True when the platform can actually deliver an SMS OTP. Offering "Text me
@@ -143,7 +160,10 @@ async function smsOtpDeliverable(orgId: string): Promise<boolean> {
   if (platformTwilioFrom()) return true;
   const supabaseAdmin = await sbAdmin();
   const { data } = await supabaseAdmin
-    .from("organizations").select("sms_from_number").eq("id", orgId).maybeSingle();
+    .from("organizations")
+    .select("sms_from_number")
+    .eq("id", orgId)
+    .maybeSingle();
   return !!data?.sms_from_number;
 }
 
@@ -165,11 +185,13 @@ export async function portalContactChannels(token: string): Promise<PortalContac
 }
 
 /** Org branding + slug for the generic company sign-in page, looked up by slug. */
-export async function orgBrandingBySlug(slug: string): Promise<(PortalBranding & { organizationId: string }) | null> {
+export async function orgBrandingBySlug(
+  slug: string,
+): Promise<(PortalBranding & { organizationId: string }) | null> {
   const supabaseAdmin = await sbAdmin();
   const { data } = await supabaseAdmin
     .from("organizations")
-    .select("id, name, portal_slug, logo_url, brand_color")
+    .select("id, name, portal_slug, logo_url, brand_color, timezone")
     .eq("portal_slug", slug)
     .maybeSingle();
   if (!data) return null;
@@ -179,6 +201,7 @@ export async function orgBrandingBySlug(slug: string): Promise<(PortalBranding &
     orgSlug: data.portal_slug ?? null,
     logoUrl: data.logo_url ?? null,
     brandColor: data.brand_color ?? null,
+    timezone: data.timezone ?? null,
   };
 }
 
@@ -198,7 +221,9 @@ export async function slugForToken(token: string): Promise<string | null> {
  * client the token currently points to — rotating the token (Regenerate)
  * orphans every old session.
  */
-export async function getPortalSession(token: string): Promise<{ clientId: string; organizationId: string } | null> {
+export async function getPortalSession(
+  token: string,
+): Promise<{ clientId: string; organizationId: string } | null> {
   const { getCookie } = await reqres();
   const raw = getCookie(cookieName(token));
   if (!raw) return null;
@@ -224,7 +249,9 @@ export async function getPortalSession(token: string): Promise<{ clientId: strin
 }
 
 /** Throws PortalVerificationRequired unless a valid session exists. */
-export async function requirePortalSession(token: string): Promise<{ clientId: string; organizationId: string }> {
+export async function requirePortalSession(
+  token: string,
+): Promise<{ clientId: string; organizationId: string }> {
   const s = await getPortalSession(token);
   if (!s) throw new PortalVerificationRequired();
   return s;
@@ -249,7 +276,8 @@ export async function issuePortalOtp(
   if (!contact) throw new Error("Invalid portal link");
 
   const dest = channel === "sms" ? contact.primary_phone : contact.primary_email;
-  if (!dest) throw new Error(`No ${channel === "sms" ? "phone" : "email"} on file for this account`);
+  if (!dest)
+    throw new Error(`No ${channel === "sms" ? "phone" : "email"} on file for this account`);
   const hint = channel === "sms" ? maskPhone(dest) : maskEmail(dest);
   const ip = await callerIp();
   const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
@@ -264,7 +292,10 @@ export async function issuePortalOtp(
     .eq("client_id", contact.client_id)
     .is("consumed_at", null)
     .lt("expires_at", nowIso)
-    .then(() => {}, () => {});
+    .then(
+      () => {},
+      () => {},
+    );
 
   // Rate limits.
   const { data: recent } = await supabaseAdmin
@@ -276,10 +307,16 @@ export async function issuePortalOtp(
     .order("created_at", { ascending: false })
     .limit(OTP_MAX_PER_CLIENT_HOUR);
   const recentRows = recent ?? [];
-  if (recentRows[0] && Date.now() - new Date(recentRows[0].created_at).getTime() < OTP_MIN_INTERVAL_MS) {
+  if (
+    recentRows[0] &&
+    Date.now() - new Date(recentRows[0].created_at).getTime() < OTP_MIN_INTERVAL_MS
+  ) {
     throw new Error("Please wait a moment before requesting another code.");
   }
-  if (recentRows.filter((r: { created_at: string }) => r.created_at >= hourAgo).length >= OTP_MAX_PER_CLIENT_HOUR) {
+  if (
+    recentRows.filter((r: { created_at: string }) => r.created_at >= hourAgo).length >=
+    OTP_MAX_PER_CLIENT_HOUR
+  ) {
     throw new Error("Too many code requests. Try again later or contact us.");
   }
   if (ip) {
@@ -310,7 +347,14 @@ export async function issuePortalOtp(
   const otpRowId = (otpRow as { id?: string } | null)?.id ?? null;
   const rollbackOtp = async () => {
     if (!otpRowId) return;
-    await supabaseAdmin.from("portal_otps").delete().eq("id", otpRowId).then(() => {}, () => {});
+    await supabaseAdmin
+      .from("portal_otps")
+      .delete()
+      .eq("id", otpRowId)
+      .then(
+        () => {},
+        () => {},
+      );
   };
 
   const message = `${contact.org_name}: your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`;
@@ -335,7 +379,8 @@ export async function issuePortalOtp(
       // (cross-reference the provider_message_id in the Resend dashboard). No
       // silent queue fallback — a failure is logged AND surfaced, never masked.
       const resendApiKey = process.env.RESEND_API_KEY;
-      if (!resendApiKey) throw new Error("Email isn't configured for this company. Ask us to read you the code.");
+      if (!resendApiKey)
+        throw new Error("Email isn't configured for this company. Ask us to read you the code.");
       const logMessageId = `portal-otp-${randomBytes(8).toString("hex")}`;
       // NO List-Unsubscribe on this one. It used to mint a token and set
       // `List-Unsubscribe` + `List-Unsubscribe-Post: One-Click`, exactly as the
@@ -372,7 +417,11 @@ export async function issuePortalOtp(
         const bodyText = await res.text();
         if (!res.ok) throw new Error(`Resend ${res.status}: ${bodyText.slice(0, 300)}`);
         let providerId: string | null = null;
-        try { providerId = JSON.parse(bodyText)?.id ?? null; } catch { /* noop */ }
+        try {
+          providerId = JSON.parse(bodyText)?.id ?? null;
+        } catch {
+          /* noop */
+        }
         await supabaseAdmin.from("email_send_log").insert({
           message_id: logMessageId,
           template_name: "portal-otp",
@@ -382,15 +431,23 @@ export async function issuePortalOtp(
         });
       } catch (sendErr) {
         const msg = (sendErr as Error).message ?? "send failed";
-        await supabaseAdmin.from("email_send_log").insert({
-          message_id: logMessageId,
-          template_name: "portal-otp",
-          recipient_email: dest,
-          status: "failed",
-          error_message: msg.slice(0, 500),
-        }).then(() => {}, () => {});
+        await supabaseAdmin
+          .from("email_send_log")
+          .insert({
+            message_id: logMessageId,
+            template_name: "portal-otp",
+            recipient_email: dest,
+            status: "failed",
+            error_message: msg.slice(0, 500),
+          })
+          .then(
+            () => {},
+            () => {},
+          );
         console.error("portal OTP email send failed", msg);
-        throw new Error("We couldn't email your code right now. Try SMS, or ask us to read it to you.");
+        throw new Error(
+          "We couldn't email your code right now. Try SMS, or ask us to read it to you.",
+        );
       }
     }
   } catch (e) {
@@ -416,7 +473,9 @@ export async function issuePortalOtp(
  * receive SMS/email. Returns the plaintext code (this path is owner-gated in
  * the calling server function; the code is never sent anywhere automatically).
  */
-export async function issueOfficeReadCode(clientId: string): Promise<{ code: string; hint: string }> {
+export async function issueOfficeReadCode(
+  clientId: string,
+): Promise<{ code: string; hint: string }> {
   const supabaseAdmin = await sbAdmin();
   const code = genOtp();
   await supabaseAdmin.from("portal_otps").insert({
@@ -511,11 +570,16 @@ type Match = {
 };
 
 /** Active clients in ONE org whose phone or email matches the entered contact. */
-async function matchClients(orgId: string, c: { kind: PortalChannel; value: string }): Promise<Match[]> {
+async function matchClients(
+  orgId: string,
+  c: { kind: PortalChannel; value: string },
+): Promise<Match[]> {
   const supabaseAdmin = await sbAdmin();
   let q = supabaseAdmin
     .from("clients")
-    .select("id, portal_token, display_name, primary_phone, primary_email, active, properties(street)")
+    .select(
+      "id, portal_token, display_name, primary_phone, primary_email, active, properties(street)",
+    )
     .eq("organization_id", orgId)
     .eq("active", true);
   if (c.kind === "email") {
@@ -537,7 +601,9 @@ async function matchClients(orgId: string, c: { kind: PortalChannel; value: stri
     display_name: r.display_name,
     primary_phone: r.primary_phone,
     primary_email: r.primary_email,
-    street: Array.isArray(r.properties) ? (r.properties[0]?.street ?? null) : (r.properties?.street ?? null),
+    street: Array.isArray(r.properties)
+      ? (r.properties[0]?.street ?? null)
+      : (r.properties?.street ?? null),
   }));
 }
 
@@ -568,7 +634,9 @@ export async function portalIdentify(
   if (!c) throw new Error("Enter a valid phone number or email.");
   const matches = await matchClients(org.organizationId, c);
   if (matches.length === 0) {
-    throw new Error("We couldn't find an account with that contact. Double-check it, or contact us.");
+    throw new Error(
+      "We couldn't find an account with that contact. Double-check it, or contact us.",
+    );
   }
   // Issue the OTP against the first match; all matches share the entered contact
   // so the code reaches the same phone/email. issuePortalOtp handles rate limits.
@@ -719,7 +787,9 @@ export async function portalRedeemOrgCode(
       .eq("ip", ip)
       .gte("created_at", windowStart);
     if ((count ?? 0) >= ORG_CODE_MAX_ATTEMPTS_PER_IP) {
-      throw new Error("Too many attempts. Please wait a few minutes, or use your phone/email instead.");
+      throw new Error(
+        "Too many attempts. Please wait a few minutes, or use your phone/email instead.",
+      );
     }
   }
   // Log this attempt regardless of outcome.
@@ -778,7 +848,8 @@ async function consumeOtpForClient(clientId: string, code: string): Promise<void
     .limit(1)
     .maybeSingle();
   if (!otp) throw new Error("Request a new code.");
-  if (new Date(otp.expires_at).getTime() < Date.now()) throw new Error("That code expired. Request a new one.");
+  if (new Date(otp.expires_at).getTime() < Date.now())
+    throw new Error("That code expired. Request a new one.");
   if (otp.attempts >= OTP_MAX_ATTEMPTS) throw new Error("Too many attempts. Request a new code.");
   const submitted = sha256(code.trim());
   const expected = otp.code_hash as string;
@@ -786,10 +857,16 @@ async function consumeOtpForClient(clientId: string, code: string): Promise<void
     submitted.length === expected.length &&
     timingSafeEqual(Buffer.from(submitted), Buffer.from(expected));
   if (!ok) {
-    await supabaseAdmin.from("portal_otps").update({ attempts: otp.attempts + 1 }).eq("id", otp.id);
+    await supabaseAdmin
+      .from("portal_otps")
+      .update({ attempts: otp.attempts + 1 })
+      .eq("id", otp.id);
     throw new Error("Incorrect code.");
   }
-  await supabaseAdmin.from("portal_otps").update({ consumed_at: new Date().toISOString() }).eq("id", otp.id);
+  await supabaseAdmin
+    .from("portal_otps")
+    .update({ consumed_at: new Date().toISOString() })
+    .eq("id", otp.id);
 }
 
 /**
@@ -797,7 +874,9 @@ async function consumeOtpForClient(clientId: string, code: string): Promise<void
  * cookie proves the contact was just verified; the chosen client must still be
  * a current match for that org+contact.
  */
-export async function portalChooseClient(chosenClientId: string): Promise<{ slug: string; token: string }> {
+export async function portalChooseClient(
+  chosenClientId: string,
+): Promise<{ slug: string; token: string }> {
   const { getCookie } = await reqres();
   const proof = verifyPick(getCookie(PICK_COOKIE));
   if (!proof) throw new Error("Your session expired. Please verify again.");
@@ -805,7 +884,9 @@ export async function portalChooseClient(chosenClientId: string): Promise<{ slug
   const supabaseAdmin = await sbAdmin();
   const { data: client } = await supabaseAdmin
     .from("clients")
-    .select("id, organization_id, portal_token, primary_phone, primary_email, active, organizations(portal_slug)")
+    .select(
+      "id, organization_id, portal_token, primary_phone, primary_email, active, organizations(portal_slug)",
+    )
     .eq("id", chosenClientId)
     .maybeSingle();
   if (!client || !client.active || client.organization_id !== proof.orgId) {
@@ -826,6 +907,8 @@ export async function portalChooseClient(chosenClientId: string): Promise<{ slug
   } catch {
     /* best effort */
   }
-  const org: any = Array.isArray(client.organizations) ? client.organizations[0] : client.organizations;
+  const org: any = Array.isArray(client.organizations)
+    ? client.organizations[0]
+    : client.organizations;
   return { slug: org?.portal_slug ?? "", token: client.portal_token };
 }
