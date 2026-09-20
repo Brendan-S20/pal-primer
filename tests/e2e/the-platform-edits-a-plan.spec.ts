@@ -49,7 +49,7 @@ test("a plan takes a monthly and an annual price, and the audit trail says who",
   // back in the finally — the plans catalog is shared state every billing
   // surface reads, not this spec's sandbox.
   const newBase = (plan.price_cents ?? 7900) + 100;
-  const newAnnual = (plan.annual_price_cents ?? plan.price_cents * 10 ?? 79000) + 1000;
+  const newAnnual = (plan.annual_price_cents ?? plan.price_cents * 10) + 1000;
 
   await db.from("platform_admins").delete().eq("user_id", owner!.id);
   const { error: grantErr } = await db.from("platform_admins").insert({ user_id: owner!.id });
