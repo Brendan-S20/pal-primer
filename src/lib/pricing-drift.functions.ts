@@ -12,11 +12,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
-import {
-  computePricingDrift,
-  sortBySeverity,
-  type DriftSubscription,
-} from "@/lib/pricing-drift";
+import { computePricingDrift, sortBySeverity, type DriftSubscription } from "@/lib/pricing-drift";
 
 export const getPricingDrift = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -39,12 +35,15 @@ export const getPricingDrift = createServerFn({ method: "GET" })
       .select(
         `id, client_id, frequency, price_cents, dog_count,
          priced_at, priced_from_zone_id, price_overridden_at,
-         clients!inner ( id, name ),
+         clients!inner ( id, display_name ),
          properties!inner (
            id, boundary_area_sqm,
-           zones ( id, name, base_price_cents, per_dog_addl_cents, pricing_mode,
-                   price_per_sqft_cents, price_per_acre_cents,
-                   area_min_charge_cents, area_max_charge_cents )
+           zone:zones!properties_zone_id_fkey ( id, name, base_price_cents, per_dog_addl_cents,
+                   pricing_mode, price_per_sqft_cents, price_per_acre_cents,
+                   area_min_charge_cents, area_max_charge_cents ),
+           auto_zone:zones!properties_auto_zone_id_fkey ( id, name, base_price_cents,
+                   per_dog_addl_cents, pricing_mode, price_per_sqft_cents,
+                   price_per_acre_cents, area_min_charge_cents, area_max_charge_cents )
          )`,
       )
       .eq("organization_id", orgId)
@@ -53,11 +52,24 @@ export const getPricingDrift = createServerFn({ method: "GET" })
 
     const shaped: DriftSubscription[] = (subs ?? []).map((s: any) => {
       const prop = s.properties;
-      const z = prop?.zones ?? null;
+      // The bare `zones ( … )` embed this replaces became AMBIGUOUS the day
+      // properties grew a second FK to zones (auto_zone_id, the detector's
+      // column) — PostgREST refused every request with "more than one
+      // relationship", and the page rendered its error card for every org.
+      // Found 2026-09-20 by the drift E2E spec; invisible to the render-only
+      // sweep because a politely-rendered error is still a rendered page.
+      // Both relationships are now named, and the effective zone follows the
+      // rule the product already keeps at visits.functions.ts:271 — the
+      // dispatcher's assignment wins, the detector's guess fills the gap.
+      const z = prop?.zone ?? prop?.auto_zone ?? null;
       return {
         id: s.id as string,
         clientId: s.client_id as string,
-        clientName: (s.clients?.name as string) ?? "Unnamed client",
+        // display_name, because clients has no `name` column — the second of
+        // two faults stacked on this one query (the ambiguous zones embed hid
+        // this one until it was fixed). Between them the page had never built
+        // a report for anyone.
+        clientName: (s.clients?.display_name as string) ?? "Unnamed client",
         frequency: String(s.frequency),
         priceCents: Number(s.price_cents ?? 0),
         dogCount: s.dog_count == null ? null : Number(s.dog_count),
@@ -76,15 +88,17 @@ export const getPricingDrift = createServerFn({ method: "GET" })
               area_max_charge_cents: z.area_max_charge_cents,
             }
           : null,
-        boundaryAreaSqm:
-          prop?.boundary_area_sqm == null ? null : Number(prop.boundary_area_sqm),
+        boundaryAreaSqm: prop?.boundary_area_sqm == null ? null : Number(prop.boundary_area_sqm),
         pricedAt: s.priced_at ?? null,
         pricedFromZoneId: s.priced_from_zone_id ?? null,
         priceOverriddenAt: s.price_overridden_at ?? null,
       };
     });
 
-    const report = computePricingDrift(shaped, (org?.frequency_multipliers ?? {}) as Record<string, number>);
+    const report = computePricingDrift(
+      shaped,
+      (org?.frequency_multipliers ?? {}) as Record<string, number>,
+    );
     return {
       currency: (org?.currency as string) ?? "usd",
       summary: report.summary,
