@@ -148,6 +148,20 @@ function NeighborsPage() {
 
   const rows = data?.rows ?? [];
   const s = data?.summary ?? { total: 0 };
+  // Zero doors is a different PAGE, not a smaller number. Measured at 375px on
+  // 2026-09-19 against an org with no canvassing rows: five stacked tiles all
+  // reading 0 filled the entire first screen, the two ways of actually getting
+  // a door were below the fold, and the pitch was squeezed into a narrow
+  // column beside a disabled "Walk mode (0)" button. A funnel of zeros tells a
+  // first-time user nothing except that they have not started; the two entry
+  // cards are the only controls on the page that can change that, so at zero
+  // they ARE the page.
+  //
+  // Gated on `!isLoading` and not on the count alone, because during the
+  // initial fetch `rows` is [] for a workspace with three hundred doors too —
+  // ungated, every visit would flash the first-run pitch and then swap it for
+  // the funnel, which reads as the leads briefly going missing.
+  const firstRun = !isLoading && rows.length === 0;
   const [walkMode, setWalkMode] = useState(false);
   const [view, setView] = useState<"list" | "map">("list");
 
@@ -251,9 +265,114 @@ function NeighborsPage() {
     );
   }
 
+  // The two ways a door gets onto the list, built once and PLACED by the
+  // branch below. First run and the working page offer the same two actions —
+  // the difference is placement, not function: at zero doors these cards are
+  // the whole page, and once a list exists they are an office chore that folds
+  // away on phones. Two copies of this JSX is how the first-run seed form and
+  // the everyday seed form drift apart.
+  const seedCard = seedOptions.length > 0 && (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Seed from an existing client</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <Label>Client</Label>
+          <select
+            value={seedClient}
+            onChange={(e) => setSeedClient(e.target.value)}
+            className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
+          >
+            <option value="">Pick a client…</option>
+            {seedOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>How many doors</Label>
+          <Input
+            type="number"
+            min={1}
+            max={20}
+            value={seedCount}
+            onChange={(e) => setSeedCount(Number(e.target.value))}
+          />
+        </div>
+        <Button disabled={!seedClient || seed.isPending} onClick={() => seed.mutate()}>
+          <UserPlus className="mr-1.5 h-4 w-4" />
+          {seed.isPending ? "Seeding…" : `Seed ${seedCount} neighbors`}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Works out the house numbers either side of this client, checks each one against address
+          search, and adds the ones that turned out to be real. Doors already on your list, and your
+          own customers, are left out.
+        </p>
+      </CardContent>
+    </Card>
+  );
+
+  const manualCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Add a door manually</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <Label>Address</Label>
+          {/* The single best-biased field in the app: a canvassing door is
+                  by definition on a street the workspace already services, and
+                  the proxy biases suggestions to the average of the org's
+                  geocoded properties. Stored as one line (`address_line`), so
+                  a match writes the formatted address. */}
+          <AddressAutocomplete
+            value={address}
+            onChangeText={(v) => {
+              setAddress(v);
+              // Typing past a resolved match makes the point stale, and a
+              // stale point is exactly the fault this page had: text and
+              // coordinate describing different places.
+              setAddressPoint(null);
+            }}
+            onResolved={(r) => {
+              setAddress(r.address.formatted);
+              setAddressPoint(
+                r.address.latitude != null && r.address.longitude != null
+                  ? { lat: r.address.latitude, lon: r.address.longitude }
+                  : null,
+              );
+            }}
+            placeholder="123 Elm St, Springfield"
+          />
+        </div>
+        <div>
+          <Label>Notes</Label>
+          <Textarea
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Saw a golden retriever in the yard"
+          />
+        </div>
+        <Button disabled={address.trim().length < 3 || add.isPending} onClick={() => add.mutate()}>
+          {add.isPending ? "Adding…" : "Add lead"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      {/* `flex-col` below sm, a row above. The description used to share one
+          row with the Walk mode button at every width, and at 375px that
+          wrapped it into a column about half the screen wide next to a button
+          it could not use. Stacking is a WIDTH decision (where things go), not
+          an input one, so `sm:` is the right variant here — contrast the
+          touch-target sizing rules, which are spelled `touch:`. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <MapPin className="h-6 w-6" /> Neighbor canvassing
@@ -263,254 +382,213 @@ function NeighborsPage() {
             one house into a whole route.
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setWalkIdx(0);
-            setAnswered(new Set());
-            setWalkMode(true);
-          }}
-          disabled={walkQueue.length === 0}
-        >
-          <Footprints className="mr-1.5 h-4 w-4" />
-          Walk mode ({walkQueue.length})
-        </Button>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-5">
-        <Stat label="Total" value={s.total} />
-        <Stat label="To visit" value={s.new ?? 0} />
-        <Stat label="Contacted" value={s.contacted ?? 0} />
-        <Stat label="Interested" value={s.interested ?? 0} />
-        <Stat label="Signed up" value={s.converted ?? 0} tone="good" />
-      </div>
-
-      {/* Two data-entry cards used to sit permanently between the stats and the
-          canvassing list. Side by side on a laptop that costs nothing, but they
-          are `md:grid-cols-2`, so on a phone they stack into roughly a screen
-          and a half of form that a tech standing on a street has to scroll past
-          to reach the door list — which is the only reason they opened this
-          page. Seeding and adding doors are office actions; walking the list is
-          the field one.
-
-          Collapsed on phones only, rather than everywhere: on a laptop there is
-          room for all three and hiding them would cost the office a click for
-          no gain. So the toggle is `md:hidden` and the container drops
-          `max-md:hidden` — CSS rather than a media-query hook, which keeps the
-          server and client renders identical. `waste-log.tsx` collapses its own
-          form the same way (D polish). */}
-      <div className="flex items-center justify-between md:hidden">
-        <h2 className="text-sm font-medium">Add doors</h2>
-        <Button
-          size="sm"
-          variant={showAddForms ? "ghost" : "outline"}
-          onClick={() => setShowAddForms((v) => !v)}
-        >
-          {showAddForms ? (
-            <>
-              <X className="mr-1.5 h-4 w-4" /> Close
-            </>
-          ) : (
-            <>
-              <UserPlus className="mr-1.5 h-4 w-4" /> Add doors
-            </>
-          )}
-        </Button>
-      </div>
-
-      <div className={`grid gap-4 md:grid-cols-2 ${showAddForms ? "" : "max-md:hidden"}`}>
-        {seedOptions.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Seed from an existing client</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label>Client</Label>
-                <select
-                  value={seedClient}
-                  onChange={(e) => setSeedClient(e.target.value)}
-                  className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Pick a client…</option>
-                  {seedOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.display_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label>How many doors</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={seedCount}
-                  onChange={(e) => setSeedCount(Number(e.target.value))}
-                />
-              </div>
-              <Button disabled={!seedClient || seed.isPending} onClick={() => seed.mutate()}>
-                <UserPlus className="mr-1.5 h-4 w-4" />
-                {seed.isPending ? "Seeding…" : `Seed ${seedCount} neighbors`}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Works out the house numbers either side of this client, checks each one against
-                address search, and adds the ones that turned out to be real. Doors already on your
-                list, and your own customers, are left out.
-              </p>
-            </CardContent>
-          </Card>
+        {/* Hidden at first run rather than shown disabled. A disabled
+            "Walk mode (0)" on a page with no doors advertises a mode that
+            cannot start and answers a question nobody asked yet; it was also
+            the thing squeezing the pitch at phone widths. It reappears with
+            the first door — any new door has status "new", which is in the
+            walk queue. Once doors EXIST it stays visible even when the queue
+            is empty (every door answered): at that point Walk mode is a place
+            the user has been, and a control that vanishes reads as a lost
+            feature, so disabled-with-a-(0) is the honest state. Hidden while
+            loading too, because until the count arrives we do not know which
+            of those two pages this is, and a button that flashes in disabled
+            and then vanishes is worse than one that arrives once. */}
+        {!isLoading && !firstRun && (
+          <Button
+            variant="outline"
+            className="shrink-0 self-start"
+            onClick={() => {
+              setWalkIdx(0);
+              setAnswered(new Set());
+              setWalkMode(true);
+            }}
+            disabled={walkQueue.length === 0}
+          >
+            <Footprints className="mr-1.5 h-4 w-4" />
+            Walk mode ({walkQueue.length})
+          </Button>
         )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Add a door manually</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <Label>Address</Label>
-              {/* The single best-biased field in the app: a canvassing door is
-                  by definition on a street the workspace already services, and
-                  the proxy biases suggestions to the average of the org's
-                  geocoded properties. Stored as one line (`address_line`), so
-                  a match writes the formatted address. */}
-              <AddressAutocomplete
-                value={address}
-                onChangeText={(v) => {
-                  setAddress(v);
-                  // Typing past a resolved match makes the point stale, and a
-                  // stale point is exactly the fault this page had: text and
-                  // coordinate describing different places.
-                  setAddressPoint(null);
-                }}
-                onResolved={(r) => {
-                  setAddress(r.address.formatted);
-                  setAddressPoint(
-                    r.address.latitude != null && r.address.longitude != null
-                      ? { lat: r.address.latitude, lon: r.address.longitude }
-                      : null,
-                  );
-                }}
-                placeholder="123 Elm St, Springfield"
-              />
-            </div>
-            <div>
-              <Label>Notes</Label>
-              <Textarea
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Saw a golden retriever in the yard"
-              />
-            </div>
-            <Button
-              disabled={address.trim().length < 3 || add.isPending}
-              onClick={() => add.mutate()}
-            >
-              {add.isPending ? "Adding…" : "Add lead"}
-            </Button>
-          </CardContent>
-        </Card>
       </div>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Canvassing list</CardTitle>
-          <div className="flex gap-1 rounded-md border p-0.5">
+      {isLoading ? (
+        // Loading is its own render, not a zero. Without this branch the page
+        // either flashes five zero tiles at everyone (the old behaviour) or,
+        // gated only on the count, flashes the first-run pitch at a workspace
+        // with hundreds of doors. `useQuery`'s `isLoading` is true only for
+        // the initial fetch, so refetches after a mutation stay on whichever
+        // page is already up instead of bouncing through this card.
+        <Card>
+          <CardContent className="p-6 text-center text-muted-foreground">Loading…</CardContent>
+        </Card>
+      ) : firstRun ? (
+        // ── First run: the pitch and the two ways in, nothing else. ────────
+        // No funnel (five zeros is not information), no collapse toggle (there
+        // is no list to bury the forms under), no canvassing-list card (a
+        // five-column table holding one sentence). The entry cards are the
+        // page, which puts "Seed from an existing client" on the first screen
+        // of a 360px phone instead of below a screenful of tiles.
+        <>
+          <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            No doors on the list yet — start below. The funnel and Walk mode appear with the first
+            door.
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {seedCard}
+            {manualCard}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Two-up on phones rather than five stacked: five full-width tiles
+              is a whole 360px screen of numbers before the first control. The
+              odd fifth tile takes its own row, which is fine — "Signed up" is
+              the number the funnel exists to grow. */}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <Stat label="Total" value={s.total} />
+            <Stat label="To visit" value={s.new ?? 0} />
+            <Stat label="Contacted" value={s.contacted ?? 0} />
+            <Stat label="Interested" value={s.interested ?? 0} />
+            <Stat label="Signed up" value={s.converted ?? 0} tone="good" />
+          </div>
+
+          {/* Two data-entry cards used to sit permanently between the stats
+              and the canvassing list. Side by side on a laptop that costs
+              nothing, but they are `md:grid-cols-2`, so on a phone they stack
+              into roughly a screen and a half of form that a tech standing on
+              a street has to scroll past to reach the door list — which is the
+              only reason they opened this page. Seeding and adding doors are
+              office actions; walking the list is the field one.
+
+              Collapsed on phones only, rather than everywhere: on a laptop
+              there is room for all three and hiding them would cost the office
+              a click for no gain. So the toggle is `md:hidden` and the
+              container drops `max-md:hidden` — CSS rather than a media-query
+              hook, which keeps the server and client renders identical.
+              `waste-log.tsx` collapses its own form the same way (D polish). */}
+          <div className="flex items-center justify-between md:hidden">
+            <h2 className="text-sm font-medium">Add doors</h2>
             <Button
               size="sm"
-              variant={view === "list" ? "secondary" : "ghost"}
-              className="h-7 px-2"
-              onClick={() => setView("list")}
+              variant={showAddForms ? "ghost" : "outline"}
+              onClick={() => setShowAddForms((v) => !v)}
             >
-              <List className="mr-1 h-3.5 w-3.5" /> List
-            </Button>
-            <Button
-              size="sm"
-              variant={view === "map" ? "secondary" : "ghost"}
-              className="h-7 px-2"
-              onClick={() => setView("map")}
-            >
-              <MapIcon className="mr-1 h-3.5 w-3.5" /> Map
+              {showAddForms ? (
+                <>
+                  <X className="mr-1.5 h-4 w-4" /> Close
+                </>
+              ) : (
+                <>
+                  <UserPlus className="mr-1.5 h-4 w-4" /> Add doors
+                </>
+              )}
             </Button>
           </div>
-        </CardHeader>
-        {/* Five columns of canvassing results, previously sizing the page
+
+          <div className={`grid gap-4 md:grid-cols-2 ${showAddForms ? "" : "max-md:hidden"}`}>
+            {seedCard}
+            {manualCard}
+          </div>
+
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Canvassing list</CardTitle>
+              <div className="flex gap-1 rounded-md border p-0.5">
+                <Button
+                  size="sm"
+                  variant={view === "list" ? "secondary" : "ghost"}
+                  className="h-7 px-2"
+                  onClick={() => setView("list")}
+                >
+                  <List className="mr-1 h-3.5 w-3.5" /> List
+                </Button>
+                <Button
+                  size="sm"
+                  variant={view === "map" ? "secondary" : "ghost"}
+                  className="h-7 px-2"
+                  onClick={() => setView("map")}
+                >
+                  <MapIcon className="mr-1 h-3.5 w-3.5" /> Map
+                </Button>
+              </div>
+            </CardHeader>
+            {/* Five columns of canvassing results, previously sizing the page
             rather than themselves. */}
-        <CardContent className="overflow-x-auto p-0">
-          {view === "map" ? (
-            <CanvassMap rows={rows} />
-          ) : (
-            <table className="w-full text-sm min-w-[480px]">
-              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2">Address</th>
-                  <th className="px-3 py-2">Seed client</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Notes</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
-                      Loading…
-                    </td>
-                  </tr>
-                ) : rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
-                      No leads yet. Seed from a happy client to get going.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((r) => (
-                    <tr key={r.id} className="border-t align-top">
-                      <td className="px-3 py-2 font-medium">{r.address_line}</td>
-                      <td className="px-3 py-2 text-muted-foreground text-xs">
-                        {r.seed_client_name ?? "-"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={r.status}
-                          onChange={(e) =>
-                            update.mutate({ id: r.id, status: e.target.value as any })
-                          }
-                          className="rounded border bg-background px-2 py-1 text-xs"
-                        >
-                          {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                            <option key={k} value={k}>
-                              {v}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">
-                        {r.notes ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <ConfirmButton
-                          trigger={
-                            <Button size="sm" variant="ghost">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          }
-                          title="Delete this entry?"
-                          description="This removes the canvassing entry permanently and can't be undone."
-                          confirmLabel="Delete"
-                          onConfirm={() => del.mutate(r.id)}
-                        />
-                      </td>
+            <CardContent className="overflow-x-auto p-0">
+              {view === "map" ? (
+                <CanvassMap rows={rows} />
+              ) : (
+                <table className="w-full text-sm min-w-[480px]">
+                  <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Address</th>
+                      <th className="px-3 py-2">Seed client</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Notes</th>
+                      <th className="px-3 py-2" />
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+                  </thead>
+                  <tbody>
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                          Loading…
+                        </td>
+                      </tr>
+                    ) : rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                          No leads yet. Seed from a happy client to get going.
+                        </td>
+                      </tr>
+                    ) : (
+                      rows.map((r) => (
+                        <tr key={r.id} className="border-t align-top">
+                          <td className="px-3 py-2 font-medium">{r.address_line}</td>
+                          <td className="px-3 py-2 text-muted-foreground text-xs">
+                            {r.seed_client_name ?? "-"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={r.status}
+                              onChange={(e) =>
+                                update.mutate({ id: r.id, status: e.target.value as any })
+                              }
+                              className="rounded border bg-background px-2 py-1 text-xs"
+                            >
+                              {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                                <option key={k} value={k}>
+                                  {v}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">
+                            {r.notes ?? "-"}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <ConfirmButton
+                              trigger={
+                                <Button size="sm" variant="ghost">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              }
+                              title="Delete this entry?"
+                              description="This removes the canvassing entry permanently and can't be undone."
+                              confirmLabel="Delete"
+                              onConfirm={() => del.mutate(r.id)}
+                            />
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
