@@ -195,7 +195,13 @@ describe("every door into the model is metered", () => {
     expect(code(read("src/lib/advisor.functions.ts"))).toMatch(
       /generateDigestInsights\(metrics, "business_advisor"\)/,
     );
-    expect(code(read("src/lib/digest.server.ts"))).toMatch(/AiFeature = "weekly_digest"/);
+    // The cron email carries its OWN label since 2026-09-20: the dashboard's
+    // digest panel (ai-tools.functions.ts) also logged "weekly_digest", so the
+    // breakdown could not say which of the TWO digests spent what. Three
+    // callers, three labels — this pin holds the email one.
+    expect(code(read("src/lib/digest.server.ts"))).toMatch(
+      /AiFeature = "weekly_digest_email"/,
+    );
   });
 });
 

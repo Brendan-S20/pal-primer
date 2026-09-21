@@ -118,10 +118,10 @@ describe("our own diagnostic is not billed to the customer", () => {
 
 describe("what a call cost us", () => {
   it("prices a Sonnet call at roughly the published rate", () => {
-    // 3,000 in at $3/M + 1,000 out at $15/M = $0.024 = 2,400,000 micros.
+    // 3,000 in at $2/M + 1,000 out at $10/M = $0.016 = 1,600,000 micros.
     expect(
       estimateCostMicros({ model: "claude-sonnet-5", inputTokens: 3000, outputTokens: 1000 }),
-    ).toBe(2_400_000);
+    ).toBe(1_600_000);
   });
 
   it("matches a model family through its version and date suffixes", () => {

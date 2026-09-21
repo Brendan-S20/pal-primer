@@ -15,6 +15,7 @@ export const AI_FEATURES = [
   "review_reply",
   "churn_scoring",
   "weekly_digest",
+  "weekly_digest_email",
   "business_advisor",
   "dispatch_suggestion",
   "zone_pricing",
@@ -103,8 +104,8 @@ export function decideAiCall(state: AiUsageState): AiUsageDecision {
 // is right.
 //
 // Rates are in micros (millionths of a cent) per token, so an integer column
-// holds them exactly. A 3,000-in / 1,000-out Sonnet call is 3000*300 +
-// 1000*1500 = 2,400,000 micros = $0.024, which is the right order of magnitude
+// holds them exactly. A 3,000-in / 1,000-out Sonnet call is 3000*200 +
+// 1000*1000 = 1,600,000 micros = $0.016, which is the right order of magnitude
 // against the published per-million-token prices.
 //
 // Approximate on purpose. An exact cost would mean tracking every provider's
@@ -116,12 +117,17 @@ export function decideAiCall(state: AiUsageState): AiUsageDecision {
 type TokenRates = { inMicrosPerToken: number; outMicrosPerToken: number };
 
 const RATES: Record<string, TokenRates> = {
-  // Anthropic Sonnet-class: $3/M in, $15/M out.
-  "claude-sonnet": { inMicrosPerToken: 300, outMicrosPerToken: 1500 },
-  // Anthropic Haiku-class: $0.80/M in, $4/M out.
-  "claude-haiku": { inMicrosPerToken: 80, outMicrosPerToken: 400 },
-  // Anthropic Opus-class: $15/M in, $75/M out.
-  "claude-opus": { inMicrosPerToken: 1500, outMicrosPerToken: 7500 },
+  // Re-baselined 2026-09-20 to the current generation's published prices.
+  // The old rows priced Sonnet at the 4.6 generation's $3/$15 and Opus at
+  // $15/$75 — TRIPLE Opus 5's actual $5/$25 — which matters because this
+  // table is what anyone reads before deciding a feature "can't afford" a
+  // stronger model. Approximate stays the policy; three-times-off does not.
+  // Anthropic Sonnet-class (Sonnet 5): $2/M in, $10/M out.
+  "claude-sonnet": { inMicrosPerToken: 200, outMicrosPerToken: 1000 },
+  // Anthropic Haiku-class (Haiku 4.5): $1/M in, $5/M out.
+  "claude-haiku": { inMicrosPerToken: 100, outMicrosPerToken: 500 },
+  // Anthropic Opus-class (Opus 5): $5/M in, $25/M out.
+  "claude-opus": { inMicrosPerToken: 500, outMicrosPerToken: 2500 },
   // OpenAI 4o-class: $2.50/M in, $10/M out.
   "gpt-4o": { inMicrosPerToken: 250, outMicrosPerToken: 1000 },
   // Gemini Flash-class, via the gateway: $0.30/M in, $2.50/M out.
