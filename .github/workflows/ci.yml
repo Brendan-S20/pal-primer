@@ -254,8 +254,17 @@ jobs:
       # It builds the bundle rather than assuming one is lying around: every
       # assertion in the script is of the form "this string is absent", and all
       # of them pass on an empty directory.
+      # Two steps, not `a && b`: PowerShell 5.1 has no `&&`, and this job is
+      # unpinned, so the Windows runner can take it — which it did, on its
+      # first gating job after coming online (2026-09-21), and the parse error
+      # failed a run every check had passed. `shell: bash` is not the fix; the
+      # headroom note above measured `bash: command not found` on that box.
+      # Sequential steps are the one chaining both platforms agree on.
+      - name: Build the native bundle
+        run: npm run build:native
+
       - name: What ships inside the native binary
-        run: npm run build:native && npm run check:native-bundle
+        run: npm run check:native-bundle
 
       # Does every sign-in button that a person can PRESS actually work?
       #
