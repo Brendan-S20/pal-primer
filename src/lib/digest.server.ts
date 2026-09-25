@@ -7,12 +7,12 @@ import { orgLocalDay } from "@/lib/org-day";
 import { render } from "react-email";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
+import { createLovableAiGatewayProvider, GATEWAY_MODEL_ID } from "@/lib/ai-gateway.server";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
 import { buildDigestAlerts } from "@/lib/digest-alerts";
 
-const MODEL_ID = "google/gemini-3-flash-preview";
+const MODEL_ID = GATEWAY_MODEL_ID;
 const SITE_NAME = "HoundStack";
 const SENDER_DOMAIN = "notify.houndstack.com";
 const FROM_DOMAIN = "notify.houndstack.com";
@@ -340,7 +340,10 @@ export interface DigestInsights {
  */
 export async function generateDigestInsights(
   m: DigestMetrics,
-  feature: import("@/lib/ai-usage").AiFeature = "weekly_digest",
+  // Its own label, not the dashboard panel's: both features were logging
+  // "weekly_digest", so the usage breakdown could not say which one spent
+  // what. The interactive Business Advisor passes its label explicitly.
+  feature: import("@/lib/ai-usage").AiFeature = "weekly_digest_email",
 ): Promise<DigestInsights> {
   const key = process.env.LOVABLE_API_KEY;
   const fallback: DigestInsights = {

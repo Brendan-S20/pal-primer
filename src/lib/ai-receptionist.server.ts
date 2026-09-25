@@ -2,9 +2,9 @@
 // Called from the Twilio inbound webhook when an org has ai_receptionist_enabled.
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { createLovableAiGatewayProvider, GATEWAY_MODEL_ID } from "./ai-gateway.server";
 
-const MODEL_ID = "google/gemini-3-flash-preview";
+const MODEL_ID = GATEWAY_MODEL_ID;
 const MAX_REPLY_LEN_SMS = 320; // ~2 SMS segments
 const MAX_REPLY_LEN_VOICE = 500; // ~2 sentences read aloud
 
