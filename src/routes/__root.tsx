@@ -242,7 +242,19 @@ function RootComponent() {
       <ImpersonationBanner />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
-      <Toaster position="top-center" richColors />
+      {/* Native only: a top-center toast at the default offset renders under
+          the status clock and the Dynamic Island ("Already syncing" measured
+          clipped behind both, iPhone 17 Pro sim, 2026-09-26). Same doctrine
+          as PublicShell's inset: the web product's spacing stays exactly as
+          it was, so the props are undefined outside the binary. */}
+      <Toaster
+        position="top-center"
+        richColors
+        offset={IS_NATIVE_BUNDLE ? { top: "calc(env(safe-area-inset-top) + 12px)" } : undefined}
+        mobileOffset={
+          IS_NATIVE_BUNDLE ? { top: "calc(env(safe-area-inset-top) + 12px)" } : undefined
+        }
+      />
     </QueryClientProvider>
   );
 }

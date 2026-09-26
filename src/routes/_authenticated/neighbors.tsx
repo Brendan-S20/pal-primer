@@ -550,7 +550,7 @@ function NeighborsPage() {
                 </>
               ) : (
                 <>
-                  <UserPlus className="mr-1.5 h-4 w-4" /> Add doors
+                  <UserPlus className="mr-1.5 h-4 w-4" /> Add
                 </>
               )}
             </Button>
