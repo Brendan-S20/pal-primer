@@ -9,6 +9,7 @@ import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clie
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { listZones } from "@/lib/zones.functions";
 import { getClientBillingSummary, getClientCredit } from "@/lib/invoices.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -177,8 +178,7 @@ function ClientDetail() {
   const visits = visitsData?.visits ?? [];
   const dogs = dogsData?.dogs ?? [];
 
-  const today = new Date();
-  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const todayISO = useOrgToday();
   const activeSubs = subs.filter(
     (s: any) => s.status === "active" && !isServiceEnded(s, todayISO),
   );

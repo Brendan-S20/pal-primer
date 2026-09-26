@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync as readSrcFile } from "node:fs";
 import { orgLocalDayTime, orgLocalMinutes, orgLocalTime } from "@/lib/org-day";
 
 // Until 2026-09-19 every visit-time label rendered on the DEVICE's clock —
@@ -104,5 +105,67 @@ describe("the technician surfaces ask the org what day it is", () => {
     const s = src("src/components/WeatherPopover.tsx");
     expect(s).toContain("useOrgToday(");
     expect(s).not.toMatch(/new Date\(\)\s*\.\s*toISOString/);
+  });
+});
+
+// The office half of the same sweep (the technician block above landed
+// first). Every one of these shipped its own answer to "what day is it" —
+// most of them the UTC day via `toISOString().slice(0, 10)`, which is
+// TOMORROW from early evening on, US-wide. The two hand-rolled
+// `${d.getFullYear()}-…` templates were the device's day, same fault in
+// different spelling. Same rule as above: the forbidden pattern is the
+// idiom that actually shipped, and each file must still call the hook.
+describe("the office surfaces ask the org what day it is", () => {
+  // Its own reader, deliberately not named like the technician block's from
+  // the org-day PR: these two blocks land from separate branches, and two
+  // top-level declarations of one name is a merge that compiles on each
+  // branch and breaks on main. Scoped inside the describe for the same
+  // reason.
+  const src = (p: string) => readSrcFile(p, "utf8");
+  const UTC_TODAY = /new Date\(\)\s*\.\s*toISOString\(\)\s*\.\s*slice\(0,\s*10\)/;
+  const HANDROLLED_TODAY = /\$\{d\.getFullYear\(\)\}-/;
+
+  for (const f of [
+    "src/components/client-detail/ClientHeader.tsx",
+    "src/components/client-detail/VacationHoldDrawer.tsx",
+    "src/components/client-detail/billing-panels.tsx",
+    "src/components/ai/AiPanels.tsx",
+  ]) {
+    it(`${f} reads the org's today, not the UTC day`, () => {
+      const s = src(f);
+      expect(s).toContain("useOrgToday(");
+      expect(s).not.toMatch(UTC_TODAY);
+    });
+  }
+
+  for (const f of [
+    "src/components/client-detail/ServicesTab.tsx",
+    "src/components/client-detail/SummaryTab.tsx",
+    "src/routes/_authenticated/clients.$clientId.tsx",
+  ]) {
+    it(`${f} reads the org's today, not a hand-rolled device day`, () => {
+      const s = src(f);
+      expect(s).toContain("useOrgToday(");
+      expect(s).not.toMatch(HANDROLLED_TODAY);
+    });
+  }
+
+  it("the form builders take today from the caller instead of manufacturing it", () => {
+    const s = src("src/lib/subscription-form.ts");
+    expect(s).not.toMatch(/function (localTodayISO|todayLocalISO)/);
+  });
+
+  it("the two server call sites filter live services on the ORG's day", () => {
+    // The server is a UTC worker: `liveServiceOrFilter(todayLocalISO())`
+    // there meant every org's services flipped a day at 6-7pm US time.
+    for (const f of ["src/lib/estimate.server.ts", "src/lib/portal.functions.ts"]) {
+      const s = src(f);
+      expect(s).toMatch(/liveServiceOrFilter\(orgToday\(/);
+      expect(s).not.toMatch(/liveServiceOrFilter\(todayLocalISO/);
+    }
+  });
+
+  it("weather day arithmetic anchors at noon, where every offset agrees", () => {
+    expect(src("src/components/WeatherStrip.tsx")).toMatch(/nextDayISO[\s\S]{0,400}T12:00:00/);
   });
 });

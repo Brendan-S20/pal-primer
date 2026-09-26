@@ -2,6 +2,7 @@
 // autopay recovery, add-on services, and the inline prepay control. Moved
 // verbatim from the route file during the client-detail refactor (Stage 2).
 import { useState } from "react";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -100,10 +101,13 @@ export function BillingPanel({ clientId }: { clientId: string }) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["billing-summary", clientId] });
 
+  // `through` bounds what the invoice bills. It was the UTC day, which is
+  // tomorrow from early evening on — an invoice generated at 7pm quietly
+  // included a visit that had not happened yet.
+  const orgToday = useOrgToday();
   const genMut = useMutation({
     mutationFn: () => {
-      const through = new Date().toISOString().slice(0, 10);
-      return genFn({ data: { clientId, through } });
+      return genFn({ data: { clientId, through: orgToday } });
     },
     onSuccess: (r: any) => {
       if (r?.invoiceId) {

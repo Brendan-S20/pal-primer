@@ -8,6 +8,7 @@
 // 2-year range or end-before-start is rejected regardless of caller (I11).
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,10 @@ export function VacationHoldDrawer({
   const listFn = useServerFn(listClientHolds);
   const createFn = useServerFn(createClientHold);
   const endFn = useServerFn(endClientHold);
-  const today = new Date().toISOString().slice(0, 10);
+  // The org's today: the drawer's default start and its "current hold"
+  // judgement must agree with the chip in ClientHeader, which reads the
+  // same clock. `toISOString()` was the UTC day, tomorrow every US evening.
+  const today = useOrgToday();
   const [startsOn, setStartsOn] = useState(initialStartsOn || today);
   const [endsOn, setEndsOn] = useState(initialEndsOn || "");
   const [reason, setReason] = useState(initialReason || "");

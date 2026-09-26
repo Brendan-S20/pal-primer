@@ -7,6 +7,11 @@ import {
   liveServiceOrFilter,
 } from "@/lib/subscription-form";
 
+// The org's today, supplied by the caller since the builders stopped
+// manufacturing their own (that manufacture was the bug: it answered with
+// the device's clock, and on the server the UTC one).
+const ORG_TODAY = "2026-07-16";
+
 // Finding #8: the edit form must mirror the actual subscription record, not
 // hardcoded defaults (weekly / $25 / 1 dog / no property).
 const RECORD = {
@@ -29,7 +34,7 @@ const RECORD = {
 
 describe("subscriptionToFormValues (finding #8)", () => {
   it("hydrates every field from the record — no default drift", () => {
-    expect(subscriptionToFormValues(RECORD)).toEqual({
+    expect(subscriptionToFormValues(RECORD, ORG_TODAY)).toEqual({
       propertyId: "prop-7",
       frequency: "biweekly",
       priceDollars: "45.00",
@@ -50,28 +55,28 @@ describe("subscriptionToFormValues (finding #8)", () => {
 
   it("hydrates every-N-weeks and every-X-days intervals", () => {
     expect(
-      subscriptionToFormValues({ ...RECORD, frequency: "weekly", interval_weeks: 3 }).intervalWeeks,
+      subscriptionToFormValues({ ...RECORD, frequency: "weekly", interval_weeks: 3 }, ORG_TODAY).intervalWeeks,
     ).toBe("3");
     expect(
-      subscriptionToFormValues({ ...RECORD, frequency: "every_n_days", interval_days: 5 })
+      subscriptionToFormValues({ ...RECORD, frequency: "every_n_days", interval_days: 5 }, ORG_TODAY)
         .intervalDays,
     ).toBe("5");
   });
 
   it("defaults start date to today and end date to open-ended when the record has none", () => {
-    const v = subscriptionToFormValues({ ...RECORD, started_on: null, ends_on: null });
-    expect(v.startedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const v = subscriptionToFormValues({ ...RECORD, started_on: null, ends_on: null }, ORG_TODAY);
+    expect(v.startedOn).toBe(ORG_TODAY);
     expect(v.endsOn).toBe("");
   });
 
   it("does not invent $25 or 'weekly' from a real record", () => {
-    const v = subscriptionToFormValues(RECORD);
+    const v = subscriptionToFormValues(RECORD, ORG_TODAY);
     expect(v.priceDollars).not.toBe("25.00");
     expect(v.frequency).not.toBe("weekly");
   });
 
   it("carries a prepaid cadence through", () => {
-    expect(subscriptionToFormValues({ ...RECORD, billing_cadence: "prepaid" }).billingCadence).toBe(
+    expect(subscriptionToFormValues({ ...RECORD, billing_cadence: "prepaid" }, ORG_TODAY).billingCadence).toBe(
       "prepaid",
     );
   });
@@ -79,24 +84,24 @@ describe("subscriptionToFormValues (finding #8)", () => {
 
 describe("blankSubscriptionFormValues (finding #8)", () => {
   it("auto-selects the property (and its zone) when there is exactly one", () => {
-    const v = blankSubscriptionFormValues({ properties: [{ id: "only-prop", zone_id: "z1" }] });
+    const v = blankSubscriptionFormValues({ properties: [{ id: "only-prop", zone_id: "z1" }], today: ORG_TODAY });
     expect(v.propertyId).toBe("only-prop");
     expect(v.zoneId).toBe("z1");
   });
 
   it("leaves the property unselected when there are several", () => {
-    const v = blankSubscriptionFormValues({ properties: [{ id: "a" }, { id: "b" }] });
+    const v = blankSubscriptionFormValues({ properties: [{ id: "a" }, { id: "b" }], today: ORG_TODAY });
     expect(v.propertyId).toBe("");
   });
 
   it("uses an empty price rather than a misleading hardcoded default", () => {
-    const v = blankSubscriptionFormValues({ properties: [] });
+    const v = blankSubscriptionFormValues({ properties: [], today: ORG_TODAY });
     expect(v.priceDollars).toBe("");
   });
 
   it("starts today with no end date", () => {
-    const v = blankSubscriptionFormValues({ properties: [] });
-    expect(v.startedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const v = blankSubscriptionFormValues({ properties: [], today: ORG_TODAY });
+    expect(v.startedOn).toBe(ORG_TODAY);
     expect(v.endsOn).toBe("");
   });
 });
