@@ -54,9 +54,13 @@ function NotificationsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">Notifications</h1>
+          {/* "Alerts", because that is the word on the tab that opens this
+              page. The tech tab bar has room for one short word and "Alerts"
+              is it, so the page adopts the tab's name rather than greeting the
+              person with a different one than the button they just pressed. */}
+          <h1 className="text-2xl font-semibold">Alerts</h1>
           <p className="text-sm text-muted-foreground">
-            Recent activity. Notifications are automatically deleted after 30 days.
+            Recent activity. Alerts are automatically deleted after 30 days.
           </p>
         </div>
         {/* `flex-wrap`, because at 320px this row is a filter pair, a Mark

@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { HelpTip } from "@/components/HelpTip";
+import { formatDay } from "@/lib/format";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { Camera, Plus, X } from "lucide-react";
 
@@ -134,7 +135,7 @@ function WasteLogPage() {
               </>
             ) : (
               <>
-                <Plus className="mr-1.5 h-4 w-4" /> Log a dump
+                <Plus className="mr-1.5 h-4 w-4" /> Add
               </>
             )}
           </Button>
@@ -336,7 +337,7 @@ function WasteLogPage() {
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <div>
                   <div className="font-medium">
-                    {m.disposed_on} · {m.waste_disposal_facilities?.name ?? "-"}
+                    {formatDay(m.disposed_on)} · {m.waste_disposal_facilities?.name ?? "-"}
                     {m.ticket_number && (
                       <span className="ml-2 text-xs text-muted-foreground">#{m.ticket_number}</span>
                     )}
