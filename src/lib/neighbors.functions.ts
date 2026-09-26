@@ -388,3 +388,33 @@ export const deleteNeighborLead = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+/**
+ * Where a door signs up, and whether it can.
+ *
+ * Walk mode's "Sign up" runs the real signup flow (quote, details, card) at
+ * the doorstep, and that flow is addressed by the org's public slug. The
+ * settings surface that also knows this (`getSignupSettings`) is gated on
+ * manage_settings, which a technician does not hold and should not need: the
+ * slug is on every yard sign and the enabled bit decides only which of two
+ * panels the sheet shows. Membership is the right gate, same as every other
+ * read on this page.
+ *
+ * `effectiveSlug` mirrors the RPC's preference order (portal_slug first), so
+ * the sheet signs people up at the same address the org's own links use.
+ */
+export const getCanvassSignupTarget = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveMemberOrgId(context.supabase, context.userId);
+    const { data: org, error } = await context.supabase
+      .from("organizations")
+      .select("slug, portal_slug, public_signup_enabled")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return {
+      effectiveSlug: (org?.portal_slug as string | null) ?? (org?.slug as string | null) ?? null,
+      enabled: !!org?.public_signup_enabled,
+    };
+  });

@@ -10,8 +10,11 @@ import {
   updateNeighborLead,
   deleteNeighborLead,
   seedNeighborsForClient,
+  getCanvassSignupTarget,
   type NeighborLead,
 } from "@/lib/neighbors.functions";
+import { SignupFlow } from "@/components/signup/SignupFlow";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -32,7 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
-import { orderForWalk } from "@/lib/canvass-order";
+import { orderForWalk, splitCanvassAddress } from "@/lib/canvass-order";
 import { usePermissions } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
@@ -187,6 +190,28 @@ function NeighborsPage() {
     setAnswered((prev) => new Set(prev).add(current.id));
   };
 
+  // ── Sign them up at the door ─────────────────────────────────────────────
+  //
+  // "Signed up" used to flip the lead's status and nothing else — a record of
+  // a signup that had no way to happen. The sheet runs the org's REAL signup
+  // flow (the same quote / details / card machine as /signup/{slug}, see
+  // SignupFlow.tsx) prefilled from the door, so the tech hands the phone over
+  // and the prospect is a provisioned customer before the tech reaches the
+  // next house. The status flip survives as the fallback inside the sheet,
+  // because paper signups and "text me the link" are real outcomes too.
+  const targetFn = useServerFn(getCanvassSignupTarget);
+  const targetQ = useQuery({
+    queryKey: ["canvass-signup-target"],
+    queryFn: () => targetFn(),
+    staleTime: 300_000,
+  });
+  const [signupDoor, setSignupDoor] = useState<NeighborLead | null>(null);
+  const convertDoor = (door: NeighborLead) => {
+    update.mutate({ id: door.id, status: "converted" });
+    setAnswered((prev) => new Set(prev).add(door.id));
+    setSignupDoor(null);
+  };
+
   if (walkMode) {
     return (
       <div className="space-y-4">
@@ -235,9 +260,9 @@ function NeighborsPage() {
                 </Button>
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={() => answer("converted")}
+                  onClick={() => setSignupDoor(current)}
                 >
-                  Signed up
+                  Sign up
                 </Button>
               </div>
               <div className="flex items-center justify-between pt-2 text-xs">
@@ -261,6 +286,52 @@ function NeighborsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* The signup sheet. Bottom sheet, because walk mode is a phone in a
+            driveway: the door's card stays visible above it and closing it
+            lands back mid-walk with nothing lost. */}
+        <Sheet open={!!signupDoor} onOpenChange={(open) => !open && setSignupDoor(null)}>
+          <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto">
+            <SheetHeader className="text-left">
+              <SheetTitle>Sign up {signupDoor?.address_line}</SheetTitle>
+            </SheetHeader>
+            {!signupDoor ? null : targetQ.isLoading ? (
+              <p className="py-6 text-sm text-muted-foreground">Loading your signup page…</p>
+            ) : targetQ.data?.enabled && targetQ.data.effectiveSlug ? (
+              <div className="space-y-4 pt-4">
+                <SignupFlow
+                  slug={targetQ.data.effectiveSlug}
+                  variant="sheet"
+                  prefill={splitCanvassAddress(signupDoor.address_line)}
+                  onPaid={() => {
+                    toast.success("Signed up and paid", {
+                      description: "Their account is being set up; they'll get a welcome email.",
+                    });
+                    convertDoor(signupDoor);
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => convertDoor(signupDoor)}
+                >
+                  They signed up another way, just mark the door
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4 pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Online signup is turned off for your company, so there is nothing to hand the
+                  phone over to. An owner can turn it on under Settings, or you can mark the door
+                  and the office will finish the signup.
+                </p>
+                <Button className="w-full" onClick={() => convertDoor(signupDoor)}>
+                  Mark signed up, office will finish it
+                </Button>
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
     );
   }
