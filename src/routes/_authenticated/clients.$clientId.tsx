@@ -167,6 +167,8 @@ function ClientDetail() {
     }
   }, [roleLoading, canBill, search.tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const todayISO = useOrgToday();
+
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
   if (error) return <p className="text-destructive">{(error as Error).message}</p>;
 
@@ -178,7 +180,6 @@ function ClientDetail() {
   const visits = visitsData?.visits ?? [];
   const dogs = dogsData?.dogs ?? [];
 
-  const todayISO = useOrgToday();
   const activeSubs = subs.filter(
     (s: any) => s.status === "active" && !isServiceEnded(s, todayISO),
   );
