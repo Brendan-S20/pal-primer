@@ -60,3 +60,49 @@ describe("orgLocalDayTime carries the weekday for close-out copy", () => {
     expect(label).toContain("10:00 PM");
   });
 });
+
+// ── THE DAY, NOT JUST THE TIME ─────────────────────────────────────────────
+//
+// The 2026-09-19 conversion above fixed what o'clock a visit label reads. It
+// did not fix which DAY the technician surfaces open on: my-day.tsx kept a
+// private device-clock todayISO(), my-schedule.tsx asked
+// `new Date().toLocaleDateString("en-CA")`, and WeatherPopover anchored its
+// week on the UTC day — three different answers to "what is today" on one
+// screen whose time labels had just been moved to a fourth (the org's). A
+// tech whose phone sits in another timezone opened tomorrow's list under
+// org-time labels; the weather window started a day late every US evening.
+//
+// useOrgToday() exists for exactly this, shares the ["my-org"] query the
+// shell already loaded, and its own doc block quotes the setting's promise:
+// the org timezone "decides what counts as 'today' everywhere". These pins
+// scan the source because the fault is a spelling with many bodies: the
+// forbidden patterns below are the three idioms that actually shipped, and
+// each file must also still call the hook. WeatherPopover is allowed
+// `getTimezoneOffset` — its plusDaysIso does plain-date arithmetic, where the
+// offset shift is the fix, not the fault.
+import { readFileSync } from "node:fs";
+
+const src = (p: string) => readFileSync(p, "utf8");
+
+describe("the technician surfaces ask the org what day it is", () => {
+  const DEVICE_TODAY =
+    /new Date\(\)\s*\.\s*toISOString|getTimezoneOffset|toLocaleDateString\("en-CA"\)/;
+
+  it("my-day derives its default day from useOrgToday", () => {
+    const s = src("src/routes/_authenticated/my-day.tsx");
+    expect(s).toContain("useOrgToday(");
+    expect(s).not.toMatch(DEVICE_TODAY);
+  });
+
+  it("my-schedule badges Today on the org's today", () => {
+    const s = src("src/routes/_authenticated/my-schedule.tsx");
+    expect(s).toContain("useOrgToday(");
+    expect(s).not.toMatch(DEVICE_TODAY);
+  });
+
+  it("the weather window opens on the org's today, not the UTC day", () => {
+    const s = src("src/components/WeatherPopover.tsx");
+    expect(s).toContain("useOrgToday(");
+    expect(s).not.toMatch(/new Date\(\)\s*\.\s*toISOString/);
+  });
+});

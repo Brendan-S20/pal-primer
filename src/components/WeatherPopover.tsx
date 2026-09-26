@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CloudSun, Droplets } from "lucide-react";
 import { getWeatherForZones } from "@/lib/weather.functions";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 
@@ -32,14 +33,14 @@ type ZoneForecast = {
   days: DayCell[];
 };
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function plusDaysIso(iso: string, n: number) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  // Shift by the local offset before slicing: `toISOString` speaks UTC, and
+  // slicing a UTC render of a local midnight names yesterday anywhere east
+  // of Greenwich.
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 10);
 }
 
 // Zones are often stacked on top of each other (neighborhoods of the same
@@ -146,12 +147,15 @@ function LoadingSkeleton() {
 export function WeatherPopover() {
   const [open, setOpen] = useState(false);
 
-  // This week: today through today+6. Memoized so the query key is stable for
-  // the life of the mount (it naturally rolls over on next mount).
-  const { fromDate, toDate } = useMemo(() => {
-    const from = todayIso();
-    return { fromDate: from, toDate: plusDaysIso(from, 6) };
-  }, []);
+  // This week: today through today+6 — the ORG's today. The old anchor was
+  // `toISOString().slice(0, 10)`, the UTC day, which is tomorrow every US
+  // evening: the forecast window started a day late for exactly the person
+  // checking tomorrow's weather at the end of a shift. No memo: these are
+  // strings, the query key compares them by value, and computing them each
+  // render is what lets the window follow the org loading and midnight
+  // rolling over instead of freezing the first render's guess.
+  const fromDate = useOrgToday();
+  const toDate = plusDaysIso(fromDate, 6);
 
   const getWeather = useServerFn(getWeatherForZones);
   const query = useQuery({
