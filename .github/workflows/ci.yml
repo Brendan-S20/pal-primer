@@ -286,6 +286,17 @@ jobs:
         run: npx eslint .
         continue-on-error: true
 
+      # A HARD gate for the one lint rule that is a crash detector, split out
+      # because the step above is decorative: continue-on-error on ~24,000
+      # stylistic errors. On 2026-09-26 it SAW rules-of-hooks fire on a
+      # useOrgToday() placed after an early return — the hook that rendered
+      # /clients/:id as the router's error boundary — and stayed green; the
+      # viewport sweep caught it on main, one merge too late. Zero violations
+      # as of today (the sweep that added this fixed eleven latent ones in
+      # PlanPicker), so a failure here is a NEW conditional hook, never debt.
+      - name: A hook after an early return is a crash
+        run: npm run check:hooks
+
 
   # ── A MEASUREMENT, WITH AN EXPIRY DATE ────────────────────────────────────
   #

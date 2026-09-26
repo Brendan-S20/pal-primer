@@ -88,12 +88,22 @@ export function PlanPicker({
   chooseLabel?: string;
 }) {
 
-
-  // A store build renders the note, never a purchase. See StoreBuildNote.
-  if (!saasPurchaseAllowed(platform())) return <StoreBuildNote />;
+  // Whether a store build may purchase never changes while the app runs,
+  // which is the only reason the early return that used to sit ABOVE these
+  // hooks never crashed: the hook order was conditional in the code and
+  // constant at runtime. That is still the exact shape rules-of-hooks
+  // exists to forbid — the same placement with a condition that CAN flip
+  // took down /clients/:id on 2026-09-26 — so the guard now waits its turn
+  // below the hooks, and the query is gated instead of skipped-by-crash.
+  const purchaseAllowed = saasPurchaseAllowed(platform());
 
   const listFn = useServerFn(listPlatformPlans);
-  const { data, isLoading } = useQuery({ queryKey: ["platform-plans"], queryFn: () => listFn() });
+  const { data, isLoading } = useQuery({
+    queryKey: ["platform-plans"],
+    queryFn: () => listFn(),
+    // A store build renders the note, never a purchase — and fetches nothing.
+    enabled: purchaseAllowed,
+  });
   const plans: any[] = ((data as any)?.plans ?? []).filter((p: any) => !p.is_free);
 
   const [billingInterval, setBillingInterval] = useState<BillingInterval>(
@@ -105,6 +115,9 @@ export function PlanPicker({
   useEffect(() => {
     if (currentInterval && !touched) setBillingInterval(currentInterval);
   }, [currentInterval, touched]);
+
+  // A store build renders the note, never a purchase. See StoreBuildNote.
+  if (!purchaseAllowed) return <StoreBuildNote />;
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading plans…</p>;
   if (!plans.length)
@@ -316,9 +329,13 @@ export function EmbeddedPlanCheckout({
    *  no payment form is needed (the sub already has a card on file). */
   onSwitched?: (planName: string) => void;
 }) {
-  // A store build renders the note, never a purchase. See StoreBuildNote.
-  if (!saasPurchaseAllowed(platform())) return <StoreBuildNote />;
-
+  // Same restructure as PlanPicker above: the store-build guard used to
+  // early-return ahead of every hook here, which rules-of-hooks forbids.
+  // Constant at runtime, so it never fired — but the kickoff effect below
+  // auto-creates a checkout session on mount, so the flag must gate that
+  // effect as well as the render, or moving the guard would have a store
+  // build minting Stripe sessions it can never use.
+  const purchaseAllowed = saasPurchaseAllowed(platform());
   const createFn = useServerFn(createPlanSubscription);
   const refreshFn = useServerFn(refreshBillingStatus);
   const [session, setSession] = useState<{
@@ -382,11 +399,15 @@ export function EmbeddedPlanCheckout({
 
   // Kick off once per chosen plan + interval.
   useEffect(() => {
+    if (!purchaseAllowed) return;
     setSession(null);
     setError(null);
     create.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId, interval]);
+
+  // A store build renders the note, never a purchase. See StoreBuildNote.
+  if (!purchaseAllowed) return <StoreBuildNote />;
 
   if (error) {
     return (
