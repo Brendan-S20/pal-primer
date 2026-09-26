@@ -177,8 +177,8 @@ export const SURFACES: Surface[] = [
   {
     id: "/notifications",
     path: "/notifications",
-    proof: (p) => p.getByRole("heading", { name: "Notifications" }).first(),
-    proofLabel: 'the "Notifications" heading',
+    proof: (p) => p.getByRole("heading", { name: "Alerts" }).first(),
+    proofLabel: 'the "Alerts" heading',
     expectsData: "Northbrook Homeowners Association #4471",
   },
 
