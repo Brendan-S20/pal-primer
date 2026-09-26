@@ -82,3 +82,57 @@ export function orderForWalk<T extends WalkDoor>(doors: readonly T[]): T[] {
 
   return [...chained, ...tail];
 }
+
+/**
+ * Split a canvassing door's one-line address into the signup form's fields.
+ *
+ * Doors arrive as one string ("612 Maple St, Southfield, MI 48037") from the
+ * seeder and the autocomplete alike, and the signup flow asks for street,
+ * city, state and ZIP separately. This is a convenience split for PREFILL,
+ * not a parser the signup depends on: every field stays editable, and a
+ * shape it cannot read just leaves more typing at the door.
+ *
+ * The one trap: a street NUMBER is five digits as often as a ZIP is, so the
+ * ZIP is only ever read from a segment after the first comma, walking from
+ * the end. "12345 Main St" prefills no ZIP rather than a wrong one.
+ */
+export function splitCanvassAddress(line: string): {
+  street: string;
+  city: string;
+  region: string;
+  postal_code: string;
+} {
+  const parts = line
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const street = parts[0] ?? line.trim();
+
+  let postal_code = "";
+  let regionIdx = -1;
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const m = parts[i].match(/\b(\d{5})(?:-\d{4})?\b/);
+    if (m) {
+      postal_code = m[1];
+      regionIdx = i;
+      break;
+    }
+  }
+
+  let region = "";
+  let city = "";
+  if (regionIdx >= 1) {
+    region = parts[regionIdx]
+      .replace(/\b\d{5}(?:-\d{4})?\b/, "")
+      .replace(/\b(United States|USA?)\b/i, "")
+      .trim();
+    if (regionIdx >= 2) city = parts[regionIdx - 1];
+  } else if (parts.length >= 3) {
+    region = parts[parts.length - 1].replace(/\b(United States|USA?)\b/i, "").trim();
+    city = parts[1];
+  } else if (parts.length === 2) {
+    city = parts[1];
+  }
+
+  return { street, city, region, postal_code };
+}
