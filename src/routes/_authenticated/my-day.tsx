@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
-import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -140,21 +140,24 @@ const VISIT_STATIONS_CACHE = {
   staleTime: 60_000,
 } as const;
 
-function todayISO() {
-  const d = new Date();
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60_000);
-  return local.toISOString().slice(0, 10);
-}
-
 function MyDay() {
   const { date: dateParam, staff: staffParam } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [day, setDay] = useState(dateParam ?? todayISO());
+  // "Today" is the ORGANIZATION'S today, not the device's. The times on this
+  // page speak the org's wall clock (orgLocalTime below), so the day the page
+  // opens on has to agree with them: a device-clock today here meant a tech
+  // whose phone sits in another timezone — or anyone working the boundary
+  // hour — opened tomorrow's list under org-time labels, while dispatch was
+  // still bucketing the same visits into today. `null` means "the org's
+  // today", resolved at render rather than frozen into state at mount, so it
+  // also survives midnight without a stale default.
+  const orgTodayIso = useOrgToday();
+  const [pickedDay, setPickedDay] = useState<string | null>(dateParam ?? null);
+  const day = pickedDay ?? orgTodayIso;
   // Follow in-app navigations that change the search param (e.g. a
   // notification link clicked while already on My Day).
   useEffect(() => {
-    if (dateParam) setDay(dateParam);
+    if (dateParam) setPickedDay(dateParam);
   }, [dateParam]);
   // Pressing "Today" while already on My Day asks us to focus the day control.
   // Below `md` that is the date chip in the header; the seven-day strip it
@@ -182,16 +185,16 @@ function MyDay() {
   // Shared day setter: state + ?date= mirror (deep links / tab truthfulness).
   const applyDay = useCallback(
     (next: string) => {
-      setDay(next);
+      setPickedDay(next);
       navigate({
         search: (prev: Record<string, unknown>) => ({
           ...prev,
-          date: next === todayISO() ? undefined : next,
+          date: next === orgTodayIso ? undefined : next,
         }),
         replace: true,
       } as any);
     },
-    [navigate],
+    [navigate, orgTodayIso],
   );
 
   const fn = useServerFn(getMyDay);
@@ -653,7 +656,7 @@ function MyDay() {
                   value={day}
                   onChange={(e) => {
                     const v = e.target.value;
-                    applyDay(v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO());
+                    applyDay(v && !Number.isNaN(new Date(v).getTime()) ? v : orgTodayIso);
                   }}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 />
@@ -670,7 +673,7 @@ function MyDay() {
                   // rendered the same "not linked to a staff record" screen as a
                   // genuinely unlinked account and alarmed techs (finding #18).
                   const v = e.target.value;
-                  const next = v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO();
+                  const next = v && !Number.isNaN(new Date(v).getTime()) ? v : orgTodayIso;
                   // Mirror the day into ?date= (like ?staff= below) so deep
                   // links and the mobile Today/Schedule tabs stay truthful.
                   applyDay(next);

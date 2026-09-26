@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { CalendarDays, MapPin } from "lucide-react";
 import { getMyUpcomingDays, type UpcomingDay } from "@/lib/my-day.functions";
 import { orgLocalTime } from "@/lib/org-day";
-import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { APP_NAME } from "@/lib/scoop";
 
 /**
@@ -54,7 +54,10 @@ function MySchedulePage() {
   });
 
   const days = (data?.days ?? []) as UpcomingDay[];
-  const todayISO = new Date().toLocaleDateString("en-CA");
+  // The org's today, not the device's: the "Today" badge below has to sit on
+  // the same row the ETAs (already on the org clock) and My Day's default day
+  // call today, or a phone in another timezone badges the wrong morning.
+  const todayISO = useOrgToday();
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4">
