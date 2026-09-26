@@ -12,7 +12,8 @@ import {
   countPropertyHazards,
   resolveEstTimeConfig,
 } from "@/lib/estimated-time";
-import { liveServiceOrFilter, todayLocalISO } from "@/lib/subscription-form";
+import { liveServiceOrFilter } from "@/lib/subscription-form";
+import { orgToday } from "@/lib/org-day";
 
 export async function recomputePropertyEstimate(
   supabase: any,
@@ -28,7 +29,19 @@ export async function recomputePropertyEstimate(
   if (error || !prop) return null;
   if (prop.est_override_at) return null; // manual override wins
 
-  const [{ count: dogCount }, { data: subs }, { data: org }] = await Promise.all([
+  // The org resolves FIRST: the live-service filter below judges "still
+  // running" by a date, and this code runs on a UTC worker, where the old
+  // todayLocalISO() was the UTC day — tomorrow every US evening, so a
+  // service ending today was dropped from the estimate a few hours early.
+  // One extra sequential read on a recompute path nobody is waiting on.
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("est_time_config, timezone")
+    .eq("id", prop.organization_id)
+    .single()
+    .then((r: any) => r);
+
+  const [{ count: dogCount }, { data: subs }] = await Promise.all([
     supabase
       .from("dogs")
       .select("id", { count: "exact", head: true })
@@ -53,15 +66,9 @@ export async function recomputePropertyEstimate(
       .eq("property_id", propertyId)
       .eq("status", "active")
       .neq("frequency", "one_time")
-      .or(liveServiceOrFilter(todayLocalISO()))
+      .or(liveServiceOrFilter(orgToday(org?.timezone || undefined)))
       .order("created_at", { ascending: false })
       .limit(1),
-    supabase
-      .from("organizations")
-      .select("est_time_config")
-      .eq("id", prop.organization_id)
-      .single()
-      .then((r: any) => r),
   ]);
 
   const sub = subs?.[0];

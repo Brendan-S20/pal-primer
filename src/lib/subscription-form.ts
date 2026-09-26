@@ -133,13 +133,12 @@ export function isServiceEnded(
   return s.ends_on != null && s.ends_on !== "" && s.ends_on <= today;
 }
 
-function localTodayISO(): string {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
-}
-
-/** Hydrate the form from an existing subscription — every field mirrors the record. */
-export function subscriptionToFormValues(s: SubscriptionRecord): SubscriptionFormValues {
+/** Hydrate the form from an existing subscription — every field mirrors the record.
+ *
+ * `today` is the ORG's today (useOrgToday), not manufactured here: this file
+ * has no hook access and the one thing every private copy of "what day is
+ * it" got wrong was answering with the device's or the server's clock. */
+export function subscriptionToFormValues(s: SubscriptionRecord, today: string): SubscriptionFormValues {
   return {
     propertyId: s.property_id ?? "",
     frequency: s.frequency,
@@ -149,7 +148,7 @@ export function subscriptionToFormValues(s: SubscriptionRecord): SubscriptionFor
     zoneId: s.zone_id ?? "",
     billingCadence: s.billing_cadence === "prepaid" ? "prepaid" : "postpaid",
     preferredWeekdays: s.preferred_weekdays ?? [],
-    startedOn: s.started_on ?? localTodayISO(),
+    startedOn: s.started_on ?? today,
     endsOn: s.ends_on ?? "",
     intervalWeeks: s.interval_weeks && s.interval_weeks > 1 ? String(s.interval_weeks) : "",
     intervalDays: s.interval_days ? String(s.interval_days) : "",
@@ -166,6 +165,8 @@ export function subscriptionToFormValues(s: SubscriptionRecord): SubscriptionFor
  */
 export function blankSubscriptionFormValues(opts: {
   properties: Array<{ id: string; zone_id?: string | null }>;
+  /** The ORG's today (useOrgToday); see subscriptionToFormValues. */
+  today: string;
 }): SubscriptionFormValues {
   const onlyProperty = opts.properties.length === 1 ? opts.properties[0] : null;
   return {
@@ -177,7 +178,7 @@ export function blankSubscriptionFormValues(opts: {
     zoneId: onlyProperty?.zone_id ?? "",
     billingCadence: "postpaid",
     preferredWeekdays: [],
-    startedOn: localTodayISO(),
+    startedOn: opts.today,
     endsOn: "",
     intervalWeeks: "",
     intervalDays: "",
@@ -259,9 +260,4 @@ export function serviceScheduleState(
 // single row under `.limit(1)`.
 export function liveServiceOrFilter(todayISO: string): string {
   return `ends_on.is.null,ends_on.gte.${todayISO}`;
-}
-
-/** Today in the local zone, as YYYY-MM-DD. */
-export function todayLocalISO(): string {
-  return localTodayISO();
 }

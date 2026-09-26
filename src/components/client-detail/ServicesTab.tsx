@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField, TimeField } from "@/components/fields";
 import { formatDay, formatWindow } from "@/lib/format";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import {
   createSubscription,
@@ -77,10 +78,6 @@ import { humanizeEnum } from "@/lib/humanize";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 export function ServicesTab({
   clientId,
@@ -110,6 +107,7 @@ export function ServicesTab({
   onEditServiceConsumed?: () => void;
 }) {
   const qc = useQueryClient();
+  const today = useOrgToday();
   const navigate = useNavigate();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
@@ -175,9 +173,11 @@ export function ServicesTab({
   const generateFn = useServerFn(generateVisits);
   const generateMut = useMutation({
     mutationFn: () => {
-      const d = new Date();
+      // 60 days out from the ORG's today, not the device's. Noon anchor so
+      // toISOString's UTC rendering stays on the same date at every offset.
+      const d = new Date(`${today}T12:00:00`);
       d.setDate(d.getDate() + 60);
-      const through = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const through = d.toISOString().slice(0, 10);
       return generateFn({ data: { through } });
     },
     onSuccess: (r: any) => {
@@ -267,7 +267,6 @@ export function ServicesTab({
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const today = todayISO();
   const nextVisitBySub = useMemo(() => {
     const map = new Map<string, string>();
     for (const v of visits) {
@@ -1009,6 +1008,10 @@ function ServiceDrawer({
   const updateFn = useServerFn(updateSubscription);
   const stationsFn = useServerFn(listStations);
   const { confirm: confirmPrice, dialog: priceDialog } = useConfirmDialog();
+  // The org's today, for the form's date defaults. FOUR components in this
+  // file ask what day it is; this one cannot borrow ServicesTab's, the same
+  // way VisitsTab's siblings each needed their own tz.
+  const today = useOrgToday();
 
   // Property dogs are the source of truth for the billed count (UX round 3):
   // new services prefill from the property's active dog records, and picking
@@ -1019,7 +1022,7 @@ function ServiceDrawer({
   const initial: SubscriptionFormValues & { choice: ScheduleChoice } = useMemo(() => {
     if (subscription) {
       return {
-        ...subscriptionToFormValues(subscription),
+        ...subscriptionToFormValues(subscription, today),
         intervalWeeks:
           subscription.frequency === "biweekly"
             ? "2"
@@ -1029,7 +1032,7 @@ function ServiceDrawer({
         choice: scheduleChoiceFromRecord(subscription),
       };
     }
-    const blank = { ...blankSubscriptionFormValues({ properties }), choice: "weekly" as ScheduleChoice };
+    const blank = { ...blankSubscriptionFormValues({ properties, today }), choice: "weekly" as ScheduleChoice };
     if (blank.propertyId) {
       const n = activeDogsFor(blank.propertyId);
       if (n > 0) blank.dogCount = String(n);
@@ -1788,16 +1791,20 @@ function EndServiceDialog({
   onEnded: () => void;
 }) {
   const endFn = useServerFn(endSubscription);
-  const [effectiveDate, setEffectiveDate] = useState(todayISO());
+  // The org's today: "end effective today" must mean the same day the chip
+  // and the schedule call today.
+  const today = useOrgToday();
+  const [effectiveDate, setEffectiveDate] = useState(today);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
     if (subscription) {
-      setEffectiveDate(todayISO());
+      setEffectiveDate(today);
       setReason("");
       setNotes("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscription]);
 
   const mut = useMutation({

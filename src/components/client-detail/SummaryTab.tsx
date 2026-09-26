@@ -8,14 +8,11 @@ import { Button } from "@/components/ui/button";
 import { formatFrequency, isServiceEnded } from "@/lib/subscription-form";
 import { computeZoneVisitPrice } from "@/lib/pricing";
 import { formatDay, formatDateTime, formatPhone } from "@/lib/format";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { listClientMessages } from "@/lib/messages.functions";
 import { NotesPanel } from "@/components/client-detail/NotesPanel";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 export function SummaryTab({
   client,
@@ -46,7 +43,7 @@ export function SummaryTab({
   canBill: boolean;
   onGoToTab: (tab: string) => void;
 }) {
-  const today = todayISO();
+  const today = useOrgToday();
   const activeProps = properties.filter((p: any) => !p.archived_at);
   const activeSubs = subscriptions.filter(
     (s: any) => s.status === "active" && !isServiceEnded(s, today),

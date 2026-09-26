@@ -33,11 +33,16 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
 import { StatusChip, MetaChip } from "@/components/client-detail/primitives";
 import { formatPhone, formatDay } from "@/lib/format";
+import { useOrgToday } from "@/hooks/useOrgToday";
 
-/** Active / Partially paused / Paused / Inactive, derived from services. */
-export function deriveClientStatus(client: any, subscriptions: any[]): string {
+/** Active / Partially paused / Paused / Inactive, derived from services.
+ *
+ * `today` is the ORG's today (useOrgToday). It used to be manufactured here
+ * from `toISOString()`, which is the UTC day — so a service ending today was
+ * judged already ended from early evening on, US-wide, and the chip read
+ * Inactive while the schedule still had tonight's visit on it. */
+export function deriveClientStatus(client: any, subscriptions: any[], today: string): string {
   if (client.active === false) return "inactive";
-  const today = new Date().toISOString().slice(0, 10);
   const live = subscriptions.filter((s) => !isServiceEnded(s, today));
   const active = live.filter((s) => s.status === "active").length;
   const paused = live.filter((s) => s.status === "paused").length;
@@ -97,7 +102,7 @@ export function ClientHeader({
     queryKey: ["client-holds", clientId],
     queryFn: () => listHoldsFn({ data: { clientId } }),
   });
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = useOrgToday();
   const currentHold =
     (((holdsData as any)?.holds ?? []) as any[])
       .filter((h) => h.ends_on >= todayIso)
@@ -136,9 +141,8 @@ export function ClientHeader({
     },
     onError: (e) => toast.error((e as Error).message),
   });
-  const today = new Date().toISOString().slice(0, 10);
   const pausableSubs = subscriptions.filter(
-    (s) => s.status === "active" && !isServiceEnded(s, today),
+    (s) => s.status === "active" && !isServiceEnded(s, todayIso),
   );
   const pauseAllMut = useMutation({
     mutationFn: async () => {
@@ -169,7 +173,7 @@ export function ClientHeader({
     ? appUrl(slug ? `/portal/${slug}/${client.portal_token}` : `/portal/${client.portal_token}`)
     : null;
 
-  const derivedStatus = deriveClientStatus(client, subscriptions);
+  const derivedStatus = deriveClientStatus(client, subscriptions, todayIso);
   const navProperty = properties.find((p: any) => !p.archived_at) ?? null;
 
   const initials = (client.display_name ?? "?")

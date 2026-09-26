@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { liveServiceOrFilter, todayLocalISO } from "@/lib/subscription-form";
+import { liveServiceOrFilter } from "@/lib/subscription-form";
+import { orgToday } from "@/lib/org-day";
 import { appUrl } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
 
@@ -379,14 +380,19 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const sb = await admin();
-    const [{ data: org }, { data: subs }] = await Promise.all([
-      sb
-        .from("organizations")
-        .select(
-          "portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
-        )
-        .eq("id", session.organizationId)
-        .maybeSingle(),
+    // Sequential, not Promise.all: the standing-plan filter below judges
+    // "still running" by a date, this code runs on a UTC worker, and the org
+    // row is where the timezone lives. The old todayLocalISO() was the UTC
+    // day, so from early evening on a plan ending today vanished from the
+    // portal while the office still showed it.
+    const { data: org } = await sb
+      .from("organizations")
+      .select(
+        "portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes, timezone",
+      )
+      .eq("id", session.organizationId)
+      .maybeSingle();
+    const [{ data: subs }] = await Promise.all([
       // "Your plan" has to be the client's STANDING plan.
       //
       // status='active' alone picked up services the tenant had ended (this
@@ -403,7 +409,7 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
         .eq("client_id", session.clientId)
         .eq("status", "active")
         .neq("frequency", "one_time")
-        .or(liveServiceOrFilter(todayLocalISO()))
+        .or(liveServiceOrFilter(orgToday(org?.timezone || undefined)))
         .order("started_on", { ascending: false })
         .limit(1),
     ]);

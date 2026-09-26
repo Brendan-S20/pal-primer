@@ -4,6 +4,7 @@
 // zone pricing with Zones, marketing + digest on the Dashboard. Configuration
 // (API keys) stays in Settings -> AI.
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -305,7 +306,13 @@ function fmt(cents: number) {
 export function DispatchPanel() {
   const suggestFn = useServerFn(suggestDispatch);
   const applyFn = useServerFn(applyDispatchSuggestions);
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  // Suggest dispatch for the ORG's today. The default was the UTC day, so
+  // from early evening on this panel suggested tomorrow while the board
+  // beside it still showed today. Explicit pick, else the org's today,
+  // resolved at render (the my-day pattern).
+  const orgTodayIso = useOrgToday();
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const day = pickedDay ?? orgTodayIso;
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   const m = useMutation({
@@ -337,7 +344,7 @@ export function DispatchPanel() {
       <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
         <label className="text-sm">
           <span className="block font-medium">Day</span>
-          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="mt-1 rounded border bg-background px-3 py-2 text-sm touch:min-h-11" />
+          <input type="date" value={day} onChange={(e) => setPickedDay(e.target.value)} className="mt-1 rounded border bg-background px-3 py-2 text-sm touch:min-h-11" />
         </label>
         <Button onClick={() => m.mutate()} disabled={m.isPending}>
           {m.isPending ? "Analyzing…" : "Suggest reassignments"}

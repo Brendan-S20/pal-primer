@@ -71,7 +71,10 @@ export function hasPrecipitationRisk(day: {
 const NON_PRECIPITATION_REASON = /^(wind\b|hard freeze$)/i;
 
 function nextDayISO(iso: string): string {
-  const d = new Date(iso + "T00:00:00");
+  // Noon anchor, not midnight: `toISOString` speaks UTC, and slicing a UTC
+  // render of a local MIDNIGHT names the previous day anywhere east of
+  // Greenwich. Noon stays inside the same date for every real offset.
+  const d = new Date(iso + "T12:00:00");
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
 }
