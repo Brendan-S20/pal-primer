@@ -87,6 +87,14 @@ function SettingsLayout() {
     .flatMap((g) => g.tabs.map((t) => ({ ...t, group: g.title })))
     .find((t) => pathname === t.to || pathname.startsWith(t.to + "/"));
 
+  // A tech reaches exactly one section, their own Preferences. A picker
+  // headed "Business setup" holding one choice is a control that does
+  // nothing, wearing a label about a business they do not run, so with one
+  // section there is no picker and no rail: the page's own heading says
+  // where you are.
+  const sectionCount = groups.reduce((n, g) => n + g.tabs.length, 0);
+  const oneSection = sectionCount <= 1;
+
   const [pickerOpen, setPickerOpen] = useState(false);
   // Close on navigation. The mobile app sidebar shipped without this and stayed
   // open over the page it had just navigated to; not repeating it here.
@@ -98,7 +106,9 @@ function SettingsLayout() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">Configure how your business runs.</p>
+        <p className="text-sm text-muted-foreground">
+          {oneSection ? "How the app works on this device." : "Configure how your business runs."}
+        </p>
       </div>
 
       {/* ── PHONE: ONE ROW INSTEAD OF TWENTY-ONE ────────────────────────────
@@ -117,7 +127,7 @@ function SettingsLayout() {
           I, and how do I get somewhere else. The sheet is the same idiom as the
           tab bar's More sheet, which is the one sheet in this app that already
           got safe-area padding and a real close control right. */}
-      <div className="md:hidden">
+      <div className={oneSection ? "hidden" : "md:hidden"}>
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
@@ -176,7 +186,10 @@ function SettingsLayout() {
       </div>
 
       {/* ── TABLET AND UP: the grouped rail, unchanged in behaviour ───────── */}
-      <nav aria-label="Settings sections" className="hidden space-y-2 border-b pb-3 md:block">
+      <nav
+        aria-label="Settings sections"
+        className={oneSection ? "hidden" : "hidden space-y-2 border-b pb-3 md:block"}
+      >
         {groups.map((group) => (
           <div key={group.title} className="flex flex-wrap items-baseline gap-1">
             <span className="w-36 shrink-0 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">

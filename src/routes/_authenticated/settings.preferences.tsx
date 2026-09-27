@@ -60,6 +60,8 @@ function getStr(key: string, def: string) {
 
 function PreferencesPage() {
   const { i18n, t } = useTranslation();
+  const { can } = usePermissions();
+  const canManageSettings = can("manage_settings");
   const [lang, setLang] = useState<string>(currentLanguage());
   const [haptics, setHaptics] = useState(true);
   const [awake, setAwake] = useState(true);
@@ -78,14 +80,20 @@ function PreferencesPage() {
       <div>
         <h2 className="text-lg font-semibold">Preferences</h2>
         <p className="text-sm text-muted-foreground">
-          Language, branding and the defaults this workspace uses.
+          {canManageSettings
+            ? "Language, branding and the defaults this workspace uses."
+            : "Language and how the app behaves on your route."}
         </p>
       </div>
       <Card>
         <CardHeader>
           <CardTitle>Language</CardTitle>
+          {/* It is per DEVICE (lib/i18n setLanguage writes localStorage).
+              This said it applied "across the app, including the tech's My
+              Day view", which an owner reads as "my techs get Spanish" and
+              a tech reads as being talked about in the third person. */}
           <CardDescription>
-            Applies across the app, including the tech's My Day view.
+            Changes the language on this device only. Each person picks their own.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -173,7 +181,11 @@ function PreferencesPage() {
       </Card>
 
       <AppearanceCard />
-      <TimeZoneCard />
+      {/* The org's clock, and every "today" judgement in the product reads
+          it. The server gates the write on manage_settings, so a tech could
+          open this, pick a zone, and get an error toast: render it only for
+          the people the server will listen to, like PricingBaselineCard. */}
+      {canManageSettings && <TimeZoneCard />}
       <PricingBaselineCard />
       <CommercialAccountsCard />
       <DemoDataCard />
@@ -418,6 +430,13 @@ function CommercialAccountsCard() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // A business-shape switch the tech can neither use nor act on: it rendered
+  // for them as a greyed toggle about "we serve HOAs". Office roles that
+  // cannot edit (a dispatcher) still see it read-only, which tells them why
+  // the unit tools are or are not in their sidebar. After the hooks above,
+  // which must run in the same order on every render.
+  if (role === "tech") return null;
 
   const on = !!q.data?.commercialAccounts;
   const locked = on && !!q.data?.hasCommercialData;
