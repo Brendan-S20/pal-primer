@@ -395,6 +395,24 @@ function AppShell() {
               place. Wide, with a limit. Top padding tightens too — a page that
               starts an inch down the screen wastes the most valuable band on
               it. */}
+          {/* A status-bar backdrop wherever the shell hides its header.
+              Without the header nothing paints behind the clock, so on Waste
+              log, Alerts and Settings a scrolled page slid under the time and
+              the Dynamic Island ("Behavior on rou..." drawn behind them,
+              iPhone 17 Pro sim, 2026-09-27). My Day never showed it because its
+              own sticky bar paints that strip; this gives every other page the
+              same strip. Native only and inline-styled, per native-build.ts:
+              on the web the inset is 0 and this is not in the bundle at all.
+              Visible exactly where the header is hidden, never beside it. */}
+          {IS_NATIVE_BUNDLE && shellHeaderHidden !== "" && (
+            <div
+              aria-hidden
+              className={`pointer-events-none fixed inset-x-0 top-0 z-30 bg-background/80 backdrop-blur ${
+                barThroughTablet ? "lg:hidden" : "md:hidden"
+              }`}
+              style={{ height: "env(safe-area-inset-top)" }}
+            />
+          )}
           <main
             // The horizontal padding carries the safe-area inset as well as
             // its own spacing. env() is 0 on the web and in portrait, so this
