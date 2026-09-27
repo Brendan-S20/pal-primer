@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
-import { orgLocalTime } from "@/lib/org-day";
+import { orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -93,7 +93,6 @@ import { useTabletTier } from "@/hooks/useTabletTier";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
-import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -1156,6 +1155,7 @@ function HazardBanner({ property }: { property: any }) {
 }
 
 function ElapsedTimer({ startedAt }: { startedAt: string }) {
+  const tz = useOrgTimezone();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -1169,9 +1169,14 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
   // days) would otherwise tick up to absurd values like "10500:12" (P1.9).
   // Past 8h the elapsed time is no longer useful field info — flag it instead.
   if (secs > 8 * 3600) {
+    // Plain type, not the timer's mono: this is a sentence, and mono set it
+    // as "8h+,  started  Sun,  Sep  27". The start TIME on the org's clock
+    // is the useful fact; the day only when it was not today, since "started
+    // Sun, Sep 27" on Sunday the 27th said nothing.
+    const sameDay = orgLocalDay(new Date(startedMs), tz) === orgLocalDay(new Date(now), tz);
     return (
-      <span className="font-mono text-xs text-muted-foreground">
-        8h+, started {formatDay(startedAt)}
+      <span className="text-xs text-muted-foreground">
+        Over 8h · started {sameDay ? orgLocalTime(startedAt, tz) : orgLocalDayTime(startedAt, tz)}
       </span>
     );
   }

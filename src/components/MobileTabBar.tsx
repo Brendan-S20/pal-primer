@@ -28,6 +28,7 @@ import { CreateSheet } from "@/components/CreateSheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 /**
  * Asks My Day to scroll to and focus its seven-day strip. My Day listens.
@@ -65,6 +66,7 @@ export function MobileTabBar() {
   const [moreOpen, setMoreOpen] = useState(false);
   // Above the `!role` early return: hooks cannot be conditional.
   const { signOut, dialog: signOutDialog } = useOfflineSignOut();
+  const { confirm: confirmSignOut, dialog: confirmSignOutDialog } = useConfirmDialog();
   const { staff: me } = useMyProfile();
   // Also above the early return, and for the same reason.
   const navVisibility = useNavVisibility();
@@ -102,6 +104,21 @@ export function MobileTabBar() {
   })).filter((g) => g.items.length > 0);
 
   const handleSignOut = async () => {
+    // Ask first. The sheet slides up from the bar, and its last row lands
+    // exactly where the More tab sits underneath it: measured in the iOS
+    // simulator, a second tap on More while the sheet was still animating
+    // hit Sign out and ended the session. Signing out also wipes this
+    // device's saved day, so an accidental one costs a tech their route and
+    // their password mid-shift. The unsynced-work prompt below only fires
+    // when there IS unsynced work; this one always does.
+    const sure = await confirmSignOut({
+      title: "Sign out?",
+      description:
+        "Today's route is cleared from this device. You'll need your password to sign back in.",
+      confirmLabel: "Sign out",
+      cancelLabel: "Stay signed in",
+    });
+    if (!sure) return;
     // Wipes this device's persisted day along with the session: the next tech
     // to unlock a shared tablet must not inherit the previous one's route, or
     // their queued jobs, or their photos of customers' yards. Anything still
@@ -379,6 +396,7 @@ export function MobileTabBar() {
         </SheetContent>
       </Sheet>
       {signOutDialog}
+      {confirmSignOutDialog}
     </>
   );
 }
