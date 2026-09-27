@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
 import { orgLocalDayTime } from "@/lib/org-day";
+import { formatDay } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import {
   listVisitsAwaitingCloseOut,
@@ -133,8 +134,12 @@ export function CloseOutOpenVisits() {
             Did you finish this visit?
           </DialogTitle>
           <DialogDescription>
+            {/* formatDay, not the raw column: this sentence already speaks the
+                org's clock ("Sat 5:59 PM"), and the one ISO date beside it
+                ("2026-09-26") was the walk-mode screenshot's sore thumb. */}
             You started <strong className="text-foreground">{where}</strong> at {startedLabel} on{" "}
-            {visit.scheduled_on} and it was never closed. We won't guess, so tell us what happened.
+            {formatDay(visit.scheduled_on)} and it was never closed. We won't guess, so tell us
+            what happened.
           </DialogDescription>
         </DialogHeader>
 
