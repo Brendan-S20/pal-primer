@@ -67,21 +67,23 @@ function NotificationsPage() {
             all read and a Settings — 349px of controls in a 320px viewport,
             measured. Without it the last button runs off the side. */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-md border text-sm">
+          <div className="inline-flex rounded-lg border p-0.5 text-sm" role="group" aria-label="Show">
             <button
               type="button"
               onClick={() => setFilter("all")}
               // MEASURED 2026-08-19: 32.0px, both halves of the filter pair.
-              className={`px-3 py-1.5 touch:min-h-11 ${filter === "all" ? "bg-muted font-medium" : ""}`}
+              aria-pressed={filter === "all"}
+              className={`rounded-md px-3 py-1.5 font-medium touch:min-h-11 ${filter === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             >
               All
             </button>
             <button
               type="button"
               onClick={() => setFilter("unread")}
-              className={`border-l px-3 py-1.5 touch:min-h-11 ${filter === "unread" ? "bg-muted font-medium" : ""}`}
+              aria-pressed={filter === "unread"}
+              className={`rounded-md px-3 py-1.5 font-medium touch:min-h-11 ${filter === "unread" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             >
-              Unread {unread > 0 && <span className="ml-1 text-xs text-muted-foreground">({unread})</span>}
+              Unread {unread > 0 && <span className="ml-1 text-xs opacity-80">({unread})</span>}
             </button>
           </div>
           {unread > 0 && (

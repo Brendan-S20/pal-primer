@@ -44,7 +44,7 @@ export function NotificationBell() {
   return (
     <Link
       to="/notifications"
-      aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+      aria-label={unread > 0 ? `Alerts, ${unread} unread` : "Alerts"}
       // A 16px glyph centred in a 44px box, the shape ui/dialog.tsx and
       // ui/sheet.tsx already use. Padding was carrying the size here — `p-2`
       // is a 32px target and `touch:p-2.5` around a 20px glyph reaches 40,
