@@ -184,7 +184,7 @@ export function SummaryTab({
         {alerts.length > 0 && (
           <section className="rounded-lg border p-4">
             <h2 className="flex items-center gap-1.5 text-sm font-medium">
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Needs attention
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" /> Needs attention
             </h2>
             <ul className="mt-2 space-y-1.5 text-sm">
               {alerts.map((a) => (
@@ -224,7 +224,7 @@ export function SummaryTab({
           <h2 className="text-sm font-medium">Visits</h2>
           <div className="mt-2 rounded-md border bg-muted/20 p-3 text-sm">
             <SectionLabel className="flex items-center gap-1.5">
-              <CalendarClock className="h-3.5 w-3.5" /> Next visit
+              <CalendarClock className="h-3.5 w-3.5 shrink-0" /> Next visit
             </SectionLabel>
             {upcoming ? (
               <div className="mt-1">
@@ -354,7 +354,7 @@ function CommunicationCard({ client, onGoToTab }: { client: any; onGoToTab: (t: 
     <section className="rounded-lg border bg-card shadow-sm p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-medium">
-          <MessageSquare className="h-4 w-4 text-muted-foreground" /> Communication
+          <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" /> Communication
         </h2>
         <Button size="sm" variant="outline" onClick={() => onGoToTab("communication")}>
           Message

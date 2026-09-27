@@ -33,7 +33,7 @@ function PortalProperty() {
       {properties.length > 1 && (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-            <MapPin className="h-4 w-4" /> Your properties ({properties.length})
+            <MapPin className="h-4 w-4 shrink-0" /> Your properties ({properties.length})
           </h2>
           <ul className="space-y-2">
             {properties.map((p) => (
@@ -54,17 +54,17 @@ function PortalProperty() {
       {isCommercial ? (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-            <Building2 className="h-4 w-4" /> Property & stations
+            <Building2 className="h-4 w-4 shrink-0" /> Property & stations
           </h2>
           <StationsPanel rows={stationsQ.data ?? []} />
         </section>
       ) : (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-            <Dog className="h-4 w-4" /> Your dogs on file
+            <Dog className="h-4 w-4 shrink-0" /> Your dogs on file
           </h2>
           {(dogsQ.data ?? []).length === 0 ? (
-            <EmptyBox icon={<Dog className="h-6 w-6" />}
+            <EmptyBox icon={<Dog className="h-6 w-6 shrink-0" />}
               title="No dogs on file yet"
               body="Text the office and we'll add them to your account." />
           ) : (
@@ -75,7 +75,7 @@ function PortalProperty() {
 
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <Sparkles className="h-4 w-4" /> {isCommercial ? "Additional services" : "Add-ons & extras"}
+          <Sparkles className="h-4 w-4 shrink-0" /> {isCommercial ? "Additional services" : "Add-ons & extras"}
         </h2>
 
         {activeAddons.length > 0 && (
@@ -84,7 +84,7 @@ function PortalProperty() {
               <li key={a.addon_subscription_id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
                 <div>
                   <div className="font-medium flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" /> {a.name}
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> {a.name}
                   </div>
                   {/* `a.frequency` is the raw addon_frequency enum off the RPC.
                       Printed as-is it gave a homeowner "$35.00 · biweekly · next
@@ -124,7 +124,7 @@ function PortalProperty() {
           </ul>
         ) : (
           activeAddons.length === 0 && (
-            <EmptyBox icon={<Sparkles className="h-6 w-6" />}
+            <EmptyBox icon={<Sparkles className="h-6 w-6 shrink-0" />}
               title={isCommercial ? "No additional services offered right now" : "No add-ons available yet"}
               body="Reach out and we can tailor something for you." />
           )

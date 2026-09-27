@@ -79,9 +79,9 @@ export function TrialBanner() {
       >
         What this means
         {showWhy ? (
-          <ChevronUp className="h-4 w-4" aria-hidden="true" />
+          <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
         ) : (
-          <ChevronDown className="h-4 w-4" aria-hidden="true" />
+          <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
         )}
       </button>
       <div className={`w-full ${showWhy ? "" : "hidden sm:block"}`}>

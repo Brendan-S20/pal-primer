@@ -213,35 +213,35 @@ export function ZoneCoverageMap({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
           <Button size="sm" variant={mode === "polygon" ? "default" : "outline"} onClick={() => { setMode("polygon"); setTick((t) => t + 1); }}>
-            <Pencil className="mr-1 h-3.5 w-3.5" /> Polygon
+            <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Polygon
           </Button>
           <Button size="sm" variant={mode === "radius" ? "default" : "outline"} onClick={() => { setMode("radius"); setTick((t) => t + 1); }}>
-            <CircleIcon className="mr-1 h-3.5 w-3.5" /> Radius
+            <CircleIcon className="mr-1 h-3.5 w-3.5 shrink-0" /> Radius
           </Button>
           <Button size="sm" variant={mode === "drive_time" ? "default" : "outline"} onClick={() => { setMode("drive_time"); setTick((t) => t + 1); }}>
-            <Clock className="mr-1 h-3.5 w-3.5" /> Drive time
+            <Clock className="mr-1 h-3.5 w-3.5 shrink-0" /> Drive time
           </Button>
           {mode === "polygon" && (
             <>
               <Button size="sm" variant="ghost" onClick={() => { pointsRef.current = pointsRef.current.slice(0, -1); setTick((t) => t + 1); }}>
-                <Undo2 className="mr-1 h-3.5 w-3.5" /> Undo
+                <Undo2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Undo
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { pointsRef.current = []; setTick((t) => t + 1); }}>
-                <Trash2 className="mr-1 h-3.5 w-3.5" /> Clear
+                <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Clear
               </Button>
             </>
           )}
         </div>
         {onSave && (
           <Button size="sm" onClick={save} disabled={!!saving}>
-            <Save className="mr-1 h-3.5 w-3.5" /> {saving ? "Saving…" : "Save coverage"}
+            <Save className="mr-1 h-3.5 w-3.5 shrink-0" /> {saving ? "Saving…" : "Save coverage"}
           </Button>
         )}
       </div>
 
       {mode === "radius" && (
         <div className="flex items-center gap-2 text-sm">
-          <MousePointer2 className="h-3.5 w-3.5 text-muted-foreground" />
+          <MousePointer2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-muted-foreground">Click the map to place the center, then set radius:</span>
           <input type="range" min={500} max={40000} step={500} value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="flex-1" />
           <span className="w-24 text-right tabular-nums">{(radius / 1609).toFixed(1)} mi</span>
@@ -249,7 +249,7 @@ export function ZoneCoverageMap({
       )}
       {mode === "drive_time" && (
         <div className="flex items-center gap-2 text-sm">
-          <MousePointer2 className="h-3.5 w-3.5 text-muted-foreground" />
+          <MousePointer2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-muted-foreground">Click the map to place the shop/depot, then set minutes:</span>
           <input type="range" min={5} max={60} step={5} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="flex-1" />
           <span className="w-24 text-right tabular-nums">{minutes} min</span>

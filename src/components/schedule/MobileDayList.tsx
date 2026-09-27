@@ -179,7 +179,7 @@ export function MobileDayList({
                             className="h-4 gap-0.5 px-1 text-3xs"
                             title={v.weather_note ?? "Weather risk"}
                           >
-                            <CloudRain className="h-2.5 w-2.5" />
+                            <CloudRain className="h-2.5 w-2.5 shrink-0" />
                             {v.weather_note ? String(v.weather_note).split(",")[0] : "Weather"}
                           </Badge>
                         )}

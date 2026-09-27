@@ -146,7 +146,7 @@ function InventoryPage() {
       {bulkDialog}
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2"><Package className="h-6 w-6"/> Inventory</h1>
+          <h1 className="text-2xl font-semibold flex items-center gap-2"><Package className="h-6 w-6 shrink-0"/> Inventory</h1>
           <p className="text-sm text-muted-foreground">Track supplies, per-tech assignments, and consumption.</p>
         </div>
         <ItemDialog />
@@ -155,7 +155,7 @@ function InventoryPage() {
       {lowStock.length > 0 && (
         <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
           <div className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4" /> {lowStock.length} item{lowStock.length === 1 ? "" : "s"} at or below reorder threshold
+            <AlertTriangle className="h-4 w-4 shrink-0" /> {lowStock.length} item{lowStock.length === 1 ? "" : "s"} at or below reorder threshold
           </div>
           <ul className="mt-2 text-xs text-muted-foreground">
             {lowStock.slice(0, 5).map((i) => (
@@ -386,7 +386,7 @@ function ItemDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add item</Button>
+        <Button size="sm"><Plus className="h-4 w-4 mr-1 shrink-0" /> Add item</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>New inventory item</DialogTitle></DialogHeader>
@@ -532,7 +532,7 @@ function AssignDialog({ items, staffList }: { items: Item[]; staffList: Array<{ 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm"><Plus className="mr-1 h-4 w-4" /> Assign to tech</Button>
+        <Button size="sm"><Plus className="mr-1 h-4 w-4 shrink-0" /> Assign to tech</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Assign inventory to a tech</DialogTitle></DialogHeader>

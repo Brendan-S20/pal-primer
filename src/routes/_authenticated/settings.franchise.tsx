@@ -84,7 +84,7 @@ function FranchiseSettings() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Building2 className="h-4 w-4" /> Part of {m.parentName ?? "a franchise"}
+              <Building2 className="h-4 w-4 shrink-0" /> Part of {m.parentName ?? "a franchise"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">

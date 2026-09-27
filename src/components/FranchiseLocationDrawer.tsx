@@ -255,7 +255,7 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
           className="shrink-0 text-destructive hover:text-destructive touch:min-h-11"
           onClick={() => setOpen(true)}
         >
-          <Unlink className="mr-2 h-4 w-4" /> Remove
+          <Unlink className="mr-2 h-4 w-4 shrink-0" /> Remove
         </Button>
       </div>
 

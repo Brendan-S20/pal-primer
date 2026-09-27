@@ -130,7 +130,7 @@ export function CloseOutOpenVisits() {
       <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
             Did you finish this visit?
           </DialogTitle>
           <DialogDescription>

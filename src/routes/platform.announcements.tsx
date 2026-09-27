@@ -215,12 +215,12 @@ function AnnouncementsPage() {
                         if (ok) send.mutate(a.id);
                       }}
                     >
-                      <Send className="mr-1 h-3 w-3" />
+                      <Send className="mr-1 h-3 w-3 shrink-0" />
                       {send.isPending ? "Sending…" : "Send emails"}
                     </Button>
                   )}
                   <Button variant="ghost" size="icon" onClick={() => del.mutate(a.id)} aria-label="Delete">
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4 shrink-0" />
                   </Button>
                 </div>
               </CardHeader>
@@ -235,7 +235,7 @@ function AnnouncementsPage() {
           </div>
         ) : (q.data?.rows ?? []).length === 0 ? (
           <EmptyState
-            icon={<Megaphone className="h-5 w-5" />}
+            icon={<Megaphone className="h-5 w-5 shrink-0" />}
             title="No announcements yet"
             description="Publish a banner to notify tenants about maintenance, new features, or important updates."
           />

@@ -131,7 +131,7 @@ function HealthPage() {
             {cards.map((c) => <HealthTile key={c.label} {...c} />)}
           </div>
           <p className="mt-4 flex items-center gap-1 text-xs text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5" /> Refreshes every 60 seconds.
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Refreshes every 60 seconds.
           </p>
         </CardContent>
       </Card>

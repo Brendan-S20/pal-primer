@@ -48,7 +48,7 @@ export function SignupAttribution() {
       <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Megaphone className="h-4 w-4" /> Where signups came from
+            <Megaphone className="h-4 w-4 shrink-0" /> Where signups came from
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
             {/* Conversions, not signups, are the point. A campaign with forty

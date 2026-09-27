@@ -819,9 +819,9 @@ export function RouteMap({
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border bg-background/95 text-foreground shadow-sm transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         >
           {locating ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
           ) : (
-            <LocateFixed className="h-4 w-4" />
+            <LocateFixed className="h-4 w-4 shrink-0" />
           )}
           <span className="sr-only">Show my current location</span>
         </button>

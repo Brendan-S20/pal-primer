@@ -50,7 +50,7 @@ export function LegalShell({
               // is the touch target.
               className="-ml-2 inline-flex min-h-11 min-w-11 items-center gap-1 rounded-md px-2 text-sm font-medium text-foreground hover:bg-muted"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-5 w-5 shrink-0" />
               Back
             </button>
           ) : (
@@ -58,7 +58,7 @@ export function LegalShell({
               to="/auth"
               className="-ml-2 inline-flex min-h-11 min-w-11 items-center gap-1 rounded-md px-2 text-sm font-medium text-foreground hover:bg-muted"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-5 w-5 shrink-0" />
               Sign in
             </Link>
           )}

@@ -150,7 +150,7 @@ function ProfilePage() {
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading your account…
+        <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Loading your account…
       </div>
     );
   }
@@ -216,7 +216,7 @@ function ProfilePage() {
               onClick={() => fileRef.current?.click()}
               disabled={upload.isPending}
             >
-              <Camera className="mr-1.5 h-4 w-4" />
+              <Camera className="mr-1.5 h-4 w-4 shrink-0" />
               {upload.isPending ? "Uploading…" : staff.avatar_url ? "Replace" : "Upload"}
             </Button>
             {staff.avatar_url && (
@@ -235,7 +235,7 @@ function ProfilePage() {
                     removePhoto.mutate();
                 }}
               >
-                <Trash2 className="mr-1.5 h-4 w-4" />
+                <Trash2 className="mr-1.5 h-4 w-4 shrink-0" />
                 Remove
               </Button>
             )}
@@ -310,7 +310,7 @@ function ProfilePage() {
                 onClick={() => changeEmail.mutate()}
                 disabled={!emailChanged || !email.trim() || changeEmail.isPending}
               >
-                <Mail className="mr-1.5 h-4 w-4" />
+                <Mail className="mr-1.5 h-4 w-4 shrink-0" />
                 {changeEmail.isPending ? "Sending…" : "Send confirmation"}
               </Button>
             </div>
@@ -322,7 +322,7 @@ function ProfilePage() {
               onClick={() => resetPassword.mutate()}
               disabled={resetPassword.isPending}
             >
-              <KeyRound className="mr-1.5 h-4 w-4" />
+              <KeyRound className="mr-1.5 h-4 w-4 shrink-0" />
               {resetPassword.isPending ? "Sending…" : "Send password reset"}
             </Button>
             <span className="text-xs text-muted-foreground">

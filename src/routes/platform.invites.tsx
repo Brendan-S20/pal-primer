@@ -161,20 +161,20 @@ function InvitesPage() {
                                     .then(() => toast.success("Link copied"));
                                 }}
                               >
-                                <Copy className="h-4 w-4" />
+                                <Copy className="h-4 w-4 shrink-0" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => revokeM.mutate(r.id)}
                               >
-                                <X className="h-4 w-4" />
+                                <X className="h-4 w-4 shrink-0" />
                               </Button>
                             </>
                           )}
                           {(r.status === "expired" || r.status === "revoked") && (
                             <Button variant="ghost" size="sm" onClick={() => resendM.mutate(r.id)}>
-                              <Send className="mr-1 h-4 w-4" /> Renew
+                              <Send className="mr-1 h-4 w-4 shrink-0" /> Renew
                             </Button>
                           )}
                         </div>
@@ -244,7 +244,7 @@ function NewInviteDialog() {
     >
       <DialogTrigger asChild>
         <Button>
-          <Plus className="mr-1 h-4 w-4" /> New invite
+          <Plus className="mr-1 h-4 w-4 shrink-0" /> New invite
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -269,7 +269,7 @@ function NewInviteDialog() {
                   navigator.clipboard.writeText(createdLink).then(() => toast.success("Copied"));
                 }}
               >
-                <Copy className="h-4 w-4" />
+                <Copy className="h-4 w-4 shrink-0" />
               </Button>
             </div>
             <DialogFooter>

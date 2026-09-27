@@ -70,11 +70,11 @@ function SignalCard({ r }: { r: FranchiseSignalRow }) {
           )}
           {converted ? (
             <Badge variant="outline">
-              <Link2 className="mr-1 h-3 w-3" /> Fully linked
+              <Link2 className="mr-1 h-3 w-3 shrink-0" /> Fully linked
             </Badge>
           ) : r.already_linked > 0 ? (
             <Badge className="bg-blue-600 text-white">
-              <Link2 className="mr-1 h-3 w-3" /> {r.already_linked} of {r.org_count} linked
+              <Link2 className="mr-1 h-3 w-3 shrink-0" /> {r.already_linked} of {r.org_count} linked
             </Badge>
           ) : null}
         </div>
@@ -111,11 +111,11 @@ function SignalCard({ r }: { r: FranchiseSignalRow }) {
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
-            <MapPin className="h-3 w-3" />
+            <MapPin className="h-3 w-3 shrink-0" />
             {r.states ? r.states : "No property locations on file"}
           </span>
           <span className="inline-flex items-center gap-1">
-            <CreditCard className="h-3 w-3" />
+            <CreditCard className="h-3 w-3 shrink-0" />
             {r.stripe_accounts} Stripe account{r.stripe_accounts === 1 ? "" : "s"}
           </span>
           <Link to="/platform/tenants" className="font-medium text-primary hover:underline">
@@ -154,7 +154,7 @@ function SignalsPage() {
         <div className="text-sm text-destructive">{(q.error as Error).message}</div>
       ) : !rows.length ? (
         <EmptyState
-          icon={<Radar className="h-5 w-5" />}
+          icon={<Radar className="h-5 w-5 shrink-0" />}
           title="No clusters yet"
           description="When two or more organizations sign up with owner emails on the same custom domain, they show up here as a franchise lead."
         />

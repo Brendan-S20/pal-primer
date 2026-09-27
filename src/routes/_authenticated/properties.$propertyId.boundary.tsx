@@ -63,13 +63,13 @@ function BoundaryPage() {
           {clientId ? (
             <Button variant="ghost" size="sm" asChild>
               <Link to="/clients/$clientId" params={{ clientId }}>
-                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                <ArrowLeft className="mr-1 h-3.5 w-3.5 shrink-0" />
                 Back to {clientName ?? "client"}
               </Link>
             </Button>
           ) : (
             <Button variant="ghost" size="sm" onClick={() => nav({ to: "/clients" })}>
-              <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
+              <ArrowLeft className="mr-1 h-3.5 w-3.5 shrink-0" /> Back
             </Button>
           )}
           <h1 className="mt-1 truncate text-2xl font-semibold">
@@ -89,7 +89,7 @@ function BoundaryPage() {
         {justSaved && clientId && (
           <Button asChild>
             <Link to="/clients/$clientId" params={{ clientId }}>
-              <CheckCircle2 className="mr-1.5 h-4 w-4" />
+              <CheckCircle2 className="mr-1.5 h-4 w-4 shrink-0" />
               Done, back to {clientName ?? "client"}
             </Link>
           </Button>
@@ -98,7 +98,7 @@ function BoundaryPage() {
 
       {isLoading ? (
         <Card className="flex items-center justify-center p-10 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <Loader2 className="h-5 w-5 animate-spin shrink-0" />
         </Card>
       ) : !center ? (
         <Card className="p-6 text-sm">

@@ -378,13 +378,13 @@ export function ServicesTab({
                       ) : null}
                       {(s.earliest_time || s.latest_time) && (
                         <span className="inline-flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
+                          <Clock className="h-3 w-3 shrink-0" />
                           {formatWindow(s.earliest_time, s.latest_time)}
                         </span>
                       )}
                       {!ended && !paused && nextVisit && (
                         <span className="inline-flex items-center gap-1">
-                          <CalendarClock className="h-3 w-3" />
+                          <CalendarClock className="h-3 w-3 shrink-0" />
                           Next visit {formatDay(nextVisit)}
                         </span>
                       )}
@@ -475,7 +475,7 @@ export function ServicesTab({
                         onClick={() => pauseMut.mutate(s.id)}
                         disabled={pauseMut.isPending}
                       >
-                        <Pause className="mr-1 h-3.5 w-3.5" /> Pause
+                        <Pause className="mr-1 h-3.5 w-3.5 shrink-0" /> Pause
                       </Button>
                     )}
                     {canManagePricing && paused && (
@@ -485,20 +485,20 @@ export function ServicesTab({
                         onClick={() => resumeMut.mutate(s.id)}
                         disabled={resumeMut.isPending}
                       >
-                        <Play className="mr-1 h-3.5 w-3.5" /> Resume
+                        <Play className="mr-1 h-3.5 w-3.5 shrink-0" /> Resume
                       </Button>
                     )}
                     {canManagePricing && (showEnd || showDelete) && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" className="h-10 w-10 p-0" aria-label="More actions">
-                            <MoreHorizontal className="h-4 w-4" />
+                            <MoreHorizontal className="h-4 w-4 shrink-0" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {showEnd && (
                             <DropdownMenuItem onSelect={() => setEndingSub(s)}>
-                              <Square className="mr-2 h-3.5 w-3.5" /> End service…
+                              <Square className="mr-2 h-3.5 w-3.5 shrink-0" /> End service…
                             </DropdownMenuItem>
                           )}
                           {showDelete && (
@@ -518,7 +518,7 @@ export function ServicesTab({
                                   deleteMut.mutate(s.id);
                               }}
                             >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete service…
+                              <Trash2 className="mr-2 h-3.5 w-3.5 shrink-0" /> Delete service…
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>
@@ -540,7 +540,7 @@ export function ServicesTab({
         </h2>
         {properties.length > 0 && canManagePricing && (
           <Button size="sm" onClick={() => setDrawerSub("new")}>
-            <Plus className="mr-1 h-4 w-4" /> Add Service
+            <Plus className="mr-1 h-4 w-4 shrink-0" /> Add Service
           </Button>
         )}
       </div>
@@ -566,9 +566,9 @@ export function ServicesTab({
             className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             {showEnded ? (
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4 shrink-0" />
             ) : (
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4 shrink-0" />
             )}
             Ended services ({endedSubs.length})
           </button>

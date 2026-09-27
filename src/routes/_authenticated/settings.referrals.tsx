@@ -90,16 +90,20 @@ function ReferBusinessPage() {
 
       <Card className="space-y-4 p-5">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <Gift className="h-4 w-4 text-primary" /> Your referral link
+          <Gift className="h-4 w-4 text-primary shrink-0" /> Your referral link
         </div>
         <div className="rounded-md border bg-muted/40 p-3 font-mono text-sm break-all">{link}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={copy}>
-            {copied ? <Check className="mr-1 h-4 w-4" /> : <Copy className="mr-1 h-4 w-4" />}
+            {copied ? (
+              <Check className="mr-1 h-4 w-4 shrink-0" />
+            ) : (
+              <Copy className="mr-1 h-4 w-4 shrink-0" />
+            )}
             {copied ? "Copied" : "Copy link"}
           </Button>
           <Button size="sm" variant="outline" onClick={share}>
-            <Share2 className="mr-1 h-4 w-4" /> Share
+            <Share2 className="mr-1 h-4 w-4 shrink-0" /> Share
           </Button>
           <span className="text-xs text-muted-foreground">
             Code: <span className="font-mono font-medium">{data.code}</span>

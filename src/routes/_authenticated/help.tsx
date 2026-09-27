@@ -93,7 +93,7 @@ function HelpPage() {
     <div className="space-y-6">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
-          <BookOpen className="h-6 w-6" /> Knowledge Center
+          <BookOpen className="h-6 w-6 shrink-0" /> Knowledge Center
         </h1>
         <p className="text-sm text-muted-foreground">
           Short, plain-language explanations and walkthroughs for everything in {APP_NAME}.
@@ -103,7 +103,7 @@ function HelpPage() {
       <div className="grid gap-6 md:grid-cols-[260px_1fr]">
         <div className="space-y-4">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground shrink-0" />
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -187,7 +187,7 @@ function HelpPage() {
                 <div className="mt-5">
                   <Link to={active.appLink.to as never}>
                     <Button size="sm">
-                      {active.appLink.label} <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                      {active.appLink.label} <ExternalLink className="ml-1 h-3.5 w-3.5 shrink-0" />
                     </Button>
                   </Link>
                 </div>
@@ -206,7 +206,7 @@ function HelpPage() {
                         search={{ article: r!.slug }}
                         className="inline-flex items-center gap-1 rounded-full border bg-background px-3 py-1 text-xs transition-colors hover:bg-muted"
                       >
-                        {r!.title} <ArrowRight className="h-3 w-3" />
+                        {r!.title} <ArrowRight className="h-3 w-3 shrink-0" />
                       </Link>
                     ))}
                   </div>
@@ -247,7 +247,7 @@ function HelpPage() {
                 Or pick any article on the left. The{" "}
                 <Fragment>
                   <span className="inline-flex translate-y-0.5 items-center">
-                    <BookOpen className="h-4 w-4" />
+                    <BookOpen className="h-4 w-4 shrink-0" />
                   </span>
                 </Fragment>{" "}
                 and "?" icons around the app link straight to the relevant article.

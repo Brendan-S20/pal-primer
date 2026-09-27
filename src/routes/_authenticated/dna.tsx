@@ -112,7 +112,7 @@ function SamplePhotoLink({ path }: { path: string }) {
       rel="noreferrer"
       className="mt-1 inline-flex items-center gap-1 text-2xs text-primary underline"
     >
-      <Camera className="h-3 w-3" /> Collection photo
+      <Camera className="h-3 w-3 shrink-0" /> Collection photo
     </a>
   );
 }
@@ -158,7 +158,7 @@ function DnaLanding() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Dna className="h-6 w-6" /> DNA compliance <HelpTip article="dna" />
+          <Dna className="h-6 w-6 shrink-0" /> DNA compliance <HelpTip article="dna" />
         </h1>
         <p className="text-sm text-muted-foreground">
           The commercial and HOA communities enrolled in DNA compliance. Open a client to manage
@@ -177,7 +177,7 @@ function DnaLanding() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Building2 className="h-4 w-4" /> Enrolled clients
+            <Building2 className="h-4 w-4 shrink-0" /> Enrolled clients
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -237,7 +237,7 @@ function DnaLanding() {
                           search={{ client: c.id }}
                           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                         >
-                          Open <ChevronRight className="h-3.5 w-3.5" />
+                          Open <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                         </Link>
                       </td>
                     </tr>
@@ -474,13 +474,13 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
       <div>
         <nav className="mb-1 flex items-center gap-1.5 text-sm text-muted-foreground">
           <Link to="/dna" search={{}} className="inline-flex items-center gap-1 hover:text-foreground">
-            <ArrowLeft className="h-3.5 w-3.5" /> All clients
+            <ArrowLeft className="h-3.5 w-3.5 shrink-0" /> All clients
           </Link>
-          <ChevronRight className="h-3.5 w-3.5" />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
           <span className="text-foreground">{clientName ?? "Client"}</span>
         </nav>
         <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Dna className="h-6 w-6" /> {clientName ?? "DNA compliance"}{" "}
+          <Dna className="h-6 w-6 shrink-0" /> {clientName ?? "DNA compliance"}{" "}
           <HelpTip article="dna" />
         </h1>
         <p className="text-sm text-muted-foreground">
@@ -507,7 +507,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <FlaskConical className="h-4 w-4" /> Log a new sample
+                <FlaskConical className="h-4 w-4 shrink-0" /> Log a new sample
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-4">
@@ -626,7 +626,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                       className="hidden"
                       onChange={(e) => setSamplePhoto(e.target.files?.[0] ?? null)}
                     />
-                    <Camera className="h-4 w-4" />
+                    <Camera className="h-4 w-4 shrink-0" />
                     {samplePhoto ? "Change photo" : "Add photo"}
                   </label>
                   {samplePhoto && (
@@ -872,7 +872,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                                     className="h-7 text-xs"
                                     onClick={() => setNoticeMatchId(r.id)}
                                   >
-                                    <FileText className="h-3.5 w-3.5 mr-1" /> Notice
+                                    <FileText className="h-3.5 w-3.5 mr-1 shrink-0" /> Notice
                                   </Button>
                                   <Button
                                     size="sm"
@@ -880,7 +880,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                                     disabled={bill.isPending || !r.fine_cents}
                                     onClick={() => bill.mutate(r.id)}
                                   >
-                                    <Receipt className="h-3.5 w-3.5 mr-1" /> Bill fine
+                                    <Receipt className="h-3.5 w-3.5 mr-1 shrink-0" /> Bill fine
                                   </Button>
                                 </>
                               )}
@@ -891,7 +891,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                                   className="h-7 text-xs"
                                   onClick={() => setNoticeMatchId(r.id)}
                                 >
-                                  <FileText className="h-3.5 w-3.5 mr-1" /> Notice
+                                  <FileText className="h-3.5 w-3.5 mr-1 shrink-0" /> Notice
                                 </Button>
                               )}
                               <Button
@@ -911,7 +911,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                                     del.mutate(r.id);
                                 }}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4 shrink-0" />
                               </Button>
                             </div>
                           </td>
@@ -1118,7 +1118,7 @@ function NoticeDialog({
             Copy text
           </Button>
           <Button variant="outline" onClick={() => window.print()} disabled={!notice}>
-            <Printer className="h-4 w-4 mr-1" /> Print
+            <Printer className="h-4 w-4 mr-1 shrink-0" /> Print
           </Button>
           <Button onClick={onClose}>Close</Button>
         </DialogFooter>

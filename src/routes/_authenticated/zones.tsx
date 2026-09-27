@@ -135,7 +135,7 @@ function ZonesPage() {
         </div>
         {canEdit && (
           <Button onClick={() => setDrawer("new")}>
-            <Plus className="mr-1 h-4 w-4" /> New zone
+            <Plus className="mr-1 h-4 w-4 shrink-0" /> New zone
           </Button>
         )}
       </div>
@@ -270,7 +270,7 @@ function ZonesPage() {
         ))}
         {data && zones.length === 0 && (
           <Card className="p-10 text-center text-muted-foreground">
-            <MapPin className="mx-auto mb-2 h-8 w-8 opacity-50" />
+            <MapPin className="mx-auto mb-2 h-8 w-8 opacity-50 shrink-0" />
             No zones yet. Create your first zone to enable instant quoting.
           </Card>
         )}
@@ -482,18 +482,18 @@ function ZoneCard({
       <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
         {hasGeo && (
           <Button size="sm" variant="ghost" onClick={() => setViewingCoverage(true)}>
-            <Eye className="mr-1 h-3.5 w-3.5" /> View coverage
+            <Eye className="mr-1 h-3.5 w-3.5 shrink-0" /> View coverage
           </Button>
         )}
         {canEdit && (
           <>
             <Button size="sm" variant="outline" onClick={onEdit}>
-              <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+              <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Edit
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="ghost" aria-label="More actions">
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-4 w-4 shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

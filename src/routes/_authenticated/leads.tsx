@@ -107,13 +107,13 @@ function LeadsPage() {
           {formSlug && (
             <a href={`/lead/${formSlug}`} target="_blank" rel="noreferrer">
               <Button variant="outline">
-                <Eye className="mr-1 h-4 w-4" /> Preview form
+                <Eye className="mr-1 h-4 w-4 shrink-0" /> Preview form
               </Button>
             </a>
           )}
           <Link to="/settings/lead-form">
             <Button variant="outline">
-              <Pencil className="mr-1 h-4 w-4" /> Edit form
+              <Pencil className="mr-1 h-4 w-4 shrink-0" /> Edit form
             </Button>
           </Link>
           <div className="w-48">

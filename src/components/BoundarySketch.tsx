@@ -186,20 +186,20 @@ export function BoundarySketch({
             variant={mode === "draw" ? "default" : "outline"}
             onClick={() => setMode("draw")}
           >
-            <Pencil className="mr-1 h-3.5 w-3.5" /> Draw
+            <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Draw
           </Button>
           <Button type="button"
             size="sm"
             variant={mode === "view" ? "default" : "outline"}
             onClick={() => setMode("view")}
           >
-            <MousePointer2 className="mr-1 h-3.5 w-3.5" /> View
+            <MousePointer2 className="mr-1 h-3.5 w-3.5 shrink-0" /> View
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={undo} disabled={pointsRef.current.length === 0}>
-            <Undo2 className="mr-1 h-3.5 w-3.5" /> Undo
+            <Undo2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Undo
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={clear} disabled={pointsRef.current.length === 0}>
-            <Trash2 className="mr-1 h-3.5 w-3.5" /> Clear
+            <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Clear
           </Button>
         </div>
         <div className="flex items-center gap-3">
@@ -210,7 +210,7 @@ export function BoundarySketch({
           )}
           {!hideSave && (
             <Button type="button" size="sm" onClick={() => onSave?.(currentPolygon)} disabled={!!saving}>
-              <Save className="mr-1 h-3.5 w-3.5" />
+              <Save className="mr-1 h-3.5 w-3.5 shrink-0" />
               {saving ? "Saving…" : currentPolygon ? "Save boundary" : "Clear saved"}
             </Button>
           )}

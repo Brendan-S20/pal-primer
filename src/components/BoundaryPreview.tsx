@@ -84,7 +84,7 @@ export function BoundaryPreview({
           onClick={() => setExpanded(true)}
           className="absolute left-[10px] top-[80px] z-10 flex h-[30px] w-[30px] items-center justify-center rounded-[4px] border-2 border-black/20 bg-white text-black hover:bg-neutral-100"
         >
-          <Maximize2 className="h-4 w-4" />
+          <Maximize2 className="h-4 w-4 shrink-0" />
         </button>
       </div>
       {areaSqm != null && (

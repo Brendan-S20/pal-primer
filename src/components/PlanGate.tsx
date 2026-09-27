@@ -65,7 +65,7 @@ export function UpgradeRequired({
       <Card>
         <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
           <div className="rounded-full bg-muted p-3">
-            <Lock className="h-5 w-5 text-muted-foreground" />
+            <Lock className="h-5 w-5 text-muted-foreground shrink-0" />
           </div>
           <h1 className="text-xl font-semibold">{feature} isn&apos;t on your plan</h1>
           <p className="max-w-md text-sm text-muted-foreground">

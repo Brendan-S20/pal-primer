@@ -83,9 +83,9 @@ export function TextingConsentPanel({ client }: { client: any }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-medium">
           {canText ? (
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
           ) : (
-            <MessageSquareOff className="h-4 w-4 text-amber-600" />
+            <MessageSquareOff className="h-4 w-4 text-amber-600 shrink-0" />
           )}
           Texting consent
         </h2>
@@ -153,7 +153,7 @@ export function TextingConsentPanel({ client }: { client: any }) {
             disabled={!attested || record.isPending}
             onClick={() => record.mutate()}
           >
-            <Check className="mr-1 h-3.5 w-3.5" />
+            <Check className="mr-1 h-3.5 w-3.5 shrink-0" />
             {record.isPending ? "Recording…" : "Record consent"}
           </Button>
         </div>

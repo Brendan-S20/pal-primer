@@ -145,7 +145,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
           <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" aria-label="Advanced invoicing actions">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4 w-4 shrink-0" />
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
@@ -464,7 +464,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
         <h2 className="text-sm font-medium">Add-ons &amp; cross-sells</h2>
         {!showAdd && (
           <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Add add-on
+            <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add add-on
           </Button>
         )}
       </div>
@@ -630,7 +630,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
             className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
             onClick={() => setShowAdd(false)}
           >
-            <X className="h-3 w-3" /> Cancel
+            <X className="h-3 w-3 shrink-0" /> Cancel
           </button>
         </div>
       )}

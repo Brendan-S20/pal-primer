@@ -262,7 +262,7 @@ export function StaffInvoicePayForm({
                 chargeMut.mutate();
             }}
           >
-            <CreditCard className="mr-1.5 h-4 w-4" />
+            <CreditCard className="mr-1.5 h-4 w-4 shrink-0" />
             {chargeMut.isPending
               ? "Charging…"
               : `Charge ${cardLabel} ${fmtCents(dueCents, currency)}`}
@@ -285,7 +285,7 @@ export function StaffInvoicePayForm({
             disabled={creditMut.isPending || dueCents <= 0}
             onClick={() => creditMut.mutate()}
           >
-            <Wallet className="mr-1.5 h-4 w-4" />
+            <Wallet className="mr-1.5 h-4 w-4 shrink-0" />
             {creditMut.isPending
               ? "Applying…"
               : `Apply credit (${fmtCents(creditCents, currency)} available)`}

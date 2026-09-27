@@ -88,7 +88,7 @@ function PlatformLayout() {
   if (ctx.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6 text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading platform admin…
+        <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" /> Loading platform admin…
       </div>
     );
   }
@@ -99,7 +99,7 @@ function PlatformLayout() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" /> Platform admin
+              <Shield className="h-5 w-5 shrink-0" /> Platform admin
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
@@ -112,7 +112,7 @@ function PlatformLayout() {
             </div>
             <Button asChild variant="outline" size="sm">
               <Link to="/dashboard">
-                <ArrowLeft className="mr-1 h-4 w-4" /> Back to app
+                <ArrowLeft className="mr-1 h-4 w-4 shrink-0" /> Back to app
               </Link>
             </Button>
           </CardContent>
@@ -164,7 +164,7 @@ function PlatformSidebar() {
     <Sidebar collapsible="offcanvas">
       <SidebarHeader className="border-b">
         <div className="flex items-center gap-2 px-2 py-1.5">
-          <Shield className="h-5 w-5 text-primary" />
+          <Shield className="h-5 w-5 text-primary shrink-0" />
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">Platform admin</div>
             <div className="truncate text-2xs text-muted-foreground">HoundStack</div>
@@ -234,7 +234,7 @@ function PlatformHeader() {
         className="min-h-11 min-w-11"
         onClick={handleSignOut}
       >
-        <LogOut className="h-4 w-4" />
+        <LogOut className="h-4 w-4 shrink-0" />
       </Button>
     </header>
   );

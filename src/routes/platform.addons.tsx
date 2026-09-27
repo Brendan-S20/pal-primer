@@ -131,7 +131,7 @@ function AddonsAdminPage() {
                 ) : rows.length === 0 ? (
                   <TableRow><TableCell colSpan={6} className="py-6">
                     <EmptyState
-                      icon={<Puzzle className="h-5 w-5" />}
+                      icon={<Puzzle className="h-5 w-5 shrink-0" />}
                       title="No add-ons yet"
                       description="Add-ons are seeded by migration; none exist in this environment."
                     />

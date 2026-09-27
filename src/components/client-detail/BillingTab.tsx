@@ -113,7 +113,7 @@ export function BillingTab({ clientId }: { clientId: string }) {
             </span>
             {!addingCredit && (
               <Button size="sm" variant="outline" onClick={() => setAddingCredit(true)}>
-                <Plus className="mr-1 h-3.5 w-3.5" /> Add credit
+                <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add credit
               </Button>
             )}
           </div>
@@ -360,7 +360,7 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
           </p>
         </div>
         <Button size="sm" variant="outline" onClick={() => setAddOpen((v) => !v)}>
-          <Plus className="mr-1 h-3.5 w-3.5" /> {addOpen ? "Cancel" : "Add card"}
+          <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> {addOpen ? "Cancel" : "Add card"}
         </Button>
       </div>
 
@@ -401,7 +401,7 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
             return (
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                 <span className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" />
                   <span className="capitalize">{m.brand}</span>
                   <span className="font-mono">····{m.last4}</span>
                   <span

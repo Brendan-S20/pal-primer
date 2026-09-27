@@ -78,7 +78,7 @@ export function FranchiseLinkCodes() {
       <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Building2 className="h-4 w-4" /> Link a location already on HoundStack
+            <Building2 className="h-4 w-4 shrink-0" /> Link a location already on HoundStack
           </CardTitle>
           {/* BUILD-6: this said "Add a location", which is now also the card
               above it. The two do different things — that one creates an
@@ -128,11 +128,11 @@ export function FranchiseLinkCodes() {
                       <Button variant="outline" size="sm" onClick={() => copy(c.code)}>
                         {copied === c.code ? (
                           <>
-                            <Check className="mr-1 h-3 w-3" /> Copied
+                            <Check className="mr-1 h-3 w-3 shrink-0" /> Copied
                           </>
                         ) : (
                           <>
-                            <Copy className="mr-1 h-3 w-3" /> Copy
+                            <Copy className="mr-1 h-3 w-3 shrink-0" /> Copy
                           </>
                         )}
                       </Button>

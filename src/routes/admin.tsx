@@ -59,7 +59,7 @@ function AdminLoginPage() {
       <div className="w-full max-w-md space-y-6 text-slate-50">
         <div className="text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/20 ring-1 ring-primary/40">
-            <Shield className="h-6 w-6 text-primary" />
+            <Shield className="h-6 w-6 text-primary shrink-0" />
           </div>
           <h1 className="mt-4 text-2xl font-semibold">Platform operator sign-in</h1>
           <p className="mt-1 text-sm text-slate-300">

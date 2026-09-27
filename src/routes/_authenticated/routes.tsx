@@ -973,7 +973,7 @@ function RoutesPage() {
               a thing anyone does while someone is on the phone. */}
           {canBookOneOff && (
             <Button variant="outline" onClick={() => setOneOffOpen(true)}>
-              <CalendarClock className="mr-1.5 h-4 w-4" />
+              <CalendarClock className="mr-1.5 h-4 w-4 shrink-0" />
               One-off visit
             </Button>
           )}
@@ -996,7 +996,7 @@ function RoutesPage() {
               title={`Previous ${rangeNoun}`}
               aria-label={`Previous ${rangeNoun}`}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4 shrink-0" />
             </Button>
             <Button
               variant="outline"
@@ -1006,7 +1006,7 @@ function RoutesPage() {
               title={`Next ${rangeNoun}`}
               aria-label={`Next ${rangeNoun}`}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4 shrink-0" />
             </Button>
             <Button
               variant="outline"
@@ -1053,7 +1053,7 @@ function RoutesPage() {
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" title="Display options">
-                <Settings2 className="h-4 w-4" />
+                <Settings2 className="h-4 w-4 shrink-0" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72 space-y-4">
@@ -1126,7 +1126,7 @@ function RoutesPage() {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" title="Who runs routes">
-                  <Users className="h-4 w-4" />
+                  <Users className="h-4 w-4 shrink-0" />
                   <span className="ml-1.5 max-sm:hidden">Crew</span>
                 </Button>
               </PopoverTrigger>
@@ -1180,7 +1180,7 @@ function RoutesPage() {
                             onClick={() => setRoutingDialogStaff(s)}
                             title="Time off and route endpoints"
                           >
-                            <CalendarOff className="h-3.5 w-3.5" />
+                            <CalendarOff className="h-3.5 w-3.5 shrink-0" />
                           </Button>
                           <Switch
                             checked={Boolean(s.is_field_tech)}
@@ -1491,7 +1491,7 @@ function RoutesPage() {
                     title={weatherOpen ? "Hide weather" : "Show weather"}
                     className="flex h-11 w-11 items-center justify-center rounded-md text-destructive hover:bg-muted md:mouse:h-9 md:mouse:w-9"
                   >
-                    <CloudRain className="h-4 w-4" />
+                    <CloudRain className="h-4 w-4 shrink-0" />
                   </button>
                 </div>
                 {weatherOpen && <WeatherStrip day={day} />}
@@ -1873,7 +1873,7 @@ function MapPanel({
           )}
           {onGeocode && missing > 0 && (
             <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
-              <MapPin className="mr-1 h-3.5 w-3.5" />
+              <MapPin className="mr-1 h-3.5 w-3.5 shrink-0" />
               {geocoding ? "Geocoding…" : `Geocode ${missing} address${missing === 1 ? "" : "es"}`}
             </Button>
           )}
@@ -1904,7 +1904,7 @@ function MapPanel({
             <span>No coordinates yet. Geocode your properties to plot them.</span>
             {onGeocode && (
               <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
-                <MapPin className="mr-1 h-3.5 w-3.5" />
+                <MapPin className="mr-1 h-3.5 w-3.5 shrink-0" />
                 {geocoding ? "Geocoding…" : "Geocode addresses"}
               </Button>
             )}
@@ -2266,7 +2266,7 @@ function VisitCardView({
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted"
                 >
-                  <Navigation className="h-3 w-3" /> Directions
+                  <Navigation className="h-3 w-3 shrink-0" /> Directions
                 </a>
               )}
               {canComplete && (
@@ -2280,7 +2280,7 @@ function VisitCardView({
                   // box a thumb has to find grows.
                   className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-2xs text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400 touch:min-h-11"
                 >
-                  <CheckCircle2 className="h-3 w-3" /> {completing ? "…" : "Complete"}
+                  <CheckCircle2 className="h-3 w-3 shrink-0" /> {completing ? "…" : "Complete"}
                 </button>
               )}
             </div>

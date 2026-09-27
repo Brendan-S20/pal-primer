@@ -198,7 +198,7 @@ export function PropertiesTab({
           {activeProps.length} propert{activeProps.length === 1 ? "y" : "ies"}
         </h2>
         <Button size="sm" onClick={() => setDrawerProp("new")}>
-          <Plus className="mr-1 h-4 w-4" /> Add property
+          <Plus className="mr-1 h-4 w-4 shrink-0" /> Add property
         </Button>
       </div>
 
@@ -280,7 +280,7 @@ function ArchivedPropertyRow({ property, clientId }: { property: any; clientId: 
         </span>
       </span>
       <Button size="sm" variant="outline" onClick={() => mut.mutate()} disabled={mut.isPending}>
-        <ArchiveRestore className="mr-1 h-3.5 w-3.5" /> Restore
+        <ArchiveRestore className="mr-1 h-3.5 w-3.5 shrink-0" /> Restore
       </Button>
     </li>
   );
@@ -389,20 +389,20 @@ function PropertyCard({
           <MetaChip>{isCommercial ? "Commercial" : "Residential"}</MetaChip>
           {effectiveZone && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <MapPin className="h-3 w-3" />
+              <MapPin className="h-3 w-3 shrink-0" />
               {effectiveZone}
               {overridden && <MetaChip className="ml-0.5">Override</MetaChip>}
             </span>
           )}
           {effectiveMinutes ? (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock className="h-3 w-3" />
+              <Clock className="h-3 w-3 shrink-0" />
               {effectiveMinutes} min
             </span>
           ) : null}
           {activeDogs.length > 0 && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <DogIcon className="h-3 w-3" />
+              <DogIcon className="h-3 w-3 shrink-0" />
               {activeDogs.length}
             </span>
           )}
@@ -427,7 +427,7 @@ function PropertyCard({
           {/* Actions */}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={onEdit}>
-              <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+              <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Edit
             </Button>
             <Button
               size="sm"
@@ -450,7 +450,7 @@ function PropertyCard({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-10 w-10 p-0" aria-label="More actions">
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-4 w-4 shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -468,7 +468,7 @@ function PropertyCard({
                       archiveMut.mutate();
                   }}
                 >
-                  <Archive className="mr-2 h-3.5 w-3.5" /> Archive property…
+                  <Archive className="mr-2 h-3.5 w-3.5 shrink-0" /> Archive property…
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
@@ -513,7 +513,7 @@ function PropertyCard({
                       deleteMut.mutate();
                   }}
                 >
-                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete property…
+                  <Trash2 className="mr-2 h-3.5 w-3.5 shrink-0" /> Delete property…
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -611,7 +611,7 @@ function PropertyCard({
                   </MetaChip>
                   {p.gate_code ? (
                     <span className="inline-flex items-center gap-1">
-                      <DoorClosed className="h-3.5 w-3.5" />
+                      <DoorClosed className="h-3.5 w-3.5 shrink-0" />
                       Gate: <span className="font-medium text-foreground">{p.gate_code}</span>
                     </span>
                   ) : (
@@ -673,7 +673,7 @@ function PropertyCard({
             // Commercial dogs belong to units (PooPrints model) — manage them
             // on the Units tab, not here.
             <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-              <DogIcon className="h-4 w-4" />
+              <DogIcon className="h-4 w-4 shrink-0" />
               <span>Dogs are managed per unit on the Units tab.</span>
               {onGoToTab && (
                 <button
@@ -801,7 +801,7 @@ function DogsSection({
         <SectionLabel>Dogs ({activeDogs.length})</SectionLabel>
         {!adding && (
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAdding(true)}>
-            <Plus className="mr-1 h-3 w-3" /> Add dog
+            <Plus className="mr-1 h-3 w-3 shrink-0" /> Add dog
           </Button>
         )}
       </div>
@@ -961,7 +961,7 @@ function DogsSection({
                   : "Add dog"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
-              <X className="mr-1 h-3.5 w-3.5" /> Cancel
+              <X className="mr-1 h-3.5 w-3.5 shrink-0" /> Cancel
             </Button>
           </div>
         </form>

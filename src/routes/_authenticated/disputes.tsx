@@ -68,7 +68,7 @@ function DisputesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
-          <ShieldAlert className="h-6 w-6" /> Disputes
+          <ShieldAlert className="h-6 w-6 shrink-0" /> Disputes
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           When a customer&apos;s bank queries or reverses a payment, it lands here. An
@@ -196,7 +196,7 @@ function DisputesPage() {
                               to="/invoices"
                               className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                             >
-                              Invoice <ExternalLink className="h-3 w-3" />
+                              Invoice <ExternalLink className="h-3 w-3 shrink-0" />
                             </Link>
                           )}
                         </div>

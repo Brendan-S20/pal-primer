@@ -534,7 +534,7 @@ function PlansPage() {
             has been carrying. */}
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button className="shrink-0" onClick={() => setCreating(true)}>
-            <Plus className="mr-1 h-4 w-4" /> New plan
+            <Plus className="mr-1 h-4 w-4 shrink-0" /> New plan
           </Button>
           <Button
             variant="outline"
@@ -620,7 +620,7 @@ function PlansPage() {
                                 disabled={mirror.isPending}
                                 onClick={() => mirror.mutate(p)}
                               >
-                                <CloudUpload className="mr-1 h-4 w-4" /> Mirror to Stripe
+                                <CloudUpload className="mr-1 h-4 w-4 shrink-0" /> Mirror to Stripe
                               </Button>
                             ) : null}
                           </div>
@@ -636,9 +636,9 @@ function PlansPage() {
                           onClick={() => requestSetActive(p)}
                         >
                           {p.is_active ? (
-                            <><EyeOff className="mr-1 h-4 w-4" /> Stop offering</>
+                            <><EyeOff className="mr-1 h-4 w-4 shrink-0" /> Stop offering</>
                           ) : (
-                            <><Eye className="mr-1 h-4 w-4" /> Offer again</>
+                            <><Eye className="mr-1 h-4 w-4 shrink-0" /> Offer again</>
                           )}
                         </Button>
                         <Button
@@ -647,7 +647,7 @@ function PlansPage() {
                           aria-label={`Edit ${p.name}`}
                           onClick={() => openEdit(p)}
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-4 w-4 shrink-0" />
                         </Button>
                       </div>
                     </TableCell>

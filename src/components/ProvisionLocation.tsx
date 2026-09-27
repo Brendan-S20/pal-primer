@@ -112,7 +112,7 @@ export function ProvisionLocation() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Check className="h-4 w-4 text-emerald-600" /> {done.name} is open
+            <Check className="h-4 w-4 text-emerald-600 shrink-0" /> {done.name} is open
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
@@ -168,7 +168,7 @@ export function ProvisionLocation() {
       {dialog}
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Building2 className="h-4 w-4" /> Open a new location
+          <Building2 className="h-4 w-4 shrink-0" /> Open a new location
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           For a location you&apos;re starting. We create the organization, link it to your
@@ -234,7 +234,7 @@ export function ProvisionLocation() {
                 disabled={i === 0}
                 onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4 shrink-0" />
               </Button>
             </div>
           ))}
@@ -248,7 +248,7 @@ export function ProvisionLocation() {
               size="sm"
               onClick={() => setRows((rs) => [...rs, { email: "", role: "tech" }])}
             >
-              <Plus className="mr-1 h-3 w-3" /> Add someone
+              <Plus className="mr-1 h-3 w-3 shrink-0" /> Add someone
             </Button>
           )}
         </div>

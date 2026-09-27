@@ -119,7 +119,7 @@ export function PhotoLightbox({
               className="grid h-11 w-11 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 active:bg-white/20"
               aria-label="Close photo"
             >
-              <X className="h-6 w-6" />
+              <X className="h-6 w-6 shrink-0" />
             </DialogPrimitive.Close>
           </div>
 
@@ -147,7 +147,7 @@ export function PhotoLightbox({
                   aria-label="Previous photo"
                   className="absolute left-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
                 >
-                  <ChevronLeft className="h-6 w-6" />
+                  <ChevronLeft className="h-6 w-6 shrink-0" />
                 </button>
                 <button
                   type="button"
@@ -155,7 +155,7 @@ export function PhotoLightbox({
                   aria-label="Next photo"
                   className="absolute right-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
                 >
-                  <ChevronRight className="h-6 w-6" />
+                  <ChevronRight className="h-6 w-6 shrink-0" />
                 </button>
               </>
             )}

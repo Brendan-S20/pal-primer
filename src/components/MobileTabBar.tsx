@@ -153,7 +153,7 @@ export function MobileTabBar() {
       onClick={() => setMoreOpen(true)}
       className={tabClass(moreOpen)}
     >
-      <Menu className="h-5 w-5" />
+      <Menu className="h-5 w-5 shrink-0" />
       <span>More</span>
     </button>
   );
@@ -196,7 +196,7 @@ export function MobileTabBar() {
                   if (onMyDay) focusMyDaySchedule();
                 }}
               >
-                <Sun className="h-5 w-5" />
+                <Sun className="h-5 w-5 shrink-0" />
                 <span>Today</span>
               </Link>
             </li>
@@ -207,7 +207,7 @@ export function MobileTabBar() {
                 preload="render"
                 className={tabClass(isActive("/waste-log"))}
               >
-                <Trash2 className="h-5 w-5" />
+                <Trash2 className="h-5 w-5 shrink-0" />
                 <span>Waste log</span>
               </Link>
             </li>
@@ -219,7 +219,7 @@ export function MobileTabBar() {
                 className={`relative ${tabClass(isActive("/notifications"))}`}
               >
                 <span className="relative">
-                  <Bell className="h-5 w-5" />
+                  <Bell className="h-5 w-5 shrink-0" />
                   {unread > 0 && (
                     // Count, not a dot: "three things happened" and "something
                     // happened" are different messages to somebody deciding
@@ -247,7 +247,7 @@ export function MobileTabBar() {
                 preload="render"
                 className={tabClass(isActive("/dashboard"))}
               >
-                <LayoutDashboard className="h-5 w-5" />
+                <LayoutDashboard className="h-5 w-5 shrink-0" />
                 <span>Home</span>
               </Link>
             </li>
@@ -258,7 +258,7 @@ export function MobileTabBar() {
                 preload="render"
                 className={tabClass(isActive("/routes"))}
               >
-                <CalendarDays className="h-5 w-5" />
+                <CalendarDays className="h-5 w-5 shrink-0" />
                 <span>Schedule</span>
               </Link>
             </li>
@@ -270,7 +270,7 @@ export function MobileTabBar() {
                 className={tabClass(createOpen)}
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md">
-                  <Plus className="h-5 w-5" />
+                  <Plus className="h-5 w-5 shrink-0" />
                 </span>
               </button>
             </li>
@@ -281,7 +281,7 @@ export function MobileTabBar() {
                 preload="render"
                 className={tabClass(isActive("/clients"))}
               >
-                <Users className="h-5 w-5" />
+                <Users className="h-5 w-5 shrink-0" />
                 <span>Clients</span>
               </Link>
             </li>

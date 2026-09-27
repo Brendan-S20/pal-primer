@@ -64,7 +64,7 @@ const SheetContent = React.forwardRef<
       {/* 44px hit area around a 16px glyph — see the note in dialog.tsx. This
           one matters more: sheets are the phone layout. */}
       <SheetPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
+        <X className="h-4 w-4 shrink-0" />
         <span className="sr-only">Close</span>
       </SheetPrimitive.Close>
       {children}

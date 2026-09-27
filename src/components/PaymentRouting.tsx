@@ -156,7 +156,7 @@ export function PaymentRouting() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <CreditCard className="h-4 w-4" /> How payments come through
+            <CreditCard className="h-4 w-4 shrink-0" /> How payments come through
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             For each location, decide whether their customers pay into your account or their own,
@@ -267,7 +267,7 @@ export function PaymentRouting() {
 
           <div className="rounded-md border bg-muted/40 p-3">
             <div className="flex items-center gap-2 text-sm font-medium">
-              <Info className="h-4 w-4" /> {guidance.headline}
+              <Info className="h-4 w-4 shrink-0" /> {guidance.headline}
             </div>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
               {guidance.points.map((p) => (

@@ -195,7 +195,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   return (
     <div className="flex flex-col gap-3">
       <Link to="/platform/tenants" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back to tenants
+        <ArrowLeft className="h-4 w-4 shrink-0" /> Back to tenants
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -235,7 +235,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button size="sm" disabled={restoreM.isPending}>
-                  <Undo2 className="mr-1 h-4 w-4" />
+                  <Undo2 className="mr-1 h-4 w-4 shrink-0" />
                   {restoreM.isPending ? "Restoring…" : "Restore tenant"}
                 </Button>
               </AlertDialogTrigger>
@@ -263,7 +263,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
           <AlertDialog onOpenChange={(open) => { if (!open) setImpersonateUser(""); }}>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" disabled={impersonateM.isPending || !!t.deleted_at}>
-                <UserCog className="mr-1 h-4 w-4" /> Impersonate
+                <UserCog className="mr-1 h-4 w-4 shrink-0" /> Impersonate
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -449,7 +449,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="More actions" disabled={!!t.deleted_at}>
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4 w-4 shrink-0" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -460,7 +460,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
                 disabled={!!t.deleted_at}
                 onSelect={(e) => { e.preventDefault(); setDeleteOpen(true); }}
               >
-                <Trash2 className="mr-2 h-4 w-4" /> Delete tenant
+                <Trash2 className="mr-2 h-4 w-4 shrink-0" /> Delete tenant
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -614,13 +614,13 @@ function InvoicesTab({ orgId }: { orgId: string }) {
                     {r.hosted_invoice_url && (
                       <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
                          className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:mouse:min-h-0">
-                        Stripe <ExternalLink className="h-3 w-3" />
+                        Stripe <ExternalLink className="h-3 w-3 shrink-0" />
                       </a>
                     )}
                     {r.invoice_pdf && (
                       <a href={r.invoice_pdf} target="_blank" rel="noreferrer"
                          className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:mouse:min-h-0">
-                        PDF <FileDown className="h-3 w-3" />
+                        PDF <FileDown className="h-3 w-3 shrink-0" />
                       </a>
                     )}
                   </div>
@@ -923,7 +923,7 @@ function NotesTab({ orgId }: { orgId: string }) {
                           delM.mutate(n.id);
                       }}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 shrink-0" />
                     </Button>
                   </div>
                   <div className="mt-1 whitespace-pre-wrap text-sm">{n.body}</div>

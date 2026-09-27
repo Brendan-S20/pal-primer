@@ -32,7 +32,7 @@ export function FranchiseAdjustmentTrail({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <ArrowLeftRight className="h-4 w-4" /> Deductions &amp; repayments
+          <ArrowLeftRight className="h-4 w-4 shrink-0" /> Deductions &amp; repayments
         </CardTitle>
         <p className="text-sm text-muted-foreground">
           {forLocation
@@ -108,7 +108,7 @@ export function FranchiseAdjustmentTrail({
                         </Badge>
                         {line.billedPeriod && !line.isRepayment && (
                           <span className="inline-flex items-center gap-1 text-muted-foreground">
-                            <Receipt className="h-3 w-3" /> {line.billedPeriod}
+                            <Receipt className="h-3 w-3 shrink-0" /> {line.billedPeriod}
                           </span>
                         )}
                       </div>

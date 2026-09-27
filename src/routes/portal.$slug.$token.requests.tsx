@@ -15,7 +15,7 @@ function PortalRequests() {
     <div className="space-y-6">
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <MessageCircleWarning className="h-4 w-4" /> Your requests
+          <MessageCircleWarning className="h-4 w-4 shrink-0" /> Your requests
         </h2>
         <RequestsList rows={requestsQ.data ?? []} />
       </section>

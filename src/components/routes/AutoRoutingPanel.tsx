@@ -389,14 +389,14 @@ export function AutoRoutingPanel({
     >
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-1.5 text-sm font-semibold">
-          <Wand2 className="h-4 w-4" /> Auto-routing
+          <Wand2 className="h-4 w-4 shrink-0" /> Auto-routing
         </div>
         <button
           onClick={onClose}
           aria-label="Close auto-routing"
           className="flex items-center justify-center rounded p-1 text-muted-foreground hover:bg-muted touch:min-h-11 touch:min-w-11"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4 shrink-0" />
         </button>
       </div>
 

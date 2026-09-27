@@ -39,8 +39,12 @@ export function AiSection({ title, description, children }: {
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-muted/40"
       >
-        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        <Sparkles className="h-4 w-4 text-primary" />
+        {open ? (
+          <ChevronDown className="h-4 w-4 shrink-0" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0" />
+        )}
+        <Sparkles className="h-4 w-4 text-primary shrink-0" />
         {title}
         {description && !open && (
           <span className="ml-1 truncate text-xs font-normal text-muted-foreground">{description}</span>

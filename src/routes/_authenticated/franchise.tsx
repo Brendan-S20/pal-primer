@@ -191,7 +191,7 @@ function FranchisePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" /> Royalties &amp; multi-org rollup
+              <Building2 className="h-5 w-5 shrink-0" /> Royalties &amp; multi-org rollup
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-3">
@@ -251,7 +251,7 @@ function FranchisePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Building2 className="h-6 w-6" />
+        <Building2 className="h-6 w-6 shrink-0" />
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
             Royalties &amp; rollup <HelpTip article="royalties" />
@@ -733,7 +733,11 @@ function SortableHead({
       >
         {label}
         {active &&
-          (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+          (sortDir === "asc" ? (
+            <ArrowUp className="h-3 w-3 shrink-0" />
+          ) : (
+            <ArrowDown className="h-3 w-3 shrink-0" />
+          ))}
       </button>
     </TableHead>
   );

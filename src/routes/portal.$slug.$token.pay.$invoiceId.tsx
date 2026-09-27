@@ -77,7 +77,7 @@ function PayInvoice() {
         params={{ slug, token }}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to billing
+        <ArrowLeft className="h-4 w-4 shrink-0" /> Back to billing
       </Link>
 
       <div className="rounded-md border bg-card p-4">
@@ -92,7 +92,7 @@ function PayInvoice() {
 
       {intentQ.isPending && (
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Preparing secure checkout…
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Preparing secure checkout…
         </div>
       )}
 
@@ -120,7 +120,7 @@ function PayInvoice() {
       )}
 
       <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5" />
+        <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
         Payments are processed securely. Cards and ACH accepted.
       </p>
     </div>
@@ -209,7 +209,7 @@ function PayForm({
       >
         {submitting ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing…
+            <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" /> Processing…
           </>
         ) : (
           <>Pay {money(amountCents)}</>

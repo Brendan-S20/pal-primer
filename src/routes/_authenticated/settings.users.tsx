@@ -182,7 +182,7 @@ function UsersPage() {
                                 // no box at all, x7 rows.
                                 className="text-muted-foreground hover:text-foreground max-md:inline-flex touch:min-h-11 touch:min-w-11 max-md:items-center max-md:justify-center"
                               >
-                                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                {isOpen ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                               </button>
                             ) : null}
                           </td>
@@ -430,7 +430,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3" /> Route start (home, shop, or depot)
+          <MapPin className="h-3 w-3 shrink-0" /> Route start (home, shop, or depot)
         </Label>
         {/* A route endpoint is a home, shop or depot, not a customer address —
             but it is in the same town as the customers, so the workspace bias
@@ -462,7 +462,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3" /> Route end (dump, home, shop)
+          <MapPin className="h-3 w-3 shrink-0" /> Route end (dump, home, shop)
         </Label>
         <AddressAutocomplete
           value={end}

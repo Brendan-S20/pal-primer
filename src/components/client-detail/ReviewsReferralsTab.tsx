@@ -136,7 +136,7 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
             variant="outline"
             onClick={() => window.open(url, "_blank", "noopener")}
           >
-            <ExternalLink className="mr-1 h-3.5 w-3.5" /> Open
+            <ExternalLink className="mr-1 h-3.5 w-3.5 shrink-0" /> Open
           </Button>
           <Button
             size="sm"
@@ -148,7 +148,7 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
               )
             }
           >
-            <Link2 className="mr-1 h-3.5 w-3.5" /> Copy link
+            <Link2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Copy link
           </Button>
           <Button
             size="sm"
@@ -169,7 +169,7 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
             }}
             disabled={codeMut.isPending}
           >
-            <KeyRound className="mr-1 h-3.5 w-3.5" />
+            <KeyRound className="mr-1 h-3.5 w-3.5 shrink-0" />
             {codeMut.isPending ? "Getting code…" : "Read sign-in code"}
           </Button>
           <Button
@@ -189,7 +189,7 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
             }}
             disabled={regenMut.isPending}
           >
-            <RefreshCw className="mr-1 h-3.5 w-3.5" />
+            <RefreshCw className="mr-1 h-3.5 w-3.5 shrink-0" />
             {regenMut.isPending ? "Regenerating…" : "Regenerate"}
           </Button>
         </div>

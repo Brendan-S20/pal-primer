@@ -122,7 +122,7 @@ function NewInvoiceDialog() {
     <Dialog open={open} onOpenChange={setDialogOpen}>
       <DialogTrigger asChild>
         <Button>
-          <Plus className="mr-1 h-4 w-4" /> New invoice
+          <Plus className="mr-1 h-4 w-4 shrink-0" /> New invoice
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
@@ -186,7 +186,7 @@ function NewInvoiceDialog() {
                     className="shrink-0 px-2"
                     onClick={() => setItems(items.filter((_, j) => j !== i))}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4 shrink-0" />
                   </Button>
                 )}
               </div>
@@ -197,7 +197,7 @@ function NewInvoiceDialog() {
               size="sm"
               onClick={() => setItems([...items, { description: "", amount: "" }])}
             >
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add line
+              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add line
             </Button>
           </div>
           {totalCents > 0 && <p className="text-sm font-medium">Total: {fmtCents(totalCents)}</p>}
@@ -626,7 +626,7 @@ function InvoicesPage() {
               )
             }
           >
-            <Download className="mr-1 h-4 w-4" /> Export CSV
+            <Download className="mr-1 h-4 w-4 shrink-0" /> Export CSV
           </Button>
           {/* Full auto billing: generation runs nightly on each client's
               cadence, so manual generate-from-visits is demoted to an
@@ -634,7 +634,7 @@ function InvoicesPage() {
           <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" aria-label="Advanced invoicing actions">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4 w-4 shrink-0" />
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
@@ -736,7 +736,7 @@ function InvoicesPage() {
         className="flex min-h-11 items-center justify-between rounded-xl border bg-card px-3 text-sm shadow-sm sm:hidden"
       >
         <span className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4" />
+          <SlidersHorizontal className="h-4 w-4 shrink-0" />
           Filters
           {activeFilterCount > 0 && (
             <span className="rounded-full bg-primary px-1.5 py-0.5 text-2xs font-semibold text-primary-foreground">
@@ -816,7 +816,7 @@ function InvoicesPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={exportSelectedCsv}>
-              <Download className="mr-1 h-4 w-4" /> Export CSV
+              <Download className="mr-1 h-4 w-4 shrink-0" /> Export CSV
             </Button>
             <Button
               size="sm"

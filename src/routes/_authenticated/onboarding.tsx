@@ -174,7 +174,7 @@ function OnboardingPage() {
 
       {step === "done" && (
         <div className="rounded-xl border bg-card p-8 text-center">
-          <CheckCircle2 className="mx-auto h-10 w-10 text-primary" />
+          <CheckCircle2 className="mx-auto h-10 w-10 text-primary shrink-0" />
           <h1 className="mt-3 text-xl font-semibold">You're all set</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Your plan is active. Manage it anytime in Settings → Plan &amp; billing.
