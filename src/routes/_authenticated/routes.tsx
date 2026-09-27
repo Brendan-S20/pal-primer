@@ -19,7 +19,7 @@ import {
   getDispatchSettings,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
-import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
+import { RouteMap, buildTechGroups, legendEntries, techColorMap } from "@/components/RouteMap";
 import { WeatherStrip, hasPrecipitationRisk } from "@/components/WeatherStrip";
 import { getWeatherForZones } from "@/lib/weather.functions";
 import { findRouteWarnings } from "@/lib/route-plausibility";
@@ -1877,8 +1877,8 @@ function MapPanel({
               {geocoding ? "Geocoding…" : `Geocode ${missing} address${missing === 1 ? "" : "es"}`}
             </Button>
           )}
-          {groups.map((g) => (
-            <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-2xs">
+          {legendEntries(groups).map((g) => (
+            <div key={g.key} className="flex items-center gap-1 text-2xs">
               <span
                 className="inline-block h-2.5 w-2.5 rounded-full"
                 style={{ background: g.color }}

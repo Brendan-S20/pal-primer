@@ -40,7 +40,7 @@ export type MapVisit = {
   } | null;
 };
 
-type TechGroup = {
+export type TechGroup = {
   staffId: string | null;
   name: string;
   color: string;
@@ -975,6 +975,32 @@ export function buildTechGroups(
     }
   }
   return groups;
+}
+
+/**
+ * One legend row per THING ON THE MAP, not per polyline group.
+ *
+ * buildTechGroups returns one group per polyline, which is not one per tech:
+ * perDay splits a tech into a group per day (so a week legend read "Sam, Sam,
+ * Sam, Sam, Sam"), and unassigned work splits by zone into several groups that
+ * all carry staffId null. The legend keyed rows by `staffId ?? "u"`, so both
+ * shapes produced duplicate React keys; the E2E suite caught the null case as
+ * a console error the evening the demo seed began putting unassigned work in
+ * two zones on the org's own today.
+ *
+ * Keyed by staff id for a tech (one row however many days it spans; the colour
+ * is per tech already) and by name for an unassigned zone group, whose name
+ * carries the zone and is therefore unique among them.
+ */
+export function legendEntries(
+  groups: ReadonlyArray<Pick<TechGroup, "staffId" | "name" | "color">>,
+): Array<{ key: string; name: string; color: string }> {
+  const out = new Map<string, { key: string; name: string; color: string }>();
+  for (const g of groups) {
+    const key = g.staffId ? `staff:${g.staffId}` : `unassigned:${g.name}`;
+    if (!out.has(key)) out.set(key, { key, name: g.name, color: g.color });
+  }
+  return [...out.values()];
 }
 
 function escapeHtml(s: string) {
