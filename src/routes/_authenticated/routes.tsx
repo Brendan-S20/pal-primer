@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
-import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { AiSection, DispatchPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -19,7 +19,7 @@ import {
   getDispatchSettings,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
-import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
+import { RouteMap, buildTechGroups, legendEntries, techColorMap } from "@/components/RouteMap";
 import { WeatherStrip, hasPrecipitationRisk } from "@/components/WeatherStrip";
 import { getWeatherForZones } from "@/lib/weather.functions";
 import { findRouteWarnings } from "@/lib/route-plausibility";
@@ -126,12 +126,17 @@ function toLocalISO(d: Date) {
   const off = d.getTimezoneOffset();
   return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 10);
 }
-function todayISO() {
-  return toLocalISO(new Date());
-}
-
 function RoutesPage() {
-  const [day, setDay] = useState(todayISO());
+  // The ORG's today, not the phone's. This is the dispatch board: drag a
+  // card, bulk-reassign a lane, complete from the office, and the day it
+  // opens on is the day those actions land on. It asked the device, the
+  // same fault My Day and the client pages were cured of, and this page
+  // was the one the sweeps missed. Explicit pick, else the org's today,
+  // resolved at render so it also follows midnight (the My Day pattern);
+  // `setDay(null)` means "back to following today".
+  const orgTodayIso = useOrgToday();
+  const [pickedDay, setDay] = useState<string | null>(null);
+  const day = pickedDay ?? orgTodayIso;
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
@@ -435,13 +440,13 @@ function RoutesPage() {
     // Still literally "Today" when it is today — the word is the right one for
     // the case people are in nearly all of the time, and losing it to a date
     // string would make the ordinary day read as an unusual one.
-    if (day === todayISO()) return "Today";
+    if (day === orgTodayIso) return "Today";
     return at(day).toLocaleDateString(undefined, {
       weekday: "long",
       month: "short",
       day: "numeric",
     });
-  }, [range, day, rangeStart, rangeEnd]);
+  }, [range, day, rangeStart, rangeEnd, orgTodayIso]);
   const { data: visitsData } = useQuery({
     queryKey: ["visits", rangeStart, rangeEnd],
     queryFn: () =>
@@ -1009,9 +1014,9 @@ function RoutesPage() {
               className="h-9"
               onClick={() => {
                 setLocalColumns(null);
-                setDay(todayISO());
+                setDay(null);
               }}
-              disabled={day === todayISO()}
+              disabled={day === orgTodayIso}
             >
               Today
             </Button>
@@ -1041,7 +1046,7 @@ function RoutesPage() {
                 onClick={() => setRangePersist(r)}
                 className={`px-3 py-1.5 touch:min-h-11 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
+                {r === "today" ? "Day" : r === "week" ? "Week" : "Month"}
               </button>
             ))}
           </div>
@@ -1842,7 +1847,7 @@ function MapPanel({
         <div>
           <h2 className="text-sm font-semibold">Map</h2>
           <p className="text-2xs text-muted-foreground">
-            {mappable} of {visits.length} visits on map. Click a pin or a card to view details.
+            {mappable} of {visits.length} visits on map. Tap a pin or a card to view details.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1872,8 +1877,8 @@ function MapPanel({
               {geocoding ? "Geocoding…" : `Geocode ${missing} address${missing === 1 ? "" : "es"}`}
             </Button>
           )}
-          {groups.map((g) => (
-            <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-2xs">
+          {legendEntries(groups).map((g) => (
+            <div key={g.key} className="flex items-center gap-1 text-2xs">
               <span
                 className="inline-block h-2.5 w-2.5 rounded-full"
                 style={{ background: g.color }}

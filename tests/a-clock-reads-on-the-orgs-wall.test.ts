@@ -95,6 +95,14 @@ describe("the technician surfaces ask the org what day it is", () => {
     expect(s).not.toMatch(DEVICE_TODAY);
   });
 
+  it("the dispatch board opens on the org's today", () => {
+    // The page the office DRAGS work on. The sweeps that fixed My Day and
+    // the client pages missed it; its private todayISO() asked the device.
+    const s = src("src/routes/_authenticated/routes.tsx");
+    expect(s).toContain("useOrgToday(");
+    expect(s).not.toMatch(/function todayISO|toLocalISO\(new Date\(\)\)/);
+  });
+
   it("my-schedule badges Today on the org's today", () => {
     const s = src("src/routes/_authenticated/my-schedule.tsx");
     expect(s).toContain("useOrgToday(");

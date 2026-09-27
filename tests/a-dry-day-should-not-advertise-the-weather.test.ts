@@ -368,7 +368,8 @@ describe("the period title is the date picker", () => {
     const src = codeOnly(routes());
     expect(src).toMatch(/onClick=\{\(\) => shiftDay\(-1\)\}/);
     expect(src).toMatch(/onClick=\{\(\) => shiftDay\(1\)\}/);
-    expect(src).toMatch(/disabled=\{day === todayISO\(\)\}/);
+    // The org's today since the board stopped asking the device.
+    expect(src).toMatch(/disabled=\{day === orgTodayIso\}/);
   });
 
   it("gives the title and the calendar's days a thumb-sized target", () => {

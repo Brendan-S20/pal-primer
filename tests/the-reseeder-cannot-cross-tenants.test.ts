@@ -162,7 +162,10 @@ describe("the reseeder leaves an org a demo can be shown from", () => {
     // so /my-day was empty the moment it finished. Weekdays are now offsets
     // from today's own weekday rather than fixed days, which would otherwise
     // produce a today-route one day in seven.
-    expect(body).toMatch(/EXTRACT\(DOW FROM current_date\)/i);
+    // Offsets from the ORG's today since 20260927030000: current_date was
+    // the database's UTC date, tomorrow every US evening.
+    expect(body).toMatch(/EXTRACT\(DOW FROM today\)/i);
+    expect(body).toMatch(/today\s*:=\s*\(now\(\) AT TIME ZONE _tz\)::date/i);
     expect(body).toMatch(/scheduled_on = today/);
   });
 
@@ -174,8 +177,9 @@ describe("the reseeder leaves an org a demo can be shown from", () => {
     // assertion with the 'month' removed. Checking the parts that survive keeps
     // the assertion honest — both must be present, and neither can be satisfied
     // by a comment, because comments are stripped too.
-    expect(body).toMatch(/GREATEST\(date_trunc\(/);
-    expect(body).toMatch(/current_date - 3/);
+    // Same two halves, now read off the org's today (som is its month).
+    expect(body).toMatch(/som\s*:=\s*date_trunc\(/);
+    expect(body).toMatch(/GREATEST\(som, today - 3\)/);
   });
 
   it("dates payments explicitly rather than letting created_at default", () => {
