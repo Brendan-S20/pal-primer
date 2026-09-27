@@ -7,6 +7,7 @@ import { listClients } from "@/lib/clients.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquarePlus } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/messages")({
   component: MessagesLayout,
@@ -129,7 +130,7 @@ function MessagesLayout() {
                     {t.body}
                   </span>
                   <span className="text-3xs text-muted-foreground">
-                    {new Date(t.created_at).toLocaleString()}
+                    {formatDateTime(t.created_at)}
                   </span>
                 </Link>
               </li>

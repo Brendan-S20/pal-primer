@@ -12,6 +12,7 @@ import {
   revokeFranchiseLinkCode,
   type FranchiseLinkCode,
 } from "@/lib/franchise.functions";
+import { formatDay } from "@/lib/format";
 
 // BUILD-6 — the parent's side of recruiting a location.
 //
@@ -122,7 +123,7 @@ export function FranchiseLinkCodes() {
                   {c.state === "active" && (
                     <>
                       <span className="text-xs text-muted-foreground">
-                        expires {new Date(c.expiresAt).toLocaleDateString()}
+                        expires {formatDay(c.expiresAt)}
                       </span>
                       <Button variant="outline" size="sm" onClick={() => copy(c.code)}>
                         {copied === c.code ? (

@@ -22,6 +22,7 @@ import {
   suggestZonePricing,
   applyZonePricing,
 } from "@/lib/ai-tools.functions";
+import { formatDay } from "@/lib/format";
 
 /** Collapsed-by-default wrapper for embedding an AI tool in a workflow page.
  *  The panel (and its queries) only mounts when opened. */
@@ -235,7 +236,7 @@ export function ChurnPanel() {
                     </span>
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{c.churn_reason}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{c.churn_scored_at ? new Date(c.churn_scored_at).toLocaleDateString() : ""}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{c.churn_scored_at ? formatDay(c.churn_scored_at) : ""}</td>
                 </tr>
               ))
             )}

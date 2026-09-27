@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useRowSelection } from "@/hooks/useRowSelection";
-import { formatDay } from "@/lib/format";
+import { formatDateTime, formatDay, formatPhone } from "@/lib/format";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/concerns")({
@@ -43,7 +43,7 @@ const STATUS_LABEL: Record<ConcernStatus, string> = {
 };
 
 function fmt(d: string) {
-  return new Date(d).toLocaleString();
+  return formatDateTime(d);
 }
 
 function ConcernsPage() {
@@ -276,7 +276,7 @@ function ConcernsPage() {
                     </div>
                     <div className="mt-1 break-words text-xs text-muted-foreground">
                       Submitted {fmt(c.created_at)}
-                      {client?.primary_phone ? ` · ${client.primary_phone}` : ""}
+                      {client?.primary_phone ? ` · ${formatPhone(client.primary_phone)}` : ""}
                       {client?.primary_email ? ` · ${client.primary_email}` : ""}
                     </div>
                     </div>

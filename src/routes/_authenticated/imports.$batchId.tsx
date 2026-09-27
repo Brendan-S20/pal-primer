@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getImportBatch, commitImport, cancelImport } from "@/lib/imports.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
   component: BatchDetail,
@@ -80,7 +81,7 @@ function BatchDetail() {
             {batch.source} · {batch.filename ?? "import"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Created {new Date(batch.created_at).toLocaleString()}
+            Created {formatDateTime(batch.created_at)}
           </p>
         </div>
         <ImportStatusBadge status={batch.status} />

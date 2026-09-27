@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useMemo, useState } from "react";
 import { humanizeEnum } from "@/lib/humanize";
+import { formatDateTime, formatPhone } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/leads")({
   component: LeadsPage,
@@ -235,7 +236,7 @@ function LeadsPage() {
                       <>
                         {" · "}
                         <a href={`tel:${l.phone}`} className="underline">
-                          {l.phone}
+                          {formatPhone(l.phone)}
                         </a>
                       </>
                     ) : null}
@@ -251,7 +252,7 @@ function LeadsPage() {
                     <p className="mt-2 max-w-2xl whitespace-pre-wrap text-sm">{l.message}</p>
                   ) : null}
                   <div className="mt-2 text-xs text-muted-foreground">
-                    {new Date(l.created_at).toLocaleString()} · source: {humanizeEnum(l.source)}
+                    {formatDateTime(l.created_at)} · source: {humanizeEnum(l.source)}
                   </div>
                 </div>
                 <div className="flex w-40 flex-col gap-2">

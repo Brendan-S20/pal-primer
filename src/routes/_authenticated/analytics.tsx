@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle } from "lucide-react";
 import { PlanGate } from "@/components/PlanGate";
 import { BusinessAdvisor } from "@/components/BusinessAdvisor";
+import { formatDateTime, formatDay } from "@/lib/format";
 
 function fmt(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -567,12 +568,10 @@ function WinBackTab() {
                         {r.churn_reason ?? "-"}
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {r.last_visit_date ? new Date(r.last_visit_date).toLocaleDateString() : "-"}
+                        {r.last_visit_date ? formatDay(r.last_visit_date) : "-"}
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {r.last_winback_sent_at
-                          ? `sent ${new Date(r.last_winback_sent_at).toLocaleDateString()}`
-                          : "-"}
+                        {r.last_winback_sent_at ? `sent ${formatDay(r.last_winback_sent_at)}` : "-"}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Button
@@ -707,7 +706,7 @@ function DigestTab() {
 
           {settings.data?.lastSentAt ? (
             <p className="text-xs text-muted-foreground">
-              Last sent {new Date(settings.data.lastSentAt).toLocaleString()}.
+              Last sent {formatDateTime(settings.data.lastSentAt)}.
             </p>
           ) : savedRecipient ? (
             <p className="text-xs text-muted-foreground">

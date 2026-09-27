@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { AlertTriangle, Package, Plus } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/inventory")({
   component: InventoryPage,
@@ -341,7 +342,7 @@ function InventoryPage() {
                     const st = Array.isArray(m.staff) ? m.staff[0] : m.staff;
                     return (
                       <tr key={m.id} className="border-b last:border-0">
-                        <td className="px-4 py-2 text-muted-foreground">{new Date(m.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-2 text-muted-foreground">{formatDateTime(m.created_at)}</td>
                         <td className="px-4 py-2"><Badge variant="outline">{m.kind}</Badge></td>
                         <td className="px-4 py-2">{item?.name ?? "-"}</td>
                         <td className="px-4 py-2">{fmtQty(m.quantity)} {item?.unit ?? ""}</td>

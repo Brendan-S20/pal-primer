@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/table";
 import { Copy, Send, X, Plus, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/platform/invites")({
   head: () => ({
@@ -142,7 +143,7 @@ function InvitesPage() {
                         <Badge variant={STATUS_TONE[r.status]}>{r.status}</Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(r.expires_at).toLocaleDateString()}
+                        {formatDay(r.expires_at)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {r.invited_by_email ?? "-"}

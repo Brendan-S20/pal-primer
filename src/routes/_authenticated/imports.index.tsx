@@ -16,6 +16,7 @@ import {
 } from "@/lib/imports.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/imports/")({
   component: ImportsPage,
@@ -167,7 +168,7 @@ function ImportsPage() {
                 {data.batches.map((b: any) => (
                   <tr key={b.id} className="border-t">
                     <td className="px-4 py-3 text-muted-foreground">
-                      {new Date(b.created_at).toLocaleString()}
+                      {formatDateTime(b.created_at)}
                     </td>
                     <td className="px-4 py-3">{SOURCE_LABELS[b.source] ?? b.source}</td>
                     <td className="px-4 py-3 text-muted-foreground">{b.filename ?? "-"}</td>

@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
+import { formatDay } from "@/lib/format";
 
 function ResendVerification() {
   const sendFn = useServerFn(sendEmailVerification);
@@ -461,7 +462,7 @@ function ProcessingFeeCard() {
                 I've given the card networks and my processor the required notice.
                 {s.attestedAt && (
                   <span className="block text-xs text-muted-foreground">
-                    Confirmed {new Date(s.attestedAt).toLocaleDateString()}.
+                    Confirmed {formatDay(s.attestedAt)}.
                   </span>
                 )}
               </span>
@@ -860,7 +861,7 @@ function BalanceSummary() {
               // commitment from the bank. Presenting it flat would make us
               // answerable for a date we do not control.
               <div className="text-2xs text-muted-foreground">
-                Expected {new Date(d.lastPayout.arrivalDate).toLocaleDateString()}
+                Expected {formatDay(new Date(d.lastPayout.arrivalDate).toISOString())}
               </div>
             )}
           </div>

@@ -9,6 +9,7 @@ import {
 } from "@/lib/ai-receptionist.functions";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { formatDateTime, formatPhone } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")({
   component: Page,
@@ -164,7 +165,7 @@ function Page() {
                     <span className={`mr-2 rounded px-1.5 py-0.5 text-3xs font-medium uppercase ${l.channel === "voice" ? "bg-blue-100 text-blue-800" : "bg-muted"}`}>
                       {l.channel ?? "sms"}
                     </span>
-                    {new Date(l.created_at).toLocaleString()} · {l.from_number}
+                    {formatDateTime(l.created_at)} · {formatPhone(l.from_number)}
                     {l.channel === "voice" && l.turn != null ? ` · turn ${l.turn}` : ""}
                   </span>
                   <span>

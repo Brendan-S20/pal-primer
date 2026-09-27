@@ -50,9 +50,7 @@ function printGiftCard(card: any, orgName: string) {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const amount = fmtMoney(card.initial_balance_cents);
-  const expires = card.expires_at
-    ? `Expires ${new Date(card.expires_at).toLocaleDateString()}`
-    : "";
+  const expires = card.expires_at ? `Expires ${formatDay(card.expires_at)}` : "";
   w.document.write(`<!doctype html><html><head><title>Gift card ${esc(card.code)}</title>
 <style>
   * { box-sizing: border-box; }

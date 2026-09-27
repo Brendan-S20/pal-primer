@@ -58,6 +58,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { supabase } from "@/integrations/supabase/client";
 import { HelpTip } from "@/components/HelpTip";
+import { formatDateTime } from "@/lib/format";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -757,7 +758,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                             />
                           </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">
-                            {new Date(r.collected_at).toLocaleString()}
+                            {formatDateTime(r.collected_at)}
                           </td>
                           <td className="px-3 py-2">
                             <Badge variant="outline">
@@ -1140,9 +1141,11 @@ function renderNoticeText(n: {
   fineCents: number;
   notes: string | null;
 }) {
+  // date-format-ok: this builds a printed notice LETTER, where the reader's
+  // own numeric locale date is the convention, not the app's "Sat, Sep 26".
   const today = new Date().toLocaleDateString();
-  const collected = new Date(n.collectedAt).toLocaleDateString();
-  const matched = n.matchedAt ? new Date(n.matchedAt).toLocaleDateString() : "-";
+  const collected = new Date(n.collectedAt).toLocaleDateString(); // date-format-ok: letter
+  const matched = n.matchedAt ? new Date(n.matchedAt).toLocaleDateString() : "-"; // date-format-ok: letter
   const fine = `$${(n.fineCents / 100).toFixed(2)}`;
   return `${today}
 
