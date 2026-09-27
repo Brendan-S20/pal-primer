@@ -108,10 +108,10 @@ function WasteLogPage() {
   const totalLbs = manifests.reduce((s, m) => s + Number(m.weight_lbs ?? 0), 0);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
             Waste disposal log <HelpTip article="waste-log" />
           </h1>
           <p className="text-sm text-muted-foreground">

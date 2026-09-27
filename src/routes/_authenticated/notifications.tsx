@@ -58,7 +58,7 @@ function NotificationsPage() {
               page. The tech tab bar has room for one short word and "Alerts"
               is it, so the page adopts the tab's name rather than greeting the
               person with a different one than the button they just pressed. */}
-          <h1 className="text-2xl font-semibold">Alerts</h1>
+          <h1 className="text-2xl font-bold tracking-tight md:text-xl md:font-semibold">Alerts</h1>
           <p className="text-sm text-muted-foreground">
             Recent activity. Alerts are automatically deleted after 30 days.
           </p>

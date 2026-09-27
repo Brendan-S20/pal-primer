@@ -44,7 +44,7 @@ export const Route = createFileRoute("/_authenticated/analytics")({
 
 function AnalyticsPage() {
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6 overflow-x-hidden max-w-full">
+    <div className="mx-auto max-w-6xl space-y-6 overflow-x-hidden max-w-full">
       <div>
         <h1 className="text-2xl font-semibold">Advanced analytics</h1>
         <p className="text-sm text-muted-foreground">
