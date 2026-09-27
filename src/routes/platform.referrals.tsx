@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Gift } from "lucide-react";
 import { SignupAttribution } from "@/components/SignupAttribution";
+import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/platform/referrals")({
   component: ReferralsPage,
@@ -239,7 +240,7 @@ function ReferralsPage() {
                           <div className="text-xs text-muted-foreground">code {r.code_used}</div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {new Date(r.created_at).toLocaleDateString()}
+                          {formatDay(r.created_at)}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
@@ -257,7 +258,7 @@ function ReferralsPage() {
                               !eligible &&
                               !r.flagged && (
                                 <span className="text-xs text-muted-foreground">
-                                  eligible {new Date(r.eligible_at).toLocaleDateString()}
+                                  eligible {formatDay(r.eligible_at)}
                                 </span>
                               )}
                             {r.status === "paid" && r.paid_note && (

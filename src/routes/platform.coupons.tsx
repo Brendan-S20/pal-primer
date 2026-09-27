@@ -26,6 +26,7 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TicketPercent } from "lucide-react";
+import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/platform/coupons")({
   component: CouponsPage,
@@ -167,7 +168,7 @@ function CouponsPage() {
                       {c.times_redeemed}{c.max_redemptions ? ` / ${c.max_redemptions}` : ""}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {c.expires_at ? new Date(c.expires_at).toLocaleDateString() : "-"}
+                      {c.expires_at ? formatDay(c.expires_at) : "-"}
                     </TableCell>
                     <TableCell>
                       {c.stripe_coupon_id ? <Badge variant="outline">Mirrored</Badge> : <Badge variant="secondary">Local</Badge>}

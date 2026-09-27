@@ -11,6 +11,7 @@ import {
 } from "@/lib/accounting.functions";
 import { startAccountingOAuth } from "@/lib/accounting-oauth.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/settings/accounting")({
   head: () => ({ meta: [{ title: "Accounting sync · Settings" }] }),
@@ -166,7 +167,7 @@ function AccountingSettings() {
                   <div className="text-xs text-muted-foreground">
                     {c.provider === "quickbooks" ? `Realm ${c.realm_id ?? "-"}` : `Tenant ${c.tenant_id ?? "-"}`}
                     {" · "}Auto-sync {c.auto_sync ? "on" : "off"}
-                    {c.last_sync_at && ` · Last sync ${new Date(c.last_sync_at).toLocaleString()}`}
+                    {c.last_sync_at && ` · Last sync ${formatDateTime(c.last_sync_at)}`}
                   </div>
                 </div>
                 <button
@@ -283,7 +284,7 @@ function AccountingSettings() {
                   </div>
                   {l.message && <div className="text-xs text-muted-foreground">{l.message}</div>}
                 </div>
-                <div className="text-xs text-muted-foreground">{new Date(l.created_at).toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">{formatDateTime(l.created_at)}</div>
               </li>
             ))}
           </ul>

@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Check, Copy, Gift, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { APP_NAME } from "@/lib/scoop";
+import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/settings/referrals")({
   component: ReferBusinessPage,
@@ -127,9 +128,7 @@ function ReferBusinessPage() {
                 {data.referrals.map((r) => (
                   <tr key={r.id} className="border-t">
                     <td className="px-4 py-2">{r.referred_org_name}</td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {new Date(r.created_at).toLocaleDateString()}
-                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{formatDay(r.created_at)}</td>
                     <td className="px-4 py-2">{statusBadge(r)}</td>
                     <td className="px-4 py-2">
                       {r.status === "converted" || r.status === "paid"

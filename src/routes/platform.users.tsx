@@ -37,6 +37,7 @@ import {
   ChevronLeft, ChevronRight, Copy, KeyRound, Loader2, ShieldOff, UserCog, Users,
 } from "lucide-react";
 import { humanizeEnum } from "@/lib/humanize";
+import { formatDateTime, formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/platform/users")({
   component: UsersPage,
@@ -332,8 +333,8 @@ function UsersPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : "-"}</TableCell>
-                    <TableCell className="text-sm">{u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell className="text-sm">{u.last_sign_in_at ? formatDateTime(u.last_sign_in_at) : "-"}</TableCell>
+                    <TableCell className="text-sm">{u.created_at ? formatDay(u.created_at) : "-"}</TableCell>
                   </TableRow>
                 ))}
                 {q.isLoading ? (
@@ -532,7 +533,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                 {d.email ? (
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     {d.email_confirmed_at
-                      ? `Confirmed ${new Date(d.email_confirmed_at).toLocaleDateString()}`
+                      ? `Confirmed ${formatDay(d.email_confirmed_at)}`
                       : "Not confirmed"}
                   </div>
                 ) : null}
@@ -543,11 +544,11 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Created</div>
-                <div>{d.created_at ? new Date(d.created_at).toLocaleString() : "-"}</div>
+                <div>{d.created_at ? formatDateTime(d.created_at) : "-"}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Last sign-in</div>
-                <div>{d.last_sign_in_at ? new Date(d.last_sign_in_at).toLocaleString() : "Never"}</div>
+                <div>{d.last_sign_in_at ? formatDateTime(d.last_sign_in_at) : "Never"}</div>
               </div>
             </div>
 

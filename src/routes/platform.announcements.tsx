@@ -23,6 +23,7 @@ import {
 import { Trash2, Megaphone, Send } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/platform/announcements")({
   component: AnnouncementsPage,
@@ -185,7 +186,7 @@ function AnnouncementsPage() {
                     {a.send_email && a.email_sent_at ? <Badge variant="outline" className="ml-1">Emailed</Badge> : null}
                   </CardTitle>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {a.starts_at ? `Starts ${new Date(a.starts_at).toLocaleString()}` : "No start"} · {a.ends_at ? `Ends ${new Date(a.ends_at).toLocaleString()}` : "No end"}
+                    {a.starts_at ? `Starts ${formatDateTime(a.starts_at)}` : "No start"} · {a.ends_at ? `Ends ${formatDateTime(a.ends_at)}` : "No end"}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

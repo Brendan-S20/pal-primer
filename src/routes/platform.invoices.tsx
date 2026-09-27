@@ -15,6 +15,7 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Receipt } from "lucide-react";
+import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/platform/invoices")({
   component: InvoicesPage,
@@ -102,8 +103,8 @@ function InvoicesPage() {
                       ) : null}
                     </TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
-                    <TableCell className="text-sm">{r.issued_at ? new Date(r.issued_at).toLocaleDateString() : "-"}</TableCell>
-                    <TableCell className="text-sm">{r.paid_at ? new Date(r.paid_at).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell className="text-sm">{r.issued_at ? formatDay(r.issued_at) : "-"}</TableCell>
+                    <TableCell className="text-sm">{r.paid_at ? formatDay(r.paid_at) : "-"}</TableCell>
                     <TableCell className="text-right">
                       {r.hosted_invoice_url ? (
                         <Button variant="outline" size="sm" asChild><a href={r.hosted_invoice_url} target="_blank" rel="noreferrer">View</a></Button>

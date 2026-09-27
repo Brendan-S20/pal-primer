@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/messages/$clientId")({
   component: Thread,
@@ -94,7 +95,7 @@ function Thread() {
             >
               <div className="whitespace-pre-wrap">{m.body}</div>
               <div className="mt-1 text-3xs opacity-70">
-                {new Date(m.created_at).toLocaleString()} · {m.status}
+                {formatDateTime(m.created_at)} · {m.status}
                 {m.error ? ` · ${m.error}` : ""}
               </div>
             </div>

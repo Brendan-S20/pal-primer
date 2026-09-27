@@ -95,7 +95,9 @@ describe("the balance headline", () => {
 
   it("calls the payout date an estimate", () => {
     // arrival_date is Stripe's estimate, not a commitment from the bank.
-    expect(page).toMatch(/Expected \{new Date/);
+    // The word is the point; the date inside it goes through formatDay like
+    // every other date (tests/one-way-to-print-a-date.test.ts).
+    expect(page).toMatch(/Expected \{formatDay\(/);
   });
 
   it("stays quiet when the balance cannot be fetched", () => {

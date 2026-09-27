@@ -25,7 +25,7 @@ import { Check, MessageSquareOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SMS_CONSENT_TEXT, recordClientSmsConsent } from "@/lib/clients.functions";
-import { formatPhone } from "@/lib/format";
+import { formatDay, formatPhone } from "@/lib/format";
 
 const digits = (p: string | null | undefined) => (p ?? "").replace(/[^0-9]/g, "");
 
@@ -100,8 +100,7 @@ export function TextingConsentPanel({ client }: { client: any }) {
 
       {canText ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          Consented {new Date(consentAt!).toLocaleDateString()} for{" "}
-          {formatPhone(client.sms_consent_phone)}
+          Consented {formatDay(consentAt!)} for {formatPhone(client.sms_consent_phone)}
           {client.sms_consent_source === "portal"
             ? ". They opted in themselves from the client portal."
             : client.sms_consent_source === "staff"

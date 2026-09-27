@@ -93,6 +93,7 @@ import { useTabletTier } from "@/hooks/useTabletTier";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
+import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -1170,7 +1171,7 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
   if (secs > 8 * 3600) {
     return (
       <span className="font-mono text-xs text-muted-foreground">
-        8h+, started {new Date(startedAt).toLocaleDateString()}
+        8h+, started {formatDay(startedAt)}
       </span>
     );
   }
