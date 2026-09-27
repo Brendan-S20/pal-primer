@@ -24,7 +24,7 @@ type Dog = {
   name: string;
   breed: string;
   weightClass: string;
-  temperament: "friendly" | "shy" | "anxious" | "aggressive" | "unknown";
+  temperament: "friendly" | "nervous" | "aggressive" | "unknown";
   notes: string;
 };
 
@@ -633,8 +633,7 @@ function NewClientWizard() {
                     >
                       <option value="unknown">Unknown</option>
                       <option value="friendly">Friendly</option>
-                      <option value="shy">Shy</option>
-                      <option value="anxious">Anxious</option>
+                      <option value="nervous">Nervous</option>
                       <option value="aggressive">Aggressive</option>
                     </select>
                   </div>

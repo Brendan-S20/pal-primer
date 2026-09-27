@@ -660,7 +660,10 @@ const onboardSchema = z.object({
         name: z.string().min(1).max(80),
         breed: z.string().max(120).optional(),
         weightClass: z.string().max(40).optional(),
-        temperament: z.enum(["friendly", "shy", "anxious", "aggressive", "unknown"]).optional(),
+        // The dog_temperament enum's own values. The wizard offered "shy" and
+        // "anxious", which the enum has never had, so any dog marked either
+        // failed the whole onboarding on the dogs insert.
+        temperament: z.enum(["friendly", "nervous", "aggressive", "unknown"]).optional(),
         notes: z.string().max(500).optional(),
       }),
     )
@@ -701,6 +704,17 @@ export const onboardClient = createServerFn({ method: "POST" })
       .single();
     if (cErr) throw new Error(cErr.message);
     const clientId = cRow.id as string;
+
+    // All-or-nothing for the RECORD. The four writes below are separate
+    // statements, and a failure after this point used to leave a client with
+    // a property and no dogs or service in the list -- and every retry made
+    // another one (found by a first-time-owner persona test, 2026-09-27).
+    // Deleting the client cascades to its property, dogs and subscription.
+    // Side effects after the subscription (visit generation, activity, the
+    // welcome email) are not undone: by then the record is complete.
+    const undoClient = async () => {
+      await supabase.from("clients").delete().eq("id", clientId);
+    };
 
     // 2) property (best-effort geocode)
     let latitude: number | null = null;
@@ -761,7 +775,10 @@ export const onboardClient = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (pErr) throw new Error(pErr.message);
+    if (pErr) {
+      await undoClient();
+      throw new Error(pErr.message);
+    }
     const propertyId = pRow.id as string;
 
     // 3) dogs
@@ -776,7 +793,10 @@ export const onboardClient = createServerFn({ method: "POST" })
         notes: d.notes || null,
       }));
       const { error: dErr } = await supabase.from("dogs").insert(rows);
-      if (dErr) throw new Error(dErr.message);
+      if (dErr) {
+        await undoClient();
+        throw new Error(dErr.message);
+      }
     }
 
     // 4) subscription
@@ -796,7 +816,10 @@ export const onboardClient = createServerFn({ method: "POST" })
         billing_cadence: s.billingCadence ?? "postpaid",
         preferred_weekdays: s.preferredWeekdays?.length ? s.preferredWeekdays : null,
       });
-      if (sErr) throw new Error(sErr.message);
+      if (sErr) {
+        await undoClient();
+        throw new Error(sErr.message);
+      }
 
       // An active service must have visits (QA follow-up 1.6): generate the
       // schedule immediately instead of waiting for the nightly job.
