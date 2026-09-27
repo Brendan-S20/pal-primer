@@ -1934,6 +1934,19 @@ function VisitCard({
               Complete
             </Button>
           )}
+          {/* The reason Complete is grey, UNDER Complete. It lived at the
+              bottom of the card, below More options, where the Resume strip
+              covers it on the in-progress stop, and the button's own `title`
+              is a hover tooltip, which a phone does not have. Shown only when
+              the button is on screen and the photo is the one thing missing. */}
+          {(inProg || missed) &&
+            canPerformVisit &&
+            !hasCompletionPhoto &&
+            !hasQueuedCompletionPhoto && (
+              <p className="-mt-1 text-center text-xs text-muted-foreground">
+                Take a completion photo to finish this visit.
+              </p>
+            )}
 
           {missed && (
             <p className="text-xs text-muted-foreground">
@@ -2040,14 +2053,6 @@ function VisitCard({
               </div>
             </div>
           )}
-          {canPerformVisit &&
-            !hasCompletionPhoto &&
-            !hasQueuedCompletionPhoto &&
-            (inProg || scheduled) && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Take a completion photo to finish this visit.
-              </p>
-            )}
 
           {showSkip && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3">
