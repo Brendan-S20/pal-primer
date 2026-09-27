@@ -199,7 +199,8 @@ describe("the schedule page's heading follows the range it is showing", () => {
     const body = memo.slice(0, memo.indexOf("}, ["));
     expect(body).toMatch(/rangeStart/);
     expect(body).toMatch(/rangeEnd/);
-    expect(memo).toMatch(/\}, \[range, day, rangeStart, rangeEnd\]\)/);
+    // orgTodayIso joins the deps: "Today" is judged on the org's clock now.
+    expect(memo).toMatch(/\}, \[range, day, rangeStart, rangeEnd, orgTodayIso\]\)/);
   });
 
   it("says something different for each of the three ranges", () => {
@@ -208,7 +209,7 @@ describe("the schedule page's heading follows the range it is showing", () => {
     expect(body).toMatch(/range === "month"/);
     expect(body).toMatch(/range === "week"/);
     // "Today" survives as a word, but only on the day it is true of.
-    expect(body).toMatch(/day === todayISO\(\)/);
+    expect(body).toMatch(/day === orgTodayIso/);
     expect(body).toMatch(/return "Today"/);
   });
 
