@@ -128,6 +128,10 @@ function WasteLogPage() {
             size="sm"
             variant={showForm ? "ghost" : "outline"}
             onClick={() => setShowForm((v) => !v)}
+            // Visible "Add" beside the "Log a dump" heading; the accessible name
+            // carries the whole action for a screen reader.
+            aria-label={showForm ? "Close log a dump" : "Log a dump"}
+            aria-expanded={showForm}
           >
             {showForm ? (
               <>

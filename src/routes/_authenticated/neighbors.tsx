@@ -543,6 +543,11 @@ function NeighborsPage() {
               size="sm"
               variant={showAddForms ? "ghost" : "outline"}
               onClick={() => setShowAddForms((v) => !v)}
+              // The visible word is "Add" because the heading beside it already
+              // says what; a screen reader hears the button alone, so its name
+              // carries the whole action.
+              aria-label={showAddForms ? "Close add doors" : "Add doors"}
+              aria-expanded={showAddForms}
             >
               {showAddForms ? (
                 <>
