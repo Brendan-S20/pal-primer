@@ -231,8 +231,15 @@ function AppShell() {
   //
   // Width-matched to `shellHeaderHidden` rather than applied always, because
   // above the breakpoint the header IS rendered and would then be padded twice.
+  //
+  // NOT on My Day, which draws its own sticky bar carrying the same inset
+  // (the paragraph above says so, and the condition below used to ignore
+  // it): both applied there, so My Day's title sat one whole status-bar
+  // inset, ~57pt measured on an iPhone 17 Pro, lower than every other tab's.
+  // A tech flicking between Today and Waste log watched the page jump. On
+  // the web the inset is 0, so this changes nothing there.
   const mainTopInset =
-    shellHeaderHidden === ""
+    shellHeaderHidden === "" || isMyDay
       ? ""
       : barThroughTablet
         ? "max-lg:pt-[calc(1rem+env(safe-area-inset-top))]"

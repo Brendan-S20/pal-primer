@@ -345,7 +345,10 @@ export function MobileTabBar() {
                       className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors hover:bg-muted active:bg-muted"
                     >
                       <Bell className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      Notifications
+                      {/* The page this opens is titled Alerts, like the tech
+                          tab; a link that names its destination differently
+                          from the destination's own heading reads as two places. */}
+                      Alerts
                     </Link>
                   </li>
                 )}
