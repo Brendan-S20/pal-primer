@@ -46,6 +46,7 @@ import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
+import { startAutoSync, type SyncTrigger } from "@/lib/offline/auto-sync";
 import {
   countPendingForVisit,
   countQueuedCompletionPhotos,
@@ -53,6 +54,9 @@ import {
   listPending,
 } from "@/lib/offline/queue";
 import { runOrQueue } from "@/lib/offline/run-or-queue";
+import { useQueuedLifecycle } from "@/lib/offline/useQueuedLifecycle";
+import { dayAtAGlance } from "@/lib/my-day-progress";
+import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-visit-state";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import {
   describeReadFreshness,
@@ -321,76 +325,94 @@ function MyDay() {
     return `${named[0]} and ${named.length - 1} others`;
   }, []);
 
-  const runSync = useCallback(async () => {
-    // Replay only the signed-in tech's own queued work — see lib/offline/queue.
-    //
-    // resolveOfflineUserId, NOT supabase.auth.getSession(). getSession reads
-    // local storage EXCEPT when the stored token has expired, in which case
-    // supabase-js refreshes it over the network first — which offline hangs for
-    // ever, with no deadline here to stop it. That is the exact defect
-    // action-owner.ts was written to eliminate, and this call site was still
-    // making it: 7am, token aged out overnight, one bar in the yard so
-    // navigator.onLine is true, and Sync does nothing for ever with no toast.
-    //
-    // Worse, the BADGE already used the bounded resolver, so the count said "6
-    // pending" while the button it labels could not act at all — breaking the
-    // one invariant countPending exists to hold: the count and the thing the
-    // button acts on have to be the same set.
-    let uid: string;
-    try {
-      uid = await resolveOfflineUserId();
-    } catch {
-      return;
-    }
-    const res = await syncQueue(callers, uid);
-    if (res.alreadyRunning) {
-      // A replay is already in flight. Saying nothing is indistinguishable from
-      // a dead button.
-      toast.info("Already syncing…");
-      return;
-    }
-    if (res.succeeded > 0) {
-      toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
-      qc.invalidateQueries({ queryKey: ["my-day"] });
-    }
-    if (res.dropped > 0) {
-      // Never folded into the success count: this is a photo whose bytes are
-      // gone, and the tech is the only person who can retake it.
-      toast.error(
-        `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device. Retake if the visit still needs one`,
-        { description: namesFor(res.droppedVisitIds) },
-      );
-      qc.invalidateQueries({ queryKey: ["my-day"] });
-    }
-    if (res.deadLettered > 0) {
-      // Loud, specific, and never folded into any other count. The queue was
-      // blocking everything behind this; giving up unblocks the day, but the
-      // work itself is gone and only the tech can redo it.
+  const runSync = useCallback(
+    async (trigger: SyncTrigger) => {
+      // Replay only the signed-in tech's own queued work — see lib/offline/queue.
       //
-      // And it now NAMES the stop. This is the one message in the app that
-      // asks somebody to drive somewhere a second time, and it used to end
-      // "Check the visit and redo it if needed" without saying which visit --
-      // on a twenty-stop day, with the queue already emptied of the evidence.
-      toast.error(
-        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Go back and redo the work if it still needs doing`,
-        { duration: 12_000, description: namesFor(res.deadLetteredVisitIds) },
-      );
-      qc.invalidateQueries({ queryKey: ["my-day"] });
-    }
-    if (res.failed > 0) {
-      toast.error(`Sync stalled on 1 action, will retry`);
-    }
-  }, [callers, qc, namesFor]);
+      // resolveOfflineUserId, NOT supabase.auth.getSession(). getSession reads
+      // local storage EXCEPT when the stored token has expired, in which case
+      // supabase-js refreshes it over the network first — which offline hangs for
+      // ever, with no deadline here to stop it. That is the exact defect
+      // action-owner.ts was written to eliminate, and this call site was still
+      // making it: 7am, token aged out overnight, one bar in the yard so
+      // navigator.onLine is true, and Sync does nothing for ever with no toast.
+      //
+      // Worse, the BADGE already used the bounded resolver, so the count said "6
+      // pending" while the button it labels could not act at all — breaking the
+      // one invariant countPending exists to hold: the count and the thing the
+      // button acts on have to be the same set.
+      let uid: string;
+      try {
+        uid = await resolveOfflineUserId();
+      } catch {
+        return;
+      }
+      const res = await syncQueue(callers, uid);
+      if (res.alreadyRunning) {
+        // A replay is already in flight. Saying nothing is indistinguishable from
+        // a dead button -- so the BUTTON is told. An automatic run (mount, back
+        // online) is not a request anybody made, and the replay in flight is
+        // already doing its job; telling the tech "Already syncing…" on opening
+        // the page, with nothing queued, was noise. See lib/offline/auto-sync.
+        if (trigger === "tap") toast.info("Already syncing…");
+        return;
+      }
+      if (res.succeeded > 0) {
+        toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
+        qc.invalidateQueries({ queryKey: ["my-day"] });
+      }
+      if (res.dropped > 0) {
+        // Never folded into the success count: this is a photo whose bytes are
+        // gone, and the tech is the only person who can retake it.
+        toast.error(
+          `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device. Retake if the visit still needs one`,
+          { description: namesFor(res.droppedVisitIds) },
+        );
+        qc.invalidateQueries({ queryKey: ["my-day"] });
+      }
+      if (res.deadLettered > 0) {
+        // Loud, specific, and never folded into any other count. The queue was
+        // blocking everything behind this; giving up unblocks the day, but the
+        // work itself is gone and only the tech can redo it.
+        //
+        // And it now NAMES the stop. This is the one message in the app that
+        // asks somebody to drive somewhere a second time, and it used to end
+        // "Check the visit and redo it if needed" without saying which visit --
+        // on a twenty-stop day, with the queue already emptied of the evidence.
+        toast.error(
+          `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Go back and redo the work if it still needs doing`,
+          { duration: 12_000, description: namesFor(res.deadLetteredVisitIds) },
+        );
+        qc.invalidateQueries({ queryKey: ["my-day"] });
+      }
+      if (res.failed > 0) {
+        toast.error(`Sync stalled on 1 action, will retry`);
+      }
+    },
+    [callers, qc, namesFor],
+  );
 
-  // Auto-sync on load + whenever we come back online.
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && !isDefinitelyOffline()) runSync();
-    const on = () => runSync();
-    window.addEventListener("online", on);
-    return () => window.removeEventListener("online", on);
-  }, [runSync]);
+  // Auto-sync on load + whenever we come back online. Once per REAL mount: the
+  // replay on mount is scheduled and the cleanup cancels it, so StrictMode's
+  // rehearsal mount (and a tab flicked away from at once) starts nothing. Not
+  // into a dead zone either: startAutoSync asks isDefinitelyOffline when the
+  // timer fires.
+  useEffect(() => startAutoSync(runSync, window, isDefinitelyOffline), [runSync]);
 
-  const visits = data?.visits ?? [];
+  // The day AS WORKED, not just as the server last described it: every queued
+  // Start, Complete and Skip applied on top. Before this, an offline Complete
+  // was queued correctly and changed nothing the page read -- the card stayed
+  // "in progress" with Complete live (a second tap queued a second
+  // completion), the count did not move, and the bottom bar kept saying
+  // "IN PROGRESS · Resume" about a job that was finished. Everything below
+  // reads `visits`, so the count, the next stop, the bottom bar and the map
+  // all move on together. See lib/offline/queued-visit-state.ts.
+  const queuedLifecycle = useQueuedLifecycle(dataUpdatedAt);
+  const serverVisits = data?.visits;
+  const visits = useMemo(
+    () => withQueuedLifecycle(serverVisits ?? [], queuedLifecycle),
+    [serverVisits, queuedLifecycle],
+  );
   // List or map. Not in the URL: it is a way of looking at the day, not a
   // different day, and a tech who taps Map then reloads in a dead spot should
   // get the list back rather than a grey tile grid.
@@ -445,20 +467,11 @@ function MyDay() {
     }
   }, [online, dayVisits, qc, stationsFn]);
 
-  // "Done" means COMPLETED (H1): a skipped visit is not a finished job, so it
-  // must not inflate the progress bar (the "2 of 7 done · 29%" with 0 completed
-  // bug). Skipped visits are surfaced separately.
-  const completedCount = visits.filter((v: any) => v.status === "completed").length;
-  const skippedCount = visits.filter((v: any) => v.status === "skipped").length;
-  const total = visits.length;
-  const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
-  // BUG-17: a visit the tech has already STARTED outranks anything merely
-  // scheduled. The previous single `.find()` returned whichever came first in
-  // sequence, so a tech who started #3 while #1 and #2 were still scheduled got
-  // pointed at #1 — their open job wasn't surfaced anywhere. Reloading the app
-  // (or a phone dropping the tab) has to bring them back to the job in hand.
-  const activeVisit = visits.find((v: any) => v.status === "in_progress");
-  const nextUp = activeVisit ?? visits.find((v: any) => v.status === "scheduled");
+  // Counted from `visits`, which already carries the queued statuses, so an
+  // offline Complete moves the count and promotes the next stop. The rules
+  // (H1: skipped is not done; BUG-17: an open job outranks the next scheduled
+  // one) live in lib/my-day-progress.ts, where they are tested.
+  const { completedCount, skippedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
 
   // ...and bring it back on screen without the tech hunting for it. Scrolls
   // once per open visit, not on every render, so it never fights a tech who has
@@ -537,7 +550,7 @@ function MyDay() {
                 <button
                   onClick={() => {
                     haptic("tap");
-                    runSync();
+                    runSync("tap");
                   }}
                   className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
                 >
@@ -1079,7 +1092,16 @@ function MyDayMap({
   );
 }
 
-function statusBadge(status: string) {
+/** What the badge says when the status came from the device's queue rather than
+ *  the server. "Syncing" rather than "queued": the work is done, the tech can
+ *  move on, and the only thing outstanding is the device telling the office. */
+const QUEUED_BADGE_LABELS: Record<LifecycleKind, string> = {
+  start: "in progress · syncing",
+  complete: "done · syncing",
+  skip: "skipped · syncing",
+};
+
+function statusBadge(status: string, queuedSync?: LifecycleKind) {
   const map: Record<string, string> = {
     scheduled: "bg-muted text-muted-foreground",
     in_progress: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
@@ -1088,8 +1110,10 @@ function statusBadge(status: string) {
     canceled: "bg-destructive/15 text-destructive",
   };
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-muted"}`}>
-      {status.replace("_", " ")}
+    <span
+      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-muted"}`}
+    >
+      {queuedSync ? QUEUED_BADGE_LABELS[queuedSync] : status.replace("_", " ")}
     </span>
   );
 }
@@ -1666,7 +1690,7 @@ function VisitCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="sr-only">Stop {visit.sequence ?? index}.</span>
-            {statusBadge(visit.status)}
+            {statusBadge(visit.status, visit.queuedSync)}
             {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">

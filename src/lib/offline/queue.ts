@@ -22,6 +22,7 @@
 // the caller's own, and sign-out drops that user's rows.
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import { isLifecycleKind, lifecycleCollision } from "./queued-visit-state";
 
 /** Fields every queued action carries, whatever its kind. */
 type ActionBase = {
@@ -146,7 +147,28 @@ export type NewAction = DistributiveOmit<PendingAction, "id" | "ts">;
 export async function enqueueAction(action: NewAction): Promise<string> {
   const db = await getDb();
   const record = { ...action, id: uid(), ts: Date.now() } as PendingAction;
-  await db.put("actions", record);
+  if (isLifecycleKind(action.kind)) {
+    // A second Complete for the same visit used to be queued as readily as the
+    // first — a tester's second tap on a card that had not moved on made three
+    // pending actions out of two. The check and the write share ONE readwrite
+    // transaction, so two taps cannot both read "nothing queued" and both
+    // write: IndexedDB runs overlapping readwrite transactions on a store one
+    // after the other. See lifecycleCollision for what counts as a repeat.
+    const tx = db.transaction("actions", "readwrite");
+    const hit = lifecycleCollision(await tx.store.getAll(), action);
+    if (hit && "duplicate" in hit) {
+      await tx.done;
+      return hit.duplicate.id;
+    }
+    if (hit) {
+      await tx.done;
+      throw new Error(hit.conflict);
+    }
+    await tx.store.put(record);
+    await tx.done;
+  } else {
+    await db.put("actions", record);
+  }
   window.dispatchEvent(new Event("offline-queue-change"));
   return record.id;
 }
