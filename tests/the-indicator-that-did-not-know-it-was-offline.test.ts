@@ -96,9 +96,14 @@ describe("the field screen asks honestly everywhere", () => {
   });
 
   it("does not auto-sync into a dead zone", () => {
-    expect(page).toMatch(
-      /if \(typeof navigator !== "undefined" && !isDefinitelyOffline\(\)\) runSync\(\)/,
-    );
+    // The mount-time replay moved into lib/offline/auto-sync.ts on 2026-09-28
+    // (StrictMode's rehearsal mount started a second replay and toasted
+    // "Already syncing…"). The honest answer still gates it -- asked when the
+    // replay would start -- and tests/already-syncing-with-nothing-to-sync
+    // drives that gate rather than reading it.
+    expect(page).toMatch(/startAutoSync\(runSync, window, isDefinitelyOffline\)/);
+    const auto = strip(read("src/lib/offline/auto-sync.ts"));
+    expect(auto).toMatch(/if \(!isOffline\(\)\) run\("auto"\)/);
   });
 });
 
