@@ -20,6 +20,7 @@ const ROWS: Array<{ key: keyof Settings; label: string; help: string }> = [
   { key: "notify_email_payment_received", label: "Payment received (receipt)", help: "Sent automatically when a payment is confirmed." },
   { key: "notify_email_overdue", label: "Overdue reminder", help: "Sent by the nightly worker when an invoice is past due." },
   { key: "notify_email_visit_completed", label: "Visit completed", help: "Sent after a tech marks a visit complete. Off by default (can be chatty)." },
+  { key: "notify_email_visit_reminder", label: "Day-before visit reminder", help: "Sent early each morning to every client with a visit the next day, with a link to skip or reschedule. Replies go to your business email." },
   { key: "notify_email_weather_reschedule", label: "Weather reschedule", help: "Sent when a visit is bumped due to weather." },
 ];
 

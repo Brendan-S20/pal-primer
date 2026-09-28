@@ -20,7 +20,8 @@ type NotifyKey =
   | "notify_email_welcome"
   | "notify_email_overdue"
   | "notify_email_win_back"
-  | "notify_email_review_request";
+  | "notify_email_review_request"
+  | "notify_email_visit_reminder";
 
 interface EnqueueParams {
   organizationId: string;
