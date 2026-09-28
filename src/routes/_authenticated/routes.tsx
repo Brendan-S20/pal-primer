@@ -57,6 +57,8 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { formatDay } from "@/lib/format";
 import {
   DndContext,
   PointerSensor,
@@ -672,6 +674,7 @@ function RoutesPage() {
 
   const bulkAssignFn = useServerFn(bulkAssignVisits);
   const bulkRescheduleFn = useServerFn(bulkRescheduleVisits);
+  const { confirm: confirmMove, dialog: moveDialog } = useConfirmDialog();
   const loadFn = useServerFn(getStaffUpcomingLoad);
   const redistributeFn = useServerFn(redistributeStaffWork);
 
@@ -904,6 +907,7 @@ function RoutesPage() {
 
   return (
     <div className="space-y-4">
+      {moveDialog}
       <div className="flex flex-wrap items-end justify-between gap-3">
         {/* The title IS the date picker.
             "I like clicking on the month and it opens the date picker instead
@@ -1713,7 +1717,23 @@ function RoutesPage() {
               <input
                 type="date"
                 className="bg-transparent focus-visible:outline-none"
-                onChange={(e) => e.target.value && bulkRescheduleMut.mutate(e.target.value)}
+                // A date picker fires on every change, and on a phone every
+                // scroll of the wheel is a change: this moved the selection
+                // the moment a day was touched. It asks first now.
+                onChange={async (e) => {
+                  const input = e.currentTarget;
+                  const to = input.value;
+                  if (!to) return;
+                  const n = selected.size;
+                  const ok = await confirmMove({
+                    title: `Move ${n} visit${n === 1 ? "" : "s"} to ${formatDay(to)}?`,
+                    description:
+                      "Completed visits are never moved, and a client who already has a visit that day is left alone.",
+                    confirmLabel: "Move visits",
+                  });
+                  input.value = "";
+                  if (ok) bulkRescheduleMut.mutate(to);
+                }}
                 disabled={bulkRescheduleMut.isPending}
               />
             </label>
