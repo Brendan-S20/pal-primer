@@ -194,8 +194,7 @@ export function MobileDayList({
         </section>
       ))}
       <p className="text-2xs text-muted-foreground">
-        Tap a visit for details, and to complete or cancel it. Moving a visit to another tech or
-        another day is on desktop.
+        Tap a visit for details: complete, cancel, change the tech, or move it to another day.
       </p>
     </div>
   );

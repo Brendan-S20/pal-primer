@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
-import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { orgLocalTime } from "@/lib/org-day";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -21,8 +21,10 @@ import {
   completeVisitFromOffice,
   cancelVisitFromOffice,
   reassignVisit,
+  rescheduleVisitFromOffice,
   listStaff,
 } from "@/lib/visits.functions";
+import { formatDay } from "@/lib/format";
 import { usePermissions } from "@/hooks/useMyRole";
 import { addDog, setDogDna } from "@/lib/dogs.functions";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
@@ -120,11 +122,13 @@ export function VisitDetailDrawer({
   // could not do the one thing a phone is for: a tech calls in sick and the
   // day has to be redistributed from wherever they are standing.
   //
-  // Reassign only. Reschedule and reorder stay desktop — reorder has no
-  // meaning without the board, and reschedule needs manage_client_billing,
-  // which a dispatcher does not hold. reassign_visit authorizes on
-  // can_write_org, which all three office roles pass, so this is reachable by
-  // exactly the people who reach this drawer.
+  // Reassign for every office role: reassign_visit authorizes on
+  // can_write_org, which all three pass. Moving the day is here too since
+  // 2026-09-28, for the roles that hold manage_client_billing (which
+  // rescheduleVisitFromOffice requires, so a dispatcher still does not see
+  // it). Before that it said "is on desktop", and an owner in a driveway with
+  // a customer asking for Thursday had no way to do it. Reorder stays on the
+  // board; it has no meaning without one.
   const doReassign = useServerFn(reassignVisit);
   const listStaffFn = useServerFn(listStaff);
   const { data: staffData } = useQuery({
@@ -132,6 +136,19 @@ export function VisitDetailDrawer({
     queryKey: ["staff"],
     queryFn: () => listStaffFn(),
     staleTime: 5 * 60_000,
+  });
+  const doReschedule = useServerFn(rescheduleVisitFromOffice);
+  const orgToday = useOrgToday();
+  const [moveTo, setMoveTo] = useState("");
+  useEffect(() => setMoveTo(""), [visitId]);
+  const rescheduleMut = useMutation({
+    mutationFn: () => doReschedule({ data: { visitId: visitId!, newDate: moveTo } }),
+    onSuccess: () => {
+      toast.success(`Visit moved to ${formatDay(moveTo)}`);
+      setMoveTo("");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
   const reassignMut = useMutation({
     mutationFn: (staffId: string | null) => doReassign({ data: { visitId: visitId!, staffId } }),
@@ -378,12 +395,12 @@ export function VisitDetailDrawer({
             {history.length > 0 && (
               <section>
                 <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                  Recent visits
+                  Other visits here
                 </h3>
                 <ul className="space-y-1 text-xs">
                   {history.map((h: any) => (
                     <li key={h.id} className="flex justify-between">
-                      <span>{h.scheduled_on}</span>
+                      <span>{formatDay(h.scheduled_on)}</span>
                       <span className="capitalize text-muted-foreground">
                         {h.status.replace("_", " ")}
                       </span>
@@ -413,9 +430,41 @@ export function VisitDetailDrawer({
                     </option>
                   ))}
                 </select>
-                <p className="text-2xs text-muted-foreground">
-                  Moving a visit to another day, or reordering a tech's stops, is on desktop.
-                </p>
+                {canActFromOffice && (
+                  <form
+                    className="space-y-1 pt-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (moveTo) rescheduleMut.mutate();
+                    }}
+                  >
+                    <Label htmlFor="visit-move-to" className="text-xs">
+                      Move to another day
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="visit-move-to"
+                        type="date"
+                        className="min-w-0 flex-1"
+                        min={orgToday}
+                        value={moveTo}
+                        onChange={(e) => setMoveTo(e.target.value)}
+                      />
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        className="shrink-0"
+                        disabled={!moveTo || moveTo === v?.scheduled_on || rescheduleMut.isPending}
+                      >
+                        {rescheduleMut.isPending ? "Moving…" : "Move"}
+                      </Button>
+                    </div>
+                    <p className="text-2xs text-muted-foreground">
+                      The visit leaves this route. Dispatch or auto-routing places it on the new
+                      day. Reordering a tech's stops is on the Schedule board.
+                    </p>
+                  </form>
+                )}
               </section>
             )}
 
