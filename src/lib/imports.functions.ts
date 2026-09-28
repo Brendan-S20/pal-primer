@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { mapBalanceRow, mapServiceRow, parseTags } from "@/lib/import-services";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 
@@ -19,7 +20,7 @@ export const IMPORT_SOURCES = [
   "quoteiq_family",
 ] as const;
 
-export const IMPORT_ENTITIES = ["clients", "properties", "dogs"] as const;
+export const IMPORT_ENTITIES = ["clients", "properties", "dogs", "services", "balances"] as const;
 export type ImportEntity = (typeof IMPORT_ENTITIES)[number];
 
 // ---------- Target fields per entity ----------
@@ -39,6 +40,8 @@ export const CLIENT_TARGET_FIELDS = [
   "region",
   "postal_code",
   "gate_code",
+  // Jobber's Tags ("Weekly; Tuesday; VIP") used to be folded into notes.
+  "tags",
 ] as const;
 export type ClientTargetField = (typeof CLIENT_TARGET_FIELDS)[number];
 
@@ -63,10 +66,34 @@ export const DOG_TARGET_FIELDS = [
 ] as const;
 export type DogTargetField = (typeof DOG_TARGET_FIELDS)[number];
 
+// A recurring plan per row, and an opening balance per row. Both find their
+// client by the old system's id, or by exact name when the export has none.
+// See src/lib/import-services.ts.
+export const SERVICE_TARGET_FIELDS = [
+  "client_external_id",
+  "client_name",
+  "frequency",
+  "price_per_visit",
+  "service_day",
+  "start_date",
+  "dog_count",
+  "billing",
+] as const;
+
+export const BALANCE_TARGET_FIELDS = [
+  "client_external_id",
+  "client_name",
+  "amount",
+  "due_date",
+  "note",
+] as const;
+
 export const TARGET_FIELDS_BY_ENTITY: Record<ImportEntity, readonly string[]> = {
   clients: CLIENT_TARGET_FIELDS,
   properties: PROPERTY_TARGET_FIELDS,
   dogs: DOG_TARGET_FIELDS,
+  services: SERVICE_TARGET_FIELDS,
+  balances: BALANCE_TARGET_FIELDS,
 };
 
 // ---------- Per-source header presets ----------
@@ -81,6 +108,7 @@ const CLIENT_PRESETS: Record<string, PresetMap> = {
     primary_phone: ["phone", "phone number", "mobile"],
     external_id: ["id", "external_id", "client id"],
     notes: ["notes", "note", "comments"],
+    tags: ["tags", "labels"],
   },
   sweepgo: {
     display_name: ["Client Name", "Customer Name", "Name"],
@@ -109,9 +137,10 @@ const CLIENT_PRESETS: Record<string, PresetMap> = {
       "Primary phone number",
     ],
     external_id: ["J-ID", "Client ID", "ID"],
-    // Jobber Tags hold cadence/segment info ("2nd & 4th Week", "Follow-Up")
-    // worth keeping — land them in notes when there's no Notes column.
-    notes: ["Notes", "Tags"],
+    notes: ["Notes"],
+    // Jobber Tags hold cadence/segment info ("2nd & 4th Week", "Follow-Up").
+    // They go to the client's tags, where they can be filtered, not notes.
+    tags: ["Tags"],
     // Service address preferred; Billing is a per-row fallback in
     // mapClientRow (BILLING_FALLBACK_COLUMNS) when Service cells are empty.
     street: ["Service Street 1", "Billing Street 1", "street", "address", "street address"],
@@ -328,9 +357,72 @@ const DOG_PRESETS: Record<string, PresetMap> = {
 // Backward compatibility
 export const SOURCE_PRESETS = CLIENT_PRESETS;
 
+// Header names for recurring plans and balances. No real export of Jobber's
+// jobs or aged receivables was on hand when these were written, so they are
+// synonyms rather than verified headers; the mapping step shows each guess
+// and the owner can point any field at a different column.
+const SERVICE_PRESETS: Record<string, PresetMap> = {
+  generic_csv: {
+    client_external_id: ["client_id", "client id", "customer id", "customer_id", "external_id", "id"],
+    client_name: ["client_name", "client", "client name", "customer", "customer name", "customer_name", "name"],
+    frequency: ["frequency", "recurrence", "repeats", "schedule", "visit frequency"],
+    price_per_visit: ["price", "price per visit", "price_per_visit", "rate", "amount", "cost"],
+    service_day: ["day", "service day", "service_day", "weekday", "preferred day"],
+    start_date: ["start date", "start_date", "start", "started", "first visit"],
+    dog_count: ["dogs", "dog count", "number of dogs", "# dogs"],
+    billing: ["billing", "billing type", "billing cadence"],
+  },
+  jobber: {
+    client_external_id: ["Client J-ID", "J-ID", "Client ID"],
+    client_name: ["Client name", "Client", "Display Name", "Client Name"],
+    frequency: ["Visit frequency", "Frequency", "Recurrence", "Schedule", "Repeats", "Title"],
+    price_per_visit: ["Visit total", "Total ($)", "Total", "Price", "Rate", "Line item total"],
+    service_day: ["Day", "Service day", "Visit day"],
+    start_date: ["Start date", "Scheduled start date", "Created date"],
+    dog_count: ["Number of dogs", "Dogs"],
+    billing: ["Billing frequency", "Billing"],
+  },
+  sweepgo: {
+    client_external_id: ["Client ID", "Customer ID"],
+    client_name: ["Client Name", "Customer Name", "Name"],
+    frequency: ["Frequency", "Cleanup Frequency", "Service Frequency"],
+    price_per_visit: ["Price", "Price Per Cleanup", "Rate", "Amount"],
+    service_day: ["Service Day", "Day", "Cleanup Day"],
+    start_date: ["Start Date", "Created"],
+    dog_count: ["Number of Dogs", "Dogs", "Dog Count"],
+    billing: ["Billing", "Billing Type"],
+  },
+};
+
+const BALANCE_PRESETS: Record<string, PresetMap> = {
+  generic_csv: {
+    client_external_id: ["client_id", "client id", "customer id", "customer_id", "external_id", "id"],
+    client_name: ["client_name", "client", "client name", "customer", "customer name", "customer_name", "name"],
+    amount: ["balance", "amount", "amount due", "open balance", "outstanding"],
+    due_date: ["due date", "due_date", "due", "due on"],
+    note: ["note", "notes", "memo", "description"],
+  },
+  jobber: {
+    client_external_id: ["Client J-ID", "J-ID", "Client ID"],
+    client_name: ["Client name", "Client", "Display Name"],
+    amount: ["Balance", "Balance ($)", "Outstanding", "Amount due", "Total balance"],
+    due_date: ["Due date", "Due"],
+    note: ["Notes", "Subject"],
+  },
+  sweepgo: {
+    client_external_id: ["Client ID", "Customer ID"],
+    client_name: ["Client Name", "Customer Name", "Name"],
+    amount: ["Balance", "Open Balance", "Amount Due"],
+    due_date: ["Due Date"],
+    note: ["Notes", "Memo"],
+  },
+};
+
 function presetsForEntity(entity: ImportEntity): Record<string, PresetMap> {
   if (entity === "properties") return PROPERTY_PRESETS;
   if (entity === "dogs") return DOG_PRESETS;
+  if (entity === "services") return SERVICE_PRESETS;
+  if (entity === "balances") return BALANCE_PRESETS;
   return CLIENT_PRESETS;
 }
 
@@ -477,6 +569,7 @@ export function mapClientRow(raw: Record<string, any>, mapping: Record<string, s
       region,
       postal_code,
       gate_code: getStr(raw, mapping, "gate_code"),
+      tags: parseTags(getStr(raw, mapping, "tags")),
     },
     error: null as string | null,
   };
@@ -534,8 +627,14 @@ function mapDogRow(raw: Record<string, any>, mapping: Record<string, string | nu
 function mapRow(entity: ImportEntity, raw: Record<string, any>, mapping: Record<string, string | null>) {
   if (entity === "properties") return mapPropertyRow(raw, mapping);
   if (entity === "dogs") return mapDogRow(raw, mapping);
+  if (entity === "services") return mapServiceRow(raw, mapping);
+  if (entity === "balances") return mapBalanceRow(raw, mapping);
   return mapClientRow(raw, mapping);
 }
+
+// The prefix every imported opening balance's invoice note starts with, so a
+// second import of the same file can find and skip what the first created.
+const OPENING_BALANCE_NOTE = "Opening balance";
 
 // ---------- Server functions ----------
 
@@ -600,15 +699,55 @@ export const previewImport = createServerFn({ method: "POST" })
     if (ecErr) throw new Error(ecErr.message);
     const clientByExternal = new Map<string, string>();
     const clientByEmail = new Map<string, string>();
+    // By exact name, for exports that carry no id. A name two clients share
+    // resolves to nobody: guessing which one owes the balance is worse than
+    // refusing the row and saying why.
+    const clientByName = new Map<string, string | null>();
     for (const c of existingClients ?? []) {
       if (c.import_external_id && c.import_source === data.source) {
         clientByExternal.set(c.import_external_id, c.id);
       }
       if (c.primary_email) clientByEmail.set(c.primary_email.toLowerCase(), c.id);
+      const nm = (c.display_name ?? "").trim().toLowerCase();
+      if (nm) clientByName.set(nm, clientByName.has(nm) ? null : c.id);
     }
+    const resolveClient = (m: { client_external_id: string | null; client_name: string | null }) => {
+      if (m.client_external_id && clientByExternal.has(m.client_external_id)) {
+        return { id: clientByExternal.get(m.client_external_id)!, error: null };
+      }
+      const nm = (m.client_name ?? "").trim().toLowerCase();
+      if (nm && clientByName.has(nm)) {
+        const id = clientByName.get(nm);
+        return id
+          ? { id, error: null }
+          : { id: null, error: `More than one client is called "${m.client_name}"; add an ID column` };
+      }
+      return {
+        id: null,
+        error: `No client ${m.client_external_id ? `with id ${m.client_external_id}` : `called "${m.client_name}"`} (import clients first)`,
+      };
+    };
 
     let existingPropertyKeys = new Set<string>();
     let existingDogKeys = new Set<string>();
+    // Re-running an import must not double anyone's plan or bill.
+    const clientsWithActivePlan = new Set<string>();
+    const clientsWithOpeningBalance = new Set<string>();
+    if (entity === "services") {
+      const { data: subs } = await supabase
+        .from("subscriptions")
+        .select("client_id")
+        .eq("organization_id", orgId)
+        .in("status", ["active", "paused"]);
+      for (const x of subs ?? []) clientsWithActivePlan.add(x.client_id);
+    } else if (entity === "balances") {
+      const { data: invs } = await supabase
+        .from("invoices")
+        .select("client_id")
+        .eq("organization_id", orgId)
+        .like("notes", `${OPENING_BALANCE_NOTE}%`);
+      for (const x of invs ?? []) clientsWithOpeningBalance.add(x.client_id);
+    }
     if (entity === "properties") {
       const { data: props } = await supabase
         .from("properties")
@@ -700,6 +839,23 @@ export const previewImport = createServerFn({ method: "POST" })
         target_id = clientId;
         const key = `${clientId}::${m.name.toLowerCase()}`;
         if (existingDogKeys.has(key)) action = "skip";
+      } else if (entity === "services" || entity === "balances") {
+        const m = mapped as any;
+        const who = resolveClient(m);
+        if (!who.id) {
+          errors += 1;
+          rowsToInsert.push({
+            batch_id: batchId, organization_id: orgId, row_num: idx + 1,
+            raw, mapped, action: "error", target_id: null, error: who.error,
+          });
+          return;
+        }
+        target_id = who.id;
+        if (entity === "services" && clientsWithActivePlan.has(who.id)) action = "skip";
+        if (entity === "balances" && clientsWithOpeningBalance.has(who.id)) action = "skip";
+        // Only what is already in the database counts as a repeat. Two rows
+        // for one client in the same file are two plans, or two open
+        // invoices from an aged-receivables export, and both are kept.
       }
 
       if (action === "create") create += 1;
@@ -764,6 +920,22 @@ export const commitImport = createServerFn({ method: "POST" })
       }
     }
 
+    // An opening balance is an invoice: the same permission a manual invoice
+    // needs, checked once rather than per row.
+    if (entity === "balances") {
+      await requirePermission(supabase, userId, "manage_client_billing");
+    }
+    let netDays = 15;
+    if (entity === "balances") {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("invoice_net_days")
+        .eq("id", orgId)
+        .single();
+      netDays = org?.invoice_net_days ?? 15;
+    }
+    const sourceLabel = batch.source === "jobber" ? "Jobber" : batch.source === "sweepgo" ? "Sweep&Go" : "your previous system";
+
     let created = 0, updated = 0, failed = 0;
 
     for (const row of rows ?? []) {
@@ -780,6 +952,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 primary_email: m.primary_email,
                 primary_phone: m.primary_phone,
                 notes: m.notes,
+                ...(m.tags?.length ? { tags: m.tags } : {}),
                 import_source: batch.source,
                 import_external_id: m.external_id,
                 import_batch_id: batch.id,
@@ -850,6 +1023,7 @@ export const commitImport = createServerFn({ method: "POST" })
               primary_email: m.primary_email,
               primary_phone: m.primary_phone,
               notes: m.notes,
+              ...(m.tags?.length ? { tags: m.tags } : {}),
             }).eq("id", row.target_id);
             if (uErr) throw uErr;
             updated += 1;
@@ -924,6 +1098,92 @@ export const commitImport = createServerFn({ method: "POST" })
             await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
             created += 1;
           }
+        } else if (entity === "services") {
+          if (row.action === "create" && row.target_id) {
+            const { data: client } = await supabase
+              .from("clients")
+              .select("account_type")
+              .eq("id", row.target_id)
+              .single();
+            const { data: prop } = await supabase
+              .from("properties")
+              .select("id, zone_id")
+              .eq("organization_id", orgId)
+              .eq("client_id", row.target_id)
+              .order("created_at", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            if (!prop) throw new Error("Client has no address; import clients with their service address first");
+            const isRes = client?.account_type !== "commercial";
+            let dogCount: number | null = m.dog_count;
+            if (isRes && !dogCount) {
+              const { count } = await supabase
+                .from("dogs")
+                .select("id", { count: "exact", head: true })
+                .eq("property_id", prop.id);
+              dogCount = Math.max(1, count ?? 1);
+            }
+            const { data: ins, error: sErr } = await supabase
+              .from("subscriptions")
+              .insert({
+                organization_id: orgId,
+                client_id: row.target_id,
+                property_id: prop.id,
+                account_type: isRes ? "residential" : "commercial",
+                frequency: m.frequency,
+                interval_weeks: m.frequency === "weekly" ? m.interval_weeks : null,
+                interval_days: m.frequency === "every_n_days" ? m.interval_days : null,
+                price_cents: m.price_cents,
+                dog_count: isRes ? dogCount : null,
+                unit_count: isRes ? null : 1,
+                zone_id: prop.zone_id ?? null,
+                billing_cadence: m.billing_cadence ?? "postpaid",
+                preferred_weekdays: m.preferred_weekdays,
+                // The price came from the old system, not the rate card, so
+                // it is recorded as set by hand.
+                price_overridden_at: new Date().toISOString(),
+                ...(m.started_on ? { started_on: m.started_on } : {}),
+              })
+              .select("id")
+              .single();
+            if (sErr) throw sErr;
+            await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
+            created += 1;
+          }
+        } else if (entity === "balances") {
+          if (row.action === "create" && row.target_id) {
+            const nowIso = new Date().toISOString();
+            const today = nowIso.slice(0, 10);
+            const dueOn = m.due_on ?? new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
+            const description = `Opening balance carried over from ${sourceLabel}`;
+            const { data: inv, error: iErr } = await supabase
+              .from("invoices")
+              .insert({
+                organization_id: orgId,
+                client_id: row.target_id,
+                kind: "postpaid",
+                status: "open",
+                subtotal_cents: m.amount_cents,
+                total_cents: m.amount_cents,
+                period_start: today,
+                period_end: today,
+                issued_at: nowIso,
+                due_on: dueOn,
+                notes: m.note ? `${OPENING_BALANCE_NOTE}: ${m.note}` : OPENING_BALANCE_NOTE,
+              })
+              .select("id")
+              .single();
+            if (iErr) throw iErr;
+            const { error: lErr } = await supabase
+              .from("invoice_line_items")
+              .insert({ invoice_id: inv.id, description, amount_cents: m.amount_cents });
+            if (lErr) {
+              await supabase.from("invoices").delete().eq("id", inv.id);
+              throw lErr;
+            }
+            await supabase.from("import_rows").update({ target_id: inv.id }).eq("id", row.id);
+            created += 1;
+          }
         }
       } catch (e: any) {
         failed += 1;
@@ -932,6 +1192,13 @@ export const commitImport = createServerFn({ method: "POST" })
           error: e?.message ?? String(e),
         }).eq("id", row.id);
       }
+    }
+
+    // New plans need their visits now, not at tonight's run. One pass for the
+    // whole batch, as onboardClient does for one client.
+    if (entity === "services" && created > 0) {
+      const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+      await generateVisitHorizon(supabase, orgId);
     }
 
     const stats = { created, updated, failed };

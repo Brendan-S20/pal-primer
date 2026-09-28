@@ -34,7 +34,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const SOURCE_HINTS: Record<string, string> = {
   sweepgo: "Export from Sweep&Go → Settings → Data Export. Use the Customers, Locations, and Pets CSVs (one at a time).",
-  jobber: "Export from Jobber → Gear icon → Imports & Exports → Export Data. Clients export includes company name and mobile phone.",
+  jobber: "Export from Jobber → Gear icon → Imports & Exports → Export Data. Import clients first, then their recurring services (plans and prices), then opening balances.",
   housecall_pro: "Housecall Pro Customers CSV uses separate First Name / Last Name columns. We'll combine them automatically.",
   time_to_pet: "Time To Pet → Admin → Data → Export Clients / Pets. Pets link back to a Client ID.",
   gorilla_desk: "GorillaDesk → Reports → Customers → Export CSV. Import Customers first, then Locations, then Pets.",
@@ -46,12 +46,59 @@ const ENTITY_LABELS: Record<ImportEntity, string> = {
   clients: "Clients",
   properties: "Properties (addresses)",
   dogs: "Dogs",
+  services: "Recurring services (plans and prices)",
+  balances: "Opening balances (money owed)",
+};
+
+const ENTITY_HINTS: Partial<Record<ImportEntity, string>> = {
+  services:
+    "One row per plan. Import clients first; each plan is matched to a client by ID, or by exact name if the file has no ID, and goes on that client's first address. Visits are scheduled as soon as you commit.",
+  balances:
+    "One row per amount owed. Each becomes an open invoice marked as an opening balance. Nothing is emailed; imported clients stay on a communications hold until you contact them.",
 };
 
 const REQUIRED_FIELDS: Record<ImportEntity, string[]> = {
   clients: ["display_name"],
   properties: ["client_external_id", "street"],
   dogs: ["client_external_id", "name"],
+  services: ["price_per_visit"],
+  balances: ["amount"],
+};
+
+/** Import kinds that find their client by ID OR by name: one of the two. */
+const CLIENT_BY_ID_OR_NAME: ImportEntity[] = ["services", "balances"];
+
+/** What a person calls each field. The mapping step showed the column names
+ *  the code uses ("display_name", "client_external_id"), which the Jobber
+ *  switcher review read as the product not being finished. */
+const FIELD_LABELS: Record<string, string> = {
+  display_name: "Client name",
+  account_type: "Residential or commercial",
+  primary_email: "Email",
+  primary_phone: "Phone",
+  external_id: "Client ID in your old system",
+  client_external_id: "Client ID in your old system",
+  client_name: "Client name",
+  notes: "Notes",
+  tags: "Tags",
+  street: "Street",
+  city: "City",
+  region: "State",
+  postal_code: "ZIP",
+  gate_code: "Gate code",
+  label: "Property name",
+  name: "Dog name",
+  breed: "Breed",
+  weight_class: "Weight",
+  frequency: "How often",
+  price_per_visit: "Price per visit",
+  service_day: "Service day",
+  start_date: "Start date",
+  dog_count: "Number of dogs",
+  billing: "Billing (prepaid or after each visit)",
+  amount: "Amount owed",
+  due_date: "Due date",
+  note: "Note",
 };
 
 const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
@@ -81,6 +128,16 @@ const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
     time_to_pet: ["Client ID", "Pet Name", "Breed", "Weight", "Notes"],
     gorilla_desk: ["Customer ID", "Pet Name", "Breed", "Weight", "Notes"],
     quoteiq_family: ["Client ID", "Pet Name", "Breed", "Weight", "Notes"],
+  },
+  services: {
+    generic_csv: ["client_id", "client_name", "frequency", "price", "day", "start_date", "dogs"],
+    jobber: ["Client J-ID", "Client name", "Visit frequency", "Visit total", "Day", "Start date", "Number of dogs"],
+    sweepgo: ["Client ID", "Client Name", "Frequency", "Price Per Cleanup", "Service Day", "Start Date", "Number of Dogs"],
+  },
+  balances: {
+    generic_csv: ["client_id", "client_name", "balance", "due_date", "note"],
+    jobber: ["Client J-ID", "Client name", "Balance", "Due date", "Notes"],
+    sweepgo: ["Client ID", "Client Name", "Open Balance", "Due Date", "Memo"],
   },
 };
 
@@ -250,7 +307,10 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const runPreview = async () => {
     if (!rows.length) return toast.error("Upload a CSV first.");
     for (const req of required) {
-      if (!mapping[req]) return toast.error(`Map the ${req} column.`);
+      if (!mapping[req]) return toast.error(`Choose a column for "${FIELD_LABELS[req] ?? req}".`);
+    }
+    if (CLIENT_BY_ID_OR_NAME.includes(entity) && !mapping.client_external_id && !mapping.client_name) {
+      return toast.error("Choose a column for the client: their ID in your old system, or their name.");
     }
     setBusy(true);
     try {
@@ -312,8 +372,12 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
 
       {entity !== "clients" && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
-          Import <strong>clients first</strong>. Properties and dogs link back to a client by its
-          external id from the original system.
+          {ENTITY_HINTS[entity] ?? (
+            <>
+              Import <strong>clients first</strong>. Properties and dogs link back to a client by
+              its ID in your original system.
+            </>
+          )}
         </div>
       )}
 
@@ -321,7 +385,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 p-3 text-xs">
           <span className="text-muted-foreground">{SOURCE_HINTS[source]}</span>
           <Button size="sm" variant="outline" onClick={() => downloadTemplate(source, entity)}>
-            Download {SOURCE_LABELS[source]} {entity} template
+            Download {SOURCE_LABELS[source]} {ENTITY_LABELS[entity].toLowerCase()} template
           </Button>
         </div>
       )}
@@ -337,7 +401,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             {targetFields.map((field) => (
               <label key={field} className="space-y-1 text-sm">
                 <span className="font-medium">
-                  {field}
+                  {FIELD_LABELS[field] ?? field}
                   {required.includes(field) && <span className="text-red-500"> *</span>}
                 </span>
                 <select

@@ -30,6 +30,7 @@ function BatchDetail() {
 
   const { batch, rows } = data;
   const stats = (batch.stats ?? {}) as Record<string, number>;
+  const planOrBalance = batch.entity === "services" || batch.entity === "balances";
   const shown = filter === "all" ? rows : rows.filter((r: any) => r.action === filter);
 
   // Group the per-row failure reasons so a batch that failed every row (the
@@ -162,13 +163,37 @@ function BatchDetail() {
               <tr>
                 <th className="px-3 py-2">#</th>
                 <th className="px-3 py-2">Action</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Email</th>
-                <th className="px-3 py-2">Phone</th>
-                <th className="px-3 py-2">Service address</th>
-                <th className="px-3 py-2">External ID</th>
-                <th className="px-3 py-2">Note / issue</th>
+                {planOrBalance ? (
+                  <>
+                    <th className="px-3 py-2">Client</th>
+                    {batch.entity === "services" ? (
+                      <>
+                        <th className="px-3 py-2">How often</th>
+                        <th className="px-3 py-2">Price per visit</th>
+                        <th className="px-3 py-2">Day</th>
+                        <th className="px-3 py-2">Starts</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-3 py-2">Amount owed</th>
+                        <th className="px-3 py-2">Due</th>
+                        <th className="px-3 py-2">Note</th>
+                        <th className="px-3 py-2" />
+                      </>
+                    )}
+                    <th className="px-3 py-2">Issue</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Email</th>
+                    <th className="px-3 py-2">Phone</th>
+                    <th className="px-3 py-2">Service address</th>
+                    <th className="px-3 py-2">External ID</th>
+                    <th className="px-3 py-2">Note / issue</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -180,6 +205,10 @@ function BatchDetail() {
                     <td className="px-3 py-2">
                       <ActionBadge action={r.action} />
                     </td>
+                    {planOrBalance ? (
+                      <PlanOrBalanceCells entity={batch.entity} m={m} error={r.error} />
+                    ) : (
+                      <>
                     <td className="px-3 py-2">{m.display_name ?? "-"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{m.account_type ?? "-"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{m.primary_email ?? "-"}</td>
@@ -195,6 +224,8 @@ function BatchDetail() {
                         <span className="text-muted-foreground">{m.notes ?? ""}</span>
                       )}
                     </td>
+                      </>
+                    )}
                   </tr>
                 );
               })}
@@ -249,5 +280,49 @@ function ActionBadge({ action }: { action: string }) {
     <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${map[action] ?? ""}`}>
       {action}
     </span>
+  );
+}
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function money(cents: number | null | undefined) {
+  return cents == null ? "-" : `$${(cents / 100).toFixed(2)}`;
+}
+
+/** A plan or a balance row, in the words its columns mean. */
+function PlanOrBalanceCells({ entity, m, error }: { entity: string; m: any; error: string | null }) {
+  const client = m.client_name ?? m.client_external_id ?? "-";
+  const issue = <td className="px-3 py-2 text-xs text-red-600">{error ?? ""}</td>;
+  if (entity === "services") {
+    const often =
+      m.frequency === "weekly" && m.interval_weeks
+        ? `Every ${m.interval_weeks} weeks`
+        : m.frequency === "every_n_days"
+          ? `Every ${m.interval_days} days`
+          : m.frequency
+            ? String(m.frequency).replace(/_/g, " ")
+            : "-";
+    return (
+      <>
+        <td className="px-3 py-2">{client}</td>
+        <td className="px-3 py-2 text-muted-foreground">{often}</td>
+        <td className="px-3 py-2 tabular-nums">{money(m.price_cents)}</td>
+        <td className="px-3 py-2 text-muted-foreground">
+          {(m.preferred_weekdays ?? []).map((d: number) => WEEKDAY_SHORT[d]).join(", ") || "-"}
+        </td>
+        <td className="px-3 py-2 text-muted-foreground">{m.started_on ?? "Next generation"}</td>
+        {issue}
+      </>
+    );
+  }
+  return (
+    <>
+      <td className="px-3 py-2">{client}</td>
+      <td className="px-3 py-2 tabular-nums">{money(m.amount_cents)}</td>
+      <td className="px-3 py-2 text-muted-foreground">{m.due_on ?? "Payment terms"}</td>
+      <td className="px-3 py-2 text-muted-foreground">{m.note ?? ""}</td>
+      <td className="px-3 py-2" />
+      {issue}
+    </>
   );
 }

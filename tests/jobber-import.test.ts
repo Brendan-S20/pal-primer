@@ -68,7 +68,9 @@ describe("autoMap (real Jobber export, clients)", () => {
     expect(mapping.primary_email).toBe("E-mails");
     expect(mapping.primary_phone).toBe("Main Phone #s");
     expect(mapping.external_id).toBe("J-ID");
-    expect(mapping.notes).toBe("Tags");
+    // Tags go to tags since 2026-09-28; the real export has no Notes column.
+    expect(mapping.tags).toBe("Tags");
+    expect(mapping.notes).toBeNull();
     // Service address preferred over Billing at the column level.
     expect(mapping.street).toBe("Service Street 1");
     expect(mapping.city).toBe("Service City");
@@ -117,7 +119,8 @@ describe("mapClientRow (real-shaped Jobber rows)", () => {
     expect(mapped!.display_name).toBe("Makenzie Costello");
     expect(mapped!.external_id).toBe("103432539_110583912");
     expect(mapped!.account_type).toBe("residential"); // "false" → not a company
-    expect(mapped!.notes).toBe("Follow-Up"); // Tags land in notes
+    expect(mapped!.tags).toEqual(["Follow-Up"]); // Tags land in tags, not notes
+    expect(mapped!.notes).toBeNull();
     expect(mapped!.street).toBe("1801 Woodside Street");
     expect(mapped!.city).toBe("Trenton");
     expect(mapped!.region).toBe("Michigan");
