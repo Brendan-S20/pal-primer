@@ -88,6 +88,6 @@ export const template = {
     clientName: "Jane",
     dayLabel: "Tuesday, September 29",
     addresses: ["412 Elm St, Austin"],
-    portalUrl: "https://app.houndstack.com/portal/acme/abc123",
+    portalUrl: "https://example.com/portal/acme/abc123",
   },
 } satisfies TemplateEntry;
