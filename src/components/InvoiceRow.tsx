@@ -19,7 +19,7 @@ import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { isInvoiceOverdue } from "@/lib/overdue";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
-import { invoiceKindLabel } from "@/lib/invoice-labels";
+import { invoiceKindLabel, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { appUrl } from "@/lib/app-origin";
 
 export type InvoiceRowData = {
@@ -140,7 +140,7 @@ export function InvoiceRow({
         <td className="px-4 py-2.5 font-medium">{client?.display_name ?? "-"}</td>
       )}
       <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-        #{invoice.id.slice(0, 8)}
+        {invoiceNumberLabel(invoice)}
       </td>
       <td className="px-4 py-2.5 text-muted-foreground">
         {invoicePeriodLabel(invoice.period_start, invoice.period_end)}
@@ -245,7 +245,7 @@ export function InvoiceCard({
             <div className="min-w-0">
               <div className="truncate font-medium">{client?.display_name ?? "-"}</div>
               <div className="font-mono text-xs text-muted-foreground">
-                #{invoice.id.slice(0, 8)}
+                {invoiceNumberLabel(invoice)}
               </div>
             </div>
             <div className="shrink-0 text-right text-sm font-semibold tabular-nums">

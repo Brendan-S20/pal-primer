@@ -118,13 +118,15 @@ export async function markInvoicePaidFromStripe(
   // write, so the actor is the payment processor, not a user.
   try {
     const { logActivity } = await import("@/lib/activity.server");
+    const { invoiceRef } = await import("@/lib/invoice-labels");
+    const ref = await invoiceRef(supabaseAdmin, args.invoiceId);
     await logActivity(supabaseAdmin, {
       orgId: args.organizationId,
       clientId,
       actorLabel: "Stripe",
       kind: "payment.received",
       summary:
-        `Payment of $${((args.amountCents + (args.surchargeCents ?? 0)) / 100).toFixed(2)} received for invoice #${args.invoiceId.slice(0, 8)}` +
+        `Payment of $${((args.amountCents + (args.surchargeCents ?? 0)) / 100).toFixed(2)} received for invoice ${ref}` +
         (args.surchargeCents
           ? ` (includes $${(args.surchargeCents / 100).toFixed(2)} card processing)`
           : ""),

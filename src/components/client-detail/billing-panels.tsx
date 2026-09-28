@@ -38,6 +38,7 @@ import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { formatDay, surchargeSplit } from "@/lib/format";
 import { humanizeEnum } from "@/lib/humanize";
 import { addonBillingTrail } from "@/lib/addon-billing";
+import { invoiceNumberLabel } from "@/lib/invoice-labels";
 import {
   listAddonServices,
   listClientAddons,
@@ -125,6 +126,10 @@ export function BillingPanel({ clientId }: { clientId: string }) {
 
   const invoices = data?.invoices ?? [];
   const payments = data?.payments ?? [];
+  // A payment names its invoice by number, like every other screen.
+  const invoiceNumberById = new Map(
+    invoices.map((i: { id: string; number?: number | null }) => [i.id, i.number ?? null]),
+  );
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
 
   return (
@@ -266,7 +271,10 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                       params={{ invoiceId: p.invoice_id }}
                       className="ml-2 font-mono text-xs text-primary hover:underline"
                     >
-                      #{p.invoice_id.slice(0, 8)}
+                      {invoiceNumberLabel({
+                        id: p.invoice_id,
+                        number: invoiceNumberById.get(p.invoice_id) ?? null,
+                      })}
                     </Link>
                   )}
                   <StatusChip status={p.status} className="ml-2" />

@@ -38,6 +38,7 @@ import { totalReversals, type Reversal } from "@/lib/reversals.server";
 import { billedDay, outstandingAsOf } from "@/lib/ar";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 import type { AppRole } from "@/hooks/useMyRole";
+import { invoiceNumberLabel } from "@/lib/invoice-labels";
 
 // BUILD-13 — building the accountant's pack. Definitions live in
 // src/lib/cpa-reports.ts; this file only assembles rows.
@@ -222,6 +223,7 @@ async function loadReversals(supabase: any, ctx: OrgContext, from: string, to: s
 
 type InvoiceRow = {
   id: string;
+  number: number | null;
   client_id: string;
   status: string;
   total_cents: number | null;
@@ -234,7 +236,7 @@ type InvoiceRow = {
 };
 
 const INVOICE_COLS =
-  "id, client_id, status, total_cents, credit_applied_cents, issued_at, paid_at, voided_at, due_on, updated_at";
+  "id, number, client_id, status, total_cents, credit_applied_cents, issued_at, paid_at, voided_at, due_on, updated_at";
 
 /** The whole invoice ledger for this org. The bridge and the aging report both
  *  need point-in-time positions, which cannot be derived from a filtered
@@ -706,7 +708,7 @@ async function buildWriteOffs(supabase: any, ctx: OrgContext, from: string, to: 
       clientName: names.get(h.inv.client_id) ?? "-",
       statusLabel: h.label,
       amountCents: h.amount,
-      reference: h.inv.id.slice(0, 8),
+      reference: invoiceNumberLabel(h.inv),
     }));
 
   return {

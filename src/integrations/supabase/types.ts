@@ -2281,6 +2281,7 @@ export type Database = {
           last_email_reminder_at: string | null
           last_reminder_at: string | null
           notes: string | null
+          number: number
           organization_id: string
           paid_at: string | null
           period_end: string
@@ -2310,6 +2311,7 @@ export type Database = {
           last_email_reminder_at?: string | null
           last_reminder_at?: string | null
           notes?: string | null
+          number?: number
           organization_id: string
           paid_at?: string | null
           period_end: string
@@ -2339,6 +2341,7 @@ export type Database = {
           last_email_reminder_at?: string | null
           last_reminder_at?: string | null
           notes?: string | null
+          number?: number
           organization_id?: string
           paid_at?: string | null
           period_end?: string
@@ -2853,6 +2856,7 @@ export type Database = {
           measured_road_factor: number | null
           measured_speed_kmh: number | null
           name: string
+          next_invoice_number: number
           notify_email_invoice_sent: boolean
           notify_email_overdue: boolean
           notify_email_payment_received: boolean
@@ -2978,6 +2982,7 @@ export type Database = {
           measured_road_factor?: number | null
           measured_speed_kmh?: number | null
           name: string
+          next_invoice_number?: number
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean
@@ -3103,6 +3108,7 @@ export type Database = {
           measured_road_factor?: number | null
           measured_speed_kmh?: number | null
           name?: string
+          next_invoice_number?: number
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean

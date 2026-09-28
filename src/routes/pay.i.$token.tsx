@@ -150,7 +150,7 @@ function PublicPayPage() {
           <div>
             <p className="text-lg font-semibold">{data.orgName}</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Invoice</h1>
-            <p className="mt-0.5 font-mono text-sm text-muted-foreground">#{invoice.shortId}</p>
+            <p className="mt-0.5 font-mono text-sm text-muted-foreground">{invoice.label}</p>
           </div>
           <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
             <span className="flex items-center gap-2">

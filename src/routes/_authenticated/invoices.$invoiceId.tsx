@@ -11,7 +11,7 @@ import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { formatDay, formatDateTime } from "@/lib/format";
-import { formatLineItemDescription } from "@/lib/invoice-labels";
+import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -178,7 +178,7 @@ function InvoiceDetail() {
   const client = Array.isArray(invoice.clients) ? invoice.clients[0] : invoice.clients;
   const orgName = orgQ.data?.organization?.name;
 
-  const shortId = invoice.id.slice(0, 8);
+  const shortId = invoiceNumberLabel(invoice as { id: string; number?: number | null });
   const subtotalCents = (invoice as any).subtotal_cents as number | null | undefined;
   const dueOn = (invoice as any).due_on as string | null | undefined;
   const overdue =
@@ -205,7 +205,7 @@ function InvoiceDetail() {
           <div>
             {orgName && <p className="text-lg font-semibold">{orgName}</p>}
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Invoice</h1>
-            <p className="mt-0.5 font-mono text-sm text-muted-foreground">#{shortId}</p>
+            <p className="mt-0.5 font-mono text-sm text-muted-foreground">{shortId}</p>
           </div>
           <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
             <InvoiceChip status={invoice.status} />
@@ -417,7 +417,7 @@ function InvoiceDetail() {
       {payOpen && invoice.status !== "paid" && (
         <section className="rounded-xl border bg-card p-6 shadow-sm">
           <SectionLabel>Take payment</SectionLabel>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">Invoice #{shortId}</p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">Invoice {shortId}</p>
           <div className="mt-4 max-w-lg">
             <StaffInvoicePayForm
               invoiceId={invoiceId}

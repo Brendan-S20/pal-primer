@@ -812,11 +812,12 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 // In-app notification to owners/managers.
                 try {
                   const { notifyRoles } = await import("@/lib/notify-center.server");
+                  const { invoiceRef } = await import("@/lib/invoice-labels");
                   await notifyRoles(["owner", "office_manager"], {
                     orgId: inv.organization_id,
                     type: "payment_failed",
                     title: "A client payment failed",
-                    body: `Invoice ${invoiceId.slice(0, 8)}: card declined.`,
+                    body: `Invoice ${await invoiceRef(supabaseAdmin, invoiceId)}: card declined.`,
                     link: "/invoices",
                   });
                 } catch (e) {

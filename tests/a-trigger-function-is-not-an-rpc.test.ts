@@ -133,7 +133,11 @@ describe("no trigger function is executable by a signed-in user", () => {
     // its own REVOKE, so the durable rule below — "leaves no trigger function
     // this directory creates still open" — passed without being touched. This
     // number is the deliberate speed bump that makes you say so.
-    expect(triggerFunctions().size).toBe(36);
+    //
+    // 36 -> 37 on 2026-09-28: invoices_assign_number, which gives each
+    // invoice its organization's next INV number and keeps it from changing.
+    // It also carries its own REVOKE from PUBLIC, anon and authenticated.
+    expect(triggerFunctions().size).toBe(37);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -26,7 +26,11 @@ import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/p
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
-import { formatLineItemDescription, invoiceKindLabel } from "@/lib/invoice-labels";
+import {
+  formatLineItemDescription,
+  invoiceKindLabel,
+  invoiceNumberLabel,
+} from "@/lib/invoice-labels";
 import { bulkMarkInvoicesPaid, getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
 import { describeManualPayment } from "@/lib/manual-payments";
@@ -188,7 +192,7 @@ export function InvoiceDrawer({
       <EditDrawer
         open={!!invoiceId}
         onClose={onClose}
-        title={inv ? `Invoice #${String(inv.id).slice(0, 8)}` : "Invoice"}
+        title={inv ? `Invoice ${invoiceNumberLabel(inv)}` : "Invoice"}
         size="md"
       >
         {isLoading || !inv ? (
