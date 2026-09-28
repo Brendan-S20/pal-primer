@@ -18,6 +18,10 @@ const TAB_GROUPS: TabGroup[] = [
     tabs: [
       { label: "Preferences", to: "/settings/preferences", techVisible: true },
       { label: "Scheduling", to: "/settings/scheduling" },
+      // Prices live on zones, and a first-time owner looking for "how much do
+      // I charge" opened Settings and did not find them (persona review,
+      // 2026-09-27). The page itself stays where the sidebar has it.
+      { label: "Zones & pricing", to: "/zones" },
       { label: "Skip rules", to: "/settings/skip-rules" },
       { label: "Blackouts", to: "/settings/blackouts" },
       { label: "Add-ons", to: "/settings/addons" },
