@@ -269,6 +269,75 @@ export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
   number: `INV-2026-${String(1041 + i)}`,
 }));
 
+/** /leads, and the new-client wizard started from one of them. One lead in
+ *  each conversion state the page draws differently: convertible (Convert to
+ *  client), converted and linked (Open client), converted by hand with no
+ *  client (a line of text instead of either). The first is the awkward one on
+ *  purpose: a 46-character name, an address with no space in it to break at,
+ *  and a message long enough to wrap several times at 360px. */
+export const LEAD_ID = "12121212-0000-4000-8000-000000001201";
+export const LEAD_NAME = "Maximilian Oyelaran-Castellanos de la Fuente";
+export const LEADS = [
+  {
+    id: LEAD_ID,
+    organization_id: ORG_ID,
+    created_at: iso(new Date(Date.now() - 2 * 3_600_000)),
+    updated_at: iso(new Date(Date.now() - 2 * 3_600_000)),
+    name: LEAD_NAME,
+    email: "maximilian.oyelaran-castellanos.delafuente@longishmailprovider.example.com",
+    phone: "+13125550199",
+    company: null,
+    location: "4417 North Ravenswood Avenue, Chicago, IL 60640",
+    dog_count: 3,
+    frequency: "weekly",
+    message:
+      "Three rescue dogs (two shepherd mixes and a very large Great Pyrenees) and a long side yard that runs down to the alley. Gate code is on the side door. Would like Thursdays if possible.",
+    source: "website",
+    status: "new",
+    contacted_at: null,
+    converted_at: null,
+    converted_client_id: null,
+  },
+  {
+    id: "12121212-0000-4000-8000-000000001202",
+    organization_id: ORG_ID,
+    created_at: iso(new Date(Date.now() - 6 * 864e5)),
+    updated_at: iso(new Date(Date.now() - 3 * 864e5)),
+    name: CLIENT_NAMES[0],
+    email: CLIENTS[0].primary_email,
+    phone: null,
+    company: null,
+    location: "60614",
+    dog_count: 1,
+    frequency: "biweekly",
+    message: null,
+    source: "referral",
+    status: "converted",
+    contacted_at: iso(new Date(Date.now() - 5 * 864e5)),
+    converted_at: iso(new Date(Date.now() - 3 * 864e5)),
+    converted_client_id: CLIENT_ID,
+  },
+  {
+    id: "12121212-0000-4000-8000-000000001203",
+    organization_id: ORG_ID,
+    created_at: iso(new Date(Date.now() - 9 * 864e5)),
+    updated_at: iso(new Date(Date.now() - 8 * 864e5)),
+    name: "Bo Ng",
+    email: "13125550123@sms.lead",
+    phone: "+13125550123",
+    company: null,
+    location: null,
+    dog_count: null,
+    frequency: null,
+    message: "Asked for a callback about a one-time spring cleanup.",
+    source: "sms_receptionist",
+    status: "converted",
+    contacted_at: null,
+    converted_at: iso(new Date(Date.now() - 8 * 864e5)),
+    converted_client_id: null,
+  },
+];
+
 /** The platform console's tenant list. Two rows in every lifecycle state the
  *  console draws a badge for, so nothing in that column is untested. */
 export const PLATFORM_TENANTS = [
@@ -473,23 +542,7 @@ export const PLATFORM_PLANS = [
  * app, so it cannot be truncated away); and one lead in each working status,
  * so both branches of the action column get drawn.
  */
-export const LEAD_FORM_CONFIG = {
-  orgName: ORG_NAME,
-  slug: ORGANIZATION.portal_slug,
-  publicSignupEnabled: true,
-  submissionsTotal: 37,
-  submissionsLast30: 9,
-  config: {
-    brandColor: null,
-    logoUrl: null,
-    headline: "Request a quote",
-    intro: "Tell us about your yard and we'll get you a quote.",
-    confirmation: "Thanks, we got your request! We'll be in touch shortly to set up your service.",
-    fields: { phone: true, location: true, dogCount: true, message: true },
-  },
-};
-
-export const LEADS = [
+export const WORKING_LEADS = [
   {
     name: "Genevieve Okonkwo-Castellanos",
     company: "Lakeview Terrace Condominium Association",
@@ -541,6 +594,7 @@ export const LEADS = [
   frequency: null,
   contacted_at: null,
   converted_at: null,
+  converted_client_id: null,
   created_at: iso(new Date(Date.now() - (i + 1) * 5 * 3600e3)),
   updated_at: iso(new Date(Date.now() - (i + 1) * 5 * 3600e3)),
   ...l,

@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { CLIENT_ID, ORG_ID } from "./dataset";
+import { CLIENT_ID, LEAD_ID, LEAD_NAME, ORG_ID } from "./dataset";
 
 /**
  * The authenticated surfaces this sweep measures, and — the important half —
@@ -129,6 +129,17 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("heading", { name: "New client" }).first(),
     proofLabel: 'the "New client" heading',
     expectsData: "Account type",
+  },
+  {
+    // The wizard started from a lead: the "Started from the lead" panel and
+    // the existing-client warning inside it sit above the stepper, and both
+    // carry a 46-character name. "Account type" alone would pass on the blank
+    // wizard, so the proof is the panel only a lead draws.
+    id: "/clients/new?fromLead",
+    path: `/clients/new?fromLead=${LEAD_ID}`,
+    proof: (p) => p.getByText("Started from the lead").first(),
+    proofLabel: 'the "Started from the lead" panel',
+    expectsData: LEAD_NAME,
   },
   {
     id: "/invoices",

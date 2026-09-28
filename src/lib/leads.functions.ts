@@ -155,56 +155,69 @@ export const listLeads = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
-// Finding #39: actually convert a lead into a Client (pre-filled from the
-// lead), instead of just relabeling its status. Idempotent-ish: a lead already
-// converted with a linked client is not duplicated.
-export const convertLeadToClient = createServerFn({ method: "POST" })
+// Converting a lead opens the new-client wizard started from it
+// (/clients/new?fromLead=<id>), and onboardClient marks the lead converted
+// when the wizard saves. This used to be a one-tap insert that copied the
+// name, email, phone and message and nothing else, so a lead with a ZIP, three
+// dogs and a weekly frequency became a client with no property, no dogs and no
+// service. See src/lib/lead-conversion.ts.
+//
+// The wizard reads the lead here, server-side, by id, rather than taking its
+// fields in the URL: a lead is a stranger's name, email, phone and address,
+// and a query string ends up in history, logs and referrers.
+export const getLeadForConversion = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
-    const { data: lead, error } = await context.supabase
-      .from("leads")
-      .select("id, name, email, phone, message, status")
-      .eq("id", data.id)
-      .single();
-    if (error) throw new Error(error.message);
+    const { loadLeadForConversion } = await import("@/lib/lead-conversion.server");
+    const { isSyntheticLeadEmail } = await import("@/lib/lead-conversion");
+    const lead = await loadLeadForConversion(context.supabase, orgId, data.id);
 
-    // Reuse an existing client with the same email in this org if one exists.
-    let clientId: string | null = null;
-    if (lead.email) {
-      const { data: existing } = await context.supabase
+    // The old conversion reused a client with the same email instead of
+    // making a second one. The wizard cannot do that silently (it is about to
+    // create a client), so it says so and offers to link the lead instead.
+    let existingClient: { id: string; displayName: string } | null = null;
+    if (lead.email && !isSyntheticLeadEmail(lead.email)) {
+      const { data: match, error } = await context.supabase
         .from("clients")
-        .select("id")
+        .select("id, display_name")
         .eq("organization_id", orgId)
-        .eq("primary_email", lead.email.toLowerCase())
+        .eq("primary_email", lead.email.trim().toLowerCase())
+        .order("created_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
-      clientId = existing?.id ?? null;
+      if (error) throw new Error(error.message);
+      if (match) existingClient = { id: match.id, displayName: match.display_name };
     }
+    return { lead, existingClient };
+  });
 
-    if (!clientId) {
-      const { data: created, error: cErr } = await context.supabase
-        .from("clients")
-        .insert({
-          organization_id: orgId,
-          display_name: lead.name,
-          account_type: "residential",
-          primary_email: lead.email ? lead.email.toLowerCase() : null,
-          primary_phone: lead.phone || null,
-          notes: lead.message || null,
-        })
-        .select("id")
-        .single();
-      if (cErr) throw new Error(cErr.message);
-      clientId = created.id as string;
-    }
-
-    await context.supabase
-      .from("leads")
-      .update({ status: "converted", converted_at: new Date().toISOString() })
-      .eq("id", data.id);
-
-    return { clientId };
+/** The lead IS an existing client (same person, already on the books): record
+ *  the conversion against that client instead of creating a second one. */
+export const linkLeadToExistingClient = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ leadId: z.string().uuid(), clientId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
+    const { loadLeadForConversion, assertConvertible, markLeadConverted } = await import(
+      "@/lib/lead-conversion.server"
+    );
+    const lead = await loadLeadForConversion(context.supabase, orgId, data.leadId);
+    assertConvertible(lead);
+    const { data: client, error } = await context.supabase
+      .from("clients")
+      .select("id")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!client) throw new Error("That client was not found.");
+    if (!(await markLeadConverted(context.supabase, lead.id, client.id)))
+      throw new Error("That lead has already been converted.");
+    return { clientId: client.id as string };
   });
 
 export const updateLeadStatus = createServerFn({ method: "POST" })
