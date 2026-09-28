@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { photoKindLabel } from "@/lib/photo-kinds";
 
 /**
  * A visit photo, opened inside the app.
@@ -104,7 +105,7 @@ export function PhotoLightbox({
           aria-describedby={undefined}
         >
           <DialogPrimitive.Title className="sr-only">
-            {photo.kind ? `${photo.kind} photo` : "Visit photo"}
+            {photo.kind ? `${photoKindLabel(photo.kind)} photo` : "Visit photo"}
             {count > 1 ? `, ${index + 1} of ${count}` : ""}
           </DialogPrimitive.Title>
 
@@ -112,7 +113,7 @@ export function PhotoLightbox({
               phone in a full-screen WebView, `inset-0` is behind the clock. */}
           <div className="flex items-center justify-between gap-2 px-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-white/90">
-              {photo.kind ?? "photo"}
+              {photo.kind ? photoKindLabel(photo.kind) : "photo"}
               {count > 1 ? ` · ${index + 1}/${count}` : ""}
             </span>
             <DialogPrimitive.Close
@@ -133,7 +134,7 @@ export function PhotoLightbox({
             ) : (
               <img
                 src={photo.url}
-                alt={photo.kind ? `${photo.kind} photo` : "Visit photo"}
+                alt={photo.kind ? `${photoKindLabel(photo.kind)} photo` : "Visit photo"}
                 className="max-h-full max-w-full object-contain"
                 onError={() => setFailed(true)}
               />

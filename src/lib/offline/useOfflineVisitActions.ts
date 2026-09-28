@@ -21,15 +21,13 @@ import { compressImage } from "@/lib/offline/compressImage";
 import { supabase } from "@/integrations/supabase/client";
 import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
+import type { PhotoKind } from "@/lib/photo-kinds";
 
 export interface OfflineVisitActions {
   start: () => Promise<{ queued: boolean }>;
   complete: (extra?: { note?: string; noPhotoReason?: string }) => Promise<{ queued: boolean }>;
   skip: (reason: string, code: string) => Promise<{ queued: boolean }>;
-  uploadPhoto: (
-    file: File,
-    kind: "before" | "completion" | "issue",
-  ) => Promise<{ queued: boolean }>;
+  uploadPhoto: (file: File, kind: PhotoKind) => Promise<{ queued: boolean }>;
 }
 
 function isNavigatorOnline() {
@@ -119,7 +117,7 @@ export function useOfflineVisitActions(
   );
 
   const uploadPhoto = useCallback(
-    async (rawFile: File, kind: "before" | "completion" | "issue") => {
+    async (rawFile: File, kind: PhotoKind) => {
       // Downscale + re-encode before either upload path so both online and
       // queued photos benefit (queued blobs sit in IndexedDB — the smaller
       // the better).

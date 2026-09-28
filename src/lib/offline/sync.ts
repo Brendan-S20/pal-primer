@@ -4,6 +4,7 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { isDefinitelyOffline } from "./connectivity";
+import type { PhotoKind } from "@/lib/photo-kinds";
 import { isTransportFailure, withDeadline } from "@/lib/offline/run-or-queue";
 import {
   deleteAction,
@@ -23,7 +24,7 @@ export interface SyncCallers {
     data: { visitId: string; reason: string; code: any; skippedAt?: string };
   }) => Promise<unknown>;
   recordVisitPhoto: (args: {
-    data: { visitId: string; storagePath: string; kind: "before" | "completion" | "issue" };
+    data: { visitId: string; storagePath: string; kind: PhotoKind };
   }) => Promise<unknown>;
   logStationService: (args: {
     data: {
