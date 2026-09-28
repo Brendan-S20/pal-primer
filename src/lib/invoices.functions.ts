@@ -16,6 +16,24 @@ import {
 } from "@/lib/manual-payments";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 
+/** Each payment row with how much of it has been refunded, from the reversal
+ *  ledger — so the invoice can say "$30.00 refunded" and hide the Refund button
+ *  on a payment that has nothing left. See refundedCentsByPayment. */
+async function withRefunded<P extends { id: string }>(
+  supabase: unknown,
+  orgId: string,
+  payments: P[] | null | undefined,
+): Promise<(P & { refunded_cents: number })[]> {
+  const rows = payments ?? [];
+  const { refundedCentsByPayment } = await import("@/lib/refunds.server");
+  const refunded = await refundedCentsByPayment(
+    supabase,
+    orgId,
+    rows.map((p) => p.id),
+  );
+  return rows.map((p) => ({ ...p, refunded_cents: refunded.get(p.id) ?? 0 }));
+}
+
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -64,7 +82,7 @@ export const getInvoice = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
     const res = await supabase
       .from("invoices")
       .select("*, clients(display_name, primary_email)")
@@ -106,7 +124,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       )
       .eq("invoice_id", data.id)
       .order("created_at", { ascending: false });
-    return { invoice, items: items ?? [], payments: payments ?? [] };
+    return { invoice, items: items ?? [], payments: await withRefunded(supabase, orgId, payments) };
   });
 
 export const generateInvoicesForOrg = createServerFn({ method: "POST" })
@@ -1183,7 +1201,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       invoice: inv,
       client: clients ?? null,
       lineItems: lines ?? [],
-      payments: pays ?? [],
+      payments: await withRefunded(supabase, orgId, pays),
       /** Whether a card can be taken at all. Without a connected Stripe
        *  account every card path fails, and the office should be pointed at
        *  Record payment instead of shown a red error. */

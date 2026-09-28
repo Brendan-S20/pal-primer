@@ -703,6 +703,9 @@ const BASE_STUBS: Record<string, Stub> = {
   listClientMessages: { messages: [], rows: [] },
   listAddonServices: { services: [], addons: [], rows: [] },
   listInvoices: fx.INVOICES,
+  // The full invoice page and its Refund dialog. See REFUND_INVOICE.
+  getInvoice: fx.REFUND_INVOICE,
+  getPaymentRefundQuote: fx.REFUND_QUOTE,
   getCollectedThisMonth: { grossCents: 1_301_900, refundsCents: 63_500, netCents: 1_238_400 },
 
   // ── Address autocomplete (seven fields were wired to it today) ──────────

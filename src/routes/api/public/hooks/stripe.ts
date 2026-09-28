@@ -1044,6 +1044,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             let movesMoney = false;
 
             if (event.type === "charge.refunded") {
+              // Every tenant refund lands here, whichever side started it:
+              // Stripe's embedded panel on /payments, or Refund on the invoice
+              // (refunds.server.ts), which writes NO ledger row of its own and
+              // relies on this branch for all of it. Keep it that way — a
+              // second writer would record one refund twice.
               kind = "refund";
               amount = Number(obj?.amount_refunded ?? 0);
               movesMoney = true;

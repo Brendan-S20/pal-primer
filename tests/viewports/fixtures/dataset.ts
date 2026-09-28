@@ -273,6 +273,106 @@ export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
   number: `INV-2026-${String(1041 + i)}`,
 }));
 
+/**
+ * /invoices/:id, and the Refund dialog on it. Added 2026-09-28 with refunding
+ * from the invoice, which is the first control on this page a phone owner has
+ * a reason to press in a driveway.
+ *
+ * Awkward on purpose, three ways: the longest commercial client name, so the
+ * confirm step's "Send $X back to <name>?" has to wrap; a SURCHARGED card
+ * payment that has been PARTLY refunded, so the row draws the charged total,
+ * the service/card-fee split, the refunded line and the Refund button in one
+ * cell; and a check with a long reference beside it, which must NOT get a
+ * Refund button, so a surface that drew one on every row would show it.
+ */
+export const REFUND_INVOICE_ID = "99999999-0000-4000-8000-00000000e0a1";
+export const REFUND_CLIENT_NAME = "Northbrook Homeowners Association #4471";
+export const REFUND_CARD_PAYMENT_ID = "77777777-0000-4000-8000-0000000077a1";
+const REFUND_INVOICE_ROW = {
+  id: REFUND_INVOICE_ID,
+  organization_id: ORG_ID,
+  number: 10477,
+  client_id: CLIENTS[4].id,
+  status: "paid",
+  kind: "service",
+  currency: "usd",
+  subtotal_cents: 24_000,
+  total_cents: 24_000,
+  credit_applied_cents: 0,
+  period_start: day(-30),
+  period_end: day(-1),
+  issued_at: iso(new Date(Date.now() - 9 * 864e5)),
+  paid_at: iso(new Date(Date.now() - 6 * 864e5)),
+  due_on: day(5),
+  send_after: null,
+  sent_at: iso(new Date(Date.now() - 9 * 864e5)),
+  public_token: null,
+  voided_at: null,
+  notes: null,
+  checkout_url: null,
+  created_at: iso(new Date(Date.now() - 9 * 864e5)),
+  accounting_remote_id: null,
+  stripe_checkout_session_id: null,
+  stripe_payment_intent_id: "pi_3QxT7HkPmZ3vLd8RaFn2Wq0Bs",
+};
+export const REFUND_INVOICE_PAYMENTS = [
+  {
+    id: REFUND_CARD_PAYMENT_ID,
+    amount_cents: 16_000,
+    surcharge_cents: 480,
+    // `refunded` after the first partial: the webhook's own behaviour, and
+    // exactly the row the Refund button must still appear on.
+    status: "refunded",
+    stripe_payment_intent_id: "pi_3QxT7HkPmZ3vLd8RaFn2Wq0Bs",
+    paid_at: iso(new Date(Date.now() - 6 * 864e5)),
+    created_at: iso(new Date(Date.now() - 6 * 864e5)),
+    method: null,
+    reference: null,
+    refunded_cents: 4_120,
+  },
+  {
+    id: "77777777-0000-4000-8000-0000000077a2",
+    amount_cents: 8_000,
+    surcharge_cents: 0,
+    status: "succeeded",
+    stripe_payment_intent_id: null,
+    paid_at: iso(new Date(Date.now() - 7 * 864e5)),
+    created_at: iso(new Date(Date.now() - 7 * 864e5)),
+    method: "check",
+    reference: "HOA-OPERATING-ACCT-000418822-CHK-10477",
+    refunded_cents: 0,
+  },
+];
+export const REFUND_INVOICE = {
+  invoice: {
+    ...REFUND_INVOICE_ROW,
+    clients: {
+      display_name: REFUND_CLIENT_NAME,
+      primary_email: CLIENTS[4].primary_email,
+    },
+  },
+  items: [
+    {
+      id: "66666666-0000-4000-8000-0000000066a1",
+      description: "Weekly yard service, 4 visits (commons, dog run and both retention ponds)",
+      amount_cents: 24_000,
+      visit_id: null,
+      subscription_id: null,
+    },
+  ],
+  payments: REFUND_INVOICE_PAYMENTS,
+};
+/** What Stripe would say about the card payment: $164.80 charged, $41.20 back. */
+export const REFUND_QUOTE = {
+  paymentId: REFUND_CARD_PAYMENT_ID,
+  invoiceId: REFUND_INVOICE_ID,
+  currency: "usd",
+  chargedCents: 16_480,
+  surchargeCents: 480,
+  refundedCents: 4_120,
+  refundableCents: 12_360,
+};
+
 /** /leads, and the new-client wizard started from one of them. One lead in
  *  each conversion state the page draws differently: convertible (Convert to
  *  client), converted and linked (Open client), converted by hand with no

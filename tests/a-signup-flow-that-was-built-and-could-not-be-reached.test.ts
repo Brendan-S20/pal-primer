@@ -229,10 +229,14 @@ describe("a signup that cannot be provisioned gives the money back", () => {
   it("and reverses our platform fee with it", () => {
     // Keeping 50 bps on a sale that was unwound because WE failed would be
     // charging the tenant for our own defect. This is the one refund the app
-    // issues itself, so the fee comes back in the same call rather than through
-    // the charge.refunded reconciliation.
+    // issues that is not routed through the charge.refunded reconciliation, so
+    // the fee comes back in the same call. (It used to be the one refund the
+    // app issued at all; Refund on the invoice, refunds.server.ts, is the
+    // second, and it deliberately leaves the fee to the webhook.)
     expect(provision).toMatch(/refund_application_fee: true/);
-    expect(read("src/lib/platform-fee.ts")).toMatch(/ONE refund this app issues itself/);
+    expect(read("src/lib/platform-fee.ts")).toMatch(
+      /ONE refund this app issues that is deliberately not routed\s*\n?\/\/\s*through `feeReversalCents`/,
+    );
   });
 
   it("exactly once, however many times Stripe redelivers the event", () => {
