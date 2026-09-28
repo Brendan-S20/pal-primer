@@ -63,7 +63,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice",
+            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, notify_email_visit_reminder",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -233,6 +233,12 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
               reminderFrom,
               org.overdue_reminder_days ?? 7,
             );
+          }
+
+          // Day-before reminder, by email: see visit-reminders.server.ts.
+          if (org.notify_email_visit_reminder) {
+            const { sendVisitReminderEmails } = await import("@/lib/visit-reminders.server");
+            perOrg.visit_reminders_emailed = await sendVisitReminderEmails(supabaseAdmin, org);
           }
 
           if (org.overdue_reminders_enabled) {
