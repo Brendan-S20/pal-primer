@@ -5,7 +5,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { getSmsConsentCoverage, listClients, updateClient } from "@/lib/clients.functions";
+import {
+  bulkTagClients,
+  getSmsConsentCoverage,
+  listClients,
+  updateClient,
+} from "@/lib/clients.functions";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { usePermissions } from "@/hooks/useMyRole";
 import { humanizeEnum } from "@/lib/humanize";
@@ -23,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { AlertTriangle, Download, MessageSquareOff, Search, Users } from "lucide-react";
+import { AlertTriangle, Download, MessageSquareOff, Search, Tag, Users } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 
@@ -90,6 +96,7 @@ function ClientsList() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
+  const [tag, setTag] = useState<string>("all");
 
   const clients = data?.clients ?? [];
 
@@ -110,10 +117,25 @@ function ClientsList() {
     return { total: clients.length, active, outstanding, owedTotal, atRisk, noPlan };
   }, [clients]);
 
+  // Every tag in use, for the filter: tags came in by the hundred once
+  // imports carried Jobber's Tags column across, and nothing could find them.
+  const allTags = useMemo(() => {
+    const byLc = new Map<string, string>();
+    for (const c of clients as any[]) for (const t of (c.tags ?? []) as string[]) {
+      if (!byLc.has(t.toLowerCase())) byLc.set(t.toLowerCase(), t);
+    }
+    return [...byLc.values()].sort((a, b) => a.localeCompare(b));
+  }, [clients]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return clients.filter((c: any) => {
       if (type !== "all" && c.account_type !== type) return false;
+      if (
+        tag !== "all" &&
+        !((c.tags ?? []) as string[]).some((t) => t.toLowerCase() === tag.toLowerCase())
+      )
+        return false;
       if (status === "active" && !c.active) return false;
       if (status === "inactive" && c.active) return false;
       if (status === "outstanding" && !(c.outstanding_cents > 0)) return false;
@@ -121,18 +143,18 @@ function ClientsList() {
       if (status === "no_plan" && !(c.active && (c.active_subscription_count ?? 0) === 0))
         return false;
       if (!needle) return true;
-      const hay = [c.display_name, c.primary_email, c.primary_phone]
+      const hay = [c.display_name, c.primary_email, c.primary_phone, ...((c.tags ?? []) as string[])]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return hay.includes(needle);
     });
-  }, [clients, q, status, type]);
+  }, [clients, q, status, type, tag]);
 
   // Multi-select over the currently filtered rows (desktop table). Selection
   // clears whenever a filter changes so a bulk action never hits hidden rows.
   const visibleIds = useMemo(() => filtered.map((c: any) => c.id as string), [filtered]);
-  const sel = useRowSelection(visibleIds, `${q}|${status}|${type}`);
+  const sel = useRowSelection(visibleIds, `${q}|${status}|${type}|${tag}`);
   const selectedRows = useMemo(
     () => filtered.filter((c: any) => sel.isSelected(c.id)),
     [filtered, sel],
@@ -177,9 +199,95 @@ function ClientsList() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Bulk tags: one tag added to, or taken off, every selected client.
+  const tagFn = useServerFn(bulkTagClients);
+  const [tagAction, setTagAction] = useState<"add" | "remove" | null>(null);
+  const [tagText, setTagText] = useState("");
+  const askTag = (action: "add" | "remove") => {
+    setTagText("");
+    setTagAction(action);
+  };
+  const selectedTags = useMemo(() => {
+    const byLc = new Map<string, string>();
+    for (const c of selectedRows as any[]) for (const t of (c.tags ?? []) as string[]) {
+      if (!byLc.has(t.toLowerCase())) byLc.set(t.toLowerCase(), t);
+    }
+    return [...byLc.values()].sort((a, b) => a.localeCompare(b));
+  }, [selectedRows]);
+  const tagM = useMutation({
+    mutationFn: (v: { action: "add" | "remove"; tag: string }) =>
+      tagFn({ data: { ids: sel.selectedIds, tag: v.tag, action: v.action } }),
+    onSuccess: (r, v) => {
+      toast.success(
+        v.action === "add"
+          ? `Tagged ${r.changed} client${r.changed === 1 ? "" : "s"} "${v.tag}"`
+          : `Removed "${v.tag}" from ${r.changed} client${r.changed === 1 ? "" : "s"}`,
+      );
+      setTagAction(null);
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
       {dialog}
+      <Dialog open={tagAction != null} onOpenChange={(o) => !o && setTagAction(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {tagAction === "remove" ? "Remove a tag" : "Add a tag"} ({sel.count} selected)
+            </DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const t = tagText.trim();
+              if (t && tagAction) tagM.mutate({ action: tagAction, tag: t });
+            }}
+          >
+            {tagAction === "remove" ? (
+              <select
+                aria-label="Tag to remove"
+                value={tagText}
+                onChange={(e) => setTagText(e.target.value)}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Choose a tag…</option>
+                {selectedTags.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                aria-label="Tag to add"
+                list="client-tags-in-use"
+                maxLength={40}
+                placeholder="e.g. VIP, Tuesday, HOA"
+                value={tagText}
+                onChange={(e) => setTagText(e.target.value)}
+                autoFocus
+              />
+            )}
+            <datalist id="client-tags-in-use">
+              {allTags.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={() => setTagAction(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!tagText.trim() || tagM.isPending}>
+                {tagAction === "remove" ? "Remove tag" : "Add tag"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       {/* flex-wrap, because at 360px "Export CSV" and "New client" beside a
           two-line title is about 480px of content in a 360px row: without it
           the buttons go over the right edge rather than dropping under. */}
@@ -284,6 +392,21 @@ function ClientsList() {
             <SelectItem value="commercial">Commercial</SelectItem>
           </SelectContent>
         </Select>
+        {allTags.length > 0 && (
+          <Select value={tag} onValueChange={setTag}>
+            <SelectTrigger className="w-44" aria-label="Filter by tag">
+              <SelectValue placeholder="Tag" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tags</SelectItem>
+              {allTags.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Bulk action bar — appears once rows are checked in the table */}
@@ -291,6 +414,24 @@ function ClientsList() {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
           <span className="font-medium">{sel.count} selected</span>
           <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={tagM.isPending}
+              onClick={() => askTag("add")}
+            >
+              <Tag className="mr-1 h-4 w-4 shrink-0" /> Add tag
+            </Button>
+            {selectedRows.some((c: any) => (c.tags ?? []).length > 0) && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={tagM.isPending}
+                onClick={() => askTag("remove")}
+              >
+                Remove tag
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => exportClientsCsv(selectedRows)}>
               <Download className="mr-1 h-4 w-4 shrink-0" /> Export CSV
             </Button>
