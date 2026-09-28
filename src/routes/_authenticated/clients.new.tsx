@@ -15,6 +15,8 @@ import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/Bo
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { useOrgToday } from "@/hooks/useOrgToday";
+import { formatDay } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/clients/new")({
   component: NewClientWizard,
@@ -37,6 +39,18 @@ const FREQS = [
 ] as const;
 
 const STEPS = ["Contact", "Property", "Yard", "Dogs", "Plan"] as const;
+
+/** The next calendar day after an org-calendar day (YYYY-MM-DD). */
+function tomorrowOf(day: string): string {
+  return new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
+/** 0 = Sunday, the numbering subscriptions.preferred_weekdays uses. */
+function weekdayOf(day: string): number {
+  return new Date(`${day}T12:00:00Z`).getUTCDay();
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function money(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
@@ -190,6 +204,13 @@ function NewClientWizard() {
   const [unitCount, setUnitCount] = useState("1");
   const [priceOverride, setPriceOverride] = useState<string>("");
   const [skipPlan, setSkipPlan] = useState(false);
+  // When the service starts, on the business's calendar. Tomorrow by default:
+  // today, created in the evening, meant a visit that night after the route
+  // had ended, with nobody on it and nobody told (persona review, 2026-09-27).
+  const orgTodayStr = useOrgToday();
+  const [startedOn, setStartedOn] = useState(() => tomorrowOf(orgTodayStr));
+  const [serviceDays, setServiceDays] = useState<number[] | null>(null);
+  const effectiveServiceDays = serviceDays ?? [weekdayOf(startedOn)];
 
   // Auto-quote (residential)
   const quoteKey = useMemo(
@@ -220,12 +241,16 @@ function NewClientWizard() {
       ? (quoteQ.data as any).quote.recurringPriceCents
       : null;
 
+  // No zone quote and nothing typed means no price, not $25. The old
+  // fallback saved $25.00 for anyone who left the box empty, while the box
+  // showed a grey placeholder that looked like a suggestion.
   const priceCents = (() => {
     const override = parseFloat(priceOverride);
     if (!isNaN(override) && override > 0) return Math.round(override * 100);
     if (suggestedCents != null) return suggestedCents;
-    return 2500;
+    return null;
   })();
+  const needsPrice = !skipPlan && priceCents == null;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -260,7 +285,9 @@ function NewClientWizard() {
             ? undefined
             : {
                 frequency,
-                priceCents,
+                priceCents: priceCents ?? 0,
+                startedOn,
+                preferredWeekdays: frequency === "one_time" ? undefined : effectiveServiceDays,
                 dogCount: accountType === "residential" ? Math.max(1, validDogs.length) : undefined,
                 unitCount:
                   accountType === "commercial" ? Math.max(1, parseInt(unitCount, 10) || 1) : undefined,
@@ -272,8 +299,11 @@ function NewClientWizard() {
               },
         },
       }),
-    onSuccess: ({ id }) => {
-      toast.success("Client created");
+    onSuccess: ({ id, firstVisitOn, welcomeEmailed }) => {
+      const parts = ["Client created."];
+      if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
+      if (welcomeEmailed && primaryEmail) parts.push(`Welcome email sent to ${primaryEmail}.`);
+      toast.success(parts.join(" "), { duration: 8000 });
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
       navigate({ to: "/clients/$clientId", params: { clientId: id } });
@@ -720,6 +750,53 @@ function NewClientWizard() {
                   )}
                 </div>
 
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="started-on">First visit</Label>
+                    <Input
+                      id="started-on"
+                      type="date"
+                      min={orgTodayStr}
+                      value={startedOn}
+                      // The service day follows this date until the owner picks days.
+                      onChange={(e) => setStartedOn(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      If that isn&apos;t a work day or a service day, it moves to the next one.
+                    </p>
+                  </div>
+                  {frequency !== "one_time" && (
+                    <fieldset className="space-y-2">
+                      <legend className="text-sm font-medium">Service day</legend>
+                      <div className="flex flex-wrap gap-1.5">
+                        {WEEKDAYS.map((label, d) => {
+                          const on = effectiveServiceDays.includes(d);
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => {
+                                const next = on
+                                  ? effectiveServiceDays.filter((x) => x !== d)
+                                  : [...effectiveServiceDays, d].sort((a, b) => a - b);
+                                setServiceDays(next.length ? next : [weekdayOf(startedOn)]);
+                              }}
+                              className={`h-9 min-w-11 rounded-md border px-2 text-sm touch:min-h-11 ${
+                                on
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-input bg-background"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  )}
+                </div>
+
                 {accountType === "residential" && (
                   <div className="rounded-md border bg-primary/5 p-4">
                     <div className="flex items-baseline justify-between">
@@ -757,22 +834,26 @@ function NewClientWizard() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="po">Price per visit (override)</Label>
+                  <Label htmlFor="po">
+                    {suggestedCents != null ? "Price per visit (override)" : "Price per visit"}
+                  </Label>
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">$</span>
                     <Input
                       id="po"
                       inputMode="decimal"
                       placeholder={
-                        suggestedCents != null ? (suggestedCents / 100).toFixed(2) : "25.00"
+                        suggestedCents != null ? (suggestedCents / 100).toFixed(2) : "Enter a price"
                       }
                       value={priceOverride}
                       onChange={(e) => setPriceOverride(e.target.value)}
                       className="max-w-[160px]"
                     />
-                    <span className="text-xs text-muted-foreground">
-                      Final: <strong>{money(priceCents)}</strong> / visit
-                    </span>
+                    {priceCents != null && (
+                      <span className="text-xs text-muted-foreground">
+                        Final: <strong>{money(priceCents)}</strong> / visit
+                      </span>
+                    )}
                   </div>
                 </div>
               </>
@@ -804,13 +885,18 @@ function NewClientWizard() {
               Continue
             </Button>
           ) : (
-            <Button
-              type="button"
-              disabled={mutation.isPending}
-              onClick={() => mutation.mutate()}
-            >
-              {mutation.isPending ? "Creating…" : "Create client"}
-            </Button>
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                type="button"
+                disabled={mutation.isPending || needsPrice}
+                onClick={() => mutation.mutate()}
+              >
+                {mutation.isPending ? "Creating…" : "Create client"}
+              </Button>
+              {needsPrice && (
+                <p className="text-xs text-muted-foreground">Set a price per visit first.</p>
+              )}
+            </div>
           )}
         </div>
       </Card>

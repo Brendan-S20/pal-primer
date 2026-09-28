@@ -679,6 +679,14 @@ const onboardSchema = z.object({
       zoneId: z.string().uuid().optional(),
       billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
       preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+      /** The first day the service may run, on the org's calendar. Without
+       *  it the column defaults to the database's CURRENT_DATE, which is UTC:
+       *  a client created on a US evening got a visit that same night, after
+       *  the route had finished, with nobody on it. */
+      startedOn: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
     })
     .optional(),
 });
@@ -800,10 +808,23 @@ export const onboardClient = createServerFn({ method: "POST" })
     }
 
     // 4) subscription
+    let firstVisitOn: string | null = null;
     if (data.subscription) {
       const s = data.subscription;
       const isRes = data.accountType === "residential";
-      const { error: sErr } = await supabase.from("subscriptions").insert({
+      if (s.startedOn) {
+        const { data: orgRow } = await supabase
+          .from("organizations")
+          .select("timezone")
+          .eq("id", orgId)
+          .maybeSingle();
+        const { orgToday, DEFAULT_ORG_TIMEZONE } = await import("@/lib/org-day");
+        if (s.startedOn < orgToday(orgRow?.timezone || DEFAULT_ORG_TIMEZONE)) {
+          await undoClient();
+          throw new Error("The first visit can't be in the past.");
+        }
+      }
+      const { data: subRow, error: sErr } = await supabase.from("subscriptions").insert({
         organization_id: orgId,
         client_id: clientId,
         property_id: propertyId,
@@ -815,7 +836,8 @@ export const onboardClient = createServerFn({ method: "POST" })
         zone_id: s.zoneId ?? null,
         billing_cadence: s.billingCadence ?? "postpaid",
         preferred_weekdays: s.preferredWeekdays?.length ? s.preferredWeekdays : null,
-      });
+        ...(s.startedOn ? { started_on: s.startedOn } : {}),
+      }).select("id").single();
       if (sErr) {
         await undoClient();
         throw new Error(sErr.message);
@@ -825,6 +847,18 @@ export const onboardClient = createServerFn({ method: "POST" })
       // schedule immediately instead of waiting for the nightly job.
       const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
       await generateVisitHorizon(supabase, orgId);
+
+      // The owner is told when the first visit actually is, which is not
+      // always the day they picked: generation moves it to the next work day
+      // or preferred weekday.
+      const { data: first } = await supabase
+        .from("visits")
+        .select("scheduled_on")
+        .eq("subscription_id", subRow!.id)
+        .order("scheduled_on")
+        .limit(1)
+        .maybeSingle();
+      firstVisitOn = first?.scheduled_on ?? null;
     }
 
     {
@@ -839,12 +873,14 @@ export const onboardClient = createServerFn({ method: "POST" })
       });
     }
 
-    // welcome email (best-effort)
+    // welcome email (best-effort). Reported back, so the owner is told it went
+    // rather than finding out from the customer.
+    let welcomeEmailed = false;
     if (data.primaryEmail) {
       try {
         const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-        await enqueueAppEmail({
+        const sent = await enqueueAppEmail({
           organizationId: orgId,
           clientId,
           templateName: "welcome",
@@ -854,12 +890,13 @@ export const onboardClient = createServerFn({ method: "POST" })
             portalUrl: await buildPortalLink(orgId, cRow.portal_token as string | null),
           },
         });
+        welcomeEmailed = sent.ok;
       } catch (e) {
         console.error("welcome email failed", e);
       }
     }
 
-    return { id: clientId };
+    return { id: clientId, firstVisitOn, welcomeEmailed };
   });
 
 
