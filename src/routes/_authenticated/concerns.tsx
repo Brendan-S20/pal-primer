@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarOff, Inbox, Repeat } from "lucide-react";
+import { CalendarCheck, CalendarOff, Inbox, Repeat, Sparkles } from "lucide-react";
+import { ScheduleRecleanDialog, type RecleanTicket } from "@/components/ScheduleRecleanDialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
@@ -46,6 +47,58 @@ function fmt(d: string) {
   return formatDateTime(d);
 }
 
+/** PostgREST returns a to-one embed as an object, but older typings and some
+ *  callers see an array; read either. */
+function oneOf<T>(v: T | T[] | null | undefined): T | null {
+  if (Array.isArray(v)) return v[0] ?? null;
+  return v ?? null;
+}
+
+/**
+ * What a re-clean request needs that a concern does not: which visit it is
+ * about, and whether the free return visit is booked yet.
+ *
+ * Once booked the row says so and the button is gone, which is what stops a
+ * second free visit being booked for one request. Without manage_pricing the
+ * button is hidden rather than left to fail: createOneOffVisit sets a price
+ * (even $0) and requires it, the same gate as the frequency-change apply.
+ */
+function RecleanRow({
+  concern,
+  status,
+  canSchedule,
+  onSchedule,
+}: {
+  concern: any;
+  status: ConcernStatus;
+  canSchedule: boolean;
+  onSchedule: () => void;
+}) {
+  const visit = oneOf<{ scheduled_on: string; property_id: string }>(concern.visit);
+  const booked = oneOf<{ scheduled_on: string }>(concern.reclean_visit);
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm">
+      {booked ? (
+        <CalendarCheck className="h-4 w-4 shrink-0 text-sky-700 dark:text-sky-400" />
+      ) : (
+        <Sparkles className="h-4 w-4 shrink-0 text-sky-700 dark:text-sky-400" />
+      )}
+      <span className="min-w-0 flex-1 basis-48 text-sky-900 dark:text-sky-200">
+        {booked
+          ? `Re-clean booked for ${formatDay(booked.scheduled_on)}.`
+          : visit
+            ? `Asked for a free re-clean of the visit on ${formatDay(visit.scheduled_on)}.`
+            : "Asked for a free re-clean. The visit it was about has since been deleted."}
+      </span>
+      {!booked && visit && status !== "resolved" && canSchedule && (
+        <Button size="sm" className="ml-auto" onClick={onSchedule}>
+          Schedule re-clean
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function ConcernsPage() {
   // The one-click frequency apply is a manage_pricing action — hide it for
   // roles (dispatcher) that can reach Concerns but would be server-rejected.
@@ -81,6 +134,8 @@ function ConcernsPage() {
   // request is applied, the action is hidden even if the follow-up resolve
   // fails, so a double-click can't re-apply.
   const [appliedFreqTicketIds, setAppliedFreqTicketIds] = useState<Set<string>>(new Set());
+  // The re-clean request being scheduled, if any.
+  const [recleanFor, setRecleanFor] = useState<RecleanTicket | null>(null);
   const qc = useQueryClient();
   const listFn = useServerFn(listConcerns);
   const updateFn = useServerFn(updateConcernStatus);
@@ -169,7 +224,8 @@ function ConcernsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Concerns</h1>
         <p className="text-sm text-muted-foreground">
-          Issues clients submit from their portal ("Report a concern"). Triage and resolve them here.
+          Issues clients submit from their portal, including re-clean requests. Triage and resolve
+          them here.
         </p>
       </div>
 
@@ -335,6 +391,22 @@ function ConcernsPage() {
                   </div>
                 )}
 
+                {c.category === "reclean_request" && (
+                  <RecleanRow
+                    concern={c}
+                    status={status}
+                    canSchedule={canManagePricing}
+                    onSchedule={() =>
+                      setRecleanFor({
+                        ticketId: c.id,
+                        clientId: c.client_id,
+                        clientName: client?.display_name ?? "this client",
+                        visit: oneOf(c.visit)!,
+                      })
+                    }
+                  />
+                )}
+
                 {c.last_reply_at && (
                   <p className="mt-2 rounded bg-muted/50 p-2 text-xs text-muted-foreground">
                     You replied {fmt(c.last_reply_at)}: <span className="italic">{c.last_reply}</span>
@@ -439,6 +511,15 @@ function ConcernsPage() {
           })}
         </ul>
       )}
+
+      {/* Always mounted: it remembers a visit it booked but could not link,
+          so a retry links instead of booking a second one. */}
+      <ScheduleRecleanDialog
+        ticket={recleanFor}
+        onOpenChange={(o) => {
+          if (!o) setRecleanFor(null);
+        }}
+      />
 
       {holdFor && (
         <VacationHoldDrawer

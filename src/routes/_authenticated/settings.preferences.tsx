@@ -39,8 +39,10 @@ import { appOrigin } from "@/lib/app-origin";
 import {
   getMyOrgFeatures,
   setCommercialAccounts,
+  setRecleanWindowHours,
   setRequireCompletionPhoto,
 } from "@/lib/org-features.functions";
+import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -194,6 +196,9 @@ function PreferencesPage() {
       <PricingBaselineCard />
       <CommercialAccountsCard />
       <CompletionPhotoCard />
+      {/* Written by manage_settings only, so drawn for those roles only, like
+          the time zone above: a promise to customers is not a tech's call. */}
+      {canManageSettings && <RecleanGuaranteeCard />}
       <DemoDataCard />
     </div>
   );
@@ -463,6 +468,90 @@ function CompletionPhotoCard() {
             onCheckedChange={(v) => mut.mutate(v)}
           />
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The re-clean guarantee: how long after a visit a customer can ask, from
+ * their portal, for a free return visit.
+ *
+ * A number rather than a switch because the promise businesses actually make
+ * varies — "24-hour re-clean guarantee" is the common one, 48 and 72 are not
+ * rare — and 0 is the off position, which is one control instead of a switch
+ * plus a number that means nothing while the switch is off. The database
+ * caps it at a week (168); past that it is a second visit, not a re-clean.
+ */
+function RecleanGuaranteeCard() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getMyOrgFeatures);
+  const setFn = useServerFn(setRecleanWindowHours);
+  const q = useQuery({ queryKey: ["my-org-features"], queryFn: () => getFn() });
+  const saved = q.data?.recleanWindowHours ?? RECLEAN_WINDOW_DEFAULT_HOURS;
+  const [draft, setDraft] = useState<string>("");
+  useEffect(() => {
+    if (q.data) setDraft(String(q.data.recleanWindowHours ?? RECLEAN_WINDOW_DEFAULT_HOURS));
+  }, [q.data]);
+
+  const hours = Number(draft);
+  const valid =
+    draft.trim() !== "" &&
+    Number.isInteger(hours) &&
+    hours >= 0 &&
+    hours <= RECLEAN_WINDOW_MAX_HOURS;
+
+  const mut = useMutation({
+    mutationFn: (h: number) => setFn({ data: { hours: h } }),
+    onSuccess: (_r, h) => {
+      qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      toast.success(
+        h === 0
+          ? "Re-clean guarantee is off. Customers won't see the button."
+          : `Customers can ask for a free re-clean within ${h} hours of a visit.`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Re-clean guarantee</CardTitle>
+        <CardDescription>
+          Customers can ask for a free re-clean from their portal within this many hours of a visit
+          (0 turns it off). Requests land in Concerns, where you book the return visit at no charge.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Label htmlFor="reclean-window" className="text-xs">
+          Hours after a visit
+        </Label>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <Input
+            id="reclean-window"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={RECLEAN_WINDOW_MAX_HOURS}
+            step={1}
+            className="w-28"
+            value={draft}
+            disabled={q.isLoading || mut.isPending}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <Button
+            disabled={!valid || hours === saved || mut.isPending || q.isLoading}
+            onClick={() => mut.mutate(hours)}
+          >
+            {mut.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+        {!valid && draft.trim() !== "" && (
+          <p className="mt-1.5 text-xs text-destructive">
+            A whole number from 0 to {RECLEAN_WINDOW_MAX_HOURS} (a week).
+          </p>
+        )}
       </CardContent>
     </Card>
   );

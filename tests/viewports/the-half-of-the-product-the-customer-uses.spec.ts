@@ -65,7 +65,10 @@ const BASE = `/portal/${PORTAL_SLUG}/${PORTAL_TOKEN}`;
 
 const PAGES = [
   { path: "", label: "home", proof: /Next visit/i },
-  { path: "/visits", label: "visits", proof: /Upcoming visits/i },
+  // `also` because a page can prove itself and still not draw the row being
+  // measured: the re-clean offer only exists on a completed visit inside the
+  // window, and a fixture with no `completed_at` never drew it.
+  { path: "/visits", label: "visits", proof: /Upcoming visits/i, also: /Request a re-clean/i },
   { path: "/billing", label: "billing", proof: /PAYMENT METHOD/i },
   { path: "/property", label: "property", proof: /Your dogs on file/i },
   { path: "/requests", label: "requests", proof: /Report a concern/i },
@@ -94,6 +97,9 @@ for (const width of WIDTHS) {
         // that page and not the shared shell, which is identical on all six.
         await expect(page.getByText(PORTAL_CLIENT_NAME).first()).toBeVisible({ timeout: 30_000 });
         await expect(page.getByText(page_.proof).first()).toBeVisible({ timeout: 15_000 });
+        if ("also" in page_ && page_.also) {
+          await expect(page.getByText(page_.also).first()).toBeVisible({ timeout: 15_000 });
+        }
         await page.waitForTimeout(700);
 
         const { scrollW, innerW } = await measurePageOverflow(page);

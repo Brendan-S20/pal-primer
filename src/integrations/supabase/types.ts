@@ -2886,6 +2886,7 @@ export type Database = {
           portal_reschedule_cutoff_hours: number
           portal_slug: string | null
           public_signup_enabled: boolean
+          reclean_window_hours: number
           referral_code: string | null
           referral_reward_cents: number
           referred_by_org_id: string | null
@@ -3010,6 +3011,7 @@ export type Database = {
           portal_reschedule_cutoff_hours?: number
           portal_slug?: string | null
           public_signup_enabled?: boolean
+          reclean_window_hours?: number
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -3134,6 +3136,7 @@ export type Database = {
           portal_reschedule_cutoff_hours?: number
           portal_slug?: string | null
           public_signup_enabled?: boolean
+          reclean_window_hours?: number
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -4480,6 +4483,7 @@ export type Database = {
           last_reply_at: string | null
           message: string | null
           organization_id: string
+          reclean_visit_id: string | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
@@ -4496,6 +4500,7 @@ export type Database = {
           last_reply_at?: string | null
           message?: string | null
           organization_id: string
+          reclean_visit_id?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -4512,6 +4517,7 @@ export type Database = {
           last_reply_at?: string | null
           message?: string | null
           organization_id?: string
+          reclean_visit_id?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -4532,6 +4538,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_reclean_visit_id_fkey"
+            columns: ["reclean_visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
             referencedColumns: ["id"]
           },
           {
@@ -6725,6 +6738,10 @@ export type Database = {
           _token: string
           _visit_id: string
         }
+        Returns: string
+      }
+      portal_request_reclean: {
+        Args: { _message: string; _token: string; _visit_id: string }
         Returns: string
       }
       portal_request_skip: {

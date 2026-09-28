@@ -802,3 +802,95 @@ export const MY_CLOCK = {
   ],
   visitsCompletedToday: 4,
 };
+
+/**
+ * /concerns, which had no fixture until 2026-09-28 and so was only ever
+ * measured drawing "No concerns, happy yards all around".
+ *
+ * `listConcerns` returns `{ concerns, counts }` with the status already
+ * translated to the inbox's word ("in_progress", not the table's
+ * "acknowledged"), and embeds `clients`, `visit` and `reclean_visit` by name.
+ * Three rows, each a different layout: a re-clean request with nothing booked
+ * (the "Schedule re-clean" button beside a sentence), a re-clean already
+ * booked (the sentence alone), and a plain concern with a reply on it. The
+ * client names and email addresses are the long ones, because the header row
+ * of a card puts a name beside two badges.
+ */
+export const CONCERNS = {
+  concerns: [
+    {
+      id: "44444444-0000-4000-8000-000000004001",
+      category: "reclean_request",
+      message:
+        "The strip along the back fence behind the raised garden beds looked like it had been skipped entirely this time.",
+      status: "open",
+      created_at: iso(new Date(Date.now() - 3 * 3600e3)),
+      resolved_at: null,
+      resolution_note: null,
+      last_reply: null,
+      last_reply_at: null,
+      client_id: CLIENTS[7].id,
+      visit_id: "ffffffff-0000-4000-8000-00000000f101",
+      reclean_visit_id: null,
+      clients: {
+        display_name: CLIENTS[7].display_name,
+        primary_phone: CLIENTS[7].primary_phone,
+        primary_email: CLIENTS[7].primary_email,
+      },
+      visit: {
+        scheduled_on: day(-1),
+        property_id: PROPERTIES[7].id,
+        assigned_staff_id: STAFF[0].id,
+      },
+      reclean_visit: null,
+    },
+    {
+      id: "44444444-0000-4000-8000-000000004002",
+      category: "reclean_request",
+      message: null,
+      status: "in_progress",
+      created_at: iso(new Date(Date.now() - 20 * 3600e3)),
+      resolved_at: null,
+      resolution_note: null,
+      last_reply: null,
+      last_reply_at: null,
+      client_id: CLIENTS[5].id,
+      visit_id: "ffffffff-0000-4000-8000-00000000f102",
+      reclean_visit_id: "ffffffff-0000-4000-8000-00000000f103",
+      clients: {
+        display_name: CLIENTS[5].display_name,
+        primary_phone: CLIENTS[5].primary_phone,
+        primary_email: CLIENTS[5].primary_email,
+      },
+      visit: {
+        scheduled_on: day(-2),
+        property_id: PROPERTIES[5].id,
+        assigned_staff_id: STAFF[2].id,
+      },
+      reclean_visit: { scheduled_on: day(1), status: "scheduled" },
+    },
+    {
+      id: "44444444-0000-4000-8000-000000004003",
+      category: "gate_left_open",
+      message:
+        "Side gate was unlatched when we got home. Dogs were fine, but please double-check it.",
+      status: "open",
+      created_at: iso(new Date(Date.now() - 2 * 864e5)),
+      resolved_at: null,
+      resolution_note: null,
+      last_reply: "So sorry about that. We've added a note to the route card for the side gate.",
+      last_reply_at: iso(new Date(Date.now() - 864e5)),
+      client_id: CLIENTS[4].id,
+      visit_id: null,
+      reclean_visit_id: null,
+      clients: {
+        display_name: CLIENTS[4].display_name,
+        primary_phone: CLIENTS[4].primary_phone,
+        primary_email: CLIENTS[4].primary_email,
+      },
+      visit: null,
+      reclean_visit: null,
+    },
+  ],
+  counts: { open: 2, in_progress: 1, resolved: 0 },
+};

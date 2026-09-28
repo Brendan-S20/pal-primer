@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { CalendarDays } from "lucide-react";
 import {
   usePortalCtx,
@@ -26,9 +27,23 @@ function PortalVisits() {
     rescheduleMut,
     freqMut,
     vacationMut,
+    recleanMut,
+    requestsQ,
   } = usePortalCtx();
   const c = clientQ.data as any;
   const isCommercial = c?.account_type === "commercial";
+  // A visit whose re-clean is already asked for shows that instead of the
+  // button. Read from the customer's own request list, so it survives a reload
+  // and a second device; the database would hand back the same ticket anyway.
+  const requestedVisitIds = useMemo(
+    () =>
+      new Set(
+        (requestsQ.data ?? [])
+          .filter((t) => t.category === "reclean_request" && t.status !== "resolved" && t.visit_id)
+          .map((t) => t.visit_id as string),
+      ),
+    [requestsQ.data],
+  );
 
   return (
     <div className="space-y-6">
@@ -105,6 +120,19 @@ function PortalVisits() {
           concernMut.mutate({ visitId, category: category as any, message })
         }
         reporting={concernMut.isPending}
+        // The window comes from portalGetClient, read from the same column
+        // portal_request_reclean refuses against. 0 means the owner switched
+        // the guarantee off, and then nothing is offered.
+        reclean={
+          Number(c?.reclean_window_hours ?? 0) > 0
+            ? {
+                windowHours: Number(c.reclean_window_hours),
+                businessName: c?.org_name || "The team",
+                requestedVisitIds,
+                onRequest: (visitId, message) => recleanMut.mutateAsync({ visitId, message }),
+              }
+            : undefined
+        }
       />
     </div>
   );
