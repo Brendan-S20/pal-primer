@@ -43,7 +43,14 @@ type ActionBase = {
 
 export type PendingAction =
   | ({ kind: "start"; visitId: string } & ActionBase)
-  | ({ kind: "complete"; visitId: string } & ActionBase)
+  | ({
+      kind: "complete";
+      visitId: string;
+      /** The tech's note, and why there is no photo when one is required.
+       *  Optional: actions queued before these existed carry neither. */
+      note?: string;
+      noPhotoReason?: string;
+    } & ActionBase)
   | ({ kind: "skip"; visitId: string; reason: string; code: string } & ActionBase)
   | ({
       kind: "station";

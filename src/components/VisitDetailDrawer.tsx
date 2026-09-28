@@ -378,11 +378,24 @@ export function VisitDetailDrawer({
               </section>
             )}
 
-            {(v.skip_reason || v.weather_note) && (
+            {(v.skip_reason ||
+              v.weather_note ||
+              v.tech_note ||
+              v.completion_photo_waived_reason) && (
               <section>
                 <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
                   Notes
                 </h3>
+                {v.tech_note && (
+                  <p className="whitespace-pre-wrap text-sm">
+                    <span className="text-muted-foreground">From the tech:</span> {v.tech_note}
+                  </p>
+                )}
+                {v.completion_photo_waived_reason && (
+                  <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                    No completion photo: {v.completion_photo_waived_reason}
+                  </p>
+                )}
                 {v.weather_note && <p className="whitespace-pre-wrap text-sm">{v.weather_note}</p>}
                 {v.skip_reason && (
                   <p className="mt-1 text-sm text-muted-foreground">Skip: {v.skip_reason}</p>

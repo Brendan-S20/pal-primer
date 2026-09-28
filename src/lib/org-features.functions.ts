@@ -31,6 +31,8 @@ export type MyOrgFeatures = {
   /** Whether commercial rows exist. Drives the explanation on the settings
    *  switch for why turning it off is refused — see the migration header. */
   hasCommercialData: boolean;
+  /** Whether a tech needs a completion photo (or a stated reason) to finish. */
+  requireCompletionPhoto: boolean;
 };
 
 export const getMyOrgFeatures = createServerFn({ method: "GET" })
@@ -40,7 +42,7 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
     const [{ data: org }, { data: hasData }] = await Promise.all([
       context.supabase
         .from("organizations")
-        .select("commercial_accounts")
+        .select("commercial_accounts, require_completion_photo")
         .eq("id", orgId)
         .maybeSingle(),
       context.supabase.rpc("org_has_commercial_data", { _org_id: orgId }),
@@ -48,6 +50,8 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
     return {
       commercialAccounts: !!(org as { commercial_accounts?: boolean } | null)?.commercial_accounts,
       hasCommercialData: !!hasData,
+      requireCompletionPhoto:
+        (org as { require_completion_photo?: boolean } | null)?.require_completion_photo !== false,
     };
   });
 
@@ -64,4 +68,17 @@ export const setCommercialAccounts = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
     return { ok: true, commercialAccounts: data.enabled };
+  });
+
+/** The business's photo rule for finishing a visit. complete_visit reads the
+ *  column; a tech can still finish without a photo by saying why. */
+export const setRequireCompletionPhoto = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ required: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    await updateOwnOrg(context.supabase, orgId, { require_completion_photo: data.required });
+    return { ok: true, requireCompletionPhoto: data.required };
   });

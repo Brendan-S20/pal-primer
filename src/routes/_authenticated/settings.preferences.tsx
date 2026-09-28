@@ -36,7 +36,11 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { appOrigin } from "@/lib/app-origin";
-import { getMyOrgFeatures, setCommercialAccounts } from "@/lib/org-features.functions";
+import {
+  getMyOrgFeatures,
+  setCommercialAccounts,
+  setRequireCompletionPhoto,
+} from "@/lib/org-features.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -189,6 +193,7 @@ function PreferencesPage() {
       {canManageSettings && <TimeZoneCard />}
       <PricingBaselineCard />
       <CommercialAccountsCard />
+      <CompletionPhotoCard />
       <DemoDataCard />
     </div>
   );
@@ -411,6 +416,58 @@ function DemoDataCard() {
  * fines. The switch pre-empts that refusal so the owner reads an explanation
  * instead of an error toast.
  */
+function CompletionPhotoCard() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getMyOrgFeatures);
+  const setFn = useServerFn(setRequireCompletionPhoto);
+  const { can, role } = usePermissions();
+  const canEdit = can("manage_settings");
+  const q = useQuery({ queryKey: ["my-org-features"], queryFn: () => getFn() });
+  const mut = useMutation({
+    mutationFn: (required: boolean) => setFn({ data: { required } }),
+    onSuccess: (_r, required) => {
+      qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      // My Day reads the rule from the shell's org query.
+      qc.invalidateQueries({ queryKey: ["my-org"] });
+      toast.success(
+        required
+          ? "Techs need a completion photo, or a reason there isn't one."
+          : "A completion photo is now optional.",
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  if (role === "tech") return null;
+  const on = q.data?.requireCompletionPhoto ?? true;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Finishing a visit</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <Label htmlFor="require-completion-photo" className="text-sm font-medium">
+              Require a completion photo
+            </Label>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              On: a tech takes a photo before completing, or says why they couldn&apos;t, and you
+              see the reason on the visit. Off: the photo is optional. Either way a tech can leave
+              you a note.
+            </div>
+          </div>
+          <Switch
+            id="require-completion-photo"
+            checked={on}
+            disabled={!canEdit || mut.isPending || q.isLoading}
+            onCheckedChange={(v) => mut.mutate(v)}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CommercialAccountsCard() {
   const qc = useQueryClient();
   const getFn = useServerFn(getMyOrgFeatures);

@@ -2849,6 +2849,7 @@ export type Database = {
           notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
+          require_completion_photo: boolean
           notify_email_weather_reschedule: boolean
           notify_email_weekly_digest: boolean
           notify_email_welcome: boolean
@@ -2972,6 +2973,7 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          require_completion_photo?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -3095,6 +3097,7 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          require_completion_photo?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -5405,6 +5408,8 @@ export type Database = {
           station_count_serviced: number
           status: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
+          tech_note: string | null
+          completion_photo_waived_reason: string | null
           travel_km: number | null
           travel_min: number | null
           updated_at: string
@@ -5441,6 +5446,8 @@ export type Database = {
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
+          tech_note?: string | null
+          completion_photo_waived_reason?: string | null
           travel_km?: number | null
           travel_min?: number | null
           updated_at?: string
@@ -5477,6 +5484,8 @@ export type Database = {
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id?: string
+          tech_note?: string | null
+          completion_photo_waived_reason?: string | null
           travel_km?: number | null
           travel_min?: number | null
           updated_at?: string
@@ -6018,7 +6027,12 @@ export type Database = {
         Returns: number
       }
       complete_visit: {
-        Args: { _completed_at?: string; _visit_id: string }
+        Args: {
+          _completed_at?: string
+          _no_photo_reason?: string
+          _note?: string
+          _visit_id: string
+        }
         Returns: undefined
       }
       confirm_open_visit: {
