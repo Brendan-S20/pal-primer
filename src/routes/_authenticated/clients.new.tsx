@@ -5,6 +5,8 @@ import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
 import { getLeadForConversion, linkLeadToExistingClient } from "@/lib/leads.functions";
+import { getQuote, markQuoteConverted } from "@/lib/quotes.functions";
+import { convertTarget, quoteConversion, quoteToWizardPrefill } from "@/lib/quotes";
 import {
   BLANK_DOG,
   EMPTY_PREFILL,
@@ -33,8 +35,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const Route = createFileRoute("/_authenticated/clients/new")({
   // `fromLead` is the lead's id and nothing else. The wizard fetches the lead
   // server-side; its name, email, phone and address never go in the URL.
-  validateSearch: (s: Record<string, unknown>): { fromLead?: string } => ({
+  validateSearch: (s: Record<string, unknown>): { fromLead?: string; fromQuote?: string } => ({
     fromLead: typeof s.fromLead === "string" && UUID.test(s.fromLead) ? s.fromLead : undefined,
+    fromQuote: typeof s.fromQuote === "string" && UUID.test(s.fromQuote) ? s.fromQuote : undefined,
   }),
   component: NewClientPage,
 });
@@ -58,7 +61,7 @@ type FromLead = {
  * ?fromLead=B, or to a blank /clients/new, start again from nothing.
  */
 function NewClientPage() {
-  const { fromLead } = Route.useSearch();
+  const { fromLead, fromQuote } = Route.useSearch();
   const getLeadFn = useServerFn(getLeadForConversion);
   const leadQ = useQuery({
     enabled: !!fromLead,
@@ -76,6 +79,20 @@ function NewClientPage() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+
+  // An accepted quote to a prospect, being turned into a client. It may carry
+  // a lead too (a quote sent from /leads), and the lead is converted with it.
+  if (fromQuote) {
+    return (
+      <NewClientFromQuote
+        key={fromQuote}
+        quoteId={fromQuote}
+        leadId={fromLead ?? null}
+        lead={leadQ.data ?? null}
+        leadPending={!!fromLead && leadQ.isPending}
+      />
+    );
+  }
 
   if (!fromLead) return <NewClientWizard key="blank" prefill={EMPTY_PREFILL} fromLead={null} />;
 
@@ -141,11 +158,135 @@ function NewClientPage() {
   );
 }
 
-function WizardShell({ backTo, children }: { backTo: "clients" | "leads"; children: ReactNode }) {
+type FromQuote = {
+  id: string;
+  label: string;
+  /** The quote's per-visit total, or null when it has no recurring line. */
+  priceCents: number | null;
+  oneTimeCents: number;
+};
+
+/**
+ * The wizard started from an accepted quote to somebody who is not a client
+ * yet. Refuses anything else: a quote for an existing client converts from
+ * that client's Services tab, and an unanswered or already-converted quote
+ * has nothing to convert.
+ */
+function NewClientFromQuote({
+  quoteId,
+  leadId,
+  lead,
+  leadPending,
+}: {
+  quoteId: string;
+  leadId: string | null;
+  lead: Awaited<ReturnType<typeof getLeadForConversion>> | null;
+  leadPending: boolean;
+}) {
+  const getQuoteFn = useServerFn(getQuote);
+  const quoteQ = useQuery({
+    queryKey: ["quote-for-conversion", quoteId],
+    queryFn: () => getQuoteFn({ data: { id: quoteId } }),
+    // Read fresh, and never re-read while the wizard is open: the same two
+    // reasons as the lead query above.
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  if (quoteQ.isPending || leadPending) {
+    return (
+      <WizardShell backTo="quotes">
+        <Card className="p-6 text-sm text-muted-foreground">Loading the quote…</Card>
+      </WizardShell>
+    );
+  }
+  if (quoteQ.isError) {
+    return (
+      <WizardShell backTo="quotes">
+        <Card className="space-y-3 p-6 text-sm">
+          <p role="alert">{(quoteQ.error as Error).message || "That quote could not be loaded."}</p>
+          <Button asChild variant="outline">
+            <Link to="/quotes">Back to quotes</Link>
+          </Button>
+        </Card>
+      </WizardShell>
+    );
+  }
+
+  const { quote, lines } = quoteQ.data;
+  const target = convertTarget({
+    status: quote.status,
+    client_id: quote.clientId,
+    lead_id: quote.leadId,
+    converted_at: quote.convertedAt,
+  });
+  if (target.kind !== "prospect") {
+    return (
+      <WizardShell backTo="quotes">
+        <Card className="space-y-3 p-6 text-sm">
+          <p className="break-words font-medium">
+            {target.kind === "client"
+              ? `${quote.label} is for an existing client. Add the service from their Services tab.`
+              : target.reason}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link to="/quotes/$quoteId" params={{ quoteId: quote.id }}>
+                Open {quote.label}
+              </Link>
+            </Button>
+          </div>
+        </Card>
+      </WizardShell>
+    );
+  }
+
+  // The lead is used only if it can still be converted. One that already
+  // became a client (or was marked converted by hand) would stop the wizard
+  // with the lead's refusal, and the quote is reason enough to go on.
+  const convertibleLead =
+    leadId && lead && lead.lead.id === leadId && leadConversionState(lead.lead).kind === "convertible"
+      ? lead
+      : null;
+  const conversion = quoteConversion(lines);
+  return (
+    <NewClientWizard
+      key={`${quote.id}:${convertibleLead?.lead.id ?? "no-lead"}`}
+      prefill={
+        convertibleLead ? leadToWizardPrefill(convertibleLead.lead) : quoteToWizardPrefill(quote)
+      }
+      fromLead={
+        convertibleLead
+          ? {
+              id: convertibleLead.lead.id,
+              name: convertibleLead.lead.name,
+              dogCount: convertibleLead.lead.dog_count,
+              existingClient: convertibleLead.existingClient,
+            }
+          : null
+      }
+      fromQuote={{ id: quote.id, label: quote.label, ...conversion }}
+    />
+  );
+}
+
+function WizardShell({
+  backTo,
+  children,
+}: {
+  backTo: "clients" | "leads" | "quotes";
+  children: ReactNode;
+}) {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        {backTo === "leads" ? (
+        {backTo === "quotes" ? (
+          <Link to="/quotes" className="text-sm text-muted-foreground hover:underline">
+            ← Quotes
+          </Link>
+        ) : backTo === "leads" ? (
           <Link to="/leads" className="text-sm text-muted-foreground hover:underline">
             ← Leads
           </Link>
@@ -213,13 +354,16 @@ function polyAreaSqm(g: PolygonGeoJSON): number {
 function NewClientWizard({
   prefill,
   fromLead,
+  fromQuote = null,
 }: {
   prefill: WizardPrefill;
   fromLead: FromLead | null;
+  fromQuote?: FromQuote | null;
 }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const onboardFn = useServerFn(onboardClient);
+  const convertedFn = useServerFn(markQuoteConverted);
   const quoteFn = useServerFn(getInternalQuote);
   const geocodeFn = useServerFn(lookupAddressPoint);
   const linkFn = useServerFn(linkLeadToExistingClient);
@@ -348,7 +492,10 @@ function NewClientWizard({
   );
   const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
   const [unitCount, setUnitCount] = useState("1");
-  const [priceOverride, setPriceOverride] = useState<string>("");
+  // From a quote, the price the customer accepted, not the zone's.
+  const [priceOverride, setPriceOverride] = useState<string>(() =>
+    fromQuote?.priceCents != null ? (fromQuote.priceCents / 100).toFixed(2) : "",
+  );
   const [skipPlan, setSkipPlan] = useState(false);
   // When the service starts, on the business's calendar. Tomorrow by default:
   // today, created in the evening, meant a visit that night after the route
@@ -458,6 +605,14 @@ function NewClientWizard({
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
       if (fromLead) qc.invalidateQueries({ queryKey: ["leads"] });
+      if (fromQuote) {
+        // Best effort: the client exists either way.
+        convertedFn({ data: { id: fromQuote.id, clientId: id } })
+          .catch(() =>
+            toast.error(`The client was created, but ${fromQuote.label} could not be marked as converted.`),
+          )
+          .finally(() => qc.invalidateQueries({ queryKey: ["quotes"] }));
+      }
       navigate({ to: "/clients/$clientId", params: { clientId: id } });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -486,7 +641,23 @@ function NewClientWizard({
   })();
 
   return (
-    <WizardShell backTo={fromLead ? "leads" : "clients"}>
+    <WizardShell backTo={fromQuote ? "quotes" : fromLead ? "leads" : "clients"}>
+      {fromQuote && (
+        <div role="status" className="space-y-1 rounded-md border bg-primary/5 p-3 text-sm">
+          <p className="break-words">
+            Started from accepted quote <strong>{fromQuote.label}</strong>.{" "}
+            {fromQuote.priceCents != null
+              ? "The price per visit on the Plan step is the quote's recurring total."
+              : "The quote has no per-visit line, so set the price on the Plan step."}
+          </p>
+          {fromQuote.oneTimeCents > 0 && (
+            <p className="text-muted-foreground">
+              Its one-time charges ({money(fromQuote.oneTimeCents)}) are not billed by creating the
+              client. Invoice them from the client&apos;s Billing tab.
+            </p>
+          )}
+        </div>
+      )}
       {fromLead && (
         <div className="space-y-2 rounded-md border bg-primary/5 p-3 text-sm">
           <p className="break-words">
@@ -1083,7 +1254,9 @@ function NewClientWizard({
             type="button"
             variant="ghost"
             onClick={() =>
-              step === 0 ? navigate({ to: fromLead ? "/leads" : "/clients" }) : setStep(step - 1)
+              step === 0
+                ? navigate({ to: fromQuote ? "/quotes" : fromLead ? "/leads" : "/clients" })
+                : setStep(step - 1)
             }
           >
             {step === 0 ? "Cancel" : "Back"}

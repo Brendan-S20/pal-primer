@@ -184,6 +184,7 @@ describe("emails say who sent them", () => {
     "win-back",
     "review-request",
     "visit-reminder",
+    "quote-sent",
   ];
 
   it("there is a shared footer", () => {

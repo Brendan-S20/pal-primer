@@ -2857,9 +2857,11 @@ export type Database = {
           measured_speed_kmh: number | null
           name: string
           next_invoice_number: number
+          next_quote_number: number
           notify_email_invoice_sent: boolean
           notify_email_overdue: boolean
           notify_email_payment_received: boolean
+          notify_email_quote_sent: boolean
           notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
@@ -2983,9 +2985,11 @@ export type Database = {
           measured_speed_kmh?: number | null
           name: string
           next_invoice_number?: number
+          next_quote_number?: number
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean
+          notify_email_quote_sent?: boolean
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
@@ -3109,9 +3113,11 @@ export type Database = {
           measured_speed_kmh?: number | null
           name?: string
           next_invoice_number?: number
+          next_quote_number?: number
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean
+          notify_email_quote_sent?: boolean
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
@@ -4558,6 +4564,157 @@ export type Database = {
             columns: ["visit_id"]
             isOneToOne: false
             referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_line_items: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          description: string
+          id: string
+          quantity: number
+          quote_id: string
+          recurring: boolean
+          sort: number
+          unit_amount_cents: number
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          description: string
+          id?: string
+          quantity?: number
+          quote_id: string
+          recurring?: boolean
+          sort?: number
+          unit_amount_cents: number
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          description?: string
+          id?: string
+          quantity?: number
+          quote_id?: string
+          recurring?: boolean
+          sort?: number
+          unit_amount_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_line_items_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotes: {
+        Row: {
+          accepted_at: string | null
+          accepted_name: string | null
+          client_id: string | null
+          converted_at: string | null
+          converted_client_id: string | null
+          created_at: string
+          created_by: string | null
+          decline_reason: string | null
+          declined_at: string | null
+          id: string
+          lead_id: string | null
+          message: string | null
+          number: number
+          organization_id: string
+          prospect_email: string | null
+          prospect_name: string | null
+          prospect_phone: string | null
+          public_token: string
+          sent_at: string | null
+          status: string
+          title: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_name?: string | null
+          client_id?: string | null
+          converted_at?: string | null
+          converted_client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          lead_id?: string | null
+          message?: string | null
+          number?: number
+          organization_id: string
+          prospect_email?: string | null
+          prospect_name?: string | null
+          prospect_phone?: string | null
+          public_token?: string
+          sent_at?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_name?: string | null
+          client_id?: string | null
+          converted_at?: string | null
+          converted_client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          lead_id?: string | null
+          message?: string | null
+          number?: number
+          organization_id?: string
+          prospect_email?: string | null
+          prospect_name?: string | null
+          prospect_phone?: string | null
+          public_token?: string
+          sent_at?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_client_id_fkey"
+            columns: ["converted_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -6858,6 +7015,11 @@ export type Database = {
           zone_id: string
           zone_name: string
         }[]
+      }
+      public_quote_document: { Args: { _token: string }; Returns: Json }
+      public_quote_respond: {
+        Args: { _accept: boolean; _name: string; _reason: string; _token: string }
+        Returns: Json
       }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }

@@ -74,6 +74,8 @@ import { generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { generateVisits } from "@/lib/visits.functions";
 import { listStations } from "@/lib/stations.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { getQuote, markQuoteConverted } from "@/lib/quotes.functions";
+import { formatQuoteMoney, quoteConversion } from "@/lib/quotes";
 import { humanizeEnum } from "@/lib/humanize";
 import { CHURN_REASONS } from "@/lib/churn-reasons";
 
@@ -92,6 +94,8 @@ export function ServicesTab({
   canManagePricing,
   editServiceId,
   onEditServiceConsumed,
+  newServiceFromQuoteId,
+  onNewServiceFromQuoteConsumed,
 }: {
   clientId: string;
   client: any;
@@ -106,6 +110,10 @@ export function ServicesTab({
    * by the route): opens the edit drawer once the subscription is loaded. */
   editServiceId?: string | null;
   onEditServiceConsumed?: () => void;
+  /** Deep-linked ?fromQuote=<quoteId> ("Convert to work" on an accepted
+   * quote): opens Add service with the quote's per-visit price filled in. */
+  newServiceFromQuoteId?: string | null;
+  onNewServiceFromQuoteConsumed?: () => void;
 }) {
   const qc = useQueryClient();
   const today = useOrgToday();
@@ -125,6 +133,41 @@ export function ServicesTab({
       onEditServiceConsumed?.();
     }
   }, [editServiceId, subscriptions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // An accepted quote being turned into work. The quote is read for its
+  // per-visit price, the drawer opens on a new service with that price in it,
+  // and the quote is marked converted when the service saves. Nothing is
+  // written by arriving here: the drawer is the confirmation.
+  const [fromQuote, setFromQuote] = useState<ServiceFromQuote | null>(null);
+  const getQuoteFn = useServerFn(getQuote);
+  const quoteQ = useQuery({
+    queryKey: ["quote", newServiceFromQuoteId],
+    queryFn: () => getQuoteFn({ data: { id: newServiceFromQuoteId! } }),
+    enabled: !!newServiceFromQuoteId,
+    staleTime: 0,
+    retry: false,
+  });
+  useEffect(() => {
+    if (!newServiceFromQuoteId) return;
+    if (quoteQ.isError) {
+      toast.error((quoteQ.error as Error).message || "That quote could not be loaded.");
+      onNewServiceFromQuoteConsumed?.();
+      return;
+    }
+    if (!quoteQ.data) return;
+    const { quote, lines } = quoteQ.data;
+    onNewServiceFromQuoteConsumed?.();
+    if (quote.clientId !== clientId || quote.status !== "accepted" || quote.convertedAt) {
+      toast.error(
+        quote.convertedAt
+          ? `${quote.label} has already been turned into work.`
+          : `${quote.label} is not an accepted quote for this client.`,
+      );
+      return;
+    }
+    setFromQuote({ quoteId: quote.id, label: quote.label, ...quoteConversion(lines) });
+    setDrawerSub("new");
+  }, [newServiceFromQuoteId, quoteQ.data, quoteQ.isError]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The list's Edit button goes through the URL (?editService=<id>, the
   // ?edit=true pattern) so an edit is deep-linkable/shareable; the route
@@ -581,14 +624,21 @@ export function ServicesTab({
 
       <ServiceDrawer
         open={drawerSub !== null}
-        onClose={() => setDrawerSub(null)}
+        onClose={() => {
+          setDrawerSub(null);
+          setFromQuote(null);
+        }}
         clientId={clientId}
         client={client}
         properties={properties}
         zones={zones}
         dogs={dogs}
         subscription={drawerSub === "new" ? null : drawerSub}
-        onSaved={invalidate}
+        fromQuote={drawerSub === "new" ? fromQuote : null}
+        onSaved={() => {
+          invalidate();
+          qc.invalidateQueries({ queryKey: ["quotes"] });
+        }}
       />
 
       <EndServiceDialog
@@ -984,6 +1034,14 @@ const SCHEDULE_CHOICES: Array<{ value: ScheduleChoice; label: string; hint: stri
   { value: "one_time", label: "One time", hint: "A single visit on the chosen date." },
 ];
 
+type ServiceFromQuote = {
+  quoteId: string;
+  label: string;
+  /** Every recurring line on the quote, per visit. null: none, so ask. */
+  priceCents: number | null;
+  oneTimeCents: number;
+};
+
 function ServiceDrawer({
   open,
   onClose,
@@ -993,6 +1051,7 @@ function ServiceDrawer({
   zones,
   dogs = [],
   subscription,
+  fromQuote = null,
   onSaved,
 }: {
   open: boolean;
@@ -1003,9 +1062,12 @@ function ServiceDrawer({
   zones: any[];
   dogs?: any[];
   subscription: any | null;
+  /** A new service started from an accepted quote. */
+  fromQuote?: ServiceFromQuote | null;
   onSaved: () => void;
 }) {
   const createFn = useServerFn(createSubscription);
+  const convertedFn = useServerFn(markQuoteConverted);
   const updateFn = useServerFn(updateSubscription);
   const stationsFn = useServerFn(listStations);
   const { confirm: confirmPrice, dialog: priceDialog } = useConfirmDialog();
@@ -1038,9 +1100,12 @@ function ServiceDrawer({
       const n = activeDogsFor(blank.propertyId);
       if (n > 0) blank.dogCount = String(n);
     }
+    // The price the customer accepted, not the zone's: the quote is what they
+    // said yes to.
+    if (fromQuote?.priceCents != null) blank.priceDollars = (fromQuote.priceCents / 100).toFixed(2);
     return blank;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscription, properties, dogs]);
+  }, [subscription, properties, dogs, fromQuote]);
 
   const [form, setForm] = useState(initial);
   // Reset only when the drawer transitions closed -> open; a background
@@ -1281,8 +1346,17 @@ function ServiceDrawer({
         : createFn({ data: { clientId, accountType, ...common } });
       return run.then(() => ({ ok: true }));
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(subscription ? "Service saved" : "Service added");
+      if (!subscription && fromQuote) {
+        // Best effort: the service exists either way, and a quote that still
+        // reads "accepted" is a smaller problem than a failed save message.
+        try {
+          await convertedFn({ data: { id: fromQuote.quoteId, clientId } });
+        } catch {
+          toast.error(`The service was added, but ${fromQuote.label} could not be marked as converted.`);
+        }
+      }
       onSaved();
       onClose();
     },
@@ -1300,6 +1374,22 @@ function ServiceDrawer({
       dirty={dirty}
     >
       {priceDialog}
+      {!subscription && fromQuote && (
+        <div role="status" className="mb-4 space-y-1 rounded-md border bg-primary/5 p-3 text-sm">
+          <p className="break-words">
+            Started from accepted quote <strong>{fromQuote.label}</strong>.{" "}
+            {fromQuote.priceCents != null
+              ? "The price per visit is the quote's recurring total."
+              : "The quote has no per-visit line, so set the price below."}
+          </p>
+          {fromQuote.oneTimeCents > 0 && (
+            <p className="text-muted-foreground">
+              Its one-time charges ({formatQuoteMoney(fromQuote.oneTimeCents)}) are not billed by
+              adding a service. Invoice them from the Billing tab.
+            </p>
+          )}
+        </div>
+      )}
       <form
         className="space-y-4"
         noValidate

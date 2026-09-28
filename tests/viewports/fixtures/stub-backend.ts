@@ -584,6 +584,10 @@ const BASE_STUBS: Record<string, Stub> = {
   // /concerns. Unstubbed until 2026-09-28, when re-clean requests landed there
   // with a booking button; without this it drew only its empty state.
   listConcerns: fx.CONCERNS,
+  // /quotes and /quotes/:id. Keyed by id: an accepted prospect quote draws
+  // the timeline and Convert; the draft draws the editor.
+  listQuotes: fx.QUOTES,
+  getQuote: (a) => fx.quoteDetail(String(a.id ?? fx.QUOTE_ACCEPTED_ID)),
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
   // read these and threw on the null the fence answered — so the unlisted
@@ -614,6 +618,8 @@ const BASE_STUBS: Record<string, Stub> = {
     notify_email_weather_reschedule: true,
     notify_email_welcome: true,
     notify_email_overdue: true,
+    notify_email_visit_reminder: true,
+    notify_email_quote_sent: true,
   },
 
   // ── Clients ─────────────────────────────────────────────────────────────
@@ -1033,6 +1039,9 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // /pay/i/:token, which is not a portal page but arrives the same way -- in a
   // text -- and has no session either.
   getPublicInvoice: pfx.PUBLIC_INVOICE,
+  // /q/:token, the quote link. One fixture per state, keyed by the token in
+  // the URL, because each state draws a different panel under the document.
+  getPublicQuote: (a) => pfx.PUBLIC_QUOTES[a.token as string] ?? { found: false },
   portalSelfServeOptions: {
     allow_self_reschedule: true,
     allow_vacation_hold: true,

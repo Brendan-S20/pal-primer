@@ -32,6 +32,7 @@ import {
   ClipboardCheck,
   FileSpreadsheet,
   ShieldAlert,
+  FileSignature,
 } from "lucide-react";
 
 import {
@@ -127,6 +128,7 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "Billing",
     items: [
       { title: "Invoices", url: "/invoices", icon: Receipt },
+      { title: "Quotes", url: "/quotes", icon: FileSignature },
       { title: "Payments", url: "/payments", icon: CreditCard },
       // BUILD-13: the accountant's pack. In the nav rather than URL-only
       // because the whole point is that an owner finds it in January without
