@@ -88,8 +88,11 @@ function LeadFormSettings() {
                   `break-all` is what the referral link and the platform invite
                   link already do with theirs. */}
               <code className="break-all rounded bg-muted px-2 py-1 text-xs">{hostedUrl}</code>
-              <button className="text-xs text-primary underline" onClick={() => copy(hostedUrl!, "Link")}>Copy link</button>
-              <a className="text-xs text-primary underline" href={hostedUrl!} target="_blank" rel="noreferrer">Preview</a>
+              {/* 16px tall until 2026-09-28, and never measured: with no
+                  fixture for the lead-form config the sweep saw this card
+                  without a link in it. */}
+              <button type="button" className="inline-flex items-center text-xs text-primary underline touch:min-h-11" onClick={() => copy(hostedUrl!, "Link")}>Copy link</button>
+              <a className="inline-flex items-center text-xs text-primary underline touch:min-h-11" href={hostedUrl!} target="_blank" rel="noreferrer">Preview</a>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Share this link directly, or embed the form below.</p>
           </div>
@@ -97,7 +100,7 @@ function LeadFormSettings() {
           <div className="rounded-lg border bg-card p-4">
             <h2 className="mb-2 text-sm font-medium">Embed on your website</h2>
             <pre className="overflow-x-auto rounded bg-muted p-3 text-xs"><code>{embed}</code></pre>
-            <button className="mt-2 text-xs text-primary underline" onClick={() => copy(embed, "Embed code")}>Copy embed code</button>
+            <button type="button" className="mt-2 inline-flex items-center text-xs text-primary underline touch:min-h-11" onClick={() => copy(embed, "Embed code")}>Copy embed code</button>
           </div>
 
           <LeadFormCustomizer config={cfg.config} />
@@ -177,7 +180,7 @@ function LeadFormCustomizer({ config }: { config: any }) {
         <div>
           <Label className="text-xs">Brand color</Label>
           <div className="mt-1 flex items-center gap-2">
-            <input type="color" value={brandColor || "#2563eb"} onChange={(e) => setBrandColor(e.target.value)} className="h-9 w-12 rounded border" />
+            <input type="color" value={brandColor || "#2563eb"} onChange={(e) => setBrandColor(e.target.value)} className="h-9 w-12 rounded border touch:h-11 touch:w-14" />
             <Input value={brandColor} onChange={(e) => setBrandColor(e.target.value)} placeholder="#2563eb" />
           </div>
         </div>

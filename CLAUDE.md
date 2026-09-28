@@ -124,7 +124,7 @@ geometry: no horizontal page scroll, no control off the side, no control under
 long-value fault above. Run it with `npm run test:viewports`; it needs a dev
 server, which the Playwright config starts for you.
 
-Six things about it are worth knowing before you trust or extend it:
+Seven things about it are worth knowing before you trust or extend it:
 
 - **It does not replace the static tests.** Those name a file and a line, which
   a screenshot cannot, and they run in seconds with no server. The browser
@@ -197,6 +197,22 @@ Six things about it are worth knowing before you trust or extend it:
   during development, and made an earlier mutation test look successful for the
   wrong reason. If you add a rule here, add it to a page you have proved is
   rendering.
+- **Under `isMobile`, a page wider than the phone makes the phone wider.**
+  Chromium's mobile emulation zooms out to fit the layout, and
+  `window.innerWidth` — the visual viewport — grows with it. Until 2026-09-28
+  the overflow rule compared `scrollWidth` against `innerWidth`, so every spec
+  that set `isMobile` was comparing a number to itself: `/leads` measured 495
+  against 495 on a 360px phone, `/reports` 786 against 786. `rules.ts` now
+  measures against the viewport the test asked for. The same fix found the
+  rest of that gap: neither page had a fixture, so `/leads` drew an empty
+  state narrower than the real one and `/reports` threw on a null, and the
+  unlisted-route sweep — which proved only that the tab bar was on screen —
+  measured the error boundary inside it. Both are now signed-in surfaces with
+  data, and that sweep refuses an error boundary. Turning the rule back on
+  found five more pages it had been hiding the same way: `/franchise` was 18px
+  too wide, three settings pages had only ever been measured as error
+  boundaries, and `/settings/automation` and `/settings/lead-form` had
+  controls under 44px that no fixture had ever drawn.
 
 A green test run is still not a substitute for opening the page at 360px.
 

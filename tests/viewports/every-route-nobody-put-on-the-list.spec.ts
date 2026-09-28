@@ -85,6 +85,12 @@ const SWEPT = new Set([
   "settings/users",
   "settings/online-signup",
   "settings/scheduling",
+  // NOT "leads" or "reports", although both are surfaces there since
+  // 2026-09-28. That sweep does not emulate a mobile browser and this one
+  // does, and mobile emulation is the configuration that hid them: a page
+  // wider than the phone zooms the phone out, and until that date the rule
+  // compared the page against the zoomed-out width. They are measured here
+  // too so the fix to that rule is proved on the pages that found it.
 ]);
 
 /**
@@ -149,6 +155,20 @@ for (const width of [360, 430]) {
         // those two, or to any of the redirect stubs.
         expect(new URL(page.url()).pathname, `/${page_} redirected`).toBe(`/${page_}`);
         await page.waitForTimeout(900);
+        // ── AND NOT THE ERROR BOUNDARY ────────────────────────────────
+        //
+        // The router's `RouteError` renders INSIDE the shell, so the tab bar
+        // above is still on screen when a page has thrown. Until 2026-09-28
+        // /reports did exactly that on every run — `getReports` had no stub,
+        // answered null, and the page threw on its first property read — and
+        // this sweep measured a heading and two buttons, which fit on any
+        // phone, and called the page green. The page itself was 786px wide on
+        // a 360px phone. `every-signed-in-page-at-every-width.spec.ts` guards
+        // on the same string for the same reason.
+        const threw = await page.evaluate(() =>
+          document.body.innerText.includes("Something went wrong"),
+        );
+        expect(threw, `/${page_} rendered the router's error boundary, not the page`).toBe(false);
 
         const { scrollW, innerW } = await measurePageOverflow(page);
         expect(scrollW, `/${page_} @${width}: page scrolls sideways`).toBeLessThanOrEqual(

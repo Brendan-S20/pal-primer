@@ -92,22 +92,47 @@ export const APPLE_SIZES = [
  * box depending on overflow styles. Callers allow a 1px tolerance for
  * sub-pixel rounding at fractional device ratios — not for anything a person
  * could see.
+ *
+ * ── WHY `innerW` IS NOT `window.innerWidth` ───────────────────────────────
+ *
+ * It was, until 2026-09-28, and under `isMobile: true` that made this rule a
+ * tautology. A mobile browser that finds a page wider than the device does
+ * not leave it hanging off the edge: it zooms out until the whole layout
+ * fits, and `window.innerWidth` — the VISUAL viewport, in CSS pixels — grows
+ * with it. On a 360px phone, /leads measured `scrollWidth` 495 and
+ * `innerWidth` 495, and /reports 786 and 786. The comparison below can never
+ * fail when both sides are the same number, and every spec that sets
+ * `isMobile` (the unlisted-route sweep, the role sweep, the client tabs, the
+ * customer portal) was running it that way.
+ *
+ * So the page is compared against the width the TEST ASKED FOR — the
+ * viewport it set, which is the phone — falling back to the initial
+ * containing block (`documentElement.clientWidth`, which does not grow when
+ * the browser zooms out) if there is no viewport to ask. The name stays
+ * `innerW` because a dozen specs read it; what it means is "the screen".
  */
 export async function measurePageOverflow(page: Page): Promise<{ scrollW: number; innerW: number }> {
-  return page.evaluate(() => {
+  const asked = page.viewportSize()?.width ?? null;
+  return page.evaluate((asked) => {
     const de = document.documentElement;
     const scrollW = Math.max(de.scrollWidth, document.body.scrollWidth);
-    return { scrollW, innerW: window.innerWidth };
-  });
+    return { scrollW, innerW: asked ?? de.clientWidth };
+  }, asked);
 }
 
 /**
  * A control whose right edge is past the viewport is unreachable even when
  * the page itself does not scroll — the overflow rule above can be satisfied
  * by clipping. This is the fault that rule cannot see.
+ *
+ * The edge is the screen the test asked for, for the reason given above
+ * `measurePageOverflow`: under `isMobile` a zoomed-out page reports an
+ * `innerWidth` as wide as its own overflow, and nothing is ever past that.
  */
 export async function findControlsOffTheSide(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
+  const asked = page.viewportSize()?.width ?? null;
+  return page.evaluate((asked) => {
+    const edge = asked ?? document.documentElement.clientWidth;
     const out: string[] = [];
 
     /** Inside a horizontal scroller whose own edge is on the page.
@@ -130,7 +155,7 @@ export async function findControlsOffTheSide(page: Page): Promise<string[]> {
         const cs = getComputedStyle(p);
         if (cs.overflowX !== "auto" && cs.overflowX !== "scroll") continue;
         if (p.scrollWidth - p.clientWidth <= 1) continue;
-        return p.getBoundingClientRect().right <= window.innerWidth + 1;
+        return p.getBoundingClientRect().right <= edge + 1;
       }
       return false;
     };
@@ -140,14 +165,14 @@ export async function findControlsOffTheSide(page: Page): Promise<string[]> {
       if (r.width === 0 && r.height === 0) continue;
       if (getComputedStyle(el).visibility === "hidden") continue;
       if (reachableByScrolling(el)) continue;
-      if (r.right > window.innerWidth + 1 || r.left < -1) {
+      if (r.right > edge + 1 || r.left < -1) {
         out.push(
           `<${el.tagName.toLowerCase()}> "${(el.textContent ?? "").trim().slice(0, 32)}" at x=${Math.round(r.left)}..${Math.round(r.right)}`,
         );
       }
     }
     return out;
-  });
+  }, asked);
 }
 
 // ── THE FAULT THE WORKING AGREEMENT CALLS UNENFORCEABLE ───────────────────

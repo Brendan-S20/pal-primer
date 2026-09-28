@@ -214,7 +214,16 @@ function FranchisePage() {
               this organization up as the franchise and send its owner an invitation code instead,
               so their clients and history come across with them.
             </p>
-            <Button onClick={() => mark.mutate()} disabled={mark.isPending} variant="outline">
+            {/* The button is `whitespace-nowrap`, and this label is 346px of
+                text, so on a 360px phone it pushed the page 18px sideways.
+                Nothing reported it: the sweep compared the page with a
+                zoomed-out phone until 2026-09-28. The label may wrap. */}
+            <Button
+              onClick={() => mark.mutate()}
+              disabled={mark.isPending}
+              variant="outline"
+              className="h-auto min-h-9 max-w-full whitespace-normal text-center"
+            >
               {mark.isPending ? "Marking…" : "Set up as a franchise (for invitation codes)"}
             </Button>
           </CardContent>

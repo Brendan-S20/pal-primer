@@ -212,7 +212,10 @@ function AutomationPage() {
                     type="button"
                     onClick={() => toggleMonth(m)}
                     disabled={!seasonalOn}
-                    className={`rounded border px-2 py-1 text-xs ${on ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground"} disabled:opacity-50`}
+                    // 26px tall, and never measured until 2026-09-28: the
+                    // sweep had no fixture for this page and drew its error
+                    // boundary instead. Same floor /settings/deep-clean uses.
+                    className={`rounded border px-2 py-1 text-xs touch:min-h-11 touch:min-w-11 ${on ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground"} disabled:opacity-50`}
                   >
                     {label}
                   </button>

@@ -260,4 +260,30 @@ export const SURFACES: Surface[] = [
     proofLabel: 'the "Who is off the rate card" heading',
     expectsData: "Kimberly-Anne Rutherford-Sinclair",
   },
+  {
+    // Added 2026-09-28. Until then this page was measured only by the
+    // unlisted-route sweep, at two phone widths, with no fixture: it drew its
+    // empty state and no "Preview form" button, and its header fit. On a real
+    // org it laid out at 495px on a 360px phone. The proof is that button
+    // rather than the heading, because the button only exists when the
+    // lead-form config reached the page, and without it the header this
+    // measures is narrower than the one that ships.
+    id: "/leads",
+    path: "/leads",
+    proof: (p) => p.getByText("Preview form", { exact: true }).first(),
+    proofLabel: 'the "Preview form" button, which only draws once the lead-form config arrived',
+    expectsData: "genevieve.okonkwo-castellanos@lakeviewterracecondoassociation.example.com",
+  },
+  {
+    // Added 2026-09-28, for the same reason. With no fixture the page threw on
+    // a null and the unlisted sweep measured the error boundary; on a real org
+    // it laid out at 786px on a 360px phone, and at 768 a half-width card's
+    // table pushed it to 1025px. `expectsData` is a zone name because it can
+    // only come from the per-zone table, the last of the grids to render.
+    id: "/reports",
+    path: "/reports",
+    proof: (p) => p.getByText("Tech productivity", { exact: true }).first(),
+    proofLabel: 'the "Tech productivity" card',
+    expectsData: "Uptown / Edgewater Beach Commercial Grounds",
+  },
 ];
