@@ -52,8 +52,12 @@ function ReportsPage() {
             {applied.from} → {applied.to}
           </p>
         </div>
+        {/* Two date fields and a button in one row was 426px of controls
+            that could not wrap, so on a phone the form set the width of the
+            page. Below `sm` it is a two-column grid with Apply underneath,
+            which keeps both dates side by side at 320px. */}
         <form
-          className="flex items-end gap-2"
+          className="grid w-full grid-cols-2 items-end gap-2 sm:flex sm:w-auto"
           onSubmit={(e) => {
             e.preventDefault();
             setApplied({ from, to });
@@ -68,11 +72,18 @@ function ReportsPage() {
             <Label htmlFor="to">To</Label>
             <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <Button type="submit">Apply</Button>
+          <Button type="submit" className="col-span-2">
+            Apply
+          </Button>
         </form>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {/* Four across only where four fit. `md:grid-cols-4` keyed on the
+          SCREEN, but at 768 the sidebar takes 256px and each tile was 104px
+          wide around a 126px "$18,742.50", so the last tile's figure hung
+          25px past the edge and the page scrolled. Three from `lg`, four from
+          `xl`, which is where the content column is wide enough to hold them. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
         {/* Every money tile says which basis it is on, in its own label.
             "Revenue" said neither, and meant paid-invoices-dated-by-issue minus
             a cash refund — a figure that could be reconciled to nothing. Cash
@@ -137,7 +148,15 @@ function ReportsPage() {
         <Metric label="Active clients" value={String(data.activeClients)} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* `grid-cols-1`, not a bare `grid`, on both of the card grids below.
+          A bare grid has no column template, so its one column is an
+          implicit `auto` track, sized to the widest card's CONTENT — and a
+          card's content here includes a 720px table. The `overflow-x-auto`
+          around that table never engaged, because the card holding it was
+          already 770px wide, and on a 360px phone the page was 786.
+          `grid-cols-1` is `minmax(0, 1fr)`: the column is the width of the
+          screen, the card is the column, and the table scrolls inside it. */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>AR aging as at {data.arAsOf}</CardTitle>
@@ -190,7 +209,11 @@ function ReportsPage() {
             {data.skipReasons.length === 0 ? (
               <p className="text-sm text-muted-foreground">No skips in this range.</p>
             ) : (
-              <table className="w-full text-sm min-w-[480px]">
+              // Two columns, a reason and a count: the same shape as the aging
+              // table beside it, which has never needed a minimum width. This
+              // one had `min-w-[480px]` and no scroll container, so in a
+              // half-width card at 768 it pushed the page to 1025px.
+              <table className="w-full text-sm">
                 <tbody>
                   {data.skipReasons.map((r) => (
                     <Row key={r.code} label={r.code.replaceAll("_", " ")} value={String(r.count)} />
@@ -202,7 +225,7 @@ function ReportsPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Tech productivity</CardTitle>
@@ -345,9 +368,13 @@ function Metric({
 }) {
   return (
     <Card>
-      <CardContent className="pt-6">
+      {/* Tighter below `sm`, where two tiles share a 320px phone: 24px of
+          padding a side left 88px for a figure that is 126px at text-2xl. */}
+      <CardContent className="p-4 sm:p-6">
         <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className={`mt-1 text-2xl font-semibold ${valueClass ?? ""}`}>{value}</div>
+        <div className={`mt-1 text-xl font-semibold tabular-nums sm:text-2xl ${valueClass ?? ""}`}>
+          {value}
+        </div>
         {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>

@@ -101,7 +101,10 @@ function LeadsPage() {
             Prospects submitted through the public contact form.
           </p>
         </div>
-        <div className="flex items-end gap-2">
+        {/* `flex-wrap`: two buttons and a 192px filter are 479px of controls,
+            and without it this row set the width of the page — 495px on
+            every phone. Wrapping, the filter drops under the buttons. */}
+        <div className="flex flex-wrap items-end gap-2">
           {/* The form these leads come from: see it as a prospect would, or
               jump straight into editing it (Brendan, 2026-07-14). */}
           {formSlug && (
@@ -215,20 +218,25 @@ function LeadsPage() {
                   aria-label={`Select lead ${l.name}`}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <div className="font-medium">{l.name}</div>
+                  {/* Wraps: a name, a badge and a company in a row that
+                      could not wrap was as wide as all three together. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <div className="min-w-0 break-words font-medium">{l.name}</div>
                     <Badge variant="outline">{humanizeEnum(l.status)}</Badge>
                     {l.company ? (
-                      <span className="text-sm text-muted-foreground">· {l.company}</span>
+                      <span className="min-w-0 break-words text-sm text-muted-foreground">
+                        · {l.company}
+                      </span>
                     ) : null}
                   </div>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    {/* The action column beside this is a hard `w-40`, so the
-                        lead body is about 96px wide on a phone. A lead's email
-                        is the only copy of it anywhere in the app — it cannot be
-                        truncated away — so `break-all` gives the address
-                        somewhere to break instead of setting the width of the
-                        row. */}
+                    {/* Below `sm` the action column drops under the lead
+                        rather than sitting beside it as a hard `w-40`, which
+                        left this body about 96px wide on a phone. A lead's
+                        email is still the only copy of it anywhere in the app
+                        — it cannot be truncated away — so `break-all` gives
+                        the address somewhere to break instead of setting the
+                        width of the row. */}
                     <a href={`mailto:${l.email}`} className="break-all underline">
                       {l.email}
                     </a>
@@ -255,7 +263,7 @@ function LeadsPage() {
                     {formatDateTime(l.created_at)} · source: {humanizeEnum(l.source)}
                   </div>
                 </div>
-                <div className="flex w-40 flex-col gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-40">
                   {/* Salesforce-style ••• row actions. Leads have no detail
                       page or edit drawer, so only the existing actions are
                       wired: convert (convertLeadToClient) and archive

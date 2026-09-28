@@ -546,6 +546,47 @@ const BASE_STUBS: Record<string, Stub> = {
     ],
   },
 
+  // ── Leads and reports. Both were unstubbed until 2026-09-28, and both
+  //    pages were wider than a phone on real data while this sweep called
+  //    them green: /leads drew its empty state with no "Preview form" button,
+  //    and /reports threw on a null and was measured as an error boundary.
+  //    `listLeads` returns the bare rows, not `{ leads }`; the page reads
+  //    `data ?? []`.
+  listLeads: fx.LEADS,
+  getLeadFormConfig: fx.LEAD_FORM_CONFIG,
+  getReports: fx.REPORTS,
+
+  // /settings/automation, /settings/invoicing and /settings/emails, which
+  // read these and threw on the null the fence answered — so the unlisted
+  // sweep measured three error boundaries until it learned to refuse one on
+  // 2026-09-28. The columns are the organizations row each function selects.
+  getAutomationSettings: {
+    auto_generate_visits: true,
+    auto_generate_days_ahead: 28,
+    auto_invoice_enabled: true,
+    invoice_net_days: 14,
+    invoice_grace_days: 3,
+    overdue_reminders_enabled: true,
+    overdue_reminder_days: 7,
+    dunning_retry_days: [1, 3, 7],
+    dunning_pause_after_failures: 3,
+    seasonal_deepclean_enabled: true,
+    seasonal_deepclean_months: [4, 10],
+    notify_sms_overdue_invoice: true,
+    notify_sms_payment_failed: true,
+    notify_sms_visit_reminder: true,
+    notify_sms_on_my_way: true,
+    notify_sms_visit_completed: false,
+  },
+  getEmailSettings: {
+    notify_email_invoice_sent: true,
+    notify_email_payment_received: true,
+    notify_email_visit_completed: false,
+    notify_email_weather_reschedule: true,
+    notify_email_welcome: true,
+    notify_email_overdue: true,
+  },
+
   // ── Clients ─────────────────────────────────────────────────────────────
   listClients: { clients: fx.CLIENTS },
   getSmsConsentCoverage: { withPhone: 198, consented: 142, optedOut: 11 },

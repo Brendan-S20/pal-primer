@@ -307,7 +307,16 @@ describe("a table in a scroll container still has to be wider than the container
       const code = codeOnly(readFileSync(f, "utf8"));
       for (const m of code.matchAll(/<table className="([^"]*)"/g)) {
         const cls = m[1];
-        const after = code.slice(m.index! + m[0].length, m.index! + m[0].length + 1600);
+        const window = code.slice(m.index! + m[0].length, m.index! + m[0].length + 1600);
+        // Stop at this table's own `</table>`. The window used to run on into
+        // whatever came next, so a two-column table with no header at all
+        // was charged with the next table's four `<th>`s. On /reports that
+        // made the skip-reasons table "need" a `min-w-[480px]`, which it was
+        // given, with no scroll container — and at 768 that floor pushed the
+        // page to 1025px. A false positive here does not fail quietly; it
+        // gets obeyed.
+        const close = window.indexOf("</table>");
+        const after = close === -1 ? window : window.slice(0, close);
         const cols = (after.match(/<th\b/g) ?? []).length;
         if (cols < 4 || /min-w-/.test(cls)) continue;
         const line = code.slice(0, m.index).split("\n").length;

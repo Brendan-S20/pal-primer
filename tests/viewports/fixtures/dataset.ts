@@ -459,3 +459,154 @@ export const PLATFORM_PLANS = [
   entitlements: { routes: true, portal: true, franchise: i === 2 },
   ...p,
 }));
+
+/**
+ * `/leads`. Until 2026-09-28 `listLeads` and `getLeadFormConfig` had no stub,
+ * so both answered `null` and the page drew "No leads yet" with no "Preview
+ * form" button, which is the control that made its header wider than a
+ * phone. Every org has a lead form once it has a portal slug, so the header
+ * this sweep measured was one no real owner ever saw.
+ *
+ * The rows are awkward where the card is narrow: a hyphenated name beside a
+ * status badge and a company, in a row that did not wrap; an email with
+ * nowhere to break (the card says it is the only copy of the address in the
+ * app, so it cannot be truncated away); and one lead in each working status,
+ * so both branches of the action column get drawn.
+ */
+export const LEAD_FORM_CONFIG = {
+  orgName: ORG_NAME,
+  slug: ORGANIZATION.portal_slug,
+  publicSignupEnabled: true,
+  submissionsTotal: 37,
+  submissionsLast30: 9,
+  config: {
+    brandColor: null,
+    logoUrl: null,
+    headline: "Request a quote",
+    intro: "Tell us about your yard and we'll get you a quote.",
+    confirmation: "Thanks, we got your request! We'll be in touch shortly to set up your service.",
+    fields: { phone: true, location: true, dogCount: true, message: true },
+  },
+};
+
+export const LEADS = [
+  {
+    name: "Genevieve Okonkwo-Castellanos",
+    company: "Lakeview Terrace Condominium Association",
+    email: "genevieve.okonkwo-castellanos@lakeviewterracecondoassociation.example.com",
+    phone: "+13125550188",
+    location: "2847 North Lakewood Avenue, Unit 3R, Chicago, IL 60657",
+    dog_count: 3,
+    message:
+      "Three dogs across two yards, and the side gate sticks. Looking for weekly service from the first of next month.",
+    status: "new",
+    source: "website",
+  },
+  {
+    name: "Theo Bright",
+    company: null,
+    email: "theo.b@example.com",
+    phone: "+13125550102",
+    location: "60614",
+    dog_count: 1,
+    message: "Referred by Anastasia.",
+    status: "contacted",
+    source: "referral",
+  },
+  {
+    name: "Bartholomew Featherstonehaugh",
+    company: "Featherstonehaugh & Sons Property Services",
+    email: "b.featherstonehaugh@featherstonehaughandsonspropertyservices.example.com",
+    phone: null,
+    location: null,
+    dog_count: null,
+    message: null,
+    status: "qualified",
+    source: "website",
+  },
+  {
+    name: "Lauren Woods",
+    company: null,
+    email: "lauren.w@example.com",
+    phone: "+13125550177",
+    location: "60640",
+    dog_count: 2,
+    message: "Big backyard.",
+    status: "converted",
+    source: "website",
+  },
+].map((l, i) => ({
+  id: `44444444-0000-4000-8000-00000000c0${String(i + 1).padStart(2, "0")}`,
+  organization_id: ORG_ID,
+  frequency: null,
+  contacted_at: null,
+  converted_at: null,
+  created_at: iso(new Date(Date.now() - (i + 1) * 5 * 3600e3)),
+  updated_at: iso(new Date(Date.now() - (i + 1) * 5 * 3600e3)),
+  ...l,
+}));
+
+/**
+ * `/reports`. Until 2026-09-28 `getReports` had no stub, answered `null`, and
+ * the page threw on `data.collectedGrossCents`, so the unlisted-route sweep
+ * measured the router's error boundary, which fits on any phone, and called
+ * the page green at 360 and 430.
+ *
+ * Shaped like the seeded org it stands in for, then made awkward: every table
+ * has rows (an empty table has no layout), there is a refund in range so the
+ * top-clients table grows its two extra columns, and the skip codes, staff and
+ * zones are the long ones. A seeded org measured on 2026-09-28 laid this page
+ * out at 786px on a 360px phone.
+ */
+export const REPORTS = {
+  range: { from: day(-29), to: TODAY },
+  timezone: "America/Chicago",
+  collectedGrossCents: 1_874_250,
+  collectedNetCents: 1_806_750,
+  paymentCount: 142,
+  refundsDeductedCents: 67_500,
+  refundsRecoveredCents: 0,
+  refundsNetCents: 67_500,
+  refundsCount: 2,
+  billedCents: 2_031_400,
+  creditsAppliedCents: 12_500,
+  netBilledCents: 2_018_900,
+  invoiceCount: 188,
+  arAsOf: TODAY,
+  outstandingCents: 392_450,
+  openInvoiceCount: 31,
+  aging: { current: 204_300, d30: 118_650, d60: 52_000, d90: 17_500 },
+  visitCounts: { completed: 812, skipped: 37, missed: 4, scheduled: 96, in_progress: 0, cancelled: 3 },
+  completionRate: 812 / (812 + 37 + 4),
+  perTech: STAFF.filter((s) => s.role === "tech").map((s, i) => ({
+    id: s.id,
+    name: s.display_name,
+    completed: 240 - i * 31,
+    skipped: 11 - i * 2,
+    total: 254 - i * 33,
+  })),
+  perZone: [
+    { id: "zzzz1111-0000-4000-8000-000000000001", name: "Ravenswood Manor / Lincoln Square North" },
+    { id: "zzzz1111-0000-4000-8000-000000000002", name: "Uptown / Edgewater Beach Commercial Grounds" },
+    { id: "no_zone", name: "No zone" },
+  ].map((z, i) => ({ ...z, completed: 420 - i * 150, skipped: 20 - i * 7, total: 446 - i * 158 })),
+  skipReasons: [
+    { code: "access_blocked", count: 14 },
+    { code: "client_cancelled_late", count: 11 },
+    { code: "unsafe_conditions", count: 7 },
+    { code: "weather", count: 5 },
+  ],
+  topClients: CLIENTS.slice(0, 6).map((c, i) => {
+    const refundsCents = i === 1 ? 45_000 : i === 4 ? 22_500 : 0;
+    const collectedCents = 184_000 - i * 21_500;
+    return {
+      id: c.id,
+      name: c.display_name,
+      collectedCents,
+      refundsCents,
+      netCollectedCents: collectedCents - refundsCents,
+    };
+  }),
+  newClients: 23,
+  activeClients: 214,
+};
