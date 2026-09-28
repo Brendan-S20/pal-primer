@@ -75,6 +75,7 @@ import { generateVisits } from "@/lib/visits.functions";
 import { listStations } from "@/lib/stations.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { humanizeEnum } from "@/lib/humanize";
+import { CHURN_REASONS } from "@/lib/churn-reasons";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -1848,17 +1849,28 @@ function EndServiceDialog({
           hint="The last day service applies. Future visits past it are removed automatically."
         />
         <div>
-          <Label htmlFor="end-reason">Reason</Label>
-          <Input
+          <Label htmlFor="end-reason">Why is this ending?</Label>
+          {/* One of a few answers, so Reports can count them; the detail
+              goes in the notes. See src/lib/churn-reasons.ts. */}
+          <select
             id="end-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Moving, cost, seasonal…"
             required
-          />
+            className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">Choose a reason…</option>
+            {CHURN_REASONS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
-          <Label htmlFor="end-notes">Notes (optional)</Label>
+          <Label htmlFor="end-notes">
+            {reason === "Other" ? "What happened?" : "Notes (optional)"}
+          </Label>
           <Textarea id="end-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <DrawerFooter>

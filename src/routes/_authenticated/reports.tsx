@@ -223,6 +223,25 @@ function ReportsPage() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Why customers left</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(data.churnReasons ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No services ended in this range.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {(data.churnReasons ?? []).map((r) => (
+                    <Row key={r.reason} label={r.reason} value={String(r.count)} />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
