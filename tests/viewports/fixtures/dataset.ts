@@ -132,6 +132,9 @@ export const CLIENTS = CLIENT_NAMES.map((name, i) => ({
   active_subscription_count: i % 4 === 3 ? 0 : 1,
   frequencies: i % 4 === 3 ? [] : [["weekly", "twice_weekly", "bi_weekly", "monthly"][i % 4]],
   outstanding_cents: i % 3 === 0 ? 18_500 + i * 325 : 0,
+  // Tags as a Jobber export brings them: a cadence, a day, and one long enough
+  // to test the filter's width.
+  tags: i % 2 === 0 ? ["Weekly", "Tuesday", "Lakeview Terrace Condominium Association"] : ["VIP"],
 }));
 
 export const PROPERTIES = CLIENTS.map((c, i) => ({

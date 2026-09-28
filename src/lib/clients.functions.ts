@@ -23,7 +23,7 @@ export const listClients = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused",
+        "id, display_name, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused, tags",
       )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
@@ -1211,4 +1211,58 @@ export const getSmsConsentCoverage = createServerFn({ method: "GET" })
       consented: Number(row.consented),
       optedOut: Number(row.opted_out),
     };
+  });
+
+/** Add or remove one tag across many clients: the Clients list's bulk bar.
+ *  Tags could only be edited one client at a time, which Jobber's own users
+ *  name as a chore, and now that imports bring tags in there are hundreds. */
+export const bulkTagClients = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        ids: z.array(z.string().uuid()).min(1).max(500),
+        tag: z.string().trim().min(1).max(40),
+        action: z.enum(["add", "remove"]),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // The same gate as editing tags on one client.
+    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
+    const { data: rows, error } = await supabase
+      .from("clients")
+      .select("id, tags")
+      .eq("organization_id", orgId)
+      .in("id", data.ids);
+    if (error) throw new Error(error.message);
+    const want = data.tag;
+    const lc = want.toLowerCase();
+    let changed = 0;
+    const work = (rows ?? []).flatMap((r: { id: string; tags: string[] | null }) => {
+      const tags = r.tags ?? [];
+      const has = tags.some((t) => t.toLowerCase() === lc);
+      if (data.action === "add" && has) return [];
+      if (data.action === "remove" && !has) return [];
+      const next =
+        data.action === "add" ? [...tags, want].slice(0, 30) : tags.filter((t) => t.toLowerCase() !== lc);
+      return [{ id: r.id, tags: next }];
+    });
+    for (let i = 0; i < work.length; i += 25) {
+      const results = await Promise.all(
+        work.slice(i, i + 25).map((w) =>
+          supabase
+            .from("clients")
+            .update({ tags: w.tags, updated_at: new Date().toISOString() })
+            .eq("id", w.id)
+            .eq("organization_id", orgId),
+        ),
+      );
+      for (const r of results) {
+        if (r.error) throw new Error(r.error.message);
+        changed += 1;
+      }
+    }
+    return { changed, unchanged: (rows ?? []).length - changed };
   });
