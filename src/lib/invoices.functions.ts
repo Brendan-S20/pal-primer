@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { invoiceNumberLabel, invoiceRef } from "@/lib/invoice-labels";
 import {
   MANUAL_PAYMENT_METHODS,
   REFERENCE_MAX,
@@ -23,7 +24,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("invoices")
       .select(
-        "id, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)",
+        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)",
       )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -147,7 +148,7 @@ export const generateInvoiceForClient = createServerFn({ method: "POST" })
           clientId: data.clientId,
           actorUserId: context.userId,
           kind: "invoice.generated",
-          summary: `Generated invoice #${String(id).slice(0, 8)} through ${data.through}`,
+          summary: `Generated invoice ${await invoiceRef(supabase, String(id))} through ${data.through}`,
         });
     }
     return { invoiceId: id as string };
@@ -235,7 +236,7 @@ export const createManualInvoice = createServerFn({ method: "POST" })
       clientId: data.clientId,
       actorUserId: context.userId,
       kind: "invoice.created",
-      summary: `Created manual invoice #${String(inv.id).slice(0, 8)} for $${(total / 100).toFixed(2)}`,
+      summary: `Created manual invoice ${await invoiceRef(supabase, String(inv.id))} for $${(total / 100).toFixed(2)}`,
     });
     return { invoiceId: inv.id as string, totalCents: total };
   });
@@ -276,7 +277,7 @@ export const voidInvoice = createServerFn({ method: "POST" })
         clientId: inv.client_id,
         actorUserId: context.userId,
         kind: "invoice.voided",
-        summary: `Voided invoice #${data.id.slice(0, 8)}`,
+        summary: `Voided invoice ${await invoiceRef(context.supabase, data.id)}`,
       });
     }
     return { ok: true };
@@ -417,7 +418,7 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         clientId: inv.client_id,
         actorUserId: context.userId,
         kind: "invoice.payment_recorded",
-        summary: `Recorded ${how ? `${how} ` : ""}payment on invoice #${id.slice(0, 8)}`,
+        summary: `Recorded ${how ? `${how} ` : ""}payment on invoice ${await invoiceRef(supabase, id)}`,
       });
 
       // CANCEL THE CUSTOMER'S LIVE PAYMENT INTENT, for the same reason
@@ -847,7 +848,7 @@ async function chargeSavedCardCore(
       clientId: invoice.client_id,
       actorUserId,
       kind: "invoice.charged_saved_card",
-      summary: `Charged saved card (${c.default_card_brand ?? "card"} ····${c.default_card_last4 ?? "????"}) for invoice #${invoice.id.slice(0, 8)}: $${(dueCents / 100).toFixed(2)}`,
+      summary: `Charged saved card (${c.default_card_brand ?? "card"} ····${c.default_card_last4 ?? "????"}) for invoice ${await invoiceRef(supabase, invoice.id)}: $${(dueCents / 100).toFixed(2)}`,
     });
     return { chargedCents: dueCents, status: pi.status };
   } catch (e) {
@@ -928,7 +929,7 @@ async function logCreditApplied(
     clientId: inv.client_id,
     actorUserId,
     kind: "invoice.credit_applied",
-    summary: `Applied $${(appliedCents / 100).toFixed(2)} credit to invoice #${invoiceId.slice(0, 8)}`,
+    summary: `Applied $${(appliedCents / 100).toFixed(2)} credit to invoice ${await invoiceRef(supabase, invoiceId)}`,
     meta: { amount_cents: appliedCents, invoice_id: invoiceId },
   });
 }
@@ -1073,7 +1074,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
+          "id, number, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
         )
         .eq("client_id", data.clientId)
         .order("created_at", { ascending: false })
@@ -1145,7 +1146,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+          "id, number, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
         )
         .eq("id", data.invoiceId)
         .single(),
@@ -1270,7 +1271,7 @@ async function invoiceByPublicToken(token: string) {
       // `organizations(timezone)` so the public pay page can date "overdue" in
       // the business's day rather than the server's — it used to keep its own
       // copy of the date logic, with the bug src/lib/overdue.ts documents.
-      "id, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone), clients(display_name)",
+      "id, number, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone), clients(display_name)",
     )
     .eq("public_token", token)
     .maybeSingle();
@@ -1309,7 +1310,7 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
       found: true as const,
       invoice: {
         id: invoice.id as string,
-        shortId: String(invoice.id).slice(0, 8),
+        label: invoiceNumberLabel({ id: String(invoice.id), number: invoice.number ?? null }),
         status: invoice.status as string,
         currency: (invoice.currency ?? "usd") as string,
         subtotalCents: invoice.subtotal_cents as number | null,

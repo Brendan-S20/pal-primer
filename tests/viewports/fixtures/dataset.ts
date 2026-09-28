@@ -258,6 +258,7 @@ export function visitsBetween(from: string, to: string) {
 
 export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
   id: `99999999-0000-4000-8000-00000000e0${String(i + 1).padStart(2, "0")}`,
+  number: 10420 + i,
   status: i % 3 === 0 ? "open" : i % 3 === 1 ? "paid" : "void",
   total_cents: 8_800 + i * 1_275,
   credit_applied_cents: i === 2 ? 2_000 : 0,

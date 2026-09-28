@@ -31,3 +31,29 @@ export function formatLineItemDescription(desc: string | null | undefined): stri
   // (an id like "Order 12026-07-16") isn't partially matched and mangled.
   return desc.replace(/(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)/g, (m) => formatDay(m) || m);
 }
+
+/**
+ * What an invoice is called wherever a person reads it: "INV-1042". The
+ * number is per organization and assigned on insert (see migration
+ * 20260928120000). Until then every screen, email and activity entry printed
+ * the first eight characters of the UUID, which nobody could read out on a
+ * phone call or match to a deposit. The fragment stays only as a fallback for
+ * a row read without its number.
+ */
+export function invoiceNumberLabel(inv: { number?: number | null; id: string }): string {
+  return inv.number != null ? `INV-${inv.number}` : `#${inv.id.slice(0, 8)}`;
+}
+
+/** The same label for text written on the server (activity timeline,
+ *  notifications), read with whichever client the caller holds. */
+export async function invoiceRef(
+  supabase: { from: (table: string) => any },
+  invoiceId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from("invoices")
+    .select("number")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  return invoiceNumberLabel({ id: invoiceId, number: data?.number ?? null });
+}

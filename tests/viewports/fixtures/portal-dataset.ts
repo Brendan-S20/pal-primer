@@ -307,7 +307,7 @@ export const PORTAL_PROPERTIES = [
  * `getPublicInvoice` answers `{ found: false }` and the page renders "This
  * payment link isn't valid" — which lays out fine and proves nothing.
  *
- * camelCase and hand-built, because the handler reshapes the row: `shortId`,
+ * camelCase and hand-built, because the handler reshapes the row: `label`,
  * `amountDueCents` net of credit, and the org and client names lifted out of
  * joined rows.
  */
@@ -315,7 +315,8 @@ export const PUBLIC_INVOICE = {
   found: true,
   invoice: {
     id: "99999999-0000-4000-8000-000000009001",
-    shortId: "99999999",
+    // Five digits: a business well into its second year of invoices.
+    label: "INV-10427",
     status: "open",
     currency: "usd",
     subtotalCents: 12900,

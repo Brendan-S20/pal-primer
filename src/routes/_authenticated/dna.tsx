@@ -417,7 +417,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
   const bill = useMutation({
     mutationFn: (matchId: string) => billFn({ data: { matchId } }),
     onSuccess: (r) => {
-      toast.success(`Invoice created (${r.invoiceId.slice(0, 8)}…). Status set to Billed`);
+      toast.success("Invoice created. Status set to Billed");
       refetch();
     },
     onError: (e: Error) => toast.error(e.message),
