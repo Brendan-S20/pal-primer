@@ -21,6 +21,7 @@ import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
+import { isDemoOrganization } from "@/lib/demo-org";
 import {
   getOrgBranding,
   updateOrgBranding,
@@ -257,7 +258,6 @@ function PricingBaselineCard() {
   return <StandardPricingCard />;
 }
 
-
 /** Menus and chrome — the things about how this app LOOKS to one person.
  *
  *  ── WHY THESE MOVED HERE ─────────────────────────────────────────────────
@@ -341,9 +341,10 @@ function AppearanceCard() {
   );
 }
 
-
 function DemoDataCard() {
   const { role } = useMyRole();
+  const orgFn = useServerFn(getMyOrg);
+  const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const { confirm, dialog } = useConfirmDialog();
   const reseedFn = useServerFn(reseedDemoData);
   const mut = useMutation({
@@ -357,7 +358,9 @@ function DemoDataCard() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (role !== "owner") return null;
+  // Every business used to see a red "wipes your organization" card here, and
+  // the server refuses it for all but demo accounts. Same rule, both ends.
+  if (role !== "owner" || !isDemoOrganization(orgQ.data?.organization as any)) return null;
 
   return (
     <Card className="border-destructive/30">

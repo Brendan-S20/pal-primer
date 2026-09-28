@@ -908,17 +908,18 @@ export function buildTechGroups(
     byStaff.get(k)!.push(v);
   }
   const groups: TechGroup[] = [];
-  let ci = 0;
-  for (const s of staff) {
+  for (const [si, s] of staff.entries()) {
     const list = byStaff.get(s.id) ?? [];
     if (list.length === 0) continue;
-    // One colour per TECH, chosen before any per-day split, and the index
-    // advances once per tech. techColorMap() reads this same function so a
-    // calendar chip and its map pin agree; if the index advanced per GROUP
-    // instead, a tech with five days of work would consume five colours and
-    // every chip would desync from its pin.
-    const color = TECH_COLORS[ci % TECH_COLORS.length];
-    ci++;
+    // One colour per TECH, chosen before any per-day split, and keyed on the
+    // tech's place in the staff list rather than on who happens to have work
+    // in this window. It used to advance only for techs with visits, so the
+    // same person was blue in Week and red in Month whenever somebody earlier
+    // in the list had an empty week (found 2026-09-27, persona review), while
+    // the page promised a colour means one person. techColorMap() reads this
+    // same function so a calendar chip and its map pin still agree, and a
+    // tech with five days of work still has one colour, not five.
+    const color = TECH_COLORS[si % TECH_COLORS.length];
 
     const base = {
       staffId: s.id,
@@ -956,6 +957,9 @@ export function buildTechGroups(
   // assignments yet every pin looked identical and the map read as broken
   // (P2). Split them by zone so the geography stays color-scannable.
   const unassigned = byStaff.get(null) ?? [];
+  // After every tech's slot, so an unassigned zone never borrows a colour
+  // that belongs to a person.
+  let ci = staff.length;
   if (unassigned.length) {
     const byZone = new Map<string, MapVisit[]>();
     for (const v of unassigned) {

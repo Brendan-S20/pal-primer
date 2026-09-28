@@ -80,8 +80,13 @@ describe("week and month can draw a route again", () => {
     expect(map).toMatch(/groups\.push\(\{ \.\.\.base, day, visits: dayVisits \}\)/);
     // One colour per tech, taken before the per-day split — otherwise a tech
     // with five days would eat five colours and every calendar chip would
-    // disagree with its own pin.
-    expect(map).toMatch(/const color = TECH_COLORS\[ci % TECH_COLORS\.length\];\s*\n\s*ci\+\+;/);
+    // disagree with its own pin. Since 2026-09-28 the index is the tech's
+    // place in the staff list rather than a counter of techs with work, so
+    // the colour also holds between Week and Month; see
+    // tests/a-tech-is-one-colour-in-every-view.test.ts.
+    expect(map).toMatch(
+      /for \(const \[si, s\] of staff\.entries\(\)\) \{[\s\S]{0,900}const color = TECH_COLORS\[si % TECH_COLORS\.length\];/,
+    );
   });
 
   it("hovering lights the whole day, not two legs", () => {
