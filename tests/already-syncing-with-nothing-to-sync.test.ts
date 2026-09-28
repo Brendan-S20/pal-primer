@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startAutoSync, type SyncTrigger } from "@/lib/offline/auto-sync";
+import { CONNECTIVITY_CHANGE } from "@/lib/offline/connectivity";
 
 // Reported 2026-09-27: opening My Day with NOTHING queued toasted "Already
 // syncing…".
@@ -36,6 +37,7 @@ function fakeWindow() {
     setTimeout: ((fn: () => void, ms?: number) => setTimeout(fn, ms)) as Window["setTimeout"],
     clearTimeout: ((id?: number) => clearTimeout(id)) as Window["clearTimeout"],
     goOnline: () => events.dispatchEvent(new Event("online")),
+    nativeChanged: () => events.dispatchEvent(new Event(CONNECTIVITY_CHANGE)),
   };
 }
 
@@ -132,5 +134,58 @@ describe("My Day says 'Already syncing…' only to the person who pressed Sync",
     // The old shape — replay straight from the effect body — is what the
     // rehearsal mount could not take back.
     expect(page).not.toMatch(/isDefinitelyOffline\(\)\) runSync\(/);
+  });
+});
+
+// In the iOS and Android app, signal returning does not fire a browser
+// `online` event; @capacitor/network's listener announces CONNECTIVITY_CHANGE
+// instead, and until 2026-09-28 nothing replayed the queue on it.
+describe("the app replays when native signal comes back", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("offline → online on the native listener replays once", () => {
+    const win = fakeWindow();
+    const calls: SyncTrigger[] = [];
+    let offline = true;
+    const cleanup = startAutoSync((t) => void calls.push(t), win, () => offline);
+    vi.runAllTimers();
+    expect(calls).toEqual([]);
+
+    offline = false;
+    win.nativeChanged();
+    expect(calls).toEqual(["auto"]);
+    cleanup();
+  });
+
+  it("a launch or resume that reports online again does not replay a second time", () => {
+    const win = fakeWindow();
+    const calls: SyncTrigger[] = [];
+    const cleanup = startAutoSync((t) => void calls.push(t), win, () => false);
+    vi.runAllTimers();
+    win.nativeChanged();
+    win.nativeChanged();
+    expect(calls).toEqual(["auto"]);
+    cleanup();
+  });
+
+  it("going offline does not replay, and the listener is removed on cleanup", () => {
+    const win = fakeWindow();
+    const calls: SyncTrigger[] = [];
+    let offline = false;
+    const cleanup = startAutoSync((t) => void calls.push(t), win, () => offline);
+    vi.runAllTimers();
+    calls.length = 0;
+    offline = true;
+    win.nativeChanged();
+    expect(calls).toEqual([]);
+    cleanup();
+    offline = false;
+    win.nativeChanged();
+    expect(calls).toEqual([]);
   });
 });
