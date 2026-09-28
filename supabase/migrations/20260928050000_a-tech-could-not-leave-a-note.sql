@@ -211,6 +211,10 @@ BEGIN
 END;
 $function$;
 
+REVOKE ALL ON FUNCTION public.confirm_open_visit(uuid, boolean, timestamptz, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.confirm_open_visit(uuid, boolean, timestamptz, text)
+  TO authenticated, service_role;
+
 -- What this file establishes.
 DO $check$
 BEGIN
@@ -228,6 +232,9 @@ BEGIN
   END IF;
   IF has_function_privilege('anon', 'public.complete_visit(uuid, timestamptz, text, text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'anon can execute complete_visit';
+  END IF;
+  IF has_function_privilege('anon', 'public.confirm_open_visit(uuid, boolean, timestamptz, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'anon can execute confirm_open_visit';
   END IF;
 END
 $check$;
