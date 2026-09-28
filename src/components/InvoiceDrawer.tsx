@@ -9,7 +9,16 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ArrowLeft, CreditCard, Link2, Mail, BellRing, ExternalLink, Ban } from "lucide-react";
+import {
+  ArrowLeft,
+  CreditCard,
+  Link2,
+  Mail,
+  BellRing,
+  ExternalLink,
+  Ban,
+  Banknote,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
@@ -18,7 +27,9 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceKindLabel } from "@/lib/invoice-labels";
-import { getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
+import { bulkMarkInvoicesPaid, getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
+import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
+import { describeManualPayment } from "@/lib/manual-payments";
 import { sendInvoiceEmail } from "@/lib/notifications.functions";
 
 // Re-exported so existing imports (invoices index, client billing tab) keep
@@ -47,8 +58,10 @@ export function InvoiceDrawer({
 }) {
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
+  const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
   const detailFn = useServerFn(getInvoiceDetail);
   const voidFn = useServerFn(voidInvoice);
+  const paidFn = useServerFn(bulkMarkInvoicesPaid);
   const emailFn = useServerFn(sendInvoiceEmail);
   const [copied, setCopied] = useState(false);
   // B2: "Take payment" swaps the drawer body to the embedded payment view
@@ -80,6 +93,41 @@ export function InvoiceDrawer({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const recordMut = useMutation({
+    mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId!], ...how } }),
+    onSuccess: (r) => {
+      if (!r.ok) {
+        toast.error("The payment could not be recorded. The invoice may already be paid or void.");
+      } else {
+        toast.success("Payment recorded. Invoice paid");
+      }
+      if (r.intentStillLive?.length) {
+        toast.warning(
+          "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
+          { duration: 15000 },
+        );
+      }
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      qc.invalidateQueries({ queryKey: ["billing-summary"] });
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const recordPayment = async () => {
+    if (!inv) return;
+    const due = Math.max(
+      (inv.total_cents ?? 0) -
+        ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+      0,
+    );
+    const how = await askPayment({
+      amountLine: `${fmtCents(due, inv.currency ?? "usd")}, the open balance${client?.display_name ? ` for ${client.display_name}` : ""}. This marks the invoice paid and can't be undone here.`,
+    });
+    if (how) recordMut.mutate(how);
+  };
 
   const emailMut = useMutation({
     mutationFn: (reminder: boolean) => emailFn({ data: { invoiceId: invoiceId!, reminder } }),
@@ -136,6 +184,7 @@ export function InvoiceDrawer({
   return (
     <>
       {dialog}
+      {paymentDialog}
       <EditDrawer
         open={!!invoiceId}
         onClose={onClose}
@@ -187,13 +236,9 @@ export function InvoiceDrawer({
                 </span>
               )}
               {inv.status === "paid" && inv.paid_at && (
-                <span className="text-xs text-muted-foreground">
-                  Paid {formatDay(inv.paid_at)}
-                </span>
+                <span className="text-xs text-muted-foreground">Paid {formatDay(inv.paid_at)}</span>
               )}
-              {inGrace && (
-                <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
-              )}
+              {inGrace && <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>}
               {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at)}</MetaChip>}
             </div>
 
@@ -209,6 +254,17 @@ export function InvoiceDrawer({
                 <Button size="sm" onClick={() => setView("pay")}>
                   <CreditCard className="mr-1 h-3.5 w-3.5 shrink-0" />
                   Take payment
+                </Button>
+              )}
+              {open && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={recordMut.isPending}
+                  onClick={recordPayment}
+                >
+                  <Banknote className="mr-1 h-3.5 w-3.5" />
+                  Record payment
                 </Button>
               )}
               {open && client?.primary_email && (
@@ -293,12 +349,17 @@ export function InvoiceDrawer({
               </div>
               {/* Credit applications live on the invoice (credit_applied_cents
                   + the credit ledger), not in the payments cash list. */}
-              {((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) > 0 && (
+              {((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) >
+                0 && (
                 <>
                   <div className="mt-2 flex items-center justify-between text-muted-foreground">
                     <span>Credit applied</span>
                     <span>
-                      -{fmtCents((inv as { credit_applied_cents?: number | null }).credit_applied_cents, inv.currency ?? "usd")}
+                      -
+                      {fmtCents(
+                        (inv as { credit_applied_cents?: number | null }).credit_applied_cents,
+                        inv.currency ?? "usd",
+                      )}
                     </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
@@ -307,7 +368,8 @@ export function InvoiceDrawer({
                       {fmtCents(
                         Math.max(
                           (inv.total_cents ?? 0) -
-                            ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+                            ((inv as { credit_applied_cents?: number | null })
+                              .credit_applied_cents ?? 0),
                           0,
                         ),
                         inv.currency ?? "usd",
@@ -327,8 +389,13 @@ export function InvoiceDrawer({
                 <ul className="mt-1.5 divide-y">
                   {pays.map((p) => (
                     <li key={p.id} className="flex items-center justify-between gap-2 py-1.5">
-                      <span className="text-muted-foreground">
+                      <span className="min-w-0 text-muted-foreground">
                         {formatDateTime(p.paid_at ?? p.created_at)}
+                        {describeManualPayment(p.method, p.reference) && (
+                          <span className="block truncate text-2xs">
+                            {describeManualPayment(p.method, p.reference)}
+                          </span>
+                        )}
                       </span>
                       <span className="flex items-center gap-2">
                         <StatusChip status={p.status} />

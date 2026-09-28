@@ -125,7 +125,7 @@ describe("BUILD-6: a location whose franchise collects", () => {
 describe("requireOrgStripeAccount", () => {
   it("throws a connect prompt when no account", async () => {
     h.rows = [{ stripe_connect_account_id: null }];
-    await expect(requireOrgStripeAccount(ORG)).rejects.toThrow(/Settings → Payments/);
+    await expect(requireOrgStripeAccount(ORG)).rejects.toThrow(/on the Payments page/);
   });
 
   it("throws when charges aren't enabled yet", async () => {

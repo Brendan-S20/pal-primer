@@ -27,11 +27,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronDown, Download, FileText, MoreHorizontal, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  FileText,
+  MoreHorizontal,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
 import { EmptyState, SectionLabel } from "@/components/client-detail/primitives";
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
@@ -270,6 +279,7 @@ function StatCard({
 
 function InvoicesPage() {
   const { confirm, dialog } = useConfirmDialog();
+  const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
   const list = useServerFn(listInvoices);
   const collectedFn = useServerFn(getCollectedThisMonth);
   const orgFn = useServerFn(getMyOrg);
@@ -406,10 +416,11 @@ function InvoicesPage() {
   });
 
   const paidM = useMutation({
-    mutationFn: () => paidBulk({ data: { ids: selectedIds } }),
+    mutationFn: (how: RecordPaymentAnswer) => paidBulk({ data: { ids: selectedIds, ...how } }),
     onSuccess: (r) => {
-      if (r.failed) toast.error(`Marked ${r.ok} of ${r.ok + r.failed} paid, ${r.failed} skipped`);
-      else toast.success(`Marked ${r.ok} paid`);
+      if (r.failed)
+        toast.error(`Recorded ${r.ok} of ${r.ok + r.failed} payments, ${r.failed} skipped`);
+      else toast.success(`Recorded ${r.ok} payment${r.ok === 1 ? "" : "s"}`);
       // Separate from `failed`, and deliberately not silent. These invoices ARE
       // paid; what did not happen is the cancellation of the pay-page intent,
       // so the client can still press Pay and be charged a second time, and
@@ -494,10 +505,13 @@ function InvoicesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
   const rowPaidM = useMutation({
-    mutationFn: (id: string) => paidBulk({ data: { ids: [id] } }),
+    mutationFn: (v: { id: string } & RecordPaymentAnswer) => {
+      const { id, ...how } = v;
+      return paidBulk({ data: { ids: [id], ...how } });
+    },
     onSuccess: (r) => {
-      if (r.ok) toast.success("Invoice marked paid");
-      else toast.error("Invoice could not be marked paid");
+      if (r.ok) toast.success("Payment recorded. Invoice paid");
+      else toast.error("The payment could not be recorded");
       if (r.intentStillLive?.length) {
         toast.warning(
           "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
@@ -547,18 +561,13 @@ function InvoicesPage() {
         onSelect: () => rowEmailM.mutate({ invoiceId: inv.id, reminder: true }),
       },
       {
-        label: "Mark paid",
+        label: "Record payment",
         disabled: busy,
         onSelect: async () => {
-          if (
-            await confirm({
-              title: "Mark this invoice paid?",
-              description:
-                "Records an out-of-band payment for the open balance (cash, check, etc.). This can't be undone here.",
-              confirmLabel: "Mark paid",
-            })
-          )
-            rowPaidM.mutate(inv.id);
+          const how = await askPayment({
+            amountLine: `${fmtCents(invoiceOutstandingCents(inv as any), inv.currency ?? "usd")}, the open balance for ${client?.display_name ?? "this client"}. This marks the invoice paid and can't be undone here.`,
+          });
+          if (how) rowPaidM.mutate({ id: inv.id, ...how });
         },
       },
       {
@@ -584,6 +593,7 @@ function InvoicesPage() {
   return (
     <div className="space-y-6">
       {dialog}
+      {paymentDialog}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Invoices</h1>
@@ -845,20 +855,18 @@ function InvoicesPage() {
               size="sm"
               variant="outline"
               onClick={async () => {
-                // Same confirm as the per-row action — this moves money.
-                if (
-                  await confirm({
-                    title: `Mark ${selectedIds.length} invoice${selectedIds.length === 1 ? "" : "s"} paid?`,
-                    description:
-                      "Records an out-of-band payment (cash, check, etc.) for each open balance. This can't be undone here.",
-                    confirmLabel: "Mark paid",
-                  })
-                )
-                  paidM.mutate();
+                // Same question as the per-row action: this records money.
+                const n = selectedIds.length;
+                const how = await askPayment({
+                  title: `Record ${n} payment${n === 1 ? "" : "s"}`,
+                  amountLine: `The open balance on each of ${n} invoice${n === 1 ? "" : "s"}, received the same way on the same day. They are marked paid, and it can't be undone here.`,
+                  confirmLabel: `Record ${n === 1 ? "payment" : "payments"}`,
+                });
+                if (how) paidM.mutate(how);
               }}
               disabled={paidM.isPending}
             >
-              Mark paid
+              Record payment
             </Button>
             <Button
               size="sm"
