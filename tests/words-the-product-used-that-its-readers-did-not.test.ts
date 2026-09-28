@@ -134,13 +134,19 @@ describe("the portal's active add-ons say their cadence in words", () => {
 /* ─────────────────────── 2. two names for one thing ─────────────────────── */
 
 describe("the lifecycle texts call it the same thing the portal does", () => {
-  /** The three templates in sendVisitStatusSms, as shipped. */
-  const templates = (): string[] =>
-    [...codeOnly(messages()).matchAll(/`Hi \$\{name\}[^`]*`/g)].map((m) => m[0]);
+  /** The reminder and completed texts in sendVisitStatusSms, and the "on my
+   *  way" text, which moved to on-my-way.ts when it learned the tech's name
+   *  and an arrival window. */
+  const templates = (): string[] => [
+    ...[...codeOnly(messages()).matchAll(/`Hi \$\{name\}[^`]*`/g)].map((m) => m[0]),
+    ...[
+      ...codeOnly(read("src/lib/on-my-way.ts")()).matchAll(/`Hi \$\{p\.customerName\}[^`]*`/g),
+    ].map((m) => m[0]),
+  ];
 
   it("finds all three", () => {
-    // Three branches of one ternary. Two would mean this suite is checking a
-    // subset of the copy and calling it done.
+    // Two in one ternary and one in on-my-way.ts. Two would mean this suite
+    // is checking a subset of the copy and calling it done.
     expect(templates()).toHaveLength(3);
   });
 

@@ -42,7 +42,7 @@ import {
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
-import { sendVisitStatusSms } from "@/lib/messages.functions";
+import { sendOnMyWayMessage, sendVisitStatusSms } from "@/lib/messages.functions";
 import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
@@ -1416,6 +1416,7 @@ function VisitCard({
 }) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
+  const onMyWayFn = useServerFn(sendOnMyWayMessage);
   const { role } = useMyRole();
   // Dispatcher schedules/routes but never performs field work — start/complete
   // is silently rejected server-side, which made those buttons look broken.
@@ -1584,9 +1585,34 @@ function VisitCard({
       toast.error(e.message);
     },
   });
+  // Text if it can go, email if not; the result says which.
+  const onMyWay = useMutation({
+    mutationFn: () => onMyWayFn({ data: { visitId: visit.id, trigger: "button" } }),
+    onSuccess: (r) => {
+      haptic("select");
+      toast.success(r.sent && r.channel === "email" ? "Emailed: on my way" : "Texted: on my way");
+    },
+    onError: (e: Error) => {
+      haptic("error");
+      toast.error(e.message);
+    },
+  });
+  // Navigate tells the customer too, once per visit, when the owner has
+  // turned it on (Settings → Automation). Fire-and-forget: the map opens
+  // whatever happens here, and offline it is not attempted at all, because an
+  // "on my way" that arrives when signal returns, after the visit, is worse
+  // than none.
+  const announceOnNavigate = () => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    onMyWayFn({ data: { visitId: visit.id, trigger: "navigate" } })
+      .then((r) => {
+        if (r.sent)
+          toast.success(r.channel === "email" ? "Emailed: on my way" : "Texted: on my way");
+      })
+      .catch((e) => console.warn("on-my-way on navigate failed", visit.id, e));
+  };
   const sms = useMutation({
-    mutationFn: (kind: "reminder" | "on_my_way" | "completed") =>
-      smsFn({ data: { visitId: visit.id, kind } }),
+    mutationFn: (kind: "reminder" | "completed") => smsFn({ data: { visitId: visit.id, kind } }),
     onSuccess: () => {
       haptic("select");
       toast.success("SMS sent");
@@ -1632,8 +1658,7 @@ function VisitCard({
   const photoOnFile = hasCompletionPhoto || hasQueuedCompletionPhoto;
   // The rule complete_visit enforces: a photo, or no photo required, or a
   // stated reason there is none.
-  const photoRuleMet =
-    photoOnFile || !requireCompletionPhoto || noPhotoReason.trim().length >= 3;
+  const photoRuleMet = photoOnFile || !requireCompletionPhoto || noPhotoReason.trim().length >= 3;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
@@ -1865,6 +1890,7 @@ function VisitCard({
               href={mapsUrl(p)}
               target="_blank"
               rel="noreferrer"
+              onClick={announceOnNavigate}
               className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold transition-colors hover:bg-accent active:bg-accent ${
                 visit.clients?.primary_phone ? "" : "col-span-2"
               }`}
@@ -2146,27 +2172,27 @@ function VisitCard({
                   </Button>
                 )}
                 {visit.clients?.primary_phone && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-11 px-4 sm:h-8 sm:px-3"
-                      disabled={sms.isPending}
-                      onClick={() => sms.mutate("reminder")}
-                    >
-                      Text reminder
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-11 px-4 sm:h-8 sm:px-3"
-                      disabled={sms.isPending}
-                      onClick={() => sms.mutate("on_my_way")}
-                    >
-                      Text "on my way"
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-11 px-4 sm:h-8 sm:px-3"
+                    disabled={sms.isPending}
+                    onClick={() => sms.mutate("reminder")}
+                  >
+                    Text reminder
+                  </Button>
                 )}
+                {/* Not gated on a phone number: with no phone, or no texting
+                    consent, it goes by email. */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  disabled={onMyWay.isPending}
+                  onClick={() => onMyWay.mutate()}
+                >
+                  Send &ldquo;on my way&rdquo;
+                </Button>
               </div>
             </div>
           )}

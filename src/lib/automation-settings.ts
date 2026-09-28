@@ -24,6 +24,7 @@ export const AUTOMATION_FIELD_MAP = {
   notifySmsPaymentFailed: "notify_sms_payment_failed",
   notifySmsVisitReminder: "notify_sms_visit_reminder",
   notifySmsOnMyWay: "notify_sms_on_my_way",
+  onMyWayOnNavigate: "on_my_way_on_navigate",
   notifySmsVisitCompleted: "notify_sms_visit_completed",
 } as const;
 
