@@ -297,6 +297,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Techs complete visits on [My Day](/my-day) as they finish. Completed visits are what invoicing runs on.",
       'On [Invoices](/invoices), "Generate from visits" bills everything completed and unbilled. Use "New invoice" for one-off work. See [Generate vs New invoice](article:generate-invoices).',
       "Clients pay from their [portal](article:client-portal) (card on file, autopay, or a payment link). Overdue reminders can go out automatically.",
+      "Paid in cash, by check, bank transfer, Venmo or Zelle? Open the invoice and choose **Record payment**. Pick how it was paid, add the check number or reference, and set the day it arrived. The invoice is marked paid, and your cash-basis reports count it on that day. This works without Stripe connected.",
       "Watch it all on [Reports](/reports): revenue, accounts receivable aging, and payouts.",
     ],
     appLink: { to: "/payments", label: "Open Payments" },
