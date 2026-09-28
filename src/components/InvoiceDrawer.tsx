@@ -263,7 +263,7 @@ export function InvoiceDrawer({
                   disabled={recordMut.isPending}
                   onClick={recordPayment}
                 >
-                  <Banknote className="mr-1 h-3.5 w-3.5" />
+                  <Banknote className="mr-1 h-3.5 w-3.5 shrink-0" />
                   Record payment
                 </Button>
               )}
