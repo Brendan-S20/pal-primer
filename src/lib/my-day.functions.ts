@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { orgToday } from "@/lib/org-day";
+import { formatDay } from "@/lib/format";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -208,6 +209,31 @@ export const completeVisit = createServerFn({ method: "POST" })
           ? (v as any).properties[0]
           : (v as any).properties;
         const address = prop ? [prop.street, prop.city].filter(Boolean).join(", ") : undefined;
+        // The template has always drawn up to three photos and nothing ever
+        // passed it any, so the proof a customer was paying for stayed on the
+        // server. The bucket is private: these are signed links, long enough
+        // to outlive a slow inbox, from the service client because the tech's
+        // own session cannot sign for an email it is not going to open.
+        let photoUrls: string[] = [];
+        try {
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { data: photos } = await supabaseAdmin
+            .from("visit_photos")
+            .select("storage_path")
+            .eq("visit_id", data.visitId)
+            .eq("kind", "completion")
+            .order("created_at")
+            .limit(3);
+          const paths = (photos ?? []).map((p: { storage_path: string }) => p.storage_path);
+          if (paths.length) {
+            const { data: signed } = await supabaseAdmin.storage
+              .from("visit-photos")
+              .createSignedUrls(paths, 30 * 24 * 3600);
+            photoUrls = (signed ?? []).map((x) => x.signedUrl).filter((u): u is string => !!u);
+          }
+        } catch (e) {
+          console.warn("visit-completed photos could not be signed", data.visitId, e);
+        }
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
         await enqueueAppEmail({
           organizationId: v.organization_id,
@@ -219,8 +245,10 @@ export const completeVisit = createServerFn({ method: "POST" })
           // set (tenant/manager); billing emails stay with the client.
           toOverride: prop?.visit_contact_email || undefined,
           templateData: {
-            visitDate: v.scheduled_on,
+            // "Mon, Sep 28", not the column's 2026-09-28.
+            visitDate: formatDay(v.scheduled_on),
             address,
+            photoUrls,
           },
         });
         // Best-effort push notification to the client (if they subscribed via portal).
