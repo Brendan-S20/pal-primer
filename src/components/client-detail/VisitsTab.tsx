@@ -277,7 +277,7 @@ export function VisitsTab({
         </div>
         {canBookOneOff && (
           <Button size="sm" variant="outline" onClick={() => setOneOffOpen(true)}>
-            <CalendarClock className="mr-1.5 h-4 w-4" />
+            <CalendarClock className="mr-1.5 h-4 w-4 shrink-0" />
             Book a visit
           </Button>
         )}
@@ -756,7 +756,7 @@ function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => 
           aria-label="Previous month"
           onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-4 w-4 shrink-0" />
         </Button>
         <Button
           variant="outline"
@@ -765,7 +765,7 @@ function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => 
           aria-label="Next month"
           onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4 shrink-0" />
         </Button>
         <Button
           variant="outline"
@@ -1301,7 +1301,7 @@ function VisitDetailDrawer({
                     variant="ghost"
                     onClick={() => setCorrecting(false)}
                   >
-                    <X className="mr-1 h-3.5 w-3.5" /> Cancel
+                    <X className="mr-1 h-3.5 w-3.5 shrink-0" /> Cancel
                   </Button>
                 </div>
               </form>

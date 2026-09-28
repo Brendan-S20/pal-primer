@@ -106,7 +106,7 @@ function NotificationsPage() {
                 A labelled control that is off the side of the page is worth
                 less than an icon that is on it; `aria-label` keeps it named
                 for anyone not reading pixels. */}
-            <Settings className="h-4 w-4 sm:mr-1" />
+            <Settings className="h-4 w-4 sm:mr-1 shrink-0" />
             <span className="max-sm:sr-only">Settings</span>
           </Button>
         </div>
@@ -202,7 +202,7 @@ function NotificationsPage() {
                       // on an iPad this was a 24px destructive control.
                       className="rounded p-1 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground touch:-mr-1.5 touch:-mt-1.5 touch:p-3.5 touch:opacity-60 touch:-mr-1.5 touch:-mt-1.5 touch:p-3.5 touch:opacity-60"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4 shrink-0" />
                     </button>
                   </div>
                 </li>

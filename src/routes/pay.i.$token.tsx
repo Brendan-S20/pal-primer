@@ -102,7 +102,7 @@ function PublicPayPage() {
   if (invoiceQ.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading invoice…
+        <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Loading invoice…
       </div>
     );
   }
@@ -282,7 +282,7 @@ function PublicPayPage() {
           <h2 className="text-sm font-medium">Pay this invoice</h2>
           {intentQ.isPending && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Preparing secure payment…
+              <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Preparing secure payment…
             </div>
           )}
           {intentQ.isError && (
@@ -315,7 +315,7 @@ function PublicPayPage() {
       )}
 
       <p className="flex items-center justify-center gap-1.5 pb-6 text-xs text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5" />
+        <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
         Payments are processed securely by Stripe. Your card details are never stored here.
       </p>
     </div>
@@ -388,7 +388,7 @@ function PublicPayForm({
       >
         {submitting ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing…
+            <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" /> Processing…
           </>
         ) : (
           <>Pay {fmtCents(amountCents, currency)}</>

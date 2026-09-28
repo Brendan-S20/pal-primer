@@ -99,7 +99,7 @@ describe("the tenant header's controls are all at least 44px", () => {
     );
     // And the glyph is untouched, which is the point of the pattern: the header
     // looks the same, only the hit area changed.
-    expect(trigger).toMatch(/<CloudSun className="h-4 w-4" \/>/);
+    expect(trigger).toMatch(/<CloudSun className="h-4 w-4 shrink-0" \/>/);
   });
 
   it("no header control is sized by bare `p-2` any more", () => {

@@ -185,14 +185,14 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
               target="_blank"
               rel="noreferrer"
             >
-              <Navigation className="mr-1 h-3.5 w-3.5" />
+              <Navigation className="mr-1 h-3.5 w-3.5 shrink-0" />
               Navigate
             </a>
           </Button>
         )}
         {/* Remove now lives inside the edit flow (G7), not exposed on the list. */}
         <Button size="sm" variant="ghost" onClick={() => startEdit(s)} aria-label={`Edit ${s.label}`}>
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil className="h-3.5 w-3.5 shrink-0" />
         </Button>
       </div>
     </li>

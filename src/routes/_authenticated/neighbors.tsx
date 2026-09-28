@@ -217,7 +217,7 @@ function NeighborsPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
-            <Footprints className="h-6 w-6" /> Walk mode
+            <Footprints className="h-6 w-6 shrink-0" /> Walk mode
           </h1>
           <Button variant="outline" size="sm" onClick={() => setWalkMode(false)}>
             Exit
@@ -248,7 +248,7 @@ function NeighborsPage() {
                 target="_blank"
                 rel="noreferrer"
               >
-                <Navigation2 className="h-4 w-4" /> Navigate
+                <Navigation2 className="h-4 w-4 shrink-0" /> Navigate
               </a>
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <Button variant="secondary" onClick={() => answer("contacted")}>
@@ -272,7 +272,7 @@ function NeighborsPage() {
                   disabled={walkIdx === 0}
                   onClick={() => setWalkIdx((i) => Math.max(0, i - 1))}
                 >
-                  <ArrowLeft className="mr-1 h-4 w-4" /> Prev
+                  <ArrowLeft className="mr-1 h-4 w-4 shrink-0" /> Prev
                 </Button>
                 <Button
                   variant="ghost"
@@ -280,7 +280,7 @@ function NeighborsPage() {
                   disabled={walkIdx >= walkQueue.length - 1}
                   onClick={() => setWalkIdx((i) => Math.min(i + 1, walkQueue.length - 1))}
                 >
-                  Skip <ArrowRight className="ml-1 h-4 w-4" />
+                  Skip <ArrowRight className="ml-1 h-4 w-4 shrink-0" />
                 </Button>
               </div>
             </CardContent>
@@ -374,7 +374,7 @@ function NeighborsPage() {
           />
         </div>
         <Button disabled={!seedClient || seed.isPending} onClick={() => seed.mutate()}>
-          <UserPlus className="mr-1.5 h-4 w-4" />
+          <UserPlus className="mr-1.5 h-4 w-4 shrink-0" />
           {seed.isPending ? "Seeding…" : `Seed ${seedCount} neighbors`}
         </Button>
         <p className="text-xs text-muted-foreground">
@@ -446,7 +446,7 @@ function NeighborsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
-            <MapPin className="h-6 w-6" /> Neighbor canvassing
+            <MapPin className="h-6 w-6 shrink-0" /> Neighbor canvassing
           </h1>
           <p className="text-sm text-muted-foreground">
             Every new client is a beachhead. Seed 5-10 doors on their street, canvass them, and turn
@@ -476,7 +476,7 @@ function NeighborsPage() {
             }}
             disabled={walkQueue.length === 0}
           >
-            <Footprints className="mr-1.5 h-4 w-4" />
+            <Footprints className="mr-1.5 h-4 w-4 shrink-0" />
             Walk mode ({walkQueue.length})
           </Button>
         )}
@@ -551,11 +551,11 @@ function NeighborsPage() {
             >
               {showAddForms ? (
                 <>
-                  <X className="mr-1.5 h-4 w-4" /> Close
+                  <X className="mr-1.5 h-4 w-4 shrink-0" /> Close
                 </>
               ) : (
                 <>
-                  <UserPlus className="mr-1.5 h-4 w-4" /> Add
+                  <UserPlus className="mr-1.5 h-4 w-4 shrink-0" /> Add
                 </>
               )}
             </Button>
@@ -576,7 +576,7 @@ function NeighborsPage() {
                   className="h-7 px-2"
                   onClick={() => setView("list")}
                 >
-                  <List className="mr-1 h-3.5 w-3.5" /> List
+                  <List className="mr-1 h-3.5 w-3.5 shrink-0" /> List
                 </Button>
                 <Button
                   size="sm"
@@ -584,7 +584,7 @@ function NeighborsPage() {
                   className="h-7 px-2"
                   onClick={() => setView("map")}
                 >
-                  <MapIcon className="mr-1 h-3.5 w-3.5" /> Map
+                  <MapIcon className="mr-1 h-3.5 w-3.5 shrink-0" /> Map
                 </Button>
               </div>
             </CardHeader>
@@ -646,7 +646,7 @@ function NeighborsPage() {
                             <ConfirmButton
                               trigger={
                                 <Button size="sm" variant="ghost">
-                                  <Trash2 className="h-4 w-4" />
+                                  <Trash2 className="h-4 w-4 shrink-0" />
                                 </Button>
                               }
                               title="Delete this entry?"

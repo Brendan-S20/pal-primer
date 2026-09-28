@@ -141,9 +141,9 @@ function TaxReportsPage() {
           disabled={bulk || !index.data}
         >
           {bulk ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
           ) : (
-            <Download className="mr-2 h-4 w-4" />
+            <Download className="mr-2 h-4 w-4 shrink-0" />
           )}
           Download every report
         </Button>
@@ -225,7 +225,7 @@ function TaxReportsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <Info className="h-4 w-4" /> Stripe&apos;s 1099-K
+                  <Info className="h-4 w-4 shrink-0" /> Stripe&apos;s 1099-K
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
@@ -276,7 +276,7 @@ function ReportView({ data, onDownload }: { data: ReportResult; onDownload: () =
           </div>
         </div>
         <Button size="sm" variant="outline" onClick={onDownload}>
-          <Download className="mr-2 h-4 w-4" /> CSV
+          <Download className="mr-2 h-4 w-4 shrink-0" /> CSV
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">

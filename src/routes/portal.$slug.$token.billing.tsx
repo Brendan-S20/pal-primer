@@ -109,7 +109,7 @@ function PortalBilling() {
             className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
             aria-label="Dismiss"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4 shrink-0" />
           </button>
         </div>
       )}

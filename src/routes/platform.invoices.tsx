@@ -117,7 +117,7 @@ function InvoicesPage() {
                 ) : (q.data?.rows ?? []).length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="py-6">
                     <EmptyState
-                      icon={<Receipt className="h-5 w-5" />}
+                      icon={<Receipt className="h-5 w-5 shrink-0" />}
                       title="No invoices yet"
                       description="Once tenants subscribe, Stripe events will populate this list via the platform webhook."
                     />

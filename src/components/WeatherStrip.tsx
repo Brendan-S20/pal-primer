@@ -188,7 +188,7 @@ export function WeatherStrip({ day }: { day: string }) {
     <div className="rounded-lg border bg-card p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <CloudRain className="h-4 w-4" />
+          <CloudRain className="h-4 w-4 shrink-0" />
           Weather for {day}
           {analysis && (
             <Badge variant={analysis.flagged_count > 0 ? "destructive" : "secondary"}>
@@ -219,7 +219,7 @@ export function WeatherStrip({ day }: { day: string }) {
           <Button size="sm" variant="outline" onClick={() => analyze.mutate()} disabled={analyze.isPending}>
             {analyze.isPending ? (
               <>
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> Checking…
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin shrink-0" /> Checking…
               </>
             ) : analysis ? (
               "Re-check"
@@ -263,7 +263,7 @@ export function WeatherStrip({ day }: { day: string }) {
               <div className="flex shrink-0 items-center gap-2 text-2xs opacity-80">
                 {z.precip_prob != null && (
                   <span className="inline-flex items-center gap-0.5">
-                    <CloudRain className="h-3 w-3" />
+                    <CloudRain className="h-3 w-3 shrink-0" />
                     {z.precip_prob}%
                   </span>
                 )}
@@ -280,7 +280,7 @@ export function WeatherStrip({ day }: { day: string }) {
                     the ones that do, in a row that has to fit a phone. */}
                 {z.wind_max != null && (
                   <span className="inline-flex items-center gap-0.5">
-                    <Wind className="h-3 w-3" />
+                    <Wind className="h-3 w-3 shrink-0" />
                     {Math.round(z.wind_max)} mph
                   </span>
                 )}

@@ -330,13 +330,13 @@ function NewClientWizard() {
                       : "bg-muted text-muted-foreground")
                 }
               >
-                {state === "done" ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                {state === "done" ? <Check className="h-3.5 w-3.5 shrink-0" /> : i + 1}
               </button>
               <span className={state === "current" ? "font-medium" : "text-muted-foreground"}>
                 {label}
               </span>
               {i < STEPS.length - 1 && (
-                <ChevronRight className="mx-1 h-4 w-4 text-muted-foreground" />
+                <ChevronRight className="mx-1 h-4 w-4 text-muted-foreground shrink-0" />
               )}
             </div>
           );
@@ -646,7 +646,7 @@ function NewClientWizard() {
                       size="sm"
                       onClick={() => setDogs(dogs.filter((_, idx) => idx !== i))}
                     >
-                      <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove
+                      <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Remove
                     </Button>
                   )}
                 </div>
@@ -663,7 +663,7 @@ function NewClientWizard() {
                 ])
               }
             >
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add another dog
+              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add another dog
             </Button>
           </div>
         )}

@@ -45,7 +45,7 @@ and do not quietly narrow the scope to the widths that happened to work.
 
 ### Some of this is enforced, so you find out before review
 
-Five of the rules above are checked by tests that scan the whole of `src/`
+Six of the rules above are checked by tests that scan the whole of `src/`
 and name the offending file and line rather than counting violations:
 
 - `tests/hover-does-not-exist-on-a-touchscreen.test.ts` — a `group-hover:`
@@ -79,6 +79,15 @@ and name the offending file and line rather than counting violations:
   (`max-md:flex-col`, `max-md:hidden`) and on the `max-md:` hover escapes the
   first test in this list *requires*: show-or-hide may key on width, how big a
   thing is for a finger may not.
+- `tests/an-icon-does-not-give-up-its-width.test.ts` — every sized lucide
+  icon carries `shrink-0`. An icon in a flex row is a flex item, and beside
+  wrapping text it gives up width by however much THAT row's text needs, so
+  a column of rows starts its text at a different x on every row: measured
+  on the Get started checklist in the iOS simulator, identical `h-5 w-5`
+  icons, titles starting anywhere from x=165 to x=177. `h-5 w-5` is a
+  request; `shrink-0` is the floor, and on an icon it is never wrong. Also a
+  ratchet from zero: 429 icons in 124 files were fixed in the change that
+  added it.
 
 What is NOT enforced, and still has to be looked at: whether a thing is
 centred, and whether a layout is merely cramped rather than broken.

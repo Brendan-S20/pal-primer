@@ -87,7 +87,7 @@ function ImpersonateConsume() {
       <div className="w-full max-w-sm rounded-lg border bg-card p-6 text-center">
         {error ? (
           <>
-            <ShieldAlert className="mx-auto h-8 w-8 text-destructive" />
+            <ShieldAlert className="mx-auto h-8 w-8 text-destructive shrink-0" />
             <h1 className="mt-3 text-lg font-semibold">Impersonation failed</h1>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
             <button
@@ -99,7 +99,7 @@ function ImpersonateConsume() {
           </>
         ) : (
           <>
-            <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary shrink-0" />
             <p className="mt-3 text-sm text-muted-foreground">Starting impersonation session…</p>
           </>
         )}

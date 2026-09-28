@@ -183,7 +183,7 @@ export function DrawerFooter({
         onClick={onCancel ?? requestClose}
         className="inline-flex items-center rounded-md border px-4 py-2 text-sm hover:bg-muted"
       >
-        <X className="mr-1.5 h-3.5 w-3.5" /> Cancel
+        <X className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Cancel
       </button>
       {children}
     </div>

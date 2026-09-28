@@ -268,7 +268,7 @@ function UsersPage() {
                       bulkResetM.mutate(sel.selectedIds);
                   }}
                 >
-                  <KeyRound className="mr-1 h-4 w-4" />
+                  <KeyRound className="mr-1 h-4 w-4 shrink-0" />
                   {bulkResetM.isPending ? "Sending…" : "Send password reset"}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={sel.clear}>
@@ -342,7 +342,7 @@ function UsersPage() {
                 ) : rows.length === 0 ? (
                   <TableRow><TableCell colSpan={5} className="py-6">
                     <EmptyState
-                      icon={<Users className="h-5 w-5" />}
+                      icon={<Users className="h-5 w-5 shrink-0" />}
                       title={narrowed ? "No users match" : "No users yet"}
                       description={
                         narrowed
@@ -374,7 +374,7 @@ function UsersPage() {
                 disabled={currentPage <= 0 || q.isFetching}
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
               >
-                <ChevronLeft className="mr-1 h-4 w-4" />
+                <ChevronLeft className="mr-1 h-4 w-4 shrink-0" />
                 Previous
               </Button>
               <Button
@@ -385,7 +385,7 @@ function UsersPage() {
                 onClick={() => setPage((p) => p + 1)}
               >
                 Next
-                <ChevronRight className="ml-1 h-4 w-4" />
+                <ChevronRight className="ml-1 h-4 w-4 shrink-0" />
               </Button>
             </div>
           </div>
@@ -516,7 +516,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
         </DialogHeader>
         {q.isLoading || !d ? (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Loading…
           </div>
         ) : (
           <div className="space-y-5">
@@ -607,7 +607,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                   disabled={reset.isPending || !d.email}
                   onClick={() => reset.mutate()}
                 >
-                  <KeyRound className="mr-1 h-4 w-4" />
+                  <KeyRound className="mr-1 h-4 w-4 shrink-0" />
                   {reset.isPending ? "Sending…" : "Send password reset"}
                 </Button>
                 <Button
@@ -629,7 +629,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                     }
                   }}
                 >
-                  <ShieldOff className="mr-1 h-4 w-4" />
+                  <ShieldOff className="mr-1 h-4 w-4 shrink-0" />
                   {removeMfa.isPending ? "Removing…" : "Remove MFA"}
                 </Button>
               </div>
@@ -671,7 +671,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                           impersonate.mutate(orgId);
                       }}
                     >
-                      <UserCog className="mr-1 h-4 w-4" />
+                      <UserCog className="mr-1 h-4 w-4 shrink-0" />
                       {impersonate.isPending ? "Starting…" : "Impersonate"}
                     </Button>
                   </div>
@@ -701,7 +701,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                         }
                       }}
                     >
-                      <Copy className="mr-1 h-3 w-3" /> Copy
+                      <Copy className="mr-1 h-3 w-3 shrink-0" /> Copy
                     </Button>
                   </div>
                 </div>

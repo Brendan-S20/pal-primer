@@ -53,7 +53,7 @@ function ReviewPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <div className="flex items-center gap-2">
-          <ClipboardCheck className="h-5 w-5 text-primary" />
+          <ClipboardCheck className="h-5 w-5 text-primary shrink-0" />
           <h1 className="text-2xl font-semibold">Needs review</h1>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -91,7 +91,7 @@ function ReviewPage() {
       ) : (q.data?.items ?? []).length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
-            <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+            <CheckCircle2 className="h-8 w-8 text-emerald-600 shrink-0" />
             <p className="font-medium">
               {status === "open" ? "Nothing needs your attention" : "Nothing here"}
             </p>

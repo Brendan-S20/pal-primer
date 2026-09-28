@@ -98,7 +98,7 @@ export function AnnouncementBanner() {
               aria-label="Dismiss"
               onClick={() => dismiss.mutate(r.id)}
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4 shrink-0" />
             </Button>
           </div>
         );

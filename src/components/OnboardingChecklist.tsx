@@ -44,7 +44,7 @@ export function OnboardingChecklist() {
           </p>
         </div>
         <Button variant="ghost" size="icon" onClick={handleDismiss} aria-label="Dismiss">
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4 shrink-0" />
         </Button>
       </div>
 
@@ -65,10 +65,14 @@ export function OnboardingChecklist() {
             className="flex flex-wrap items-start justify-between gap-4 rounded-md border p-3"
           >
             <div className="flex items-start gap-3">
+              {/* shrink-0: a flex item without it gives up width to long text,
+                  and each row's description is a different length, so each
+                  icon was squeezed by a different amount and the titles began
+                  anywhere from x=165 to x=177 (iPhone 17 Pro, 1x). */}
               {step.done ? (
-                <CheckCircle2 className="mt-0.5 h-5 w-5 text-primary" />
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               ) : (
-                <Circle className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                <Circle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
               )}
               <div>
                 <div

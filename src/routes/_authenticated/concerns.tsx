@@ -224,7 +224,7 @@ function ConcernsPage() {
       ) : concerns.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border bg-card p-10 text-center">
           <div className="rounded-full bg-emerald-500/10 p-3">
-            <Inbox className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+            <Inbox className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
           </div>
           <div>
             <p className="font-medium">

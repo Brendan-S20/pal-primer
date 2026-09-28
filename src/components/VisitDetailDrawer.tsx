@@ -231,14 +231,14 @@ export function VisitDetailDrawer({
 
         {isLoading || !v ? (
           <div className="flex justify-center py-8 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Loader2 className="h-5 w-5 animate-spin shrink-0" />
           </div>
         ) : (
           <div className="mt-4 space-y-4">
             {hazards.length > 0 && (
               <div className="rounded-md border-2 border-destructive/50 bg-destructive/10 p-3 text-sm">
                 <div className="flex items-center gap-2 font-semibold text-destructive">
-                  <AlertTriangle className="h-4 w-4" /> Safety notes
+                  <AlertTriangle className="h-4 w-4 shrink-0" /> Safety notes
                 </div>
                 <ul className="mt-1 list-disc pl-6 text-destructive">
                   {hazards.map((h) => (
@@ -258,7 +258,7 @@ export function VisitDetailDrawer({
                 {dir && (
                   <a href={dir} target="_blank" rel="noreferrer">
                     <Button size="sm" variant="outline">
-                      <Navigation className="mr-1.5 h-3.5 w-3.5" />
+                      <Navigation className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                       Directions
                     </Button>
                   </a>
@@ -266,7 +266,7 @@ export function VisitDetailDrawer({
                 {client?.primary_phone && (
                   <a href={`tel:${client.primary_phone}`}>
                     <Button size="sm" variant="outline">
-                      <Phone className="mr-1.5 h-3.5 w-3.5" />
+                      <Phone className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                       Call
                     </Button>
                   </a>
@@ -274,7 +274,7 @@ export function VisitDetailDrawer({
                 {client?.primary_email && (
                   <a href={`mailto:${client.primary_email}`}>
                     <Button size="sm" variant="outline">
-                      <Mail className="mr-1.5 h-3.5 w-3.5" />
+                      <Mail className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                       Email
                     </Button>
                   </a>
@@ -285,7 +285,7 @@ export function VisitDetailDrawer({
                   onClick={() => onOpenChange(false)}
                 >
                   <Button size="sm" variant="ghost">
-                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                     Open client
                   </Button>
                 </Link>
@@ -445,7 +445,7 @@ export function VisitDetailDrawer({
                           disabled={completeMut.isPending}
                           className="touch:min-h-11"
                         >
-                          <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                          <CheckCircle2 className="mr-1.5 h-4 w-4 shrink-0" />
                           Complete
                         </Button>
                       </div>
@@ -468,7 +468,7 @@ export function VisitDetailDrawer({
                           onClick={() => cancelMut.mutate()}
                           disabled={cancelMut.isPending || !skipReason.trim()}
                         >
-                          <SkipForward className="mr-1.5 h-4 w-4" />
+                          <SkipForward className="mr-1.5 h-4 w-4 shrink-0" />
                           Cancel visit
                         </Button>
                       </div>
@@ -525,7 +525,7 @@ function DogsSection({
     <section>
       <div className="mb-1 flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase text-muted-foreground">
-          <PawPrint className="mr-1 inline h-3 w-3" /> Dogs ({dogs.length})
+          <PawPrint className="mr-1 inline h-3 w-3 shrink-0" /> Dogs ({dogs.length})
         </h3>
         {propertyId && !adding && (
           <Button
@@ -534,7 +534,7 @@ function DogsSection({
             className="h-6 px-2 text-xs"
             onClick={() => setAdding(true)}
           >
-            <Plus className="mr-1 h-3 w-3" /> Add
+            <Plus className="mr-1 h-3 w-3 shrink-0" /> Add
           </Button>
         )}
       </div>
@@ -614,7 +614,7 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
   return (
     <section>
       <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-        <Camera className="mr-1 inline h-3 w-3" /> Photos ({photos.length})
+        <Camera className="mr-1 inline h-3 w-3 shrink-0" /> Photos ({photos.length})
       </h3>
       {photos.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
@@ -674,7 +674,7 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
             document.getElementById(`photo-input-${visitId}`)?.click();
           }}
         >
-          <Camera className="mr-1.5 h-3.5 w-3.5" />
+          <Camera className="mr-1.5 h-3.5 w-3.5 shrink-0" />
           {uploading ? "Uploading…" : "Take photo"}
         </Button>
       </div>

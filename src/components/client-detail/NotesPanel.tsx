@@ -125,9 +125,9 @@ export function NotesPanel({
       </div>
       <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
         {tab === "technician" ? (
-          <Wrench className="h-3 w-3" />
+          <Wrench className="h-3 w-3 shrink-0" />
         ) : tab === "client" ? (
-          <Eye className="h-3 w-3" />
+          <Eye className="h-3 w-3 shrink-0" />
         ) : null}
         {active.hint}
       </p>
@@ -148,7 +148,7 @@ export function NotesPanel({
                     onClick={() => pinMut.mutate({ id: n.id, pinned: !n.pinned })}
                     className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
-                    {n.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                    {n.pinned ? <PinOff className="h-3.5 w-3.5 shrink-0" /> : <Pin className="h-3.5 w-3.5 shrink-0" />}
                   </button>
                   <button
                     type="button"
@@ -165,7 +165,7 @@ export function NotesPanel({
                     }}
                     className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5 shrink-0" />
                   </button>
                 </div>
               </div>

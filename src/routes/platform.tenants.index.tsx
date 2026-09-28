@@ -157,7 +157,7 @@ function TenantsPage() {
           </CardTitle>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground shrink-0" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

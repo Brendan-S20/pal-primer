@@ -44,7 +44,7 @@ function PortalHome() {
       {/* Next visit spotlight */}
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <CalendarDays className="h-4 w-4" /> Next visit
+          <CalendarDays className="h-4 w-4 shrink-0" /> Next visit
         </h2>
         {nextVisit ? (
           <div className="rounded-lg border bg-card p-4">
@@ -71,14 +71,14 @@ function PortalHome() {
             <div className="mt-3">
               <Link to="/portal/$slug/$token/visits" params={{ slug, token }}>
                 <Button size="sm" variant="outline" className="gap-1">
-                  Manage visits <ArrowRight className="h-3.5 w-3.5" />
+                  Manage visits <ArrowRight className="h-3.5 w-3.5 shrink-0" />
                 </Button>
               </Link>
             </div>
           </div>
         ) : (
           <EmptyBox
-            icon={<CalendarDays className="h-6 w-6" />}
+            icon={<CalendarDays className="h-6 w-6 shrink-0" />}
             title="No visits scheduled"
             body="Text us to get on the route."
           />
@@ -89,7 +89,8 @@ function PortalHome() {
       {openCount > 0 ? (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-            <Sparkles className="h-4 w-4" /> {openCount === 1 ? "Open invoice" : "Open invoices"}
+            <Sparkles className="h-4 w-4 shrink-0" />{" "}
+            {openCount === 1 ? "Open invoice" : "Open invoices"}
           </h2>
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
@@ -120,11 +121,11 @@ function PortalHome() {
       {/* Recent history preview */}
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <Camera className="h-4 w-4" /> Recent service
+          <Camera className="h-4 w-4 shrink-0" /> Recent service
         </h2>
         {recent.length === 0 ? (
           <EmptyBox
-            icon={<Camera className="h-6 w-6" />}
+            icon={<Camera className="h-6 w-6 shrink-0" />}
             title="No completed visits yet"
             body="After your first visit we'll post before/after photos here."
           />
@@ -149,7 +150,7 @@ function PortalHome() {
         <div className="mt-3">
           <Link to="/portal/$slug/$token/visits" params={{ slug, token }}>
             <Button size="sm" variant="outline" className="gap-1">
-              View full history <ArrowRight className="h-3.5 w-3.5" />
+              View full history <ArrowRight className="h-3.5 w-3.5 shrink-0" />
             </Button>
           </Link>
         </div>

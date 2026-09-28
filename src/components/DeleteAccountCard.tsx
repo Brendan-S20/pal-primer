@@ -166,7 +166,7 @@ export function DeleteAccountCard() {
             className="border-destructive/50 text-destructive"
             onClick={() => setOpen(true)}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            <Trash2 className="mr-2 h-4 w-4 shrink-0" />
             Delete my account
           </Button>
         ) : (
@@ -221,7 +221,7 @@ export function DeleteAccountCard() {
                 disabled={!armed || mut.isPending}
                 onClick={() => mut.mutate()}
               >
-                {mut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {mut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />}
                 Delete my account
               </Button>
               <Button

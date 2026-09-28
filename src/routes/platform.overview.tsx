@@ -107,7 +107,7 @@ function OverviewPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <ArrowRightCircle className="h-4 w-4 text-emerald-600" />
+                <ArrowRightCircle className="h-4 w-4 text-emerald-600 shrink-0" />
                 At the threshold
               </CardTitle>
             </CardHeader>
@@ -129,7 +129,7 @@ function OverviewPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                <TrendingUp className="h-4 w-4 text-emerald-600 shrink-0" />
                 Converted this month
               </CardTitle>
             </CardHeader>

@@ -34,11 +34,11 @@ function PortalVisits() {
     <div className="space-y-6">
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <CalendarDays className="h-4 w-4" /> Upcoming visits
+          <CalendarDays className="h-4 w-4 shrink-0" /> Upcoming visits
         </h2>
         {(visitsQ.data ?? []).length === 0 ? (
           <EmptyBox
-            icon={<CalendarDays className="h-6 w-6" />}
+            icon={<CalendarDays className="h-6 w-6 shrink-0" />}
             title="No visits scheduled yet"
             body="We'll text you when the next one is on the calendar."
           />

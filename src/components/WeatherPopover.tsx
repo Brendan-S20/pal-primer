@@ -96,7 +96,7 @@ function DayColumn({ day }: { day: DayCell }) {
       <span className="text-2xs font-semibold tabular-nums">{Math.round(day.temp_max)}°F</span>
       <span className="text-3xs tabular-nums opacity-60">{Math.round(day.temp_min)}°</span>
       <span className="flex h-3 items-center justify-center">
-        {day.precip_prob >= 50 && <Droplets className="h-3 w-3 opacity-80" />}
+        {day.precip_prob >= 50 && <Droplets className="h-3 w-3 opacity-80 shrink-0" />}
       </span>
     </div>
   );
@@ -184,7 +184,7 @@ export function WeatherPopover() {
           // only the part a thumb can miss changed.
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <CloudSun className="h-4 w-4" />
+          <CloudSun className="h-4 w-4 shrink-0" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-[340px] max-w-[calc(100vw-1rem)] p-0">

@@ -56,7 +56,7 @@ export function NotificationBell() {
           padding of the 44px box, reading as a badge floating beside the
           bell instead of on it. */}
       <span className="relative flex items-center justify-center">
-        <Bell className="h-4 w-4 max-md:h-5 max-md:w-5" />
+        <Bell className="h-4 w-4 max-md:h-5 max-md:w-5 shrink-0" />
         {unread > 0 && (
           <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-3xs font-semibold leading-none text-white">
             {unread > 9 ? "9+" : unread}

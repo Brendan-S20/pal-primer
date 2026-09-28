@@ -203,7 +203,7 @@ export function CreateSheet({
                   className="flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted active:bg-muted"
                 >
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <CalendarClock className="h-5 w-5" />
+                    <CalendarClock className="h-5 w-5 shrink-0" />
                   </span>
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">One-off visit</span>

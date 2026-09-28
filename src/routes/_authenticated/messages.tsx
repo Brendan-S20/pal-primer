@@ -97,7 +97,7 @@ function MessagesLayout() {
             title="New message"
             onClick={() => setComposing((v) => !v)}
           >
-            <MessageSquarePlus className="h-4 w-4" />
+            <MessageSquarePlus className="h-4 w-4 shrink-0" />
           </Button>
         </div>
         {composing && <NewMessagePicker onClose={() => setComposing(false)} />}

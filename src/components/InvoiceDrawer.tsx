@@ -153,7 +153,7 @@ export function InvoiceDrawer({
               onClick={() => setView("detail")}
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
             >
-              <ArrowLeft className="h-4 w-4" /> Back to invoice
+              <ArrowLeft className="h-4 w-4 shrink-0" /> Back to invoice
             </button>
             <StaffInvoicePayForm
               invoiceId={inv.id}
@@ -207,7 +207,7 @@ export function InvoiceDrawer({
             <div className="flex flex-wrap gap-2">
               {open && (
                 <Button size="sm" onClick={() => setView("pay")}>
-                  <CreditCard className="mr-1 h-3.5 w-3.5" />
+                  <CreditCard className="mr-1 h-3.5 w-3.5 shrink-0" />
                   Take payment
                 </Button>
               )}
@@ -218,7 +218,7 @@ export function InvoiceDrawer({
                   disabled={emailMut.isPending}
                   onClick={sendToClient}
                 >
-                  <Mail className="mr-1 h-3.5 w-3.5" />
+                  <Mail className="mr-1 h-3.5 w-3.5 shrink-0" />
                   {inGrace ? "Send now" : "Send to client"}
                 </Button>
               )}
@@ -229,12 +229,13 @@ export function InvoiceDrawer({
                   disabled={emailMut.isPending}
                   onClick={() => emailMut.mutate(true)}
                 >
-                  <BellRing className="mr-1 h-3.5 w-3.5" /> Send reminder
+                  <BellRing className="mr-1 h-3.5 w-3.5 shrink-0" /> Send reminder
                 </Button>
               )}
               {open && (
                 <Button size="sm" variant="outline" onClick={copyPayLink}>
-                  <Link2 className="mr-1 h-3.5 w-3.5" /> {copied ? "Copied" : "Copy pay link"}
+                  <Link2 className="mr-1 h-3.5 w-3.5 shrink-0" />{" "}
+                  {copied ? "Copied" : "Copy pay link"}
                 </Button>
               )}
               {open && (
@@ -256,7 +257,7 @@ export function InvoiceDrawer({
                       voidMut.mutate();
                   }}
                 >
-                  <Ban className="mr-1 h-3.5 w-3.5" /> Void
+                  <Ban className="mr-1 h-3.5 w-3.5 shrink-0" /> Void
                 </Button>
               )}
             </div>
@@ -367,7 +368,7 @@ export function InvoiceDrawer({
                 onClick={onClose}
                 className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
               >
-                <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open full invoice
+                <ExternalLink className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Open full invoice
               </Link>
             </DrawerFooter>
           </div>

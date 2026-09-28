@@ -75,7 +75,7 @@ export function FranchiseSettlementStatements({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <FileText className="h-4 w-4" /> Settlement statements
+          <FileText className="h-4 w-4 shrink-0" /> Settlement statements
         </CardTitle>
         <p className="text-sm text-muted-foreground">
           {forLocation

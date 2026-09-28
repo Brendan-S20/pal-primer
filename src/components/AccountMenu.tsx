@@ -59,7 +59,7 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to="/profile" className="cursor-pointer">
-            <UserIcon className="mr-2 h-4 w-4" />
+            <UserIcon className="mr-2 h-4 w-4 shrink-0" />
             Your account
           </Link>
         </DropdownMenuItem>
@@ -67,7 +67,7 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         {/* Destructive, and now one level in rather than a bare button beside
             the search box. */}
         <DropdownMenuItem onSelect={onSignOut} className="cursor-pointer text-destructive">
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="mr-2 h-4 w-4 shrink-0" />
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>

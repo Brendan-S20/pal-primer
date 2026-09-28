@@ -169,18 +169,18 @@ export function SignInMethodsCard() {
                   onClick={() => unlink.mutate(identity)}
                 >
                   {busy ? (
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin shrink-0" />
                   ) : (
-                    <Unlink className="mr-1 h-4 w-4" />
+                    <Unlink className="mr-1 h-4 w-4 shrink-0" />
                   )}
                   {isLast ? "Only way in" : "Disconnect"}
                 </Button>
               ) : (
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => link.mutate(id)}>
                   {busy ? (
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin shrink-0" />
                   ) : (
-                    <Link2 className="mr-1 h-4 w-4" />
+                    <Link2 className="mr-1 h-4 w-4 shrink-0" />
                   )}
                   Connect
                 </Button>

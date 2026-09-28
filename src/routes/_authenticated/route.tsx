@@ -359,7 +359,7 @@ function AppShell() {
                 // otherwise squeeze this back below 44 at 360px.
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
-                <HelpCircle className="h-4 w-4 max-md:h-5 max-md:w-5" />
+                <HelpCircle className="h-4 w-4 max-md:h-5 max-md:w-5 shrink-0" />
               </Link>
             )}
             {headerPrefs.showWeather && <WeatherPopover />}

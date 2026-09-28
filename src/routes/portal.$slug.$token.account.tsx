@@ -34,7 +34,7 @@ function PortalAccount() {
       <SelfServeSection token={token} />
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <Bell className="h-4 w-4" /> Notifications
+          <Bell className="h-4 w-4 shrink-0" /> Notifications
         </h2>
         <div className="rounded-md border bg-card p-4 flex items-center justify-between gap-3 text-sm">
           <div>
@@ -54,7 +54,7 @@ function PortalAccount() {
 
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <Gift className="h-4 w-4" />{" "}
+          <Gift className="h-4 w-4 shrink-0" />{" "}
           {isCommercial ? "Refer another property" : "Refer a neighbor"}
         </h2>
         {referralQ.data?.referral_code ? (
@@ -145,7 +145,7 @@ function SelfServeSection({ token }: { token: string }) {
       {opts.allowVacationHold && (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-            <CalendarClock className="h-4 w-4" /> Vacation hold
+            <CalendarClock className="h-4 w-4 shrink-0" /> Vacation hold
           </h2>
           <VacationHoldCard
             autoApply={!!c?.auto_apply_changes}
@@ -158,7 +158,7 @@ function SelfServeSection({ token }: { token: string }) {
       {opts.allowFrequencyChange && opts.subscription && (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" /> Service frequency
+            <RefreshCw className="h-4 w-4 shrink-0" /> Service frequency
           </h2>
           <div className="rounded-md border bg-card p-4 text-sm">
             <p className="mb-3 text-muted-foreground">

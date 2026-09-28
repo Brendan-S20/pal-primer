@@ -196,7 +196,7 @@ function ClientsList() {
             disabled={!filtered.length}
             onClick={() => exportClientsCsv(filtered)}
           >
-            <Download className="mr-1 h-4 w-4" /> Export CSV
+            <Download className="mr-1 h-4 w-4 shrink-0" /> Export CSV
           </Button>
           <Link to="/clients/new">
             <Button>New client</Button>
@@ -209,7 +209,7 @@ function ClientsList() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Users className="h-4 w-4" /> Active
+            <Users className="h-4 w-4 shrink-0" /> Active
           </div>
           <p className="mt-1 text-2xl font-semibold">{stats.active}</p>
         </Card>
@@ -220,7 +220,7 @@ function ClientsList() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <AlertTriangle className="h-4 w-4" /> At churn risk
+            <AlertTriangle className="h-4 w-4 shrink-0" /> At churn risk
           </div>
           <p className="mt-1 text-2xl font-semibold">{stats.atRisk}</p>
         </Card>
@@ -253,7 +253,7 @@ function ClientsList() {
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-64">
-          <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground shrink-0" />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -292,7 +292,7 @@ function ClientsList() {
           <span className="font-medium">{sel.count} selected</span>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => exportClientsCsv(selectedRows)}>
-              <Download className="mr-1 h-4 w-4" /> Export CSV
+              <Download className="mr-1 h-4 w-4 shrink-0" /> Export CSV
             </Button>
             {selectedRows.some((c: any) => c.comms_paused) && (
               <Button

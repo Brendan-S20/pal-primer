@@ -183,7 +183,7 @@ function CouponsPage() {
                 ) : (q.data?.rows ?? []).length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="py-6">
                     <EmptyState
-                      icon={<TicketPercent className="h-5 w-5" />}
+                      icon={<TicketPercent className="h-5 w-5 shrink-0" />}
                       title="No coupons yet"
                       description="Create a discount code to run promos or comp specific tenants."
                     />

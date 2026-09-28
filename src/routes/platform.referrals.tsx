@@ -119,7 +119,7 @@ function ReferralsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Gift className="h-4 w-4" /> Program settings
+            <Gift className="h-4 w-4 shrink-0" /> Program settings
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -207,7 +207,7 @@ function ReferralsPage() {
             <Skeleton className="h-24 w-full" />
           ) : !referrals.length ? (
             <EmptyState
-              icon={<Gift className="h-5 w-5" />}
+              icon={<Gift className="h-5 w-5 shrink-0" />}
               title="No referrals yet"
               description="When a tenant's /sign-up?ref= link brings in a new business, it shows up here with its conversion and payout status."
             />
@@ -249,7 +249,7 @@ function ReferralsPage() {
                             </Badge>
                             {r.flagged && (
                               <span className="flex items-center gap-1 text-xs text-amber-700">
-                                <AlertTriangle className="h-3 w-3" />{" "}
+                                <AlertTriangle className="h-3 w-3 shrink-0" />{" "}
                                 {r.flag_reason ?? "Flagged for review"}
                               </span>
                             )}

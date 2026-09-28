@@ -21,7 +21,7 @@ export function HelpTip({ article, label }: { article: string; label?: string })
           aria-label={label ?? `Learn more: ${a.title}`}
           className="inline-flex align-middle text-muted-foreground transition-colors hover:text-foreground"
         >
-          <HelpCircle className="h-4 w-4" />
+          <HelpCircle className="h-4 w-4 shrink-0" />
         </Link>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-72">

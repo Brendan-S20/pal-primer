@@ -178,7 +178,7 @@ function PortalShell() {
                     params={{ slug, token }}
                     className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25"
                   >
-                    <CalendarDays className="h-3.5 w-3.5" />
+                    <CalendarDays className="h-3.5 w-3.5 shrink-0" />
                     <span>
                       Next: <strong>{fmtDayShort(nextVisitDate)}</strong>
                       {nextVisitEtaStart && (
@@ -195,7 +195,7 @@ function PortalShell() {
                   </Link>
                 ) : (
                   <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1">
-                    <CalendarDays className="h-3.5 w-3.5" /> No visit scheduled
+                    <CalendarDays className="h-3.5 w-3.5 shrink-0" /> No visit scheduled
                   </div>
                 )}
                 {c.primary_frequency && (
@@ -246,7 +246,7 @@ function PortalShell() {
                 href={`tel:${c.contact_phone}`}
                 className="inline-flex items-center gap-1.5 hover:text-foreground"
               >
-                <Phone className="h-4 w-4" /> {c.contact_phone}
+                <Phone className="h-4 w-4 shrink-0" /> {c.contact_phone}
               </a>
             )}
             {c.contact_phone && (
@@ -262,7 +262,7 @@ function PortalShell() {
                 href={`mailto:${c.contact_email}`}
                 className="inline-flex items-center gap-1.5 hover:text-foreground"
               >
-                <Mail className="h-4 w-4" /> {c.contact_email}
+                <Mail className="h-4 w-4 shrink-0" /> {c.contact_email}
               </a>
             )}
           </div>

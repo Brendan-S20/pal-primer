@@ -373,7 +373,7 @@ function PromoSection() {
                       del.mutate(p.id);
                   }}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 shrink-0" />
                 </Button>
               </li>
             ))}
@@ -420,7 +420,11 @@ function GiftCardHistory({ card }: { card: any }) {
         className="inline-flex items-center gap-1 text-2xs text-muted-foreground underline-offset-2 hover:underline"
         aria-expanded={open}
       >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {open ? (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        )}
         {card.status === "void" ? "Redemptions before it was voided" : "Where it was used"}
       </button>
       {open && (
@@ -659,7 +663,7 @@ function GiftSection() {
                         toast.success("Copied");
                       }}
                     >
-                      <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Copy className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     </button>
                     {c.status !== "active" && (
                       <Badge variant={c.status === "depleted" ? "outline" : "destructive"}>
@@ -688,7 +692,7 @@ function GiftSection() {
                       onClick={() => printGiftCard(c, orgName)}
                       title="Print gift card"
                     >
-                      <Printer className="h-4 w-4" />
+                      <Printer className="h-4 w-4 shrink-0" />
                     </Button>
                   )}
                   {c.status === "active" && (
@@ -708,7 +712,7 @@ function GiftSection() {
                       }}
                       title="Void"
                     >
-                      <Ban className="h-4 w-4" />
+                      <Ban className="h-4 w-4 shrink-0" />
                     </Button>
                   )}
                 </div>

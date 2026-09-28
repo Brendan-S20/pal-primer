@@ -62,7 +62,7 @@ export function BusinessAdvisor() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
           <h2 className="text-base font-semibold">Business advisor</h2>
         </div>
         <div className="flex rounded-md border p-0.5">
@@ -168,7 +168,7 @@ export function BusinessAdvisor() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm">
-                      <Lightbulb className="h-4 w-4" /> What stands out
+                      <Lightbulb className="h-4 w-4 shrink-0" /> What stands out
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
@@ -186,7 +186,7 @@ export function BusinessAdvisor() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm">
-                      <ListChecks className="h-4 w-4" /> What to do next
+                      <ListChecks className="h-4 w-4 shrink-0" /> What to do next
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
@@ -233,7 +233,7 @@ export function BusinessAdvisor() {
               <Card className="border-amber-300 dark:border-amber-500/40">
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-sm">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" /> Needs attention
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" /> Needs attention
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0">

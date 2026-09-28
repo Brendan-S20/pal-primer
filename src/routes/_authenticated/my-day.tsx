@@ -484,13 +484,13 @@ function MyDay() {
   if (isError && !data)
     return (
       <div className="space-y-3 py-10 text-center">
-        <WifiOff className="mx-auto h-6 w-6 text-muted-foreground" />
+        <WifiOff className="mx-auto h-6 w-6 text-muted-foreground shrink-0" />
         <p className="text-sm text-muted-foreground">
           Couldn't load this day{online ? "" : " (you're offline)"}, and no synced copy is saved on
           this device.
         </p>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Retry
         </Button>
       </div>
     );
@@ -527,7 +527,7 @@ function MyDay() {
               }`}
             >
               <div className="flex items-center gap-2">
-                {!online && <WifiOff className="h-4 w-4" />}
+                {!online && <WifiOff className="h-4 w-4 shrink-0" />}
                 <span className="font-medium">
                   {!online ? t("common.offline") : t("common.online")}
                   {pending > 0 ? ` · ${t("common.pending", { count: pending })}` : ""}
@@ -541,7 +541,7 @@ function MyDay() {
                   }}
                   className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
                 >
-                  <RefreshCw className="h-3 w-3" /> {t("common.sync")}
+                  <RefreshCw className="h-3 w-3 shrink-0" /> {t("common.sync")}
                 </button>
               )}
             </div>
@@ -593,7 +593,7 @@ function MyDay() {
                 }}
                 className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
               >
-                <RefreshCw className="h-3 w-3" /> Retry
+                <RefreshCw className="h-3 w-3 shrink-0" /> Retry
               </button>
             </div>
           )}
@@ -896,7 +896,8 @@ function MyDay() {
               <div className="truncate text-sm font-semibold">{nextUp.clients?.display_name}</div>
             </div>
             <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md">
-              {activeVisit ? t("myDay.resume") : t("myDay.jump")} <ArrowDown className="h-4 w-4" />
+              {activeVisit ? t("myDay.resume") : t("myDay.jump")}{" "}
+              <ArrowDown className="h-4 w-4 shrink-0" />
             </div>
           </a>
         </div>
@@ -1629,7 +1630,7 @@ function VisitCard({
           fileInput.current?.click();
         }}
       >
-        <Camera className="mr-1.5 h-4 w-4" />
+        <Camera className="mr-1.5 h-4 w-4 shrink-0" />
         {uploading ? "Uploading…" : "Take photo"}
       </Button>
     </div>
@@ -1677,7 +1678,7 @@ function VisitCard({
               // Larger + bolder than the meta row: techs read this outdoors
               // in sunlight (P2 field-readiness).
               <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 dark:text-blue-300">
-                <Timer className="h-3.5 w-3.5" aria-hidden="true" />
+                <Timer className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <ElapsedTimer startedAt={visit.started_at} />
               </span>
             )}
@@ -1781,7 +1782,11 @@ function VisitCard({
             className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
             aria-label={collapsed ? "Expand" : "Collapse"}
           >
-            {collapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+            {collapsed ? (
+              <ChevronDown className="h-5 w-5 shrink-0" />
+            ) : (
+              <ChevronUp className="h-5 w-5 shrink-0" />
+            )}
           </button>
         )}
       </div>
@@ -1992,9 +1997,9 @@ function VisitCard({
           >
             {showMore ? "Fewer options" : "More options"}
             {showMore ? (
-              <ChevronUp className="h-4 w-4" aria-hidden="true" />
+              <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
             ) : (
-              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+              <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
             )}
           </button>
 

@@ -248,7 +248,7 @@ describe("the affordance exists only on a day that carries the risk", () => {
     // h-11 is 44px. An icon-only control at 16px is not a target a thumb in a
     // driveway can hit.
     expect(button).toMatch(/h-11 w-11/);
-    expect(button).toMatch(/<CloudRain className="h-4 w-4" \/>/);
+    expect(button).toMatch(/<CloudRain className="h-4 w-4 shrink-0" \/>/);
     // And a name, because there is no text in it. `aria-label` for a screen
     // reader, `title` for a mouse, `aria-expanded` because it toggles.
     expect(button).toMatch(/aria-label=\{weatherOpen \? "Hide weather" : "Show weather"\}/);

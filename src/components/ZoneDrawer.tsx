@@ -92,7 +92,7 @@ function ZipChips({
                 onClick={() => onChange(value.filter((x) => x !== z))}
                 aria-label={`Remove ${z}`}
               >
-                <X className="h-3 w-3" />
+                <X className="h-3 w-3 shrink-0" />
               </button>
             </Badge>
           );

@@ -135,11 +135,11 @@ function WasteLogPage() {
           >
             {showForm ? (
               <>
-                <X className="mr-1.5 h-4 w-4" /> Close
+                <X className="mr-1.5 h-4 w-4 shrink-0" /> Close
               </>
             ) : (
               <>
-                <Plus className="mr-1.5 h-4 w-4" /> Add
+                <Plus className="mr-1.5 h-4 w-4 shrink-0" /> Add
               </>
             )}
           </Button>
@@ -229,7 +229,7 @@ function WasteLogPage() {
                   className="hidden"
                   onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
                 />
-                <Camera className="h-4 w-4" />
+                <Camera className="h-4 w-4 shrink-0" />
                 {receipt ? "Change photo" : "Add receipt photo"}
               </label>
               {receipt && (
@@ -241,7 +241,7 @@ function WasteLogPage() {
                     onClick={() => setReceipt(null)}
                     aria-label="Remove receipt"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-3.5 w-3.5 shrink-0" />
                   </button>
                 </span>
               )}

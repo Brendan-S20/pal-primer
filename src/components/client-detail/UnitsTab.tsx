@@ -171,7 +171,7 @@ export function UnitsTab({
               </SectionLabel>
               {canWrite && (
                 <Button size="sm" onClick={() => setDrawerUnit(`new:${p.id}`)}>
-                  <Plus className="mr-1 h-4 w-4" /> Add unit
+                  <Plus className="mr-1 h-4 w-4 shrink-0" /> Add unit
                 </Button>
               )}
             </div>
@@ -266,7 +266,7 @@ function DnaComplianceCard({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <Dna className="h-4 w-4 text-muted-foreground" />
+        <Dna className="h-4 w-4 text-muted-foreground shrink-0" />
         <span className="text-sm font-medium">DNA compliance</span>
         <span
           className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
@@ -326,7 +326,7 @@ function ReviewDogsCard({
   return (
     <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
       <div className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300">
-        <AlertTriangle className="h-4 w-4" />
+        <AlertTriangle className="h-4 w-4 shrink-0" />
         Needs review: {dogs.length} dog{dogs.length === 1 ? "" : "s"} not assigned to a unit
       </div>
       <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-300/80">
@@ -340,7 +340,7 @@ function ReviewDogsCard({
             className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card p-2"
           >
             <span className="flex flex-wrap items-center gap-2">
-              <DogIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <DogIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="font-medium">{d.name}</span>
               {d.breed && <span className="text-xs text-muted-foreground">{d.breed}</span>}
               <DnaChip status={(d.dna_status ?? "not_registered") as DnaStatus} />
@@ -413,7 +413,7 @@ function UnitCard({
             <span className="text-xs text-muted-foreground">{u.resident_name}</span>
           )}
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <DogIcon className="h-3 w-3" />
+            <DogIcon className="h-3 w-3 shrink-0" />
             {activeDogs.length}
           </span>
           {dnaCounts.map(([s, n]) => (
@@ -421,7 +421,7 @@ function UnitCard({
           ))}
           {u.offending_count > 0 && (
             <span className="inline-flex items-center gap-1 rounded-md bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-              <AlertTriangle className="h-3 w-3" />
+              <AlertTriangle className="h-3 w-3 shrink-0" />
               {u.offending_count} offense{u.offending_count === 1 ? "" : "s"}
             </span>
           )}
@@ -441,7 +441,7 @@ function UnitCard({
             )}
             {canWrite && (
               <Button size="sm" variant="outline" onClick={onLogIncident}>
-                <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Log incident
+                <AlertTriangle className="mr-1 h-3.5 w-3.5 shrink-0" /> Log incident
               </Button>
             )}
           </div>
@@ -583,7 +583,7 @@ function UnitDogsSection({
         <SectionLabel>Dogs ({activeDogs.length})</SectionLabel>
         {canWrite && !adding && (
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAdding(true)}>
-            <Plus className="mr-1 h-3 w-3" /> Add dog
+            <Plus className="mr-1 h-3 w-3 shrink-0" /> Add dog
           </Button>
         )}
       </div>
@@ -670,7 +670,7 @@ function UnitDogsSection({
               {saveMut.isPending ? "Saving…" : editingDogId ? "Save dog" : "Add dog"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
-              <X className="mr-1 h-3.5 w-3.5" /> Cancel
+              <X className="mr-1 h-3.5 w-3.5 shrink-0" /> Cancel
             </Button>
           </div>
         </form>

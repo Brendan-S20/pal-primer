@@ -1015,7 +1015,7 @@ export function UpcomingVisitsList({
     <>
       {sharedAddress && (
         <p className="mb-2 text-xs text-muted-foreground inline-flex items-center gap-1">
-          <MapPin className="h-3 w-3" />
+          <MapPin className="h-3 w-3 shrink-0" />
           {[sharedAddress.street, sharedAddress.city, sharedAddress.postal_code]
             .filter(Boolean)
             .join(", ")}
@@ -1092,7 +1092,7 @@ function VisitRow({
           <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
             {v.eta_start && (
               <span className="inline-flex items-center gap-1">
-                <Clock className="h-3 w-3" /> arriving {orgLocalTime(v.eta_start, tz)}–
+                <Clock className="h-3 w-3 shrink-0" /> arriving {orgLocalTime(v.eta_start, tz)}–
                 {orgLocalTime(v.eta_end, tz)}
               </span>
             )}
@@ -1106,13 +1106,15 @@ function VisitRow({
             )}
             {showAddress && (v.street || v.city) && (
               <span className="inline-flex items-center gap-1">
-                <MapPin className="h-3 w-3" /> {[v.street, v.city].filter(Boolean).join(", ")}
+                <MapPin className="h-3 w-3 shrink-0" />{" "}
+                {[v.street, v.city].filter(Boolean).join(", ")}
               </span>
             )}
           </div>
           {v.weather_flagged && (
             <div className="mt-1 inline-flex items-center gap-1 rounded bg-sky-100 px-2 py-0.5 text-xs text-sky-800">
-              <CloudRain className="h-3 w-3" /> {v.weather_note ?? "Weather may affect this visit"}
+              <CloudRain className="h-3 w-3 shrink-0" />{" "}
+              {v.weather_note ?? "Weather may affect this visit"}
             </div>
           )}
         </div>
@@ -1324,7 +1326,7 @@ export function VacationHoldCard({
     <div className="rounded-md border bg-card p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <PalmtreeIcon className="h-4 w-4 text-muted-foreground" />
+          <PalmtreeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
           <div>
             <div className="font-medium">Vacation hold</div>
             <div className="text-xs text-muted-foreground">Skip service while you're away.</div>
@@ -1397,7 +1399,7 @@ export function StationsPanel({ rows }: { rows: Array<any> }) {
   if (rows.length === 0)
     return (
       <EmptyBox
-        icon={<Trash2 className="h-6 w-6" />}
+        icon={<Trash2 className="h-6 w-6 shrink-0" />}
         title="No stations set up yet"
         body="Once we install stations at your property they'll be listed here."
       />
@@ -1668,11 +1670,11 @@ export function ServiceHistorySection({
   return (
     <section>
       <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-        <Camera className="h-4 w-4" /> Service history
+        <Camera className="h-4 w-4 shrink-0" /> Service history
       </h2>
       {rows.length === 0 ? (
         <EmptyBox
-          icon={<Camera className="h-6 w-6" />}
+          icon={<Camera className="h-6 w-6 shrink-0" />}
           title="No completed visits yet"
           body="After your first visit, we'll post before/after photos here."
         />
@@ -1687,7 +1689,7 @@ export function ServiceHistorySection({
                     {r.status === "completed" ? (
                       <>
                         <span className="inline-flex items-center gap-1 text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3" /> Completed
+                          <CheckCircle2 className="h-3 w-3 shrink-0" /> Completed
                           {r.completed_at && <> at {orgLocalTime(r.completed_at, tz)}</>}
                         </span>
                         {r.tech_name && (
@@ -1698,7 +1700,7 @@ export function ServiceHistorySection({
                       </>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-700">
-                        <X className="h-3 w-3" />
+                        <X className="h-3 w-3 shrink-0" />
                         {/* The reason CODE, phrased for the person whose yard
                             it is. This used to print `skip_reason` -- the free
                             text a technician types at the gate, 1 to 500
@@ -1986,7 +1988,7 @@ export function RequestsList({ rows }: { rows: Array<any> }) {
   if (rows.length === 0) {
     return (
       <EmptyBox
-        icon={<MessageCircleWarning className="h-6 w-6" />}
+        icon={<MessageCircleWarning className="h-6 w-6 shrink-0" />}
         title="Nothing here yet"
         body="Concerns and requests you send will show up here with their status."
       />
@@ -2079,7 +2081,7 @@ export function ReferralCard({
       </p>
       <div className="mt-3 flex gap-2">
         <Button size="sm" onClick={share} className="gap-1.5">
-          <Share2 className="h-4 w-4" /> {copied ? "Copied!" : "Share"}
+          <Share2 className="h-4 w-4 shrink-0" /> {copied ? "Copied!" : "Share"}
         </Button>
         <Button
           size="sm"

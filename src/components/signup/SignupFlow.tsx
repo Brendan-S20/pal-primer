@@ -442,7 +442,7 @@ function SignupPayForm({
       >
         {submitting ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing…
+            <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" /> Processing…
           </>
         ) : (
           <>Pay {money(amountCents, currency)}</>

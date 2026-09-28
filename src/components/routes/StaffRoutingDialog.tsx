@@ -200,7 +200,7 @@ export function StaffRoutingDialog({
         <div className="space-y-5">
           <section className="space-y-2">
             <div className="flex items-center gap-1.5 text-sm font-medium">
-              <CalendarOff className="h-4 w-4" /> Time off
+              <CalendarOff className="h-4 w-4 shrink-0" /> Time off
             </div>
 
             {mine.length > 0 && (
@@ -223,7 +223,7 @@ export function StaffRoutingDialog({
                       disabled={removeMut.isPending}
                       aria-label={`Remove time off starting ${t.starts_on}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5 shrink-0" />
                     </Button>
                   </li>
                 ))}
@@ -285,7 +285,7 @@ export function StaffRoutingDialog({
 
           <section className="space-y-2 border-t pt-4">
             <div className="flex items-center gap-1.5 text-sm font-medium">
-              <MapPin className="h-4 w-4" /> Route start and end
+              <MapPin className="h-4 w-4 shrink-0" /> Route start and end
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Starts from</Label>

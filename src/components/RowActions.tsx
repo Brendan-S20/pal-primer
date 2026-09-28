@@ -59,7 +59,7 @@ export function RowActions({
             view.onSelect();
           }}
         >
-          <Eye className="h-4 w-4" />
+          <Eye className="h-4 w-4 shrink-0" />
         </Button>
       )}
       {edit && (
@@ -75,7 +75,7 @@ export function RowActions({
             edit.onSelect();
           }}
         >
-          <Pencil className="h-4 w-4" />
+          <Pencil className="h-4 w-4 shrink-0" />
         </Button>
       )}
       {actions.length > 0 && (
@@ -90,7 +90,7 @@ export function RowActions({
               title="More actions"
               onClick={(e) => e.stopPropagation()}
             >
-              <MoreHorizontal className="h-4 w-4" />
+              <MoreHorizontal className="h-4 w-4 shrink-0" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>

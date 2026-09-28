@@ -58,7 +58,7 @@ function Thread() {
             aria-label="Back to conversations"
             className="-ml-2 grid h-10 w-10 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted active:bg-muted md:hidden"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-5 w-5 shrink-0" />
           </Link>
           <div className="min-w-0">
           <div className="text-sm font-semibold">

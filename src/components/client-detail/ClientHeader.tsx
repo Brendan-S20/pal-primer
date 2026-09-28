@@ -259,7 +259,7 @@ export function ClientHeader({
           {client.primary_phone && (
             <a href={`tel:${client.primary_phone}`}>
               <Button variant="outline" size="sm">
-                <Phone className="mr-1.5 h-3.5 w-3.5" /> Call
+                <Phone className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Call
               </Button>
             </a>
           )}
@@ -282,16 +282,16 @@ export function ClientHeader({
                 );
               }}
             >
-              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Navigate
+              <Navigation className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Navigate
             </Button>
           )}
           <Link to="/messages/$clientId" params={{ clientId }}>
             <Button variant="outline" size="sm">
-              <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Message
+              <MessageSquare className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Message
             </Button>
           </Link>
           <Button size="sm" onClick={onEditClient}>
-            <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Client
+            <Pencil className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Edit Client
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -302,7 +302,7 @@ export function ClientHeader({
                 className="h-11 w-11 p-0"
                 aria-label="More actions"
               >
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4 w-4 shrink-0" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -325,7 +325,7 @@ export function ClientHeader({
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => setHoldDrawerOpen(true)}>
-                <CalendarOff className="mr-2 h-3.5 w-3.5" /> Vacation hold…
+                <CalendarOff className="mr-2 h-3.5 w-3.5 shrink-0" /> Vacation hold…
               </DropdownMenuItem>
               {client.comms_paused ? (
                 <DropdownMenuItem

@@ -89,7 +89,7 @@ describe("every dialog and sheet closes with a thumb-sized target", () => {
       // also appears in the `const DialogClose = DialogPrimitive.Close` line
       // at the top of the file.
       const close = src.slice(src.search(/[A-Za-z]+Primitive\.Close className="/));
-      expect(close.slice(0, 600), f).toMatch(/<X className="h-4 w-4" \/>/);
+      expect(close.slice(0, 600), f).toMatch(/<X className="h-4 w-4 shrink-0" \/>/);
     }
   });
 });

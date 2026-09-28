@@ -88,7 +88,7 @@ export function InstallBanner() {
           className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground hover:bg-accent"
           aria-label="Dismiss"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4 shrink-0" />
         </button>
       </div>
     </div>
