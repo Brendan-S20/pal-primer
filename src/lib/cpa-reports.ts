@@ -65,7 +65,8 @@ export type ReportId =
   | "write_offs"
   | "stripe_1099k"
   | "franchise_settlements"
-  | "referral_rewards";
+  | "referral_rewards"
+  | "quickbooks_invoices";
 
 export type ReportDef = {
   id: ReportId;
@@ -80,6 +81,11 @@ export type ReportDef = {
   note?: string;
   /** Only offered when the organization is part of a franchise. */
   franchiseOnly?: boolean;
+  /** A file another program imports, not a sheet a person reads. Its CSV is
+   *  the rows and nothing else (the definition lines every other report
+   *  carries would be read as broken invoices), split into files the
+   *  importer accepts. See quickbooks-import.ts. */
+  importFile?: boolean;
 };
 
 const money = (key: string, label: string): ReportColumn => ({ key, label, type: "money" });
@@ -239,6 +245,25 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
     ],
     note: "Only rows with a paid date are income in this period. Earned-but-unpaid rewards are listed so the balance is visible, not because they are taxable yet.",
   },
+  quickbooks_invoices: {
+    id: "quickbooks_invoices",
+    title: "Invoices for QuickBooks import",
+    purpose:
+      "Every invoice issued in the period, one row per line, in the format QuickBooks Online's own invoice import takes (Settings → Import data → Invoices). No connection needed.",
+    basis: "accrual",
+    columns: [
+      text("invoiceNo", "Invoice No."),
+      text("customer", "Customer"),
+      text("invoiceDate", "Invoice Date"),
+      text("dueDate", "Due Date"),
+      text("description", "Item Description"),
+      num("quantity", "Item Quantity"),
+      money("rateCents", "Item Rate"),
+      money("amountCents", "Item Amount"),
+    ],
+    note: "QuickBooks takes at most 100 invoices per import, so a longer period downloads as several files; import them one at a time. When asked, choose the date format MM/DD/YYYY and tick the option to add customers that do not exist yet. Payments are not part of this file: record them in QuickBooks, or connect the live sync when it is available.",
+    importFile: true,
+  },
 };
 
 export const REPORT_ORDER: ReportId[] = [
@@ -252,6 +277,7 @@ export const REPORT_ORDER: ReportId[] = [
   "stripe_1099k",
   "franchise_settlements",
   "referral_rewards",
+  "quickbooks_invoices",
 ];
 
 export function reportsFor(opts: { inFranchise: boolean }): ReportDef[] {

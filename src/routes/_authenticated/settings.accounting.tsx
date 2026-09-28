@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -152,6 +152,17 @@ function AccountingSettings() {
             ? "You'll be redirected to QuickBooks or Xero to authorize the connection securely. No credentials are entered here."
             : "QuickBooks and Xero connections are coming soon. They'll light up here once the integrations are activated."}
         </p>
+        {!ACCOUNTING_CONNECT_ENABLED && (
+          // The stopgap that works today: QuickBooks Online imports invoices
+          // from a CSV with no connection at all.
+          <p className="mt-2 text-sm">
+            Using QuickBooks Online now?{" "}
+            <Link to="/tax-reports" className="font-medium text-primary underline">
+              Download your invoices in QuickBooks&apos; import format
+            </Link>{" "}
+            from the accountant reports, and import them under Settings → Import data → Invoices.
+          </p>
+        )}
       </div>
 
       <div className="rounded border bg-card p-4">
