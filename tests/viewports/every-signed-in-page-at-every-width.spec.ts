@@ -132,10 +132,16 @@ async function settle(page: Page, surface: Surface, widthLabel: string) {
   // rejected identity and to /no-workspace on an account with no org; both are
   // pages this sweep's public half already proves are well laid out, so
   // measuring one of them would be a green run about the wrong screen.
+  //
+  // Compared by PATHNAME: a surface may carry a query string
+  // (/clients/new?fromLead=…), which `location.pathname` never includes. What
+  // the query selects is proved by that surface's own `proof` locator, which
+  // only the query's branch of the page draws.
+  const expectedPath = surface.path.split("?")[0];
   expect(
     health.path,
     `${where} ended up on ${health.path} — the session did not take, so what was measured is not this page`,
-  ).toBe(surface.path);
+  ).toBe(expectedPath);
 
   expect(
     health.els,

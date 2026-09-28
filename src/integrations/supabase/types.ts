@@ -2376,6 +2376,7 @@ export type Database = {
           company: string | null
           contacted_at: string | null
           converted_at: string | null
+          converted_client_id: string | null
           created_at: string
           dog_count: number | null
           email: string
@@ -2394,6 +2395,7 @@ export type Database = {
           company?: string | null
           contacted_at?: string | null
           converted_at?: string | null
+          converted_client_id?: string | null
           created_at?: string
           dog_count?: number | null
           email: string
@@ -2412,6 +2414,7 @@ export type Database = {
           company?: string | null
           contacted_at?: string | null
           converted_at?: string | null
+          converted_client_id?: string | null
           created_at?: string
           dog_count?: number | null
           email?: string
@@ -2427,6 +2430,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_converted_client_id_fkey"
+            columns: ["converted_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_organization_id_fkey"
             columns: ["organization_id"]

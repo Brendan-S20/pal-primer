@@ -96,6 +96,28 @@ const BASE_STUBS: Record<string, Stub> = {
     pendingEmail: null,
   },
   getMyOrgFeatures: { commercialAccounts: true, hasCommercialData: true },
+  // /leads, and /clients/new?fromLead=<id>. The wizard is answered with the
+  // first (convertible) lead AND an existing client on the same email, so the
+  // "already has this lead's email" panel is measured too: it is the densest
+  // thing the wizard draws above its first step.
+  listLeads: [...fx.LEADS, ...fx.WORKING_LEADS],
+  getLeadFormConfig: {
+    orgName: fx.ORG_NAME,
+    slug: "whitfield-ramirez-yard-and-waste-services",
+    publicSignupEnabled: true,
+    submissionsTotal: fx.LEADS.length,
+    submissionsLast30: fx.LEADS.length,
+    config: null,
+  },
+  getLeadForConversion: (args: Record<string, any>) => {
+    const lead = fx.LEADS.find((l) => l.id === args.id) ?? fx.LEADS[0];
+    const { organization_id: _org, created_at: _c, updated_at: _u, contacted_at: _t, converted_at: _v, ...rest } =
+      lead;
+    return {
+      lead: rest,
+      existingClient: { id: fx.CLIENT_ID, displayName: fx.CLIENTS[0].display_name },
+    };
+  },
   // The SOLE-OWNER branch of Delete your account, deliberately. Without this
   // the fence answers {} and the card renders its two-line simple form, so the
   // harder layout -- a transfer picker, a second explanation, and a confirm
@@ -551,9 +573,8 @@ const BASE_STUBS: Record<string, Stub> = {
   //    them green: /leads drew its empty state with no "Preview form" button,
   //    and /reports threw on a null and was measured as an error boundary.
   //    `listLeads` returns the bare rows, not `{ leads }`; the page reads
-  //    `data ?? []`.
-  listLeads: fx.LEADS,
-  getLeadFormConfig: fx.LEAD_FORM_CONFIG,
+  //    `data ?? []`. listLeads and getLeadFormConfig are answered above, with
+  //    the conversion states and the awkward working leads together.
   getReports: fx.REPORTS,
 
   // /settings/automation, /settings/invoicing and /settings/emails, which

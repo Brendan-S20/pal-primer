@@ -2,12 +2,22 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
+import { getLeadForConversion, linkLeadToExistingClient } from "@/lib/leads.functions";
+import {
+  BLANK_DOG,
+  EMPTY_PREFILL,
+  leadConversionState,
+  leadToWizardPrefill,
+  type WizardDog as Dog,
+  type WizardPrefill,
+} from "@/lib/lead-conversion";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupSegment } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -18,17 +28,138 @@ import { toast } from "sonner";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const Route = createFileRoute("/_authenticated/clients/new")({
-  component: NewClientWizard,
+  // `fromLead` is the lead's id and nothing else. The wizard fetches the lead
+  // server-side; its name, email, phone and address never go in the URL.
+  validateSearch: (s: Record<string, unknown>): { fromLead?: string } => ({
+    fromLead: typeof s.fromLead === "string" && UUID.test(s.fromLead) ? s.fromLead : undefined,
+  }),
+  component: NewClientPage,
 });
 
-type Dog = {
+type FromLead = {
+  id: string;
   name: string;
-  breed: string;
-  weightClass: string;
-  temperament: "friendly" | "nervous" | "aggressive" | "unknown";
-  notes: string;
+  /** The lead's own dog count, before it was turned into rows. */
+  dogCount: number | null;
+  existingClient: { id: string; displayName: string } | null;
 };
+
+/**
+ * The wizard, started either blank or from a lead.
+ *
+ * The wizard's state is plain useState, seeded once at mount, and it keeps no
+ * draft anywhere (no localStorage, no query cache). So the one way for one
+ * lead's answers to show up under another's is a remount that does not
+ * happen: TanStack keeps this component mounted when only the search string
+ * changes. The `key` below is what makes /clients/new?fromLead=A to
+ * ?fromLead=B, or to a blank /clients/new, start again from nothing.
+ */
+function NewClientPage() {
+  const { fromLead } = Route.useSearch();
+  const getLeadFn = useServerFn(getLeadForConversion);
+  const leadQ = useQuery({
+    enabled: !!fromLead,
+    queryKey: ["lead-for-conversion", fromLead],
+    queryFn: () => getLeadFn({ data: { id: fromLead! } }),
+    // Read fresh on every open: a cached copy is how a lead converted in
+    // another tab gets offered for conversion again. (onboardClient re-checks
+    // on save regardless; this is so the owner is not walked through five
+    // steps to be refused at the end.)
+    staleTime: 0,
+    gcTime: 0,
+    // But never re-read while the wizard is open. A failed background refetch
+    // puts the query in its error state, which would unmount the wizard and
+    // throw away everything typed into it.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  if (!fromLead) return <NewClientWizard key="blank" prefill={EMPTY_PREFILL} fromLead={null} />;
+
+  if (leadQ.isPending) {
+    return (
+      <WizardShell backTo="leads">
+        <Card className="p-6 text-sm text-muted-foreground">Loading the lead…</Card>
+      </WizardShell>
+    );
+  }
+  if (leadQ.isError) {
+    return (
+      <WizardShell backTo="leads">
+        <Card className="space-y-3 p-6 text-sm">
+          <p role="alert">{(leadQ.error as Error).message || "That lead could not be loaded."}</p>
+          <Button asChild variant="outline">
+            <Link to="/leads">Back to leads</Link>
+          </Button>
+        </Card>
+      </WizardShell>
+    );
+  }
+
+  const { lead, existingClient } = leadQ.data;
+  const state = leadConversionState(lead);
+  if (state.kind !== "convertible") {
+    return (
+      <WizardShell backTo="leads">
+        <Card className="space-y-3 p-6 text-sm">
+          <p className="break-words font-medium">
+            {state.kind === "linked"
+              ? `${lead.name} is already a client.`
+              : `${lead.name} is already marked converted.`}
+          </p>
+          <p className="text-muted-foreground">
+            {state.kind === "linked"
+              ? "Converting the lead again would put the same household on the books twice."
+              : "It was marked converted from the status menu, not through this form, so there is no client record to open. Change the lead's status first if they still need one."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {state.kind === "linked" && (
+              <Button asChild>
+                <Link to="/clients/$clientId" params={{ clientId: state.clientId }}>
+                  Open client
+                </Link>
+              </Button>
+            )}
+            <Button asChild variant="outline">
+              <Link to="/leads">Back to leads</Link>
+            </Button>
+          </div>
+        </Card>
+      </WizardShell>
+    );
+  }
+
+  return (
+    <NewClientWizard
+      key={lead.id}
+      prefill={leadToWizardPrefill(lead)}
+      fromLead={{ id: lead.id, name: lead.name, dogCount: lead.dog_count, existingClient }}
+    />
+  );
+}
+
+function WizardShell({ backTo, children }: { backTo: "clients" | "leads"; children: ReactNode }) {
+  return (
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div>
+        {backTo === "leads" ? (
+          <Link to="/leads" className="text-sm text-muted-foreground hover:underline">
+            ← Leads
+          </Link>
+        ) : (
+          <Link to="/clients" className="text-sm text-muted-foreground hover:underline">
+            ← Clients
+          </Link>
+        )}
+        <h1 className="mt-2 text-2xl font-semibold">New client</h1>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 const FREQS = [
   { value: "weekly", label: "Weekly" },
@@ -79,12 +210,19 @@ function polyAreaSqm(g: PolygonGeoJSON): number {
 
 
 
-function NewClientWizard() {
+function NewClientWizard({
+  prefill,
+  fromLead,
+}: {
+  prefill: WizardPrefill;
+  fromLead: FromLead | null;
+}) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const onboardFn = useServerFn(onboardClient);
   const quoteFn = useServerFn(getInternalQuote);
   const geocodeFn = useServerFn(lookupAddressPoint);
+  const linkFn = useServerFn(linkLeadToExistingClient);
 
   const [step, setStep] = useState(0);
   // Turn on inline "required" messages after the user tries to advance —
@@ -92,16 +230,17 @@ function NewClientWizard() {
   const [attempted, setAttempted] = useState(false);
 
   // contact
-  const [displayName, setDisplayName] = useState("");
+  const [displayName, setDisplayName] = useState(prefill.displayName);
   const [accountType, setAccountType] = useState<"residential" | "commercial">("residential");
-  const [primaryEmail, setPrimaryEmail] = useState("");
-  const [primaryPhone, setPrimaryPhone] = useState("");
+  const [primaryEmail, setPrimaryEmail] = useState(prefill.primaryEmail);
+  const [primaryPhone, setPrimaryPhone] = useState(prefill.primaryPhone);
+  const [officeNote, setOfficeNote] = useState(prefill.officeNote);
 
   // property
-  const [street, setStreet] = useState("");
-  const [city, setCity] = useState("");
-  const [region, setRegion] = useState("");
-  const [postalCode, setPostalCode] = useState("");
+  const [street, setStreet] = useState(prefill.street);
+  const [city, setCity] = useState(prefill.city);
+  const [region, setRegion] = useState(prefill.region);
+  const [postalCode, setPostalCode] = useState(prefill.postalCode);
   const [gateCode, setGateCode] = useState("");
   const [hazardNotes, setHazardNotes] = useState("");
   // P3.5 optional on-site visit contact (tenant/property manager)
@@ -193,13 +332,20 @@ function NewClientWizard() {
   }, [step, street, city, region, postalCode, geo, geocodeFn]);
 
   // dogs
-  const [dogs, setDogs] = useState<Dog[]>([
-    { name: "", breed: "", weightClass: "", temperament: "unknown", notes: "" },
-  ]);
+  const [dogs, setDogs] = useState<Dog[]>(() => prefill.dogs.map((d) => ({ ...d })));
+  // Only a named dog is saved as a dog record: the database refuses a blank or
+  // placeholder name, and a tech cannot use one.
   const validDogs = dogs.filter((d) => d.name.trim().length > 0);
+  // The plan is priced from the ROWS on the Dogs step, named or not. It used to
+  // count named dogs only, which was harmless while the step always opened on
+  // one blank row, and wrong once a lead that said "3 dogs" opens it on three:
+  // an owner who has not learned the names yet would have priced one dog.
+  const dogCount = Math.max(1, dogs.length);
 
   // plan
-  const [frequency, setFrequency] = useState<(typeof FREQS)[number]["value"]>("weekly");
+  const [frequency, setFrequency] = useState<(typeof FREQS)[number]["value"]>(
+    prefill.frequency ?? "weekly",
+  );
   const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
   const [unitCount, setUnitCount] = useState("1");
   const [priceOverride, setPriceOverride] = useState<string>("");
@@ -217,11 +363,11 @@ function NewClientWizard() {
     () => ({
       postalCode: postalCode.trim(),
       accountType,
-      dogCount: Math.max(1, validDogs.length),
+      dogCount,
       frequency: frequency === "one_time" ? "weekly" : frequency,
       boundaryAreaSqm: boundaryAreaSqm ?? undefined,
     }),
-    [postalCode, accountType, validDogs.length, frequency, boundaryAreaSqm],
+    [postalCode, accountType, dogCount, frequency, boundaryAreaSqm],
   );
 
   const quoteQ = useQuery({
@@ -288,7 +434,7 @@ function NewClientWizard() {
                 priceCents: priceCents ?? 0,
                 startedOn,
                 preferredWeekdays: frequency === "one_time" ? undefined : effectiveServiceDays,
-                dogCount: accountType === "residential" ? Math.max(1, validDogs.length) : undefined,
+                dogCount: accountType === "residential" ? dogCount : undefined,
                 unitCount:
                   accountType === "commercial" ? Math.max(1, parseInt(unitCount, 10) || 1) : undefined,
                 zoneId:
@@ -297,16 +443,34 @@ function NewClientWizard() {
                     : undefined,
                 billingCadence,
               },
+          officeNote: officeNote.trim() || undefined,
+          fromLeadId: fromLead?.id,
         },
       }),
-    onSuccess: ({ id, firstVisitOn, welcomeEmailed }) => {
+    onSuccess: ({ id, firstVisitOn, welcomeEmailed, officeNoteSaved, leadLinked }) => {
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
       if (welcomeEmailed && primaryEmail) parts.push(`Welcome email sent to ${primaryEmail}.`);
       toast.success(parts.join(" "), { duration: 8000 });
+      if (!officeNoteSaved) toast.error("The office note did not save. Add it from the client's Notes.");
+      if (leadLinked === false)
+        toast.error("The lead could not be marked converted. Mark it from the Leads page.");
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
+      if (fromLead) qc.invalidateQueries({ queryKey: ["leads"] });
       navigate({ to: "/clients/$clientId", params: { clientId: id } });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  // The lead's email already belongs to a client. The old one-tap conversion
+  // quietly reused that client; the wizard is about to create one, so it asks.
+  const linkMutation = useMutation({
+    mutationFn: (clientId: string) => linkFn({ data: { leadId: fromLead!.id, clientId } }),
+    onSuccess: ({ clientId }) => {
+      toast.success("Lead linked to the existing client");
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      navigate({ to: "/clients/$clientId", params: { clientId } });
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -322,13 +486,47 @@ function NewClientWizard() {
   })();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <Link to="/clients" className="text-sm text-muted-foreground hover:underline">
-          ← Clients
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold">New client</h1>
-      </div>
+    <WizardShell backTo={fromLead ? "leads" : "clients"}>
+      {fromLead && (
+        <div className="space-y-2 rounded-md border bg-primary/5 p-3 text-sm">
+          <p className="break-words">
+            Started from the lead <strong>{fromLead.name}</strong>. Check each step: nothing is
+            saved until you press Create client, and the lead is marked converted when you do.
+          </p>
+          {fromLead.existingClient && (
+            <div
+              role="status"
+              className="space-y-2 rounded-md border border-amber-400/50 bg-amber-50 p-3 text-amber-900"
+            >
+              <p className="break-words">
+                <strong>{fromLead.existingClient.displayName}</strong> already has this lead's email
+                address. If they are the same household, link the lead to them instead of creating a
+                second client.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={linkMutation.isPending || mutation.isPending}
+                  onClick={() => linkMutation.mutate(fromLead.existingClient!.id)}
+                >
+                  {/* Not the client's name: a button does not wrap, and a
+                      46-character household name would push it off a phone. */}
+                  Link lead to this client
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    to="/clients/$clientId"
+                    params={{ clientId: fromLead.existingClient.id }}
+                  >
+                    Open client
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stepper.
           MEASURED 2026-08-19: five numbered chips, their labels and four
@@ -416,6 +614,21 @@ function NewClientWizard() {
                 <Label htmlFor="ph">Phone</Label>
                 <Input id="ph" value={primaryPhone} onChange={(e) => setPrimaryPhone(e.target.value)} placeholder="(555) 123-4567" />
               </div>
+            </div>
+            <div className="space-y-2">
+              {/* Saved as an office note: the client's Notes tab shows it and
+                  RLS keeps it from technicians. Not `clients.notes`, which is
+                  where the old lead conversion put the lead's message and
+                  which no screen in the app displays. */}
+              <Label htmlFor="on">Office note (optional)</Label>
+              <Textarea
+                id="on"
+                rows={fromLead ? 4 : 2}
+                maxLength={4000}
+                value={officeNote}
+                onChange={(e) => setOfficeNote(e.target.value)}
+                placeholder="Anything the office should know. Technicians do not see this."
+              />
             </div>
           </div>
         )}
@@ -605,6 +818,14 @@ function NewClientWizard() {
                 Skip if this is a commercial/HOA account. Otherwise add any resident dogs.
               </p>
             )}
+            {fromLead && (fromLead.dogCount ?? 0) > 0 && (
+              <p className="text-sm text-muted-foreground">
+                The lead said {fromLead.dogCount} dog{fromLead.dogCount === 1 ? "" : "s"}, so there
+                {dogs.length === 1 ? " is a row" : ` are ${dogs.length} rows`} below. Name them now
+                or later: the plan is priced for one dog per row, and a row without a name is not
+                saved as a dog.
+              </p>
+            )}
             {dogs.map((d, i) => (
               <div key={i} className="rounded-md border bg-muted/10 p-3">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -685,12 +906,7 @@ function NewClientWizard() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() =>
-                setDogs([
-                  ...dogs,
-                  { name: "", breed: "", weightClass: "", temperament: "unknown", notes: "" },
-                ])
-              }
+              onClick={() => setDogs([...dogs, { ...BLANK_DOG }])}
             >
               <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add another dog
             </Button>
@@ -827,8 +1043,8 @@ function NewClientWizard() {
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Based on {Math.max(1, validDogs.length)} dog
-                      {validDogs.length === 1 ? "" : "s"} · {FREQS.find((f) => f.value === frequency)?.label}
+                      Based on {dogCount} dog
+                      {dogCount === 1 ? "" : "s"} · {FREQS.find((f) => f.value === frequency)?.label}
                     </p>
                   </div>
                 )}
@@ -866,7 +1082,9 @@ function NewClientWizard() {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => (step === 0 ? navigate({ to: "/clients" }) : setStep(step - 1))}
+            onClick={() =>
+              step === 0 ? navigate({ to: fromLead ? "/leads" : "/clients" }) : setStep(step - 1)
+            }
           >
             {step === 0 ? "Cancel" : "Back"}
           </Button>
@@ -888,7 +1106,7 @@ function NewClientWizard() {
             <div className="flex flex-col items-end gap-1">
               <Button
                 type="button"
-                disabled={mutation.isPending || needsPrice}
+                disabled={mutation.isPending || linkMutation.isPending || needsPrice}
                 onClick={() => mutation.mutate()}
               >
                 {mutation.isPending ? "Creating…" : "Create client"}
@@ -900,6 +1118,6 @@ function NewClientWizard() {
           )}
         </div>
       </Card>
-    </div>
+    </WizardShell>
   );
 }

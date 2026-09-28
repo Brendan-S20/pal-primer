@@ -1,12 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  listLeads,
-  updateLeadStatus,
-  convertLeadToClient,
-  getLeadFormConfig,
-} from "@/lib/leads.functions";
+import { listLeads, updateLeadStatus, getLeadFormConfig } from "@/lib/leads.functions";
+import { leadConversionState } from "@/lib/lead-conversion";
 import { Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -35,7 +31,6 @@ const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as c
 function LeadsPage() {
   const list = useServerFn(listLeads);
   const upd = useServerFn(updateLeadStatus);
-  const convertFn = useServerFn(convertLeadToClient);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<string>("all");
@@ -54,16 +49,14 @@ function LeadsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const convertMut = useMutation({
-    mutationFn: (id: string) => convertFn({ data: { id } }),
-    onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
-      toast.success("Converted to client");
-      navigate({ to: "/clients/$clientId", params: { clientId: r.clientId } });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Converting opens the new-client wizard started from the lead, and the
+  // wizard marks the lead converted when it saves. It used to be a confirm
+  // dialog and a one-tap insert that kept the name, email, phone and message
+  // and dropped the address, the dogs and the frequency. The wizard is the
+  // confirmation now: nothing is written until its last step.
+  const convert = (id: string) => navigate({ to: "/clients/new", search: { fromLead: id } });
+  const openClient = (clientId: string) =>
+    navigate({ to: "/clients/$clientId", params: { clientId } });
 
   const leads = (data ?? []).filter((l) => filter === "all" || l.status === filter);
 
@@ -101,10 +94,14 @@ function LeadsPage() {
             Prospects submitted through the public contact form.
           </p>
         </div>
-        {/* `flex-wrap`: two buttons and a 192px filter are 479px of controls,
-            and without it this row set the width of the page — 495px on
-            every phone. Wrapping, the filter drops under the buttons. */}
-        <div className="flex flex-wrap items-end gap-2">
+        {/* MEASURED 2026-09-28 at 360px: Preview form, Edit form and a fixed
+            `w-48` filter in one row that could not wrap came to 495px, so the
+            filter ("All") sat off the right edge and the page scrolled
+            sideways. It had never been measured: /leads was not a sweep
+            surface until the conversion fix put it on the list. Now the row
+            wraps, and the filter takes the full width once it is on a line of
+            its own. */}
+        <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
           {/* The form these leads come from: see it as a prospect would, or
               jump straight into editing it (Brendan, 2026-07-14). */}
           {formSlug && (
@@ -119,7 +116,7 @@ function LeadsPage() {
               <Pencil className="mr-1 h-4 w-4 shrink-0" /> Edit form
             </Button>
           </Link>
-          <div className="w-48">
+          <div className="w-full sm:w-48">
             <Select value={filter} onValueChange={setFilter}>
               <SelectTrigger>
                 <SelectValue />
@@ -208,18 +205,24 @@ function LeadsPage() {
             </div>
           )}
 
-          {leads.map((l) => (
+          {leads.map((l) => {
+            const conversion = leadConversionState(l);
+            return (
             <div key={l.id} className="rounded-lg border bg-card p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              {/* MEASURED 2026-09-28 at 390px: the action column sat BESIDE
+                  the lead as a hard `w-40`, which left the lead's name, email
+                  and message about 96px between the checkbox and the buttons.
+                  Below `sm` the actions now go underneath the lead at full
+                  width, and beside it from `sm` up, where there is room. */}
+              <div className="flex items-start gap-3">
                 <Checkbox
                   className="mt-1"
                   checked={sel.isSelected(l.id)}
                   onCheckedChange={(next) => sel.toggle(l.id, !!next)}
                   aria-label={`Select lead ${l.name}`}
                 />
-                <div className="min-w-0 flex-1">
-                  {/* Wraps: a name, a badge and a company in a row that
-                      could not wrap was as wide as all three together. */}
+                <div className="min-w-0 flex-1 space-y-3 sm:flex sm:items-start sm:gap-3 sm:space-y-0">
+                <div className="min-w-0 sm:flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <div className="min-w-0 break-words font-medium">{l.name}</div>
                     <Badge variant="outline">{humanizeEnum(l.status)}</Badge>
@@ -230,11 +233,8 @@ function LeadsPage() {
                     ) : null}
                   </div>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    {/* Below `sm` the action column drops under the lead
-                        rather than sitting beside it as a hard `w-40`, which
-                        left this body about 96px wide on a phone. A lead's
-                        email is still the only copy of it anywhere in the app
-                        — it cannot be truncated away — so `break-all` gives
+                    {/* A lead's email is the only copy of it anywhere in the
+                        app, so it cannot be truncated away; `break-all` gives
                         the address somewhere to break instead of setting the
                         width of the row. */}
                     <a href={`mailto:${l.email}`} className="break-all underline">
@@ -257,38 +257,27 @@ function LeadsPage() {
                     ) : null}
                   </div>
                   {l.message ? (
-                    <p className="mt-2 max-w-2xl whitespace-pre-wrap text-sm">{l.message}</p>
+                    <p className="mt-2 max-w-2xl whitespace-pre-wrap break-words text-sm">
+                      {l.message}
+                    </p>
                   ) : null}
                   <div className="mt-2 text-xs text-muted-foreground">
                     {formatDateTime(l.created_at)} · source: {humanizeEnum(l.source)}
                   </div>
                 </div>
-                <div className="flex w-full flex-col gap-2 sm:w-40">
+                <div className="flex flex-col gap-2 sm:w-40 sm:shrink-0">
                   {/* Salesforce-style ••• row actions. Leads have no detail
-                      page or edit drawer, so only the existing actions are
-                      wired: convert (convertLeadToClient) and archive
-                      (updateLeadStatus — same fn the status select uses). */}
+                      page or edit drawer, so the menu carries the same two
+                      things as the buttons below it: convert (or open the
+                      client it became) and archive (updateLeadStatus, the same
+                      fn the status select uses). */}
                   <RowActions
                     actions={[
-                      ...(l.status !== "converted"
-                        ? [
-                            {
-                              label: "Convert to client",
-                              disabled: convertMut.isPending,
-                              onSelect: async () => {
-                                if (
-                                  await confirm({
-                                    title: `Convert ${l.name} to a client?`,
-                                    description:
-                                      "Creates a client record from this lead and marks the lead converted.",
-                                    confirmLabel: "Convert",
-                                  })
-                                )
-                                  convertMut.mutate(l.id);
-                              },
-                            },
-                          ]
-                        : []),
+                      ...(conversion.kind === "convertible"
+                        ? [{ label: "Convert to client", onSelect: () => convert(l.id) }]
+                        : conversion.kind === "linked"
+                          ? [{ label: "Open client", onSelect: () => openClient(conversion.clientId) }]
+                          : []),
                       ...(l.status !== "archived"
                         ? [
                             {
@@ -312,24 +301,22 @@ function LeadsPage() {
                         : []),
                     ]}
                   />
-                  {l.status !== "converted" && (
-                    <Button
-                      size="sm"
-                      onClick={async () => {
-                        if (
-                          await confirm({
-                            title: `Convert ${l.name} to a client?`,
-                            description:
-                              "Creates a client record from this lead and marks the lead converted.",
-                            confirmLabel: "Convert",
-                          })
-                        )
-                          convertMut.mutate(l.id);
-                      }}
-                      disabled={convertMut.isPending}
-                    >
+                  {conversion.kind === "convertible" && (
+                    <Button size="sm" onClick={() => convert(l.id)}>
                       Convert to client
                     </Button>
+                  )}
+                  {conversion.kind === "linked" && (
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to="/clients/$clientId" params={{ clientId: conversion.clientId }}>
+                        Open client
+                      </Link>
+                    </Button>
+                  )}
+                  {conversion.kind === "converted-unlinked" && (
+                    <p className="text-xs text-muted-foreground">
+                      Marked converted, with no client record linked.
+                    </p>
                   )}
                   <Select
                     value={l.status}
@@ -349,9 +336,11 @@ function LeadsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

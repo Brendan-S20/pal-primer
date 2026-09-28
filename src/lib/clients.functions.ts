@@ -669,6 +669,12 @@ const onboardSchema = z.object({
     )
     .max(20)
     .optional(),
+  // An internal office note (client_notes, audience "office"): hidden from
+  // technicians by RLS. The wizard fills it with what a lead said.
+  officeNote: z.string().max(4000).optional(),
+  // Set when the wizard was opened from a lead. The lead is checked before
+  // anything is created and marked converted, linked to this client, after.
+  fromLeadId: z.string().uuid().optional(),
   // subscription (optional — user may skip)
   subscription: z
     .object({
@@ -697,6 +703,21 @@ export const onboardClient = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
+
+    // 0) the lead this client is converted from, if any. Checked BEFORE the
+    // client exists: a lead that is already a client is refused here, not
+    // discovered after a duplicate household has been written.
+    const leadConversion = data.fromLeadId
+      ? await import("@/lib/lead-conversion.server")
+      : null;
+    let fromLead: { id: string } | null = null;
+    if (data.fromLeadId && leadConversion) {
+      const caller = await requirePermission(supabase, userId, "manage_leads");
+      if (caller.orgId !== orgId) throw new Error("That lead was not found.");
+      const lead = await leadConversion.loadLeadForConversion(supabase, orgId, data.fromLeadId);
+      leadConversion.assertConvertible(lead);
+      fromLead = { id: lead.id };
+    }
 
     // 1) client
     const { data: cRow, error: cErr } = await supabase
@@ -861,6 +882,31 @@ export const onboardClient = createServerFn({ method: "POST" })
       firstVisitOn = first?.scheduled_on ?? null;
     }
 
+    // 5) office note. The client and everything under it already exist, so a
+    // failure here is reported rather than thrown: throwing would tell the
+    // owner the save failed and invite a second, duplicate client.
+    let officeNoteSaved = true;
+    if (data.officeNote?.trim()) {
+      const { error: nErr } = await supabase.from("client_notes").insert({
+        organization_id: orgId,
+        client_id: clientId,
+        audience: "office",
+        body: data.officeNote.trim(),
+        pinned: false,
+        created_by: userId,
+      });
+      if (nErr) {
+        console.error("office note on new client failed", nErr);
+        officeNoteSaved = false;
+      }
+    }
+
+    // 6) the lead, linked to the client it became. Same reasoning as the note.
+    const leadLinked =
+      fromLead && leadConversion
+        ? await leadConversion.markLeadConverted(supabase, fromLead.id, clientId)
+        : null;
+
     {
       const { logActivity } = await import("@/lib/activity.server");
       await logActivity(supabase, {
@@ -869,7 +915,8 @@ export const onboardClient = createServerFn({ method: "POST" })
         propertyId,
         actorUserId: userId,
         kind: "client.created",
-        summary: `Created client ${data.displayName} with property ${data.street}, ${data.city}`,
+        summary: `Created client ${data.displayName}${fromLead ? " from a lead" : ""} with property ${data.street}, ${data.city}`,
+        meta: fromLead ? { leadId: fromLead.id } : undefined,
       });
     }
 
@@ -896,7 +943,7 @@ export const onboardClient = createServerFn({ method: "POST" })
       }
     }
 
-    return { id: clientId, firstVisitOn, welcomeEmailed };
+    return { id: clientId, firstVisitOn, welcomeEmailed, officeNoteSaved, leadLinked };
   });
 
 
