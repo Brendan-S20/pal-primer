@@ -200,7 +200,8 @@ export function VisitDetailDrawer({
   const p = v?.properties;
   const client = v?.clients;
   const dogs = data?.dogs ?? [];
-  const history = data?.history ?? [];
+  const recent = data?.recent ?? [];
+  const upcoming = data?.upcoming ?? [];
   const hazards = hazardList(p);
   const dir = directionsUrl(p);
   // There is no office_start_visit — starting a visit stamps a tech's arrival,
@@ -241,7 +242,7 @@ export function VisitDetailDrawer({
             )}
           </SheetTitle>
           <SheetDescription>
-            {v?.scheduled_on} {v?.zones?.name ? `· ${v.zones.name}` : ""}
+            {formatDay(v?.scheduled_on)} {v?.zones?.name ? `· ${v.zones.name}` : ""}
             {v?.staff?.display_name ? ` · ${v.staff.display_name}` : ""}
           </SheetDescription>
         </SheetHeader>
@@ -405,23 +406,12 @@ export function VisitDetailDrawer({
 
             <PhotosSection visitId={visitId!} photos={v.visit_photos ?? []} />
 
-            {history.length > 0 && (
-              <section>
-                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                  Other visits here
-                </h3>
-                <ul className="space-y-1 text-xs">
-                  {history.map((h: any) => (
-                    <li key={h.id} className="flex justify-between">
-                      <span>{formatDay(h.scheduled_on)}</span>
-                      <span className="capitalize text-muted-foreground">
-                        {h.status.replace("_", " ")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
+            {/* Past and future apart. One "Other visits here" list, newest
+                first, put next month's scheduled visits above last week's
+                completed one — see getVisitDetail for why it was mostly the
+                future. */}
+            <OtherVisits title="Recent visits" visits={recent} />
+            <OtherVisits title="Coming up" visits={upcoming} />
 
             {canReassign && (
               <section className="space-y-1 border-t pt-3">
@@ -543,6 +533,29 @@ export function VisitDetailDrawer({
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function OtherVisits({
+  title,
+  visits,
+}: {
+  title: string;
+  visits: Array<{ id: string; scheduled_on: string; status: string }>;
+}) {
+  if (visits.length === 0) return null;
+  return (
+    <section>
+      <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">{title}</h3>
+      <ul className="space-y-1 text-xs">
+        {visits.map((h) => (
+          <li key={h.id} className="flex justify-between gap-2">
+            <span>{formatDay(h.scheduled_on)}</span>
+            <span className="capitalize text-muted-foreground">{h.status.replace("_", " ")}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -91,6 +91,35 @@ async function signInAs(page: Page, role: SweepRole) {
   await installStubBackend(page, { role });
 }
 
+// ── ONE NAVIGATION, EITHER SIDE OF EACH EDGE ─────────────────────────────
+//
+// Reported 2026-09-27 at 768px: the sidebar AND the tab bar. The tab bar
+// reaches `lg` for a tech (useTabletTier) and the sidebar docked at `md`
+// regardless, so 768–1023 had both — for a tech only, which is why a sweep
+// that was only ever an owner never saw it. tests/two-navigations-at-768.test.ts
+// checks the arithmetic; this checks that the browser agrees with it, at the
+// pixel either side of each breakpoint.
+for (const role of ["dispatcher", "tech"] as const) {
+  test.describe(`signed in as a ${role}, exactly one navigation`, () => {
+    for (const width of [767, 768, 1023, 1024]) {
+      test(`@${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await signInAs(page, role);
+        await page.goto(LANDING[role], { waitUntil: "domcontentloaded" });
+        // Something has to be drawn before "not both" means anything: a blank
+        // page has neither.
+        const bar = page.getByRole("navigation", { name: "Primary" }).first();
+        const docked = page.locator('[data-sidebar="sidebar"]:not([data-mobile])').first();
+        await expect(bar.or(docked).first()).toBeVisible({ timeout: 30_000 });
+        await page.waitForTimeout(700);
+        const shown = { bar: await bar.isVisible(), sidebar: await docked.isVisible() };
+        expect(shown, `${role} @${width}px`).not.toEqual({ bar: true, sidebar: true });
+        expect(shown.bar || shown.sidebar, `${role} @${width}px: no navigation`).toBe(true);
+      });
+    }
+  });
+}
+
 for (const role of ["dispatcher", "tech"] as const) {
   test.describe(`signed in as a ${role}`, () => {
     test.use({ viewport: { width: 430, height: 932 }, isMobile: true, deviceScaleFactor: 2 });

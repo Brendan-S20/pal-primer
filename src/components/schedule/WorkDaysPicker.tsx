@@ -44,9 +44,15 @@ export function WorkDaysPicker({
           // MEASURED 2026-08-19: 26.0px, seven of them — the row a dispatcher
           // taps to say which days this client is served on. A pill is round,
           // so the minimum goes on both axes or Sunday becomes an oval.
+          // Selected is FILLED. It was a 10% tint of primary with primary
+          // text, beside unselected pills with a border and grey text — on a
+          // phone in daylight the two read as the same pill, and "which days
+          // do we work" was a question the control could not answer at a
+          // glance (reported 2026-09-27). aria-pressed says it to a screen
+          // reader; this says it to everyone else.
           className={`inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 touch:min-h-11 touch:min-w-11 ${
             selected.has(d)
-              ? "border-primary bg-primary/10 font-medium text-primary"
+              ? "border-primary bg-primary font-medium text-primary-foreground"
               : "text-muted-foreground hover:bg-muted"
           }`}
         >

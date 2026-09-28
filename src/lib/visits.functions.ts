@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import type { RoadLegProblem } from "@/lib/road-legs.server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -87,16 +88,31 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .eq("property_id", (v as any).property_id)
       .order("name");
 
-    // last 5 visits for this client
-    const { data: history } = await supabase
-      .from("visits")
-      .select("id, scheduled_on, status")
-      .eq("client_id", (v as any).client_id)
-      .neq("id", data.visitId)
-      .order("scheduled_on", { ascending: false })
-      .limit(5);
+    // The client's other visits, split at the ORGANIZATION's today. This was
+    // one query — the latest five by date — rendered as the visit's history.
+    // Visits are generated weeks ahead, so for a weekly client the latest five
+    // are all in the future: the drawer listed next month under the past and
+    // never showed the last time anybody was actually there. Two queries, so
+    // the future cannot crowd the past out of a shared limit, and the org's
+    // clock rather than the server's, for the reason org-day.ts gives.
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("timezone")
+      .eq("id", orgId)
+      .maybeSingle();
+    const today = orgToday(org?.timezone || DEFAULT_ORG_TIMEZONE);
+    const others = () =>
+      supabase
+        .from("visits")
+        .select("id, scheduled_on, status")
+        .eq("client_id", (v as any).client_id)
+        .neq("id", data.visitId);
+    const [{ data: recent }, { data: upcoming }] = await Promise.all([
+      others().lt("scheduled_on", today).order("scheduled_on", { ascending: false }).limit(5),
+      others().gte("scheduled_on", today).order("scheduled_on", { ascending: true }).limit(3),
+    ]);
 
-    return { visit: v, dogs: dogs ?? [], history: history ?? [] };
+    return { visit: v, dogs: dogs ?? [], recent: recent ?? [], upcoming: upcoming ?? [] };
   });
 
 export const listStaff = createServerFn({ method: "GET" })

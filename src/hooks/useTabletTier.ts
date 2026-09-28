@@ -68,3 +68,27 @@ export function useTabletTier(): TabletTier {
         mainBottomPadding: "pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-8",
       };
 }
+
+/**
+ * Where the docked sidebar starts, given where the tab bar stops.
+ *
+ * ── TWO NAVIGATIONS AT 768 ────────────────────────────────────────────────
+ *
+ * The tier above moved the tab bar's edge to `lg` for a tech and nothing moved
+ * the sidebar's: it still docked at `md`, from ui/sidebar.tsx's own 768. So
+ * from 768 to 1023 a tech had both — the docked column of office
+ * destinations the note at the top of this file says they have no use for,
+ * and the tab bar under it. Reported from a 768px tablet on 2026-09-27.
+ *
+ * The rule is "exactly one", so the sidebar docks where the bar is hidden:
+ * `lg` when the bar reaches through the tablet range, `md` otherwise.
+ *
+ * `barRendered` is a separate argument because the tier is not the whole
+ * answer. The bar does not render while the role is unknown (MobileTabBar
+ * returns null for it), nor for anyone who switched phone navigation to the
+ * side in Preferences — and in both cases the sidebar IS the navigation, so
+ * it must keep docking at `md` or 768–1023 would have none at all.
+ */
+export function sidebarDocksFrom(tier: TabletTier, barRendered: boolean): "md" | "lg" {
+  return barRendered && tier.barHiddenFrom === "lg:hidden" ? "lg" : "md";
+}

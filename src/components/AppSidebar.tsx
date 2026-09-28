@@ -90,6 +90,16 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // anchors and the nightly push deep-links, to change a string no
       // customer ever reads.
       { title: "Schedule", url: "/routes", icon: RouteIcon },
+      // Inventory and Timesheets were a sixth group called "Ops", two groups
+      // below one called "Operations" — the same word twice, once abbreviated,
+      // in the sidebar and again in the phone's More sheet, which is built from
+      // this list. Nobody could say which of the two a thing belonged in, so
+      // they are one group.
+      { title: "Inventory", url: "/inventory", icon: Package },
+      // The time clock's office half. Here rather than under Field because
+      // the people who open it are the owner and the office manager; the
+      // techs' half is the card at the top of My day.
+      { title: "Timesheets", url: "/timesheets", icon: Timer },
     ],
   },
   {
@@ -111,16 +121,6 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // than removed, because the orgs that do serve HOAs bill violation
       // fines from it.
       { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true },
-    ],
-  },
-  {
-    label: "Ops",
-    items: [
-      { title: "Inventory", url: "/inventory", icon: Package },
-      // The time clock's office half. Here rather than under Field because
-      // the people who open it are the owner and the office manager; the
-      // techs' half is the card at the top of My day.
-      { title: "Timesheets", url: "/timesheets", icon: Timer },
     ],
   },
   {

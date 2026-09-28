@@ -208,7 +208,13 @@ export function BoundarySketch({
               ~{formatArea(liveArea)} · {pointsRef.current.length} points
             </span>
           )}
-          {!hideSave && (
+          {/* With no polygon on the map this button SAVES NOTHING, which
+              clears a boundary — and it said "Clear saved" on a new client's
+              Yard step, where nothing had ever been saved. `initial` is the
+              saved boundary in both hosts that use this button (the wizard
+              feeds its saved state back in; the boundary page, the row), so
+              no polygon and no `initial` means there is nothing to clear. */}
+          {!hideSave && (currentPolygon || initial) && (
             <Button type="button" size="sm" onClick={() => onSave?.(currentPolygon)} disabled={!!saving}>
               <Save className="mr-1 h-3.5 w-3.5 shrink-0" />
               {saving ? "Saving…" : currentPolygon ? "Save boundary" : "Clear saved"}
