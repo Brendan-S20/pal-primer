@@ -368,7 +368,28 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Open a person\'s "Routing & addresses" panel to set whether they run routes, whether they are available right now, their daily capacity, and where their route starts and ends. Only people who run routes appear on the dispatch board or can be assigned visits. Plans are priced per active seat, so deactivating someone frees their seat.',
     ],
     appLink: { to: "/settings/users", label: "Open Users & roles" },
-    related: ["roles", "routes-planning"],
+    related: ["roles", "routes-planning", "time-clock"],
+  },
+  {
+    slug: "time-clock",
+    title: "Time clock and timesheets",
+    section: "Team",
+    audience: "Owners, office managers and technicians",
+    body: [
+      "Everyone who runs a route clocks in and out from the card at the top of [My Day](/my-day). It shows when you clocked in and how long you have been on. Clocking out tells you your hours for the day and how many visits you completed.",
+      "No signal? Tap anyway. The tap is saved on your phone with the time you made it and sent when you are back online, so the timesheet shows the time you actually clocked in, not the time your signal came back.",
+      "The office sees the week in [Timesheets](/timesheets): hours per person per day, the week's total, **overtime past 40 hours** highlighted, and the visits each person completed beside the hours. A shift that runs past midnight is split between the two days on your business's clock.",
+      "Somebody forgot to clock out, or forgot the whole day? Tap the day to fix a shift, or use **Add time**. Corrections are marked as made by the office. **Export CSV** gives you one row per shift with the date, clock-in, clock-out, hours and visits completed, ready for payroll.",
+      "Only owners and office managers can see everyone's hours and correct them. A technician sees only their own.",
+    ],
+    steps: [
+      "Tech: tap **Clock in** on My Day when the day starts, and **Clock out** when it ends. Clock out and back in for an unpaid break.",
+      "Office: open [Timesheets](/timesheets) and pick the week. Days with nobody on the clock show a dash.",
+      "Fix anything that looks wrong: tap the day, then **Edit** or **Clock out** on the shift.",
+      "Export the CSV and send it to whoever runs payroll.",
+    ],
+    appLink: { to: "/timesheets", label: "Open Timesheets" },
+    related: ["my-day", "users-roles", "roles"],
   },
   // ── In the field ───────────────────────────────────────────────────────────
   {
@@ -382,7 +403,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Works offline: actions queue when you lose signal and sync when you're back.",
     ],
     appLink: { to: "/my-day", label: "Open My Day" },
-    related: ["waste-log", "skip-rules", "add-ons"],
+    related: ["time-clock", "waste-log", "skip-rules", "add-ons"],
   },
   {
     slug: "waste-log",

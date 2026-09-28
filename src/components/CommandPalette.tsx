@@ -28,6 +28,7 @@ const NAV: NavEntry[] = [
   { label: "Waste log", to: "/waste-log", group: "Field" },
   { label: "Messages", to: "/messages", group: "Field" },
   { label: "Inventory", to: "/inventory", group: "Ops" },
+  { label: "Timesheets", to: "/timesheets", group: "Ops" },
   { label: "Invoices", to: "/invoices", group: "Billing" },
   { label: "Payments", to: "/payments", group: "Billing" },
   { label: "Billing", to: "/settings/billing", group: "Settings" },

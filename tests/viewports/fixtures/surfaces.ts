@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { CLIENT_ID, LEAD_ID, LEAD_NAME, ORG_ID } from "./dataset";
+import { CLIENT_ID, LEAD_ID, LEAD_NAME, LONG_STAFF_NAME, ORG_ID } from "./dataset";
 
 /**
  * The authenticated surfaces this sweep measures, and — the important half —
@@ -296,5 +296,51 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByText("Tech productivity", { exact: true }).first(),
     proofLabel: 'the "Tech productivity" card',
     expectsData: "Uptown / Edgewater Beach Commercial Grounds",
+  },
+  {
+    // Added 2026-09-28 with the page. A week grid is the shape CLAUDE.md names
+    // ("a seven-column week ... does not become usable by getting smaller"),
+    // so below lg it is one card per person instead, and this surface
+    // measures both. `expectsData` is the 46-character name, which only
+    // arrives with the week's rows; the proof is a stat that only draws once
+    // the sheet has been built from them.
+    id: "/timesheets",
+    path: "/timesheets",
+    proof: (p) => p.getByText("Hours this week", { exact: true }).first(),
+    proofLabel: 'the "Hours this week" stat',
+    expectsData: LONG_STAFF_NAME,
+  },
+  {
+    // The dialog a forgotten clock-out is fixed from. Opened on the longest
+    // name's Saturday, the shift that runs past midnight, so the dialog draws
+    // the split-shift wording beside a 46-character title.
+    id: "/timesheets · a day opened",
+    path: "/timesheets",
+    proof: (p) => p.getByText("Hours this week", { exact: true }).first(),
+    proofLabel: 'the "Hours this week" stat',
+    expectsData: LONG_STAFF_NAME,
+    open: async (p) => {
+      await p
+        .getByRole("button", { name: new RegExp(`^${LONG_STAFF_NAME}, Sat`) })
+        .filter({ visible: true })
+        .first()
+        .click();
+    },
+    opened: (p) => p.getByText("part of a shift across midnight", { exact: false }).first(),
+    openedLabel: "the day dialog's split-shift row",
+  },
+  {
+    // "Add time" for a day nobody clocked: a person picker of long names and
+    // four date and time fields in a dialog that has to fit a 360px phone.
+    id: "/timesheets · add time",
+    path: "/timesheets",
+    proof: (p) => p.getByText("Hours this week", { exact: true }).first(),
+    proofLabel: 'the "Hours this week" stat',
+    expectsData: LONG_STAFF_NAME,
+    open: async (p) => {
+      await p.getByRole("button", { name: "Add time", exact: true }).click();
+    },
+    opened: (p) => p.getByRole("dialog", { name: "Add time" }),
+    openedLabel: "the Add time dialog",
   },
 ];

@@ -100,6 +100,8 @@ import { useTabletTier } from "@/hooks/useTabletTier";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
+import { TimeClockCard } from "@/components/TimeClockCard";
+import { clockIn, clockOut } from "@/lib/time-clock.functions";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -300,6 +302,9 @@ function MyDay() {
   const skipFn = useServerFn(skipVisit);
   const photoFn = useServerFn(recordVisitPhoto);
   const stationFn = useServerFn(logStationService);
+  // The time clock's taps ride the same queue, so the same replay sends them.
+  const clockInFn = useServerFn(clockIn);
+  const clockOutFn = useServerFn(clockOut);
   const callers = useMemo(
     () => ({
       startVisit: startFn,
@@ -307,8 +312,10 @@ function MyDay() {
       skipVisit: skipFn,
       recordVisitPhoto: photoFn,
       logStationService: stationFn,
+      clockIn: clockInFn,
+      clockOut: clockOutFn,
     }),
-    [startFn, completeFn, skipFn, photoFn, stationFn],
+    [startFn, completeFn, skipFn, photoFn, stationFn, clockInFn, clockOutFn],
   );
 
   // Client names for the two messages that ask a tech to go back and redo
@@ -813,6 +820,13 @@ function MyDay() {
       </div>
 
       <div className="space-y-3 px-4 pt-4">
+        {/* The time clock is about NOW, whichever day the list is showing, so
+            it is drawn on every day -- but never while previewing somebody
+            else's day, because the taps would be the viewer's own. It draws
+            nothing for an account with no staff row. */}
+        {!previewing && (
+          <TimeClockCard visitsCompletedToday={day === orgTodayIso ? completedCount : null} />
+        )}
         {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}

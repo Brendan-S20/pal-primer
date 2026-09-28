@@ -59,7 +59,9 @@ export function queuedLifecycleByVisit(
   const out = new Map<string, QueuedLifecycle>();
   const ordered = [...pending].sort((a, b) => a.ts - b.ts);
   for (const a of ordered) {
-    if (!isLifecycleKind(a.kind)) continue;
+    // Every lifecycle kind carries a visit; the guard on visitId is for the
+    // compiler, whose union also holds the time clock's visit-less taps.
+    if (!isLifecycleKind(a.kind) || !a.visitId) continue;
     const prev = out.get(a.visitId);
     if (prev && isTerminal(prev.kind)) continue;
     if (a.kind === "start") {

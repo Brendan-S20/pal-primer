@@ -36,6 +36,10 @@ export interface SyncCallers {
       servicedAt?: string;
     };
   }) => Promise<unknown>;
+  /** The time clock. `at` is the tap time; the SQL decides whether to believe
+   *  it, as complete_visit does with `completedAt`. */
+  clockIn: (args: { data: { at?: string } }) => Promise<unknown>;
+  clockOut: (args: { data: { at?: string } }) => Promise<unknown>;
 }
 
 async function runOne(action: PendingAction, callers: SyncCallers): Promise<void> {
@@ -97,6 +101,14 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
           servicedAt: new Date(action.ts).toISOString(),
         },
       });
+      return;
+    case "clock_in":
+      // Same rule as the four above. A clock-in queued at 7:02 in the yard and
+      // synced at 7:40 on the highway started the shift at 7:02.
+      await callers.clockIn({ data: { at: new Date(action.ts).toISOString() } });
+      return;
+    case "clock_out":
+      await callers.clockOut({ data: { at: new Date(action.ts).toISOString() } });
       return;
     case "photo": {
       const photo = await getPhoto(action.photoId);
@@ -228,8 +240,10 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
   // in there also defeats the extraction in tests/offline-dead-letter.test.ts,
   // which reads the branch as source and checks it continues rather than
   // breaking -- a rule worth keeping legible.
-  const deadLetteredVisits = new Set<string>();
-  const droppedVisits = new Set<string>();
+  // `undefined` is a clock tap, which belongs to no visit. Filtered out when
+  // the ids are handed back, so the flat branches below need no guard.
+  const deadLetteredVisits = new Set<string | undefined>();
+  const droppedVisits = new Set<string | undefined>();
   try {
     // Only this user's actions. Replaying another tech's work under the
     // signed-in tech's identity fails every authorization check and wedges the
@@ -295,7 +309,8 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
   } finally {
     running = false;
   }
-  result.deadLetteredVisitIds = [...deadLetteredVisits];
-  result.droppedVisitIds = [...droppedVisits];
+  const isVisitId = (id: string | undefined): id is string => typeof id === "string";
+  result.deadLetteredVisitIds = [...deadLetteredVisits].filter(isVisitId);
+  result.droppedVisitIds = [...droppedVisits].filter(isVisitId);
   return result;
 }

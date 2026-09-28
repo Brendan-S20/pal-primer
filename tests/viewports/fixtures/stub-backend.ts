@@ -920,6 +920,13 @@ const BASE_STUBS: Record<string, Stub> = {
     return { staff: { ...fx.STAFF[0], organization_id: fx.ORG_ID }, visits, previewing: false };
   },
   listVisitsAwaitingCloseOut: { visits: [] },
+  // The time clock card at the top of My Day, drawn ON the clock with an
+  // earlier shift today, which is the longer of its two second lines.
+  getMyClock: fx.MY_CLOCK,
+  // /timesheets. The dataset's week is the awkward one described there:
+  // overtime, a shift across midnight, somebody on the clock now, and a tech
+  // with visits and no hours.
+  listTimesheet: fx.TIMESHEET,
 
   getPlanCatalogMirror: { rows: [], mismatches: [] },
 

@@ -53,6 +53,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/notifications": ["owner", "office_manager", "dispatcher", "tech"],
   "/concerns": ["owner", "office_manager", "dispatcher"],
   "/inventory": ["owner", "office_manager"],
+  // Payroll input. The same audience as the server gate, which is
+  // manage_users -- the permission that also lets a person see and change the
+  // team, and the one the time_entries policy asks.
+  "/timesheets": ["owner", "office_manager"],
   "/invoices": ["owner", "office_manager"],
   "/billing": ["owner"],
   "/payments": ["owner"],

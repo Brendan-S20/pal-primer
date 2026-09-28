@@ -23,6 +23,7 @@
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { isLifecycleKind, lifecycleCollision } from "./queued-visit-state";
+import { clockCollision, isClockKind } from "./queued-clock-state";
 
 /** Fields every queued action carries, whatever its kind. */
 type ActionBase = {
@@ -80,7 +81,14 @@ export type PendingAction =
       uploadKey?: string;
       /** Cached organization_id so upload works without a network `visits` read */
       organizationId: string;
-    } & ActionBase);
+    } & ActionBase)
+  // The time clock. Not about a visit, so no visitId -- declared `undefined`
+  // rather than left off, so every reader that filters the queue by visit
+  // (`a.visitId === visitId`) keeps compiling and simply never matches one.
+  // Replay passes `ts` as the tap time, exactly as start/complete do: a tech
+  // who clocks out in a dead zone at 4:10 and gets signal at 4:55 worked until
+  // 4:10. See queued-clock-state.ts for what the screen shows meanwhile.
+  | ({ kind: "clock_in" | "clock_out"; visitId?: undefined } & ActionBase);
 
 interface OfflineDB extends DBSchema {
   actions: {
@@ -170,6 +178,18 @@ export async function enqueueAction(action: NewAction): Promise<string> {
     if (hit) {
       await tx.done;
       throw new Error(hit.conflict);
+    }
+    await tx.store.put(record);
+    await tx.done;
+  } else if (isClockKind(action.kind)) {
+    // Same fence, same reason: a gloved double tap on Clock in is faster than
+    // the IndexedDB read that flips the button to Clock out. Two queued
+    // clock-ins in a row are one tap, and the first one's time is the true one.
+    const tx = db.transaction("actions", "readwrite");
+    const dup = clockCollision(await tx.store.getAll(), action);
+    if (dup) {
+      await tx.done;
+      return dup.id;
     }
     await tx.store.put(record);
     await tx.done;
