@@ -232,7 +232,27 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Clients sign in with a one-time code sent by email (or text, when texting is configured). If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
       "The portal carries your branding: set your logo and brand color in [Preferences](/settings/preferences).",
     ],
-    related: ["lead-form", "getting-paid", "credit-balance"],
+    related: ["lead-form", "getting-paid", "credit-balance", "reclean-requests"],
+  },
+  {
+    slug: "reclean-requests",
+    title: "Re-clean requests",
+    section: "Customer-facing",
+    audience: "Owners and office managers",
+    body: [
+      "If you promise customers a free re-clean when a spot gets missed, they can ask for it themselves. For a set number of hours after a visit is completed, that visit shows a **Request a re-clean** button in the customer's [portal](article:client-portal), with an optional note about what to look at.",
+      "The request lands in [Concerns](/concerns) labelled **Re-clean request**, and you get the same email and notification a concern sends. Asking twice for the same visit gives you one request, not two.",
+      "Set the window in [Preferences](/settings/preferences) under **Re-clean guarantee**. It starts at 48 hours and can be anything up to a week (168). Set it to 0 to turn the guarantee off: the button disappears from every customer's portal.",
+      "The window is measured from when the visit was finished, not the day it was scheduled. A visit completed at 6 PM Monday with a 48-hour guarantee can be asked about until 6 PM Wednesday.",
+    ],
+    steps: [
+      "Open [Concerns](/concerns) and find the **Re-clean request**. It says which visit it's about.",
+      "Press **Schedule re-clean** and pick a day. It starts on tomorrow, in your business's time zone.",
+      "HoundStack books a one-off visit at the same property, for $0, with the tech who did the original visit, and notes on the client's timeline why it exists.",
+      "The request moves to In progress and shows **Re-clean booked for** that day. Mark it resolved once the re-clean is done.",
+    ],
+    appLink: { to: "/concerns", label: "Open Concerns" },
+    related: ["client-portal", "skip-rules"],
   },
   {
     slug: "refer-a-business",

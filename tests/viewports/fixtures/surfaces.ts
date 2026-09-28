@@ -343,4 +343,16 @@ export const SURFACES: Surface[] = [
     opened: (p) => p.getByRole("dialog", { name: "Add time" }),
     openedLabel: "the Add time dialog",
   },
+  {
+    // Added 2026-09-28 with customer re-clean requests. Until then the unlisted
+    // sweep measured this page's empty state only. A re-clean card puts a
+    // sentence and a "Schedule re-clean" button on one row, and that button
+    // only draws when a request with its original visit reached the page — so
+    // it is the proof, and a 33-character client name is the data.
+    id: "/concerns",
+    path: "/concerns",
+    proof: (p) => p.getByRole("button", { name: "Schedule re-clean" }).first(),
+    proofLabel: 'the "Schedule re-clean" button, which only draws on a re-clean request',
+    expectsData: "Kimberly-Anne Rutherford-Sinclair",
+  },
 ];

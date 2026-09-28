@@ -11,12 +11,36 @@ import { requirePermission } from "@/lib/authz.server";
 export const CONCERN_STATUSES = ["open", "in_progress", "resolved"] as const;
 export type ConcernStatus = (typeof CONCERN_STATUSES)[number];
 
+// ── "In progress" is spelled `acknowledged` in the table ─────────────────────
+//
+// qc_tickets_status_check has allowed exactly open / acknowledged / resolved
+// since the table was created (20260702162216). This file wrote
+// 'in_progress', so "Mark in progress" failed the CHECK, the reply path's
+// silent `open → in_progress` bump never landed, the "In progress" filter
+// could never match a row, and a ticket the demo seed wrote as 'acknowledged'
+// rendered with a blank status badge. Found while giving re-clean requests an
+// "acknowledged once booked" state, which would have inherited all four.
+//
+// The inbox keeps its word for it; the translation happens here, at the only
+// place that reads and writes the column for the inbox.
+export function concernStatusToDb(s: ConcernStatus): string {
+  return s === "in_progress" ? "acknowledged" : s;
+}
+export function concernStatusFromDb(s: string): ConcernStatus {
+  return s === "acknowledged" || s === "in_progress"
+    ? "in_progress"
+    : s === "resolved"
+      ? "resolved"
+      : "open";
+}
+
 export const CONCERN_CATEGORY_LABELS: Record<string, string> = {
   missed_spot: "Missed spot",
   gate_left_open: "Gate left open",
   damage: "Property damage",
   wrong_yard: "Wrong yard",
   other: "Other",
+  reclean_request: "Re-clean request",
 };
 
 export const listConcerns = createServerFn({ method: "GET" })
@@ -31,23 +55,84 @@ export const listConcerns = createServerFn({ method: "GET" })
     let q = context.supabase
       .from("qc_tickets")
       .select(
-        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, clients(display_name, primary_phone, primary_email)",
+        // Two foreign keys to visits now (the visit complained about, and the
+        // free re-clean booked for it), so each embed names its constraint;
+        // an unnamed `visits(...)` would be ambiguous and PostgREST refuses it.
+        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status)",
       )
       .eq("organization_id", orgId)
       // Unresolved first, then newest.
       .order("resolved_at", { ascending: true, nullsFirst: true })
       .order("created_at", { ascending: false })
       .limit(500);
-    if (data.status !== "all") q = q.eq("status", data.status);
+    if (data.status !== "all") q = q.eq("status", concernStatusToDb(data.status));
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
 
+    const concerns = (rows ?? []).map((r) => ({
+      ...r,
+      status: concernStatusFromDb((r as { status: string }).status),
+    }));
     const counts = { open: 0, in_progress: 0, resolved: 0 };
-    for (const r of rows ?? []) {
-      const s = (r as any).status as ConcernStatus;
-      if (s in counts) counts[s] += 1;
-    }
-    return { concerns: rows ?? [], counts };
+    for (const r of concerns) counts[r.status] += 1;
+    return { concerns, counts };
+  });
+
+/**
+ * Tie a booked re-clean visit to the request it answers, and mark the request
+ * acknowledged ("In progress" in the inbox): the office has acted, the
+ * customer's request is not finished until the re-clean is done.
+ *
+ * The visit itself is booked by createOneOffVisit, the same server function
+ * behind "Book a one-off visit", at $0. This only links. It checks what a link
+ * could get wrong: the ticket is a re-clean request in the caller's org, and
+ * the visit is in the same org and for the same client. The update goes
+ * through the caller's RLS-scoped client, like every other write here.
+ */
+export const linkRecleanVisit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ ticketId: z.string().uuid(), visitId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "view_client_directory");
+    const { data: ticket, error: tErr } = await context.supabase
+      .from("qc_tickets")
+      .select("id, category, client_id, status")
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (tErr) throw new Error(tErr.message);
+    if (!ticket) throw new Error("That request isn't in your organization.");
+    if (ticket.category !== "reclean_request")
+      throw new Error("Only a re-clean request can have a re-clean booked against it.");
+
+    const { data: visit, error: vErr } = await context.supabase
+      .from("visits")
+      .select("id, client_id, organization_id, scheduled_on")
+      .eq("id", data.visitId)
+      .maybeSingle();
+    if (vErr) throw new Error(vErr.message);
+    if (!visit || visit.organization_id !== orgId)
+      throw new Error("That visit isn't in your organization.");
+    if (visit.client_id !== ticket.client_id)
+      throw new Error("That visit is for a different client than the request.");
+
+    const patch: Record<string, unknown> = { reclean_visit_id: data.visitId };
+    // A resolved ticket stays resolved; anything else is now being handled.
+    if (ticket.status !== "resolved") patch.status = concernStatusToDb("in_progress");
+    const { data: updated, error } = await context.supabase
+      .from("qc_tickets")
+      .update(patch as any)
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    // An UPDATE that matched nothing is a success to Postgres; see
+    // org-write.server.ts for why that is not allowed to read as one here.
+    if (!updated || updated.length === 0)
+      throw new Error("The re-clean was booked, but it couldn't be linked to the request.");
+    return { ok: true, scheduledOn: visit.scheduled_on as string };
   });
 
 /** Reply to the client who submitted a concern (#14). Sends the reply by email
@@ -95,7 +180,7 @@ export const replyToConcern = createServerFn({ method: "POST" })
       last_reply_at: new Date().toISOString(),
     };
     // Answering an untouched concern moves it into progress.
-    if ((ticket as any).status === "open") patch.status = "in_progress";
+    if ((ticket as any).status === "open") patch.status = concernStatusToDb("in_progress");
     await context.supabase.from("qc_tickets").update(patch as any).eq("id", data.ticketId).eq("organization_id", orgId);
     // Replying to a concern is an explicit manual send — lift the imported
     // comms hold now that the org has initiated contact.
@@ -121,7 +206,7 @@ export const updateConcernStatus = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "view_client_directory");
-    const patch: Record<string, unknown> = { status: data.status };
+    const patch: Record<string, unknown> = { status: concernStatusToDb(data.status) };
     if (data.status === "resolved") {
       patch.resolved_at = new Date().toISOString();
       patch.resolved_by = context.userId;

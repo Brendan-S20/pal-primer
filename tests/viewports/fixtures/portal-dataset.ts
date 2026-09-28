@@ -89,6 +89,8 @@ export const PORTAL_CLIENT = {
   primary_phone: "(312) 555-1000",
   // Added by the handler, not the RPC — see portalGetClient.
   skip_billable_pct: 50,
+  // Same: read from organizations by the handler. 48 is the column default.
+  reclean_window_hours: 48,
 };
 
 /** A street long enough to wrap on a 360px phone, and a unit number, which is
@@ -110,6 +112,15 @@ export const PORTAL_RECENT_VISITS = [-3, -10, -17, -24].map((offset, i) => ({
   status: i === 2 ? "skipped" : "completed",
   // Two with photos, two without: the grid and the empty case both get drawn.
   photo_paths: i < 2 ? [`visit-photos/${i}-a.jpg`, `visit-photos/${i}-b.jpg`] : [],
+  tech_name: i === 2 ? null : "Alejandro",
+  // The RPC has always returned this and the fixture never did, so "Completed
+  // at 9:30 AM" was never drawn. The FIRST visit's is relative to the real
+  // clock rather than to the frozen day above, because the re-clean window is
+  // measured against the browser's now: six hours ago is inside a 48-hour
+  // guarantee, so the "Request a re-clean" row is on the page being measured.
+  // The rest are weeks old and outside it, which is the other layout.
+  completed_at:
+    i === 2 ? null : i === 0 ? new Date(Date.now() - 6 * 3600e3).toISOString() : stamp(offset),
 }));
 
 /** The RPC's rows are only half of what the handler returns: it merges

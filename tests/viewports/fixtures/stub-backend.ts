@@ -95,7 +95,12 @@ const BASE_STUBS: Record<string, Stub> = {
     emailConfirmed: true,
     pendingEmail: null,
   },
-  getMyOrgFeatures: { commercialAccounts: true, hasCommercialData: true },
+  getMyOrgFeatures: {
+    commercialAccounts: true,
+    hasCommercialData: true,
+    requireCompletionPhoto: true,
+    recleanWindowHours: 48,
+  },
   // /leads, and /clients/new?fromLead=<id>. The wizard is answered with the
   // first (convertible) lead AND an existing client on the same email, so the
   // "already has this lead's email" panel is measured too: it is the densest
@@ -576,6 +581,9 @@ const BASE_STUBS: Record<string, Stub> = {
   //    `data ?? []`. listLeads and getLeadFormConfig are answered above, with
   //    the conversion states and the awkward working leads together.
   getReports: fx.REPORTS,
+  // /concerns. Unstubbed until 2026-09-28, when re-clean requests landed there
+  // with a booking button; without this it drew only its empty state.
+  listConcerns: fx.CONCERNS,
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
   // read these and threw on the null the fence answered — so the unlisted

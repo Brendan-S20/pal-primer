@@ -45,6 +45,7 @@ import {
 
 import { useNavigate } from "@tanstack/react-router";
 import { customerSkipReason } from "@/lib/skip-rules.functions";
+import { isInsideRecleanWindow, recleanDeadlineLabel } from "@/lib/reclean";
 import {
   portalContext,
   portalRequestOtp,
@@ -71,6 +72,7 @@ import {
   portalListRecentVisits,
   portalListDogs,
   portalReportConcern,
+  portalRequestReclean,
   portalSignPhotoUrls,
   portalGetReferral,
   portalListStations,
@@ -183,6 +185,7 @@ export function friendlyCategory(c: string | null | undefined) {
     damage: "Damage",
     wrong_yard: "Wrong yard",
     other: "Other",
+    reclean_request: "Re-clean request",
   };
   return map[c ?? ""] ?? c ?? "";
 }
@@ -191,6 +194,10 @@ export function friendlyStatus(s: string) {
   const map: Record<string, string> = {
     open: "Received",
     received: "Received",
+    // What qc_tickets actually stores for "the office has picked it up" --
+    // its CHECK allows open / acknowledged / resolved. Without this line the
+    // customer saw the raw word, or "Received" on a re-clean already booked.
+    acknowledged: "In review",
     in_review: "In review",
     pending: "In review",
     resolved: "Resolved",
@@ -226,6 +233,7 @@ export function usePortal(token: string, slug?: string) {
   const dogsFn = useServerFn(portalListDogs);
   const referralFn = useServerFn(portalGetReferral);
   const concernFn = useServerFn(portalReportConcern);
+  const recleanFn = useServerFn(portalRequestReclean);
   const signPhotosFn = useServerFn(portalSignPhotoUrls);
   const stationsFn = useServerFn(portalListStations);
   const requestsFn = useServerFn(portalListMyRequests);
@@ -340,6 +348,13 @@ export function usePortal(token: string, slug?: string) {
       toast.success("Thanks, we'll follow up shortly.");
       invalidatePortal();
     },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  // No success toast: the dialog that asked says thank you itself, in the
+  // business's name, and a toast on top of it would say it twice.
+  const recleanMut = useMutation({
+    mutationFn: (v: { visitId: string; message: string }) => recleanFn({ data: { token, ...v } }),
+    onSuccess: () => invalidatePortal(),
     onError: (e) => toast.error((e as Error).message),
   });
   const skipMut = useMutation({
@@ -463,6 +478,7 @@ export function usePortal(token: string, slug?: string) {
     stationsQ,
     requestsQ,
     concernMut,
+    recleanMut,
     skipMut,
     rescheduleMut,
     freqMut,
@@ -1622,6 +1638,7 @@ export function ServiceHistorySection({
   token,
   onReport,
   reporting,
+  reclean,
 }: {
   rows: Array<any>;
   signPhotos: (args: {
@@ -1630,6 +1647,14 @@ export function ServiceHistorySection({
   token: string;
   onReport: (visitId: string, category: string, message: string) => void;
   reporting: boolean;
+  /** The re-clean guarantee. Omitted or a window of 0: no offer is drawn. */
+  reclean?: {
+    windowHours: number;
+    businessName: string;
+    /** Visits that already have an unresolved re-clean request. */
+    requestedVisitIds: Set<string>;
+    onRequest: (visitId: string, message: string) => Promise<unknown>;
+  };
 }) {
   const tz = usePortalTimezone();
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -1727,6 +1752,25 @@ export function ServiceHistorySection({
                   />
                 )}
               </div>
+
+              {reclean &&
+                (reclean.requestedVisitIds.has(r.visit_id) ? (
+                  <p className="mt-2 flex items-start gap-1 text-xs text-emerald-700">
+                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span className="min-w-0">
+                      Re-clean requested. {reclean.businessName} will be back within the guarantee.
+                    </span>
+                  </p>
+                ) : (
+                  isInsideRecleanWindow(r, reclean.windowHours) && (
+                    <RecleanOffer
+                      deadline={recleanDeadlineLabel(r.completed_at, reclean.windowHours, tz)}
+                      visitDay={fmtDay(r.scheduled_on)}
+                      businessName={reclean.businessName}
+                      onSubmit={(msg) => reclean.onRequest(r.visit_id, msg)}
+                    />
+                  )
+                ))}
 
               {r.status === "completed" && (r.photo_paths?.length ?? 0) === 0 && (
                 <p className="mt-2 text-xs text-muted-foreground italic">
@@ -1925,6 +1969,120 @@ function ConcernButton({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * "Request a re-clean", on a completed visit still inside the business's
+ * guarantee.
+ *
+ * Its own row under the visit rather than a second button beside "Report":
+ * two buttons and a date on one line do not fit a 360px phone, and this one
+ * carries a sentence the customer needs, which is how long they have. The
+ * deadline is on the ORG's clock with the weekday, like every other time in
+ * the portal.
+ *
+ * The thank-you is drawn in the dialog, in the business's name, after the
+ * server has actually accepted the request — not on click.
+ */
+function RecleanOffer({
+  deadline,
+  visitDay,
+  businessName,
+  onSubmit,
+}: {
+  deadline: string;
+  visitDay: string;
+  businessName: string;
+  onSubmit: (message: string) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "done">("idle");
+  const close = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setState("idle");
+      setMsg("");
+    }
+  };
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed bg-muted/30 p-2">
+      <p className="min-w-0 flex-1 basis-48 text-xs text-muted-foreground">
+        Something missed? This visit is covered by our re-clean guarantee
+        {deadline ? ` until ${deadline}` : ""}.
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        className="min-h-11 max-sm:w-full"
+        onClick={() => setOpen(true)}
+      >
+        Request a re-clean
+      </Button>
+      <Dialog open={open} onOpenChange={close}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {state === "done" ? "Re-clean requested" : "Request a re-clean"}
+            </DialogTitle>
+          </DialogHeader>
+          {state === "done" ? (
+            <p className="text-sm">
+              Thanks. {businessName} has been told and will be back within the guarantee.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                For your visit on {visitDay}. There&apos;s no charge for a re-clean.
+              </p>
+              <div>
+                <Label htmlFor="reclean-message" className="text-xs">
+                  What should we look at? (optional)
+                </Label>
+                <Textarea
+                  id="reclean-message"
+                  value={msg}
+                  onChange={(e) => setMsg(e.target.value)}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="The corner behind the shed, the side yard…"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            {state === "done" ? (
+              <Button className="min-h-11" onClick={() => close(false)}>
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" className="min-h-11" onClick={() => close(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  className="min-h-11"
+                  disabled={state === "sending"}
+                  onClick={async () => {
+                    setState("sending");
+                    try {
+                      await onSubmit(msg);
+                      setState("done");
+                    } catch {
+                      // The mutation's onError has already said why.
+                      setState("idle");
+                    }
+                  }}
+                >
+                  {state === "sending" ? "Sending…" : "Request a re-clean"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

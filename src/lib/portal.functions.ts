@@ -4,6 +4,7 @@ import { liveServiceOrFilter } from "@/lib/subscription-form";
 import { orgToday } from "@/lib/org-day";
 import { appUrl } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { formatDay } from "@/lib/format";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -164,13 +165,30 @@ export const portalGetClient = createServerFn({ method: "GET" })
     // could not be raised. This is read here rather than added to
     // portal_get_client because it needs no migration: the handler already
     // holds the org id from the row and runs as service_role.
-    const { data: rule } = await sb
-      .from("skip_billing_rules")
-      .select("billable_pct")
-      .eq("organization_id", row.organization_id)
-      .eq("reason_code", "customer_requested")
-      .maybeSingle();
-    return { ...row, skip_billable_pct: rule?.billable_pct ?? 0 };
+    //
+    // The re-clean guarantee's window rides along the same way and for the
+    // same reason: the Visits tab needs it to decide which completed visits
+    // get a "Request a re-clean" button, and portal_request_reclean refuses
+    // against this same column, so the button and the refusal cannot disagree
+    // about which setting they read. 0 means the owner switched it off.
+    const [{ data: rule }, { data: org }] = await Promise.all([
+      sb
+        .from("skip_billing_rules")
+        .select("billable_pct")
+        .eq("organization_id", row.organization_id)
+        .eq("reason_code", "customer_requested")
+        .maybeSingle(),
+      sb
+        .from("organizations")
+        .select("reclean_window_hours")
+        .eq("id", row.organization_id)
+        .maybeSingle(),
+    ]);
+    return {
+      ...row,
+      skip_billable_pct: rule?.billable_pct ?? 0,
+      reclean_window_hours: Number(org?.reclean_window_hours ?? 0),
+    };
   });
 
 export const portalListUpcomingVisits = createServerFn({ method: "GET" })
@@ -928,6 +946,10 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
       // used to label a photo by its INDEX -- `i % 2 === 0 ? "Before" :
       // "After"` -- because position was all it had.
       photo_kinds: string[];
+      tech_name: string | null;
+      // When the visit was finished. The re-clean window is measured from
+      // this, not from scheduled_on.
+      completed_at: string | null;
       // Free text a technician typed at the gate, and the structured reason
       // beside it. The page shows the code; see portal-ui.tsx for why the text
       // is shown only when the customer wrote it.
@@ -1008,12 +1030,101 @@ export const portalReportConcern = createServerFn({ method: "POST" })
     return { ticketId: id as string };
   });
 
+/**
+ * The customer asks for the free re-clean the business guarantees.
+ *
+ * Same shape as portalReportConcern on purpose: the session check first, then
+ * the RPC as service_role, which resolves the client from the token itself and
+ * refuses anything outside the org's window. The office hears about it the
+ * same two ways a concern reaches them — email and the in-app bell — worded as
+ * a re-clean request, because "New client concern" on something the business
+ * has promised to do for free undersells how quickly it needs doing.
+ *
+ * Idempotent in the database: a second tap returns the first ticket, and the
+ * office is only notified when the ticket is new.
+ */
+export const portalRequestReclean = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        token: z.string().uuid(),
+        visitId: z.string().uuid(),
+        message: z.string().max(1000).optional().default(""),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    await requirePortalSession(data.token);
+    const sb = await admin();
+
+    // Was there already an open request? Asked before the RPC so the office
+    // is not told twice about one request.
+    const { data: existing } = await sb
+      .from("qc_tickets")
+      .select("id")
+      .eq("visit_id", data.visitId)
+      .eq("category", "reclean_request")
+      .neq("status", "resolved")
+      .maybeSingle();
+
+    const { data: id, error } = await sb.rpc("portal_request_reclean", {
+      _token: data.token,
+      _visit_id: data.visitId,
+      _message: data.message,
+    });
+    if (error) {
+      const { recleanRefusalMessage } = await import("@/lib/reclean");
+      throw new Error(recleanRefusalMessage(error.message));
+    }
+    const ticketId = id as string;
+    const alreadyAsked = !!existing && existing.id === ticketId;
+    if (alreadyAsked) return { ticketId, alreadyAsked };
+
+    const { data: visit } = await sb
+      .from("visits")
+      .select("scheduled_on")
+      .eq("id", data.visitId)
+      .maybeSingle();
+    // "Mon, Sep 28": scheduled_on is a DATE, so no zone can move it.
+    const visitDay = visit?.scheduled_on ? formatDay(visit.scheduled_on) : null;
+
+    try {
+      await notifyOfficeOfConcern(sb, data.token, "reclean_request", data.message, visitDay);
+    } catch (e) {
+      console.error("reclean office notification failed", (e as Error).message);
+    }
+    try {
+      const { data: cl } = await sb
+        .from("clients")
+        .select("display_name, organization_id")
+        .eq("portal_token", data.token)
+        .maybeSingle();
+      if (cl?.organization_id) {
+        const { notifyRoles } = await import("@/lib/notify-center.server");
+        await notifyRoles(["owner", "office_manager"], {
+          orgId: cl.organization_id,
+          type: "concern",
+          title: `Re-clean requested: ${cl.display_name ?? "a client"}`,
+          body: `${visitDay ? `For the visit on ${visitDay}` : "For a recent visit"}${
+            data.message ? `: ${data.message.slice(0, 120)}` : ""
+          }`,
+          link: "/concerns",
+        });
+      }
+    } catch (e) {
+      console.error("reclean in-app notification failed", (e as Error).message);
+    }
+    return { ticketId, alreadyAsked };
+  });
+
 const CONCERN_LABELS: Record<string, string> = {
   missed_spot: "Missed spot",
   gate_left_open: "Gate left open",
   damage: "Property damage",
   wrong_yard: "Wrong yard",
   other: "Other",
+  reclean_request: "Re-clean request",
 };
 
 async function notifyOfficeOfConcern(
@@ -1021,6 +1132,9 @@ async function notifyOfficeOfConcern(
   token: string,
   category: string,
   message: string,
+  /** The visit's day, for a re-clean request: the office needs to know WHICH
+   *  visit the guarantee is being called on before they open anything. */
+  visitDay: string | null = null,
 ): Promise<void> {
   const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) return; // email not configured — banner + inbox still work
@@ -1037,13 +1151,26 @@ async function notifyOfficeOfConcern(
   if (!to) return; // no office inbox on file
 
   const label = CONCERN_LABELS[category] ?? category;
+  const isReclean = category === "reclean_request";
   const crypto = await import("node:crypto");
   const messageId = `concern-${crypto.randomBytes(8).toString("hex")}`;
+  const subject = isReclean
+    ? `Re-clean requested by ${client.display_name}`
+    : `New client concern: ${label}`;
   const html =
-    `<p><strong>New client concern:</strong> ${label}</p>` +
+    (isReclean
+      ? `<p><strong>Re-clean requested</strong> under your re-clean guarantee${
+          visitDay ? ` for the visit on ${visitDay}` : ""
+        }.</p>`
+      : `<p><strong>New client concern:</strong> ${label}</p>`) +
     `<p>From: ${client.display_name}</p>` +
     (message ? `<p>${message.replace(/</g, "&lt;")}</p>` : "") +
-    `<p><a href="${appUrl("/concerns")}">Open the Concerns inbox</a></p>`;
+    `<p><a href="${appUrl("/concerns")}">Open the Concerns inbox</a>${
+      isReclean ? " to schedule it" : ""
+    }</p>`;
+  const text = isReclean
+    ? `Re-clean requested by ${client.display_name}${visitDay ? ` for the visit on ${visitDay}` : ""}. ${message}`.trim()
+    : `New client concern (${label}) from ${client.display_name}. ${message}`.trim();
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -1054,9 +1181,9 @@ async function notifyOfficeOfConcern(
     body: JSON.stringify({
       from: `${org?.name ?? "HoundStack"} <noreply@notify.houndstack.com>`,
       to: [to],
-      subject: `New client concern: ${label}`,
+      subject,
       html,
-      text: `New client concern (${label}) from ${client.display_name}. ${message}`.trim(),
+      text,
     }),
   });
   const status = res.ok ? "sent" : "failed";
