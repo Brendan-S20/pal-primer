@@ -60,11 +60,11 @@ describe("what it says", () => {
         eta: "by 10:30 AM",
       }),
     ).toBe(
-      "Hi Jane, Sam from Acme Scoop is on the way for today's visit, arriving by 10:30 AM. Reply STOP to opt out.",
+      "Hi Jane, Sam from Acme Scoop is on the way for today's visit, arriving by 10:30 AM. Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.",
     );
     expect(
       onMyWayText({ customerName: "Jane", orgName: "Acme Scoop", techName: null, eta: null }),
-    ).toBe("Hi Jane, your Acme Scoop tech is on the way for today's visit. Reply STOP to opt out.");
+    ).toBe("Hi Jane, your Acme Scoop tech is on the way for today's visit. Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.");
   });
 
   it("has an email for when it cannot be texted", async () => {

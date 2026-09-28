@@ -5513,6 +5513,8 @@ export type Database = {
           window_violated: boolean
           zone_id: string | null
           on_my_way_sent_at: string | null
+          gate_reply: string | null
+          gate_reply_at: string | null
         }
         Insert: {
           assigned_staff_id?: string | null
@@ -5552,6 +5554,8 @@ export type Database = {
           window_violated?: boolean
           zone_id?: string | null
           on_my_way_sent_at?: string | null
+          gate_reply?: string | null
+          gate_reply_at?: string | null
         }
         Update: {
           assigned_staff_id?: string | null
@@ -5591,6 +5595,8 @@ export type Database = {
           window_violated?: boolean
           zone_id?: string | null
           on_my_way_sent_at?: string | null
+          gate_reply?: string | null
+          gate_reply_at?: string | null
         }
         Relationships: [
           {
