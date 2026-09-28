@@ -178,7 +178,7 @@ export const getMyOrg = createServerFn({ method: "GET" })
         // `timezone` is here for useOrgToday: components that judge whether a
         // date has passed must ask the org's calendar, not the server's
         // default. See src/hooks/useOrgToday.ts.
-        "id, name, portal_slug, timezone, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id",
+        "id, name, portal_slug, timezone, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id, slug, is_comped",
       )
       .eq("id", role.organization_id)
       .single();

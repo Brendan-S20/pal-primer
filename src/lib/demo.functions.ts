@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { isDemoOrganization } from "@/lib/demo-org";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -41,7 +42,7 @@ export const reseedDemoData = createServerFn({ method: "POST" })
       .select("slug, is_comped")
       .eq("id", orgId)
       .maybeSingle();
-    if (!target?.is_comped && target?.slug !== "demo") {
+    if (!isDemoOrganization(target)) {
       throw new Error(
         "Reseeding replaces every client, visit and invoice in the organization. " +
           "It is only available on demo accounts.",

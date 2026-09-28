@@ -37,6 +37,14 @@ import {
 import { BillingPanel, AutopayResume } from "@/components/client-detail/billing-panels";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
+/** Autopay with no card on file charges nothing, and "On" beside "No cards
+ *  on file" told the office the opposite. */
+function autopayLabel(c: any): string {
+  if (c?.autopay_paused) return "Paused";
+  if (!c?.autopay_enabled) return "Off";
+  return c?.default_payment_method_id ? "On" : "On, no card";
+}
+
 export function BillingTab({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const getCreditFn = useServerFn(getClientCredit);
@@ -89,9 +97,7 @@ export function BillingTab({ clientId }: { clientId: string }) {
             <dt>
               <SectionLabel>Autopay</SectionLabel>
             </dt>
-            <dd className="text-lg font-semibold">
-              {c?.autopay_paused ? "Paused" : c?.autopay_enabled ? "On" : "Off"}
-            </dd>
+            <dd className="text-lg font-semibold">{autopayLabel(c)}</dd>
           </div>
         </dl>
       </section>
@@ -165,8 +171,14 @@ export function BillingTab({ clientId }: { clientId: string }) {
             <div>
               Autopay:{" "}
               <StatusChip
-                status={c?.autopay_paused ? "paused" : c?.autopay_enabled ? "enabled" : "inactive"}
-                label={c?.autopay_paused ? "Paused" : c?.autopay_enabled ? "On" : "Off"}
+                status={
+                  c?.autopay_paused || (c?.autopay_enabled && !c?.default_payment_method_id)
+                    ? "paused"
+                    : c?.autopay_enabled
+                      ? "enabled"
+                      : "inactive"
+                }
+                label={autopayLabel(c)}
               />
             </div>
             <p className="mt-2 max-w-md text-xs text-muted-foreground">

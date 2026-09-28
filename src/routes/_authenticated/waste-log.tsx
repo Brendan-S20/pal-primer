@@ -160,8 +160,9 @@ function WasteLogPage() {
           }}
         >
           <div className="sm:col-span-2">
-            <Label>Facility</Label>
+            <Label htmlFor="dump-facility">Facility</Label>
             <select
+              id="dump-facility"
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               value={draft.facilityId}
               onChange={(e) => setDraft({ ...draft, facilityId: e.target.value })}
@@ -177,16 +178,19 @@ function WasteLogPage() {
             </select>
           </div>
           <div>
-            <Label>Date</Label>
+            <Label htmlFor="dump-date">Date</Label>
             <Input
+              id="dump-date"
               type="date"
               value={draft.disposedOn}
               onChange={(e) => setDraft({ ...draft, disposedOn: e.target.value })}
             />
           </div>
           <div>
-            <Label>Weight (lbs)</Label>
+            <Label htmlFor="dump-weight">Weight (lbs)</Label>
             <Input
+              id="dump-weight"
+              inputMode="decimal"
               type="number"
               step="0.1"
               min="0"
@@ -195,8 +199,10 @@ function WasteLogPage() {
             />
           </div>
           <div>
-            <Label>Bags</Label>
+            <Label htmlFor="dump-bags">Bags</Label>
             <Input
+              id="dump-bags"
+              inputMode="numeric"
               type="number"
               min="0"
               value={draft.bagCount}
@@ -204,15 +210,17 @@ function WasteLogPage() {
             />
           </div>
           <div>
-            <Label>Ticket #</Label>
+            <Label htmlFor="dump-ticket">Ticket #</Label>
             <Input
+              id="dump-ticket"
               value={draft.ticketNumber}
               onChange={(e) => setDraft({ ...draft, ticketNumber: e.target.value })}
             />
           </div>
           <div className="sm:col-span-6">
-            <Label>Notes</Label>
+            <Label htmlFor="dump-notes">Notes</Label>
             <Textarea
+              id="dump-notes"
               rows={2}
               value={draft.notes}
               onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
@@ -269,8 +277,9 @@ function WasteLogPage() {
           }}
         >
           <div className="flex-1 min-w-40">
-            <Label>Name</Label>
+            <Label htmlFor="facility-name">Name</Label>
             <Input
+              id="facility-name"
               value={newFacility.name}
               onChange={(e) => setNewFacility({ ...newFacility, name: e.target.value })}
               placeholder="Transfer Station"
@@ -341,7 +350,10 @@ function WasteLogPage() {
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <div>
                   <div className="font-medium">
-                    {formatDay(m.disposed_on)} · {m.waste_disposal_facilities?.name ?? "-"}
+                    {formatDay(m.disposed_on)}
+                    {m.waste_disposal_facilities?.name
+                      ? ` · ${m.waste_disposal_facilities.name}`
+                      : " · No facility recorded"}
                     {m.ticket_number && (
                       <span className="ml-2 text-xs text-muted-foreground">#{m.ticket_number}</span>
                     )}

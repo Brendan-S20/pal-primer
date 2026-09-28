@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowRight, BookOpen, ExternalLink, Search } from "lucide-react";
 import { HELP_ARTICLES, HELP_SECTIONS, getArticle } from "@/lib/help-content";
+import { helpMatchScore } from "@/lib/help-search";
 import { restartTour } from "@/components/OnboardingTour";
 import { APP_NAME } from "@/lib/scoop";
 
@@ -71,23 +72,20 @@ function HelpPage() {
   const active = getArticle(activeSlug);
 
   const grouped = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const matches = HELP_ARTICLES.filter(
-      (a) =>
-        !needle ||
-        a.title.toLowerCase().includes(needle) ||
-        a.body.some((p) => p.toLowerCase().includes(needle)) ||
-        (a.steps ?? []).some((p) => p.toLowerCase().includes(needle)),
-    );
+    // Word matching with a few synonyms: see src/lib/help-search.ts. Best
+    // match first within each section, so the article the words are ABOUT
+    // leads the ones that merely mention them.
+    const scored = HELP_ARTICLES.map((a) => ({ a, score: helpMatchScore(a, q) }))
+      .filter((x) => x.score > 0)
+      .sort((x, y) => y.score - x.score);
+    const matches = scored.map((x) => x.a);
     return HELP_SECTIONS.map((s) => ({
       section: s,
       articles: matches.filter((a) => a.section === s),
     })).filter((g) => g.articles.length > 0);
   }, [q]);
 
-  const related = (active?.related ?? [])
-    .map((slug) => getArticle(slug))
-    .filter(Boolean);
+  const related = (active?.related ?? []).map((slug) => getArticle(slug)).filter(Boolean);
 
   return (
     <div className="space-y-6">
@@ -137,7 +135,9 @@ function HelpPage() {
               </div>
             ))}
             {!grouped.length && (
-              <p className="text-sm text-muted-foreground">Nothing matches that search.</p>
+              <p className="text-sm text-muted-foreground">
+                Nothing matches that search. Try fewer words, or one word such as "invoice".
+              </p>
             )}
           </nav>
           <div className="rounded-lg border bg-card p-3">
@@ -244,7 +244,7 @@ function HelpPage() {
                 </div>
               </div>
               <p className="text-center text-sm text-muted-foreground">
-                Or pick any article on the left. The{" "}
+                Or pick any article from the list. The{" "}
                 <Fragment>
                   <span className="inline-flex translate-y-0.5 items-center">
                     <BookOpen className="h-4 w-4" />
