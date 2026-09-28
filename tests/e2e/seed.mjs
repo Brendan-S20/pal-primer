@@ -144,13 +144,18 @@ async function ensureOrg(userId) {
  * morning.
  */
 async function ensureFieldTech(userId, orgId) {
-  const { data: existing } = await db
+  // The OWNER's staff row, by user_id: the question is "is the owner set up
+  // to run routes", not "is there exactly one field tech". The old lookup
+  // asked the second with maybeSingle(), which errors the moment an org has
+  // two techs -- a normal business -- and the seed then tried to insert the
+  // owner again and died on staff_organization_id_user_id_key.
+  const { data: existing, error: lookupErr } = await db
     .from("staff")
     .select("id")
     .eq("organization_id", orgId)
-    .eq("is_field_tech", true)
-    .eq("active", true)
+    .eq("user_id", userId)
     .maybeSingle();
+  if (lookupErr) throw new Error(`look up owner staff: ${lookupErr.message}`);
   if (existing?.id) return existing.id;
 
   const { data, error } = await db
