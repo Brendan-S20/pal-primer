@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
+import { useOrgFieldRules } from "@/hooks/useOrgFieldRules";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -17,6 +18,8 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1458,6 +1461,13 @@ function VisitCard({
   });
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
+  // What the tech tells the office on completion, and why there is no photo
+  // when the business requires one. Both travel with the queued action.
+  const { requireCompletionPhoto } = useOrgFieldRules();
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [noPhotoOpen, setNoPhotoOpen] = useState(false);
+  const [noPhotoReason, setNoPhotoReason] = useState("");
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
   // Which photo the in-app viewer is showing, and the signed URLs the
@@ -1528,10 +1538,18 @@ function VisitCard({
     },
   });
   const complete = useMutation({
-    mutationFn: () => actions.complete(),
+    mutationFn: () =>
+      actions.complete({
+        note: note.trim() || undefined,
+        noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
+      }),
     onSuccess: (r) => {
       haptic("success");
       toast.success(r.queued ? "Queued. Completes when back online" : "Completed");
+      setNote("");
+      setNoteOpen(false);
+      setNoPhotoReason("");
+      setNoPhotoOpen(false);
       if (!r.queued) invalidate();
     },
     onError: (e: Error) => {
@@ -1597,6 +1615,11 @@ function VisitCard({
   // If a completion photo is queued locally, allow "Complete" — the sync
   // driver replays photos first (older ts) then complete (newer ts).
   const hasQueuedCompletionPhoto = queuedCompletionPhotos > 0;
+  const photoOnFile = hasCompletionPhoto || hasQueuedCompletionPhoto;
+  // The rule complete_visit enforces: a photo, or no photo required, or a
+  // stated reason there is none.
+  const photoRuleMet =
+    photoOnFile || !requireCompletionPhoto || noPhotoReason.trim().length >= 3;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
@@ -1928,13 +1951,42 @@ function VisitCard({
               tech who did the work without pressing Start can still close it —
               which is why a completion photo on a scheduled stop brings the
               button back rather than stranding the work behind Start. */}
-          {(inProg || missed || hasCompletionPhoto || hasQueuedCompletionPhoto) && (
+          {(inProg || missed) && canPerformVisit && (
+            <div className="space-y-2">
+              {noteOpen ? (
+                <div>
+                  <Label htmlFor={`visit-note-${visit.id}`} className="text-xs">
+                    Note for the office
+                  </Label>
+                  <Textarea
+                    id={`visit-note-${visit.id}`}
+                    rows={2}
+                    maxLength={1000}
+                    placeholder="Gate latched, dog barking, bags by the shed"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-11 w-full text-sm text-muted-foreground"
+                  onClick={() => setNoteOpen(true)}
+                >
+                  Add a note for the office
+                </Button>
+              )}
+            </div>
+          )}
+
+          {(inProg || missed || photoOnFile) && (
             <Button
               variant="default"
               className="h-12 w-full text-base"
               disabled={
                 !canPerformVisit ||
-                (!hasCompletionPhoto && !hasQueuedCompletionPhoto) ||
+                !photoRuleMet ||
                 complete.isPending ||
                 // `missed` belongs here. complete_visit has accepted
                 // ('scheduled','in_progress','missed') since 20260804060000 --
@@ -1955,7 +2007,7 @@ function VisitCard({
               title={
                 !canPerformVisit
                   ? "Only field staff (owner, office manager, or tech) can complete a visit"
-                  : hasCompletionPhoto || hasQueuedCompletionPhoto
+                  : photoRuleMet
                     ? ""
                     : "Add a completion photo first"
               }
@@ -1968,14 +2020,36 @@ function VisitCard({
               covers it on the in-progress stop, and the button's own `title`
               is a hover tooltip, which a phone does not have. Shown only when
               the button is on screen and the photo is the one thing missing. */}
-          {(inProg || missed) &&
-            canPerformVisit &&
-            !hasCompletionPhoto &&
-            !hasQueuedCompletionPhoto && (
-              <p className="-mt-1 text-center text-xs text-muted-foreground">
+          {(inProg || missed) && canPerformVisit && requireCompletionPhoto && !photoOnFile && (
+            <div className="-mt-1 space-y-2">
+              <p className="text-center text-xs text-muted-foreground">
                 Take a completion photo to finish this visit.
               </p>
-            )}
+              {noPhotoOpen ? (
+                <div>
+                  <Label htmlFor={`no-photo-${visit.id}`} className="text-xs">
+                    Why no photo? The office sees this.
+                  </Label>
+                  <Input
+                    id={`no-photo-${visit.id}`}
+                    maxLength={300}
+                    placeholder="Camera would not open"
+                    value={noPhotoReason}
+                    onChange={(e) => setNoPhotoReason(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-11 w-full text-xs text-muted-foreground"
+                  onClick={() => setNoPhotoOpen(true)}
+                >
+                  Can't take a photo?
+                </Button>
+              )}
+            </div>
+          )}
 
           {missed && (
             <p className="text-xs text-muted-foreground">

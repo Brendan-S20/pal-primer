@@ -157,6 +157,11 @@ export const completeVisit = createServerFn({ method: "POST" })
         // hint, never the safeguard — and records the replay in
         // completion_source either way.
         completedAt: z.string().datetime().optional(),
+        /** What the tech wants the office to know. */
+        note: z.string().trim().max(1000).optional(),
+        /** Why there is no completion photo, when the org requires one. The
+         *  SQL decides whether it is needed. */
+        noPhotoReason: z.string().trim().max(300).optional(),
       })
       .parse(d),
   )
@@ -164,6 +169,8 @@ export const completeVisit = createServerFn({ method: "POST" })
     const { error } = await context.supabase.rpc("complete_visit", {
       _visit_id: data.visitId,
       _completed_at: data.completedAt ?? undefined,
+      _note: data.note || undefined,
+      _no_photo_reason: data.noPhotoReason || undefined,
     });
     if (error) throw new Error(error.message);
     try {

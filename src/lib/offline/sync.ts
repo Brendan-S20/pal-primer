@@ -16,7 +16,9 @@ import {
 
 export interface SyncCallers {
   startVisit: (args: { data: { visitId: string; startedAt?: string } }) => Promise<unknown>;
-  completeVisit: (args: { data: { visitId: string; completedAt?: string } }) => Promise<unknown>;
+  completeVisit: (args: {
+    data: { visitId: string; completedAt?: string; note?: string; noPhotoReason?: string };
+  }) => Promise<unknown>;
   skipVisit: (args: {
     data: { visitId: string; reason: string; code: any; skippedAt?: string };
   }) => Promise<unknown>;
@@ -53,7 +55,12 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
       return;
     case "complete":
       await callers.completeVisit({
-        data: { visitId: action.visitId, completedAt: new Date(action.ts).toISOString() },
+        data: {
+          visitId: action.visitId,
+          completedAt: new Date(action.ts).toISOString(),
+          note: action.note,
+          noPhotoReason: action.noPhotoReason,
+        },
       });
       return;
     case "skip":

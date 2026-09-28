@@ -24,7 +24,7 @@ import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 
 export interface OfflineVisitActions {
   start: () => Promise<{ queued: boolean }>;
-  complete: () => Promise<{ queued: boolean }>;
+  complete: (extra?: { note?: string; noPhotoReason?: string }) => Promise<{ queued: boolean }>;
   skip: (reason: string, code: string) => Promise<{ queued: boolean }>;
   uploadPhoto: (
     file: File,
@@ -82,13 +82,18 @@ export function useOfflineVisitActions(
   );
 
   const complete = useCallback(
-    () =>
+    (extra: { note?: string; noPhotoReason?: string } = {}) =>
       runOrQueue({
         online: isNavigatorOnline(),
         label: "Complete visit",
-        send: () => completeFn({ data: { visitId } }),
+        send: () => completeFn({ data: { visitId, ...extra } }),
         queue: async () => {
-          await enqueueAction({ kind: "complete", visitId, userId: await resolveOfflineUserId() });
+          await enqueueAction({
+            kind: "complete",
+            visitId,
+            ...extra,
+            userId: await resolveOfflineUserId(),
+          });
         },
       }),
     [completeFn, visitId],
