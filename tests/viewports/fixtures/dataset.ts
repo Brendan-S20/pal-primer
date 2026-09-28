@@ -644,6 +644,14 @@ export const REPORTS = {
     { id: "zzzz1111-0000-4000-8000-000000000002", name: "Uptown / Edgewater Beach Commercial Grounds" },
     { id: "no_zone", name: "No zone" },
   ].map((z, i) => ({ ...z, completed: 420 - i * 150, skipped: 20 - i * 7, total: 446 - i * 158 })),
+  // The longest reason on purpose: it sits in a two-column table in a
+  // half-width card.
+  churnReasons: [
+    { reason: "Dog passed away or rehomed", count: 4 },
+    { reason: "Switched to another company", count: 3 },
+    { reason: "Moving away", count: 2 },
+    { reason: "Price", count: 1 },
+  ],
   skipReasons: [
     { code: "access_blocked", count: 14 },
     { code: "client_cancelled_late", count: 11 },

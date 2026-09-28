@@ -123,6 +123,19 @@ export const getReports = createServerFn({ method: "POST" })
       }
     }
 
+    // Why customers left: services that ended in range, by reason. A service
+    // ended with a future date is still counted on the day it ends, which is
+    // when the customer is actually gone.
+    const { data: endedSubs } = await supabase
+      .from("subscriptions")
+      .select("end_reason")
+      .eq("organization_id", orgId)
+      .not("end_reason", "is", null)
+      .gte("ends_on", from)
+      .lte("ends_on", to);
+    const { tallyChurnReasons } = await import("@/lib/churn-reasons");
+    const churnReasons = tallyChurnReasons((endedSubs ?? []).map((x) => x.end_reason));
+
     // Staff names + field-worker flag. Tech productivity is a FIELD-worker
     // report (C3/I4): non-field roles (owner/office_manager/dispatcher) that
     // happen to own visits are excluded by the capability flag, not by
@@ -317,6 +330,7 @@ export const getReports = createServerFn({ method: "POST" })
       skipReasons: Object.entries(skipReasons)
         .map(([code, n]) => ({ code, count: n }))
         .sort((a, b) => b.count - a.count),
+      churnReasons,
       topClients: topClientIds.map((id) => ({
         id,
         name: clientName.get(id) ?? "-",
