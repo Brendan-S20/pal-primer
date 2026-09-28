@@ -16,6 +16,7 @@ import {
 } from "@/lib/manual-payments";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { addDaysToDay } from "@/lib/reclean";
+import { QUANTITY_MAX, lineTotalCents } from "@/lib/invoice-lines";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -92,7 +93,9 @@ export const getInvoice = createServerFn({ method: "GET" })
     }
     const { data: items, error: iErr } = await supabase
       .from("invoice_line_items")
-      .select("id, description, amount_cents, visit_id, subscription_id")
+      .select(
+        "id, description, amount_cents, quantity, unit_amount_cents, visit_id, subscription_id",
+      )
       .eq("invoice_id", data.id)
       .order("created_at");
     if (iErr) throw new Error(iErr.message);
@@ -163,10 +166,27 @@ const manualInvoiceSchema = z.object({
   clientId: z.string().uuid(),
   items: z
     .array(
-      z.object({
-        description: z.string().min(1).max(300),
-        amountCents: z.number().int().min(1).max(10_000_000),
-      }),
+      z
+        .object({
+          description: z.string().min(1).max(300),
+          amountCents: z.number().int().min(1).max(10_000_000),
+          // Both or neither: a line is either only a total, or "3 × $15.00"
+          // whose total is the product. The database refuses a mismatch
+          // (invoice_line_items_total_is_quantity_times_unit); refusing it here
+          // says which line, before anything is written.
+          quantity: z.number().positive().max(QUANTITY_MAX).optional(),
+          unitAmountCents: z.number().int().min(0).max(10_000_000).optional(),
+        })
+        .refine((i) => (i.quantity === undefined) === (i.unitAmountCents === undefined), {
+          message: "A line with a quantity needs a unit price, and the other way round",
+        })
+        .refine(
+          (i) =>
+            i.quantity === undefined ||
+            (Math.abs(i.quantity * 100 - Math.round(i.quantity * 100)) < 1e-6 &&
+              lineTotalCents(i.quantity, i.unitAmountCents!) === i.amountCents),
+          { message: "A line's total must be its quantity times its unit price" },
+        ),
     )
     .min(1)
     .max(25),
@@ -227,6 +247,9 @@ export const createManualInvoice = createServerFn({ method: "POST" })
         invoice_id: inv.id,
         description: i.description,
         amount_cents: i.amountCents,
+        ...(i.quantity !== undefined
+          ? { quantity: i.quantity, unit_amount_cents: i.unitAmountCents! }
+          : {}),
       })),
     );
     if (lErr) {
@@ -1156,7 +1179,9 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
         .single(),
       supabase
         .from("invoice_line_items")
-        .select("id, description, amount_cents, visit_id, subscription_id, created_at")
+        .select(
+          "id, description, amount_cents, quantity, unit_amount_cents, visit_id, subscription_id, created_at",
+        )
         .eq("invoice_id", data.invoiceId)
         .order("created_at"),
       supabase
@@ -1303,7 +1328,7 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
     }
     const { data: items } = await sb
       .from("invoice_line_items")
-      .select("id, description, amount_cents")
+      .select("id, description, amount_cents, quantity, unit_amount_cents")
       .eq("invoice_id", invoice.id)
       .order("created_at");
     const org = Array.isArray(invoice.organizations)
@@ -1338,6 +1363,8 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
         id: i.id as string,
         description: i.description as string,
         amountCents: i.amount_cents as number,
+        quantity: i.quantity as number,
+        unitAmountCents: (i.unit_amount_cents ?? null) as number | null,
       })),
     };
   });

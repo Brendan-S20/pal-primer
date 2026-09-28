@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { LineQuantity } from "@/components/LineQuantity";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -331,8 +332,11 @@ export function InvoiceDrawer({
                 <ul className="mt-1.5 divide-y">
                   {lines.map((l) => (
                     <li key={l.id} className="flex items-center justify-between gap-2 py-1.5">
-                      <span className="min-w-0 truncate">
-                        {formatLineItemDescription(l.description)}
+                      <span className="min-w-0">
+                        <span className="block truncate">
+                          {formatLineItemDescription(l.description)}
+                        </span>
+                        <LineQuantity line={l} currency={inv.currency ?? "usd"} />
                       </span>
                       <span className="shrink-0 font-medium">
                         {fmtCents(l.amount_cents, inv.currency ?? "usd")}
