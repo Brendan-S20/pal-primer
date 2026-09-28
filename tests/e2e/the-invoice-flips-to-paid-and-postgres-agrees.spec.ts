@@ -15,6 +15,15 @@
 // survives a refresh. The card form stays with a person, like the one real
 // charge the checklist keeps.
 //
+// ── AND HOW IT WAS PAID ───────────────────────────────────────────────────
+//
+// Since 2026-09-28 the action is "Record payment" and asks how the money came
+// in and when. Until then the row said only `manual_mark_paid`, dated the
+// moment somebody clicked, so a check received Friday and entered Monday was
+// Monday's income on the cash-basis report. The spec records a CHECK with a
+// number, received YESTERDAY, and asserts both land: the method and reference
+// on the row, and a paid_at that reads as yesterday on the org's calendar.
+//
 // ── WHY THE ASSERTIONS COUNT ROWS RATHER THAN NAMING ONE ──────────────────
 //
 // The list draws client name + amount + status, none of which is unique on
@@ -29,6 +38,7 @@ import { expect, test } from "@playwright/test";
 
 import { pointTheBrowserAtTheLocalDatabase } from "./point-the-browser-at-the-local-database";
 import { e2eOrgId, serviceDb } from "./service-db";
+import { orgLocalDay, orgToday } from "../../src/lib/org-day";
 import { signIn } from "./sign-in";
 
 test.beforeEach(async ({ context }) => {
@@ -49,7 +59,9 @@ async function manualPaidCount(orgId: string) {
   return count ?? 0;
 }
 
-test("mark paid flips the invoice, records a payment, and survives a refresh", async ({ page }) => {
+test("record payment flips the invoice, records how and when, and survives a refresh", async ({
+  page,
+}) => {
   // Several navigations and a reload on a machine that is measurably slow —
   // see the swap note in sandboxes.yml. The default 60s is for one-page specs.
   test.setTimeout(180_000);
@@ -57,6 +69,12 @@ test("mark paid flips the invoice, records a payment, and survives a refresh", a
   const db = serviceDb();
   const orgId = await e2eOrgId(db);
   const paymentsBefore = await manualPaidCount(orgId);
+  const { data: org } = await db.from("organizations").select("timezone").eq("id", orgId).single();
+  const tz = org?.timezone || "America/Chicago";
+  const today = orgToday(tz);
+  const yesterday = new Date(Date.parse(`${today}T12:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
   await signIn(page);
   await page.goto("/invoices");
@@ -79,13 +97,16 @@ test("mark paid flips the invoice, records a payment, and survives a refresh", a
 
   // Row click opens the drawer, so the entry point is the ••• menu.
   await openRows.first().getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Mark paid" }).click();
+  await page.getByRole("menuitem", { name: "Record payment" }).click();
 
-  const dialog = page.getByRole("alertdialog");
-  await expect(dialog.getByText("Mark this invoice paid?")).toBeVisible();
-  await dialog.getByRole("button", { name: "Mark paid" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Record payment" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Check" }).click();
+  await dialog.getByLabel(/Check number/).fill("1042");
+  await dialog.getByLabel("Received on").fill(yesterday);
+  await dialog.getByRole("button", { name: "Record payment" }).click();
 
-  await expect(page.getByText("Invoice marked paid")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Payment recorded. Invoice paid")).toBeVisible({ timeout: 20_000 });
 
   // The flip, in place: one fewer row wearing an "Open" chip.
   await expect.poll(async () => openRows.count(), { timeout: 20_000 }).toBe(openBefore - 1);
@@ -96,14 +117,19 @@ test("mark paid flips the invoice, records a payment, and survives a refresh", a
 
   const { data: payment, error: payErr } = await db
     .from("payments")
-    .select("invoice_id, status, amount_cents")
+    .select("invoice_id, status, amount_cents, method, reference, paid_at")
     .eq("organization_id", orgId)
     .eq("raw_event->>source", "manual_mark_paid")
-    .order("paid_at", { ascending: false })
+    // created_at, not paid_at: this one is back-dated, so it is not the
+    // latest by paid_at.
+    .order("created_at", { ascending: false })
     .limit(1)
     .single();
   if (payErr) throw new Error(`reading the payment back: ${payErr.message}`);
   expect(payment.status).toBe("succeeded");
+  expect(payment.method).toBe("check");
+  expect(payment.reference).toBe("1042");
+  expect(orgLocalDay(payment.paid_at!, tz), "paid_at on the org's calendar").toBe(yesterday);
 
   const { data: invoice, error: invErr } = await db
     .from("invoices")
@@ -112,7 +138,7 @@ test("mark paid flips the invoice, records a payment, and survives a refresh", a
     .single();
   if (invErr) throw new Error(`reading the invoice back: ${invErr.message}`);
   expect(invoice.status).toBe("paid");
-  expect(invoice.paid_at).not.toBeNull();
+  expect(invoice.paid_at).toBe(payment.paid_at);
 
   // And the refresh: the state above came out of Postgres, so a full reload
   // must show the same one-fewer-open list, not a cache that forgot.

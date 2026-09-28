@@ -3188,9 +3188,11 @@ export type Database = {
           currency: string
           id: string
           invoice_id: string
+          method: string | null
           organization_id: string
           paid_at: string | null
           raw_event: Json | null
+          reference: string | null
           status: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
@@ -3205,9 +3207,11 @@ export type Database = {
           currency?: string
           id?: string
           invoice_id: string
+          method?: string | null
           organization_id: string
           paid_at?: string | null
           raw_event?: Json | null
+          reference?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -3222,9 +3226,11 @@ export type Database = {
           currency?: string
           id?: string
           invoice_id?: string
+          method?: string | null
           organization_id?: string
           paid_at?: string | null
           raw_event?: Json | null
+          reference?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null

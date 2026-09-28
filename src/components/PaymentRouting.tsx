@@ -176,7 +176,7 @@ export function PaymentRouting() {
                 <p className="mt-0.5 text-muted-foreground">
                   Until it can, you can&apos;t collect on a location&apos;s behalf. A payment
                   routed to an account that isn&apos;t ready fails rather than quietly landing in
-                  theirs. Finish setup in Settings → Payments.
+                  theirs. Finish setup on the Payments page.
                 </p>
               </div>
             </div>

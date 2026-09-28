@@ -3,7 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { getInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { bulkMarkInvoicesPaid, getInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
+import { describeManualPayment } from "@/lib/manual-payments";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
@@ -71,8 +73,10 @@ function InvoiceDetail() {
   const { invoiceId } = Route.useParams();
   const get = useServerFn(getInvoice);
   const voidFn = useServerFn(voidInvoice);
+  const paidFn = useServerFn(bulkMarkInvoicesPaid);
   const orgFn = useServerFn(getMyOrg);
   const qc = useQueryClient();
+  const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
 
   const q = useQuery({
     queryKey: ["invoice", invoiceId],
@@ -84,6 +88,28 @@ function InvoiceDetail() {
   // with exact instrument + amount, account credit, or new card entry via the
   // Payment Element. Same component the invoice drawer embeds.
   const [payOpen, setPayOpen] = useState(false);
+
+  const recordM = useMutation({
+    mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId], ...how } }),
+    onSuccess: (r) => {
+      if (!r.ok) {
+        toast.error("The payment could not be recorded. The invoice may already be paid or void.");
+      } else {
+        toast.success("Payment recorded. Invoice paid");
+        setPayOpen(false);
+      }
+      if (r.intentStillLive?.length) {
+        toast.warning(
+          "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
+          { duration: 15000 },
+        );
+      }
+      qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const voidM = useMutation({
     mutationFn: async () => voidFn({ data: { id: invoiceId } }),
@@ -167,6 +193,7 @@ function InvoiceDetail() {
   return (
     <div className="space-y-6">
       <style>{PRINT_STYLES}</style>
+      {paymentDialog}
       <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">
         ← Invoices
       </Link>
@@ -318,6 +345,24 @@ function InvoiceDetail() {
             <Button onClick={() => setPayOpen((v) => !v)}>
               {payOpen ? "Hide payment form" : "Take payment"}
             </Button>
+            <Button
+              variant="outline"
+              disabled={recordM.isPending}
+              onClick={async () => {
+                const due = Math.max(
+                  (invoice.total_cents ?? 0) -
+                    ((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ??
+                      0),
+                  0,
+                );
+                const how = await askPayment({
+                  amountLine: `${fmtCents(due, invoice.currency)}, the open balance${client?.display_name ? ` for ${client.display_name}` : ""}. This marks the invoice paid and can't be undone here.`,
+                });
+                if (how) recordM.mutate(how);
+              }}
+            >
+              Record payment
+            </Button>
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
                 {emailM.isPending ? "Sending…" : "Email invoice to client"}
@@ -390,12 +435,13 @@ function InvoiceDetail() {
         <div>
           <SectionLabel className="mb-2">Payments</SectionLabel>
           <div className="relative overflow-x-auto rounded-xl border bg-card shadow-sm">
-            <table className="w-full text-sm min-w-[480px]">
+            <table className="w-full text-sm min-w-[560px]">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 font-semibold">When</th>
                   <th className="px-4 py-2 font-semibold">Amount</th>
                   <th className="px-4 py-2 font-semibold">Status</th>
+                  <th className="px-4 py-2 font-semibold">How</th>
                   <th className="px-4 py-2 font-semibold">Payment reference</th>
                 </tr>
               </thead>
@@ -411,8 +457,12 @@ function InvoiceDetail() {
                     <td className="px-4 py-2">
                       <StatusChip status={p.status} />
                     </td>
+                    <td className="px-4 py-2">
+                      {describeManualPayment(p.method, p.reference) ??
+                        (p.stripe_payment_intent_id ? "Stripe" : "Not recorded")}
+                    </td>
                     <td className="px-4 py-2 font-mono text-xs">
-                      {p.stripe_payment_intent_id ?? "-"}
+                      {p.stripe_payment_intent_id ?? p.reference ?? "-"}
                     </td>
                   </tr>
                 ))}

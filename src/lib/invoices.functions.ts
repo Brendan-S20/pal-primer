@@ -6,6 +6,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import {
+  MANUAL_PAYMENT_METHODS,
+  REFERENCE_MAX,
+  describeManualPayment,
+  receivedAtInstant,
+  receivedOnProblem,
+} from "@/lib/manual-payments";
+import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -93,7 +101,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       // customer sees on their statement, and no screen could reconstruct it
       // while this column went unselected.
       .select(
-        "id, amount_cents, surcharge_cents, status, stripe_payment_intent_id, paid_at, created_at",
+        "id, amount_cents, surcharge_cents, status, stripe_payment_intent_id, paid_at, created_at, method, reference",
       )
       .eq("invoice_id", data.id)
       .order("created_at", { ascending: false });
@@ -300,13 +308,38 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
     z
-      .object({ ids: z.array(z.string().uuid()).min(1).max(500), note: z.string().optional() })
+      .object({
+        ids: z.array(z.string().uuid()).min(1).max(500),
+        note: z.string().optional(),
+        // How the money came in. Optional only so an older client build that
+        // still sends {ids} keeps working; the dialog always sends it.
+        method: z.enum(MANUAL_PAYMENT_METHODS).optional(),
+        reference: z.string().trim().max(REFERENCE_MAX).optional(),
+        /** The org-calendar day the payment arrived (YYYY-MM-DD). */
+        receivedOn: z.string().optional(),
+      })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
-    const nowIso = new Date().toISOString();
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("timezone")
+      .eq("id", orgId)
+      .maybeSingle();
+    const tz = org?.timezone || DEFAULT_ORG_TIMEZONE;
+    const now = new Date();
+    if (data.receivedOn) {
+      const problem = receivedOnProblem(data.receivedOn, tz, now);
+      if (problem) throw new Error(problem);
+    }
+    // A check received Friday and entered Monday is Friday's income on the
+    // cash-basis report, which buckets by orgLocalDay(paid_at).
+    const nowIso = data.receivedOn
+      ? receivedAtInstant(data.receivedOn, tz, now)
+      : now.toISOString();
+    const reference = data.method && data.method !== "cash" ? data.reference || null : null;
     let ok = 0,
       failed = 0;
     // Invoices marked paid whose live PaymentIntent we could NOT cancel. These
@@ -373,7 +406,18 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         currency: inv.currency ?? "usd",
         status: "succeeded",
         paid_at: nowIso,
+        method: data.method ?? null,
+        reference,
         raw_event: { source: "manual_mark_paid", note: data.note ?? null },
+      });
+      const how = describeManualPayment(data.method, reference);
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId: inv.organization_id,
+        clientId: inv.client_id,
+        actorUserId: context.userId,
+        kind: "invoice.payment_recorded",
+        summary: `Recorded ${how ? `${how} ` : ""}payment on invoice #${id.slice(0, 8)}`,
       });
 
       // CANCEL THE CUSTOMER'S LIVE PAYMENT INTENT, for the same reason
@@ -1091,11 +1135,12 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
     const [
       { data: invoice, error: iErr },
       { data: lines, error: lErr },
       { data: pays, error: pErr },
+      { data: org },
     ] = await Promise.all([
       supabase
         .from("invoices")
@@ -1112,10 +1157,15 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("payments")
         .select(
-          "id, amount_cents, surcharge_cents, status, paid_at, created_at, stripe_payment_intent_id",
+          "id, amount_cents, surcharge_cents, status, paid_at, created_at, stripe_payment_intent_id, method, reference",
         )
         .eq("invoice_id", data.invoiceId)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("organizations")
+        .select("stripe_connect_charges_enabled")
+        .eq("id", orgId)
+        .maybeSingle(),
     ]);
     if (iErr) throw new Error(iErr.message);
     if (lErr) throw new Error(lErr.message);
@@ -1133,6 +1183,10 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       client: clients ?? null,
       lineItems: lines ?? [],
       payments: pays ?? [],
+      /** Whether a card can be taken at all. Without a connected Stripe
+       *  account every card path fails, and the office should be pointed at
+       *  Record payment instead of shown a red error. */
+      cardPaymentsReady: !!org?.stripe_connect_charges_enabled,
     };
   });
 

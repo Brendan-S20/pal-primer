@@ -108,7 +108,11 @@ export function StaffInvoicePayForm({
     .reduce((s, p) => s + (p.amount_cents ?? 0), 0);
   const dueCents = Math.max(0, (inv?.total_cents ?? 0) - creditAppliedCents - paidCents);
 
-  const hasSavedCard = !!client?.default_payment_method_id;
+  // Without a connected Stripe account every card path fails. The saved card
+  // and the card form are then hidden rather than offered and refused, and
+  // the note below points at Record payment for cash and checks.
+  const cardReady = detailQ.data?.cardPaymentsReady ?? true;
+  const hasSavedCard = cardReady && !!client?.default_payment_method_id;
   const cardLabel = `${client?.default_card_brand ?? "card"} ····${client?.default_card_last4 ?? ""}`;
 
   const refresh = () => {
@@ -209,7 +213,12 @@ export function StaffInvoicePayForm({
   // No saved card and no credit → card entry is the only path; open it
   // without an extra click. (Intent creation is idempotent server-side.)
   const onlyCardPath =
-    !!inv && detailQ.isSuccess && !hasSavedCard && creditQ.isSuccess && creditCents <= 0;
+    cardReady &&
+    !!inv &&
+    detailQ.isSuccess &&
+    !hasSavedCard &&
+    creditQ.isSuccess &&
+    creditCents <= 0;
   useEffect(() => {
     if (onlyCardPath && !intent && !intentM.isPending && !intentM.isError) intentM.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -299,67 +308,77 @@ export function StaffInvoicePayForm({
       )}
 
       {/* 3. New card entry. */}
-      <div className="rounded-lg border bg-card p-3">
-        <SectionLabel>New card</SectionLabel>
-        {!intent ? (
-          <>
-            <Button
-              variant={hasSavedCard || creditCents > 0 ? "outline" : "default"}
-              className="mt-2 w-full"
-              disabled={intentM.isPending}
-              onClick={() => intentM.mutate()}
-            >
-              {intentM.isPending
-                ? "Preparing secure form…"
-                : // NATIVE ONLY — web keeps the original single label.
-                  IS_NATIVE_BUNDLE && intentM.isError
-                  ? "Try again"
-                  : "Enter card or bank details"}
-            </Button>
-            {/* NATIVE ONLY — web keeps the toast alone.
+      {!cardReady ? (
+        <div className="rounded-lg border bg-card p-3">
+          <SectionLabel>Card payments</SectionLabel>
+          <p className="mt-1.5 text-muted-foreground">
+            Cards can be taken once Stripe is connected on the Payments page. For cash, a check or a
+            transfer, use Record payment instead.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border bg-card p-3">
+          <SectionLabel>New card</SectionLabel>
+          {!intent ? (
+            <>
+              <Button
+                variant={hasSavedCard || creditCents > 0 ? "outline" : "default"}
+                className="mt-2 w-full"
+                disabled={intentM.isPending}
+                onClick={() => intentM.mutate()}
+              >
+                {intentM.isPending
+                  ? "Preparing secure form…"
+                  : // NATIVE ONLY — web keeps the original single label.
+                    IS_NATIVE_BUNDLE && intentM.isError
+                    ? "Try again"
+                    : "Enter card or bank details"}
+              </Button>
+              {/* NATIVE ONLY — web keeps the toast alone.
                 Inline as well as the toast, because this panel opens the card
                 form on its own when there is no saved card and no credit: the
                 person looking at it never pressed anything, and a toast that
                 has already faded leaves them staring at a button whose label is
                 the only evidence anything went wrong. */}
-            {IS_NATIVE_BUNDLE && intentM.isError && (
-              <p className="mt-1.5 text-xs text-destructive">
-                {intentM.error instanceof Error
-                  ? intentM.error.message
-                  : "Couldn't open the secure card form."}
+              {IS_NATIVE_BUNDLE && intentM.isError && (
+                <p className="mt-1.5 text-xs text-destructive">
+                  {intentM.error instanceof Error
+                    ? intentM.error.message
+                    : "Couldn't open the secure card form."}
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="mt-2">
+              <Elements
+                stripe={getConnectStripe(intent.publishableKey, intent.stripeAccount)}
+                options={{ clientSecret: intent.clientSecret, appearance: stripeAppearance() }}
+              >
+                <PayElementForm
+                  amountCents={intent.amountCents}
+                  currency={intent.currency}
+                  onPaid={async () => {
+                    setIntent(null);
+                    // The Element confirmed client-side; pull the paid state
+                    // from Stripe NOW instead of waiting for the webhook, so
+                    // the refetch below actually sees "paid".
+                    try {
+                      await reconcileFn({ data: { invoiceId } });
+                      toast.success("Payment received.");
+                    } catch {
+                      toast.success("Payment received. The invoice will update shortly.");
+                    }
+                    refresh();
+                  }}
+                />
+              </Elements>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Card charges confirm right away. Bank debits show as pending until they clear.
               </p>
-            )}
-          </>
-        ) : (
-          <div className="mt-2">
-            <Elements
-              stripe={getConnectStripe(intent.publishableKey, intent.stripeAccount)}
-              options={{ clientSecret: intent.clientSecret, appearance: stripeAppearance() }}
-            >
-              <PayElementForm
-                amountCents={intent.amountCents}
-                currency={intent.currency}
-                onPaid={async () => {
-                  setIntent(null);
-                  // The Element confirmed client-side; pull the paid state
-                  // from Stripe NOW instead of waiting for the webhook, so
-                  // the refetch below actually sees "paid".
-                  try {
-                    await reconcileFn({ data: { invoiceId } });
-                    toast.success("Payment received.");
-                  } catch {
-                    toast.success("Payment received. The invoice will update shortly.");
-                  }
-                  refresh();
-                }}
-              />
-            </Elements>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Card charges confirm right away. Bank debits show as pending until they clear.
-            </p>
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

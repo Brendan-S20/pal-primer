@@ -111,10 +111,10 @@ export async function requireOrgStripeAccount(orgId: string): Promise<OrgStripeA
         "Payments for this location are collected by your franchise, and their Stripe account isn't ready yet. Ask them to finish Stripe setup.",
       );
     }
-    throw new Error("This business hasn't connected a Stripe account yet. Connect one in Settings → Payments.");
+    throw new Error("This business hasn't connected a Stripe account yet. Connect one on the Payments page.");
   }
   if (!acct.chargesEnabled) {
-    throw new Error("The connected Stripe account can't accept charges yet. Finish Stripe onboarding in Settings → Payments.");
+    throw new Error("The connected Stripe account can't accept charges yet. Finish Stripe onboarding on the Payments page.");
   }
   return acct;
 }
