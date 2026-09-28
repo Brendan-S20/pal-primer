@@ -46,6 +46,7 @@ import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe
 import { Route as EmailSuppressionRouteImport } from './routes/email/suppression'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
+import { Route as AuthenticatedTimesheetsRouteImport } from './routes/_authenticated/timesheets'
 import { Route as AuthenticatedTaxReportsRouteImport } from './routes/_authenticated/tax-reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
@@ -318,6 +319,11 @@ const AuthenticatedZonesRoute = AuthenticatedZonesRouteImport.update({
 const AuthenticatedWasteLogRoute = AuthenticatedWasteLogRouteImport.update({
   id: '/waste-log',
   path: '/waste-log',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTimesheetsRoute = AuthenticatedTimesheetsRouteImport.update({
+  id: '/timesheets',
+  path: '/timesheets',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedTaxReportsRoute = AuthenticatedTaxReportsRouteImport.update({
@@ -846,6 +852,7 @@ export interface FileRoutesByFullPath {
   '/routes': typeof AuthenticatedRoutesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/tax-reports': typeof AuthenticatedTaxReportsRoute
+  '/timesheets': typeof AuthenticatedTimesheetsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -968,6 +975,7 @@ export interface FileRoutesByTo {
   '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/tax-reports': typeof AuthenticatedTaxReportsRoute
+  '/timesheets': typeof AuthenticatedTimesheetsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -1095,6 +1103,7 @@ export interface FileRoutesById {
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_authenticated/tax-reports': typeof AuthenticatedTaxReportsRoute
+  '/_authenticated/timesheets': typeof AuthenticatedTimesheetsRoute
   '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -1224,6 +1233,7 @@ export interface FileRouteTypes {
     | '/routes'
     | '/settings'
     | '/tax-reports'
+    | '/timesheets'
     | '/waste-log'
     | '/zones'
     | '/email/suppression'
@@ -1346,6 +1356,7 @@ export interface FileRouteTypes {
     | '/review'
     | '/routes'
     | '/tax-reports'
+    | '/timesheets'
     | '/waste-log'
     | '/zones'
     | '/email/suppression'
@@ -1472,6 +1483,7 @@ export interface FileRouteTypes {
     | '/_authenticated/routes'
     | '/_authenticated/settings'
     | '/_authenticated/tax-reports'
+    | '/_authenticated/timesheets'
     | '/_authenticated/waste-log'
     | '/_authenticated/zones'
     | '/email/suppression'
@@ -1862,6 +1874,13 @@ declare module '@tanstack/react-router' {
       path: '/waste-log'
       fullPath: '/waste-log'
       preLoaderRoute: typeof AuthenticatedWasteLogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/timesheets': {
+      id: '/_authenticated/timesheets'
+      path: '/timesheets'
+      fullPath: '/timesheets'
+      preLoaderRoute: typeof AuthenticatedTimesheetsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/tax-reports': {
@@ -2625,6 +2644,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
   AuthenticatedTaxReportsRoute: typeof AuthenticatedTaxReportsRoute
+  AuthenticatedTimesheetsRoute: typeof AuthenticatedTimesheetsRoute
   AuthenticatedWasteLogRoute: typeof AuthenticatedWasteLogRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
@@ -2660,6 +2680,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
   AuthenticatedTaxReportsRoute: AuthenticatedTaxReportsRoute,
+  AuthenticatedTimesheetsRoute: AuthenticatedTimesheetsRoute,
   AuthenticatedWasteLogRoute: AuthenticatedWasteLogRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,

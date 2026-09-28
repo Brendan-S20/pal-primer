@@ -18,6 +18,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { startVisit, completeVisit, skipVisit, recordVisitPhoto } from "@/lib/my-day.functions";
 import { logStationService } from "@/lib/stations.functions";
+import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { flushThenClearAndSignOut } from "@/lib/offline/sign-out";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -30,6 +31,8 @@ export function useOfflineSignOut() {
   // missing from this set is a queued action the flush cannot send, which the
   // tech is then asked to discard on the way out the door.
   const stationFn = useServerFn(logStationService);
+  const clockInFn = useServerFn(clockIn);
+  const clockOutFn = useServerFn(clockOut);
   const callers = useMemo(
     () => ({
       startVisit: startFn,
@@ -37,8 +40,10 @@ export function useOfflineSignOut() {
       skipVisit: skipFn,
       recordVisitPhoto: photoFn,
       logStationService: stationFn,
+      clockIn: clockInFn,
+      clockOut: clockOutFn,
     }),
-    [startFn, completeFn, skipFn, photoFn, stationFn],
+    [startFn, completeFn, skipFn, photoFn, stationFn, clockInFn, clockOutFn],
   );
 
   const { confirm, dialog } = useConfirmDialog();

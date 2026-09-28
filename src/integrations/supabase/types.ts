@@ -5241,6 +5241,66 @@ export type Database = {
           },
         ]
       }
+      time_entries: {
+        Row: {
+          clock_in: string
+          clock_in_source: string
+          clock_out: string | null
+          clock_out_source: string | null
+          created_at: string
+          edited_at: string | null
+          edited_by: string | null
+          id: string
+          note: string | null
+          organization_id: string
+          staff_id: string
+          updated_at: string
+        }
+        Insert: {
+          clock_in: string
+          clock_in_source?: string
+          clock_out?: string | null
+          clock_out_source?: string | null
+          created_at?: string
+          edited_at?: string | null
+          edited_by?: string | null
+          id?: string
+          note?: string | null
+          organization_id: string
+          staff_id: string
+          updated_at?: string
+        }
+        Update: {
+          clock_in?: string
+          clock_in_source?: string
+          clock_out?: string | null
+          clock_out_source?: string | null
+          created_at?: string
+          edited_at?: string | null
+          edited_by?: string | null
+          id?: string
+          note?: string | null
+          organization_id?: string
+          staff_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_entries_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       unit_incidents: {
         Row: {
           charged_cents: number | null
@@ -6026,6 +6086,8 @@ export type Database = {
         }[]
       }
       client_may_be_texted: { Args: { _client_id: string }; Returns: boolean }
+      clock_in: { Args: { _at?: string }; Returns: string }
+      clock_out: { Args: { _at?: string }; Returns: string | null }
       close_abandoned_impersonation_grants: { Args: never; Returns: number }
       closing_drive_min: {
         Args: {
@@ -6343,7 +6405,25 @@ export type Database = {
         }
         Returns: string
       }
+      office_add_time_entry: {
+        Args: {
+          _clock_in: string
+          _clock_out: string
+          _note?: string
+          _staff_id: string
+        }
+        Returns: string
+      }
       office_complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      office_edit_time_entry: {
+        Args: {
+          _clock_in: string
+          _clock_out: string | null
+          _id: string
+          _note?: string
+        }
+        Returns: string
+      }
       office_skip_visit: {
         Args: {
           _code?: Database["public"]["Enums"]["skip_reason_code"]

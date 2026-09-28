@@ -26,6 +26,7 @@ import {
   UserPlus,
   Building2,
   Package,
+  Timer,
   Shield,
   Dna,
   ClipboardCheck,
@@ -114,7 +115,13 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   },
   {
     label: "Ops",
-    items: [{ title: "Inventory", url: "/inventory", icon: Package }],
+    items: [
+      { title: "Inventory", url: "/inventory", icon: Package },
+      // The time clock's office half. Here rather than under Field because
+      // the people who open it are the owner and the office manager; the
+      // techs' half is the card at the top of My day.
+      { title: "Timesheets", url: "/timesheets", icon: Timer },
+    ],
   },
   {
     label: "Billing",

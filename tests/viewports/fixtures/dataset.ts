@@ -675,3 +675,130 @@ export const REPORTS = {
   newClients: 23,
   activeClients: 214,
 };
+
+// ── /timesheets and the My Day time clock ──────────────────────────────────
+
+/** 46 characters, the longest name in the fixture, and on the sheet on
+ *  purpose: the grid's first column and the phone card's header both have to
+ *  hold it beside a total. */
+export const LONG_STAFF_NAME = "Maximilian Alexander Fitzgerald-Worthington II";
+const LONG_STAFF_ID = "dddddddd-0000-4000-8000-00000000d008";
+
+/** Monday of the fixture's current week, the same arithmetic as mondayOf. */
+const mondayOfToday = (() => {
+  const [y, m, d] = TODAY.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return day(dow === 0 ? -6 : 1 - dow);
+})();
+const weekDay = (i: number) => {
+  const [y, m, d] = mondayOfToday.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + i)).toISOString().slice(0, 10);
+};
+const orgAt = (d: string, hhmm: string) =>
+  zonedTimeToUtc(d, hhmm, ORGANIZATION.timezone).toISOString();
+
+/**
+ * A week the timesheet has to work to lay out, not a tidy one:
+ *
+ *  - the 46-character name works five 9h45m days and is in OVERTIME, then
+ *    works a Saturday shift that runs past MIDNIGHT into Sunday, so the grid
+ *    draws a split day and the total carries its overtime badge;
+ *  - one tech is ON THE CLOCK now (an open entry), so the "now" branch draws;
+ *  - one tech completed visits and never clocked in, so the "no time" branch
+ *    draws;
+ *  - the rest have ordinary days, one of them with a lunch break (two shifts).
+ */
+export const TIMESHEET = (() => {
+  const staff = [
+    { id: LONG_STAFF_ID, display_name: LONG_STAFF_NAME, active: true },
+    ...STAFF.filter((s) => s.role === "tech").map((s) => ({
+      id: s.id,
+      display_name: s.display_name,
+      active: true,
+    })),
+  ];
+  const entries: Array<Record<string, unknown>> = [];
+  let n = 0;
+  const push = (staffId: string, from: string, to: string | null) => {
+    n += 1;
+    entries.push({
+      id: `77777777-0000-4000-8000-${String(100000000000 + n).slice(0, 12)}`,
+      staff_id: staffId,
+      clock_in: from,
+      clock_out: to,
+      clock_in_source: "tech_live",
+      clock_out_source: to ? "tech_live" : null,
+      note: n % 7 === 0 ? "Forgot to clock out at the dump; corrected from the fuel receipt" : null,
+      edited_at: n % 7 === 0 ? orgAt(weekDay(0), "18:00") : null,
+    });
+  };
+  for (let i = 0; i < 5; i++) {
+    push(LONG_STAFF_ID, orgAt(weekDay(i), "06:30"), orgAt(weekDay(i), "16:15"));
+  }
+  push(LONG_STAFF_ID, orgAt(weekDay(5), "21:00"), orgAt(weekDay(6), "01:30"));
+  // Alejandro: morning and afternoon, Monday to Thursday.
+  for (let i = 0; i < 4; i++) {
+    push(STAFF[0].id, orgAt(weekDay(i), "07:05"), orgAt(weekDay(i), "11:50"));
+    push(STAFF[0].id, orgAt(weekDay(i), "12:25"), orgAt(weekDay(i), "16:40"));
+  }
+  // Samantha: on the clock right now.
+  push(STAFF[1].id, new Date(Date.now() - 3 * 3600_000 - 12 * 60_000).toISOString(), null);
+  // Bartholomew and Priyanka: short days.
+  for (let i = 1; i < 4; i++) {
+    push(STAFF[2].id, orgAt(weekDay(i), "08:00"), orgAt(weekDay(i), "13:00"));
+    push(STAFF[4].id, orgAt(weekDay(i), "09:30"), orgAt(weekDay(i), "15:10"));
+  }
+  // Wen Zhang (STAFF[3]) clocked nothing, and completed visits anyway.
+  const visits = [
+    ...Array.from({ length: 6 }, (_, i) => ({
+      assigned_staff_id: STAFF[3].id,
+      completed_at: orgAt(weekDay(1), `${String(9 + i).padStart(2, "0")}:10`),
+    })),
+    ...Array.from({ length: 5 }, (_, d) =>
+      Array.from({ length: 11 }, (_, i) => ({
+        assigned_staff_id: LONG_STAFF_ID,
+        completed_at: orgAt(weekDay(d), `${String(7 + (i % 9)).padStart(2, "0")}:${10 + i}`),
+      })),
+    ).flat(),
+    ...Array.from({ length: 4 }, (_, d) => ({
+      assigned_staff_id: STAFF[0].id,
+      completed_at: orgAt(weekDay(d), "10:20"),
+    })),
+  ];
+  return {
+    timezone: ORGANIZATION.timezone,
+    weekStart: mondayOfToday,
+    today: TODAY,
+    staff,
+    pickable: staff.map((s) => ({ id: s.id, display_name: s.display_name })),
+    entries,
+    visits,
+  };
+})();
+
+/** My Day's clock: on the clock now, with an earlier shift today, which draws
+ *  the longer of the card's two second lines. */
+export const MY_CLOCK = {
+  staff: { id: STAFF[0].id, display_name: STAFF[0].display_name },
+  timezone: ORGANIZATION.timezone,
+  today: TODAY,
+  entries: [
+    {
+      id: "77777777-0000-4000-8000-900000000001",
+      staff_id: STAFF[0].id,
+      clock_in: new Date(Date.now() - 6 * 3600_000).toISOString(),
+      clock_out: new Date(Date.now() - 3 * 3600_000).toISOString(),
+      clock_in_source: "tech_live",
+      clock_out_source: "tech_live",
+    },
+    {
+      id: "77777777-0000-4000-8000-900000000002",
+      staff_id: STAFF[0].id,
+      clock_in: new Date(Date.now() - 2.5 * 3600_000).toISOString(),
+      clock_out: null,
+      clock_in_source: "tech_offline_replay",
+      clock_out_source: null,
+    },
+  ],
+  visitsCompletedToday: 4,
+};
