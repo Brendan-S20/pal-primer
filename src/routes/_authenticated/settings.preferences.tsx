@@ -43,6 +43,12 @@ import {
   setRequireCompletionPhoto,
 } from "@/lib/org-features.functions";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
+import { VisitChecklistEditor } from "@/components/VisitChecklistEditor";
+import type { ChecklistItem } from "@/lib/visit-checklist";
+
+/** One empty list, so the editor is not handed a new array on every render
+ *  while the org's features load. */
+const NO_CHECKLIST: ChecklistItem[] = [];
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -456,9 +462,8 @@ function CompletionPhotoCard() {
               Require a completion photo
             </Label>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              On: a tech takes a photo before completing, or says why they couldn&apos;t, and you
-              see the reason on the visit. Off: the photo is optional. Either way a tech can leave
-              you a note.
+              On: a photo before completing, or the tech&apos;s reason there isn&apos;t one. Off:
+              optional.
             </div>
           </div>
           <Switch
@@ -466,6 +471,14 @@ function CompletionPhotoCard() {
             checked={on}
             disabled={!canEdit || mut.isPending || q.isLoading}
             onCheckedChange={(v) => mut.mutate(v)}
+          />
+        </div>
+        <div className="mt-3">
+          <VisitChecklistEditor
+            saved={q.data?.visitChecklist ?? NO_CHECKLIST}
+            emailOn={q.data?.emailVisitChecklist ?? false}
+            canEdit={canEdit}
+            loading={q.isLoading}
           />
         </div>
       </CardContent>

@@ -41,7 +41,14 @@ const isTerminal = (kind: LifecycleKind) => kind === "complete" || kind === "ski
 /** Where a visit will be once its queued lifecycle actions replay. */
 export type QueuedLifecycle =
   | { kind: "start"; at: number }
-  | { kind: "complete"; at: number; startedAt?: number }
+  | {
+      kind: "complete";
+      at: number;
+      startedAt?: number;
+      /** The checklist items the tech checked, so the card can show the
+       *  answers it is waiting to send, not an empty checklist. */
+      checkedItems?: string[];
+    }
   | { kind: "skip"; at: number; startedAt?: number; code: string; reason: string };
 
 /**
@@ -70,7 +77,13 @@ export function queuedLifecycleByVisit(
     }
     const startedAt = prev?.kind === "start" ? prev.at : undefined;
     if (a.kind === "complete") {
-      out.set(a.visitId, { kind: "complete", at: a.ts, startedAt });
+      const c = a as Extract<PendingAction, { kind: "complete" }>;
+      out.set(a.visitId, {
+        kind: "complete",
+        at: a.ts,
+        startedAt,
+        ...(c.checkedItems ? { checkedItems: c.checkedItems } : {}),
+      });
     } else if (a.kind === "skip") {
       const s = a as Extract<PendingAction, { kind: "skip" }>;
       out.set(a.visitId, { kind: "skip", at: a.ts, startedAt, code: s.code, reason: s.reason });
@@ -95,8 +108,13 @@ type VisitLike = {
 };
 
 /** A visit as My Day draws it. `queuedSync` names the queued action the status
- *  came from, and is absent when the status is the server's own. */
-export type DisplayedVisit<V> = V & { queuedSync?: LifecycleKind };
+ *  came from, and is absent when the status is the server's own.
+ *  `queuedCheckedItems` is what a queued Complete checked: the server has not
+ *  written `visit_checklist` yet, so this is the only record the card has. */
+export type DisplayedVisit<V> = V & {
+  queuedSync?: LifecycleKind;
+  queuedCheckedItems?: string[];
+};
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -139,6 +157,7 @@ export function withQueuedLifecycle<V extends VisitLike>(
           started_at: startedAt,
           completed_at: iso(q.at),
           queuedSync: "complete",
+          ...(q.checkedItems ? { queuedCheckedItems: q.checkedItems } : {}),
         } as DisplayedVisit<V>;
       case "skip":
         return {

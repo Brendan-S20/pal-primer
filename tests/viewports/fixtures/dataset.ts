@@ -50,6 +50,24 @@ export const day = (offset: number) => {
 
 export const TODAY = day(0);
 
+export const VISIT_CHECKLIST = [
+  { id: "c7a1e0de-0000-4000-8000-000000000001", label: "All areas walked", required: true },
+  {
+    id: "c7a1e0de-0000-4000-8000-000000000002",
+    // 120 characters: the longest label visit_checklist_is_valid accepts.
+    label:
+      "Waste bagged, tied off and dropped in the customer's green bin by the garage, never the grey recycling tote on the road.",
+    required: true,
+  },
+  {
+    id: "c7a1e0de-0000-4000-8000-000000000003",
+    // No space and no hyphen: nothing a browser may break at on its own.
+    label: "Gate latched: SIDEGATECARABINERCLIPPEDTHROUGHTHECHAINLINKFENCE",
+    required: true,
+  },
+  { id: "c7a1e0de-0000-4000-8000-000000000004", label: "Water bowl checked", required: false },
+];
+
 export const ORGANIZATION = {
   id: ORG_ID,
   name: ORG_NAME,
@@ -62,6 +80,17 @@ export const ORGANIZATION = {
   current_period_end: iso(new Date(Date.now() + 12 * 864e5)),
   stripe_customer_id: "cus_QxT7HkPmZ3vLd8RaFn2Wq0",
   stripe_subscription_id: "sub_1QxT7HkPmZ3vLd8RaFn2Wq0Bs",
+  require_completion_photo: true,
+  // The visit checklist, in the column's own shape ({id, label, required}),
+  // because My Day reads it through parseChecklist and an item of any other
+  // shape is dropped: a fixture that got the shape wrong would draw no
+  // checklist and the sweep would measure a card without one, green.
+  // `tests/a-checklist-the-sweep-can-see.test.ts` runs it through that parser.
+  //
+  // Awkward on purpose. One label is as long as the database allows a label
+  // to be, and one contains a word with no break in it, because at 320px the
+  // question is whether the row wraps inside the card or widens the page.
+  visit_checklist: VISIT_CHECKLIST,
   role: "owner",
 };
 

@@ -2,6 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { orgToday } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
 import { PHOTO_KINDS, PHOTO_KINDS_EMAILED, pickEmailedPhotos } from "@/lib/photo-kinds";
+import {
+  MAX_CHECKLIST_ID,
+  MAX_CHECKLIST_ITEMS,
+  checkedLabels,
+  parseAnswers,
+} from "@/lib/visit-checklist";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -66,7 +72,7 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, dogs(name, temperament)), zones(name), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, dogs(name, temperament)), zones(name), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -164,6 +170,13 @@ export const completeVisit = createServerFn({ method: "POST" })
         /** Why there is no completion photo, when the org requires one. The
          *  SQL decides whether it is needed. */
         noPhotoReason: z.string().trim().max(300).optional(),
+        /** The ids of the checklist items the tech checked. The SQL refuses
+         *  the completion while a required one is missing, and copies each
+         *  item's label from the owner's list onto the visit. */
+        checkedItems: z
+          .array(z.string().min(1).max(MAX_CHECKLIST_ID))
+          .max(MAX_CHECKLIST_ITEMS)
+          .optional(),
       })
       .parse(d),
   )
@@ -173,6 +186,7 @@ export const completeVisit = createServerFn({ method: "POST" })
       _completed_at: data.completedAt ?? undefined,
       _note: data.note || undefined,
       _no_photo_reason: data.noPhotoReason || undefined,
+      _checked_items: data.checkedItems ?? undefined,
     });
     if (error) throw new Error(error.message);
     try {
@@ -201,7 +215,7 @@ export const completeVisit = createServerFn({ method: "POST" })
       const { data: v } = await context.supabase
         .from("visits")
         .select(
-          "organization_id, client_id, scheduled_on, properties(street, city, visit_contact_email)",
+          "organization_id, client_id, scheduled_on, visit_checklist, properties(street, city, visit_contact_email), organizations(email_visit_checklist)",
         )
         .eq("id", data.visitId)
         .single();
@@ -210,6 +224,16 @@ export const completeVisit = createServerFn({ method: "POST" })
           ? (v as any).properties[0]
           : (v as any).properties;
         const address = prop ? [prop.street, prop.city].filter(Boolean).join(", ") : undefined;
+        // What the tech checked, when the owner has chosen to tell the
+        // customer (Settings -> Preferences -> Finishing a visit; off by
+        // default). Only CHECKED items: "Water bowl checked: no" is the
+        // office's business, not a line in a thank-you email.
+        const org: any = Array.isArray((v as any).organizations)
+          ? (v as any).organizations[0]
+          : (v as any).organizations;
+        const checklist = org?.email_visit_checklist
+          ? checkedLabels(parseAnswers((v as any).visit_checklist))
+          : [];
         // The template has always drawn up to three photos and nothing ever
         // passed it any, so the proof a customer was paying for stayed on the
         // server. The bucket is private: these are signed links, long enough
@@ -260,6 +284,7 @@ export const completeVisit = createServerFn({ method: "POST" })
             address,
             photoUrls,
             gatePhotoUrl,
+            checklist,
           },
         });
         // Best-effort push notification to the client (if they subscribed via portal).
