@@ -951,6 +951,16 @@ const BASE_STUBS: Record<string, Stub> = {
 
   getPlanCatalogMirror: { rows: [], mismatches: [] },
 
+  // The calendar feed card, on /profile and /settings/scheduling. The owner
+  // has BOTH rows (a staff record and view_client_directory), the own link
+  // already made and read, the all-visits link not yet made -- so both
+  // states draw, and the longer of the two status lines is the real one.
+  getMyCalendarFeeds: fx.CALENDAR_FEEDS,
+  // "Create link" answers with a URL the length production makes: the app
+  // origin, the path, 43 base64url characters and `.ics`. A short fixture URL
+  // would never test the box it is shown in.
+  createCalendarFeedLink: { url: fx.CALENDAR_FEED_URL, createdAt: "2026-08-28T15:00:00.000Z" },
+
   // ── Writes. Nothing here writes anywhere; they exist so an accidental
   //    click during an interaction step does not throw a red toast into the
   //    measurement.

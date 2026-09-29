@@ -823,6 +823,44 @@ export type Database = {
           },
         ]
       }
+      calendar_feeds: {
+        Row: {
+          created_at: string
+          id: string
+          last_fetched_at: string | null
+          organization_id: string
+          scope: string
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_fetched_at?: string | null
+          organization_id: string
+          scope: string
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_fetched_at?: string | null
+          organization_id?: string
+          scope?: string
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_feeds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_holds: {
         Row: {
           client_id: string
@@ -2899,6 +2937,7 @@ export type Database = {
           portal_slug: string | null
           public_signup_enabled: boolean
           reclean_window_hours: number
+          calendar_feed_access_codes: boolean
           referral_code: string | null
           referral_reward_cents: number
           referred_by_org_id: string | null
@@ -3030,6 +3069,7 @@ export type Database = {
           portal_slug?: string | null
           public_signup_enabled?: boolean
           reclean_window_hours?: number
+          calendar_feed_access_codes?: boolean
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -3161,6 +3201,7 @@ export type Database = {
           portal_slug?: string | null
           public_signup_enabled?: boolean
           reclean_window_hours?: number
+          calendar_feed_access_codes?: boolean
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -6240,6 +6281,20 @@ export type Database = {
         Returns: {
           moved: number
           skipped: number
+        }[]
+      }
+      calendar_feed_events: { Args: { _token_hash: string }; Returns: Json }
+      calendar_feed_revoke: { Args: { _scope: string }; Returns: boolean }
+      calendar_feed_rotate: {
+        Args: { _scope: string; _token_hash: string }
+        Returns: string
+      }
+      calendar_feed_status: {
+        Args: never
+        Returns: {
+          created_at: string
+          last_fetched_at: string
+          scope: string
         }[]
       }
       can_write_org: {

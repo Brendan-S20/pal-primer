@@ -139,6 +139,7 @@ import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/publ
 import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
+import { Route as ApiPublicCalendarTokenRouteImport } from './routes/api/public/calendar.$token'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 import { Route as PortalSlugTokenPayInvoiceIdRouteImport } from './routes/portal.$slug.$token.pay.$invoiceId'
 
@@ -833,6 +834,11 @@ const ApiPublicHooksAnnouncementEmailsRoute =
     path: '/api/public/hooks/announcement-emails',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCalendarTokenRoute = ApiPublicCalendarTokenRouteImport.update({
+  id: '/api/public/calendar/$token',
+  path: '/api/public/calendar/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedPropertiesPropertyIdBoundaryRoute =
   AuthenticatedPropertiesPropertyIdBoundaryRouteImport.update({
     id: '/properties/$propertyId/boundary',
@@ -962,6 +968,7 @@ export interface FileRoutesByFullPath {
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
@@ -1087,6 +1094,7 @@ export interface FileRoutesByTo {
   '/platform/tenants': typeof PlatformTenantsIndexRoute
   '/portal/$slug': typeof PortalSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
@@ -1222,6 +1230,7 @@ export interface FileRoutesById {
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
@@ -1357,6 +1366,7 @@ export interface FileRouteTypes {
     | '/platform/tenants/'
     | '/portal/$slug/'
     | '/properties/$propertyId/boundary'
+    | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
@@ -1482,6 +1492,7 @@ export interface FileRouteTypes {
     | '/platform/tenants'
     | '/portal/$slug'
     | '/properties/$propertyId/boundary'
+    | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
@@ -1616,6 +1627,7 @@ export interface FileRouteTypes {
     | '/platform/tenants/'
     | '/portal/$slug/'
     | '/_authenticated/properties/$propertyId/boundary'
+    | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
@@ -1665,6 +1677,7 @@ export interface RootRouteChildren {
   EmailTransactionalPreviewRoute: typeof EmailTransactionalPreviewRoute
   EmailTransactionalSendRoute: typeof EmailTransactionalSendRoute
   PayITokenRoute: typeof PayITokenRoute
+  ApiPublicCalendarTokenRoute: typeof ApiPublicCalendarTokenRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
@@ -2588,6 +2601,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksAnnouncementEmailsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/calendar/$token': {
+      id: '/api/public/calendar/$token'
+      path: '/api/public/calendar/$token'
+      fullPath: '/api/public/calendar/$token'
+      preLoaderRoute: typeof ApiPublicCalendarTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/properties/$propertyId/boundary': {
       id: '/_authenticated/properties/$propertyId/boundary'
       path: '/properties/$propertyId/boundary'
@@ -2916,6 +2936,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmailTransactionalPreviewRoute: EmailTransactionalPreviewRoute,
   EmailTransactionalSendRoute: EmailTransactionalSendRoute,
   PayITokenRoute: PayITokenRoute,
+  ApiPublicCalendarTokenRoute: ApiPublicCalendarTokenRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,

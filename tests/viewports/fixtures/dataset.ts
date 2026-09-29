@@ -997,6 +997,31 @@ export const CONCERNS = {
 };
 
 /**
+ * The calendar feed card (Profile, and Settings -> Scheduling), added
+ * 2026-09-29 with the feeds.
+ *
+ * `getMyCalendarFeeds` returns camelCase and both scopes. The owner can have
+ * both, so both rows draw: "My visits" with a link already made and read by a
+ * calendar (the longest status line the row has), "Every visit" with none yet
+ * (the "Create link" button). The URL is the length production makes -- app
+ * origin, path, 43 base64url characters, `.ics` -- because the box it is
+ * shown in is only tested by a value that long.
+ */
+export const CALENDAR_FEEDS = {
+  mine: {
+    createdAt: "2026-08-14T14:22:00.000Z",
+    lastFetchedAt: iso(new Date(Date.now() - 2 * 3600e3)),
+  },
+  org: null,
+  canMine: true,
+  canOrg: true,
+  accessCodesInFeed: false,
+  canManageSettings: true,
+};
+export const CALENDAR_FEED_URL =
+  "https://app.houndstack.com/api/public/calendar/q3Vx8KpZ-7mT2wLr9sYc_4NbHd6FjAe1GuQo0IiPlXk.ics";
+
+/**
  * /quotes and /quotes/:id, added 2026-09-28 with the pages.
  *
  * The list is the shapes `listQuotes` returns after its own reshaping
