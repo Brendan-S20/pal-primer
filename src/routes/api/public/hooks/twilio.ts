@@ -51,6 +51,29 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           .eq("sms_from_number", to)
           .maybeSingle();
         if (!org) {
+          // Not a business's own number. It may be the PLATFORM number every
+          // automated text is sent from, whose replies used to stop here,
+          // STOP included. See lib/platform-replies.
+          const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+          const { samePhone } = await import("@/lib/platform-replies");
+          const platform = platformTwilioFrom();
+          if (platform && samePhone(to, platform)) {
+            const { handlePlatformReply } = await import("@/lib/platform-inbound.server");
+            const r = await handlePlatformReply({
+              requestUrl: request.url,
+              pathWithQuery: url.pathname + url.search,
+              params,
+              signature,
+              from,
+              to,
+              body,
+              sid,
+            });
+            if (r.status === 401) return new Response("unauthorized", { status: 401 });
+            return r.reply
+              ? xml(`<Response><Message>${escapeXml(r.reply)}</Message></Response>`, 200)
+              : xml("<Response/>", 200);
+          }
           console.warn("Inbound SMS: no org for To=", to);
           return xml("<Response/>", 200);
         }

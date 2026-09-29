@@ -47,7 +47,9 @@ export function onMyWayText(p: {
 }): string {
   const who = p.techName ? `${p.techName} from ${p.orgName}` : `your ${p.orgName} tech`;
   const when = p.eta ? `, arriving ${p.eta}` : "";
-  return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}. Reply STOP to opt out.`;
+  // ENT / DNE is the handshake operators teach their customers; the reply
+  // lands on the visit (platform-inbound.server.ts) and shows on the stop.
+  return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}. Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.`;
 }
 
 export type NavigateCheck =

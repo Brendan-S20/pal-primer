@@ -89,6 +89,8 @@ import {
   List as ListIcon,
   Map as MapIcon,
   TriangleAlert,
+  Ban,
+  ShieldCheck,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
@@ -1812,6 +1814,31 @@ function VisitCard({
 
           {!collapsed && (
             <>
+              {/* The customer's answer to "on my way": ENT, the dogs are in;
+                  DNE, do not enter. Above the dogs and the gate code, because
+                  it is what decides whether those get used at all. */}
+              {visit.gate_reply && !done && !skipped && (
+                <div
+                  role="status"
+                  className={`mt-2.5 flex items-start gap-2 rounded-lg border p-2.5 text-sm font-medium ${
+                    visit.gate_reply === "do_not_enter"
+                      ? "border-destructive/40 bg-destructive/10 text-destructive"
+                      : "border-emerald-600/30 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300"
+                  }`}
+                >
+                  {visit.gate_reply === "do_not_enter" ? (
+                    <Ban className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  ) : (
+                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="min-w-0">
+                    {visit.gate_reply === "do_not_enter"
+                      ? "Customer says do not enter"
+                      : "Customer says the dogs are secured"}
+                    {visit.gate_reply_at ? ` (${orgLocalTime(visit.gate_reply_at, tz)})` : ""}
+                  </span>
+                </div>
+              )}
               {/* Dogs on site (H1 safety gap): name + temperament belongs next
                   to hazards, on residential cards too, so the tech knows what
                   they're walking into. */}
