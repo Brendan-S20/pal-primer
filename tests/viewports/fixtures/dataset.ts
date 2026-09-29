@@ -1336,6 +1336,7 @@ export const EXPENSE_SETTINGS = {
   timezone: ORGANIZATION.timezone,
   today: TODAY,
   myStaffId: STAFF[0].id,
+};
 
 /**
  * /campaigns and /campaigns/:id, added 2026-09-29 with the pages.
