@@ -4,6 +4,7 @@ import { liveServiceOrFilter } from "@/lib/subscription-form";
 import { orgToday } from "@/lib/org-day";
 import { appUrl } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
 
@@ -237,7 +238,9 @@ export const portalListInvoices = createServerFn({ method: "GET" })
     const { invoiceOutstandingCents } = await import("@/lib/ar");
     const { data: dueRows, error: dueErr } = await sb
       .from("invoices")
-      .select("id, due_on, credit_applied_cents")
+      // tax_*: the sales tax inside total_cents, drawn as "includes $X sales
+      // tax" beside the amount when there is any.
+      .select("id, due_on, credit_applied_cents, tax_cents, tax_rate_bps, tax_label")
       .eq("client_id", session.clientId);
     if (dueErr) throw new Error(dueErr.message);
     const dueById = new Map(
@@ -246,6 +249,9 @@ export const portalListInvoices = createServerFn({ method: "GET" })
           id: string;
           due_on: string | null;
           credit_applied_cents: number | null;
+          tax_cents?: number | null;
+          tax_rate_bps?: number | null;
+          tax_label?: string | null;
         }>
       ).map((r) => [r.id, r]),
     );
@@ -267,6 +273,9 @@ export const portalListInvoices = createServerFn({ method: "GET" })
         ...r,
         due_on,
         credit_applied_cents,
+        tax_cents: Number(extra?.tax_cents ?? 0),
+        tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
+        tax_label: (extra?.tax_label ?? null) as string | null,
         // What the client still owes on this invoice, net of applied credit (B7).
         amount_due_cents: invoiceOutstandingCents({
           status: r.status,
@@ -761,7 +770,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
       )
       .eq("id", data.invoiceId)
       .single();
@@ -868,13 +877,15 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
       paymentMethodId: c.default_payment_method_id,
       stripeAccount,
       baseCents: dueCents,
+      // The sales tax inside what is due is not surcharged (processing-fee.ts).
+      taxCents: taxShareCents(dueCents, invoice.tax_cents, invoice.total_cents),
       config: await orgFeeConfig(supabaseAdmin, invoice.organization_id),
     });
     try {
       const pi = await stripe.paymentIntents.create(
         {
           amount: quote.totalCents,
-          application_fee_amount: platformFeeCents(dueCents),
+          application_fee_amount: platformFeeCents(dueCents, invoice),
           currency: invoice.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
@@ -1574,7 +1585,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id",
+        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id",
       )
       .eq("id", data.invoiceId)
       .single();
@@ -1632,7 +1643,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       .eq("id", invoice.organization_id)
       .maybeSingle();
     const tipsEnabled = !!(tipOrg as { tips_enabled?: boolean | null } | null)?.tips_enabled;
-    const charge = tippedCharge({ dueCents, choice: data.tip, tipsEnabled });
+    const charge = tippedCharge({ dueCents, choice: data.tip, tipsEnabled, invoice });
     // If the stored intent OR a legacy hosted-checkout session already
     // succeeded but the status is stale (webhook missed), reconcile instead
     // of minting a new intent and charging the client a second time.

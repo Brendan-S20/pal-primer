@@ -38,6 +38,7 @@
 // how much of a stranger's money to suggest, and it is the figure printed
 // right beside the choices, so the arithmetic is checkable on the screen.
 
+import { preTaxShareCents } from "@/lib/sales-tax";
 import { z } from "zod";
 
 export const TIP_PERCENTS = [10, 15, 20] as const;
@@ -138,7 +139,9 @@ export function tipCentsFor(choice: TipChoice | null | undefined, dueCents: numb
  *
  * - `amountCents` is what the card is charged: due + tip. No surcharge -- see
  *   the header.
- * - `platformFeeBaseCents` is `dueCents`: the application fee is taken on the
+ * - `platformFeeBaseCents` is `dueCents` less its sales-tax share (pro rata by
+ *   the invoice's tax / total, `preTaxShareCents`) — exactly `dueCents` for an
+ *   invoice with no tax: the application fee is taken on the
  *   invoice, never on the tip.
  * - `metadata.tip_cents` is ALWAYS written, "0" included. Stripe merges
  *   metadata on update, so an intent that once carried a tip and is re-used
@@ -149,6 +152,9 @@ export function tippedCharge(args: {
   dueCents: number;
   choice: TipChoice | null | undefined;
   tipsEnabled: boolean;
+  /** The invoice being paid, for its sales tax. The platform fee is not taken
+   *  on tax. Omitted, the fee base is `dueCents`. */
+  invoice?: { tax_cents?: number | null; total_cents?: number | null } | null;
 }): {
   dueCents: number;
   tipCents: number;
@@ -166,7 +172,7 @@ export function tippedCharge(args: {
     dueCents: due,
     tipCents: tip,
     amountCents: due + tip,
-    platformFeeBaseCents: due,
+    platformFeeBaseCents: preTaxShareCents(due, args.invoice),
     metadata: tipMetadata(tip),
   };
 }

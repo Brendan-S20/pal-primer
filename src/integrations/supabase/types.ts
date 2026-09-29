@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       accounting_connections: {
         Row: {
+          default_sales_tax_account: string | null
           access_token: string | null
           auto_sync: boolean
           connected_at: string
@@ -34,6 +35,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          default_sales_tax_account?: string | null
           access_token?: string | null
           auto_sync?: boolean
           connected_at?: string
@@ -52,6 +54,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          default_sales_tax_account?: string | null
           access_token?: string | null
           auto_sync?: boolean
           connected_at?: string
@@ -1014,6 +1017,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          tax_exempt: boolean
           account_type: Database["public"]["Enums"]["account_type"]
           accounting_remote_id: string | null
           active: boolean
@@ -1065,6 +1069,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          tax_exempt?: boolean
           account_type: Database["public"]["Enums"]["account_type"]
           accounting_remote_id?: string | null
           active?: boolean
@@ -1116,6 +1121,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          tax_exempt?: boolean
           account_type?: Database["public"]["Enums"]["account_type"]
           accounting_remote_id?: string | null
           active?: boolean
@@ -1890,6 +1896,7 @@ export type Database = {
       }
       franchise_royalty_invoices: {
         Row: {
+          sales_tax_collected_by_parent_cents: number
           adjustments_applied_cents: number
           amount_cents: number
           child_organization_id: string
@@ -1909,6 +1916,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          sales_tax_collected_by_parent_cents?: number
           adjustments_applied_cents?: number
           amount_cents?: number
           child_organization_id: string
@@ -1928,6 +1936,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          sales_tax_collected_by_parent_cents?: number
           adjustments_applied_cents?: number
           amount_cents?: number
           child_organization_id?: string
@@ -2486,6 +2495,9 @@ export type Database = {
       }
       invoices: {
         Row: {
+          tax_cents: number
+          tax_label: string | null
+          tax_rate_bps: number
           accounting_remote_id: string | null
           checkout_url: string | null
           client_id: string
@@ -2516,6 +2528,9 @@ export type Database = {
           voided_at: string | null
         }
         Insert: {
+          tax_cents?: number
+          tax_label?: string | null
+          tax_rate_bps?: number
           accounting_remote_id?: string | null
           checkout_url?: string | null
           client_id: string
@@ -2546,6 +2561,9 @@ export type Database = {
           voided_at?: string | null
         }
         Update: {
+          tax_cents?: number
+          tax_label?: string | null
+          tax_rate_bps?: number
           accounting_remote_id?: string | null
           checkout_url?: string | null
           client_id?: string
@@ -3021,6 +3039,8 @@ export type Database = {
       }
       organizations: {
         Row: {
+          sales_tax_label: string
+          sales_tax_rate_bps: number
           active_client_count: number
           active_seat_count: number
           ai_hard_cap_multiplier: number
@@ -3158,6 +3178,8 @@ export type Database = {
           quote_followup_days: number
         }
         Insert: {
+          sales_tax_label?: string
+          sales_tax_rate_bps?: number
           active_client_count?: number
           active_seat_count?: number
           ai_hard_cap_multiplier?: number
@@ -3295,6 +3317,8 @@ export type Database = {
           quote_followup_days?: number
         }
         Update: {
+          sales_tax_label?: string
+          sales_tax_rate_bps?: number
           active_client_count?: number
           active_seat_count?: number
           ai_hard_cap_multiplier?: number
@@ -3457,6 +3481,7 @@ export type Database = {
       }
       payments: {
         Row: {
+          tax_cents: number
           accounting_remote_id: string | null
           amount_cents: number
           collected_by_organization_id: string | null
@@ -3478,6 +3503,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          tax_cents?: number
           accounting_remote_id?: string | null
           amount_cents: number
           collected_by_organization_id?: string | null
@@ -3499,6 +3525,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          tax_cents?: number
           accounting_remote_id?: string | null
           amount_cents?: number
           collected_by_organization_id?: string | null

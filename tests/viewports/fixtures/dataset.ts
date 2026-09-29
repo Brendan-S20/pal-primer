@@ -325,7 +325,16 @@ const REFUND_INVOICE_ROW = {
   status: "paid",
   kind: "service",
   currency: "usd",
-  subtotal_cents: 24_000,
+  // TAXED, so the page draws its sales-tax line between Subtotal and Total —
+  // the one row a business that never set a rate never sees, and so the one
+  // no untaxed fixture could measure. A 39-character label, one short of the
+  // most the settings accept, at a rate with two decimals, so the label has to wrap
+  // beside its amount on a 360px phone. 22,171 x 8.25% = 1,829.1 -> 1,829,
+  // and the total stays 24,000 so the payments below still settle it.
+  subtotal_cents: 22_171,
+  tax_rate_bps: 825,
+  tax_cents: 1_829,
+  tax_label: "County and Special District Service Tax",
   total_cents: 24_000,
   credit_applied_cents: 0,
   period_start: day(-30),
