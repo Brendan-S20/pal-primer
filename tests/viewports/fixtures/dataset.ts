@@ -403,7 +403,8 @@ export const REFUND_INVOICE = {
     {
       id: "66666666-0000-4000-8000-0000000066a1",
       description: "Weekly yard service, 4 visits (commons, dog run and both retention ponds)",
-      amount_cents: 24_000,
+      // The taxed subtotal: 22,171 + 1,829 of tax = the 24,000 total.
+      amount_cents: 22_171,
       visit_id: null,
       subscription_id: null,
     },

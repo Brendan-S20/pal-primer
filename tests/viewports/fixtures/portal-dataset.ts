@@ -417,7 +417,9 @@ export const PUBLIC_INVOICE = {
     {
       id: "88888888-0000-4000-8000-000000008001",
       description: "Weekly yard service — 4 visits",
-      amountCents: 9600,
+      // 8,617 + 3,600 - 300 = 11,917, the taxed subtotal, so the lines, the
+      // tax and the total on the page all add up.
+      amountCents: 8617,
       quantity: 1,
       unitAmountCents: null,
     },
