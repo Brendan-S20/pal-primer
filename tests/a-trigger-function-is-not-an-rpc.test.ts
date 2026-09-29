@@ -143,7 +143,14 @@ describe("no trigger function is executable by a signed-in user", () => {
     // quotes_guard_answer, which keeps a sent quote as sent and lets only the
     // customer's link accept or decline it. Both carry their own REVOKE from
     // PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(39);
+    //
+    // 39 -> 46 on 2026-09-29 (20260929080000, outbound webhooks):
+    // webhook_endpoints_before_update, which keeps an endpoint's failure
+    // counters in step with its switch, and six emitters that write the
+    // webhook outbox on a transition -- webhook_emit_client, _visit,
+    // _invoice, _payment, _quote and _lead. All seven carry their own REVOKE
+    // from PUBLIC, anon and authenticated.
+    expect(triggerFunctions().size).toBe(46);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

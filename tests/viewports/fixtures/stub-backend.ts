@@ -588,6 +588,85 @@ const BASE_STUBS: Record<string, Stub> = {
   // the timeline and Convert; the draft draws the editor.
   listQuotes: fx.QUOTES,
   getQuote: (a) => fx.quoteDetail(String(a.id ?? fx.QUOTE_ACCEPTED_ID)),
+  // /settings/webhooks. Awkward on purpose: a Zapier catch URL is ~70
+  // characters with no space to break at, a receiver's error body can be a
+  // wall of JSON, and a switched-off endpoint carries its reason. Without
+  // these the page draws only its empty state and its add button.
+  listWebhookEndpoints: [
+    {
+      id: "0e000000-0000-4000-8000-000000000001",
+      url: "https://hooks.zapier.com/hooks/catch/18273645/3kq9zx7/?source=houndstack-production-account-2026",
+      description: "Zapier: new clients to Mailchimp, completed visits to the Google review request sheet",
+      events: ["client.created", "visit.completed", "visit.skipped", "invoice.paid", "payment.received"],
+      enabled: true,
+      secret_last4: "Qz9x",
+      consecutive_failures: 2,
+      disabled_at: null,
+      disabled_reason: null,
+      last_success_at: "2026-09-28T14:05:00Z",
+      last_failure_at: "2026-09-29T09:12:00Z",
+      created_at: "2026-09-01T12:00:00Z",
+      updated_at: "2026-09-29T09:12:00Z",
+    },
+    {
+      id: "0e000000-0000-4000-8000-000000000002",
+      url: "https://n8n.whitfield-ramirez-pet-waste-services.example.com/webhook/0b4e9f2c-6a1d-4c3e-9b8a-77f1e2d3c4b5",
+      description: "",
+      events: ["lead.created"],
+      enabled: false,
+      secret_last4: "a1B2",
+      consecutive_failures: 5,
+      disabled_at: "2026-09-27T03:00:00Z",
+      disabled_reason: "Switched off after 5 deliveries in a row failed",
+      last_success_at: null,
+      last_failure_at: "2026-09-27T03:00:00Z",
+      created_at: "2026-09-10T12:00:00Z",
+      updated_at: "2026-09-27T03:00:00Z",
+    },
+  ],
+  listWebhookDeliveries: [
+    {
+      id: "0d000000-0000-4000-8000-000000000001",
+      endpoint_id: "0e000000-0000-4000-8000-000000000001",
+      event_type: "payment.received",
+      status: "pending",
+      attempts: 2,
+      last_status_code: 502,
+      last_error:
+        'HTTP 502: {"status":"error","message":"upstream_timeout","request_id":"req_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c","retry":true}',
+      next_attempt_at: "2026-09-29T09:17:00Z",
+      last_attempt_at: "2026-09-29T09:12:00Z",
+      delivered_at: null,
+      created_at: "2026-09-29T09:11:00Z",
+    },
+    {
+      id: "0d000000-0000-4000-8000-000000000002",
+      endpoint_id: "0e000000-0000-4000-8000-000000000001",
+      event_type: "visit.completed",
+      status: "succeeded",
+      attempts: 1,
+      last_status_code: 200,
+      last_error: null,
+      next_attempt_at: "2026-09-28T14:05:00Z",
+      last_attempt_at: "2026-09-28T14:05:00Z",
+      delivered_at: "2026-09-28T14:05:00Z",
+      created_at: "2026-09-28T14:05:00Z",
+    },
+    {
+      id: "0d000000-0000-4000-8000-000000000003",
+      endpoint_id: "0e000000-0000-4000-8000-000000000002",
+      event_type: "lead.created",
+      status: "failed",
+      attempts: 6,
+      last_status_code: 302,
+      last_error:
+        "Redirected to https://n8n.whitfield-ramirez-pet-waste-services.example.com/signin?next=%2Fwebhook%2F0b4e9f2c. Redirects are not followed; use the final URL.",
+      next_attempt_at: "2026-09-27T03:00:00Z",
+      last_attempt_at: "2026-09-27T03:00:00Z",
+      delivered_at: null,
+      created_at: "2026-09-26T14:00:00Z",
+    },
+  ],
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
   // read these and threw on the null the fence answered — so the unlisted
