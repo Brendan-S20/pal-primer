@@ -95,7 +95,9 @@ import { Route as EmailQueueProcessRouteImport } from './routes/email/queue/proc
 import { Route as EmailAuthWebhookRouteImport } from './routes/email/auth/webhook'
 import { Route as EmailAuthPreviewRouteImport } from './routes/email/auth/preview'
 import { Route as ApiPublicVerifyEmailRouteImport } from './routes/api/public/verify-email'
+import { Route as ApiPublicQuotePdfRouteImport } from './routes/api/public/quote-pdf'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
+import { Route as ApiPublicInvoicePdfRouteImport } from './routes/api/public/invoice-pdf'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
@@ -585,9 +587,19 @@ const ApiPublicVerifyEmailRoute = ApiPublicVerifyEmailRouteImport.update({
   path: '/api/public/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicQuotePdfRoute = ApiPublicQuotePdfRouteImport.update({
+  id: '/api/public/quote-pdf',
+  path: '/api/public/quote-pdf',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicLeadsRoute = ApiPublicLeadsRouteImport.update({
   id: '/api/public/leads',
   path: '/api/public/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicInvoicePdfRoute = ApiPublicInvoicePdfRouteImport.update({
+  id: '/api/public/invoice-pdf',
+  path: '/api/public/invoice-pdf',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSettingsUsersRoute =
@@ -973,7 +985,9 @@ export interface FileRoutesByFullPath {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
@@ -1102,7 +1116,9 @@ export interface FileRoutesByTo {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
@@ -1240,7 +1256,9 @@ export interface FileRoutesById {
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
@@ -1379,7 +1397,9 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
@@ -1508,7 +1528,9 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
@@ -1645,7 +1667,9 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
@@ -1706,7 +1730,9 @@ export interface RootRouteChildren {
   QTokenRoute: typeof QTokenRoute
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
+  ApiPublicInvoicePdfRoute: typeof ApiPublicInvoicePdfRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
+  ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
   ApiPublicVerifyEmailRoute: typeof ApiPublicVerifyEmailRoute
   EmailAuthPreviewRoute: typeof EmailAuthPreviewRoute
   EmailAuthWebhookRoute: typeof EmailAuthWebhookRoute
@@ -2329,11 +2355,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicVerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/quote-pdf': {
+      id: '/api/public/quote-pdf'
+      path: '/api/public/quote-pdf'
+      fullPath: '/api/public/quote-pdf'
+      preLoaderRoute: typeof ApiPublicQuotePdfRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/leads': {
       id: '/api/public/leads'
       path: '/api/public/leads'
       fullPath: '/api/public/leads'
       preLoaderRoute: typeof ApiPublicLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/invoice-pdf': {
+      id: '/api/public/invoice-pdf'
+      path: '/api/public/invoice-pdf'
+      fullPath: '/api/public/invoice-pdf'
+      preLoaderRoute: typeof ApiPublicInvoicePdfRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/settings/users': {
@@ -3006,7 +3046,9 @@ const rootRouteChildren: RootRouteChildren = {
   QTokenRoute: QTokenRoute,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
+  ApiPublicInvoicePdfRoute: ApiPublicInvoicePdfRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
+  ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
   ApiPublicVerifyEmailRoute: ApiPublicVerifyEmailRoute,
   EmailAuthPreviewRoute: EmailAuthPreviewRoute,
   EmailAuthWebhookRoute: EmailAuthWebhookRoute,

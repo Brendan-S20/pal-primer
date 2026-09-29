@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { QuoteDocument } from "@/components/quotes/QuoteDocument";
+import { DownloadPdfLink } from "@/components/DownloadPdfButton";
 import { getPublicQuote, respondToPublicQuote } from "@/lib/quotes.functions";
 import { QUOTE_LIMITS, formatQuoteDay, isUsableSignature } from "@/lib/quotes";
 import { orgLocalDay } from "@/lib/org-day";
@@ -87,6 +88,12 @@ function PublicQuotePage() {
         lines={data.lines}
         currency={data.quote.currency}
       />
+      {/* Only reached with a document in hand: a draft's link never gets
+          here (public_quote_document answers nothing for it), and the PDF
+          route asks the same function. */}
+      <div className="flex flex-wrap justify-end gap-2">
+        <DownloadPdfLink href={`/api/public/quote-pdf?token=${encodeURIComponent(token)}`} />
+      </div>
       <Answer token={token} data={data} />
       <Contact data={data} />
     </div>
