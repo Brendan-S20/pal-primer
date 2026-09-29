@@ -33,6 +33,8 @@ type SidebarContextProps = {
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
+  /** Where the sidebar stops being a sheet and docks. See SidebarProvider. */
+  docksFrom: "md" | "lg";
   toggleSidebar: () => void;
 };
 
@@ -53,11 +55,20 @@ const SidebarProvider = React.forwardRef<
     defaultOpen?: boolean;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    /** The width from which the sidebar docks; below it, it is a sheet.
+     *  `md` is the default and was the only answer. `lg` is for where
+     *  something else is the navigation through the tablet range — the
+     *  tech tab bar, see useTabletTier. Both halves of the decision read
+     *  this: the JS that picks sheet-or-docked and the CSS that shows the
+     *  docked column. They were two separate spellings of 768 that
+     *  happened to agree, and no caller could move either. */
+    docksFrom?: "md" | "lg";
   }
 >(
   (
     {
       defaultOpen = true,
+      docksFrom = "md",
       open: openProp,
       onOpenChange: setOpenProp,
       className,
@@ -67,7 +78,7 @@ const SidebarProvider = React.forwardRef<
     },
     ref,
   ) => {
-    const isMobile = useIsMobile();
+    const isMobile = useIsMobile(docksFrom === "lg" ? 1024 : 768);
     const [openMobile, setOpenMobile] = React.useState(false);
 
     // This is the internal state of the sidebar.
@@ -117,11 +128,12 @@ const SidebarProvider = React.forwardRef<
         open,
         setOpen,
         isMobile,
+        docksFrom,
         openMobile,
         setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+      [state, open, setOpen, isMobile, docksFrom, openMobile, setOpenMobile, toggleSidebar],
     );
 
     return (
@@ -170,7 +182,7 @@ const Sidebar = React.forwardRef<
     },
     ref,
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+    const { isMobile, docksFrom, state, openMobile, setOpenMobile } = useSidebar();
 
     if (collapsible === "none") {
       return (
@@ -237,7 +249,11 @@ const Sidebar = React.forwardRef<
     return (
       <div
         ref={ref}
-        className="group peer hidden text-sidebar-foreground md:block"
+        // Both spelled out: Tailwind finds class names by scanning source,
+        // and cannot see an assembled one.
+        className={`group peer hidden text-sidebar-foreground ${
+          docksFrom === "lg" ? "lg:block" : "md:block"
+        }`}
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
@@ -256,7 +272,8 @@ const Sidebar = React.forwardRef<
         />
         <div
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear",
+            docksFrom === "lg" ? "lg:flex" : "md:flex",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",

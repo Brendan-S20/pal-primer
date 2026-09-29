@@ -99,6 +99,7 @@ import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useTabletTier } from "@/hooks/useTabletTier";
+import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
@@ -265,6 +266,13 @@ function MyDay() {
   const nextUpAboveTabBar = barThroughTablet
     ? "max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-lg:pb-0"
     : "max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:pb-0";
+  // And the NEXT UP bar starts clear of the docked sidebar — from wherever the
+  // sidebar docks, which for a tech is now `lg` (sidebarDocksFrom). A fixed
+  // `md:` here would leave a 256px gap on the left of a crew tablet, beside
+  // a sidebar that is no longer there.
+  const { docksFrom } = useSidebar();
+  const nextUpClearOfSidebar =
+    docksFrom === "lg" ? "lg:left-(--sidebar-width)" : "md:left-(--sidebar-width)";
 
   const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
@@ -909,7 +917,7 @@ function MyDay() {
              the bar starts slightly inboard of the rail; a small gap, never an
              overlap, and the navigation stays reachable either way. */
           data-bottom-chrome=""
-          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in md:left-(--sidebar-width) ${nextUpAboveTabBar}`}
+          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
         >
           <a
             href={`#visit-${nextUp.id}`}
@@ -924,7 +932,11 @@ function MyDay() {
                   activeVisit ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"
                 }`}
               >
-                {activeVisit ? t("myDay.inProgress") : t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
+                {activeVisit ? t("myDay.inProgress") : t("myDay.nextUp")}
+                {/* A visit the office added after routing has no stop number
+                    (sequence is null), and this printed "NEXT UP · #" with
+                    nothing after it. No number, no "#". */}
+                {nextUp.sequence != null && ` · #${nextUp.sequence}`}
               </div>
               <div className="truncate text-sm font-semibold">{nextUp.clients?.display_name}</div>
             </div>

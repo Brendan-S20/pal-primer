@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
 import { getLeadForConversion, linkLeadToExistingClient } from "@/lib/leads.functions";
 import {
@@ -225,6 +225,20 @@ function NewClientWizard({
   const linkFn = useServerFn(linkLeadToExistingClient);
 
   const [step, setStep] = useState(0);
+  // Every step opened at the BOTTOM. Next and Back sit at the foot of the
+  // card, the step is swapped in place, and the window keeps the scroll
+  // offset the press was made at — so the new step started at its buttons
+  // and its first field was a screen above. The page scrolls on the window
+  // (the shell's <main> is not a scroller). Skipped on mount, which is the
+  // router's scroll to decide.
+  const stepMounted = useRef(false);
+  useEffect(() => {
+    if (!stepMounted.current) {
+      stepMounted.current = true;
+      return;
+    }
+    window.scrollTo({ top: 0 });
+  }, [step]);
   // Turn on inline "required" messages after the user tries to advance —
   // showing red text on first render would be too noisy.
   const [attempted, setAttempted] = useState(false);
@@ -539,36 +553,59 @@ function NewClientWizard({
           it is read left to right, and squeezing it is worse than scrolling
           it. `shrink-0` on each chip so they scroll at full size rather than
           being compressed into each other, and the dots take the touch floor
-          because a completed step is a button you can go back to. */}
-      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm">
-        {STEPS.map((label, i) => {
-          const state = i < step ? "done" : i === step ? "current" : "todo";
-          return (
-            <div key={label} className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => i < step && setStep(i)}
-                disabled={i > step}
-                className={
-                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium touch:h-11 touch:w-11 " +
-                  (state === "done"
-                    ? "bg-primary text-primary-foreground"
-                    : state === "current"
-                      ? "bg-primary/15 text-primary ring-2 ring-primary"
-                      : "bg-muted text-muted-foreground")
-                }
-              >
-                {state === "done" ? <Check className="h-3.5 w-3.5 shrink-0" /> : i + 1}
-              </button>
-              <span className={state === "current" ? "font-medium" : "text-muted-foreground"}>
-                {label}
-              </span>
-              {i < STEPS.length - 1 && (
-                <ChevronRight className="mx-1 h-4 w-4 text-muted-foreground shrink-0" />
-              )}
-            </div>
-          );
-        })}
+          because a completed step is a button you can go back to.
+
+          …and scrolling it was still wrong on a phone, reported 2026-09-27:
+          the scroller's edge falls wherever it falls, so at 360px it cut a
+          step name mid-word ("Prop") with nothing to say there was more.
+          Below `lg` the row is now the five dots alone — 5 × 44px and four
+          gaps is 252px, inside a 320px phone — and the current step's name
+          is its own line underneath, where it truncates with an ellipsis
+          rather than being cut. `lg` rather than `md` because from 768 the
+          docked sidebar takes 256px of the width, and the full row with
+          touch-sized dots is ~645px; it fits the 672px column only once
+          that column exists. */}
+      <div>
+        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm">
+          {STEPS.map((label, i) => {
+            const state = i < step ? "done" : i === step ? "current" : "todo";
+            return (
+              <div key={label} className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => i < step && setStep(i)}
+                  disabled={i > step}
+                  // The name is hidden below `lg`, so the dot has to say it.
+                  aria-label={`Step ${i + 1}: ${label}`}
+                  aria-current={state === "current" ? "step" : undefined}
+                  className={
+                    "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium touch:h-11 touch:w-11 " +
+                    (state === "done"
+                      ? "bg-primary text-primary-foreground"
+                      : state === "current"
+                        ? "bg-primary/15 text-primary ring-2 ring-primary"
+                        : "bg-muted text-muted-foreground")
+                  }
+                >
+                  {state === "done" ? <Check className="h-3.5 w-3.5 shrink-0" /> : i + 1}
+                </button>
+                <span
+                  className={`hidden lg:inline ${
+                    state === "current" ? "font-medium" : "text-muted-foreground"
+                  }`}
+                >
+                  {label}
+                </span>
+                {i < STEPS.length - 1 && (
+                  <ChevronRight className="mx-1 hidden h-4 w-4 shrink-0 text-muted-foreground lg:block" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 truncate text-sm font-medium lg:hidden">
+          Step {step + 1} of {STEPS.length}: {STEPS[step]}
+        </p>
       </div>
 
       <Card className="p-6">

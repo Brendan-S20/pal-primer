@@ -22,7 +22,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { AccountMenu } from "@/components/AccountMenu";
 import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
-import { useTabletTier } from "@/hooks/useTabletTier";
+import { sidebarDocksFrom, useTabletTier } from "@/hooks/useTabletTier";
 import { useMyRole } from "@/hooks/useMyRole";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -196,7 +196,8 @@ function AppShell() {
   // breakpoint of their own. Both class strings are spelled out in full —
   // Tailwind scans source for literal class names and cannot see an assembled
   // one.
-  const { mainBottomPadding, barThroughTablet } = useTabletTier();
+  const tier = useTabletTier();
+  const { mainBottomPadding, barThroughTablet } = tier;
   const myDayHeaderHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
 
   // ── THE BAR THAT APPEARED AND DISAPPEARED AS YOU WALKED ─────────────────
@@ -219,6 +220,14 @@ function AppShell() {
   // complaint was never theirs, and taking it from them to make one rule
   // shorter would be a worse product for a saving nobody asked for.
   const { role } = useMyRole();
+  // The sidebar docks where the tab bar stops, so 767, 768 and 1023 each get
+  // exactly one navigation. See sidebarDocksFrom. The bar renders on the same
+  // two conditions MobileTabBar and the JSX below apply: a known role, and
+  // bottom navigation chosen.
+  const docksFrom = sidebarDocksFrom(
+    tier,
+    !!role && headerPrefs.phoneNav === "bottom",
+  );
   const shellHeaderHidden = role === "tech" ? myDayHeaderHidden : isMyDay ? myDayHeaderHidden : "";
 
   // The header was also doing a second job nobody asked it to: on a native
@@ -279,7 +288,7 @@ function AppShell() {
     : undefined;
 
   return (
-    <SidebarProvider>
+    <SidebarProvider docksFrom={docksFrom}>
       <div className="flex min-h-screen w-full bg-background" style={brandStyle}>
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">

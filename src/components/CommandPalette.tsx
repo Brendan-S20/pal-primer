@@ -27,8 +27,10 @@ const NAV: NavEntry[] = [
   { label: "My day", to: "/my-day", group: "Field" },
   { label: "Waste log", to: "/waste-log", group: "Field" },
   { label: "Messages", to: "/messages", group: "Field" },
-  { label: "Inventory", to: "/inventory", group: "Ops" },
-  { label: "Timesheets", to: "/timesheets", group: "Ops" },
+  // "Operations", as in the sidebar. These were a separate "Ops" group there
+  // and here, the same word twice.
+  { label: "Inventory", to: "/inventory", group: "Operations" },
+  { label: "Timesheets", to: "/timesheets", group: "Operations" },
   { label: "Invoices", to: "/invoices", group: "Billing" },
   { label: "Payments", to: "/payments", group: "Billing" },
   { label: "Billing", to: "/settings/billing", group: "Settings" },
