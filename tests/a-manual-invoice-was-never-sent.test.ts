@@ -59,11 +59,15 @@ describe("the dialog sends what it creates", () => {
 
 describe("the invoice is dated in the organization's day", () => {
   it("uses the org's timezone, not the server's UTC day", () => {
-    expect(create).toMatch(/select\("invoice_net_days, timezone"\)/);
-    expect(create).toMatch(/const today = orgToday\(/);
-    expect(create).toMatch(/const dueOn = addDaysToDay\(today, netDays\)/);
-    expect(create).not.toMatch(/nowIso\.slice\(0, 10\)/);
-    expect(create).not.toMatch(/Date\.now\(\) \+ netDays/);
+    // The dating moved into the shared helper both the dialog and a quote's
+    // one-time charges use; createManualInvoice has to still go through it.
+    expect(create).toMatch(/insertManualInvoice\(supabase,/);
+    const core = strip(read("src/lib/manual-invoice.server.ts"));
+    expect(core).toMatch(/select\("invoice_net_days, timezone"\)/);
+    expect(core).toMatch(/const today = orgToday\(/);
+    expect(core).toMatch(/const dueOn = addDaysToDay\(today, netDays\)/);
+    expect(core).not.toMatch(/nowIso\.slice\(0, 10\)/);
+    expect(core).not.toMatch(/Date\.now\(\) \+ netDays/);
   });
 
   it("which is a different day for the evening that used to be wrong", () => {

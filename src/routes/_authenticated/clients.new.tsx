@@ -667,7 +667,8 @@ function NewClientWizard({
           {fromQuote.oneTimeCents > 0 && (
             <p className="text-muted-foreground">
               Its one-time charges ({money(fromQuote.oneTimeCents)}) are not billed by creating the
-              client. Invoice them from the client&apos;s Billing tab.
+              client. Once the work is done, press &ldquo;Invoice one-time charges&rdquo; on the
+              quote.
             </p>
           )}
         </div>

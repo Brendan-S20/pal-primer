@@ -325,3 +325,46 @@ export function convertTarget(q: {
   if (q.client_id) return { kind: "client", clientId: q.client_id };
   return { kind: "prospect", leadId: q.lead_id };
 }
+
+/** The lines of an accepted quote that become an invoice when the office
+ *  presses "Invoice the one-time charges": every line that is NOT a per-visit
+ *  price, at the quantity and price the customer accepted. A line of one goes
+ *  across as only a total, the way the New invoice form sends one. */
+export function oneTimeInvoiceItems(
+  lines: ReadonlyArray<{
+    description: string;
+    quantity: number | string;
+    unit_amount_cents: number;
+    amount_cents: number;
+    recurring: boolean;
+  }>,
+): Array<{
+  description: string;
+  amountCents: number;
+  quantity?: number;
+  unitAmountCents?: number;
+}> {
+  return lines
+    .filter((l) => !l.recurring && l.amount_cents > 0)
+    .map((l) => {
+      const q = Number(l.quantity);
+      return q === 1
+        ? { description: l.description, amountCents: l.amount_cents }
+        : {
+            description: l.description,
+            amountCents: l.amount_cents,
+            quantity: q,
+            unitAmountCents: l.unit_amount_cents,
+          };
+    });
+}
+
+/** Who a quote's one-time charges are billed to: the client it was for, or
+ *  the client it became. Null for a prospect's quote not yet converted, which
+ *  has nobody to bill. */
+export function quoteBillTo(q: {
+  client_id?: string | null;
+  converted_client_id?: string | null;
+}): string | null {
+  return q.client_id ?? q.converted_client_id ?? null;
+}

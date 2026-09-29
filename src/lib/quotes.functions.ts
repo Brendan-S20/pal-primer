@@ -29,6 +29,8 @@ import {
   effectiveQuoteStatus,
   formatQuoteDay,
   lineAmountCents,
+  oneTimeInvoiceItems,
+  quoteBillTo,
   quoteNumberLabel,
   quoteRecipientName,
   quoteRespondErrorMessage,
@@ -40,7 +42,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** Two FKs from quotes to clients (the recipient and the client it became),
  *  so PostgREST needs to be told which one to embed. */
 const QUOTE_SELECT =
-  "id, number, status, title, message, valid_until, public_token, sent_at, accepted_at, declined_at, accepted_name, decline_reason, converted_at, converted_client_id, client_id, lead_id, prospect_name, prospect_email, prospect_phone, created_at, updated_at, clients!quotes_client_id_fkey(id, display_name, primary_email, primary_phone)";
+  "id, number, status, title, message, valid_until, public_token, sent_at, accepted_at, declined_at, accepted_name, decline_reason, converted_at, converted_client_id, one_time_invoice_id, client_id, lead_id, prospect_name, prospect_email, prospect_phone, created_at, updated_at, clients!quotes_client_id_fkey(id, display_name, primary_email, primary_phone)";
 
 type Sb = any;
 
@@ -169,6 +171,7 @@ export const getQuote = createServerFn({ method: "GET" })
         declineReason: (q.decline_reason as string | null) ?? null,
         convertedAt: (q.converted_at as string | null) ?? null,
         convertedClientId: (q.converted_client_id as string | null) ?? null,
+        oneTimeInvoiceId: (q.one_time_invoice_id as string | null) ?? null,
         createdAt: q.created_at as string,
         clientId: (q.client_id as string | null) ?? null,
         clientName: client?.display_name ?? null,
@@ -275,6 +278,7 @@ export const saveQuoteDraft = createServerFn({ method: "POST" })
 
     let quoteId: string;
     let created = false;
+    let oldLineIds: string[] = [];
     if (data.id) {
       const { data: existing, error } = await supabase
         .from("quotes")
@@ -289,11 +293,15 @@ export const saveQuoteDraft = createServerFn({ method: "POST" })
       }
       const { error: uErr } = await supabase.from("quotes").update(fields).eq("id", data.id);
       if (uErr) throw new Error(uErr.message);
-      const { error: dErr } = await supabase
+      // The lines being replaced, by id. They are deleted only AFTER the new
+      // ones are in: deleting first meant a failed insert left the draft with
+      // no lines at all, and the office's work gone with them.
+      const { data: old, error: oErr } = await supabase
         .from("quote_line_items")
-        .delete()
+        .select("id")
         .eq("quote_id", data.id);
-      if (dErr) throw new Error(dErr.message);
+      if (oErr) throw new Error(oErr.message);
+      oldLineIds = (old ?? []).map((r: { id: string }) => r.id);
       quoteId = data.id;
     } else {
       const { data: ins, error } = await supabase
@@ -306,22 +314,35 @@ export const saveQuoteDraft = createServerFn({ method: "POST" })
       created = true;
     }
 
-    const { error: lErr } = await supabase.from("quote_line_items").insert(
-      data.lines.map((l, i) => ({
-        quote_id: quoteId,
-        description: l.description,
-        quantity: l.quantity,
-        unit_amount_cents: l.unitAmountCents,
-        amount_cents: lineAmountCents(l.quantity, l.unitAmountCents),
-        recurring: l.recurring,
-        sort: i,
-      })),
-    );
+    const { data: inserted, error: lErr } = await supabase
+      .from("quote_line_items")
+      .insert(
+        data.lines.map((l, i) => ({
+          quote_id: quoteId,
+          description: l.description,
+          quantity: l.quantity,
+          unit_amount_cents: l.unitAmountCents,
+          amount_cents: lineAmountCents(l.quantity, l.unitAmountCents),
+          recurring: l.recurring,
+          sort: i,
+        })),
+      )
+      .select("id");
     if (lErr) {
-      // Do not leave a new quote with no lines behind. An edited draft keeps
-      // its row; the office sees the error and saves again.
+      // Do not leave a new quote with no lines behind. An edited draft still
+      // has its old lines, untouched; the office sees the error and saves again.
       if (created) await supabase.from("quotes").delete().eq("id", quoteId);
       throw new Error(lErr.message);
+    }
+    if (oldLineIds.length) {
+      const { error: dErr } = await supabase.from("quote_line_items").delete().in("id", oldLineIds);
+      if (dErr) {
+        // Both sets would show. Take the new ones back out, so the draft reads
+        // as it did before this save rather than as the two added together.
+        const newIds = (inserted ?? []).map((r: { id: string }) => r.id);
+        if (newIds.length) await supabase.from("quote_line_items").delete().in("id", newIds);
+        throw new Error(dErr.message);
+      }
     }
     return { id: quoteId };
   });
@@ -564,6 +585,79 @@ export const markQuoteConverted = createServerFn({ method: "POST" })
       });
     }
     return { converted: !!q };
+  });
+
+/** Bill an accepted quote's one-time lines (the initial cleanup, usually) on
+ *  an ordinary open invoice to the client it was for or became.
+ *
+ *  A button, not something conversion does by itself: the cleanup is billed
+ *  when it is done, and an open invoice is one autopay will charge. Pressing
+ *  it twice returns the first invoice; `one_time_invoice_id` is set with a
+ *  conditional update, so two presses at once cannot both win, and the loser
+ *  removes the invoice it made. */
+export const invoiceQuoteOneTimeCharges = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "manage_client_billing");
+    const { data: q, error } = await supabase
+      .from("quotes")
+      .select("id, number, status, client_id, converted_client_id, one_time_invoice_id")
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!q) throw new Error("Quote not found");
+    if (q.one_time_invoice_id) {
+      return { invoiceId: q.one_time_invoice_id as string, created: false };
+    }
+    if (q.status !== "accepted") {
+      throw new Error("Only an accepted quote's charges can be invoiced.");
+    }
+    const billTo = quoteBillTo(q);
+    if (!billTo) {
+      throw new Error("Convert the quote to a client first, so there is somebody to bill.");
+    }
+    const { data: lines, error: lErr } = await supabase
+      .from("quote_line_items")
+      .select("description, quantity, unit_amount_cents, amount_cents, recurring, sort")
+      .eq("quote_id", q.id)
+      .order("sort");
+    if (lErr) throw new Error(lErr.message);
+    const items = oneTimeInvoiceItems(lines ?? []);
+    if (items.length === 0) throw new Error("This quote has no one-time charges to invoice.");
+
+    const label = quoteNumberLabel(q.number as number);
+    const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
+    const inv = await insertManualInvoice(supabase, {
+      orgId,
+      userId,
+      clientId: billTo,
+      items,
+      notes: `One-time charges from quote ${label}`,
+      activityLabel: `invoice for ${label}`,
+    });
+
+    const { data: won, error: wErr } = await supabase
+      .from("quotes")
+      .update({ one_time_invoice_id: inv.invoiceId })
+      .eq("id", q.id)
+      .is("one_time_invoice_id", null)
+      .select("one_time_invoice_id");
+    if (wErr || !won?.length) {
+      // Somebody else's press got there first, or the stamp failed. Either
+      // way this invoice must not stand beside theirs.
+      await supabase.from("invoices").delete().eq("id", inv.invoiceId);
+      if (wErr) throw new Error(wErr.message);
+      const { data: again } = await supabase
+        .from("quotes")
+        .select("one_time_invoice_id")
+        .eq("id", q.id)
+        .maybeSingle();
+      return { invoiceId: (again?.one_time_invoice_id as string) ?? "", created: false };
+    }
+    return { invoiceId: inv.invoiceId, created: true, totalCents: inv.totalCents };
   });
 
 // ── The customer's link: /q/{token} ────────────────────────────────────────
