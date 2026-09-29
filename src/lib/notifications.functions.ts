@@ -21,7 +21,9 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data: invRow, error } = await supabase
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, period_start, period_end, public_token, clients(portal_token)")
+      .select(
+        "id, organization_id, client_id, total_cents, period_start, period_end, public_token, clients(portal_token)",
+      )
       .eq("id", data.invoiceId)
       .eq("organization_id", orgId)
       .single();
@@ -42,6 +44,17 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
         ? `Services from ${inv.period_start} to ${inv.period_end}`
         : undefined;
     const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+    // The invoice itself, as a PDF, for the customer's records. Read with the
+    // service-role client because the email pipeline is (the invoice was
+    // just loaded above through the caller's own client, org-scoped). Drawn
+    // only if the email is actually going, and never throws: no PDF means the
+    // email goes without one, not that it does not go.
+    const pdfAttachment = async () => {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { invoicePdfAttachment } = await import("@/lib/document-pdf.server");
+      const pdf = await invoicePdfAttachment(supabaseAdmin, inv.id);
+      return pdf ? [pdf] : [];
+    };
     const res = await enqueueAppEmail({
       organizationId: inv.organization_id,
       clientId: inv.client_id,
@@ -59,6 +72,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       // Explicit "Send invoice" / "Send reminder" button — a manual send that
       // bypasses the imported comms hold and clears it on success.
       manual: true,
+      attachments: pdfAttachment,
     });
     if (!res.ok) throw new Error(`Email not sent: ${res.reason}`);
     // Stamp sent_at (full auto billing): a "Send now" during the grace window

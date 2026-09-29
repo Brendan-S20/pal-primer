@@ -26,6 +26,8 @@ import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
+import { DownloadPdfButton } from "@/components/DownloadPdfButton";
+import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
 import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { canOfferRefund } from "@/lib/refunds";
 import { usePermissions } from "@/hooks/useMyRole";
@@ -72,6 +74,7 @@ export function InvoiceDrawer({
   const voidFn = useServerFn(voidInvoice);
   const paidFn = useServerFn(bulkMarkInvoicesPaid);
   const emailFn = useServerFn(sendInvoiceEmail);
+  const pdfFn = useServerFn(downloadInvoicePdf);
   const [copied, setCopied] = useState(false);
   // B2: "Take payment" swaps the drawer body to the embedded payment view
   // instead of navigating to the full invoice page.
@@ -303,6 +306,17 @@ export function InvoiceDrawer({
                   {copied ? "Copied" : "Copy pay link"}
                 </Button>
               )}
+              {/* Every status, not only open: a paid invoice's PDF is the
+                  receipt a bookkeeper asks for. */}
+              <DownloadPdfButton
+                size="sm"
+                load={() => pdfFn({ data: { invoiceId: inv.id } })}
+                nativeUrl={
+                  inv.public_token
+                    ? appUrl(`/api/public/invoice-pdf?token=${inv.public_token}`)
+                    : null
+                }
+              />
               {open && (
                 <Button
                   size="sm"

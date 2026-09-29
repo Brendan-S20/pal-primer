@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { appUrl } from "@/lib/app-origin";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import { resendAttachments } from "@/lib/email/attachments";
 
 const MAX_RETRIES = 5;
 const DEFAULT_BATCH_SIZE = 10;
@@ -48,6 +49,10 @@ async function sendViaResend(apiKey: string, payload: Record<string, any>): Prom
   // messages already sitting in the queue were enqueued without it, and Resend
   // rejects an explicit null.
   if (payload.reply_to) body.reply_to = payload.reply_to;
+  // The invoice PDF on "invoice-sent" (enqueue.server.ts). Only well-formed
+  // entries go across; see src/lib/email/attachments.ts.
+  const attachments = resendAttachments(payload.attachments);
+  if (attachments.length) body.attachments = attachments;
   if (Object.keys(headers).length) body.headers = headers;
   if (payload.idempotency_key) {
     // Resend supports Idempotency-Key header for POST /emails

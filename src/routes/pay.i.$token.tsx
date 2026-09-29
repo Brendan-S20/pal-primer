@@ -12,6 +12,7 @@ import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Loader2, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DownloadPdfLink } from "@/components/DownloadPdfButton";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { getPublicInvoice, createPublicInvoicePaymentIntent } from "@/lib/invoices.functions";
 import { stripeAppearance } from "@/lib/stripe-appearance";
@@ -285,6 +286,12 @@ function PublicPayPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* The same document as a PDF, through the same token: an HOA
+          treasurer or a bookkeeper files this, not a web page. */}
+      <div className="flex flex-wrap justify-end gap-2">
+        <DownloadPdfLink href={`/api/public/invoice-pdf?token=${encodeURIComponent(token)}`} />
       </div>
 
       {/* Payment form */}
