@@ -2221,7 +2221,9 @@ export type Database = {
           description: string
           id: string
           invoice_id: string
+          quantity: number
           subscription_id: string | null
+          unit_amount_cents: number | null
           visit_id: string | null
         }
         Insert: {
@@ -2230,7 +2232,9 @@ export type Database = {
           description: string
           id?: string
           invoice_id: string
+          quantity?: number
           subscription_id?: string | null
+          unit_amount_cents?: number | null
           visit_id?: string | null
         }
         Update: {
@@ -2239,7 +2243,9 @@ export type Database = {
           description?: string
           id?: string
           invoice_id?: string
+          quantity?: number
           subscription_id?: string | null
+          unit_amount_cents?: number | null
           visit_id?: string | null
         }
         Relationships: [

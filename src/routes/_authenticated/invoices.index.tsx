@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
+import { lineTotalCents, parseQuantity } from "@/lib/invoice-lines";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
@@ -85,9 +86,12 @@ function NewInvoiceDialog() {
   const openedFromLink = Route.useSearch().new === true;
   const [open, setOpen] = useState(openedFromLink);
   const [clientId, setClientId] = useState("");
-  const [items, setItems] = useState<Array<{ description: string; amount: string }>>([
-    { description: "", amount: "" },
-  ]);
+  // A line is a description, how many, and the price of one. Quantity starts
+  // at 1, and a line of one is sent as only a total, exactly as before.
+  const blankLine = { description: "", quantity: "1", price: "" };
+  const [items, setItems] = useState<
+    Array<{ description: string; quantity: string; price: string }>
+  >([blankLine]);
   // Emailed as it is created, by default. A manual invoice has no send_after,
   // so the nightly auto-send never picks it up: before this, "Create invoice"
   // left it Open, unsent, and waiting for somebody to find the Send button on
@@ -110,12 +114,27 @@ function NewInvoiceDialog() {
   const pickedEmail = picked?.primary_email?.trim() || null;
   const willEmail = sendNow && !!pickedEmail;
 
-  const parsedItems = items
-    .map((i) => ({
-      description: i.description.trim(),
-      amountCents: Math.round((parseFloat(i.amount) || 0) * 100),
-    }))
-    .filter((i) => i.description && i.amountCents > 0);
+  const lines = items.map((i) => {
+    const quantity = parseQuantity(i.quantity);
+    const unitCents = Math.round((parseFloat(i.price) || 0) * 100);
+    const amountCents = quantity === null ? 0 : lineTotalCents(quantity, unitCents);
+    return { description: i.description.trim(), quantity, unitCents, amountCents };
+  });
+  // A quantity that is not one ("0", "1.255", "") blocks the button rather than
+  // being quietly read as 1, which would bill something the form does not show.
+  const badQuantity = items.some((i, j) => i.description.trim() && lines[j].quantity === null);
+  const parsedItems = lines
+    .filter((l) => l.description && l.quantity !== null && l.amountCents > 0)
+    .map((l) =>
+      l.quantity === 1
+        ? { description: l.description, amountCents: l.amountCents }
+        : {
+            description: l.description,
+            amountCents: l.amountCents,
+            quantity: l.quantity!,
+            unitAmountCents: l.unitCents,
+          },
+    );
   const totalCents = parsedItems.reduce((s, i) => s + i.amountCents, 0);
 
   const createM = useMutation({
@@ -144,7 +163,7 @@ function NewInvoiceDialog() {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       setOpen(false);
       setClientId("");
-      setItems([{ description: "", amount: "" }]);
+      setItems([blankLine]);
       navigate({ to: "/invoices/$invoiceId", params: { invoiceId: r.invoiceId } });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -195,48 +214,73 @@ function NewInvoiceDialog() {
           </div>
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">Line items</label>
-            {items.map((item, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Input
-                  placeholder="Description (e.g. One-time cleanup)"
-                  value={item.description}
-                  onChange={(e) =>
-                    setItems(
-                      items.map((it, j) => (j === i ? { ...it, description: e.target.value } : it)),
-                    )
-                  }
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  className="w-28"
-                  value={item.amount}
-                  onChange={(e) =>
-                    setItems(
-                      items.map((it, j) => (j === i ? { ...it, amount: e.target.value } : it)),
-                    )
-                  }
-                />
-                {items.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="shrink-0 px-2"
-                    onClick={() => setItems(items.filter((_, j) => j !== i))}
-                  >
-                    <Trash2 className="h-4 w-4 shrink-0" />
-                  </Button>
-                )}
-              </div>
-            ))}
+            {items.map((item, i) => {
+              const set = (patch: Partial<typeof item>) =>
+                setItems(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+              const line = lines[i];
+              return (
+                // Description on its own row below `sm`: three inputs and a
+                // remove button across 320px leave the description about
+                // forty pixels, which is where the words go.
+                <div key={i} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                  <Input
+                    aria-label={`Line ${i + 1} description`}
+                    placeholder="Description (e.g. Extra yard)"
+                    className="min-w-0 basis-full sm:basis-auto sm:flex-1"
+                    value={item.description}
+                    onChange={(e) => set({ description: e.target.value })}
+                  />
+                  <Input
+                    aria-label={`Line ${i + 1} quantity`}
+                    inputMode="decimal"
+                    className="w-16 shrink-0"
+                    value={item.quantity}
+                    aria-invalid={item.description.trim() !== "" && line.quantity === null}
+                    onChange={(e) => set({ quantity: e.target.value })}
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground" aria-hidden>
+                    ×
+                  </span>
+                  <Input
+                    aria-label={`Line ${i + 1} price each`}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    className="min-w-0 flex-1 sm:w-28 sm:flex-none"
+                    value={item.price}
+                    onChange={(e) => set({ price: e.target.value })}
+                  />
+                  {line.quantity !== null && line.quantity !== 1 && line.amountCents > 0 && (
+                    <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                      {fmtCents(line.amountCents)}
+                    </span>
+                  )}
+                  {items.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 px-2 touch:min-h-11 touch:min-w-11"
+                      aria-label={`Remove line ${i + 1}`}
+                      onClick={() => setItems(items.filter((_, j) => j !== i))}
+                    >
+                      <Trash2 className="h-4 w-4 shrink-0" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+            {badQuantity && (
+              <p className="text-xs text-destructive">
+                A quantity is a number above zero with at most two decimal places.
+              </p>
+            )}
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setItems([...items, { description: "", amount: "" }])}
+              onClick={() => setItems([...items, blankLine])}
             >
               <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add line
             </Button>
@@ -266,7 +310,7 @@ function NewInvoiceDialog() {
         </div>
         <DialogFooter>
           <Button
-            disabled={!clientId || parsedItems.length === 0 || createM.isPending}
+            disabled={!clientId || parsedItems.length === 0 || badQuantity || createM.isPending}
             onClick={() => createM.mutate()}
           >
             {createM.isPending

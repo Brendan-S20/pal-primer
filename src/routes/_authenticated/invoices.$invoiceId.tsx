@@ -2,6 +2,7 @@ import { appUrl } from "@/lib/app-origin";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { LineQuantity } from "@/components/LineQuantity";
 import { useState } from "react";
 import { bulkMarkInvoicesPaid, getInvoice, voidInvoice } from "@/lib/invoices.functions";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
@@ -261,7 +262,10 @@ function InvoiceDetail() {
               ) : (
                 items.map((it) => (
                   <tr key={it.id}>
-                    <td className="py-2.5 pr-4">{formatLineItemDescription(it.description)}</td>
+                    <td className="py-2.5 pr-4">
+                      {formatLineItemDescription(it.description)}
+                      <LineQuantity line={it} currency={invoice.currency} />
+                    </td>
                     <td className="py-2.5 text-right tabular-nums">
                       {fmtCents(it.amount_cents, invoice.currency)}
                     </td>

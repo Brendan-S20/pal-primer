@@ -5,6 +5,7 @@
 import { appUrl } from "@/lib/app-origin";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { LineQuantity } from "@/components/LineQuantity";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
@@ -210,7 +211,17 @@ function PublicPayPage() {
               ) : (
                 data.items.map((it) => (
                   <tr key={it.id}>
-                    <td className="py-2.5 pr-4">{formatLineItemDescription(it.description)}</td>
+                    <td className="py-2.5 pr-4">
+                      {formatLineItemDescription(it.description)}
+                      <LineQuantity
+                        line={{
+                          amount_cents: it.amountCents,
+                          quantity: it.quantity,
+                          unit_amount_cents: it.unitAmountCents,
+                        }}
+                        currency={invoice.currency}
+                      />
+                    </td>
                     <td className="py-2.5 text-right tabular-nums">
                       {fmtCents(it.amountCents, invoice.currency)}
                     </td>
