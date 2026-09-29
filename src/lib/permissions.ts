@@ -17,6 +17,12 @@ export type Permission =
   | "record_field_addons" // capped, confirmed add-on charge from a visit (source=field)
   | "manage_org_billing" // the org's own SaaS plan / Stripe
   | "manage_leads"
+  // Email campaigns: a marketing email to many clients at once. Its own
+  // capability rather than manage_settings because it is not a setting: it
+  // is the business speaking to every customer in one press. Owner and office
+  // manager, which has_permission already grants (office_manager holds every
+  // permission except the two it names), so the SQL needs no change.
+  | "send_campaigns"
   | "manage_imports"
   | "use_ai_tools"
   | "manage_inventory"
@@ -37,6 +43,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "record_field_addons",
   "manage_org_billing",
   "manage_leads",
+  "send_campaigns",
   "manage_imports",
   "use_ai_tools",
   "manage_inventory",

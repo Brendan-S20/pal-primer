@@ -1243,3 +1243,118 @@ export function quoteDetail(id: string) {
     orgName: ORG_NAME,
   };
 }
+
+/**
+ * /campaigns and /campaigns/:id, added 2026-09-29 with the pages.
+ *
+ * Awkward on purpose. A subject at the 150-character limit wraps in the list
+ * row and in the page heading; a tag at the 40-character limit sits in the
+ * audience picker among thirty others; the numbers are in the thousands so
+ * the stat tiles carry four digits and a separator. The draft's business has
+ * NO postal address, so the warning that blocks Send is on the page being
+ * measured, as it is for every owner who has not filled one in yet.
+ */
+export const CAMPAIGN_SENT_ID = "77777777-0000-4000-8000-000000007001";
+export const CAMPAIGN_DRAFT_ID = "77777777-0000-4000-8000-000000007002";
+export const CAMPAIGN_SENDING_ID = "77777777-0000-4000-8000-000000007003";
+// Exactly 150 characters, the most a subject may have.
+export const CAMPAIGN_SENT_SUBJECT =
+  "Spring deep clean for every yard on the North Side: twenty dollars off any one-time cleanup booked before the thirtieth of April, two dogs or twelve!!";
+export const CAMPAIGN_DRAFT_SUBJECT =
+  "Holiday schedule: no visits Thursday the 25th or Friday the 26th, and Wednesday routes run a day early that week";
+// Exactly 40 characters, the most a tag may have.
+export const CAMPAIGN_LONG_TAG = "Ravenswood-Manor-Lincoln-Square-weekly-x";
+const CAMPAIGN_BODY =
+  "We're taking two days off for the holiday so our crew can be with their families.\n\nIf your visit falls on Thursday or Friday we'll come Wednesday instead. Nothing to do on your end: your gate code and notes carry over.\n\nThank you for a wonderful year. https://whitfield-ramirez-yard-and-waste-services.example.com/holiday-schedule-2026-and-what-it-means-for-your-route";
+
+const campaignRow = (
+  id: string,
+  status: "draft" | "sending" | "sent",
+  over: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> => ({
+  id,
+  status,
+  subject: CAMPAIGN_DRAFT_SUBJECT,
+  heading: "Holiday hours, and a thank-you",
+  body: CAMPAIGN_BODY,
+  buttonLabel: "See the whole holiday schedule",
+  buttonUrl: "https://whitfield-ramirez-yard-and-waste-services.example.com/holiday-schedule-2026",
+  audience: { kind: "tagged", tag: CAMPAIGN_LONG_TAG },
+  audienceLabel: `Clients tagged "${CAMPAIGN_LONG_TAG}"`,
+  recipientCount: null,
+  createdAt: iso(new Date(Date.now() - 5 * 864e5)),
+  updatedAt: iso(new Date(Date.now() - 864e5)),
+  sentAt: null,
+  completedAt: null,
+  stats: null,
+  ...over,
+});
+
+const CAMPAIGN_SENT = campaignRow(CAMPAIGN_SENT_ID, "sent", {
+  subject: CAMPAIGN_SENT_SUBJECT,
+  heading: "Spring is here, and so is everything the snow was hiding",
+  audience: { kind: "active" },
+  audienceLabel: "All active clients",
+  recipientCount: 4213,
+  sentAt: iso(new Date(Date.now() - 3 * 864e5)),
+  completedAt: iso(new Date(Date.now() - 2.6 * 864e5)),
+  stats: { recipients: 4213, waiting: 0, inQueue: 0, skipped: 187, sent: 4011, failed: 15, bounced: 38 },
+});
+
+export const CAMPAIGNS = {
+  orgName: ORG_NAME,
+  timezone: "America/Chicago",
+  contactAddress: "4417 N Ravenswood Ave, Suite 2B, Chicago, IL 60640",
+  contactEmail: "office@whitfield-ramirez.example.com",
+  campaigns: [
+    campaignRow(CAMPAIGN_DRAFT_ID, "draft"),
+    campaignRow(CAMPAIGN_SENDING_ID, "sending", {
+      subject:
+        "We now serve Oak Park, Forest Park and River Forest: tell a neighbour and you both get a free visit",
+      audience: { kind: "inactive" },
+      audienceLabel: "Inactive and former clients",
+      recipientCount: 1250,
+      sentAt: iso(new Date(Date.now() - 3600e3)),
+      stats: { recipients: 1250, waiting: 830, inQueue: 10, skipped: 12, sent: 396, failed: 0, bounced: 2 },
+    }),
+    CAMPAIGN_SENT,
+  ],
+};
+
+/** `getCampaign`, keyed by id: the draft opens in the editor, the sent one
+ *  is the record with its stats. */
+export function campaignDetail(id: string) {
+  const sent = id === CAMPAIGN_SENT_ID;
+  return {
+    campaign: sent ? CAMPAIGN_SENT : campaignRow(CAMPAIGN_DRAFT_ID, "draft"),
+    skipReasons: sent ? { client_opted_out: 120, comms_paused: 40, suppressed: 27 } : {},
+    orgName: ORG_NAME,
+    timezone: "America/Chicago",
+    // The draft's business has no address yet, so Send is blocked and says so.
+    contactAddress: sent ? CAMPAIGNS.contactAddress : null,
+    contactEmail: CAMPAIGNS.contactEmail,
+  };
+}
+
+export const CAMPAIGN_AUDIENCE = {
+  recipients: 4213,
+  matched: 4497,
+  excluded: { optedOut: 181, commsPaused: 62, noEmail: 38, duplicate: 3 },
+  overCap: false,
+  activeCount: 4497,
+  inactiveCount: 1362,
+  tags: [
+    { tag: CAMPAIGN_LONG_TAG, count: 1204 },
+    { tag: "gate-code-on-file", count: 988 },
+    { tag: "vip", count: 412 },
+    ...Array.from({ length: 27 }, (_, i) => ({
+      tag: `imported-from-jobber-batch-${String(i + 1).padStart(2, "0")}`,
+      count: 300 - i * 7,
+    })),
+  ],
+};
+
+export const CAMPAIGN_PREVIEW = {
+  subject: CAMPAIGN_DRAFT_SUBJECT,
+  html: `<!doctype html><html><body style="font-family:Arial,sans-serif"><div style="max-width:560px;padding:24px 28px"><h1 style="font-size:22px">Holiday hours, and a thank-you</h1><p>We're taking two days off for the holiday so our crew can be with their families.</p><p>https://whitfield-ramirez-yard-and-waste-services.example.com/holiday-schedule-2026-and-what-it-means-for-your-route</p><a href="https://example.com" style="background:#0f172a;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">See the whole holiday schedule</a><p style="font-size:12px;color:#64748b">You are getting this because you are a customer of ${ORG_NAME}. <a href="#">Unsubscribe from these emails</a>.</p></div></body></html>`,
+};

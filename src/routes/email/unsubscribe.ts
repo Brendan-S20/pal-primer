@@ -2,6 +2,23 @@ import { createClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
+// Two kinds of token arrive here, and both through the same /unsubscribe page.
+//
+//   email_unsubscribe_tokens    one per ADDRESS, platform-wide. Redeeming it
+//                               writes suppressed_emails, which stops every
+//                               email to that address from every business.
+//   client_unsubscribe_tokens   one per CLIENT, minted for campaign email.
+//                               Redeeming it sets email_opt_out on that one
+//                               client in that one organization, through
+//                               redeem_client_unsubscribe_token, and touches
+//                               nothing else. A customer who unsubscribes from
+//                               one business's spring promotion still gets
+//                               every other business's invoices.
+//
+// The address-wide table is asked first because it is the older and larger;
+// the tokens are 64 random hex characters in both, so they cannot collide.
+type ClientTokenState = "ready" | "already" | "invalid";
+
 function redactEmail(email: string | null | undefined): string {
   if (!email) return "***";
   const [localPart, domain] = email.split("@");
@@ -30,6 +47,17 @@ export const Route = createFileRoute("/email/unsubscribe")({
           return Response.json({ error: "Token is required" }, { status: 400 });
         }
 
+        // A person, not the page's fetch. A campaign's List-Unsubscribe header
+        // points HERE, because this is the URL that answers the RFC 8058
+        // one-click POST; a mail client that cannot POST opens it in a browser
+        // instead, and a browser should get the confirmation page, not JSON.
+        if ((request.headers.get("accept") ?? "").includes("text/html")) {
+          return new Response(null, {
+            status: 303,
+            headers: { Location: `/unsubscribe?token=${encodeURIComponent(token)}` },
+          });
+        }
+
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Look up the token
@@ -40,7 +68,17 @@ export const Route = createFileRoute("/email/unsubscribe")({
           .maybeSingle();
 
         if (lookupError || !tokenRecord) {
-          return Response.json({ error: "Invalid or expired token" }, { status: 404 });
+          const { data: state } = await supabase.rpc("client_unsubscribe_token_state", {
+            _token: token,
+          });
+          switch (state as ClientTokenState | null) {
+            case "ready":
+              return Response.json({ valid: true });
+            case "already":
+              return Response.json({ valid: false, reason: "already_unsubscribed" });
+            default:
+              return Response.json({ error: "Invalid or expired token" }, { status: 404 });
+          }
         }
 
         if (tokenRecord.used_at) {
@@ -105,6 +143,22 @@ export const Route = createFileRoute("/email/unsubscribe")({
           .maybeSingle();
 
         if (lookupError || !tokenRecord) {
+          // A campaign's client-scoped token: one client, one organization.
+          const { data: outcome, error: redeemError } = await supabase.rpc(
+            "redeem_client_unsubscribe_token",
+            { _token: token },
+          );
+          if (redeemError) {
+            console.error("Failed to redeem client unsubscribe token", { error: redeemError });
+            return Response.json({ error: "Failed to process unsubscribe" }, { status: 500 });
+          }
+          if (outcome === "unsubscribed") {
+            console.log("Client unsubscribed from campaign email");
+            return Response.json({ success: true });
+          }
+          if (outcome === "already") {
+            return Response.json({ success: false, reason: "already_unsubscribed" });
+          }
           return Response.json({ error: "Invalid or expired token" }, { status: 404 });
         }
 

@@ -1,5 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
 import {
+  CAMPAIGN_DRAFT_ID,
+  CAMPAIGN_DRAFT_SUBJECT,
+  CAMPAIGN_SENT_ID,
+  CAMPAIGN_SENT_SUBJECT,
   CLIENT_ID,
   LEAD_ID,
   LEAD_NAME,
@@ -481,5 +485,42 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("button", { name: "Save and send" }),
     proofLabel: 'the editor\'s "Save and send" button',
     expectsData: LEAD_NAME,
+  },
+  {
+    // Added 2026-09-29 with campaigns. A row puts a status badge and an
+    // audience label on one line, a 150-character subject under it, and a
+    // line of four-digit counts beside it; one row of each status.
+    id: "/campaigns",
+    path: "/campaigns",
+    proof: (p) => p.getByRole("link", { name: "New campaign" }),
+    proofLabel: 'the "New campaign" link',
+    expectsData: CAMPAIGN_SENT_SUBJECT,
+  },
+  {
+    // A draft opens in the editor: two columns from lg, one below, with the
+    // no-address warning on top, a 40-character tag chosen among thirty in
+    // the audience picker, and a four-digit recipient count with every reason
+    // somebody was left out. The subject is the page heading, which is how
+    // the fixture proves it arrived. Then the preview is opened, because an
+    // iframe is exactly the fixed-size thing that overflows a phone.
+    id: "/campaigns/:id · draft",
+    path: `/campaigns/${CAMPAIGN_DRAFT_ID}`,
+    proof: (p) => p.getByRole("radiogroup", { name: "Who gets it" }),
+    proofLabel: 'the "Who gets it" audience picker',
+    expectsData: CAMPAIGN_DRAFT_SUBJECT,
+    open: async (p) => {
+      await p.getByRole("button", { name: "Show preview" }).click();
+    },
+    opened: (p) => p.locator('iframe[title="Email preview"]'),
+    openedLabel: "the email preview",
+  },
+  {
+    // A campaign that has gone: six stat tiles that reflow two, three and six
+    // across, the reasons some were not sent, and the email itself.
+    id: "/campaigns/:id · sent",
+    path: `/campaigns/${CAMPAIGN_SENT_ID}`,
+    proof: (p) => p.getByRole("heading", { name: "Why some were not sent" }),
+    proofLabel: 'the "Why some were not sent" section',
+    expectsData: CAMPAIGN_SENT_SUBJECT,
   },
 ];

@@ -186,6 +186,7 @@ describe("emails say who sent them", () => {
     "visit-reminder",
     "on-my-way",
     "quote-sent",
+    "campaign",
   ];
 
   it("there is a shared footer", () => {

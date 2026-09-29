@@ -89,6 +89,9 @@ const SWEPT = new Set([
   // the empty state. "quotes/new" is NOT on this list: it is a form, which
   // is the case this sweep exists for.
   "quotes",
+  // Likewise: the list is measured there with a campaign of every status.
+  // "campaigns/new" stays here, for the same reason as "quotes/new".
+  "campaigns",
   // NOT "leads" or "reports", although both are surfaces there since
   // 2026-09-28. That sweep does not emulate a mobile browser and this one
   // does, and mobile emulation is the configuration that hid them: a page
