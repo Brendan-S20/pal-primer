@@ -38,7 +38,8 @@ import { totalReversals, type Reversal } from "@/lib/reversals.server";
 import { billedDay, outstandingAsOf } from "@/lib/ar";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 import type { AppRole } from "@/hooks/useMyRole";
-import { invoiceNumberLabel } from "@/lib/invoice-labels";
+import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
+import { qboRows, splitForImport, type QboInvoice } from "@/lib/quickbooks-import";
 
 // BUILD-13 — building the accountant's pack. Definitions live in
 // src/lib/cpa-reports.ts; this file only assembles rows.
@@ -77,6 +78,8 @@ export type ReportResult = {
    *  printed with the report and carried into the CSV — a caveat that only
    *  exists on screen is a caveat nobody reads. */
   caveats: string[];
+  /** Rows only, split into importer-sized files. See ReportDef.importFile. */
+  importFile?: boolean;
 };
 
 // ── Plumbing ───────────────────────────────────────────────────────────────
@@ -267,6 +270,75 @@ async function clientNames(supabase: any, ctx: OrgContext, ids: string[]) {
     for (const c of data ?? []) map.set(c.id, c.display_name);
   }
   return map;
+}
+
+async function buildQuickbooksInvoices(supabase: any, ctx: OrgContext, from: string, to: string) {
+  // The same "billed in the period" as the accrual report, so the two agree
+  // on which invoices a month holds.
+  const billed = (await loadInvoices(supabase, ctx))
+    .map((inv) => ({ inv, day: billedDay(inv, ctx.timezone) }))
+    .filter((x): x is { inv: InvoiceRow; day: string } => !!x.day && inRange(x.day, from, to))
+    .sort((a, b) => a.day.localeCompare(b.day) || (a.inv.number ?? 0) - (b.inv.number ?? 0));
+
+  const names = await clientNames(
+    supabase,
+    ctx,
+    billed.map((x) => x.inv.client_id),
+  );
+  const linesByInvoice = new Map<string, Array<{ description: string; amountCents: number }>>();
+  const ids = billed.map((x) => x.inv.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const lines = await fetchAll<{
+      invoice_id: string;
+      description: string | null;
+      amount_cents: number;
+    }>((a, b) =>
+      supabase
+        .from("invoice_line_items")
+        .select("invoice_id, description, amount_cents")
+        .in("invoice_id", chunk)
+        .order("created_at")
+        .order("id")
+        .range(a, b),
+    );
+    for (const l of lines) {
+      const list = linesByInvoice.get(l.invoice_id) ?? [];
+      list.push({
+        description: formatLineItemDescription(l.description),
+        amountCents: l.amount_cents,
+      });
+      linesByInvoice.set(l.invoice_id, list);
+    }
+  }
+
+  const invoices: QboInvoice[] = billed.map(({ inv, day }) => ({
+    invoiceNo: invoiceNumberLabel(inv),
+    customer: names.get(inv.client_id) ?? "Unknown customer",
+    issuedDay: day,
+    dueOn: inv.due_on,
+    totalCents: inv.total_cents ?? 0,
+    lines: linesByInvoice.get(inv.id) ?? [],
+  }));
+  const { rows, excluded } = qboRows(invoices);
+  const files = splitForImport(rows);
+
+  const caveats: string[] = [];
+  const imported = invoices.length - excluded.length;
+  if (files.length > 1) {
+    caveats.push(
+      `${imported} invoices, downloaded as ${files.length} files of at most 100 invoices each, because that is the most QuickBooks takes in one import.`,
+    );
+  }
+  for (const e of excluded) {
+    caveats.push(
+      `${e.invoiceNo} (${e.customer}) is not in the file because ${e.reason}. Enter it in QuickBooks by hand.`,
+    );
+  }
+  caveats.push(
+    "Account credit applied to an invoice is not a line, so QuickBooks will show the full invoice as owed. Record the credit as a payment there.",
+  );
+  return { rows: rows as unknown as ReportRow[], totals: null, caveats };
 }
 
 // ── The reports ────────────────────────────────────────────────────────────
@@ -1162,6 +1234,9 @@ export const getTaxReport = createServerFn({ method: "POST" })
       case "referral_rewards":
         built = await buildReferralRewards(supabase, ctx, from, to);
         break;
+      case "quickbooks_invoices":
+        built = await buildQuickbooksInvoices(supabase, ctx, from, to);
+        break;
       default:
         throw new Error("That report isn't built yet.");
     }
@@ -1179,5 +1254,6 @@ export const getTaxReport = createServerFn({ method: "POST" })
       rows: built.rows,
       totals: built.totals,
       caveats: built.caveats,
+      importFile: def.importFile,
     };
   });
