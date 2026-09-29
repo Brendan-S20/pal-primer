@@ -9,7 +9,7 @@
 -- ── WHAT THIS FILE ESTABLISHES ─────────────────────────────────────────────
 --
 --   * organizations.mileage_rate_cents: the org's rate per mile, in cents
---     (numeric, because the IRS rate has a half cent in it: 72.5 for 2026).
+--     (numeric, because the IRS rate can carry a half cent: it was 72.5 for the first half of 2026 and 76 from 2026-07-01).
 --     Defaults to the IRS standard business rate.
 --
 --   * public.expenses: one row per expense. `spent_on` is a DATE, a day on the
@@ -57,7 +57,7 @@
 -- ── The org's rate ──────────────────────────────────────────────────────────
 
 ALTER TABLE public.organizations
-  ADD COLUMN IF NOT EXISTS mileage_rate_cents numeric(6,2) NOT NULL DEFAULT 72.50;
+  ADD COLUMN IF NOT EXISTS mileage_rate_cents numeric(6,2) NOT NULL DEFAULT 76.00;
 
 ALTER TABLE public.organizations
   DROP CONSTRAINT IF EXISTS organizations_mileage_rate_cents_range;
@@ -66,7 +66,7 @@ ALTER TABLE public.organizations
   CHECK (mileage_rate_cents > 0 AND mileage_rate_cents < 1000);
 
 COMMENT ON COLUMN public.organizations.mileage_rate_cents IS
-  'Cents per mile a mileage expense is priced at when it is logged. Defaults to the IRS standard business rate (72.5 for 2026). Each expense keeps the rate it was priced at, so changing this never reprices history.';
+  'Cents per mile a mileage expense is priced at when it is logged. Defaults to the IRS standard business rate (76 cents from 2026-07-01). Each expense keeps the rate it was priced at, so changing this never reprices history.';
 
 -- ── The table ───────────────────────────────────────────────────────────────
 
@@ -371,9 +371,9 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'organizations'
-       AND column_name = 'mileage_rate_cents' AND column_default LIKE '72.5%'
+       AND column_name = 'mileage_rate_cents' AND column_default LIKE '76%'
   ) THEN
-    RAISE EXCEPTION 'organizations.mileage_rate_cents is missing or does not default to 72.50';
+    RAISE EXCEPTION 'organizations.mileage_rate_cents is missing or does not default to 76.00';
   END IF;
 
   IF to_regclass('public.expenses') IS NULL THEN

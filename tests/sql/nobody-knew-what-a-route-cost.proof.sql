@@ -65,8 +65,8 @@ INSERT INTO public.expenses (id, organization_id, staff_id, spent_on, category, 
    'e2000000-0000-4000-8000-0000000000b1', '2026-03-14', 'fuel', 3000, 'BP');
 
 -- ── The rate snapshot ───────────────────────────────────────────────────────
--- The client's rate and amount are not believed: 12.3 mi at the org's 72.50
--- is 891.75, which rounds half away from zero to 892.
+-- The client's rate and amount are not believed: 12.3 mi at the org's 76.00
+-- is 934.8, which rounds to 935.
 INSERT INTO public.expenses (id, organization_id, staff_id, spent_on, category, amount_cents,
                              miles, mileage_rate_cents)
 VALUES ('e3000000-0000-4000-8000-00000000c001', 'e0000000-0000-4000-8000-0000000000aa',
@@ -77,7 +77,7 @@ DECLARE _r record; _err text;
 BEGIN
   SELECT amount_cents, mileage_rate_cents, miles INTO _r
     FROM public.expenses WHERE id = 'e3000000-0000-4000-8000-00000000c001';
-  IF _r.mileage_rate_cents <> 72.50 OR _r.amount_cents <> 892 THEN
+  IF _r.mileage_rate_cents <> 76.00 OR _r.amount_cents <> 935 THEN
     RAISE EXCEPTION 'PROOF FAILED [mileage price]: 12.3 mi stored as % at %', _r.amount_cents, _r.mileage_rate_cents;
   END IF;
 
@@ -88,7 +88,7 @@ BEGIN
   PERFORM set_config('app.allow_protected_org_write', '', true);
   SELECT amount_cents, mileage_rate_cents INTO _r
     FROM public.expenses WHERE id = 'e3000000-0000-4000-8000-00000000c001';
-  IF _r.mileage_rate_cents <> 72.50 OR _r.amount_cents <> 892 THEN
+  IF _r.mileage_rate_cents <> 76.00 OR _r.amount_cents <> 935 THEN
     RAISE EXCEPTION 'PROOF FAILED [snapshot]: an org rate change repriced a logged trip to % at %', _r.amount_cents, _r.mileage_rate_cents;
   END IF;
 
@@ -96,7 +96,7 @@ BEGIN
   UPDATE public.expenses SET miles = 10 WHERE id = 'e3000000-0000-4000-8000-00000000c001';
   SELECT amount_cents, mileage_rate_cents INTO _r
     FROM public.expenses WHERE id = 'e3000000-0000-4000-8000-00000000c001';
-  IF _r.mileage_rate_cents <> 72.50 OR _r.amount_cents <> 725 THEN
+  IF _r.mileage_rate_cents <> 76.00 OR _r.amount_cents <> 760 THEN
     RAISE EXCEPTION 'PROOF FAILED [snapshot on edit]: 10 mi re-priced as % at %', _r.amount_cents, _r.mileage_rate_cents;
   END IF;
 
@@ -105,7 +105,7 @@ BEGIN
    WHERE id = 'e3000000-0000-4000-8000-00000000c001';
   SELECT amount_cents, mileage_rate_cents INTO _r
     FROM public.expenses WHERE id = 'e3000000-0000-4000-8000-00000000c001';
-  IF _r.mileage_rate_cents <> 72.50 OR _r.amount_cents <> 725 THEN
+  IF _r.mileage_rate_cents <> 76.00 OR _r.amount_cents <> 760 THEN
     RAISE EXCEPTION 'PROOF FAILED [forged rate]: stored % at %', _r.amount_cents, _r.mileage_rate_cents;
   END IF;
 

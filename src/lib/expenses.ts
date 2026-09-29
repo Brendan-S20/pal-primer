@@ -45,7 +45,7 @@ export function isExpenseCategory(v: unknown): v is ExpenseCategory {
 /** The IRS standard business mileage rate for 2026, in cents per mile. The
  *  column default in SQL is the same number; an org changes its own rate on
  *  the Expenses page. */
-export const IRS_STANDARD_MILEAGE_RATE_CENTS = 72.5;
+export const IRS_STANDARD_MILEAGE_RATE_CENTS = 76;
 
 /** The largest amount the column accepts: $9,999,999.99. */
 export const EXPENSE_AMOUNT_MAX_CENTS = 999_999_999;

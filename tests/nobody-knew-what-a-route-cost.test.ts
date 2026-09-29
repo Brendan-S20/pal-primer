@@ -60,10 +60,12 @@ describe("a mileage trip is miles times the rate, to the cent the database store
   });
 
   it("defaults to the IRS standard business rate", () => {
-    expect(IRS_STANDARD_MILEAGE_RATE_CENTS).toBe(72.5);
+    // 76 cents from 2026-07-01 (irs.gov/tax-professionals/standard-mileage-rates:
+    // 72.5 for January to June, raised mid-year).
+    expect(IRS_STANDARD_MILEAGE_RATE_CENTS).toBe(76);
     // The SQL default is the same number, or a new org would preview one rate
     // and be charged another.
-    expect(MIGRATION).toMatch(/mileage_rate_cents numeric\(6,2\) NOT NULL DEFAULT 72\.50/);
+    expect(MIGRATION).toMatch(/mileage_rate_cents numeric\(6,2\) NOT NULL DEFAULT 76\.00/);
     expect(formatRate(72.5)).toBe("72.5¢/mi");
     expect(formatRate("70.00")).toBe("70¢/mi");
   });
