@@ -114,8 +114,10 @@ describe("the link in the email is the scoped one", () => {
   });
 
   it("no link, no email", () => {
+    // A campaign only: since one-click was fixed for every email, an invoice
+    // whose client token cannot be minted falls back rather than going unsent.
     expect(enqueue).toMatch(
-      /if \(!tok\?\.token\) return \{ ok: false, reason: "enqueue_failed" \};/,
+      /if \(!tok\?\.token && params\.clientUnsubscribe\) return \{ ok: false, reason: "enqueue_failed" \};/,
     );
   });
 
@@ -161,7 +163,7 @@ describe("the endpoint answers both kinds of token", () => {
     // campaign's header points at this endpoint, which also sends a browser
     // that opened the link on to the page.
     expect(read("src/lib/email/enqueue.server.ts")).toMatch(
-      /unsubscribe_url: appUrl\(`\/email\/unsubscribe\?token=\$\{clientUnsubscribeToken\}`\)/,
+      /unsubscribe_url: appUrl\(`\/email\/unsubscribe\?token=\$\{unsubscribeToken\}`\)/,
     );
     expect(read("src/routes/email/queue/process.ts")).toMatch(/payload\.unsubscribe_url/);
     const get = route.slice(route.indexOf("GET: async"), route.indexOf("POST: async"));

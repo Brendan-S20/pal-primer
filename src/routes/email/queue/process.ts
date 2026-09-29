@@ -41,15 +41,15 @@ async function sendViaResend(apiKey: string, payload: Record<string, any>): Prom
   // Build List-Unsubscribe header from the unsubscribe token when present.
   const headers: Record<string, string> = {};
   if (payload.unsubscribe_token) {
-    // `unsubscribe_url` is set for campaign email, and points at the endpoint
-    // that answers the one-click POST. The fallback is the confirmation PAGE,
-    // which answers a POST with 200 and HTML and unsubscribes nobody; kept
-    // for everything else here only because changing what one click on an
-    // invoice does is its own decision.
+    // `unsubscribe_url` points at the endpoint that answers the one-click
+    // POST; enqueueAppEmail sets it on everything now. The fallback is for
+    // messages queued before that, and points at the same endpoint: the
+    // confirmation PAGE answers a POST with 200 and HTML and unsubscribes
+    // nobody, which is what one click on an invoice used to do.
     const url =
       typeof payload.unsubscribe_url === "string" && payload.unsubscribe_url
         ? payload.unsubscribe_url
-        : appUrl(`/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`);
+        : appUrl(`/email/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`);
     headers["List-Unsubscribe"] = `<${url}>`;
     headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
   }
