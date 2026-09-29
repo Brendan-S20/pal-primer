@@ -1,3 +1,5 @@
+import { CONNECTIVITY_CHANGE } from "./connectivity";
+
 // When My Day replays the queue on its own, without being asked.
 //
 // ── "ALREADY SYNCING…" WITH NOTHING TO SYNC ─────────────────────────────────
@@ -58,8 +60,27 @@ export function startAutoSync(
   }, 0);
   const onOnline = () => run("auto");
   target.addEventListener("online", onOnline);
+
+  // In the iOS and Android app, signal coming back does not fire a browser
+  // `online` event: WKWebView's navigator.onLine is not refreshed reliably
+  // (connectivity.ts). @capacitor/network's listener is what knows, and it
+  // announces itself as CONNECTIVITY_CHANGE. So a tech who worked a dead zone
+  // drove back into coverage and the queue sat there until they tapped Sync
+  // or reopened My Day (found 2026-09-28 by the agent that fixed offline
+  // Complete). That event also fires on every launch and resume, when the
+  // mount-time replay above is already scheduled, so it replays only on a
+  // real change from offline to online, never on a repeat of "online".
+  let wasOffline = isOffline();
+  const onConnectivity = () => {
+    const offline = isOffline();
+    if (wasOffline && !offline) run("auto");
+    wasOffline = offline;
+  };
+  target.addEventListener(CONNECTIVITY_CHANGE, onConnectivity);
+
   return () => {
     target.clearTimeout(timer);
     target.removeEventListener("online", onOnline);
+    target.removeEventListener(CONNECTIVITY_CHANGE, onConnectivity);
   };
 }
