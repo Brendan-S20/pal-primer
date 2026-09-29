@@ -623,6 +623,7 @@ const BASE_STUBS: Record<string, Stub> = {
     notify_email_visit_reminder: true,
     notify_email_on_my_way: true,
     notify_email_quote_sent: true,
+    quote_followup_days: 3,
   },
 
   // ── Clients ─────────────────────────────────────────────────────────────

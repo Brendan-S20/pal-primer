@@ -14,7 +14,10 @@ export const Route = createFileRoute("/_authenticated/settings/emails")({
   component: EmailSettingsPage,
 });
 
-const ROWS: Array<{ key: keyof Settings; label: string; help: string }> = [
+// The switches. quote_followup_days is a number and gets its own control.
+type SwitchKey = Exclude<keyof Settings, "quote_followup_days">;
+
+const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
   { key: "notify_email_invoice_sent", label: "Invoice sent", help: "Sent when you email a new invoice from the invoice page." },
   { key: "notify_email_quote_sent", label: "Quote sent", help: "Sent when you press Send on a quote, with a link the customer accepts or declines from. Off means Send only marks the quote sent, and you share the link yourself." },
@@ -66,6 +69,29 @@ function EmailSettingsPage() {
               </div>
             </label>
           ))}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-3 text-sm">
+            <label htmlFor="quote-followup-days" className="min-w-0 font-medium">
+              Follow up on an unanswered quote
+            </label>
+            <select
+              id="quote-followup-days"
+              className="h-9 rounded-md border bg-background px-2 text-sm touch:min-h-11"
+              value={values.quote_followup_days}
+              disabled={!values.notify_email_quote_sent}
+              onChange={(e) => setValues({ ...values, quote_followup_days: Number(e.target.value) })}
+            >
+              <option value={0}>Never</option>
+              {[2, 3, 5, 7, 14].map((d) => (
+                <option key={d} value={d}>
+                  After {d} days
+                </option>
+              ))}
+            </select>
+            <p className="basis-full text-xs text-muted-foreground">
+              One reminder email with the same link, sent only while the quote can still be
+              accepted. Uses the &ldquo;Quote sent&rdquo; email above.
+            </p>
+          </div>
         </CardContent>
       </Card>
       <Button onClick={() => mut.mutate()} disabled={mut.isPending}>

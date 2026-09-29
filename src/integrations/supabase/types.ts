@@ -2937,6 +2937,7 @@ export type Database = {
           workday_start: string
           notify_email_on_my_way: boolean
           on_my_way_on_navigate: boolean
+          quote_followup_days: number
         }
         Insert: {
           active_client_count?: number
@@ -3067,6 +3068,7 @@ export type Database = {
           workday_start?: string
           notify_email_on_my_way?: boolean
           on_my_way_on_navigate?: boolean
+          quote_followup_days?: number
         }
         Update: {
           active_client_count?: number
@@ -3197,6 +3199,7 @@ export type Database = {
           workday_start?: string
           notify_email_on_my_way?: boolean
           on_my_way_on_navigate?: boolean
+          quote_followup_days?: number
         }
         Relationships: [
           {
@@ -4649,6 +4652,7 @@ export type Database = {
           title: string | null
           updated_at: string
           valid_until: string | null
+          followup_sent_at: string | null
         }
         Insert: {
           accepted_at?: string | null
@@ -4674,6 +4678,7 @@ export type Database = {
           title?: string | null
           updated_at?: string
           valid_until?: string | null
+          followup_sent_at?: string | null
         }
         Update: {
           accepted_at?: string | null
@@ -4699,6 +4704,7 @@ export type Database = {
           title?: string | null
           updated_at?: string
           valid_until?: string | null
+          followup_sent_at?: string | null
         }
         Relationships: [
           {

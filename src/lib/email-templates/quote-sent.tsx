@@ -32,6 +32,8 @@ interface Props extends OrgContact {
   /** The office's note to the customer, as typed. */
   message?: string | null;
   quoteUrl?: string;
+  /** The nightly follow-up on a quote nobody has answered yet. */
+  reminder?: boolean;
 }
 
 const QuoteSent = ({
@@ -44,17 +46,34 @@ const QuoteSent = ({
   validUntilLabel,
   message,
   quoteUrl,
+  reminder = false,
   ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
-    <Preview>{`${orgName} sent you a quote: ${quoteLabel}`}</Preview>
+    <Preview>
+      {reminder
+        ? `A reminder about your quote from ${orgName}: ${quoteLabel}`
+        : `${orgName} sent you a quote: ${quoteLabel}`}
+    </Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
-        <Heading style={styles.h1}>Your quote from {orgName}</Heading>
+        <Heading style={styles.h1}>
+          {reminder ? "Still thinking it over?" : `Your quote from ${orgName}`}
+        </Heading>
         <Text style={styles.text}>
-          Hi {clientName}, {orgName} has sent you {title ? <>a quote for {title}</> : "a quote"} (
-          {quoteLabel}).
+          {reminder ? (
+            <>
+              Hi {clientName}, a reminder that your quote from {orgName}
+              {title ? <> for {title}</> : null} ({quoteLabel}) is still waiting for an answer.
+              Questions? Just reply to this email.
+            </>
+          ) : (
+            <>
+              Hi {clientName}, {orgName} has sent you {title ? <>a quote for {title}</> : "a quote"}{" "}
+              ({quoteLabel}).
+            </>
+          )}
         </Text>
         {recurringCents > 0 ? (
           <Text style={styles.amount}>{fmtMoney(recurringCents)} per visit</Text>
@@ -86,7 +105,10 @@ const QuoteSent = ({
 export const template = {
   component: QuoteSent,
   subject: (d: Record<string, any>) =>
-    `Quote ${d.quoteLabel ?? ""} from ${d.orgName ?? "your service"}`.replace(/\s+/g, " "),
+    `${d.reminder ? "Reminder: quote" : "Quote"} ${d.quoteLabel ?? ""} from ${d.orgName ?? "your service"}`.replace(
+      /\s+/g,
+      " ",
+    ),
   displayName: "Quote sent",
   previewData: {
     orgName: "Acme Scoop Co.",
