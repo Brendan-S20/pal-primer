@@ -145,9 +145,16 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   // template prints it. One token per client, reused by every campaign: the
   // unique index on client_id makes a concurrent mint a no-op, and the row is
   // read back either way.
+  //
+  // Every email to a KNOWN client carries it now, not only campaigns: it is
+  // what the one-click List-Unsubscribe header points at, and redeeming it
+  // opts that client out at this business and nowhere else. The address-wide
+  // token below it adds the address to the platform-wide suppression list,
+  // so one click on one business's invoice stopped every business's mail to
+  // that person. A campaign cannot go without it; anything else falls back.
   let clientUnsubscribeToken: string | null = null;
-  if (params.clientUnsubscribe) {
-    if (!client) return { ok: false, reason: "no_recipient" };
+  if (params.clientUnsubscribe && !client) return { ok: false, reason: "no_recipient" };
+  if (client) {
     await supabaseAdmin
       .from("client_unsubscribe_tokens")
       .upsert(
@@ -160,9 +167,9 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       .eq("client_id", client.id)
       .eq("organization_id", params.organizationId)
       .maybeSingle();
-    // No link, no email. CAN-SPAM has no "sent it anyway" branch.
-    if (!tok?.token) return { ok: false, reason: "enqueue_failed" };
-    clientUnsubscribeToken = tok.token;
+    // No link, no campaign. CAN-SPAM has no "sent it anyway" branch.
+    if (!tok?.token && params.clientUnsubscribe) return { ok: false, reason: "enqueue_failed" };
+    clientUnsubscribeToken = tok?.token ?? null;
   }
 
   // Render
@@ -185,7 +192,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     clientName: client?.display_name ?? params.recipientName ?? undefined,
     ...params.templateData,
     // After the spread: the link is minted here, never supplied by a caller.
-    ...(clientUnsubscribeToken
+    ...(clientUnsubscribeToken && params.clientUnsubscribe
       ? { unsubscribeUrl: appUrl(`/unsubscribe?token=${clientUnsubscribeToken}`) }
       : {}),
   };
@@ -200,16 +207,27 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   }
   const subject = typeof entry.subject === "function" ? entry.subject(mergedData) : entry.subject;
 
-  // Unsubscribe token. A campaign's is the client-scoped one minted above;
-  // everything else keeps the address-wide token it always had.
+  // Unsubscribe token: the client-scoped one minted above, or, for mail with
+  // no client row (a prospect's quote), the address-wide one. That table
+  // holds ONE token per address (email_unsubscribe_tokens_email_key), so the
+  // bare insert this used to do failed silently from the second email on and
+  // the header carried a token that did not exist. Reuse the address's token.
   let unsubscribeToken: string;
   if (clientUnsubscribeToken) {
     unsubscribeToken = clientUnsubscribeToken;
   } else {
-    unsubscribeToken = hexToken();
     await supabaseAdmin
       .from("email_unsubscribe_tokens")
-      .insert({ email: recipient, token: unsubscribeToken });
+      .upsert(
+        { email: recipient, token: hexToken() },
+        { onConflict: "email", ignoreDuplicates: true },
+      );
+    const { data: addrTok } = await supabaseAdmin
+      .from("email_unsubscribe_tokens")
+      .select("token")
+      .eq("email", recipient)
+      .maybeSingle();
+    unsubscribeToken = (addrTok?.token as string | undefined) ?? hexToken();
   }
   const queueName = params.queue ?? "transactional_emails";
 
@@ -248,10 +266,9 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       idempotency_key: idempotencyKey,
       unsubscribe_token: unsubscribeToken,
       // One-click (RFC 8058) needs a URL that answers a POST. The page does
-      // not; /email/unsubscribe does, and sends a browser on to the page.
-      ...(clientUnsubscribeToken
-        ? { unsubscribe_url: appUrl(`/email/unsubscribe?token=${clientUnsubscribeToken}`) }
-        : {}),
+      // not; /email/unsubscribe does, and sends a browser on to the page. It
+      // redeems either kind of token.
+      unsubscribe_url: appUrl(`/email/unsubscribe?token=${unsubscribeToken}`),
       queued_at: new Date().toISOString(),
     },
   });
