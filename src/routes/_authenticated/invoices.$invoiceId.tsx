@@ -238,7 +238,11 @@ function InvoiceDetail() {
         <div className="mt-8">
           <SectionLabel>Billed to</SectionLabel>
           <p className="mt-1.5 text-sm font-medium">{client?.display_name ?? "Client"}</p>
-          <p className="text-sm text-muted-foreground">
+          {/* break-all: an address has no spaces, so a long one set the
+              width of the page. Measured when this page first entered the
+              width sweep: a 66-character address made the page 508px wide on
+              a 360px phone. */}
+          <p className="break-all text-sm text-muted-foreground">
             {client?.primary_email ?? "No email on file"}
           </p>
         </div>
