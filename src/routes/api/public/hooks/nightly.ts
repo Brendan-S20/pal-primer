@@ -546,6 +546,14 @@ async function autoSendScheduledInvoices(
       inv.period_start && inv.period_end
         ? `Services from ${inv.period_start} to ${inv.period_end}`
         : undefined;
+    // The invoice as a PDF, the same one the manual send attaches. Drawn only
+    // when the email is going; an invoice that cannot be drawn still gets its
+    // email.
+    const pdfAttachment = async () => {
+      const { invoicePdfAttachment } = await import("@/lib/document-pdf.server");
+      const pdf = await invoicePdfAttachment(supabaseAdmin, inv.id);
+      return pdf ? [pdf] : [];
+    };
     try {
       const res = await enqueueAppEmail({
         organizationId: orgId,
@@ -559,6 +567,7 @@ async function autoSendScheduledInvoices(
           periodLabel: period,
           reminder: false,
         },
+        attachments: pdfAttachment,
       });
       if (res.ok) {
         await supabaseAdmin

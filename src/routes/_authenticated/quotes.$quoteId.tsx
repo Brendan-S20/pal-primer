@@ -13,6 +13,9 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { QuoteDocument } from "@/components/quotes/QuoteDocument";
 import { QuoteEditor, type QuoteEditorValues } from "@/components/quotes/QuoteEditor";
 import { QuoteStatusBadge } from "@/components/quotes/QuoteStatusBadge";
+import { DownloadPdfButton } from "@/components/DownloadPdfButton";
+import { downloadQuotePdf } from "@/lib/document-pdf.functions";
+import { appUrl } from "@/lib/app-origin";
 import {
   deleteQuoteDraft,
   duplicateQuote,
@@ -46,6 +49,7 @@ function QuoteDetailPage() {
   const deleteFn = useServerFn(deleteQuoteDraft);
   const duplicateFn = useServerFn(duplicateQuote);
   const invoiceFn = useServerFn(invoiceQuoteOneTimeCharges);
+  const pdfFn = useServerFn(downloadQuotePdf);
 
   const q = useQuery({
     queryKey: ["quote", quoteId],
@@ -347,6 +351,12 @@ function QuoteDetailPage() {
               <Copy className="mr-1 h-4 w-4 shrink-0" /> Copy link
             </Button>
           )}
+          <DownloadPdfButton
+            load={() => pdfFn({ data: { quoteId: quote.id } })}
+            nativeUrl={
+              quote.publicToken ? appUrl(`/api/public/quote-pdf?token=${quote.publicToken}`) : null
+            }
+          />
           {quote.status === "sent" && (
             <Button
               type="button"

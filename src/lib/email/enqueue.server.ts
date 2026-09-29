@@ -47,6 +47,17 @@ interface EnqueueParams {
    * Automated/system sends (cron, webhooks, lifecycle hooks) omit this and
    * are skipped for clients with comms_paused = true. */
   manual?: boolean;
+  /** Files sent WITH the email: the invoice PDF on "invoice-sent". Base64,
+   *  because the payload is jsonb on a pgmq queue until
+   *  /email/queue/process hands it to Resend, which takes exactly this shape
+   *  ({ filename, content }). Keep them small: the message sits in the queue
+   *  (and in the DLQ if it fails) with the file inside it.
+   *
+   *  A function, called only once every reason NOT to send has been ruled
+   *  out, so a nightly loop that re-tries an opted-out client's invoice every
+   *  night does not draw that PDF every night for nothing. A throw from it is
+   *  caught and the email goes without the file. */
+  attachments?: () => Promise<Array<{ filename: string; contentBase64: string }>>;
 }
 
 interface EnqueueResult {
@@ -127,6 +138,17 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     .maybeSingle();
   if (suppressed) return { ok: false, reason: "suppressed" };
 
+  // Attachments, now that nothing above has declined the send.
+  let attachments: Array<{ filename: string; contentBase64: string }> = [];
+  if (params.attachments) {
+    try {
+      attachments = (await params.attachments()) ?? [];
+    } catch (e) {
+      console.error("email attachment failed", params.templateName, e);
+      attachments = [];
+    }
+  }
+
   // Render
   // The select above interpolates params.notifyKey, so supabase-js infers
   // nothing about the row. Narrowed once here rather than cast at each field.
@@ -199,6 +221,14 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       idempotency_key: idempotencyKey,
       unsubscribe_token: unsubscribeToken,
       queued_at: new Date().toISOString(),
+      ...(attachments.length
+        ? {
+            attachments: attachments.map((a) => ({
+              filename: a.filename,
+              content: a.contentBase64,
+            })),
+          }
+        : {}),
     },
   });
   if (enqueueError) {

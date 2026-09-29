@@ -101,3 +101,22 @@ export function formatClock(hhmm: string | null | undefined): string {
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
+
+/** "Jul 20, 2026": a calendar day on a document that will be filed.
+ *
+ *  `formatDay` drops the year when it is the current one, which is right on
+ *  a screen read today and wrong on a PDF a bookkeeper opens next spring.
+ *  Takes a YYYY-MM-DD day that is ALREADY on the org's calendar (use
+ *  `orgLocalDay` for an instant first) and formats it in UTC, where a bare
+ *  date lives, so no server or device timezone can move it a day. */
+export function formatDocumentDay(day: string | null | undefined): string {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return day ?? "";
+  const d = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return day;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
