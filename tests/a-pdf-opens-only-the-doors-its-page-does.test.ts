@@ -86,6 +86,8 @@ function fakeDb(
           inserts.push({ table, row });
           return { error: null };
         },
+        // enqueueAppEmail mints the unsubscribe token with an upsert (#275).
+        upsert: async () => ({ error: null }),
         update: () => q,
         then: (res: any, rej: any) => Promise.resolve({ data: rows, error: null }).then(res, rej),
       };
