@@ -41,46 +41,70 @@ export type RefundSplit = {
   /** The share attributable to the recovered processing fee. Reported as fee
    *  recovery reversing, never as lost revenue. */
   surchargeCents: number;
+  /** The share attributable to the customer's tip. A tip was never revenue
+   *  (it sits beside `amount_cents` in `payments.tip_cents`), so giving part
+   *  of it back takes nothing off revenue either. */
+  tipCents: number;
 };
 
 /**
- * Split a refund into its revenue and surcharge parts.
+ * Split a refund into its revenue, surcharge and tip parts.
  *
  * @param refundedCents Stripe's `amount_refunded` — CUMULATIVE across every
  *   refund on the charge, which is why callers must treat the result as a
  *   running total rather than an increment.
- * @param chargeTotalCents The charge's full amount: base + surcharge.
+ * @param chargeTotalCents The charge's full amount: base + surcharge + tip.
  * @param surchargeCents The surcharge inside that total. Zero for every payment
  *   taken before pass-through existed, and for every tenant who absorbs the fee
  *   — in which case this is a straight pass-through of the refunded amount.
+ * @param tipCents The tip inside that total. Zero for every untipped payment,
+ *   which leaves the split exactly what it was before tipping existed.
+ *
+ * ── WHY THE TIP IS SPLIT THE SAME WAY ─────────────────────────────────────
+ *
+ * The same reason the surcharge is: a partial refund is dollars off a charge
+ * and Stripe does not say which dollars. A $100 invoice with a $15 tip,
+ * refunded $57.50, is half of each: $50 off revenue and $7.50 of tip back. A
+ * refund that "gave back the tip first" or "the service first" would be a
+ * policy the office never chose, and the proportional split is the one that
+ * sums to the whole across any sequence of partials.
  */
 export function splitRefund(
   refundedCents: number,
   chargeTotalCents: number,
   surchargeCents: number,
+  tipCents = 0,
 ): RefundSplit {
   const refunded = Math.max(0, Math.round(refundedCents));
   const total = Math.max(0, Math.round(chargeTotalCents));
   const surcharge = Math.max(0, Math.round(surchargeCents));
+  const tip = Math.max(0, Math.round(tipCents));
+  const nonRevenue = surcharge + tip;
 
-  // No surcharge, or a total that cannot be trusted to divide by. Returning the
-  // refund whole is the pre-surcharge behaviour and the only safe default: it
-  // can understate revenue, never overstate it, and it is exactly right for the
-  // absorb-the-fee tenants who are the majority.
-  if (surcharge <= 0 || total <= 0 || surcharge >= total) {
-    return { refundedCents: refunded, revenueCents: refunded, surchargeCents: 0 };
+  // No surcharge and no tip, or a total that cannot be trusted to divide by.
+  // Returning the refund whole is the pre-surcharge behaviour and the only safe
+  // default: it can understate revenue, never overstate it, and it is exactly
+  // right for the untipped, absorb-the-fee payments that are the majority.
+  if (nonRevenue <= 0 || total <= 0 || nonRevenue >= total) {
+    return { refundedCents: refunded, revenueCents: refunded, surchargeCents: 0, tipCents: 0 };
   }
 
   // A refund larger than the charge should not exist. Clamping rather than
   // trusting it keeps a bad number from producing a negative revenue line.
   const capped = Math.min(refunded, total);
-  const base = total - surcharge;
-  // Round the revenue part and derive the surcharge as the remainder, so the
-  // two always add back to the amount refunded — no lost or invented cent.
+  const base = total - nonRevenue;
+  // Round the revenue part and derive the rest as the remainder, so the parts
+  // always add back to the amount refunded — no lost or invented cent. The
+  // remainder is divided between surcharge and tip in their own ratio, the
+  // tip rounded and the surcharge taking what is left, so with no tip the
+  // surcharge part is exactly what it always was.
   const revenue = Math.round((capped * base) / total);
+  const remainder = capped - revenue;
+  const tipPart = Math.round((remainder * tip) / nonRevenue);
   return {
     refundedCents: capped,
     revenueCents: revenue,
-    surchargeCents: capped - revenue,
+    surchargeCents: remainder - tipPart,
+    tipCents: tipPart,
   };
 }

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { MessageCircleWarning } from "lucide-react";
+import { CalendarPlus, MessageCircleWarning } from "lucide-react";
+import { OneOffBookingCard } from "@/components/portal/OneOffBookingCard";
 import {
   usePortalCtx, RequestsList, ReportGeneralConcern,
 } from "@/lib/portal-ui";
@@ -18,6 +19,15 @@ function PortalRequests() {
           <MessageCircleWarning className="h-4 w-4 shrink-0" /> Your requests
         </h2>
         <RequestsList rows={requestsQ.data ?? []} />
+      </section>
+
+      {/* Above "Report a concern" on purpose: asking for an extra visit is a
+          request, not a complaint, and it should not read as one. */}
+      <section>
+        <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
+          <CalendarPlus className="h-4 w-4 shrink-0" /> Book an extra cleanup
+        </h2>
+        <OneOffBookingCard />
       </section>
 
       <section>

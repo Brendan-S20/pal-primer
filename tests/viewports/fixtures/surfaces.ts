@@ -1,5 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
 import {
+  CAMPAIGN_DRAFT_ID,
+  CAMPAIGN_DRAFT_SUBJECT,
+  CAMPAIGN_SENT_ID,
+  CAMPAIGN_SENT_SUBJECT,
   CLIENT_ID,
   LEAD_ID,
   LEAD_NAME,
@@ -77,6 +81,24 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByText("Ways to sign in", { exact: true }).first(),
     proofLabel: 'the "Ways to sign in" card',
     expectsData: "Delete your account",
+  },
+  {
+    // Added 2026-09-29 with calendar feeds. The card draws two rows and, once
+    // a link is made, a box holding a 95-character URL and four buttons that
+    // have to wrap on a phone. "Create link" on the all-visits row is the
+    // open step (the other row needs a confirm), and the URL box is what it
+    // has to put on screen. The data proof is the "last read" line, which
+    // only draws when the fixture's lastFetchedAt reached the card.
+    id: "/profile · calendar link",
+    path: "/profile",
+    proof: (p) => p.getByText("Calendar feed", { exact: true }).first(),
+    proofLabel: 'the "Calendar feed" card',
+    expectsData: "Last read by a calendar",
+    open: async (p) => {
+      await p.getByRole("button", { name: "Create link", exact: true }).first().click();
+    },
+    opened: (p) => p.getByRole("link", { name: "Add to Google Calendar" }),
+    openedLabel: "the new link's buttons",
   },
   {
     id: "/dashboard",
@@ -185,8 +207,8 @@ export const SURFACES: Surface[] = [
       await p.getByRole("button", { name: "Refund", exact: true }).first().click();
       await p.getByRole("button", { name: "Review refund" }).click();
     },
-    opened: (p) => p.getByRole("button", { name: "Refund $123.60" }),
-    openedLabel: "the confirm step's Refund $123.60 button",
+    opened: (p) => p.getByRole("button", { name: "Refund $147.60" }),
+    openedLabel: "the confirm step's Refund $147.60 button",
   },
   {
     id: "/settings/users",
@@ -210,6 +232,16 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("heading", { name: "Scheduling" }).first(),
     proofLabel: 'the "Scheduling" heading',
     expectsData: "The working day",
+  },
+  {
+    // The owner's side of the calendar card: the access-code switch with the
+    // paragraph explaining why it is off, under the same two link rows. The
+    // switch only draws for manage_settings, and its label is the proof.
+    id: "/settings/scheduling · calendar feeds",
+    path: "/settings/scheduling",
+    proof: (p) => p.getByText("Include gate codes in technicians' own calendars").first(),
+    proofLabel: "the access-code switch",
+    expectsData: "Last read by a calendar",
   },
   {
     id: "/my-day",
@@ -440,6 +472,34 @@ export const SURFACES: Surface[] = [
     expectsData: "Kimberly-Anne Rutherford-Sinclair",
   },
   {
+    // Added 2026-09-29 with extra cleanups from the portal. The row puts the
+    // asked-for day and a long street beside Decline and Book it; "Book it"
+    // only draws on an open extra-cleanup request, and opening it draws the
+    // dialog with the date, the price the office must set (no one-off price
+    // in the fixture) and the technician picker.
+    id: "/concerns · extra cleanup",
+    path: "/concerns",
+    proof: (p) => p.getByRole("button", { name: "Book it", exact: true }).first(),
+    proofLabel: 'the "Book it" button, which only draws on an extra-cleanup request',
+    expectsData: "block party",
+    open: async (p) => {
+      await p.getByRole("button", { name: "Book it", exact: true }).first().click();
+    },
+    opened: (p) => p.getByRole("dialog", { name: "Book the extra cleanup" }),
+    openedLabel: "the Book the extra cleanup dialog",
+  },
+  {
+    // Added 2026-09-29. The page was only reached by the unlisted sweep and a
+    // one-off spec that checks the cards exist. The extra-cleanup card draws
+    // only for manage_settings and only once its settings arrived, and its
+    // "Needs a price first" line only when the fixture has no price.
+    id: "/settings/client-portal",
+    path: "/settings/client-portal",
+    proof: (p) => p.getByText("Extra cleanups from the portal", { exact: true }).first(),
+    proofLabel: 'the "Extra cleanups from the portal" card',
+    expectsData: "Needs a price first.",
+  },
+  {
     // Added 2026-09-28 with quotes. A row puts a label, a status badge and a
     // "not a client yet" note on one line, a 58-character prospect name under
     // it, and both totals beside it. The chips only draw once the list has
@@ -470,5 +530,42 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("button", { name: "Save and send" }),
     proofLabel: 'the editor\'s "Save and send" button',
     expectsData: LEAD_NAME,
+  },
+  {
+    // Added 2026-09-29 with campaigns. A row puts a status badge and an
+    // audience label on one line, a 150-character subject under it, and a
+    // line of four-digit counts beside it; one row of each status.
+    id: "/campaigns",
+    path: "/campaigns",
+    proof: (p) => p.getByRole("link", { name: "New campaign" }),
+    proofLabel: 'the "New campaign" link',
+    expectsData: CAMPAIGN_SENT_SUBJECT,
+  },
+  {
+    // A draft opens in the editor: two columns from lg, one below, with the
+    // no-address warning on top, a 40-character tag chosen among thirty in
+    // the audience picker, and a four-digit recipient count with every reason
+    // somebody was left out. The subject is the page heading, which is how
+    // the fixture proves it arrived. Then the preview is opened, because an
+    // iframe is exactly the fixed-size thing that overflows a phone.
+    id: "/campaigns/:id · draft",
+    path: `/campaigns/${CAMPAIGN_DRAFT_ID}`,
+    proof: (p) => p.getByRole("radiogroup", { name: "Who gets it" }),
+    proofLabel: 'the "Who gets it" audience picker',
+    expectsData: CAMPAIGN_DRAFT_SUBJECT,
+    open: async (p) => {
+      await p.getByRole("button", { name: "Show preview" }).click();
+    },
+    opened: (p) => p.locator('iframe[title="Email preview"]'),
+    openedLabel: "the email preview",
+  },
+  {
+    // A campaign that has gone: six stat tiles that reflow two, three and six
+    // across, the reasons some were not sent, and the email itself.
+    id: "/campaigns/:id · sent",
+    path: `/campaigns/${CAMPAIGN_SENT_ID}`,
+    proof: (p) => p.getByRole("heading", { name: "Why some were not sent" }),
+    proofLabel: 'the "Why some were not sent" section',
+    expectsData: CAMPAIGN_SENT_SUBJECT,
   },
 ];

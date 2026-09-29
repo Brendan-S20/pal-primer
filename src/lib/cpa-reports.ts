@@ -57,6 +57,7 @@ export type ReportColumn = {
 
 export type ReportId =
   | "income_cash"
+  | "tips_received"
   | "income_accrual"
   | "cash_accrual_bridge"
   | "revenue_by_client"
@@ -109,6 +110,21 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
       num("paymentCount", "Payments"),
     ],
     note: "Dated by when each payment settled, in the organization's own timezone. A payment that was later refunded still appears as gross income in the month it arrived. The refund is deducted in the month it happened, so a prior period is never restated. A dispute that is later WON is added back in the month the money returned, so this column is net of recoveries and can be negative in a month where more came back than went out.",
+  },
+  tips_received: {
+    id: "tips_received",
+    title: "Tips received, by month",
+    purpose:
+      "Tips customers added when paying an invoice, kept out of income above because they are not payment for the service. Tips received plus net income is what the payments brought in.",
+    basis: "cash",
+    columns: [
+      text("month", "Month"),
+      money("tipsCents", "Tips received"),
+      money("tipsRefundedCents", "Tips refunded"),
+      money("netTipsCents", "Net tips"),
+      num("tippedPaymentCount", "Tipped payments"),
+    ],
+    note: "Dated by when each payment settled, in the organization's own timezone, the same as the cash income report. A refund returns its share of the tip in proportion to the charge (a $115 payment of $100 plus a $15 tip, refunded $57.50, returns $7.50 of tip) and that share is deducted here, in the month of the refund. A chargeback is deducted whole, tip included, from income in the cash income report, so it is not deducted here a second time.",
   },
   income_accrual: {
     id: "income_accrual",
@@ -289,6 +305,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
 
 export const REPORT_ORDER: ReportId[] = [
   "income_cash",
+  "tips_received",
   "income_accrual",
   "cash_accrual_bridge",
   "revenue_by_client",
@@ -306,6 +323,64 @@ export function reportsFor(opts: { inFranchise: boolean }): ReportDef[] {
   return REPORT_ORDER.map((id) => REPORT_DEFS[id]).filter(
     (d) => !d.franchiseOnly || opts.inFranchise,
   );
+}
+
+// ── Tips ───────────────────────────────────────────────────────────────────
+
+/** A received payment's tip, dated on the org's calendar. */
+export type TipReceipt = { day: string; tipCents: number };
+/** The tip share of a refund, dated when the refund happened. */
+export type TipRefund = { day: string; tipCents: number };
+
+/**
+ * Tips by month: received, refunded, net, and how many payments carried one.
+ *
+ * Pure, so the report and its test share one implementation. Every month in
+ * the range gets a row, zero or not, the same as the income sheet beside it:
+ * a month missing from a tax sheet reads as a month nobody looked at.
+ */
+export function tipsByMonth(
+  months: string[],
+  receipts: readonly TipReceipt[],
+  refunds: readonly TipRefund[],
+): Array<{
+  month: string;
+  tipsCents: number;
+  tipsRefundedCents: number;
+  netTipsCents: number;
+  tippedPaymentCount: number;
+}> {
+  const by = new Map<string, { tips: number; refunded: number; count: number }>();
+  for (const m of months) by.set(m, { tips: 0, refunded: 0, count: 0 });
+  const at = (m: string) => {
+    let b = by.get(m);
+    if (!b) {
+      b = { tips: 0, refunded: 0, count: 0 };
+      by.set(m, b);
+    }
+    return b;
+  };
+  for (const r of receipts) {
+    const cents = Math.max(0, Math.round(r.tipCents));
+    if (cents <= 0) continue;
+    const b = at(monthKey(r.day));
+    b.tips += cents;
+    b.count += 1;
+  }
+  for (const r of refunds) {
+    const cents = Math.max(0, Math.round(r.tipCents));
+    if (cents <= 0) continue;
+    at(monthKey(r.day)).refunded += cents;
+  }
+  return [...by.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([m, b]) => ({
+      month: m,
+      tipsCents: b.tips,
+      tipsRefundedCents: b.refunded,
+      netTipsCents: b.tips - b.refunded,
+      tippedPaymentCount: b.count,
+    }));
 }
 
 // ── Reversal classification ────────────────────────────────────────────────

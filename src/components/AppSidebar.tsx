@@ -35,6 +35,7 @@ import {
   ShieldAlert,
   FileSignature,
 } from "lucide-react";
+import { Megaphone } from "lucide-react";
 
 import {
   Sidebar,
@@ -83,6 +84,7 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "Operations",
     items: [
       { title: "Clients", url: "/clients", icon: Users },
+      { title: "Campaigns", url: "/campaigns", icon: Megaphone },
       { title: "Zones", url: "/zones", icon: MapPin },
       // "Schedule", not "Routes": there is no `routes` table — a route is
       // visits filtered by a day and a tech — and MobileTabBar already called

@@ -2,12 +2,22 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { appUrl } from "@/lib/app-origin";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import { resendAttachments } from "@/lib/email/attachments";
 
 const MAX_RETRIES = 5;
 const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_SEND_DELAY_MS = 200;
 const DEFAULT_AUTH_TTL_MINUTES = 15;
 const DEFAULT_TRANSACTIONAL_TTL_MINUTES = 60;
+// Campaign mail is fed into its lane a batch at a time (see the top-up below),
+// so nothing sits in it for long. The TTL is generous anyway because a
+// Retry-After cooldown pauses every lane, and a promotion that goes out an
+// hour late is fine where a login code that does is not.
+const CAMPAIGN_TTL_MINUTES = 24 * 60;
+
+// The order the lanes are read in each tick, which is their priority: a login
+// code, then a customer's invoice or reminder, then a promotion.
+const QUEUES = ["auth_emails", "transactional_emails", "campaign_emails"] as const;
 
 const RESEND_URL = "https://api.resend.com/emails";
 
@@ -31,7 +41,15 @@ async function sendViaResend(apiKey: string, payload: Record<string, any>): Prom
   // Build List-Unsubscribe header from the unsubscribe token when present.
   const headers: Record<string, string> = {};
   if (payload.unsubscribe_token) {
-    const url = appUrl(`/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`);
+    // `unsubscribe_url` points at the endpoint that answers the one-click
+    // POST; enqueueAppEmail sets it on everything now. The fallback is for
+    // messages queued before that, and points at the same endpoint: the
+    // confirmation PAGE answers a POST with 200 and HTML and unsubscribes
+    // nobody, which is what one click on an invoice used to do.
+    const url =
+      typeof payload.unsubscribe_url === "string" && payload.unsubscribe_url
+        ? payload.unsubscribe_url
+        : appUrl(`/email/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`);
     headers["List-Unsubscribe"] = `<${url}>`;
     headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
   }
@@ -48,6 +66,10 @@ async function sendViaResend(apiKey: string, payload: Record<string, any>): Prom
   // messages already sitting in the queue were enqueued without it, and Resend
   // rejects an explicit null.
   if (payload.reply_to) body.reply_to = payload.reply_to;
+  // The invoice PDF on "invoice-sent" (enqueue.server.ts). Only well-formed
+  // entries go across; see src/lib/email/attachments.ts.
+  const attachments = resendAttachments(payload.attachments);
+  if (attachments.length) body.attachments = attachments;
   if (Object.keys(headers).length) body.headers = headers;
   if (payload.idempotency_key) {
     // Resend supports Idempotency-Key header for POST /emails
@@ -206,12 +228,34 @@ export const Route = createFileRoute("/email/queue/process")({
           auth_emails: state?.auth_email_ttl_minutes ?? DEFAULT_AUTH_TTL_MINUTES,
           transactional_emails:
             state?.transactional_email_ttl_minutes ?? DEFAULT_TRANSACTIONAL_TTL_MINUTES,
+          campaign_emails: CAMPAIGN_TTL_MINUTES,
         };
+
+        // 2. Top up the campaign lane to one batch from the recipients a
+        //    campaign has frozen. At most batch_size a tick, never more than
+        //    the lane has room for: if sending stalls, the backlog waits in
+        //    email_campaign_recipients instead of piling into the queue to
+        //    expire. A failure here is logged and never stops the lanes below,
+        //    which carry the mail that matters more.
+        let campaignsFed = 0;
+        try {
+          const { data: depth } = await supabase.rpc("email_queue_depth", {
+            queue_name: "campaign_emails",
+          });
+          const room = Math.max(0, batchSize - Number(depth ?? 0));
+          if (room > 0) {
+            const { feedCampaignLane } = await import("@/lib/campaigns.server");
+            campaignsFed = (await feedCampaignLane(room)).queued;
+          }
+        } catch (e) {
+          console.error("Failed to top up the campaign lane", { error: String(e) });
+        }
 
         let totalProcessed = 0;
 
-        // 2. Process auth_emails first (priority), then transactional_emails
-        for (const queue of ["auth_emails", "transactional_emails"]) {
+        // 3. Read each lane in priority order: auth, then transactional, then
+        //    campaigns.
+        for (const queue of QUEUES) {
           const { data: messages, error: readError } = await supabase.rpc("read_email_batch", {
             queue_name: queue,
             batch_size: batchSize,
@@ -422,7 +466,7 @@ export const Route = createFileRoute("/email/queue/process")({
           }
         }
 
-        return Response.json({ processed: totalProcessed });
+        return Response.json({ processed: totalProcessed, campaignsFed });
       },
     },
   },

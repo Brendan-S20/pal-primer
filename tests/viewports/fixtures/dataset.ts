@@ -50,6 +50,24 @@ export const day = (offset: number) => {
 
 export const TODAY = day(0);
 
+export const VISIT_CHECKLIST = [
+  { id: "c7a1e0de-0000-4000-8000-000000000001", label: "All areas walked", required: true },
+  {
+    id: "c7a1e0de-0000-4000-8000-000000000002",
+    // 120 characters: the longest label visit_checklist_is_valid accepts.
+    label:
+      "Waste bagged, tied off and dropped in the customer's green bin by the garage, never the grey recycling tote on the road.",
+    required: true,
+  },
+  {
+    id: "c7a1e0de-0000-4000-8000-000000000003",
+    // No space and no hyphen: nothing a browser may break at on its own.
+    label: "Gate latched: SIDEGATECARABINERCLIPPEDTHROUGHTHECHAINLINKFENCE",
+    required: true,
+  },
+  { id: "c7a1e0de-0000-4000-8000-000000000004", label: "Water bowl checked", required: false },
+];
+
 export const ORGANIZATION = {
   id: ORG_ID,
   name: ORG_NAME,
@@ -62,6 +80,17 @@ export const ORGANIZATION = {
   current_period_end: iso(new Date(Date.now() + 12 * 864e5)),
   stripe_customer_id: "cus_QxT7HkPmZ3vLd8RaFn2Wq0",
   stripe_subscription_id: "sub_1QxT7HkPmZ3vLd8RaFn2Wq0Bs",
+  require_completion_photo: true,
+  // The visit checklist, in the column's own shape ({id, label, required}),
+  // because My Day reads it through parseChecklist and an item of any other
+  // shape is dropped: a fixture that got the shape wrong would draw no
+  // checklist and the sweep would measure a card without one, green.
+  // `tests/a-checklist-the-sweep-can-see.test.ts` runs it through that parser.
+  //
+  // Awkward on purpose. One label is as long as the database allows a label
+  // to be, and one contains a word with no break in it, because at 320px the
+  // question is whether the row wraps inside the card or widens the page.
+  visit_checklist: VISIT_CHECKLIST,
   role: "owner",
 };
 
@@ -320,6 +349,13 @@ export const REFUND_INVOICE_PAYMENTS = [
     id: REFUND_CARD_PAYMENT_ID,
     amount_cents: 16_000,
     surcharge_cents: 480,
+    // A tip as well as a surcharge, so the amount cell draws its longest
+    // breakdown ("service + card fee + tip") AND the "Tip credited to" line
+    // under it, with the 46-character name in it. Without a tip neither line
+    // exists and the cell measured is the short one.
+    tip_cents: 2_400,
+    tip_staff_id: "dddddddd-0000-4000-8000-00000000d008",
+    tip_staff_name: "Maximilian Alexander Fitzgerald-Worthington II",
     // `refunded` after the first partial: the webhook's own behaviour, and
     // exactly the row the Refund button must still appear on.
     status: "refunded",
@@ -334,6 +370,9 @@ export const REFUND_INVOICE_PAYMENTS = [
     id: "77777777-0000-4000-8000-0000000077a2",
     amount_cents: 8_000,
     surcharge_cents: 0,
+    tip_cents: 0,
+    tip_staff_id: null,
+    tip_staff_name: null,
     status: "succeeded",
     stripe_payment_intent_id: null,
     paid_at: iso(new Date(Date.now() - 7 * 864e5)),
@@ -362,15 +401,18 @@ export const REFUND_INVOICE = {
   ],
   payments: REFUND_INVOICE_PAYMENTS,
 };
-/** What Stripe would say about the card payment: $164.80 charged, $41.20 back. */
+/** What Stripe would say about the card payment: $188.80 charged ($160
+ *  service + $4.80 card fee + $24.00 tip), $41.20 back. The confirm step
+ *  therefore draws both the card-fee line and the tip line. */
 export const REFUND_QUOTE = {
   paymentId: REFUND_CARD_PAYMENT_ID,
   invoiceId: REFUND_INVOICE_ID,
   currency: "usd",
-  chargedCents: 16_480,
+  chargedCents: 18_880,
   surchargeCents: 480,
+  tipCents: 2_400,
   refundedCents: 4_120,
-  refundableCents: 12_360,
+  refundableCents: 14_760,
 };
 
 /** /leads, and the new-client wizard started from one of them. One lead in
@@ -866,6 +908,16 @@ export const TIMESHEET = (() => {
       completed_at: orgAt(weekDay(d), "10:20"),
     })),
   ];
+  // Tips, in the shape listTimesheet returns (payments.tip_staff_id /
+  // tip_cents / paid_at). The long name has two on Monday, so the grid's Tips
+  // column and the phone card's header both draw a figure beside the longest
+  // name; Wen Zhang, who never clocked in, has one on the day of her visits,
+  // so the "no time" day carries a tip too.
+  const tips = [
+    { tip_staff_id: LONG_STAFF_ID, tip_cents: 1_540, paid_at: orgAt(weekDay(0), "19:42") },
+    { tip_staff_id: LONG_STAFF_ID, tip_cents: 2_375, paid_at: orgAt(weekDay(0), "20:05") },
+    { tip_staff_id: STAFF[3].id, tip_cents: 1_000, paid_at: orgAt(weekDay(1), "18:30") },
+  ];
   return {
     timezone: ORGANIZATION.timezone,
     weekStart: mondayOfToday,
@@ -874,6 +926,7 @@ export const TIMESHEET = (() => {
     pickable: staff.map((s) => ({ id: s.id, display_name: s.display_name })),
     entries,
     visits,
+    tips,
   };
 })();
 
@@ -992,9 +1045,72 @@ export const CONCERNS = {
       visit: null,
       reclean_visit: null,
     },
+    {
+      // An extra cleanup asked for from the portal, not yet booked: a
+      // sentence with the day and the longest street, beside Decline and
+      // Book it, which is the row that has to wrap on a phone.
+      id: "44444444-0000-4000-8000-000000004004",
+      category: "one_off_request",
+      message: "We're hosting the block party this weekend, so the side yard needs to be spotless.",
+      status: "open",
+      created_at: iso(new Date(Date.now() - 5 * 3600e3)),
+      resolved_at: null,
+      resolution_note: null,
+      last_reply: null,
+      last_reply_at: null,
+      client_id: CLIENTS[7].id,
+      visit_id: null,
+      reclean_visit_id: null,
+      requested_on: day(3),
+      property_id: PROPERTIES[7].id,
+      booked_visit_id: null,
+      clients: {
+        display_name: CLIENTS[7].display_name,
+        primary_phone: CLIENTS[7].primary_phone,
+        primary_email: CLIENTS[7].primary_email,
+      },
+      visit: null,
+      reclean_visit: null,
+      property: { street: PROPERTIES[7].street, city: PROPERTIES[7].city },
+      booked_visit: null,
+    },
   ],
-  counts: { open: 2, in_progress: 1, resolved: 0 },
+  counts: { open: 3, in_progress: 1, resolved: 0 },
 };
+
+/** Settings -> Client portal, extra cleanups: no price yet, so auto-accept is
+ *  off and cannot be turned on, and the card says so. */
+export const PORTAL_BOOKING_SETTINGS = {
+  autoAccept: false,
+  priceCents: null,
+  currency: "usd",
+  canEdit: true,
+};
+
+/**
+ * The calendar feed card (Profile, and Settings -> Scheduling), added
+ * 2026-09-29 with the feeds.
+ *
+ * `getMyCalendarFeeds` returns camelCase and both scopes. The owner can have
+ * both, so both rows draw: "My visits" with a link already made and read by a
+ * calendar (the longest status line the row has), "Every visit" with none yet
+ * (the "Create link" button). The URL is the length production makes -- app
+ * origin, path, 43 base64url characters, `.ics` -- because the box it is
+ * shown in is only tested by a value that long.
+ */
+export const CALENDAR_FEEDS = {
+  mine: {
+    createdAt: "2026-08-14T14:22:00.000Z",
+    lastFetchedAt: iso(new Date(Date.now() - 2 * 3600e3)),
+  },
+  org: null,
+  canMine: true,
+  canOrg: true,
+  accessCodesInFeed: false,
+  canManageSettings: true,
+};
+export const CALENDAR_FEED_URL =
+  "https://app.houndstack.com/api/public/calendar/q3Vx8KpZ-7mT2wLr9sYc_4NbHd6FjAe1GuQo0IiPlXk.ics";
 
 /**
  * /quotes and /quotes/:id, added 2026-09-28 with the pages.
@@ -1220,4 +1336,118 @@ export const EXPENSE_SETTINGS = {
   timezone: ORGANIZATION.timezone,
   today: TODAY,
   myStaffId: STAFF[0].id,
+
+/**
+ * /campaigns and /campaigns/:id, added 2026-09-29 with the pages.
+ *
+ * Awkward on purpose. A subject at the 150-character limit wraps in the list
+ * row and in the page heading; a tag at the 40-character limit sits in the
+ * audience picker among thirty others; the numbers are in the thousands so
+ * the stat tiles carry four digits and a separator. The draft's business has
+ * NO postal address, so the warning that blocks Send is on the page being
+ * measured, as it is for every owner who has not filled one in yet.
+ */
+export const CAMPAIGN_SENT_ID = "77777777-0000-4000-8000-000000007001";
+export const CAMPAIGN_DRAFT_ID = "77777777-0000-4000-8000-000000007002";
+export const CAMPAIGN_SENDING_ID = "77777777-0000-4000-8000-000000007003";
+// Exactly 150 characters, the most a subject may have.
+export const CAMPAIGN_SENT_SUBJECT =
+  "Spring deep clean for every yard on the North Side: twenty dollars off any one-time cleanup booked before the thirtieth of April, two dogs or twelve!!";
+export const CAMPAIGN_DRAFT_SUBJECT =
+  "Holiday schedule: no visits Thursday the 25th or Friday the 26th, and Wednesday routes run a day early that week";
+// Exactly 40 characters, the most a tag may have.
+export const CAMPAIGN_LONG_TAG = "Ravenswood-Manor-Lincoln-Square-weekly-x";
+const CAMPAIGN_BODY =
+  "We're taking two days off for the holiday so our crew can be with their families.\n\nIf your visit falls on Thursday or Friday we'll come Wednesday instead. Nothing to do on your end: your gate code and notes carry over.\n\nThank you for a wonderful year. https://whitfield-ramirez-yard-and-waste-services.example.com/holiday-schedule-2026-and-what-it-means-for-your-route";
+
+const campaignRow = (
+  id: string,
+  status: "draft" | "sending" | "sent",
+  over: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> => ({
+  id,
+  status,
+  subject: CAMPAIGN_DRAFT_SUBJECT,
+  heading: "Holiday hours, and a thank-you",
+  body: CAMPAIGN_BODY,
+  buttonLabel: "See the whole holiday schedule",
+  buttonUrl: "https://whitfield-ramirez-yard-and-waste-services.example.com/holiday-schedule-2026",
+  audience: { kind: "tagged", tag: CAMPAIGN_LONG_TAG },
+  audienceLabel: `Clients tagged "${CAMPAIGN_LONG_TAG}"`,
+  recipientCount: null,
+  createdAt: iso(new Date(Date.now() - 5 * 864e5)),
+  updatedAt: iso(new Date(Date.now() - 864e5)),
+  sentAt: null,
+  completedAt: null,
+  stats: null,
+  ...over,
+});
+
+const CAMPAIGN_SENT = campaignRow(CAMPAIGN_SENT_ID, "sent", {
+  subject: CAMPAIGN_SENT_SUBJECT,
+  heading: "Spring is here, and so is everything the snow was hiding",
+  audience: { kind: "active" },
+  audienceLabel: "All active clients",
+  recipientCount: 4213,
+  sentAt: iso(new Date(Date.now() - 3 * 864e5)),
+  completedAt: iso(new Date(Date.now() - 2.6 * 864e5)),
+  stats: { recipients: 4213, waiting: 0, inQueue: 0, skipped: 187, sent: 4011, failed: 15, bounced: 38 },
+});
+
+export const CAMPAIGNS = {
+  orgName: ORG_NAME,
+  timezone: "America/Chicago",
+  contactAddress: "4417 N Ravenswood Ave, Suite 2B, Chicago, IL 60640",
+  contactEmail: "office@whitfield-ramirez.example.com",
+  campaigns: [
+    campaignRow(CAMPAIGN_DRAFT_ID, "draft"),
+    campaignRow(CAMPAIGN_SENDING_ID, "sending", {
+      subject:
+        "We now serve Oak Park, Forest Park and River Forest: tell a neighbour and you both get a free visit",
+      audience: { kind: "inactive" },
+      audienceLabel: "Inactive and former clients",
+      recipientCount: 1250,
+      sentAt: iso(new Date(Date.now() - 3600e3)),
+      stats: { recipients: 1250, waiting: 830, inQueue: 10, skipped: 12, sent: 396, failed: 0, bounced: 2 },
+    }),
+    CAMPAIGN_SENT,
+  ],
+};
+
+/** `getCampaign`, keyed by id: the draft opens in the editor, the sent one
+ *  is the record with its stats. */
+export function campaignDetail(id: string) {
+  const sent = id === CAMPAIGN_SENT_ID;
+  return {
+    campaign: sent ? CAMPAIGN_SENT : campaignRow(CAMPAIGN_DRAFT_ID, "draft"),
+    skipReasons: sent ? { client_opted_out: 120, comms_paused: 40, suppressed: 27 } : {},
+    orgName: ORG_NAME,
+    timezone: "America/Chicago",
+    // The draft's business has no address yet, so Send is blocked and says so.
+    contactAddress: sent ? CAMPAIGNS.contactAddress : null,
+    contactEmail: CAMPAIGNS.contactEmail,
+  };
+}
+
+export const CAMPAIGN_AUDIENCE = {
+  recipients: 4213,
+  matched: 4497,
+  excluded: { optedOut: 181, commsPaused: 62, noEmail: 38, duplicate: 3 },
+  overCap: false,
+  activeCount: 4497,
+  inactiveCount: 1362,
+  tags: [
+    { tag: CAMPAIGN_LONG_TAG, count: 1204 },
+    { tag: "gate-code-on-file", count: 988 },
+    { tag: "vip", count: 412 },
+    ...Array.from({ length: 27 }, (_, i) => ({
+      tag: `imported-from-jobber-batch-${String(i + 1).padStart(2, "0")}`,
+      count: 300 - i * 7,
+    })),
+  ],
+};
+
+export const CAMPAIGN_PREVIEW = {
+  subject: CAMPAIGN_DRAFT_SUBJECT,
+  html: `<!doctype html><html><body style="font-family:Arial,sans-serif"><div style="max-width:560px;padding:24px 28px"><h1 style="font-size:22px">Holiday hours, and a thank-you</h1><p>We're taking two days off for the holiday so our crew can be with their families.</p><p>https://whitfield-ramirez-yard-and-waste-services.example.com/holiday-schedule-2026-and-what-it-means-for-your-route</p><a href="https://example.com" style="background:#0f172a;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">See the whole holiday schedule</a><p style="font-size:12px;color:#64748b">You are getting this because you are a customer of ${ORG_NAME}. <a href="#">Unsubscribe from these emails</a>.</p></div></body></html>`,
 };

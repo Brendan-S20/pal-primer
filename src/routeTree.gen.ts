@@ -74,6 +74,7 @@ import { Route as AuthenticatedDisputesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedConcernsRouteImport } from './routes/_authenticated/concerns'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
+import { Route as AuthenticatedCampaignsRouteImport } from './routes/_authenticated/campaigns'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
@@ -85,6 +86,7 @@ import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
+import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns.index'
 import { Route as PortalSlugTokenRouteImport } from './routes/portal.$slug.$token'
 import { Route as PlatformTenantsIdRouteImport } from './routes/platform.tenants.$id'
 import { Route as PayITokenRouteImport } from './routes/pay.i.$token'
@@ -94,7 +96,9 @@ import { Route as EmailQueueProcessRouteImport } from './routes/email/queue/proc
 import { Route as EmailAuthWebhookRouteImport } from './routes/email/auth/webhook'
 import { Route as EmailAuthPreviewRouteImport } from './routes/email/auth/preview'
 import { Route as ApiPublicVerifyEmailRouteImport } from './routes/api/public/verify-email'
+import { Route as ApiPublicQuotePdfRouteImport } from './routes/api/public/quote-pdf'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
+import { Route as ApiPublicInvoicePdfRouteImport } from './routes/api/public/invoice-pdf'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
@@ -125,6 +129,8 @@ import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_au
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
 import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
+import { Route as AuthenticatedCampaignsNewRouteImport } from './routes/_authenticated/campaigns.new'
+import { Route as AuthenticatedCampaignsCampaignIdRouteImport } from './routes/_authenticated/campaigns.$campaignId'
 import { Route as PortalSlugTokenIndexRouteImport } from './routes/portal.$slug.$token.index'
 import { Route as PortalSlugTokenVisitsRouteImport } from './routes/portal.$slug.$token.visits'
 import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$slug.$token.requests'
@@ -140,6 +146,7 @@ import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/publ
 import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
+import { Route as ApiPublicCalendarTokenRouteImport } from './routes/api/public/calendar.$token'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 import { Route as PortalSlugTokenPayInvoiceIdRouteImport } from './routes/portal.$slug.$token.pay.$invoiceId'
 
@@ -469,6 +476,11 @@ const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
   path: '/clients',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCampaignsRoute = AuthenticatedCampaignsRouteImport.update({
+  id: '/campaigns',
+  path: '/campaigns',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -530,6 +542,12 @@ const AuthenticatedClientsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
+const AuthenticatedCampaignsIndexRoute =
+  AuthenticatedCampaignsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedCampaignsRoute,
+  } as any)
 const PortalSlugTokenRoute = PortalSlugTokenRouteImport.update({
   id: '/$token',
   path: '/$token',
@@ -576,9 +594,19 @@ const ApiPublicVerifyEmailRoute = ApiPublicVerifyEmailRouteImport.update({
   path: '/api/public/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicQuotePdfRoute = ApiPublicQuotePdfRouteImport.update({
+  id: '/api/public/quote-pdf',
+  path: '/api/public/quote-pdf',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicLeadsRoute = ApiPublicLeadsRouteImport.update({
   id: '/api/public/leads',
   path: '/api/public/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicInvoicePdfRoute = ApiPublicInvoicePdfRouteImport.update({
+  id: '/api/public/invoice-pdf',
+  path: '/api/public/invoice-pdf',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSettingsUsersRoute =
@@ -758,6 +786,18 @@ const AuthenticatedClientsClientIdRoute =
     path: '/$clientId',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
+const AuthenticatedCampaignsNewRoute =
+  AuthenticatedCampaignsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => AuthenticatedCampaignsRoute,
+  } as any)
+const AuthenticatedCampaignsCampaignIdRoute =
+  AuthenticatedCampaignsCampaignIdRouteImport.update({
+    id: '/$campaignId',
+    path: '/$campaignId',
+    getParentRoute: () => AuthenticatedCampaignsRoute,
+  } as any)
 const PortalSlugTokenIndexRoute = PortalSlugTokenIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -839,6 +879,11 @@ const ApiPublicHooksAnnouncementEmailsRoute =
     path: '/api/public/hooks/announcement-emails',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCalendarTokenRoute = ApiPublicCalendarTokenRouteImport.update({
+  id: '/api/public/calendar/$token',
+  path: '/api/public/calendar/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedPropertiesPropertyIdBoundaryRoute =
   AuthenticatedPropertiesPropertyIdBoundaryRouteImport.update({
     id: '/properties/$propertyId/boundary',
@@ -866,6 +911,7 @@ export interface FileRoutesByFullPath {
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/campaigns': typeof AuthenticatedCampaignsRouteWithChildren
   '/clients': typeof AuthenticatedClientsRouteWithChildren
   '/concerns': typeof AuthenticatedConcernsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -920,6 +966,8 @@ export interface FileRoutesByFullPath {
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform/': typeof PlatformIndexRoute
+  '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
+  '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -950,7 +998,9 @@ export interface FileRoutesByFullPath {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
@@ -960,6 +1010,7 @@ export interface FileRoutesByFullPath {
   '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
+  '/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/imports/': typeof AuthenticatedImportsIndexRoute
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
@@ -969,6 +1020,7 @@ export interface FileRoutesByFullPath {
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
@@ -1047,6 +1099,8 @@ export interface FileRoutesByTo {
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform': typeof PlatformIndexRoute
+  '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
+  '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -1077,7 +1131,9 @@ export interface FileRoutesByTo {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
@@ -1086,6 +1142,7 @@ export interface FileRoutesByTo {
   '/email/transactional/send': typeof EmailTransactionalSendRoute
   '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
+  '/campaigns': typeof AuthenticatedCampaignsIndexRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
@@ -1095,6 +1152,7 @@ export interface FileRoutesByTo {
   '/platform/tenants': typeof PlatformTenantsIndexRoute
   '/portal/$slug': typeof PortalSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
@@ -1128,6 +1186,7 @@ export interface FileRoutesById {
   '/_authenticated/ai-tools': typeof AuthenticatedAiToolsRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
+  '/_authenticated/campaigns': typeof AuthenticatedCampaignsRouteWithChildren
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
   '/_authenticated/concerns': typeof AuthenticatedConcernsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -1182,6 +1241,8 @@ export interface FileRoutesById {
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform/': typeof PlatformIndexRoute
+  '/_authenticated/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
+  '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -1212,7 +1273,9 @@ export interface FileRoutesById {
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
@@ -1222,6 +1285,7 @@ export interface FileRoutesById {
   '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
+  '/_authenticated/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
@@ -1231,6 +1295,7 @@ export interface FileRoutesById {
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
@@ -1264,6 +1329,7 @@ export interface FileRouteTypes {
     | '/ai-tools'
     | '/analytics'
     | '/billing'
+    | '/campaigns'
     | '/clients'
     | '/concerns'
     | '/dashboard'
@@ -1318,6 +1384,8 @@ export interface FileRouteTypes {
     | '/signup/$slug'
     | '/signup/success'
     | '/platform/'
+    | '/campaigns/$campaignId'
+    | '/campaigns/new'
     | '/clients/$clientId'
     | '/clients/new'
     | '/imports/$batchId'
@@ -1348,7 +1416,9 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
@@ -1358,6 +1428,7 @@ export interface FileRouteTypes {
     | '/pay/i/$token'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
+    | '/campaigns/'
     | '/clients/'
     | '/imports/'
     | '/invoices/'
@@ -1367,6 +1438,7 @@ export interface FileRouteTypes {
     | '/platform/tenants/'
     | '/portal/$slug/'
     | '/properties/$propertyId/boundary'
+    | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
@@ -1445,6 +1517,8 @@ export interface FileRouteTypes {
     | '/signup/$slug'
     | '/signup/success'
     | '/platform'
+    | '/campaigns/$campaignId'
+    | '/campaigns/new'
     | '/clients/$clientId'
     | '/clients/new'
     | '/imports/$batchId'
@@ -1475,7 +1549,9 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
@@ -1484,6 +1560,7 @@ export interface FileRouteTypes {
     | '/email/transactional/send'
     | '/pay/i/$token'
     | '/platform/tenants/$id'
+    | '/campaigns'
     | '/clients'
     | '/imports'
     | '/invoices'
@@ -1493,6 +1570,7 @@ export interface FileRouteTypes {
     | '/platform/tenants'
     | '/portal/$slug'
     | '/properties/$propertyId/boundary'
+    | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
@@ -1525,6 +1603,7 @@ export interface FileRouteTypes {
     | '/_authenticated/ai-tools'
     | '/_authenticated/analytics'
     | '/_authenticated/billing'
+    | '/_authenticated/campaigns'
     | '/_authenticated/clients'
     | '/_authenticated/concerns'
     | '/_authenticated/dashboard'
@@ -1579,6 +1658,8 @@ export interface FileRouteTypes {
     | '/signup/$slug'
     | '/signup/success'
     | '/platform/'
+    | '/_authenticated/campaigns/$campaignId'
+    | '/_authenticated/campaigns/new'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/clients/new'
     | '/_authenticated/imports/$batchId'
@@ -1609,7 +1690,9 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
@@ -1619,6 +1702,7 @@ export interface FileRouteTypes {
     | '/pay/i/$token'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
+    | '/_authenticated/campaigns/'
     | '/_authenticated/clients/'
     | '/_authenticated/imports/'
     | '/_authenticated/invoices/'
@@ -1628,6 +1712,7 @@ export interface FileRouteTypes {
     | '/platform/tenants/'
     | '/portal/$slug/'
     | '/_authenticated/properties/$propertyId/boundary'
+    | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
@@ -1669,7 +1754,9 @@ export interface RootRouteChildren {
   QTokenRoute: typeof QTokenRoute
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
+  ApiPublicInvoicePdfRoute: typeof ApiPublicInvoicePdfRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
+  ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
   ApiPublicVerifyEmailRoute: typeof ApiPublicVerifyEmailRoute
   EmailAuthPreviewRoute: typeof EmailAuthPreviewRoute
   EmailAuthWebhookRoute: typeof EmailAuthWebhookRoute
@@ -1677,6 +1764,7 @@ export interface RootRouteChildren {
   EmailTransactionalPreviewRoute: typeof EmailTransactionalPreviewRoute
   EmailTransactionalSendRoute: typeof EmailTransactionalSendRoute
   PayITokenRoute: typeof PayITokenRoute
+  ApiPublicCalendarTokenRoute: typeof ApiPublicCalendarTokenRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
@@ -2145,6 +2233,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/campaigns': {
+      id: '/_authenticated/campaigns'
+      path: '/campaigns'
+      fullPath: '/campaigns'
+      preLoaderRoute: typeof AuthenticatedCampaignsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/billing': {
       id: '/_authenticated/billing'
       path: '/billing'
@@ -2222,6 +2317,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
     }
+    '/_authenticated/campaigns/': {
+      id: '/_authenticated/campaigns/'
+      path: '/'
+      fullPath: '/campaigns/'
+      preLoaderRoute: typeof AuthenticatedCampaignsIndexRouteImport
+      parentRoute: typeof AuthenticatedCampaignsRoute
+    }
     '/portal/$slug/$token': {
       id: '/portal/$slug/$token'
       path: '/$token'
@@ -2285,11 +2387,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicVerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/quote-pdf': {
+      id: '/api/public/quote-pdf'
+      path: '/api/public/quote-pdf'
+      fullPath: '/api/public/quote-pdf'
+      preLoaderRoute: typeof ApiPublicQuotePdfRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/leads': {
       id: '/api/public/leads'
       path: '/api/public/leads'
       fullPath: '/api/public/leads'
       preLoaderRoute: typeof ApiPublicLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/invoice-pdf': {
+      id: '/api/public/invoice-pdf'
+      path: '/api/public/invoice-pdf'
+      fullPath: '/api/public/invoice-pdf'
+      preLoaderRoute: typeof ApiPublicInvoicePdfRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/settings/users': {
@@ -2502,6 +2618,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
     }
+    '/_authenticated/campaigns/new': {
+      id: '/_authenticated/campaigns/new'
+      path: '/new'
+      fullPath: '/campaigns/new'
+      preLoaderRoute: typeof AuthenticatedCampaignsNewRouteImport
+      parentRoute: typeof AuthenticatedCampaignsRoute
+    }
+    '/_authenticated/campaigns/$campaignId': {
+      id: '/_authenticated/campaigns/$campaignId'
+      path: '/$campaignId'
+      fullPath: '/campaigns/$campaignId'
+      preLoaderRoute: typeof AuthenticatedCampaignsCampaignIdRouteImport
+      parentRoute: typeof AuthenticatedCampaignsRoute
+    }
     '/portal/$slug/$token/': {
       id: '/portal/$slug/$token/'
       path: '/'
@@ -2607,6 +2737,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksAnnouncementEmailsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/calendar/$token': {
+      id: '/api/public/calendar/$token'
+      path: '/api/public/calendar/$token'
+      fullPath: '/api/public/calendar/$token'
+      preLoaderRoute: typeof ApiPublicCalendarTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/properties/$propertyId/boundary': {
       id: '/_authenticated/properties/$propertyId/boundary'
       path: '/properties/$propertyId/boundary'
@@ -2623,6 +2760,25 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AuthenticatedCampaignsRouteChildren {
+  AuthenticatedCampaignsCampaignIdRoute: typeof AuthenticatedCampaignsCampaignIdRoute
+  AuthenticatedCampaignsNewRoute: typeof AuthenticatedCampaignsNewRoute
+  AuthenticatedCampaignsIndexRoute: typeof AuthenticatedCampaignsIndexRoute
+}
+
+const AuthenticatedCampaignsRouteChildren: AuthenticatedCampaignsRouteChildren =
+  {
+    AuthenticatedCampaignsCampaignIdRoute:
+      AuthenticatedCampaignsCampaignIdRoute,
+    AuthenticatedCampaignsNewRoute: AuthenticatedCampaignsNewRoute,
+    AuthenticatedCampaignsIndexRoute: AuthenticatedCampaignsIndexRoute,
+  }
+
+const AuthenticatedCampaignsRouteWithChildren =
+  AuthenticatedCampaignsRoute._addFileChildren(
+    AuthenticatedCampaignsRouteChildren,
+  )
 
 interface AuthenticatedClientsRouteChildren {
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
@@ -2750,6 +2906,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAiToolsRoute: typeof AuthenticatedAiToolsRoute
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
+  AuthenticatedCampaignsRoute: typeof AuthenticatedCampaignsRouteWithChildren
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
   AuthenticatedConcernsRoute: typeof AuthenticatedConcernsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -2788,6 +2945,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAiToolsRoute: AuthenticatedAiToolsRoute,
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
+  AuthenticatedCampaignsRoute: AuthenticatedCampaignsRouteWithChildren,
   AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
   AuthenticatedConcernsRoute: AuthenticatedConcernsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
@@ -2929,7 +3087,9 @@ const rootRouteChildren: RootRouteChildren = {
   QTokenRoute: QTokenRoute,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
+  ApiPublicInvoicePdfRoute: ApiPublicInvoicePdfRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
+  ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
   ApiPublicVerifyEmailRoute: ApiPublicVerifyEmailRoute,
   EmailAuthPreviewRoute: EmailAuthPreviewRoute,
   EmailAuthWebhookRoute: EmailAuthWebhookRoute,
@@ -2937,6 +3097,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmailTransactionalPreviewRoute: EmailTransactionalPreviewRoute,
   EmailTransactionalSendRoute: EmailTransactionalSendRoute,
   PayITokenRoute: PayITokenRoute,
+  ApiPublicCalendarTokenRoute: ApiPublicCalendarTokenRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
