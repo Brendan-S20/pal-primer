@@ -320,6 +320,13 @@ export const REFUND_INVOICE_PAYMENTS = [
     id: REFUND_CARD_PAYMENT_ID,
     amount_cents: 16_000,
     surcharge_cents: 480,
+    // A tip as well as a surcharge, so the amount cell draws its longest
+    // breakdown ("service + card fee + tip") AND the "Tip credited to" line
+    // under it, with the 46-character name in it. Without a tip neither line
+    // exists and the cell measured is the short one.
+    tip_cents: 2_400,
+    tip_staff_id: "dddddddd-0000-4000-8000-00000000d008",
+    tip_staff_name: "Maximilian Alexander Fitzgerald-Worthington II",
     // `refunded` after the first partial: the webhook's own behaviour, and
     // exactly the row the Refund button must still appear on.
     status: "refunded",
@@ -334,6 +341,9 @@ export const REFUND_INVOICE_PAYMENTS = [
     id: "77777777-0000-4000-8000-0000000077a2",
     amount_cents: 8_000,
     surcharge_cents: 0,
+    tip_cents: 0,
+    tip_staff_id: null,
+    tip_staff_name: null,
     status: "succeeded",
     stripe_payment_intent_id: null,
     paid_at: iso(new Date(Date.now() - 7 * 864e5)),
@@ -362,15 +372,18 @@ export const REFUND_INVOICE = {
   ],
   payments: REFUND_INVOICE_PAYMENTS,
 };
-/** What Stripe would say about the card payment: $164.80 charged, $41.20 back. */
+/** What Stripe would say about the card payment: $188.80 charged ($160
+ *  service + $4.80 card fee + $24.00 tip), $41.20 back. The confirm step
+ *  therefore draws both the card-fee line and the tip line. */
 export const REFUND_QUOTE = {
   paymentId: REFUND_CARD_PAYMENT_ID,
   invoiceId: REFUND_INVOICE_ID,
   currency: "usd",
-  chargedCents: 16_480,
+  chargedCents: 18_880,
   surchargeCents: 480,
+  tipCents: 2_400,
   refundedCents: 4_120,
-  refundableCents: 12_360,
+  refundableCents: 14_760,
 };
 
 /** /leads, and the new-client wizard started from one of them. One lead in
@@ -866,6 +879,16 @@ export const TIMESHEET = (() => {
       completed_at: orgAt(weekDay(d), "10:20"),
     })),
   ];
+  // Tips, in the shape listTimesheet returns (payments.tip_staff_id /
+  // tip_cents / paid_at). The long name has two on Monday, so the grid's Tips
+  // column and the phone card's header both draw a figure beside the longest
+  // name; Wen Zhang, who never clocked in, has one on the day of her visits,
+  // so the "no time" day carries a tip too.
+  const tips = [
+    { tip_staff_id: LONG_STAFF_ID, tip_cents: 1_540, paid_at: orgAt(weekDay(0), "19:42") },
+    { tip_staff_id: LONG_STAFF_ID, tip_cents: 2_375, paid_at: orgAt(weekDay(0), "20:05") },
+    { tip_staff_id: STAFF[3].id, tip_cents: 1_000, paid_at: orgAt(weekDay(1), "18:30") },
+  ];
   return {
     timezone: ORGANIZATION.timezone,
     weekStart: mondayOfToday,
@@ -874,6 +897,7 @@ export const TIMESHEET = (() => {
     pickable: staff.map((s) => ({ id: s.id, display_name: s.display_name })),
     entries,
     visits,
+    tips,
   };
 })();
 

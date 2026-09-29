@@ -4,6 +4,7 @@ import { liveServiceOrFilter } from "@/lib/subscription-form";
 import { orgToday } from "@/lib/org-day";
 import { appUrl } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
@@ -1351,6 +1352,8 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       .object({
         token: z.string().uuid(),
         invoiceId: z.string().uuid(),
+        // The payer's tip CHOICE, never an amount. See src/lib/tips.ts.
+        tip: tipChoiceSchema.optional(),
       })
       .parse(d),
   )
@@ -1415,6 +1418,16 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       console.error("portal credit application failed", invoice.id, e);
     }
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
+    // The tip is decided here, against the amount due as it stands AFTER the
+    // credit above, from the payer's choice alone -- the same function the
+    // public pay link uses, so the two screens cannot charge differently.
+    const { data: tipOrg } = await supabaseAdmin
+      .from("organizations")
+      .select("tips_enabled")
+      .eq("id", invoice.organization_id)
+      .maybeSingle();
+    const tipsEnabled = !!(tipOrg as { tips_enabled?: boolean | null } | null)?.tips_enabled;
+    const charge = tippedCharge({ dueCents, choice: data.tip, tipsEnabled });
     // If the stored intent OR a legacy hosted-checkout session already
     // succeeded but the status is stale (webhook missed), reconcile instead
     // of minting a new intent and charging the client a second time.
@@ -1460,6 +1473,8 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       invoice_id: invoice.id,
       organization_id: invoice.organization_id,
       source: "portal_inline",
+      // Always written, "0" included: Stripe merges metadata on update.
+      ...charge.metadata,
     };
 
     let pi: import("stripe").Stripe.PaymentIntent | null = null;
@@ -1489,14 +1504,16 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
           // setup_future_usage — a staff-minted intent doesn't save the card,
           // but the client paying it themselves consents to saving theirs.
           const updateParams = {
-            amount: dueCents,
+            // Invoice + tip. Never surcharged; see tips.ts.
+            amount: charge.amountCents,
             // application_fee_amount travels WITH the amount. It was set once at
             // create time from the then-current due amount and never updated,
             // so applying client credit shrank the charge and left the fee
             // where it was: $150 of credit on a $200 invoice charged $50 with
             // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
             // $1.00 due the fee equalled the whole charge.
-            application_fee_amount: platformFeeCents(dueCents),
+            // On the invoice, never on the tip.
+            application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
             currency,
             metadata,
             setup_future_usage: "off_session" as const,
@@ -1533,8 +1550,8 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
 
     if (!pi) {
       const createParams = {
-        amount: dueCents,
-        application_fee_amount: platformFeeCents(dueCents),
+        amount: charge.amountCents,
+        application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
         currency,
         customer: customerId,
         setup_future_usage: "off_session" as const,
@@ -1577,7 +1594,12 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       clientSecret: pi.client_secret as string,
       publishableKey,
       stripeAccount: acct.accountId,
-      amountCents: dueCents,
+      /** What the card will be charged: the invoice plus any tip. */
+      amountCents: charge.amountCents,
+      /** The invoice alone, which the tip percentages are taken of. */
+      dueCents: charge.dueCents,
+      tipCents: charge.tipCents,
+      tipsEnabled,
       currency,
       invoiceId: invoice.id,
       businessName: client?.display_name as string,

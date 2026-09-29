@@ -19,11 +19,18 @@ const root = join(import.meta.dirname, "..");
 const page = readFileSync(join(root, "src/routes/_authenticated/payments.tsx"), "utf8");
 const server = readFileSync(join(root, "src/lib/stripe-connect.functions.ts"), "utf8");
 
+/** The Fees & tips tab's content, passed as the dashboard's settings prop:
+ *  the processing-fee card and the tipping switch, and nothing else. */
+const FEES_TAB_SETTINGS =
+  /settings=\{\s*cfg\.chargesEnabled \? \(\s*<div className="space-y-4">\s*<ProcessingFeeCard \/>\s*<TipsCard \/>\s*<\/div>\s*\) : null\s*\}/;
+
 describe("everything lives in a tab", () => {
   it("the fee setting is behind its own tab, not stacked under the iframes", () => {
     // "Who pays the card fee" is a setting. It was the last thing on a long
     // page, below three dashboards nobody had scrolled past.
-    expect(page).toMatch(/settings=\{cfg\.chargesEnabled \? <ProcessingFeeCard \/> : null\}/);
+    // With the tipping switch beside it since a-customer-could-not-leave-a-tip:
+    // both are settings about what a customer is charged, in the one tab.
+    expect(page).toMatch(FEES_TAB_SETTINGS);
     expect(page).toMatch(/TabsTrigger value="fees"/);
   });
 
@@ -40,7 +47,8 @@ describe("everything lives in a tab", () => {
     // that it is rendered exactly once, in the prop.
     const uses = page.match(/<ProcessingFeeCard \/>/g) ?? [];
     expect(uses).toHaveLength(1);
-    expect(page).toMatch(/settings=\{cfg\.chargesEnabled \? <ProcessingFeeCard \/> : null\}/);
+    expect(page.match(/<TipsCard \/>/g) ?? []).toHaveLength(1);
+    expect(page).toMatch(FEES_TAB_SETTINGS);
     // And nothing renders between the dashboard element and the page's close
     // except the conditional fallback link.
     const tail = page.slice(page.indexOf("<ConnectDashboard"));

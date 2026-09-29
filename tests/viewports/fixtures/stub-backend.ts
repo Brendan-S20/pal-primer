@@ -2,6 +2,7 @@ import type { BrowserContext, Route } from "@playwright/test";
 import { SUPABASE_ORIGIN, sweepUser } from "./session";
 import * as fx from "./dataset";
 import * as pfx from "./portal-dataset";
+import { tippedCharge } from "../../../src/lib/tips";
 
 /**
  * Everything the signed-in app asks the network for, answered locally.
@@ -716,6 +717,8 @@ const BASE_STUBS: Record<string, Stub> = {
   // The full invoice page and its Refund dialog. See REFUND_INVOICE.
   getInvoice: fx.REFUND_INVOICE,
   getPaymentRefundQuote: fx.REFUND_QUOTE,
+  // Fees & tips on /payments.
+  getTipSettings: { tipsEnabled: true },
   getCollectedThisMonth: { grossCents: 1_301_900, refundsCents: 63_500, netCents: 1_238_400 },
 
   // ── Address autocomplete (seven fields were wired to it today) ──────────
@@ -1011,6 +1014,14 @@ export type SweepRole = "owner" | "office_manager" | "dispatcher" | "tech";
  * portal-ui.tsx is `enabled: verified`, so a fixture that stops at the OTP gate
  * measures the OTP gate eleven times.
  */
+/** A pay-screen intent re-priced for the tip choice it was sent, with the
+ *  server's own function, so a sweep that taps 15% measures the total the
+ *  product would draw rather than a number the fixture made up. */
+function tippedIntent<T extends { dueCents: number }>(base: T, args: Record<string, any>) {
+  const charge = tippedCharge({ dueCents: base.dueCents, choice: args?.tip, tipsEnabled: true });
+  return { ...base, amountCents: charge.amountCents, tipCents: charge.tipCents };
+}
+
 const PORTAL_STUBS: Record<string, Stub> = {
   portalOrgBySlug: { found: true, branding: pfx.PORTAL_BRANDING },
   portalContext: {
@@ -1046,6 +1057,11 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // /pay/i/:token, which is not a portal page but arrives the same way -- in a
   // text -- and has no session either.
   getPublicInvoice: pfx.PUBLIC_INVOICE,
+  // The pay link's intent, with tipping on, so the tip choices draw. Answers
+  // a tip choice with the server's own arithmetic, so tapping 15% in a sweep
+  // shows the same total production would.
+  createPublicInvoicePaymentIntent: (a) => tippedIntent(pfx.PUBLIC_INVOICE_INTENT, a),
+  portalCreateInvoicePaymentIntent: (a) => tippedIntent(pfx.PORTAL_INVOICE_INTENT, a),
   // /q/:token, the quote link. One fixture per state, keyed by the token in
   // the URL, because each state draws a different panel under the document.
   getPublicQuote: (a) => pfx.PUBLIC_QUOTES[a.token as string] ?? { found: false },

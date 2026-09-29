@@ -15,7 +15,13 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
-import { addDays, mondayOf, orgMidnight, type ClockEntry } from "@/lib/time-clock";
+import {
+  addDays,
+  mondayOf,
+  orgMidnight,
+  type ClockEntry,
+  type ReceivedTip,
+} from "@/lib/time-clock";
 
 const ENTRY_COLUMNS =
   "id, staff_id, clock_in, clock_out, clock_in_source, clock_out_source, note, edited_at";
@@ -159,6 +165,13 @@ export const listTimesheet = createServerFn({ method: "GET" })
     if (entries.error) throw new Error(entries.error.message);
     if (visits.error) throw new Error(visits.error.message);
 
+    // Tips credited this week, for the payroll columns. Service-role and
+    // scoped to this org after the manage_users check above: payments are
+    // readable under RLS only to billing and finance roles, and the person
+    // running payroll needs each tech's tip total without being handed the
+    // payment ledger. Only the three columns the sheet needs are read.
+    const tips = await loadWeekTips(orgId, from, to);
+
     const all = (staff.data ?? []) as {
       id: string;
       display_name: string;
@@ -172,13 +185,17 @@ export const listTimesheet = createServerFn({ method: "GET" })
         (v) => v.assigned_staff_id,
       ),
     );
+    const tippedTo = new Set(tips.map((t) => t.tip_staff_id));
     // A row for everyone who runs routes, whether or not they clocked in --
     // an empty row beside a count of completed visits is the forgotten
     // clock-in the office needs to see -- plus anyone else who has hours or
     // visits this week (an owner who drove one day, a tech since deactivated).
     const onSheet = all.filter(
       (s) =>
-        (s.active && s.is_field_tech !== false) || worked.has(s.id) || visitedBy.has(s.id),
+        (s.active && s.is_field_tech !== false) ||
+        worked.has(s.id) ||
+        visitedBy.has(s.id) ||
+        tippedTo.has(s.id),
     );
     return {
       timezone: tz,
@@ -191,8 +208,28 @@ export const listTimesheet = createServerFn({ method: "GET" })
         .map((s) => ({ id: s.id, display_name: s.display_name })),
       entries: rows,
       visits: (visits.data ?? []) as { assigned_staff_id: string | null; completed_at: string | null }[],
+      tips,
     };
   });
+
+/** Tips credited to a person on payments received in [from, to). Received
+ *  means the money arrived: `succeeded`, or `refunded` (which still arrived,
+ *  per src/lib/revenue.ts). */
+async function loadWeekTips(orgId: string, from: string, to: string): Promise<ReceivedTip[]> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { receivedPaymentStatuses } = await import("@/lib/revenue");
+  const { data, error } = await supabaseAdmin
+    .from("payments")
+    .select("tip_staff_id, tip_cents, paid_at")
+    .eq("organization_id", orgId)
+    .in("status", receivedPaymentStatuses())
+    .gt("tip_cents", 0)
+    .not("tip_staff_id", "is", null)
+    .gte("paid_at", from)
+    .lt("paid_at", to);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ReceivedTip[];
+}
 
 const note = z.string().trim().max(500).optional();
 

@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { tipChoiceSchema, tipMetadata, tippedCharge } from "@/lib/tips";
 import { invoiceNumberLabel, invoiceRef } from "@/lib/invoice-labels";
 import {
   MANUAL_PAYMENT_METHODS,
@@ -33,6 +34,27 @@ async function withRefunded<P extends { id: string }>(
     rows.map((p) => p.id),
   );
   return rows.map((p) => ({ ...p, refunded_cents: refunded.get(p.id) ?? 0 }));
+}
+
+/** Each payment row with the name of the tech its tip was credited to, when
+ *  it carries one. Read through the caller's own client, so a name is only
+ *  shown to somebody who can already read the staff list. */
+async function withTipStaffNames<P extends { tip_staff_id?: string | null }>(
+  supabase: any,
+  payments: P[],
+): Promise<(P & { tip_staff_name: string | null })[]> {
+  const ids = [...new Set(payments.map((p) => p.tip_staff_id).filter((x): x is string => !!x))];
+  const names = new Map<string, string>();
+  if (ids.length) {
+    const { data } = await supabase.from("staff").select("id, display_name").in("id", ids);
+    for (const s of (data ?? []) as { id: string; display_name: string }[]) {
+      names.set(s.id, s.display_name);
+    }
+  }
+  return payments.map((p) => ({
+    ...p,
+    tip_staff_name: p.tip_staff_id ? (names.get(p.tip_staff_id) ?? null) : null,
+  }));
 }
 
 export const listInvoices = createServerFn({ method: "GET" })
@@ -122,12 +144,15 @@ export const getInvoice = createServerFn({ method: "GET" })
       // card was charged. When a surcharge applies the difference is what the
       // customer sees on their statement, and no screen could reconstruct it
       // while this column went unselected.
+      // tip_cents: beside the amount like the surcharge, and the tech it was
+      // credited to (tip_staff_for_invoice, at the moment it was paid).
       .select(
-        "id, amount_cents, surcharge_cents, status, stripe_payment_intent_id, paid_at, created_at, method, reference",
+        "id, amount_cents, surcharge_cents, tip_cents, tip_staff_id, status, stripe_payment_intent_id, paid_at, created_at, method, reference",
       )
       .eq("invoice_id", data.id)
       .order("created_at", { ascending: false });
-    return { invoice, items: items ?? [], payments: await withRefunded(supabase, orgId, payments) };
+    const named = await withTipStaffNames(supabase, payments ?? []);
+    return { invoice, items: items ?? [], payments: await withRefunded(supabase, orgId, named) };
   });
 
 export const generateInvoicesForOrg = createServerFn({ method: "POST" })
@@ -527,6 +552,11 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
       invoice_id: invoice.id,
       organization_id: invoice.organization_id,
       source: "staff_inline",
+      // No tip is offered to staff taking a payment, and this intent may be
+      // the one a customer tipped on and abandoned. Stripe merges metadata on
+      // update, so a stale tip_cents would survive the amount going back to
+      // `dueCents` and the webhook would under-credit the invoice by it.
+      ...tipMetadata(0),
     };
 
     let pi: import("stripe").Stripe.PaymentIntent | null = null;
@@ -1082,7 +1112,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       ? await supabase
           .from("payments")
           .select(
-            "id, invoice_id, amount_cents, surcharge_cents, status, stripe_payment_intent_id, paid_at, created_at",
+            "id, invoice_id, amount_cents, surcharge_cents, tip_cents, status, stripe_payment_intent_id, paid_at, created_at",
           )
           .in("invoice_id", invoiceIds)
           .order("created_at", { ascending: false })
@@ -1154,7 +1184,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("payments")
         .select(
-          "id, amount_cents, surcharge_cents, status, paid_at, created_at, stripe_payment_intent_id, method, reference",
+          "id, amount_cents, surcharge_cents, tip_cents, status, paid_at, created_at, stripe_payment_intent_id, method, reference",
         )
         .eq("invoice_id", data.invoiceId)
         .order("created_at", { ascending: false }),
@@ -1337,7 +1367,16 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
   });
 
 export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ token: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        token: z.string().uuid(),
+        // The payer's tip CHOICE, never an amount to charge. See src/lib/tips.ts:
+        // the server turns it into cents against the invoice it reads itself.
+        tip: tipChoiceSchema.optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data }) => {
     const publishableKey = process.env.STRIPE_CONNECT_PUBLISHABLE_KEY;
     if (!publishableKey) throw new Error("Payments not configured");
@@ -1349,6 +1388,19 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
     // Charge the OPEN amount: total net of applied credit (B7).
     const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
+    // The tip, decided here and only here: a percent from the fixed list or a
+    // custom amount under the cap, taken of `dueCents` as read above. Refused
+    // outright when the business has tipping off, rather than silently
+    // dropped, so a forged request learns nothing it could retry around.
+    const { data: tipOrg } = await (
+      await publicAdmin()
+    )
+      .from("organizations")
+      .select("tips_enabled")
+      .eq("id", invoice.organization_id)
+      .maybeSingle();
+    const tipsEnabled = !!(tipOrg as { tips_enabled?: boolean | null } | null)?.tips_enabled;
+    const charge = tippedCharge({ dueCents, choice: data.tip, tipsEnabled });
     // If the stored intent OR a legacy hosted-checkout session already
     // succeeded but the status is stale (webhook missed), reconcile instead
     // of minting a new intent and charging a second time.
@@ -1395,6 +1447,8 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       invoice_id: invoice.id,
       organization_id: invoice.organization_id,
       source: "public_link",
+      // Always written, "0" included: Stripe merges metadata on update.
+      ...charge.metadata,
     };
 
     let pi: import("stripe").Stripe.PaymentIntent | null = null;
@@ -1424,14 +1478,16 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
           // setup_future_usage — the anonymous pay-link flow must never save
           // the card (only the client's own portal session can consent).
           const updateParams = {
-            amount: dueCents,
+            // Invoice + tip. Never surcharged; see tips.ts.
+            amount: charge.amountCents,
             // application_fee_amount travels WITH the amount. It was set once at
             // create time from the then-current due amount and never updated,
             // so applying client credit shrank the charge and left the fee
             // where it was: $150 of credit on a $200 invoice charged $50 with
             // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
             // $1.00 due the fee equalled the whole charge.
-            application_fee_amount: platformFeeCents(dueCents),
+            // On the invoice, never on the tip.
+            application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
             currency,
             metadata,
             setup_future_usage: "" as const,
@@ -1470,8 +1526,8 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       // No setup_future_usage: an anonymous pay-link payer never has their
       // payment method saved.
       const createParams = {
-        amount: dueCents,
-        application_fee_amount: platformFeeCents(dueCents),
+        amount: charge.amountCents,
+        application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
         currency,
         customer: customerId,
         metadata,
@@ -1505,7 +1561,12 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       clientSecret: pi.client_secret as string,
       publishableKey,
       stripeAccount: acct.accountId,
-      amountCents: dueCents,
+      /** What the card will be charged: the invoice plus any tip. */
+      amountCents: charge.amountCents,
+      /** The invoice alone, which the tip percentages are taken of. */
+      dueCents: charge.dueCents,
+      tipCents: charge.tipCents,
+      tipsEnabled,
       currency,
     };
   });
