@@ -2936,6 +2936,7 @@ export type Database = {
           workday_end: string
           workday_start: string
           notify_email_on_my_way: boolean
+          live_tracking_enabled: boolean
           on_my_way_on_navigate: boolean
           quote_followup_days: number
         }
@@ -3067,6 +3068,7 @@ export type Database = {
           workday_end?: string
           workday_start?: string
           notify_email_on_my_way?: boolean
+          live_tracking_enabled?: boolean
           on_my_way_on_navigate?: boolean
           quote_followup_days?: number
         }
@@ -3198,6 +3200,7 @@ export type Database = {
           workday_end?: string
           workday_start?: string
           notify_email_on_my_way?: boolean
+          live_tracking_enabled?: boolean
           on_my_way_on_navigate?: boolean
           quote_followup_days?: number
         }
@@ -5601,6 +5604,58 @@ export type Database = {
           },
         ]
       }
+      visit_live_locations: {
+        Row: {
+          accuracy: number | null
+          lat: number
+          lng: number
+          organization_id: string
+          recorded_at: string
+          staff_id: string
+          visit_id: string
+        }
+        Insert: {
+          accuracy?: number | null
+          lat: number
+          lng: number
+          organization_id: string
+          recorded_at?: string
+          staff_id: string
+          visit_id: string
+        }
+        Update: {
+          accuracy?: number | null
+          lat?: number
+          lng?: number
+          organization_id?: string
+          recorded_at?: string
+          staff_id?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_live_locations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_live_locations_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_live_locations_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: true
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       visit_photos: {
         Row: {
           created_at: string
@@ -5684,7 +5739,9 @@ export type Database = {
           weather_note: string | null
           window_violated: boolean
           zone_id: string | null
+          live_tracking_stopped_at: string | null
           on_my_way_sent_at: string | null
+          tracking_token: string | null
           gate_reply: string | null
           gate_reply_at: string | null
         }
@@ -5725,7 +5782,9 @@ export type Database = {
           weather_note?: string | null
           window_violated?: boolean
           zone_id?: string | null
+          live_tracking_stopped_at?: string | null
           on_my_way_sent_at?: string | null
+          tracking_token?: string | null
           gate_reply?: string | null
           gate_reply_at?: string | null
         }
@@ -5766,7 +5825,9 @@ export type Database = {
           weather_note?: string | null
           window_violated?: boolean
           zone_id?: string | null
+          live_tracking_stopped_at?: string | null
           on_my_way_sent_at?: string | null
+          tracking_token?: string | null
           gate_reply?: string | null
           gate_reply_at?: string | null
         }
@@ -6594,6 +6655,10 @@ export type Database = {
       mark_review_asked: { Args: { _client_id: string }; Returns: boolean }
       may_read_client: { Args: { _client_id: string }; Returns: boolean }
       may_read_property: { Args: { _property_id: string }; Returns: boolean }
+      may_share_live_location: {
+        Args: { _organization_id: string; _staff_id: string; _visit_id: string }
+        Returns: boolean
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -7002,6 +7067,7 @@ export type Database = {
         Args: { _members?: Json; _name: string }
         Returns: string
       }
+      prune_visit_live_locations: { Args: never; Returns: number }
       prune_road_legs: {
         Args: { _older_than?: string }
         Returns: {
@@ -7047,6 +7113,7 @@ export type Database = {
         }[]
       }
       public_quote_document: { Args: { _token: string }; Returns: Json }
+      public_visit_tracking: { Args: { _token: string }; Returns: Json }
       public_quote_respond: {
         Args: { _accept: boolean; _name: string; _reason: string; _token: string }
         Returns: Json

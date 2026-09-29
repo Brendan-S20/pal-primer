@@ -143,7 +143,15 @@ describe("no trigger function is executable by a signed-in user", () => {
     // quotes_guard_answer, which keeps a sent quote as sent and lets only the
     // customer's link accept or decline it. Both carry their own REVOKE from
     // PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(39);
+    //
+    // 39 -> 42 on 2026-09-29 (20260929100000, live tracking):
+    // visit_live_locations_stamp, which puts recorded_at on the database's
+    // clock; visit_live_locations_forget_visit, which deletes a tech's
+    // position when the visit starts or they press Stop; and
+    // visit_live_locations_forget_org, which deletes an org's positions when
+    // tracking is turned off. All three carry their own REVOKE from PUBLIC,
+    // anon and authenticated.
+    expect(triggerFunctions().size).toBe(42);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

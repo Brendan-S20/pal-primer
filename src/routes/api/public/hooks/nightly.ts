@@ -433,6 +433,20 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           trialNotices = { error: (e as Error).message };
         }
 
+        // Live tracking keeps a tech's latest position only while "on my
+        // way" is live. Starting the visit, pressing Stop and turning the
+        // setting off each delete it at once (triggers in 20260929100000);
+        // this catches the window that closed by the clock, two hours after
+        // the message, with nobody touching the visit.
+        let liveLocations: Record<string, unknown>;
+        try {
+          const { data: n, error } = await supabaseAdmin.rpc("prune_visit_live_locations");
+          liveLocations = error ? { error: error.message } : { pruned: n as number };
+        } catch (e) {
+          console.error("[nightly] live location prune failed", e);
+          liveLocations = { error: (e as Error).message };
+        }
+
         return json({
           ok: true,
           ran_at: new Date().toISOString(),
@@ -440,6 +454,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           ai_overage: aiOverage,
           trial_notices: trialNotices,
           routing_anchors: anchors,
+          live_locations: liveLocations,
         });
       },
     },

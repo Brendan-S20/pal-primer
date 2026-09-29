@@ -866,6 +866,27 @@ const BASE_STUBS: Record<string, Stub> = {
       },
     ],
   },
+  // Live tracking ON, and the technician's scheduled stop today is the one
+  // being shared: so /my-day draws the "Sharing your location with ..." chip,
+  // with its Stop button, on a real card at every width. Off would render
+  // nothing, and a chip nobody measured is the fault this file exists for.
+  // The customer name is the fixture's own, 40-odd characters of it.
+  getMyLiveShare: () => {
+    const v = fx
+      .visitsBetween(fx.TODAY, fx.TODAY)
+      .find((x) => x.assigned_staff_id === fx.STAFF[0].id && x.status === "scheduled");
+    return v
+      ? {
+          enabled: true,
+          active: {
+            visitId: v.id,
+            customerName: (v.clients as any).display_name,
+            until: new Date(Date.now() + 90 * 60_000).toISOString(),
+          },
+          nextVisitId: null,
+        }
+      : { enabled: false };
+  },
   getMyDay: () => {
     // ── ONE STOP IN EACH STATE, ON PURPOSE ──────────────────────────────
     //
@@ -1049,6 +1070,9 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // /q/:token, the quote link. One fixture per state, keyed by the token in
   // the URL, because each state draws a different panel under the document.
   getPublicQuote: (a) => pfx.PUBLIC_QUOTES[a.token as string] ?? { found: false },
+  // /track/:token, the live map. Keyed by token like the quote link: each
+  // state draws a different page.
+  getPublicTracking: (a) => pfx.PUBLIC_TRACKING[a.token as string] ?? { found: false },
   portalSelfServeOptions: {
     allow_self_reschedule: true,
     allow_vacation_hold: true,

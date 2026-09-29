@@ -39,6 +39,7 @@ function AutomationPage() {
   const [nOnWay, setNOnWay] = useState<boolean>(data.notify_sms_on_my_way ?? true);
   const [nDone, setNDone] = useState<boolean>(data.notify_sms_visit_completed ?? true);
   const [onWayNav, setOnWayNav] = useState<boolean>(data.on_my_way_on_navigate ?? false);
+  const [liveTracking, setLiveTracking] = useState<boolean>(data.live_tracking_enabled ?? false);
 
   useEffect(() => {
     setAutoGen(data.auto_generate_visits);
@@ -55,6 +56,7 @@ function AutomationPage() {
     setNOnWay(data.notify_sms_on_my_way ?? true);
     setNDone(data.notify_sms_visit_completed ?? true);
     setOnWayNav(data.on_my_way_on_navigate ?? false);
+    setLiveTracking(data.live_tracking_enabled ?? false);
   }, [data]);
 
   const mut = useMutation({
@@ -80,6 +82,7 @@ function AutomationPage() {
           notifySmsOnMyWay: nOnWay,
           notifySmsVisitCompleted: nDone,
           onMyWayOnNavigate: onWayNav,
+          liveTrackingEnabled: liveTracking,
         },
       });
     },
@@ -248,6 +251,25 @@ function AutomationPage() {
               className="shrink-0"
               checked={onWayNav}
               onChange={(e) => setOnWayNav(e.target.checked)}
+            />
+          </label>
+          <label className="flex min-h-11 items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
+            <span className="min-w-0">
+              Include a live map of the tech on the way
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                The on-my-way text and email get a link. From the moment that message goes until
+                the tech starts the visit (two hours at most), the customer sees the tech&apos;s
+                approximate position, rounded to about 100 m, and only while the tech has the app
+                open. Nothing is shared before the message or after the visit starts, and no
+                trail is kept: only the latest position, deleted when the visit starts. Techs see
+                a banner whenever their location is being shared, and can stop it.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="shrink-0"
+              checked={liveTracking}
+              onChange={(e) => setLiveTracking(e.target.checked)}
             />
           </label>
         </CardContent>
