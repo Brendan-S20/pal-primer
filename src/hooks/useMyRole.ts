@@ -58,6 +58,9 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // team, and the one the time_entries policy asks.
   "/timesheets": ["owner", "office_manager"],
   "/invoices": ["owner", "office_manager"],
+  // Same audience as the server gate, manage_client_billing, which is the
+  // permission manual invoices use.
+  "/quotes": ["owner", "office_manager"],
   "/billing": ["owner"],
   "/payments": ["owner"],
   "/onboarding": ["owner"],

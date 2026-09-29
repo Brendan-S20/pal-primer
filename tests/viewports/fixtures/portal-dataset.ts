@@ -372,3 +372,97 @@ export const PUBLIC_INVOICE = {
     },
   ],
 };
+
+// ── /q/:token, the quote link ──────────────────────────────────────────────
+//
+// Same arrival as the pay link: a text or an email, opened on a phone, no
+// session. Without a fixture `getPublicQuote` answers `{ found: false }` and
+// the page renders "This quote link isn't valid", which lays out fine and
+// measures nothing.
+//
+// Awkward on purpose, as the brief for this page asked:
+//   * a business name of 80-odd characters, longer than PORTAL_ORG_NAME,
+//     because the document's header is the name and nothing else;
+//   * a line description of exactly 60 characters beside a right-aligned
+//     amount, which is the row that pushes on its neighbour;
+//   * both one-time and recurring lines, so BOTH totals draw -- the simple
+//     one-total case is the one that would be measured by accident;
+//   * a quantity of 1.5, so the arithmetic line under a description is the
+//     long "1.5 × $13.33, one time" rather than "1 × $24.00";
+//   * a contact email with nowhere to break, in a button.
+//
+// Four tokens, four states, because each state draws a different panel under
+// the document: the accept form, the signed outcome, the declined outcome and
+// the expired notice. camelCase: the handler reshapes the RPC's jsonb.
+
+export const QUOTE_ORG_NAME =
+  "Whitfield & Ramirez Yard, Waste and Pet Sanitation Services of Greater Lincoln Square";
+/** Exactly 60 characters. */
+export const QUOTE_LONG_LINE = "Common-area waste stations, emptied, relined and disinfected";
+export const QUOTE_SIGNER = "Genevieve Okonkwo-Castellanos de la Fuente";
+
+export const QUOTE_TOKENS = {
+  sent: "dddddddd-0000-4000-8000-00000000d001",
+  accepted: "dddddddd-0000-4000-8000-00000000d002",
+  declined: "dddddddd-0000-4000-8000-00000000d003",
+  expired: "dddddddd-0000-4000-8000-00000000d004",
+} as const;
+
+const QUOTE_LINES = [
+  { description: QUOTE_LONG_LINE, quantity: 6, unitAmountCents: 450, amountCents: 2700, recurring: true },
+  {
+    description: "Weekly yard service, two dogs",
+    quantity: 1,
+    unitAmountCents: 2400,
+    amountCents: 2400,
+    recurring: true,
+  },
+  {
+    description: "Initial cleanup of a yard not serviced since the spring thaw",
+    quantity: 1,
+    unitAmountCents: 14500,
+    amountCents: 14500,
+    recurring: false,
+  },
+  // 1.5 x 1333 = 1999.5, which the database rounds to 2000.
+  { description: "Deodoriser", quantity: 1.5, unitAmountCents: 1333, amountCents: 2000, recurring: false },
+];
+
+function publicQuote(status: keyof typeof QUOTE_TOKENS) {
+  return {
+    found: true,
+    quote: {
+      label: "Q-10427",
+      status,
+      title: "Weekly service and common-area stations for the Lakeview Terrace Condominium Association",
+      message:
+        "Thanks for walking the grounds with me on Tuesday. This covers the courtyard, the east greenway and both dog runs. Stations are emptied on the same visit.",
+      validUntil: status === "expired" ? day(-2) : day(30),
+      sentAt: stamp(-1),
+      acceptedAt: status === "accepted" ? stamp(0) : null,
+      acceptedName: status === "accepted" ? QUOTE_SIGNER : null,
+      declinedAt: status === "declined" ? stamp(0) : null,
+      declineReason:
+        status === "declined"
+          ? "The board is holding next year's landscaping budget until the spring meeting, so we cannot commit to a recurring service before then."
+          : null,
+      recipientName: "Lakeview Terrace Condominium Association Board of Managers",
+      currency: "usd",
+    },
+    org: {
+      name: QUOTE_ORG_NAME,
+      email: "office@whitfieldramirezyardwasteandpetsanitationservices.example.com",
+      phone: "+1 (312) 555-0142",
+      timezone: "America/Chicago",
+    },
+    lines: QUOTE_LINES,
+    totals: { oneTimeCents: 16500, recurringCents: 5100 },
+  };
+}
+
+export const PUBLIC_QUOTES: Record<string, ReturnType<typeof publicQuote>> = Object.fromEntries(
+  (Object.keys(QUOTE_TOKENS) as Array<keyof typeof QUOTE_TOKENS>).map((s) => [
+    QUOTE_TOKENS[s],
+    publicQuote(s),
+  ]),
+);

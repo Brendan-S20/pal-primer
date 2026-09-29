@@ -22,11 +22,19 @@ type NotifyKey =
   | "notify_email_win_back"
   | "notify_email_review_request"
   | "notify_email_visit_reminder"
-  | "notify_email_on_my_way";
+  | "notify_email_on_my_way"
+  | "notify_email_quote_sent";
 
 interface EnqueueParams {
   organizationId: string;
-  clientId: string;
+  /** The client the email is for. null ONLY for somebody who is not a client
+   *  yet -- a quote sent to a prospect -- and then `toOverride` is the address
+   *  and `recipientName` the greeting. With no client row there is no
+   *  per-client opt-out or comms hold to honour; the suppression list (which
+   *  is where an unsubscribe lands) is still checked below. */
+  clientId: string | null;
+  /** The name to greet when there is no client row. Ignored otherwise. */
+  recipientName?: string | null;
   templateName: string;
   templateData: Record<string, unknown>;
   notifyKey: NotifyKey;
@@ -84,19 +92,31 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     return { ok: false, reason: "org_toggle_off" };
   }
 
-  // Client + opt-out
-  const { data: client } = await supabaseAdmin
-    .from("clients")
-    .select("id, display_name, primary_email, email_opt_out, comms_paused")
-    .eq("id", params.clientId)
-    .maybeSingle();
-  if (!client) return { ok: false, reason: "no_recipient" };
-  if (client.email_opt_out) return { ok: false, reason: "client_opted_out" };
-  // Imported comms hold: automated sends are skipped until the org initiates
-  // contact. Manual sends proceed (and clear the hold below on success).
-  if (client.comms_paused && !params.manual) return { ok: false, reason: "comms_paused" };
+  // Client + opt-out. A prospect (no client row) has neither; see clientId.
+  let client: {
+    id: string;
+    display_name: string;
+    primary_email: string | null;
+    email_opt_out: boolean | null;
+    comms_paused: boolean | null;
+  } | null = null;
+  if (params.clientId) {
+    const { data } = await supabaseAdmin
+      .from("clients")
+      .select("id, display_name, primary_email, email_opt_out, comms_paused")
+      .eq("id", params.clientId)
+      .maybeSingle();
+    if (!data) return { ok: false, reason: "no_recipient" };
+    client = data;
+    if (client.email_opt_out) return { ok: false, reason: "client_opted_out" };
+    // Imported comms hold: automated sends are skipped until the org initiates
+    // contact. Manual sends proceed (and clear the hold below on success).
+    if (client.comms_paused && !params.manual) return { ok: false, reason: "comms_paused" };
+  } else if (!params.toOverride) {
+    return { ok: false, reason: "no_recipient" };
+  }
 
-  const recipient = (params.toOverride ?? client.primary_email ?? "").trim().toLowerCase();
+  const recipient = (params.toOverride ?? client?.primary_email ?? "").trim().toLowerCase();
   if (!recipient) return { ok: false, reason: "no_recipient" };
 
   // Suppression check
@@ -124,7 +144,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     orgPhone: orgContact.contact_phone ?? null,
     orgEmail: orgContact.contact_email ?? null,
     orgAddress: orgContact.contact_address ?? null,
-    clientName: client.display_name,
+    clientName: client?.display_name ?? params.recipientName ?? undefined,
     ...params.templateData,
   };
   let html: string, text: string;
@@ -194,7 +214,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   }
   // A successful explicit manual send lifts the imported comms hold —
   // contact has now been initiated by the org.
-  if (params.manual && client.comms_paused) {
+  if (params.manual && client?.comms_paused) {
     await supabaseAdmin.from("clients").update({ comms_paused: false }).eq("id", client.id);
   }
   return { ok: true, messageId };

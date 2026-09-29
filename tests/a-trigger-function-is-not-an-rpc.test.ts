@@ -137,7 +137,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 36 -> 37 on 2026-09-28: invoices_assign_number, which gives each
     // invoice its organization's next INV number and keeps it from changing.
     // It also carries its own REVOKE from PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(37);
+    //
+    // 37 -> 39 on 2026-09-28 (20260928170000, quotes): quotes_before_write,
+    // which numbers a quote and keeps its references inside the tenant, and
+    // quotes_guard_answer, which keeps a sent quote as sent and lets only the
+    // customer's link accept or decline it. Both carry their own REVOKE from
+    // PUBLIC, anon and authenticated.
+    expect(triggerFunctions().size).toBe(39);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

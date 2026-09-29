@@ -53,6 +53,10 @@ import {
   PORTAL_TOKEN,
   PORTAL_CLIENT_NAME,
   PUBLIC_INVOICE,
+  QUOTE_LONG_LINE,
+  QUOTE_ORG_NAME,
+  QUOTE_SIGNER,
+  QUOTE_TOKENS,
 } from "./fixtures/portal-dataset";
 import {
   measurePageOverflow,
@@ -187,6 +191,81 @@ test.describe("the payment link, which is not the portal and arrives the same wa
       if (width < 768) {
         expect(await findControlsUnder44px(page), `pay link @${width}`).toEqual([]);
       }
+    });
+  }
+});
+
+test.describe("the quote link, which a customer signs on a phone", () => {
+  /**
+   * `/q/:token`. Arrives like the pay link: a text or an email, no session.
+   * Four states, because each draws a different panel under the same
+   * document -- the accept form, the signed outcome, the declined outcome
+   * with the customer's own reason, and the expired notice -- and a sweep of
+   * one of them says nothing about the other three.
+   *
+   * 320 as well as the portal's four widths: the working agreement names
+   * 320-360 as a real phone, and a signature box with two buttons beside it
+   * is the row most likely to be too wide at the narrow end.
+   *
+   * Two proofs per page, for the reason at the top of this file: the
+   * business's 85-character name proves the fixture reached the page (with
+   * no fixture it says "This quote link isn't valid" and fits anywhere), and
+   * a per-state string proves this is that state. The 60-character line and
+   * both totals prove the lines drew, one-time AND per-visit.
+   */
+  const STATES = [
+    { state: "sent", proof: /Accept quote/ },
+    { state: "accepted", proof: /You accepted this quote/, also: QUOTE_SIGNER },
+    { state: "declined", proof: /You declined this quote/, also: "holding next year" },
+    { state: "expired", proof: /This quote has expired/ },
+  ] as const;
+
+  for (const width of [320, ...WIDTHS]) {
+    test.describe(`at ${width}px`, () => {
+      test.use({ viewport: { width, height: 900 }, isMobile: width < 768, deviceScaleFactor: 2 });
+
+      for (const s of STATES) {
+        test(`${s.state}`, async ({ page }) => {
+          await installStubBackend(page, { portal: true });
+          await page.goto(`/q/${QUOTE_TOKENS[s.state]}`, { waitUntil: "domcontentloaded" });
+
+          await expect(page.getByText(QUOTE_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
+          await expect(page.getByText(s.proof).first()).toBeVisible({ timeout: 15_000 });
+          if ("also" in s) await expect(page.getByText(s.also).first()).toBeVisible();
+          await expect(page.getByText(QUOTE_LONG_LINE).first()).toBeVisible();
+          // Both totals: $51.00 per visit and $165.00 once.
+          await expect(page.getByText("$51.00").first()).toBeVisible();
+          await expect(page.getByText("$165.00").first()).toBeVisible();
+          await page.waitForTimeout(700);
+
+          const { scrollW, innerW } = await measurePageOverflow(page);
+          expect(scrollW, `quote ${s.state} @${width}: scrolls sideways`).toBeLessThanOrEqual(
+            innerW + 1,
+          );
+          expect(await findControlsOffTheSide(page), `quote ${s.state} @${width}`).toEqual([]);
+          expect(await findSilentlyClippedText(page), `quote ${s.state} @${width}`).toEqual([]);
+          if (width < 768) {
+            expect(await findControlsUnder44px(page), `quote ${s.state} @${width}`).toEqual([]);
+          }
+        });
+      }
+
+      test("decline opens a reason box that still fits", async ({ page }) => {
+        await installStubBackend(page, { portal: true });
+        await page.goto(`/q/${QUOTE_TOKENS.sent}`, { waitUntil: "domcontentloaded" });
+        await expect(page.getByText(/Accept quote/).first()).toBeVisible({ timeout: 30_000 });
+        await page.getByRole("button", { name: "Decline", exact: true }).click();
+        await expect(page.getByText(/Reason \(optional\)/)).toBeVisible();
+
+        const { scrollW, innerW } = await measurePageOverflow(page);
+        expect(scrollW, `quote decline @${width}: scrolls sideways`).toBeLessThanOrEqual(
+          innerW + 1,
+        );
+        expect(await findControlsOffTheSide(page), `quote decline @${width}`).toEqual([]);
+        if (width < 768) {
+          expect(await findControlsUnder44px(page), `quote decline @${width}`).toEqual([]);
+        }
+      });
     });
   }
 });

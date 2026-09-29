@@ -995,3 +995,135 @@ export const CONCERNS = {
   ],
   counts: { open: 2, in_progress: 1, resolved: 0 },
 };
+
+/**
+ * /quotes and /quotes/:id, added 2026-09-28 with the pages.
+ *
+ * The list is the shapes `listQuotes` returns after its own reshaping
+ * (camelCase, totals summed, status already expired-by-date), one of every
+ * status, with the long names: a prospect HOA whose name is longer than any
+ * client's, and a quote with BOTH totals, because a row that draws one total
+ * is narrower than a row that draws two.
+ */
+export const QUOTE_PROSPECT_NAME = "Lakeview Terrace Condominium Association Board of Managers";
+export const QUOTE_ACCEPTED_ID = "55555555-0000-4000-8000-000000005001";
+export const QUOTE_DRAFT_ID = "55555555-0000-4000-8000-000000005002";
+const quoteRow = (
+  n: number,
+  status: string,
+  over: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> => ({
+  id: `55555555-0000-4000-8000-00000000500${n}`,
+  number: 1040 + n,
+  label: `Q-${1040 + n}`,
+  status,
+  title: null,
+  recipientName: CLIENTS[n % CLIENTS.length].display_name,
+  isProspect: false,
+  validUntil: day(25),
+  sentAt: status === "draft" ? null : iso(new Date(Date.now() - 2 * 864e5)),
+  acceptedAt: null,
+  declinedAt: null,
+  convertedAt: null,
+  createdAt: iso(new Date(Date.now() - 3 * 864e5)),
+  oneTimeCents: 0,
+  recurringCents: 2400,
+  ...over,
+});
+export const QUOTES = {
+  today: TODAY,
+  timezone: "America/Chicago",
+  quotes: [
+    quoteRow(1, "accepted", {
+      recipientName: QUOTE_PROSPECT_NAME,
+      isProspect: true,
+      title: "Weekly service and common-area stations for the Lakeview Terrace Condominium Association",
+      acceptedAt: iso(new Date(Date.now() - 864e5)),
+      oneTimeCents: 16500,
+      recurringCents: 5100,
+    }),
+    quoteRow(2, "draft", { recipientName: CLIENTS[1].display_name, title: "Spring cleanup" }),
+    quoteRow(3, "sent", { oneTimeCents: 12000 }),
+    quoteRow(4, "declined", { declinedAt: iso(new Date(Date.now() - 864e5)) }),
+    quoteRow(5, "expired", { validUntil: day(-3) }),
+  ],
+};
+
+const QUOTE_DETAIL_LINES = [
+  {
+    id: "66666666-0000-4000-8000-000000006001",
+    // Exactly 60 characters, beside a right-aligned amount.
+    description: "Common-area waste stations, emptied, relined and disinfected",
+    quantity: 6,
+    unit_amount_cents: 450,
+    amount_cents: 2700,
+    recurring: true,
+  },
+  {
+    id: "66666666-0000-4000-8000-000000006002",
+    description: "Weekly yard service, two dogs",
+    quantity: 1,
+    unit_amount_cents: 2400,
+    amount_cents: 2400,
+    recurring: true,
+  },
+  {
+    id: "66666666-0000-4000-8000-000000006003",
+    description: "Initial cleanup of a yard not serviced since the spring thaw",
+    quantity: 1,
+    unit_amount_cents: 14500,
+    amount_cents: 14500,
+    recurring: false,
+  },
+  {
+    id: "66666666-0000-4000-8000-000000006004",
+    description: "Deodoriser",
+    quantity: 1.5,
+    unit_amount_cents: 1333,
+    amount_cents: 2000,
+    recurring: false,
+  },
+];
+
+/** `getQuote`, keyed by id: an accepted prospect quote (the read-only view
+ *  with its timeline and the Convert button) and a draft (the editor). */
+export function quoteDetail(id: string) {
+  const accepted = id === QUOTE_ACCEPTED_ID;
+  return {
+    quote: {
+      id,
+      number: accepted ? 1041 : 1042,
+      label: accepted ? "Q-1041" : "Q-1042",
+      rawStatus: accepted ? "accepted" : "draft",
+      status: accepted ? "accepted" : "draft",
+      title: "Weekly service and common-area stations for the Lakeview Terrace Condominium Association",
+      message:
+        "Thanks for walking the grounds with me on Tuesday. This covers the courtyard, the east greenway and both dog runs.",
+      validUntil: day(25),
+      sentAt: accepted ? iso(new Date(Date.now() - 2 * 864e5)) : null,
+      acceptedAt: accepted ? iso(new Date(Date.now() - 864e5)) : null,
+      acceptedName: accepted ? "Genevieve Okonkwo-Castellanos de la Fuente" : null,
+      declinedAt: null,
+      declineReason: null,
+      convertedAt: null,
+      convertedClientId: null,
+      createdAt: iso(new Date(Date.now() - 3 * 864e5)),
+      clientId: null,
+      clientName: null,
+      clientEmail: null,
+      leadId: LEAD_ID,
+      leadName: LEAD_NAME,
+      prospectName: QUOTE_PROSPECT_NAME,
+      prospectEmail: "board.of.managers@lakeviewterracecondominiumassociation.example.com",
+      prospectPhone: "+1 (312) 555-0177",
+      recipientName: QUOTE_PROSPECT_NAME,
+      recipientEmail: "board.of.managers@lakeviewterracecondominiumassociation.example.com",
+      publicUrl: accepted ? "https://app.houndstack.com/q/dddddddd-0000-4000-8000-00000000d002" : null,
+    },
+    lines: QUOTE_DETAIL_LINES,
+    totals: { oneTimeCents: 16500, recurringCents: 5100, oneTimeCount: 2, recurringCount: 2 },
+    today: TODAY,
+    timezone: "America/Chicago",
+    orgName: ORG_NAME,
+  };
+}

@@ -59,6 +59,7 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   { type: "concern", label: "Client concerns" },
   { type: "payment_failed", label: "Failed client payments" },
   { type: "lead", label: "New website leads" },
+  { type: "quote_response", label: "Quotes accepted or declined" },
   { type: "receptionist_escalation", label: "AI receptionist escalations" },
   { type: "inbound_sms", label: "Texts needing a reply" },
   { type: "teammate_joined", label: "Teammate joined" },

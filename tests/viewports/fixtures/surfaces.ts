@@ -7,6 +7,9 @@ import {
   ORG_ID,
   REFUND_CLIENT_NAME,
   REFUND_INVOICE_ID,
+  QUOTE_ACCEPTED_ID,
+  QUOTE_DRAFT_ID,
+  QUOTE_PROSPECT_NAME,
 } from "./dataset";
 
 /**
@@ -390,5 +393,37 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("button", { name: "Schedule re-clean" }).first(),
     proofLabel: 'the "Schedule re-clean" button, which only draws on a re-clean request',
     expectsData: "Kimberly-Anne Rutherford-Sinclair",
+  },
+  {
+    // Added 2026-09-28 with quotes. A row puts a label, a status badge and a
+    // "not a client yet" note on one line, a 58-character prospect name under
+    // it, and both totals beside it. The chips only draw once the list has
+    // counted something, and the prospect's name only comes from the fixture.
+    id: "/quotes",
+    path: "/quotes",
+    proof: (p) => p.getByRole("group", { name: "Filter by status" }),
+    proofLabel: "the status filter chips",
+    expectsData: QUOTE_PROSPECT_NAME,
+  },
+  {
+    // An accepted quote to a prospect: the action row (Convert to client,
+    // Copy link, Duplicate), the timeline with the signature, and the
+    // document with a 60-character line and both totals. Convert only draws
+    // on an accepted, unconverted quote, so it is the proof.
+    id: "/quotes/:id · accepted",
+    path: `/quotes/${QUOTE_ACCEPTED_ID}`,
+    proof: (p) => p.getByRole("button", { name: "Convert to client" }),
+    proofLabel: 'the "Convert to client" button',
+    expectsData: "Genevieve Okonkwo-Castellanos de la Fuente",
+  },
+  {
+    // A draft opens in the editor: a recipient switch, four line cards each
+    // with a quantity, a price, a per-visit box and a remove button, which is
+    // the row that has to wrap rather than widen at 320px.
+    id: "/quotes/:id · draft",
+    path: `/quotes/${QUOTE_DRAFT_ID}`,
+    proof: (p) => p.getByRole("button", { name: "Save and send" }),
+    proofLabel: 'the editor\'s "Save and send" button',
+    expectsData: LEAD_NAME,
   },
 ];

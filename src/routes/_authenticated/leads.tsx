@@ -57,6 +57,9 @@ function LeadsPage() {
   const convert = (id: string) => navigate({ to: "/clients/new", search: { fromLead: id } });
   const openClient = (clientId: string) =>
     navigate({ to: "/clients/$clientId", params: { clientId } });
+  // A price in writing before they commit. The quote editor reads the lead
+  // server-side; only its id goes in the URL.
+  const quote = (id: string) => navigate({ to: "/quotes/new", search: { fromLead: id } });
 
   const leads = (data ?? []).filter((l) => filter === "all" || l.status === filter);
 
@@ -278,6 +281,9 @@ function LeadsPage() {
                         : conversion.kind === "linked"
                           ? [{ label: "Open client", onSelect: () => openClient(conversion.clientId) }]
                           : []),
+                      ...(l.status !== "archived"
+                        ? [{ label: "Send a quote", onSelect: () => quote(l.id) }]
+                        : []),
                       ...(l.status !== "archived"
                         ? [
                             {

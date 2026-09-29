@@ -23,6 +23,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
+import { Route as QTokenRouteImport } from './routes/q.$token'
 import { Route as PortalSlugRouteImport } from './routes/portal.$slug'
 import { Route as PlatformUsersRouteImport } from './routes/platform.users'
 import { Route as PlatformSignalsRouteImport } from './routes/platform.signals'
@@ -52,6 +53,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedQuotesRouteImport } from './routes/_authenticated/quotes'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedPricingDriftRouteImport } from './routes/_authenticated/pricing-drift'
 import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated/payments'
@@ -77,6 +79,7 @@ import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticate
 import { Route as PortalSlugIndexRouteImport } from './routes/portal.$slug.index'
 import { Route as PlatformTenantsIndexRouteImport } from './routes/platform.tenants.index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
+import { Route as AuthenticatedQuotesIndexRouteImport } from './routes/_authenticated/quotes.index'
 import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
@@ -114,6 +117,8 @@ import { Route as AuthenticatedSettingsAiReceptionistRouteImport } from './route
 import { Route as AuthenticatedSettingsAiRouteImport } from './routes/_authenticated/settings.ai'
 import { Route as AuthenticatedSettingsAddonsRouteImport } from './routes/_authenticated/settings.addons'
 import { Route as AuthenticatedSettingsAccountingRouteImport } from './routes/_authenticated/settings.accounting'
+import { Route as AuthenticatedQuotesNewRouteImport } from './routes/_authenticated/quotes.new'
+import { Route as AuthenticatedQuotesQuoteIdRouteImport } from './routes/_authenticated/quotes.$quoteId'
 import { Route as AuthenticatedMessagesClientIdRouteImport } from './routes/_authenticated/messages.$clientId'
 import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_authenticated/invoices.$invoiceId'
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
@@ -204,6 +209,11 @@ const SignupSuccessRoute = SignupSuccessRouteImport.update({
 const SignupSlugRoute = SignupSlugRouteImport.update({
   id: '/signup/$slug',
   path: '/signup/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QTokenRoute = QTokenRouteImport.update({
+  id: '/q/$token',
+  path: '/q/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PortalSlugRoute = PortalSlugRouteImport.update({
@@ -351,6 +361,11 @@ const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedQuotesRoute = AuthenticatedQuotesRouteImport.update({
+  id: '/quotes',
+  path: '/quotes',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -478,6 +493,12 @@ const AuthenticatedSettingsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedQuotesIndexRoute =
+  AuthenticatedQuotesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedQuotesRoute,
   } as any)
 const AuthenticatedMessagesIndexRoute =
   AuthenticatedMessagesIndexRouteImport.update({
@@ -691,6 +712,17 @@ const AuthenticatedSettingsAccountingRoute =
     path: '/accounting',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedQuotesNewRoute = AuthenticatedQuotesNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AuthenticatedQuotesRoute,
+} as any)
+const AuthenticatedQuotesQuoteIdRoute =
+  AuthenticatedQuotesQuoteIdRouteImport.update({
+    id: '/$quoteId',
+    path: '/$quoteId',
+    getParentRoute: () => AuthenticatedQuotesRoute,
+  } as any)
 const AuthenticatedMessagesClientIdRoute =
   AuthenticatedMessagesClientIdRouteImport.update({
     id: '/$clientId',
@@ -847,6 +879,7 @@ export interface FileRoutesByFullPath {
   '/payments': typeof AuthenticatedPaymentsRoute
   '/pricing-drift': typeof AuthenticatedPricingDriftRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/quotes': typeof AuthenticatedQuotesRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
   '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
@@ -876,6 +909,7 @@ export interface FileRoutesByFullPath {
   '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
+  '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform/': typeof PlatformIndexRoute
@@ -884,6 +918,8 @@ export interface FileRoutesByFullPath {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/quotes/$quoteId': typeof AuthenticatedQuotesQuoteIdRoute
+  '/quotes/new': typeof AuthenticatedQuotesNewRoute
   '/settings/accounting': typeof AuthenticatedSettingsAccountingRoute
   '/settings/addons': typeof AuthenticatedSettingsAddonsRoute
   '/settings/ai': typeof AuthenticatedSettingsAiRoute
@@ -921,6 +957,7 @@ export interface FileRoutesByFullPath {
   '/imports/': typeof AuthenticatedImportsIndexRoute
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
+  '/quotes/': typeof AuthenticatedQuotesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
@@ -998,6 +1035,7 @@ export interface FileRoutesByTo {
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
+  '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform': typeof PlatformIndexRoute
@@ -1006,6 +1044,8 @@ export interface FileRoutesByTo {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/quotes/$quoteId': typeof AuthenticatedQuotesQuoteIdRoute
+  '/quotes/new': typeof AuthenticatedQuotesNewRoute
   '/settings/accounting': typeof AuthenticatedSettingsAccountingRoute
   '/settings/addons': typeof AuthenticatedSettingsAddonsRoute
   '/settings/ai': typeof AuthenticatedSettingsAiRoute
@@ -1042,6 +1082,7 @@ export interface FileRoutesByTo {
   '/imports': typeof AuthenticatedImportsIndexRoute
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
+  '/quotes': typeof AuthenticatedQuotesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants': typeof PlatformTenantsIndexRoute
   '/portal/$slug': typeof PortalSlugIndexRoute
@@ -1098,6 +1139,7 @@ export interface FileRoutesById {
   '/_authenticated/payments': typeof AuthenticatedPaymentsRoute
   '/_authenticated/pricing-drift': typeof AuthenticatedPricingDriftRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_authenticated/quotes': typeof AuthenticatedQuotesRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
@@ -1127,6 +1169,7 @@ export interface FileRoutesById {
   '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
+  '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform/': typeof PlatformIndexRoute
@@ -1135,6 +1178,8 @@ export interface FileRoutesById {
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/_authenticated/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/_authenticated/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/_authenticated/quotes/$quoteId': typeof AuthenticatedQuotesQuoteIdRoute
+  '/_authenticated/quotes/new': typeof AuthenticatedQuotesNewRoute
   '/_authenticated/settings/accounting': typeof AuthenticatedSettingsAccountingRoute
   '/_authenticated/settings/addons': typeof AuthenticatedSettingsAddonsRoute
   '/_authenticated/settings/ai': typeof AuthenticatedSettingsAiRoute
@@ -1172,6 +1217,7 @@ export interface FileRoutesById {
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
+  '/_authenticated/quotes/': typeof AuthenticatedQuotesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
@@ -1228,6 +1274,7 @@ export interface FileRouteTypes {
     | '/payments'
     | '/pricing-drift'
     | '/profile'
+    | '/quotes'
     | '/reports'
     | '/review'
     | '/routes'
@@ -1257,6 +1304,7 @@ export interface FileRouteTypes {
     | '/platform/signals'
     | '/platform/users'
     | '/portal/$slug'
+    | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform/'
@@ -1265,6 +1313,8 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/quotes/$quoteId'
+    | '/quotes/new'
     | '/settings/accounting'
     | '/settings/addons'
     | '/settings/ai'
@@ -1302,6 +1352,7 @@ export interface FileRouteTypes {
     | '/imports/'
     | '/invoices/'
     | '/messages/'
+    | '/quotes/'
     | '/settings/'
     | '/platform/tenants/'
     | '/portal/$slug/'
@@ -1379,6 +1430,7 @@ export interface FileRouteTypes {
     | '/platform/revenue'
     | '/platform/signals'
     | '/platform/users'
+    | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform'
@@ -1387,6 +1439,8 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/quotes/$quoteId'
+    | '/quotes/new'
     | '/settings/accounting'
     | '/settings/addons'
     | '/settings/ai'
@@ -1423,6 +1477,7 @@ export interface FileRouteTypes {
     | '/imports'
     | '/invoices'
     | '/messages'
+    | '/quotes'
     | '/settings'
     | '/platform/tenants'
     | '/portal/$slug'
@@ -1478,6 +1533,7 @@ export interface FileRouteTypes {
     | '/_authenticated/payments'
     | '/_authenticated/pricing-drift'
     | '/_authenticated/profile'
+    | '/_authenticated/quotes'
     | '/_authenticated/reports'
     | '/_authenticated/review'
     | '/_authenticated/routes'
@@ -1507,6 +1563,7 @@ export interface FileRouteTypes {
     | '/platform/signals'
     | '/platform/users'
     | '/portal/$slug'
+    | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform/'
@@ -1515,6 +1572,8 @@ export interface FileRouteTypes {
     | '/_authenticated/imports/$batchId'
     | '/_authenticated/invoices/$invoiceId'
     | '/_authenticated/messages/$clientId'
+    | '/_authenticated/quotes/$quoteId'
+    | '/_authenticated/quotes/new'
     | '/_authenticated/settings/accounting'
     | '/_authenticated/settings/addons'
     | '/_authenticated/settings/ai'
@@ -1552,6 +1611,7 @@ export interface FileRouteTypes {
     | '/_authenticated/imports/'
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
+    | '/_authenticated/quotes/'
     | '/_authenticated/settings/'
     | '/platform/tenants/'
     | '/portal/$slug/'
@@ -1594,6 +1654,7 @@ export interface RootRouteChildren {
   LegalSmsRoute: typeof LegalSmsRoute
   LegalTermsRoute: typeof LegalTermsRoute
   PortalSlugRoute: typeof PortalSlugRouteWithChildren
+  QTokenRoute: typeof QTokenRoute
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
@@ -1713,6 +1774,13 @@ declare module '@tanstack/react-router' {
       path: '/signup/$slug'
       fullPath: '/signup/$slug'
       preLoaderRoute: typeof SignupSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/q/$token': {
+      id: '/q/$token'
+      path: '/q/$token'
+      fullPath: '/q/$token'
+      preLoaderRoute: typeof QTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/portal/$slug': {
@@ -1918,6 +1986,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/quotes': {
+      id: '/_authenticated/quotes'
+      path: '/quotes'
+      fullPath: '/quotes'
+      preLoaderRoute: typeof AuthenticatedQuotesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
       path: '/profile'
@@ -2092,6 +2167,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/quotes/': {
+      id: '/_authenticated/quotes/'
+      path: '/'
+      fullPath: '/quotes/'
+      preLoaderRoute: typeof AuthenticatedQuotesIndexRouteImport
+      parentRoute: typeof AuthenticatedQuotesRoute
     }
     '/_authenticated/messages/': {
       id: '/_authenticated/messages/'
@@ -2352,6 +2434,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsAccountingRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/quotes/new': {
+      id: '/_authenticated/quotes/new'
+      path: '/new'
+      fullPath: '/quotes/new'
+      preLoaderRoute: typeof AuthenticatedQuotesNewRouteImport
+      parentRoute: typeof AuthenticatedQuotesRoute
+    }
+    '/_authenticated/quotes/$quoteId': {
+      id: '/_authenticated/quotes/$quoteId'
+      path: '/$quoteId'
+      fullPath: '/quotes/$quoteId'
+      preLoaderRoute: typeof AuthenticatedQuotesQuoteIdRouteImport
+      parentRoute: typeof AuthenticatedQuotesRoute
+    }
     '/_authenticated/messages/$clientId': {
       id: '/_authenticated/messages/$clientId'
       path: '/$clientId'
@@ -2554,6 +2650,21 @@ const AuthenticatedMessagesRouteWithChildren =
     AuthenticatedMessagesRouteChildren,
   )
 
+interface AuthenticatedQuotesRouteChildren {
+  AuthenticatedQuotesQuoteIdRoute: typeof AuthenticatedQuotesQuoteIdRoute
+  AuthenticatedQuotesNewRoute: typeof AuthenticatedQuotesNewRoute
+  AuthenticatedQuotesIndexRoute: typeof AuthenticatedQuotesIndexRoute
+}
+
+const AuthenticatedQuotesRouteChildren: AuthenticatedQuotesRouteChildren = {
+  AuthenticatedQuotesQuoteIdRoute: AuthenticatedQuotesQuoteIdRoute,
+  AuthenticatedQuotesNewRoute: AuthenticatedQuotesNewRoute,
+  AuthenticatedQuotesIndexRoute: AuthenticatedQuotesIndexRoute,
+}
+
+const AuthenticatedQuotesRouteWithChildren =
+  AuthenticatedQuotesRoute._addFileChildren(AuthenticatedQuotesRouteChildren)
+
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsAccountingRoute: typeof AuthenticatedSettingsAccountingRoute
   AuthenticatedSettingsAddonsRoute: typeof AuthenticatedSettingsAddonsRoute
@@ -2639,6 +2750,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPaymentsRoute: typeof AuthenticatedPaymentsRoute
   AuthenticatedPricingDriftRoute: typeof AuthenticatedPricingDriftRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedQuotesRoute: typeof AuthenticatedQuotesRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
@@ -2675,6 +2787,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPaymentsRoute: AuthenticatedPaymentsRoute,
   AuthenticatedPricingDriftRoute: AuthenticatedPricingDriftRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedQuotesRoute: AuthenticatedQuotesRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
@@ -2792,6 +2905,7 @@ const rootRouteChildren: RootRouteChildren = {
   LegalSmsRoute: LegalSmsRoute,
   LegalTermsRoute: LegalTermsRoute,
   PortalSlugRoute: PortalSlugRouteWithChildren,
+  QTokenRoute: QTokenRoute,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
