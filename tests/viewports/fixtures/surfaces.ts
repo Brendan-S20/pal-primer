@@ -78,6 +78,24 @@ export const SURFACES: Surface[] = [
     expectsData: "Delete your account",
   },
   {
+    // Added 2026-09-29 with calendar feeds. The card draws two rows and, once
+    // a link is made, a box holding a 95-character URL and four buttons that
+    // have to wrap on a phone. "Create link" on the all-visits row is the
+    // open step (the other row needs a confirm), and the URL box is what it
+    // has to put on screen. The data proof is the "last read" line, which
+    // only draws when the fixture's lastFetchedAt reached the card.
+    id: "/profile · calendar link",
+    path: "/profile",
+    proof: (p) => p.getByText("Calendar feed", { exact: true }).first(),
+    proofLabel: 'the "Calendar feed" card',
+    expectsData: "Last read by a calendar",
+    open: async (p) => {
+      await p.getByRole("button", { name: "Create link", exact: true }).first().click();
+    },
+    opened: (p) => p.getByRole("link", { name: "Add to Google Calendar" }),
+    openedLabel: "the new link's buttons",
+  },
+  {
     id: "/dashboard",
     path: "/dashboard",
     proof: (p) => p.getByText("Today's routes", { exact: false }).first(),
@@ -209,6 +227,16 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("heading", { name: "Scheduling" }).first(),
     proofLabel: 'the "Scheduling" heading',
     expectsData: "The working day",
+  },
+  {
+    // The owner's side of the calendar card: the access-code switch with the
+    // paragraph explaining why it is off, under the same two link rows. The
+    // switch only draws for manage_settings, and its label is the proof.
+    id: "/settings/scheduling · calendar feeds",
+    path: "/settings/scheduling",
+    proof: (p) => p.getByText("Include gate codes in technicians' own calendars").first(),
+    proofLabel: "the access-code switch",
+    expectsData: "Last read by a calendar",
   },
   {
     id: "/my-day",
@@ -393,6 +421,34 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("button", { name: "Schedule re-clean" }).first(),
     proofLabel: 'the "Schedule re-clean" button, which only draws on a re-clean request',
     expectsData: "Kimberly-Anne Rutherford-Sinclair",
+  },
+  {
+    // Added 2026-09-29 with extra cleanups from the portal. The row puts the
+    // asked-for day and a long street beside Decline and Book it; "Book it"
+    // only draws on an open extra-cleanup request, and opening it draws the
+    // dialog with the date, the price the office must set (no one-off price
+    // in the fixture) and the technician picker.
+    id: "/concerns · extra cleanup",
+    path: "/concerns",
+    proof: (p) => p.getByRole("button", { name: "Book it", exact: true }).first(),
+    proofLabel: 'the "Book it" button, which only draws on an extra-cleanup request',
+    expectsData: "block party",
+    open: async (p) => {
+      await p.getByRole("button", { name: "Book it", exact: true }).first().click();
+    },
+    opened: (p) => p.getByRole("dialog", { name: "Book the extra cleanup" }),
+    openedLabel: "the Book the extra cleanup dialog",
+  },
+  {
+    // Added 2026-09-29. The page was only reached by the unlisted sweep and a
+    // one-off spec that checks the cards exist. The extra-cleanup card draws
+    // only for manage_settings and only once its settings arrived, and its
+    // "Needs a price first" line only when the fixture has no price.
+    id: "/settings/client-portal",
+    path: "/settings/client-portal",
+    proof: (p) => p.getByText("Extra cleanups from the portal", { exact: true }).first(),
+    proofLabel: 'the "Extra cleanups from the portal" card',
+    expectsData: "Needs a price first.",
   },
   {
     // Added 2026-09-28 with quotes. A row puts a label, a status badge and a

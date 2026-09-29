@@ -1045,9 +1045,72 @@ export const CONCERNS = {
       visit: null,
       reclean_visit: null,
     },
+    {
+      // An extra cleanup asked for from the portal, not yet booked: a
+      // sentence with the day and the longest street, beside Decline and
+      // Book it, which is the row that has to wrap on a phone.
+      id: "44444444-0000-4000-8000-000000004004",
+      category: "one_off_request",
+      message: "We're hosting the block party this weekend, so the side yard needs to be spotless.",
+      status: "open",
+      created_at: iso(new Date(Date.now() - 5 * 3600e3)),
+      resolved_at: null,
+      resolution_note: null,
+      last_reply: null,
+      last_reply_at: null,
+      client_id: CLIENTS[7].id,
+      visit_id: null,
+      reclean_visit_id: null,
+      requested_on: day(3),
+      property_id: PROPERTIES[7].id,
+      booked_visit_id: null,
+      clients: {
+        display_name: CLIENTS[7].display_name,
+        primary_phone: CLIENTS[7].primary_phone,
+        primary_email: CLIENTS[7].primary_email,
+      },
+      visit: null,
+      reclean_visit: null,
+      property: { street: PROPERTIES[7].street, city: PROPERTIES[7].city },
+      booked_visit: null,
+    },
   ],
-  counts: { open: 2, in_progress: 1, resolved: 0 },
+  counts: { open: 3, in_progress: 1, resolved: 0 },
 };
+
+/** Settings -> Client portal, extra cleanups: no price yet, so auto-accept is
+ *  off and cannot be turned on, and the card says so. */
+export const PORTAL_BOOKING_SETTINGS = {
+  autoAccept: false,
+  priceCents: null,
+  currency: "usd",
+  canEdit: true,
+};
+
+/**
+ * The calendar feed card (Profile, and Settings -> Scheduling), added
+ * 2026-09-29 with the feeds.
+ *
+ * `getMyCalendarFeeds` returns camelCase and both scopes. The owner can have
+ * both, so both rows draw: "My visits" with a link already made and read by a
+ * calendar (the longest status line the row has), "Every visit" with none yet
+ * (the "Create link" button). The URL is the length production makes -- app
+ * origin, path, 43 base64url characters, `.ics` -- because the box it is
+ * shown in is only tested by a value that long.
+ */
+export const CALENDAR_FEEDS = {
+  mine: {
+    createdAt: "2026-08-14T14:22:00.000Z",
+    lastFetchedAt: iso(new Date(Date.now() - 2 * 3600e3)),
+  },
+  org: null,
+  canMine: true,
+  canOrg: true,
+  accessCodesInFeed: false,
+  canManageSettings: true,
+};
+export const CALENDAR_FEED_URL =
+  "https://app.houndstack.com/api/public/calendar/q3Vx8KpZ-7mT2wLr9sYc_4NbHd6FjAe1GuQo0IiPlXk.ics";
 
 /**
  * /quotes and /quotes/:id, added 2026-09-28 with the pages.

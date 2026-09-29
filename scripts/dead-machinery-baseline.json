@@ -31,6 +31,7 @@
     "no charges at all. A new entry here needs its own reason, not a shared one."
   ],
   "endpoint_callers": {
+    "src/routes/api/public/calendar.$token.ts": "Subscribed-calendar feed. Polled by Google Calendar, Apple Calendar and Outlook from their own servers, at the URL a person copies from the Calendar feed card (Profile, Settings -> Scheduling); nothing in src/ calls it and nothing should.",
     "src/routes/api/public/hooks/announcement-emails.ts": "Deliberately unscheduled, and no longer unreachable. The 120-line send moved to lib/announcement-emails.server, which a platform admin now invokes per announcement from /platform/announcements \u2014 so an announcement marked send_email actually gets sent, which it never did before. This endpoint stays as the shape a scheduler needs if the owner ever wants one; scheduling platform-wide outbound email is their decision, not a cleanup task. Both callers share a per-recipient idempotency key, so adding a cron later cannot double-send.",
     "src/routes/api/public/hooks/nightly.ts": "pg_cron job 'nightly-automation', 0 9 * * * \u2014 verified in cron.job.",
     "src/routes/api/public/hooks/platform-stripe.ts": "Stripe platform webhook endpoint, for HoundStack's own SaaS billing (bucket A).",
