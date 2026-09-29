@@ -588,6 +588,12 @@ const BASE_STUBS: Record<string, Stub> = {
   // the timeline and Convert; the draft draws the editor.
   listQuotes: fx.QUOTES,
   getQuote: (a) => fx.quoteDetail(String(a.id ?? fx.QUOTE_ACCEPTED_ID)),
+  // /campaigns, /campaigns/new and /campaigns/:id, added 2026-09-29. Keyed by
+  // id like quotes: the draft opens the editor, the sent one its record.
+  listCampaigns: fx.CAMPAIGNS,
+  getCampaign: (a) => fx.campaignDetail(String(a.id ?? fx.CAMPAIGN_DRAFT_ID)),
+  getCampaignAudience: fx.CAMPAIGN_AUDIENCE,
+  previewCampaignEmail: fx.CAMPAIGN_PREVIEW,
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
   // read these and threw on the null the fence answered — so the unlisted

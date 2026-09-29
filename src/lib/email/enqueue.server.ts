@@ -7,6 +7,7 @@
 import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
+import { appUrl } from "@/lib/app-origin";
 
 const SITE_NAME = "HoundStack";
 const SENDER_DOMAIN = "notify.houndstack.com";
@@ -37,7 +38,18 @@ interface EnqueueParams {
   recipientName?: string | null;
   templateName: string;
   templateData: Record<string, unknown>;
-  notifyKey: NotifyKey;
+  /** The organization's on/off switch for this kind of email. Omitted ONLY
+   *  for a campaign: a campaign is the owner pressing Send on this exact
+   *  message, so there is no standing preference for it to consult. */
+  notifyKey?: NotifyKey;
+  /** Which lane. `campaign_emails` is read after the other two by
+   *  /email/queue/process, so a campaign never delays an invoice. */
+  queue?: "transactional_emails" | "campaign_emails";
+  /** Mint (or reuse) a CLIENT-scoped unsubscribe token, hand the template its
+   *  URL as `unsubscribeUrl`, and point List-Unsubscribe at it. Redeeming it
+   *  sets email_opt_out on this client in this organization and nothing else;
+   *  see client_unsubscribe_tokens. Requires `clientId`. */
+  clientUnsubscribe?: boolean;
   idempotencyKey?: string;
   /** Override the client email lookup (rarely needed). */
   toOverride?: string | null;
@@ -85,10 +97,12 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     // contact_phone and contact_address join it here because every template
     // now ends in an OrgFooter. They were already on this row and already
     // editable in Settings; nothing had ever put them in an email.
-    .select(`id, name, contact_email, contact_phone, contact_address, ${params.notifyKey}`)
+    .select(
+      `id, name, contact_email, contact_phone, contact_address${params.notifyKey ? `, ${params.notifyKey}` : ""}`,
+    )
     .eq("id", params.organizationId)
     .maybeSingle();
-  if (!org || (org as any)[params.notifyKey] === false) {
+  if (!org || (params.notifyKey && (org as any)[params.notifyKey] === false)) {
     return { ok: false, reason: "org_toggle_off" };
   }
 
@@ -127,6 +141,30 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     .maybeSingle();
   if (suppressed) return { ok: false, reason: "suppressed" };
 
+  // A client-scoped unsubscribe link, minted BEFORE rendering because the
+  // template prints it. One token per client, reused by every campaign: the
+  // unique index on client_id makes a concurrent mint a no-op, and the row is
+  // read back either way.
+  let clientUnsubscribeToken: string | null = null;
+  if (params.clientUnsubscribe) {
+    if (!client) return { ok: false, reason: "no_recipient" };
+    await supabaseAdmin
+      .from("client_unsubscribe_tokens")
+      .upsert(
+        { token: hexToken(), organization_id: params.organizationId, client_id: client.id },
+        { onConflict: "client_id", ignoreDuplicates: true },
+      );
+    const { data: tok } = await supabaseAdmin
+      .from("client_unsubscribe_tokens")
+      .select("token")
+      .eq("client_id", client.id)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+    // No link, no email. CAN-SPAM has no "sent it anyway" branch.
+    if (!tok?.token) return { ok: false, reason: "enqueue_failed" };
+    clientUnsubscribeToken = tok.token;
+  }
+
   // Render
   // The select above interpolates params.notifyKey, so supabase-js infers
   // nothing about the row. Narrowed once here rather than cast at each field.
@@ -146,6 +184,10 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     orgAddress: orgContact.contact_address ?? null,
     clientName: client?.display_name ?? params.recipientName ?? undefined,
     ...params.templateData,
+    // After the spread: the link is minted here, never supplied by a caller.
+    ...(clientUnsubscribeToken
+      ? { unsubscribeUrl: appUrl(`/unsubscribe?token=${clientUnsubscribeToken}`) }
+      : {}),
   };
   let html: string, text: string;
   try {
@@ -158,11 +200,18 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   }
   const subject = typeof entry.subject === "function" ? entry.subject(mergedData) : entry.subject;
 
-  // Unsubscribe token
-  const unsubscribeToken = hexToken();
-  await supabaseAdmin
-    .from("email_unsubscribe_tokens")
-    .insert({ email: recipient, token: unsubscribeToken });
+  // Unsubscribe token. A campaign's is the client-scoped one minted above;
+  // everything else keeps the address-wide token it always had.
+  let unsubscribeToken: string;
+  if (clientUnsubscribeToken) {
+    unsubscribeToken = clientUnsubscribeToken;
+  } else {
+    unsubscribeToken = hexToken();
+    await supabaseAdmin
+      .from("email_unsubscribe_tokens")
+      .insert({ email: recipient, token: unsubscribeToken });
+  }
+  const queueName = params.queue ?? "transactional_emails";
 
   const messageId = crypto.randomUUID();
   const idempotencyKey = params.idempotencyKey || messageId;
@@ -175,7 +224,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   });
 
   const { error: enqueueError } = await supabaseAdmin.rpc("enqueue_email", {
-    queue_name: "transactional_emails",
+    queue_name: queueName,
     payload: {
       message_id: messageId,
       to: recipient,
@@ -194,10 +243,15 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       subject,
       html,
       text,
-      purpose: "transactional",
+      purpose: queueName === "campaign_emails" ? "marketing" : "transactional",
       label: params.templateName,
       idempotency_key: idempotencyKey,
       unsubscribe_token: unsubscribeToken,
+      // One-click (RFC 8058) needs a URL that answers a POST. The page does
+      // not; /email/unsubscribe does, and sends a browser on to the page.
+      ...(clientUnsubscribeToken
+        ? { unsubscribe_url: appUrl(`/email/unsubscribe?token=${clientUnsubscribeToken}`) }
+        : {}),
       queued_at: new Date().toISOString(),
     },
   });

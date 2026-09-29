@@ -932,6 +932,48 @@ export type Database = {
           },
         ]
       }
+      client_unsubscribe_tokens: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          token: string
+          used_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_unsubscribe_tokens_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_unsubscribe_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -1381,6 +1423,138 @@ export type Database = {
             columns: ["unit_id"]
             isOneToOne: false
             referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_campaign_recipients: {
+        Row: {
+          campaign_id: string
+          claimed_at: string | null
+          client_id: string
+          created_at: string
+          email: string
+          id: string
+          message_id: string | null
+          organization_id: string
+          queued_at: string | null
+          skip_reason: string | null
+          status: string
+        }
+        Insert: {
+          campaign_id: string
+          claimed_at?: string | null
+          client_id: string
+          created_at?: string
+          email: string
+          id?: string
+          message_id?: string | null
+          organization_id: string
+          queued_at?: string | null
+          skip_reason?: string | null
+          status?: string
+        }
+        Update: {
+          campaign_id?: string
+          claimed_at?: string | null
+          client_id?: string
+          created_at?: string
+          email?: string
+          id?: string
+          message_id?: string | null
+          organization_id?: string
+          queued_at?: string | null
+          skip_reason?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "email_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaign_recipients_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaign_recipients_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_campaigns: {
+        Row: {
+          audience_kind: string
+          audience_tag: string | null
+          body: string
+          button_label: string | null
+          button_url: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          heading: string
+          id: string
+          organization_id: string
+          recipient_count: number | null
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          audience_kind?: string
+          audience_tag?: string | null
+          body?: string
+          button_label?: string | null
+          button_url?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          heading?: string
+          id?: string
+          organization_id: string
+          recipient_count?: number | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
+        }
+        Update: {
+          audience_kind?: string
+          audience_tag?: string | null
+          body?: string
+          button_label?: string | null
+          button_url?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          heading?: string
+          id?: string
+          organization_id?: string
+          recipient_count?: number | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -6267,6 +6441,16 @@ export type Database = {
           revenue_at_risk_cents: number
         }[]
       }
+      claim_email_campaign_recipients: {
+        Args: { _limit: number }
+        Returns: {
+          campaign_id: string
+          client_id: string
+          email: string
+          organization_id: string
+          recipient_id: string
+        }[]
+      }
       client_cohort_retention: {
         Args: { _months_back?: number; _org_id: string }
         Returns: {
@@ -6292,6 +6476,10 @@ export type Database = {
         }[]
       }
       client_may_be_texted: { Args: { _client_id: string }; Returns: boolean }
+      client_unsubscribe_token_state: {
+        Args: { _token: string }
+        Returns: string
+      }
       clock_in: { Args: { _at?: string }; Returns: string }
       clock_out: { Args: { _at?: string }; Returns: string | null }
       close_abandoned_impersonation_grants: { Args: never; Returns: number }
@@ -6367,7 +6555,21 @@ export type Database = {
         Args: { _area_type: string; _traffic: string }
         Returns: number
       }
+      email_campaign_stats: {
+        Args: { _org_id: string }
+        Returns: {
+          bounced: number
+          campaign_id: string
+          failed: number
+          in_queue: number
+          recipients: number
+          sent: number
+          skipped: number
+          waiting: number
+        }[]
+      }
       email_has_account: { Args: { _email: string }; Returns: boolean }
+      email_queue_depth: { Args: { queue_name: string }; Returns: number }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
@@ -7082,6 +7284,10 @@ export type Database = {
         Args: { _visit_id: string }
         Returns: number
       }
+      redeem_client_unsubscribe_token: {
+        Args: { _token: string }
+        Returns: string
+      }
       redeem_franchise_link_code: { Args: { _code: string }; Returns: string }
       redeem_gift_card: {
         Args: {
@@ -7203,6 +7409,7 @@ export type Database = {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined
       }
+      settle_email_campaigns: { Args: never; Returns: number }
       skip_visit: {
         Args: {
           _code?: Database["public"]["Enums"]["skip_reason_code"]
@@ -7267,6 +7474,15 @@ export type Database = {
           scheduled_on: string
           visits: number
         }[]
+      }
+      start_email_campaign: {
+        Args: {
+          _campaign_id: string
+          _org_id: string
+          _recipients: Json
+          _user_id: string
+        }
+        Returns: string
       }
       start_visit: {
         Args: { _started_at?: string; _visit_id: string }
