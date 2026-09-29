@@ -9,6 +9,8 @@ interface Props extends OrgContact {
   visitDate?: string;
   address?: string;
   photoUrls?: string[];
+  /** The latched-gate photo, captioned on its own. */
+  gatePhotoUrl?: string;
 }
 
 const VisitCompleted = ({
@@ -17,6 +19,7 @@ const VisitCompleted = ({
   visitDate = "",
   address = "",
   photoUrls = [],
+  gatePhotoUrl,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -39,6 +42,17 @@ const VisitCompleted = ({
             style={{ borderRadius: 8, margin: "8px 0" }}
           />
         ))}
+        {gatePhotoUrl ? (
+          <>
+            <Text style={styles.text}>Your gate, latched behind us when we left:</Text>
+            <Img
+              src={gatePhotoUrl}
+              alt="Gate latched"
+              width="480"
+              style={{ borderRadius: 8, margin: "8px 0" }}
+            />
+          </>
+        ) : null}
         <Text style={styles.small}>Thanks for trusting us with the dirty work.</Text>
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>

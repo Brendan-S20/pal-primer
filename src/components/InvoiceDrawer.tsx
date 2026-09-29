@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { LineQuantity } from "@/components/LineQuantity";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -25,6 +26,9 @@ import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
+import { RefundPaymentAction } from "@/components/RefundPaymentAction";
+import { canOfferRefund } from "@/lib/refunds";
+import { usePermissions } from "@/hooks/useMyRole";
 import { formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
 import {
   formatLineItemDescription,
@@ -61,6 +65,7 @@ export function InvoiceDrawer({
   onChanged?: () => void;
 }) {
   const qc = useQueryClient();
+  const { role } = usePermissions();
   const { confirm, dialog } = useConfirmDialog();
   const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
   const detailFn = useServerFn(getInvoiceDetail);
@@ -331,8 +336,11 @@ export function InvoiceDrawer({
                 <ul className="mt-1.5 divide-y">
                   {lines.map((l) => (
                     <li key={l.id} className="flex items-center justify-between gap-2 py-1.5">
-                      <span className="min-w-0 truncate">
-                        {formatLineItemDescription(l.description)}
+                      <span className="min-w-0">
+                        <span className="block truncate">
+                          {formatLineItemDescription(l.description)}
+                        </span>
+                        <LineQuantity line={l} currency={inv.currency ?? "usd"} />
                       </span>
                       <span className="shrink-0 font-medium">
                         {fmtCents(l.amount_cents, inv.currency ?? "usd")}
@@ -392,40 +400,61 @@ export function InvoiceDrawer({
               ) : (
                 <ul className="mt-1.5 divide-y">
                   {pays.map((p) => (
-                    <li key={p.id} className="flex items-center justify-between gap-2 py-1.5">
-                      <span className="min-w-0 text-muted-foreground">
-                        {formatDateTime(p.paid_at ?? p.created_at)}
-                        {describeManualPayment(p.method, p.reference) && (
-                          <span className="block truncate text-2xs">
-                            {describeManualPayment(p.method, p.reference)}
-                          </span>
-                        )}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <StatusChip status={p.status} />
-                        {(() => {
-                          // What the card was charged. `amount_cents` alone is
-                          // the invoice amount, which is not the number on the
-                          // customer's statement when a surcharge applies.
-                          const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
-                          return (
-                            <span className="text-right">
-                              <span className="font-medium">
-                                {fmtCents(
-                                  split?.chargedCents ?? p.amount_cents,
-                                  inv.currency ?? "usd",
+                    <li key={p.id} className="py-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 text-muted-foreground">
+                          {formatDateTime(p.paid_at ?? p.created_at)}
+                          {describeManualPayment(p.method, p.reference) && (
+                            <span className="block truncate text-2xs">
+                              {describeManualPayment(p.method, p.reference)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <StatusChip status={p.status} />
+                          {(() => {
+                            // What the card was charged. `amount_cents` alone is
+                            // the invoice amount, which is not the number on the
+                            // customer's statement when a surcharge applies.
+                            const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                            return (
+                              <span className="text-right">
+                                <span className="font-medium">
+                                  {fmtCents(
+                                    split?.chargedCents ?? p.amount_cents,
+                                    inv.currency ?? "usd",
+                                  )}
+                                </span>
+                                {split && (
+                                  <span className="block text-2xs font-normal text-muted-foreground">
+                                    {fmtCents(split.baseCents, inv.currency ?? "usd")} service +{" "}
+                                    {fmtCents(split.feeCents, inv.currency ?? "usd")} card fee
+                                  </span>
                                 )}
                               </span>
-                              {split && (
-                                <span className="block text-2xs font-normal text-muted-foreground">
-                                  {fmtCents(split.baseCents, inv.currency ?? "usd")} service +{" "}
-                                  {fmtCents(split.feeCents, inv.currency ?? "usd")} card fee
-                                </span>
-                              )}
-                            </span>
-                          );
-                        })()}
-                      </span>
+                            );
+                          })()}
+                        </span>
+                      </div>
+                      {/* Its own line under the payment, not squeezed into the
+                        row: at 320px the row already holds a date, a chip and
+                        a two-line amount. */}
+                      {(p.refunded_cents > 0 || canOfferRefund(role, p)) && (
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="min-w-0 text-2xs text-muted-foreground">
+                            {p.refunded_cents > 0
+                              ? `${fmtCents(p.refunded_cents, inv.currency ?? "usd")} refunded`
+                              : ""}
+                          </span>
+                          <RefundPaymentAction
+                            payment={p}
+                            invoiceId={inv.id}
+                            currency={inv.currency}
+                            customerName={client?.display_name}
+                            onRefunded={onChanged}
+                          />
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

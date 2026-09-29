@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { orgToday } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
+import { PHOTO_KINDS, PHOTO_KINDS_EMAILED, pickEmailedPhotos } from "@/lib/photo-kinds";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -65,7 +66,7 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, dogs(name, temperament)), zones(name), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, dogs(name, temperament)), zones(name), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -214,22 +215,31 @@ export const completeVisit = createServerFn({ method: "POST" })
         // server. The bucket is private: these are signed links, long enough
         // to outlive a slow inbox, from the service client because the tech's
         // own session cannot sign for an email it is not going to open.
+        //
+        // The latched-gate photo travels separately so the email can say what
+        // it is: a customer whose dog got out wants THAT picture, captioned,
+        // not a fourth "after" shot they have to recognise as a gate.
         let photoUrls: string[] = [];
+        let gatePhotoUrl: string | undefined;
         try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const { data: photos } = await supabaseAdmin
             .from("visit_photos")
-            .select("storage_path")
+            .select("storage_path, kind")
             .eq("visit_id", data.visitId)
-            .eq("kind", "completion")
-            .order("created_at")
-            .limit(3);
-          const paths = (photos ?? []).map((p: { storage_path: string }) => p.storage_path);
+            .in("kind", PHOTO_KINDS_EMAILED)
+            .order("created_at");
+          const { completion, gate } = pickEmailedPhotos(
+            (photos ?? []) as { storage_path: string; kind: string }[],
+          );
+          const paths = gate ? [...completion, gate] : completion;
           if (paths.length) {
             const { data: signed } = await supabaseAdmin.storage
               .from("visit-photos")
               .createSignedUrls(paths, 30 * 24 * 3600);
-            photoUrls = (signed ?? []).map((x) => x.signedUrl).filter((u): u is string => !!u);
+            const urlFor = new Map((signed ?? []).map((x) => [x.path, x.signedUrl] as const));
+            photoUrls = completion.map((p) => urlFor.get(p)).filter((u): u is string => !!u);
+            gatePhotoUrl = (gate && urlFor.get(gate)) || undefined;
           }
         } catch (e) {
           console.warn("visit-completed photos could not be signed", data.visitId, e);
@@ -249,6 +259,7 @@ export const completeVisit = createServerFn({ method: "POST" })
             visitDate: formatDay(v.scheduled_on),
             address,
             photoUrls,
+            gatePhotoUrl,
           },
         });
         // Best-effort push notification to the client (if they subscribed via portal).
@@ -403,7 +414,7 @@ export const recordVisitPhoto = createServerFn({ method: "POST" })
       .object({
         visitId: z.string().uuid(),
         storagePath: z.string().min(1),
-        kind: z.enum(["completion", "before", "issue"]).default("completion"),
+        kind: z.enum(PHOTO_KINDS).default("completion"),
       })
       .parse(d),
   )

@@ -1,4 +1,5 @@
 import { DEFAULT_ORG_TIMEZONE, orgLocalDay } from "@/lib/org-day";
+import { accountingLine } from "@/lib/invoice-lines";
 
 /**
  * Provider-specific accounting drivers.
@@ -101,8 +102,21 @@ type InvoicePayload = {
     primary_email: string | null;
     accounting_remote_id: string | null;
   } | null;
-  invoice_line_items: Array<{ description: string | null; amount_cents: number }>;
+  invoice_line_items: Array<{
+    description: string | null;
+    amount_cents: number;
+    quantity?: number | string | null;
+    unit_amount_cents?: number | null;
+  }>;
 };
+
+function centsFormatter(currency: string | null | undefined) {
+  const fmt = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: (currency ?? "USD").toUpperCase(),
+  });
+  return (c: number) => fmt.format(c / 100);
+}
 
 const QBO_ENV = process.env.QBO_ENVIRONMENT === "production" ? "production" : "sandbox";
 const QBO_BASE =
@@ -122,14 +136,21 @@ async function pushInvoiceQBO(conn: Conn, invoice: InvoicePayload): Promise<stri
   const customerRef = invoice.clients?.accounting_remote_id
     ?? (await ensureQBOCustomer(conn, invoice.clients?.display_name ?? "Client", invoice.clients?.primary_email));
 
-  const lines = (invoice.invoice_line_items ?? []).map((li) => ({
-    Amount: li.amount_cents / 100,
-    DetailType: "SalesItemLineDetail",
-    Description: li.description ?? "Service",
-    SalesItemLineDetail: {
-      ItemAccountRef: { value: conn.default_income_account },
-    },
-  }));
+  // Qty and UnitPrice go across when the product is exact; see accountingLine.
+  const money = centsFormatter(invoice.currency);
+  const lines = (invoice.invoice_line_items ?? []).map((li) => {
+    const l = accountingLine(li, money);
+    return {
+      Amount: l.amount,
+      DetailType: "SalesItemLineDetail",
+      Description: l.description,
+      SalesItemLineDetail: {
+        ItemAccountRef: { value: conn.default_income_account },
+        Qty: l.quantity,
+        UnitPrice: l.unitAmount,
+      },
+    };
+  });
 
   const res = await fetch(`${QBO_BASE}/v3/company/${conn.realm_id}/invoice?minorversion=73`, {
     method: "POST",
@@ -185,12 +206,16 @@ async function pushInvoiceXero(conn: Conn, invoice: InvoicePayload): Promise<str
     ? { ContactID: invoice.clients.accounting_remote_id }
     : { Name: invoice.clients?.display_name ?? "Client", EmailAddress: invoice.clients?.primary_email ?? undefined };
 
-  const lineItems = (invoice.invoice_line_items ?? []).map((li) => ({
-    Description: li.description ?? "Service",
-    Quantity: 1,
-    UnitAmount: li.amount_cents / 100,
-    AccountCode: conn.default_income_account,
-  }));
+  const money = centsFormatter(invoice.currency);
+  const lineItems = (invoice.invoice_line_items ?? []).map((li) => {
+    const l = accountingLine(li, money);
+    return {
+      Description: l.description,
+      Quantity: l.quantity,
+      UnitAmount: l.unitAmount,
+      AccountCode: conn.default_income_account,
+    };
+  });
 
   const res = await fetch("https://api.xero.com/api.xro/2.0/Invoices", {
     method: "POST",

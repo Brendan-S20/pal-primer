@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -200,7 +201,8 @@ export function VisitDetailDrawer({
   const p = v?.properties;
   const client = v?.clients;
   const dogs = data?.dogs ?? [];
-  const history = data?.history ?? [];
+  const recent = data?.recent ?? [];
+  const upcoming = data?.upcoming ?? [];
   const hazards = hazardList(p);
   const dir = directionsUrl(p);
   // There is no office_start_visit — starting a visit stamps a tech's arrival,
@@ -241,7 +243,7 @@ export function VisitDetailDrawer({
             )}
           </SheetTitle>
           <SheetDescription>
-            {v?.scheduled_on} {v?.zones?.name ? `· ${v.zones.name}` : ""}
+            {formatDay(v?.scheduled_on)} {v?.zones?.name ? `· ${v.zones.name}` : ""}
             {v?.staff?.display_name ? ` · ${v.staff.display_name}` : ""}
           </SheetDescription>
         </SheetHeader>
@@ -405,23 +407,12 @@ export function VisitDetailDrawer({
 
             <PhotosSection visitId={visitId!} photos={v.visit_photos ?? []} />
 
-            {history.length > 0 && (
-              <section>
-                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                  Other visits here
-                </h3>
-                <ul className="space-y-1 text-xs">
-                  {history.map((h: any) => (
-                    <li key={h.id} className="flex justify-between">
-                      <span>{formatDay(h.scheduled_on)}</span>
-                      <span className="capitalize text-muted-foreground">
-                        {h.status.replace("_", " ")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
+            {/* Past and future apart. One "Other visits here" list, newest
+                first, put next month's scheduled visits above last week's
+                completed one — see getVisitDetail for why it was mostly the
+                future. */}
+            <OtherVisits title="Recent visits" visits={recent} />
+            <OtherVisits title="Coming up" visits={upcoming} />
 
             {canReassign && (
               <section className="space-y-1 border-t pt-3">
@@ -546,6 +537,29 @@ export function VisitDetailDrawer({
   );
 }
 
+function OtherVisits({
+  title,
+  visits,
+}: {
+  title: string;
+  visits: Array<{ id: string; scheduled_on: string; status: string }>;
+}) {
+  if (visits.length === 0) return null;
+  return (
+    <section>
+      <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">{title}</h3>
+      <ul className="space-y-1 text-xs">
+        {visits.map((h) => (
+          <li key={h.id} className="flex justify-between gap-2">
+            <span>{formatDay(h.scheduled_on)}</span>
+            <span className="capitalize text-muted-foreground">{h.status.replace("_", " ")}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function DogsSection({
   propertyId,
   dogs,
@@ -658,7 +672,7 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
   const qc = useQueryClient();
   const actions = useOfflineVisitActions(visitId, undefined);
   const [uploading, setUploading] = useState(false);
-  const [kind, setKind] = useState<"before" | "completion" | "issue">("completion");
+  const [kind, setKind] = useState<PhotoKind>("completion");
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -684,7 +698,7 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
             <div key={ph.id} className="relative">
               <PhotoThumb path={ph.storage_path} />
               <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
-                {ph.kind}
+                {photoKindLabel(ph.kind)}
               </span>
             </div>
           ))}
@@ -694,12 +708,14 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
         <select
           className="h-9 rounded-md border bg-background px-2 text-sm"
           value={kind}
-          onChange={(e) => setKind(e.target.value as any)}
+          onChange={(e) => setKind(e.target.value as PhotoKind)}
           aria-label="Photo type"
         >
-          <option value="before">Before</option>
-          <option value="completion">Completion</option>
-          <option value="issue">Issue</option>
+          {PHOTO_KIND_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
         <input
           id={`photo-input-${visitId}`}

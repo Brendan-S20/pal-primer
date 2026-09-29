@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { downloadCsv } from "@/lib/csv";
 import { reportFileName, type ReportId } from "@/lib/cpa-reports";
+import { splitForImport } from "@/lib/quickbooks-import";
 import {
   getTaxReport,
   getTaxReportIndex,
@@ -91,6 +92,34 @@ function TaxReportsPage() {
 
   const download = (r: ReportResult) => {
     const headers = r.columns.map((c) => c.label);
+    if (r.importFile) {
+      // A file QuickBooks reads, so: the rows and nothing else, in files the
+      // importer accepts. A totals line or the definition rows below would be
+      // read as invoices with no number and fail the whole import.
+      const files = splitForImport(r.rows as Array<ReportRow & { invoiceNo: string }>);
+      const base = reportFileName(r.id, r.range.from, r.range.to, r.orgName);
+      files.forEach((rows, i) => {
+        const name =
+          files.length === 1
+            ? base
+            : base.replace(/\.csv$/, `_part-${i + 1}-of-${files.length}.csv`);
+        // Spaced out for the same reason as the whole-pack download below:
+        // browsers drop programmatic downloads that arrive back to back.
+        setTimeout(
+          () =>
+            downloadCsv(
+              name,
+              headers,
+              rows.map((row) => r.columns.map((c) => cellFor(row, c.key, c.type, true))),
+            ),
+          i * 400,
+        );
+      });
+      if (files.length > 1) {
+        toast.success(`${files.length} files: QuickBooks takes 100 invoices per import`);
+      }
+      return;
+    }
     const body: Array<Array<unknown>> = r.rows.map((row) =>
       r.columns.map((c) => cellFor(row, c.key, c.type, true)),
     );

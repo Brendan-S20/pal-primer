@@ -137,7 +137,7 @@ export const syncInvoice = createServerFn({ method: "POST" })
 
     const { data: invoice, error: invErr } = await supabase
       .from("invoices")
-      .select("*, clients(display_name, primary_email, accounting_remote_id), invoice_line_items(description, amount_cents)")
+      .select("*, clients(display_name, primary_email, accounting_remote_id), invoice_line_items(description, amount_cents, quantity, unit_amount_cents)")
       .eq("id", data.invoice_id)
       .single();
     if (invErr || !invoice) throw new Error(invErr?.message ?? "Invoice not found");

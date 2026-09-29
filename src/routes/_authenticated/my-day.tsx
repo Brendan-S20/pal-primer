@@ -42,7 +42,7 @@ import {
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
-import { sendVisitStatusSms } from "@/lib/messages.functions";
+import { sendOnMyWayMessage, sendVisitStatusSms } from "@/lib/messages.functions";
 import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
@@ -89,6 +89,8 @@ import {
   List as ListIcon,
   Map as MapIcon,
   TriangleAlert,
+  Ban,
+  ShieldCheck,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
@@ -97,11 +99,13 @@ import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useTabletTier } from "@/hooks/useTabletTier";
+import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { TimeClockCard } from "@/components/TimeClockCard";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -262,6 +266,13 @@ function MyDay() {
   const nextUpAboveTabBar = barThroughTablet
     ? "max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-lg:pb-0"
     : "max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:pb-0";
+  // And the NEXT UP bar starts clear of the docked sidebar — from wherever the
+  // sidebar docks, which for a tech is now `lg` (sidebarDocksFrom). A fixed
+  // `md:` here would leave a 256px gap on the left of a crew tablet, beside
+  // a sidebar that is no longer there.
+  const { docksFrom } = useSidebar();
+  const nextUpClearOfSidebar =
+    docksFrom === "lg" ? "lg:left-(--sidebar-width)" : "md:left-(--sidebar-width)";
 
   const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
@@ -906,7 +917,7 @@ function MyDay() {
              the bar starts slightly inboard of the rail; a small gap, never an
              overlap, and the navigation stays reachable either way. */
           data-bottom-chrome=""
-          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in md:left-(--sidebar-width) ${nextUpAboveTabBar}`}
+          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
         >
           <a
             href={`#visit-${nextUp.id}`}
@@ -921,7 +932,11 @@ function MyDay() {
                   activeVisit ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"
                 }`}
               >
-                {activeVisit ? t("myDay.inProgress") : t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
+                {activeVisit ? t("myDay.inProgress") : t("myDay.nextUp")}
+                {/* A visit the office added after routing has no stop number
+                    (sequence is null), and this printed "NEXT UP · #" with
+                    nothing after it. No number, no "#". */}
+                {nextUp.sequence != null && ` · #${nextUp.sequence}`}
               </div>
               <div className="truncate text-sm font-semibold">{nextUp.clients?.display_name}</div>
             </div>
@@ -1416,6 +1431,7 @@ function VisitCard({
 }) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
+  const onMyWayFn = useServerFn(sendOnMyWayMessage);
   const { role } = useMyRole();
   // Dispatcher schedules/routes but never performs field work — start/complete
   // is silently rejected server-side, which made those buttons look broken.
@@ -1483,7 +1499,7 @@ function VisitCard({
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
   const [noPhotoReason, setNoPhotoReason] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
+  const [photoKind, setPhotoKind] = useState<PhotoKind>("completion");
   // Which photo the in-app viewer is showing, and the signed URLs the
   // thumbnails have already fetched. Keyed by photo id rather than index so a
   // photo arriving mid-render cannot shift somebody else's URL onto it.
@@ -1584,9 +1600,34 @@ function VisitCard({
       toast.error(e.message);
     },
   });
+  // Text if it can go, email if not; the result says which.
+  const onMyWay = useMutation({
+    mutationFn: () => onMyWayFn({ data: { visitId: visit.id, trigger: "button" } }),
+    onSuccess: (r) => {
+      haptic("select");
+      toast.success(r.sent && r.channel === "email" ? "Emailed: on my way" : "Texted: on my way");
+    },
+    onError: (e: Error) => {
+      haptic("error");
+      toast.error(e.message);
+    },
+  });
+  // Navigate tells the customer too, once per visit, when the owner has
+  // turned it on (Settings → Automation). Fire-and-forget: the map opens
+  // whatever happens here, and offline it is not attempted at all, because an
+  // "on my way" that arrives when signal returns, after the visit, is worse
+  // than none.
+  const announceOnNavigate = () => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    onMyWayFn({ data: { visitId: visit.id, trigger: "navigate" } })
+      .then((r) => {
+        if (r.sent)
+          toast.success(r.channel === "email" ? "Emailed: on my way" : "Texted: on my way");
+      })
+      .catch((e) => console.warn("on-my-way on navigate failed", visit.id, e));
+  };
   const sms = useMutation({
-    mutationFn: (kind: "reminder" | "on_my_way" | "completed") =>
-      smsFn({ data: { visitId: visit.id, kind } }),
+    mutationFn: (kind: "reminder" | "completed") => smsFn({ data: { visitId: visit.id, kind } }),
     onSuccess: () => {
       haptic("select");
       toast.success("SMS sent");
@@ -1632,8 +1673,7 @@ function VisitCard({
   const photoOnFile = hasCompletionPhoto || hasQueuedCompletionPhoto;
   // The rule complete_visit enforces: a photo, or no photo required, or a
   // stated reason there is none.
-  const photoRuleMet =
-    photoOnFile || !requireCompletionPhoto || noPhotoReason.trim().length >= 3;
+  const photoRuleMet = photoOnFile || !requireCompletionPhoto || noPhotoReason.trim().length >= 3;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
@@ -1655,15 +1695,17 @@ function VisitCard({
     <div className="flex flex-wrap items-center gap-2">
       <select
         value={photoKind}
-        onChange={(e) => setPhotoKind(e.target.value as any)}
+        onChange={(e) => setPhotoKind(e.target.value as PhotoKind)}
         // MEASURED 2026-08-19: 40px, four short of the floor, on the
         // screen a technician uses outdoors with gloves on.
         className="h-11 rounded-md border bg-background px-3 text-sm"
         aria-label="Photo type"
       >
-        <option value="before">Before</option>
-        <option value="completion">Completion</option>
-        <option value="issue">Issue</option>
+        {PHOTO_KIND_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
       </select>
       <Button
         type="button"
@@ -1787,6 +1829,31 @@ function VisitCard({
 
           {!collapsed && (
             <>
+              {/* The customer's answer to "on my way": ENT, the dogs are in;
+                  DNE, do not enter. Above the dogs and the gate code, because
+                  it is what decides whether those get used at all. */}
+              {visit.gate_reply && !done && !skipped && (
+                <div
+                  role="status"
+                  className={`mt-2.5 flex items-start gap-2 rounded-lg border p-2.5 text-sm font-medium ${
+                    visit.gate_reply === "do_not_enter"
+                      ? "border-destructive/40 bg-destructive/10 text-destructive"
+                      : "border-emerald-600/30 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300"
+                  }`}
+                >
+                  {visit.gate_reply === "do_not_enter" ? (
+                    <Ban className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  ) : (
+                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="min-w-0">
+                    {visit.gate_reply === "do_not_enter"
+                      ? "Customer says do not enter"
+                      : "Customer says the dogs are secured"}
+                    {visit.gate_reply_at ? ` (${orgLocalTime(visit.gate_reply_at, tz)})` : ""}
+                  </span>
+                </div>
+              )}
               {/* Dogs on site (H1 safety gap): name + temperament belongs next
                   to hazards, on residential cards too, so the tech knows what
                   they're walking into. */}
@@ -1865,6 +1932,7 @@ function VisitCard({
               href={mapsUrl(p)}
               target="_blank"
               rel="noreferrer"
+              onClick={announceOnNavigate}
               className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold transition-colors hover:bg-accent active:bg-accent ${
                 visit.clients?.primary_phone ? "" : "col-span-2"
               }`}
@@ -1895,7 +1963,7 @@ function VisitCard({
                 onUrl={(u) => setPhotoUrl(ph.id, u)}
               />
               <span className="pointer-events-none absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
-                {ph.kind}
+                {photoKindLabel(ph.kind)}
               </span>
             </div>
           ))}
@@ -2146,27 +2214,27 @@ function VisitCard({
                   </Button>
                 )}
                 {visit.clients?.primary_phone && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-11 px-4 sm:h-8 sm:px-3"
-                      disabled={sms.isPending}
-                      onClick={() => sms.mutate("reminder")}
-                    >
-                      Text reminder
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-11 px-4 sm:h-8 sm:px-3"
-                      disabled={sms.isPending}
-                      onClick={() => sms.mutate("on_my_way")}
-                    >
-                      Text "on my way"
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-11 px-4 sm:h-8 sm:px-3"
+                    disabled={sms.isPending}
+                    onClick={() => sms.mutate("reminder")}
+                  >
+                    Text reminder
+                  </Button>
                 )}
+                {/* Not gated on a phone number: with no phone, or no texting
+                    consent, it goes by email. */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  disabled={onMyWay.isPending}
+                  onClick={() => onMyWay.mutate()}
+                >
+                  Send &ldquo;on my way&rdquo;
+                </Button>
               </div>
             </div>
           )}

@@ -67,15 +67,19 @@
 // `feeReversalCents` below and the `charge.refunded` branch of the Connect
 // webhook, which is the only place a refund is ever learned about.
 //
-// "Learned about" rather than "issued" for every refund a TENANT makes: those
-// go through the embedded Stripe payments component on the Payments page —
-// in-app, on their own connected account — and the webhook is how this side
-// finds out. That is why the refund ledger has to be correct about redelivery
-// and partials: nothing here initiates those, so nothing here knows one
-// happened until Stripe says so.
+// "Learned about" rather than "issued" for every refund a TENANT makes. Those
+// go either through the embedded Stripe payments component on the Payments
+// page, or through Refund on the invoice (`refundInvoicePayment`,
+// src/lib/refunds.server.ts) — both on the tenant's own connected account —
+// and in BOTH cases the webhook is how the ledger finds out. The invoice path
+// deliberately does not pass `refund_application_fee`, so that this
+// proportional reversal stays the one place our fee comes back; refunds.server.ts
+// says why. That is also why the refund ledger has to be correct about
+// redelivery and partials: the ledger is written from Stripe's word, never
+// from the request that asked for the refund.
 //
-// There is exactly ONE refund this app issues itself, and it is deliberately
-// not routed through `feeReversalCents`: `provisionSignup` in the Connect
+// There is exactly ONE refund this app issues that is deliberately not routed
+// through `feeReversalCents`: `provisionSignup` in the Connect
 // webhook, when a public signup's card settled and provisioning then failed.
 // That call passes `refund_application_fee: true`, so Stripe reverses the fee
 // in the same operation rather than the webhook learning about it afterwards —

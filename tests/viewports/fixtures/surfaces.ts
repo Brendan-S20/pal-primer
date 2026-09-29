@@ -5,6 +5,8 @@ import {
   LEAD_NAME,
   LONG_STAFF_NAME,
   ORG_ID,
+  REFUND_CLIENT_NAME,
+  REFUND_INVOICE_ID,
   QUOTE_ACCEPTED_ID,
   QUOTE_DRAFT_ID,
   QUOTE_PROSPECT_NAME,
@@ -156,6 +158,34 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByText("COLLECTED THIS MONTH").first(),
     proofLabel: "the invoice money row",
     expectsData: "Jean-Baptiste Moreau-Lachapelle",
+  },
+  {
+    // Added 2026-09-28 with Refund on the invoice. The proof is the Refund
+    // button itself, which only draws for a Stripe payment with money left on
+    // it — so a fixture that stopped reaching the payments list fails here
+    // rather than measuring the page without its one new control.
+    id: "/invoices/:id",
+    path: `/invoices/${REFUND_INVOICE_ID}`,
+    proof: (p) => p.getByRole("button", { name: "Refund", exact: true }).first(),
+    proofLabel: "the Refund button on the card payment",
+    expectsData: REFUND_CLIENT_NAME,
+  },
+  {
+    // The dialog, walked to its confirm step: the sentence with the exact
+    // dollars and a 39-character name in it, and the button that moves money.
+    // A 360px phone is where this has to fit, because that is where the owner
+    // is standing when a customer asks for their money back.
+    id: "/invoices/:id · refund confirm",
+    path: `/invoices/${REFUND_INVOICE_ID}`,
+    proof: (p) => p.getByRole("button", { name: "Refund", exact: true }).first(),
+    proofLabel: "the Refund button on the card payment",
+    expectsData: REFUND_CLIENT_NAME,
+    open: async (p) => {
+      await p.getByRole("button", { name: "Refund", exact: true }).first().click();
+      await p.getByRole("button", { name: "Review refund" }).click();
+    },
+    opened: (p) => p.getByRole("button", { name: "Refund $123.60" }),
+    openedLabel: "the confirm step's Refund $123.60 button",
   },
   {
     id: "/settings/users",

@@ -610,6 +610,8 @@ const BASE_STUBS: Record<string, Stub> = {
     notify_sms_visit_reminder: true,
     notify_sms_on_my_way: true,
     notify_sms_visit_completed: false,
+    // On, so the "On my way" card is measured in its checked state.
+    on_my_way_on_navigate: true,
   },
   getEmailSettings: {
     notify_email_invoice_sent: true,
@@ -619,6 +621,7 @@ const BASE_STUBS: Record<string, Stub> = {
     notify_email_welcome: true,
     notify_email_overdue: true,
     notify_email_visit_reminder: true,
+    notify_email_on_my_way: true,
     notify_email_quote_sent: true,
   },
 
@@ -709,6 +712,9 @@ const BASE_STUBS: Record<string, Stub> = {
   listClientMessages: { messages: [], rows: [] },
   listAddonServices: { services: [], addons: [], rows: [] },
   listInvoices: fx.INVOICES,
+  // The full invoice page and its Refund dialog. See REFUND_INVOICE.
+  getInvoice: fx.REFUND_INVOICE,
+  getPaymentRefundQuote: fx.REFUND_QUOTE,
   getCollectedThisMonth: { grossCents: 1_301_900, refundsCents: 63_500, netCents: 1_238_400 },
 
   // ── Address autocomplete (seven fields were wired to it today) ──────────

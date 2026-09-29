@@ -14,7 +14,27 @@ import {
   receivedAtInstant,
   receivedOnProblem,
 } from "@/lib/manual-payments";
-import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
+import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { addDaysToDay } from "@/lib/reclean";
+import { QUANTITY_MAX, lineTotalCents } from "@/lib/invoice-lines";
+
+/** Each payment row with how much of it has been refunded, from the reversal
+ *  ledger — so the invoice can say "$30.00 refunded" and hide the Refund button
+ *  on a payment that has nothing left. See refundedCentsByPayment. */
+async function withRefunded<P extends { id: string }>(
+  supabase: unknown,
+  orgId: string,
+  payments: P[] | null | undefined,
+): Promise<(P & { refunded_cents: number })[]> {
+  const rows = payments ?? [];
+  const { refundedCentsByPayment } = await import("@/lib/refunds.server");
+  const refunded = await refundedCentsByPayment(
+    supabase,
+    orgId,
+    rows.map((p) => p.id),
+  );
+  return rows.map((p) => ({ ...p, refunded_cents: refunded.get(p.id) ?? 0 }));
+}
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -64,7 +84,7 @@ export const getInvoice = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
     const res = await supabase
       .from("invoices")
       .select("*, clients(display_name, primary_email)")
@@ -91,7 +111,9 @@ export const getInvoice = createServerFn({ method: "GET" })
     }
     const { data: items, error: iErr } = await supabase
       .from("invoice_line_items")
-      .select("id, description, amount_cents, visit_id, subscription_id")
+      .select(
+        "id, description, amount_cents, quantity, unit_amount_cents, visit_id, subscription_id",
+      )
       .eq("invoice_id", data.id)
       .order("created_at");
     if (iErr) throw new Error(iErr.message);
@@ -106,7 +128,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       )
       .eq("invoice_id", data.id)
       .order("created_at", { ascending: false });
-    return { invoice, items: items ?? [], payments: payments ?? [] };
+    return { invoice, items: items ?? [], payments: await withRefunded(supabase, orgId, payments) };
   });
 
 export const generateInvoicesForOrg = createServerFn({ method: "POST" })
@@ -162,10 +184,27 @@ const manualInvoiceSchema = z.object({
   clientId: z.string().uuid(),
   items: z
     .array(
-      z.object({
-        description: z.string().min(1).max(300),
-        amountCents: z.number().int().min(1).max(10_000_000),
-      }),
+      z
+        .object({
+          description: z.string().min(1).max(300),
+          amountCents: z.number().int().min(1).max(10_000_000),
+          // Both or neither: a line is either only a total, or "3 × $15.00"
+          // whose total is the product. The database refuses a mismatch
+          // (invoice_line_items_total_is_quantity_times_unit); refusing it here
+          // says which line, before anything is written.
+          quantity: z.number().positive().max(QUANTITY_MAX).optional(),
+          unitAmountCents: z.number().int().min(0).max(10_000_000).optional(),
+        })
+        .refine((i) => (i.quantity === undefined) === (i.unitAmountCents === undefined), {
+          message: "A line with a quantity needs a unit price, and the other way round",
+        })
+        .refine(
+          (i) =>
+            i.quantity === undefined ||
+            (Math.abs(i.quantity * 100 - Math.round(i.quantity * 100)) < 1e-6 &&
+              lineTotalCents(i.quantity, i.unitAmountCents!) === i.amountCents),
+          { message: "A line's total must be its quantity times its unit price" },
+        ),
     )
     .min(1)
     .max(25),
@@ -189,16 +228,19 @@ export const createManualInvoice = createServerFn({ method: "POST" })
 
     const total = data.items.reduce((s, i) => s + i.amountCents, 0);
     const nowIso = new Date().toISOString();
-    const today = nowIso.slice(0, 10);
     // Due date = issued date + the org's payment terms. (A DB trigger also
     // fills due_on for paths that don't set it, e.g. the generate RPCs.)
+    //
+    // Both dates are the ORG's day. They were the UTC day, so an invoice made
+    // at 8 PM in California was dated tomorrow and due a day late.
     const { data: org } = await supabase
       .from("organizations")
-      .select("invoice_net_days")
+      .select("invoice_net_days, timezone")
       .eq("id", orgId)
       .single();
+    const today = orgToday(org?.timezone || DEFAULT_ORG_TIMEZONE);
     const netDays = org?.invoice_net_days ?? 15;
-    const dueOn = new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
+    const dueOn = addDaysToDay(today, netDays);
     const { data: inv, error: iErr } = await supabase
       .from("invoices")
       .insert({
@@ -223,6 +265,9 @@ export const createManualInvoice = createServerFn({ method: "POST" })
         invoice_id: inv.id,
         description: i.description,
         amount_cents: i.amountCents,
+        ...(i.quantity !== undefined
+          ? { quantity: i.quantity, unit_amount_cents: i.unitAmountCents! }
+          : {}),
       })),
     );
     if (lErr) {
@@ -1152,7 +1197,9 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
         .single(),
       supabase
         .from("invoice_line_items")
-        .select("id, description, amount_cents, visit_id, subscription_id, created_at")
+        .select(
+          "id, description, amount_cents, quantity, unit_amount_cents, visit_id, subscription_id, created_at",
+        )
         .eq("invoice_id", data.invoiceId)
         .order("created_at"),
       supabase
@@ -1183,7 +1230,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       invoice: inv,
       client: clients ?? null,
       lineItems: lines ?? [],
-      payments: pays ?? [],
+      payments: await withRefunded(supabase, orgId, pays),
       /** Whether a card can be taken at all. Without a connected Stripe
        *  account every card path fails, and the office should be pointed at
        *  Record payment instead of shown a red error. */
@@ -1299,7 +1346,7 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
     }
     const { data: items } = await sb
       .from("invoice_line_items")
-      .select("id, description, amount_cents")
+      .select("id, description, amount_cents, quantity, unit_amount_cents")
       .eq("invoice_id", invoice.id)
       .order("created_at");
     const org = Array.isArray(invoice.organizations)
@@ -1334,6 +1381,8 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
         id: i.id as string,
         description: i.description as string,
         amountCents: i.amount_cents as number,
+        quantity: i.quantity as number,
+        unitAmountCents: (i.unit_amount_cents ?? null) as number | null,
       })),
     };
   });

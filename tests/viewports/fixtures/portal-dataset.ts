@@ -349,11 +349,17 @@ export const PUBLIC_INVOICE = {
       id: "88888888-0000-4000-8000-000000008001",
       description: "Weekly yard service — 4 visits",
       amountCents: 9600,
+      quantity: 1,
+      unitAmountCents: null,
     },
     {
       id: "88888888-0000-4000-8000-000000008002",
       description: "Deodorising treatment, every visit",
       amountCents: 3600,
+      // Itemized, so the pay page draws its "4 × $9.00" line and the sweep
+      // measures the taller row rather than only the one-line case.
+      quantity: 4,
+      unitAmountCents: 900,
     },
     {
       id: "88888888-0000-4000-8000-000000008003",
@@ -361,6 +367,8 @@ export const PUBLIC_INVOICE = {
       // right-aligned amount, and only a long one pushes on the amount.
       description: "Seasonal deep clean — first visit after the autumn leaf drop, back yard only",
       amountCents: -300,
+      quantity: 1,
+      unitAmountCents: null,
     },
   ],
 };

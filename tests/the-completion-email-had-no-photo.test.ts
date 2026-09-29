@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
+import { PHOTO_KINDS_EMAILED } from "@/lib/photo-kinds";
 
 // The "Visit complete" email told a customer their visit happened "on
 // 2026-09-28", the database's spelling of the date, and its template has
@@ -23,7 +24,10 @@ describe("the sender", () => {
   it("passes the completion photos, signed, from the private bucket", () => {
     expect(templateData).toMatch(/photoUrls/);
     expect(sender).toMatch(/\.from\("visit-photos"\)\s*\.createSignedUrls\(paths,/);
-    expect(sender).toMatch(/\.eq\("kind", "completion"\)/);
+    // Since the gate-latched kind, the query asks for completion AND gate
+    // photos and pickEmailedPhotos sorts them into the two template fields.
+    expect(sender).toMatch(/\.in\("kind", PHOTO_KINDS_EMAILED\)/);
+    expect(PHOTO_KINDS_EMAILED).toContain("completion");
   });
 });
 
@@ -38,5 +42,16 @@ describe("the template", () => {
     );
     expect(html).toContain("https://example.com/signed/photo-1.jpg");
     expect(html).toContain("on Mon, Sep 28");
+  });
+
+  it("captions the gate photo on its own, and says nothing of a gate without one", async () => {
+    const Tpl = TEMPLATES["visit-completed"].component;
+    const withGate = await render(
+      React.createElement(Tpl, { gatePhotoUrl: "https://example.com/signed/gate.jpg" }),
+    );
+    expect(withGate).toContain("https://example.com/signed/gate.jpg");
+    expect(withGate).toContain("Your gate, latched behind us");
+    const without = await render(React.createElement(Tpl, { photoUrls: [] }));
+    expect(without).not.toContain("gate");
   });
 });

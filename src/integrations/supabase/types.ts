@@ -2221,7 +2221,9 @@ export type Database = {
           description: string
           id: string
           invoice_id: string
+          quantity: number
           subscription_id: string | null
+          unit_amount_cents: number | null
           visit_id: string | null
         }
         Insert: {
@@ -2230,7 +2232,9 @@ export type Database = {
           description: string
           id?: string
           invoice_id: string
+          quantity?: number
           subscription_id?: string | null
+          unit_amount_cents?: number | null
           visit_id?: string | null
         }
         Update: {
@@ -2239,7 +2243,9 @@ export type Database = {
           description?: string
           id?: string
           invoice_id?: string
+          quantity?: number
           subscription_id?: string | null
+          unit_amount_cents?: number | null
           visit_id?: string | null
         }
         Relationships: [
@@ -2929,6 +2935,8 @@ export type Database = {
           work_days: number[]
           workday_end: string
           workday_start: string
+          notify_email_on_my_way: boolean
+          on_my_way_on_navigate: boolean
         }
         Insert: {
           active_client_count?: number
@@ -3057,6 +3065,8 @@ export type Database = {
           work_days?: number[]
           workday_end?: string
           workday_start?: string
+          notify_email_on_my_way?: boolean
+          on_my_way_on_navigate?: boolean
         }
         Update: {
           active_client_count?: number
@@ -3185,6 +3195,8 @@ export type Database = {
           work_days?: number[]
           workday_end?: string
           workday_start?: string
+          notify_email_on_my_way?: boolean
+          on_my_way_on_navigate?: boolean
         }
         Relationships: [
           {
@@ -5663,6 +5675,9 @@ export type Database = {
           weather_note: string | null
           window_violated: boolean
           zone_id: string | null
+          on_my_way_sent_at: string | null
+          gate_reply: string | null
+          gate_reply_at: string | null
         }
         Insert: {
           assigned_staff_id?: string | null
@@ -5701,6 +5716,9 @@ export type Database = {
           weather_note?: string | null
           window_violated?: boolean
           zone_id?: string | null
+          on_my_way_sent_at?: string | null
+          gate_reply?: string | null
+          gate_reply_at?: string | null
         }
         Update: {
           assigned_staff_id?: string | null
@@ -5739,6 +5757,9 @@ export type Database = {
           weather_note?: string | null
           window_violated?: boolean
           zone_id?: string | null
+          on_my_way_sent_at?: string | null
+          gate_reply?: string | null
+          gate_reply_at?: string | null
         }
         Relationships: [
           {

@@ -194,7 +194,9 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     z
       .object({
         visitId: z.string().uuid(),
-        kind: z.enum(["reminder", "on_my_way", "completed"]),
+        // "on my way" moved to sendOnMyWayMessage, which names the tech,
+        // gives an arrival window, and falls back to email.
+        kind: z.enum(["reminder", "completed"]),
       })
       .parse(d),
   )
@@ -232,9 +234,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     const body =
       data.kind === "reminder"
         ? `Hi ${name}, this is a reminder your visit is scheduled for ${day}. Reply STOP to opt out.`
-        : data.kind === "on_my_way"
-          ? `Hi ${name}, your tech is on the way for today's visit. Reply STOP to opt out.`
-          : `Hi ${name}, your visit is complete for ${day}. Thanks! Reply STOP to opt out.`;
+        : `Hi ${name}, your visit is complete for ${day}. Thanks! Reply STOP to opt out.`;
 
     // Reuse sendSmsToClient path by inlining its logic isn't trivial; call directly.
     const { data: client, error: cErr } = await supabase
@@ -272,7 +272,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       );
     const { data: org } = await supabase
       .from("organizations")
-      .select("sms_from_number, notify_sms_visit_reminder, notify_sms_on_my_way, notify_sms_visit_completed")
+      .select("sms_from_number, notify_sms_visit_reminder, notify_sms_visit_completed")
       .eq("id", client.organization_id)
       .single();
     if (!org) throw new Error("Organization not found");
@@ -283,9 +283,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     if (!notifyFrom)
       throw new Error("No SMS sender is configured for notifications. Add one in Settings → SMS.");
     const kindEnabled =
-      data.kind === "reminder" ? org.notify_sms_visit_reminder :
-      data.kind === "on_my_way" ? org.notify_sms_on_my_way :
-      org.notify_sms_visit_completed;
+      data.kind === "reminder" ? org.notify_sms_visit_reminder : org.notify_sms_visit_completed;
     if (!kindEnabled) throw new Error("This notification is turned off in Settings → Automation.");
     const { data: staff } = await supabase
       .from("staff")
@@ -321,4 +319,34 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     });
     if (err) throw new Error(err);
     return { ok: true };
+  });
+
+/** "On my way", by text when it can go and by email when it cannot. The
+ *  button on a stop sends it every time it is pressed; tapping Navigate sends
+ *  it once per visit, and only when the owner has turned that on. */
+export const sendOnMyWayMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        trigger: z.enum(["button", "navigate"]),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { sendOnMyWay } = await import("@/lib/on-my-way.server");
+    const r = await sendOnMyWay({
+      supabase: context.supabase,
+      userId: context.userId,
+      visitId: data.visitId,
+      trigger: data.trigger,
+    });
+    // The button is a person asking for it to be sent, so a refusal is
+    // theirs to see. Navigate is a side effect of opening a map and says
+    // nothing when it declines.
+    if (!r.sent && data.trigger === "button") {
+      throw new Error(`"On my way" was not sent (${r.reason}).`);
+    }
+    return r;
   });

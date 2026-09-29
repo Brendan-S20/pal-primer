@@ -522,7 +522,7 @@ function MaybeConnectProvider({
   );
 }
 
-function NotOnAPhone({ what }: { what: string }) {
+function NotOnAPhone({ what, refunds }: { what: string; refunds?: boolean }) {
   return (
     <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
       <p className="font-medium text-foreground">{what} needs a bigger screen</p>
@@ -540,6 +540,16 @@ function NotOnAPhone({ what }: { what: string }) {
         </Link>{" "}
         shows every charge with controls built for touch.
       </p>
+      {/* Said outright on the Activity tab, because Stripe's panel used to be
+          the ONLY place a refund could be made, and "open this on a computer"
+          read as "you cannot refund anyone from here". You can: from the
+          invoice (refundInvoicePayment). */}
+      {refunds && (
+        <p className="mt-2">
+          To refund a customer, open their invoice and press{" "}
+          <span className="font-medium text-foreground">Refund</span> on the payment.
+        </p>
+      )}
     </div>
   );
 }
@@ -689,7 +699,7 @@ function ConnectDashboard({
 
             <TabsContent value="activity" className="mt-4">
               {isTouch ? (
-                <NotOnAPhone what="Payments" />
+                <NotOnAPhone what="Payments" refunds />
               ) : (
                 <ConnectCard
                   title="Payments"
