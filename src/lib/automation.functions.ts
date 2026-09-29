@@ -18,7 +18,7 @@ export const getAutomationSettings = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("organizations")
       .select(
-        "auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, invoice_net_days, invoice_grace_days, overdue_reminders_enabled, overdue_reminder_days, dunning_retry_days, dunning_pause_after_failures, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, notify_sms_payment_failed, notify_sms_visit_reminder, notify_sms_on_my_way, notify_sms_visit_completed",
+        "auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, invoice_net_days, invoice_grace_days, overdue_reminders_enabled, overdue_reminder_days, dunning_retry_days, dunning_pause_after_failures, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, notify_sms_payment_failed, notify_sms_visit_reminder, notify_sms_on_my_way, notify_sms_visit_completed, on_my_way_on_navigate",
       )
       .eq("id", orgId)
       .single();
@@ -54,6 +54,7 @@ const updateSchema = z.object({
   notifySmsPaymentFailed: z.boolean().optional(),
   notifySmsVisitReminder: z.boolean().optional(),
   notifySmsOnMyWay: z.boolean().optional(),
+  onMyWayOnNavigate: z.boolean().optional(),
   notifySmsVisitCompleted: z.boolean().optional(),
 });
 

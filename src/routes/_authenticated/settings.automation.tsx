@@ -38,6 +38,7 @@ function AutomationPage() {
   const [nVisitRem, setNVisitRem] = useState<boolean>(data.notify_sms_visit_reminder ?? true);
   const [nOnWay, setNOnWay] = useState<boolean>(data.notify_sms_on_my_way ?? true);
   const [nDone, setNDone] = useState<boolean>(data.notify_sms_visit_completed ?? true);
+  const [onWayNav, setOnWayNav] = useState<boolean>(data.on_my_way_on_navigate ?? false);
 
   useEffect(() => {
     setAutoGen(data.auto_generate_visits);
@@ -53,6 +54,7 @@ function AutomationPage() {
     setNVisitRem(data.notify_sms_visit_reminder ?? true);
     setNOnWay(data.notify_sms_on_my_way ?? true);
     setNDone(data.notify_sms_visit_completed ?? true);
+    setOnWayNav(data.on_my_way_on_navigate ?? false);
   }, [data]);
 
   const mut = useMutation({
@@ -77,6 +79,7 @@ function AutomationPage() {
           notifySmsVisitReminder: nVisitRem,
           notifySmsOnMyWay: nOnWay,
           notifySmsVisitCompleted: nDone,
+          onMyWayOnNavigate: onWayNav,
         },
       });
     },
@@ -226,6 +229,27 @@ function AutomationPage() {
               The 1st of each selected month, active clients get an email/SMS offering a discounted seasonal deep-clean add-on.
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>On my way</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <label className="flex min-h-11 items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
+            <span className="min-w-0">
+              Tell the customer when a tech taps Navigate
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Once per visit, for today&apos;s stops, with the tech&apos;s first name and the
+                arrival window. By text when the client can be texted, otherwise by email.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="shrink-0"
+              checked={onWayNav}
+              onChange={(e) => setOnWayNav(e.target.checked)}
+            />
+          </label>
         </CardContent>
       </Card>
 

@@ -10,6 +10,7 @@ import { template as winBackTemplate } from "./win-back";
 import { template as weeklyDigestTemplate } from "./weekly-digest";
 import { template as reviewRequestTemplate } from "./review-request";
 import { template as visitReminderTemplate } from "./visit-reminder";
+import { template as onMyWayTemplate } from "./on-my-way";
 
 export interface TemplateEntry {
   component: ComponentType<any>;
@@ -31,4 +32,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   "weekly-digest": weeklyDigestTemplate,
   "review-request": reviewRequestTemplate,
   "visit-reminder": visitReminderTemplate,
+  "on-my-way": onMyWayTemplate,
 };
