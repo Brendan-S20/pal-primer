@@ -143,7 +143,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // quotes_guard_answer, which keeps a sent quote as sent and lets only the
     // customer's link accept or decline it. Both carry their own REVOKE from
     // PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(39);
+    //
+    // 39 -> 40 on 2026-09-29 (20260929090000, expenses): expenses_before_write,
+    // which keeps an expense's staff inside its tenant and prices a mileage row
+    // at the rate stored on it. REVOKEd from PUBLIC, anon and authenticated in
+    // the same file.
+    expect(triggerFunctions().size).toBe(40);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

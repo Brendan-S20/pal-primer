@@ -1117,6 +1117,44 @@ async function buildReferralRewards(supabase: any, ctx: OrgContext, from: string
   };
 }
 
+/** Expenses by category, by month. `spent_on` is already a day on the org's
+ *  calendar (a DATE, chosen on the org's today), so the window is exact and
+ *  needs none of the UTC padding the timestamp reports do. Read as the caller:
+ *  the expenses policy gives view_financials the whole organization, which is
+ *  the same gate this pack already sits behind. */
+async function buildExpensesByCategory(supabase: any, ctx: OrgContext, from: string, to: string) {
+  const { expensesByCategoryByMonth, expenseReportRow, expenseReportTotals } = await import(
+    "@/lib/expenses"
+  );
+  const rows = await fetchAll<{ id: string; spent_on: string; category: string; amount_cents: number }>(
+    (a, b) =>
+      supabase
+        .from("expenses")
+        .select("id, spent_on, category, amount_cents")
+        .eq("organization_id", ctx.orgId)
+        .gte("spent_on", from)
+        .lte("spent_on", to)
+        .order("spent_on")
+        .order("id")
+        .range(a, b),
+  );
+  const months = expensesByCategoryByMonth(rows, from, to, monthsBetween(from, to));
+  const mileageMonths = months.filter((m) => m.byCategory.mileage > 0).length;
+  return {
+    rows: months.map((m) => expenseReportRow(m, monthLabel(m.month)) as ReportRow),
+    totals: expenseReportTotals(months) as ReportRow,
+    caveats: [
+      "These are the expenses logged in HoundStack by the office and by the team from the field. Anything paid and never logged here is not in this sheet.",
+      "Stripe's processing fees and payroll are not tracked here; take them from your Stripe payout statements and your payroll provider.",
+      ...(mileageMonths > 0
+        ? [
+            "Mileage is priced at the rate stored on each trip when it was logged. If you claim actual vehicle costs instead of the standard rate, use the fuel and vehicle-maintenance columns and leave mileage out, or the other way round; not both for the same vehicle.",
+          ]
+        : []),
+    ],
+  };
+}
+
 // ── Public surface ─────────────────────────────────────────────────────────
 
 export type TaxReportIndex = {
@@ -1164,7 +1202,7 @@ export const getTaxReportIndex = createServerFn({ method: "GET" })
         })),
       gaps: [
         "Sales tax is not tracked. HoundStack does not hold a tax rate or a taxable flag on invoices, so no sales-tax return can be produced from this data.",
-        "Expenses are not tracked. These reports cover income and receivables only. Payroll, fuel, disposal fees and Stripe's processing fees all come from elsewhere.",
+        "Expenses are tracked only as far as they are logged in HoundStack: fuel, disposal fees, supplies, equipment, vehicle maintenance, mileage and other, in the expenses report. Payroll and Stripe's processing fees are not tracked and come from elsewhere.",
         "Stripe processing fees are netted out before payout and never recorded here, so gross card volume in HoundStack will exceed what actually reached the bank.",
       ],
     };
@@ -1233,6 +1271,9 @@ export const getTaxReport = createServerFn({ method: "POST" })
         break;
       case "referral_rewards":
         built = await buildReferralRewards(supabase, ctx, from, to);
+        break;
+      case "expenses_by_category":
+        built = await buildExpensesByCategory(supabase, ctx, from, to);
         break;
       case "quickbooks_invoices":
         built = await buildQuickbooksInvoices(supabase, ctx, from, to);

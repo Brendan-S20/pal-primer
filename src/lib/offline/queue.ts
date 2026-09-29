@@ -25,6 +25,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { isLifecycleKind, lifecycleCollision } from "./queued-visit-state";
 import { clockCollision, isClockKind } from "./queued-clock-state";
 import type { PhotoKind } from "@/lib/photo-kinds";
+import type { ExpenseCategory } from "@/lib/expenses";
 
 /** Fields every queued action carries, whatever its kind. */
 type ActionBase = {
@@ -89,7 +90,42 @@ export type PendingAction =
   // Replay passes `ts` as the tap time, exactly as start/complete do: a tech
   // who clocks out in a dead zone at 4:10 and gets signal at 4:55 worked until
   // 4:10. See queued-clock-state.ts for what the screen shows meanwhile.
-  | ({ kind: "clock_in" | "clock_out"; visitId?: undefined } & ActionBase);
+  | ({ kind: "clock_in" | "clock_out"; visitId?: undefined } & ActionBase)
+  // An expense logged from My Day -- a dump fee, a tank of fuel -- with its
+  // receipt photo. Not about a visit either. Rides the same queue and the same
+  // photo store as a completion photo, so a tech at the dump with no signal
+  // loses neither the amount nor the receipt. See sync.ts for the replay.
+  | ({
+      kind: "expense";
+      visitId?: undefined;
+      /** Minted on the device. It is the row's primary key AND the receipt's
+       *  object name, so a replay of a request that had in fact landed is the
+       *  same row and the same file, never a second of either. */
+      expenseId: string;
+      /** Cached so the receipt can be filed with no network read. */
+      organizationId: string;
+      staffId: string;
+      fields: QueuedExpenseFields;
+      /** The receipt in the `photos` store, when one was taken. */
+      photoId?: string;
+    } & ActionBase);
+
+/** What the tech typed. The amount of a mileage expense is priced by the
+ *  database from the org's rate when it arrives, so only the miles travel. */
+export type QueuedExpenseFields = {
+  spentOn: string;
+  category: ExpenseCategory;
+  amountCents?: number;
+  miles?: number;
+  vendor?: string;
+  note?: string;
+};
+
+/** The photo blob an action points at, whichever kind of action it is. */
+export function photoIdOf(a: PendingAction): string | undefined {
+  if (a.kind === "photo" || a.kind === "expense") return a.photoId;
+  return undefined;
+}
 
 interface OfflineDB extends DBSchema {
   actions: {
@@ -242,7 +278,8 @@ export async function clearQueueForUser(userId: string): Promise<void> {
   const actions = await tx.objectStore("actions").getAll();
   for (const a of actions) {
     if (a.userId !== userId) continue;
-    if (a.kind === "photo") await tx.objectStore("photos").delete(a.photoId);
+    const photoId = photoIdOf(a);
+    if (photoId) await tx.objectStore("photos").delete(photoId);
     await tx.objectStore("actions").delete(a.id);
   }
   await tx.done;

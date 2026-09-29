@@ -27,6 +27,7 @@ import {
   Building2,
   Package,
   Timer,
+  ReceiptText,
   Shield,
   Dna,
   ClipboardCheck,
@@ -101,6 +102,7 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // the people who open it are the owner and the office manager; the
       // techs' half is the card at the top of My day.
       { title: "Timesheets", url: "/timesheets", icon: Timer },
+      { title: "Expenses", url: "/expenses", icon: ReceiptText },
     ],
   },
   {

@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { startVisit, completeVisit, skipVisit, recordVisitPhoto } from "@/lib/my-day.functions";
 import { logStationService } from "@/lib/stations.functions";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
+import { createExpense } from "@/lib/expenses.functions";
 import { flushThenClearAndSignOut } from "@/lib/offline/sign-out";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -33,6 +34,7 @@ export function useOfflineSignOut() {
   const stationFn = useServerFn(logStationService);
   const clockInFn = useServerFn(clockIn);
   const clockOutFn = useServerFn(clockOut);
+  const expenseFn = useServerFn(createExpense);
   const callers = useMemo(
     () => ({
       startVisit: startFn,
@@ -42,8 +44,9 @@ export function useOfflineSignOut() {
       logStationService: stationFn,
       clockIn: clockInFn,
       clockOut: clockOutFn,
+      createExpense: expenseFn,
     }),
-    [startFn, completeFn, skipFn, photoFn, stationFn, clockInFn, clockOutFn],
+    [startFn, completeFn, skipFn, photoFn, stationFn, clockInFn, clockOutFn, expenseFn],
   );
 
   const { confirm, dialog } = useConfirmDialog();

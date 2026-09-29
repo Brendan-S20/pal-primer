@@ -66,6 +66,7 @@ export type ReportId =
   | "stripe_1099k"
   | "franchise_settlements"
   | "referral_rewards"
+  | "expenses_by_category"
   | "quickbooks_invoices";
 
 export type ReportDef = {
@@ -245,6 +246,26 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
     ],
     note: "Only rows with a paid date are income in this period. Earned-but-unpaid rewards are listed so the balance is visible, not because they are taxable yet.",
   },
+  expenses_by_category: {
+    id: "expenses_by_category",
+    title: "Expenses by category, by month",
+    purpose:
+      "What the business logged as spent each month: fuel, disposal fees, bags and supplies, equipment, vehicle maintenance, mileage and other. Supports the expense lines of a Schedule C.",
+    basis: "cash",
+    columns: [
+      text("month", "Month"),
+      money("fuelCents", "Fuel"),
+      money("disposalCents", "Disposal fees"),
+      money("suppliesCents", "Bags & supplies"),
+      money("equipmentCents", "Equipment"),
+      money("vehicleMaintenanceCents", "Vehicle maintenance"),
+      money("mileageCents", "Mileage"),
+      money("otherCents", "Other"),
+      money("totalCents", "Total"),
+      num("expenseCount", "Expenses"),
+    ],
+    note: "Dated by the day each expense was paid, on the organization's own calendar. Mileage is miles driven at the rate the organization had set when each trip was logged, and is kept at that rate: changing the rate later does not reprice a trip. Mileage at the standard rate is generally claimed INSTEAD of actual fuel and vehicle-maintenance costs for the same vehicle, not as well as them, so check which method applies before adding both columns to one return.",
+  },
   quickbooks_invoices: {
     id: "quickbooks_invoices",
     title: "Invoices for QuickBooks import",
@@ -277,6 +298,7 @@ export const REPORT_ORDER: ReportId[] = [
   "stripe_1099k",
   "franchise_settlements",
   "referral_rewards",
+  "expenses_by_category",
   "quickbooks_invoices",
 ];
 

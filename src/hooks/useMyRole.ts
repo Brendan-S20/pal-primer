@@ -57,6 +57,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // manage_users -- the permission that also lets a person see and change the
   // team, and the one the time_entries policy asks.
   "/timesheets": ["owner", "office_manager"],
+  // Everyone, because the page is two pages: the office (view_financials)
+  // sees and edits the org's expenses, anybody else only their own. That
+  // split is the expenses table's RLS, not this list.
+  "/expenses": ["owner", "office_manager", "dispatcher", "tech"],
   "/invoices": ["owner", "office_manager"],
   // Same audience as the server gate, manage_client_billing, which is the
   // permission manual invoices use.
