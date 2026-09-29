@@ -184,8 +184,8 @@ export const SURFACES: Surface[] = [
       await p.getByRole("button", { name: "Refund", exact: true }).first().click();
       await p.getByRole("button", { name: "Review refund" }).click();
     },
-    opened: (p) => p.getByRole("button", { name: "Refund $123.60" }),
-    openedLabel: "the confirm step's Refund $123.60 button",
+    opened: (p) => p.getByRole("button", { name: "Refund $147.60" }),
+    openedLabel: "the confirm step's Refund $147.60 button",
   },
   {
     id: "/settings/users",

@@ -170,7 +170,9 @@ describe("the webhook passes both numbers", () => {
     // Without surcharge_cents in the select the split has nothing to divide by
     // and silently degrades to the old behaviour.
     expect(src).toMatch(/select\(\s*$|surcharge_cents/m);
-    expect(src).toMatch(/"id, organization_id, amount_cents, surcharge_cents, status"/);
+    // tip_cents too: a tip is inside the same charge and was never revenue
+    // either (a-customer-could-not-leave-a-tip).
+    expect(src).toMatch(/"id, organization_id, amount_cents, surcharge_cents, tip_cents, status"/);
   });
 
   it("leaves a chargeback whole", () => {

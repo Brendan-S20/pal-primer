@@ -2888,6 +2888,7 @@ export type Database = {
           parent_organization_id: string | null
           park_walk_min: number
           payment_fee_pass_through: boolean
+          tips_enabled: boolean
           payments_collected_by_parent: boolean
           plan_id: string | null
           plan_status: Database["public"]["Enums"]["org_plan_status"]
@@ -3019,6 +3020,7 @@ export type Database = {
           parent_organization_id?: string | null
           park_walk_min?: number
           payment_fee_pass_through?: boolean
+          tips_enabled?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -3150,6 +3152,7 @@ export type Database = {
           parent_organization_id?: string | null
           park_walk_min?: number
           payment_fee_pass_through?: boolean
+          tips_enabled?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -3243,6 +3246,8 @@ export type Database = {
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
           surcharge_cents: number
+          tip_cents: number
+          tip_staff_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3262,6 +3267,8 @@ export type Database = {
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
           surcharge_cents?: number
+          tip_cents?: number
+          tip_staff_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3281,6 +3288,8 @@ export type Database = {
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
           surcharge_cents?: number
+          tip_cents?: number
+          tip_staff_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3303,6 +3312,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_tip_staff_id_fkey"
+            columns: ["tip_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]
@@ -7271,6 +7287,10 @@ export type Database = {
       start_visit: {
         Args: { _started_at?: string; _visit_id: string }
         Returns: undefined
+      }
+      tip_staff_for_invoice: {
+        Args: { _invoice_id: string }
+        Returns: string | null
       }
       unlink_franchise_child: {
         Args: { _child_org_id: string }

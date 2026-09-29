@@ -315,7 +315,11 @@ describe("the payroll export adds up", () => {
 
   it("keeps the visits of a day with no time on the clock", () => {
     const wen = rows.filter((r) => r[0] === "Wen Zhang");
-    expect(wen).toEqual([["Wen Zhang", "2026-09-24", "", "", "0.00", "1", "No time recorded"]]);
+    // "0.00" before the note is the Tips column: written on a day's first
+    // row like Visits, so it is present (and zero) here.
+    expect(wen).toEqual([
+      ["Wen Zhang", "2026-09-24", "", "", "0.00", "1", "0.00", "No time recorded"],
+    ]);
   });
 
   it("prints durations the way a person reads them", () => {

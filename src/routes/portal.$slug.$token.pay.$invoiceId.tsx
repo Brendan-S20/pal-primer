@@ -10,6 +10,7 @@ import { Loader2, ArrowLeft, ShieldCheck } from "lucide-react";
 import { portalCreateInvoicePaymentIntent } from "@/lib/portal.functions";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { money } from "@/lib/portal-ui";
+import { TipPicker, TipTotals, useTipSync } from "@/components/TipPicker";
 
 export const Route = createFileRoute("/portal/$slug/$token/pay/$invoiceId")({
   head: () => ({ meta: [{ title: "Pay invoice" }] }),
@@ -60,7 +61,37 @@ function PayInvoice() {
     staleTime: 5 * 60 * 1000,
     retry: false,
     enabled: !returningFromRedirect,
+    // Every call re-prices the intent, and this one is sent with no tip; a
+    // refetch on refocus would take a chosen tip back off the charge while
+    // the screen still showed it. Only the tip picker re-prices it.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
+
+  const initialTip = useMemo(
+    () =>
+      intentQ.data
+        ? {
+            clientSecret: intentQ.data.clientSecret,
+            amountCents: intentQ.data.amountCents,
+            dueCents: intentQ.data.dueCents,
+            tipCents: intentQ.data.tipCents,
+          }
+        : undefined,
+    [intentQ.data],
+  );
+  const tip = useTipSync(initialTip, async (choice) => {
+    const r = await createIntent({ data: { token, invoiceId, tip: choice } });
+    return {
+      clientSecret: r.clientSecret,
+      amountCents: r.amountCents,
+      dueCents: r.dueCents,
+      tipCents: r.tipCents,
+    };
+  });
+  const live = tip.synced ?? initialTip;
+  const tipsEnabled = !!intentQ.data?.tipsEnabled;
+  const [paying, setPaying] = useState(false);
 
   const stripePromise = useMemo(
     () =>
@@ -82,10 +113,10 @@ function PayInvoice() {
 
       <div className="rounded-md border bg-card p-4">
         <h1 className="text-lg font-semibold">Pay your invoice</h1>
-        {intentQ.data && (
+        {intentQ.data && live && (
           <p className="mt-1 text-sm text-muted-foreground">
             {intentQ.data.businessName}: total{" "}
-            <span className="font-medium text-foreground">{money(intentQ.data.amountCents)}</span>
+            <span className="font-medium text-foreground">{money(live.amountCents)}</span>
           </p>
         )}
       </div>
@@ -102,11 +133,27 @@ function PayInvoice() {
         </div>
       )}
 
-      {intentQ.data && stripePromise && (
+      {intentQ.data && live && tipsEnabled && (
+        <div className="space-y-3 rounded-md border bg-card p-4">
+          <TipPicker dueCents={live.dueCents} onChange={tip.setChoice} disabled={paying} />
+          <TipTotals
+            dueCents={live.dueCents}
+            tipCents={live.tipCents}
+            amountCents={live.amountCents}
+            updating={!tip.ready}
+          />
+          {tip.error && <p className="text-sm text-destructive">{tip.error}</p>}
+        </div>
+      )}
+
+      {intentQ.data && live && stripePromise && (
+        // Keyed on the client secret: a mounted Payment Element cannot be
+        // moved onto a different intent, so a rare re-mint remounts it.
         <Elements
+          key={live.clientSecret}
           stripe={stripePromise}
           options={{
-            clientSecret: intentQ.data.clientSecret,
+            clientSecret: live.clientSecret,
             appearance: stripeAppearance(),
           }}
         >
@@ -114,7 +161,9 @@ function PayInvoice() {
             slug={slug}
             token={token}
             invoiceId={invoiceId}
-            amountCents={intentQ.data.amountCents}
+            amountCents={live.amountCents}
+            canPay={!tipsEnabled || tip.ready}
+            onPayingChange={setPaying}
           />
         </Elements>
       )}
@@ -132,11 +181,15 @@ function PayForm({
   token,
   invoiceId,
   amountCents,
+  canPay = true,
+  onPayingChange,
 }: {
   slug: string;
   token: string;
   invoiceId: string;
   amountCents: number;
+  canPay?: boolean;
+  onPayingChange?: (paying: boolean) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -145,11 +198,18 @@ function PayForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+
+  // The server re-priced the intent for a tip; the Payment Element reads the
+  // amount for wallets and bank-debit mandates, so it has to be told.
+  useEffect(() => {
+    if (elements) void elements.fetchUpdates().catch(() => undefined);
+  }, [elements, amountCents]);
+  useEffect(() => onPayingChange?.(submitting), [submitting, onPayingChange]);
   // Redirect returns are handled by the page before this form mounts.
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || !canPay) return;
     setSubmitting(true);
     setError(null);
 
@@ -205,7 +265,7 @@ function PayForm({
       <Button
         type="submit"
         className="w-full"
-        disabled={!stripe || !elements || !ready || submitting}
+        disabled={!stripe || !elements || !ready || !canPay || submitting}
       >
         {submitting ? (
           <>

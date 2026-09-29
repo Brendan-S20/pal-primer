@@ -29,7 +29,7 @@ import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { canOfferRefund } from "@/lib/refunds";
 import { usePermissions } from "@/hooks/useMyRole";
-import { formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
+import { describePaymentSplit, formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
 import {
   formatLineItemDescription,
   invoiceKindLabel,
@@ -416,7 +416,11 @@ export function InvoiceDrawer({
                             // What the card was charged. `amount_cents` alone is
                             // the invoice amount, which is not the number on the
                             // customer's statement when a surcharge applies.
-                            const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                            const split = surchargeSplit(
+                              p.amount_cents,
+                              p.surcharge_cents,
+                              p.tip_cents,
+                            );
                             return (
                               <span className="text-right">
                                 <span className="font-medium">
@@ -427,8 +431,9 @@ export function InvoiceDrawer({
                                 </span>
                                 {split && (
                                   <span className="block text-2xs font-normal text-muted-foreground">
-                                    {fmtCents(split.baseCents, inv.currency ?? "usd")} service +{" "}
-                                    {fmtCents(split.feeCents, inv.currency ?? "usd")} card fee
+                                    {describePaymentSplit(split, (c) =>
+                                      fmtCents(c, inv.currency ?? "usd"),
+                                    )}
                                   </span>
                                 )}
                               </span>

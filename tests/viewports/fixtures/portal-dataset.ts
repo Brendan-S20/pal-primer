@@ -373,6 +373,38 @@ export const PUBLIC_INVOICE = {
   ],
 };
 
+/**
+ * The intent the pay link's form is built on, with tipping ON: without it
+ * `createPublicInvoicePaymentIntent` answers nothing, the payment card stays
+ * on "Preparing secure payment…", and the tip choices -- five buttons in a
+ * grid, the tallest thing in the card -- are never drawn or measured.
+ *
+ * `dueCents` is the invoice's amount due, the figure the percentages are
+ * taken of, so the 15% button reads $15.60. The client secret is shaped like
+ * Stripe's and points at nothing: the network fence answers Stripe.js with
+ * an empty script, so the card field itself never mounts.
+ */
+export const PUBLIC_INVOICE_INTENT = {
+  clientSecret: "pi_3QyTipFixture000000000_secret_fixture00000000000",
+  publishableKey: "pk_test_fixture_not_a_real_key",
+  stripeAccount: "acct_1FixtureNotReal0",
+  amountCents: PUBLIC_INVOICE.invoice.amountDueCents,
+  dueCents: PUBLIC_INVOICE.invoice.amountDueCents,
+  tipCents: 0,
+  tipsEnabled: true,
+  currency: "usd",
+};
+
+/** The portal's pay screen, on the one open invoice ($104.00 due). */
+export const PORTAL_PAY_INVOICE_ID = INVOICE_ROWS[0].invoice_id;
+export const PORTAL_INVOICE_INTENT = {
+  ...PUBLIC_INVOICE_INTENT,
+  amountCents: INVOICE_ROWS[0].amount_due_cents,
+  dueCents: INVOICE_ROWS[0].amount_due_cents,
+  invoiceId: PORTAL_PAY_INVOICE_ID,
+  businessName: PORTAL_CLIENT_NAME,
+};
+
 // ── /q/:token, the quote link ──────────────────────────────────────────────
 //
 // Same arrival as the pay link: a text or an email, opened on a phone, no

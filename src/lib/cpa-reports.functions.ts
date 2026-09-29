@@ -15,6 +15,7 @@ import {
   reportsFor,
   reversalLabel,
   routingAudience,
+  tipsByMonth,
   settlementOverlapsPeriod,
   stripe1099kGuidance,
   type Guidance,
@@ -174,6 +175,10 @@ type PaymentRow = {
   /** Recovered processing fee, beside the amount rather than inside it. Absent
    *  on every payment taken before pass-through existed. */
   surcharge_cents?: number | null;
+  /** The customer's tip, beside the amount like the surcharge. Never income
+   *  in the sheets that sum `amount_cents`; its own report, and part of the
+   *  CHARGE on the 1099-K sheet. */
+  tip_cents?: number | null;
   status: string;
   paid_at: string | null;
   created_at: string;
@@ -189,9 +194,10 @@ async function loadReceipts(supabase: any, ctx: OrgContext, from: string, to: st
     supabase
       .from("payments")
       .select(
-        // surcharge_cents: the 1099-K reconciliation sheet needs what STRIPE
-        // reported, which is the charge — base + surcharge — not the revenue.
-        "id, invoice_id, amount_cents, surcharge_cents, status, paid_at, created_at, collected_by_organization_id",
+        // surcharge_cents and tip_cents: the 1099-K reconciliation sheet needs
+        // what STRIPE reported, which is the charge — base + surcharge + tip —
+        // not the revenue.
+        "id, invoice_id, amount_cents, surcharge_cents, tip_cents, status, paid_at, created_at, collected_by_organization_id",
       )
       .eq("organization_id", ctx.orgId)
       .in("status", ["succeeded", "refunded"])
@@ -404,7 +410,86 @@ async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to:
     caveats: [
       "Stripe's processing fees are deducted before payout and are not recorded in HoundStack, so they do not appear here. They are a deductible expense and come from your Stripe payout statements.",
       "Cash paid directly to you and recorded manually is included, and is not part of any 1099-K.",
+      "Tips customers added when paying are not in these figures: they are not payment for the service. They are in the Tips received report, and they are still income to the business (or wages, if you pass them to your team through payroll). A chargeback is deducted here whole, tip included.",
       "Refunds & chargebacks is net of disputes you won: the deduction stands in the month the funds were withdrawn and the recovery is added back in the month they returned. A month can therefore show a negative figure in that column, and a dispute opened in one period and won in the next moves income between the two rather than restating either.",
+    ],
+  };
+}
+
+/**
+ * Tips received and refunded, by month.
+ *
+ * Received: `payments.tip_cents` on every payment that arrived in the period
+ * (the same receipts, same statuses and same org-local dating as the income
+ * sheet). Refunded: each refund's tip share, divided by `splitRefund` exactly
+ * as the webhook divided it when it filed the revenue share, from Stripe's
+ * cumulative refunded figure on the reversal row and the payment's own split.
+ * Chargebacks are not deducted here: the income sheet deducts them whole.
+ */
+async function buildTipsReceived(supabase: any, ctx: OrgContext, from: string, to: string) {
+  const [receipts, reversals] = await Promise.all([
+    loadReceipts(supabase, ctx, from, to),
+    loadReversals(supabase, ctx, from, to),
+  ]);
+
+  const refunds = reversals.filter((r) => r.kind === "payment_refunded" && r.paymentId);
+  const paymentIds = [...new Set(refunds.map((r) => r.paymentId as string))];
+  const split = new Map<string, { amount: number; surcharge: number; tip: number }>();
+  for (let i = 0; i < paymentIds.length; i += 200) {
+    const { data } = await supabase
+      .from("payments")
+      .select("id, amount_cents, surcharge_cents, tip_cents")
+      .eq("organization_id", ctx.orgId)
+      .in("id", paymentIds.slice(i, i + 200));
+    for (const p of data ?? []) {
+      split.set(p.id, {
+        amount: Number(p.amount_cents ?? 0),
+        surcharge: Number(p.surcharge_cents ?? 0),
+        tip: Number(p.tip_cents ?? 0),
+      });
+    }
+  }
+  const { splitRefund } = await import("@/lib/refund-split");
+  const tipRefunds = refunds.map((r) => {
+    const p = split.get(r.paymentId as string);
+    if (!p || p.tip <= 0) return { day: r.day, tipCents: 0 };
+    return {
+      day: r.day,
+      tipCents: splitRefund(r.movedCents, p.amount + p.surcharge + p.tip, p.surcharge, p.tip)
+        .tipCents,
+    };
+  });
+
+  const rows: ReportRow[] = tipsByMonth(
+    monthsBetween(from, to),
+    receipts.map((p) => ({ day: p.day, tipCents: Number(p.tip_cents ?? 0) })),
+    tipRefunds,
+  ).map((r) => ({ ...r, month: monthLabel(r.month) }));
+
+  const totals = rows.reduce(
+    (t, r) => ({
+      month: "Total",
+      tipsCents: (t.tipsCents as number) + (r.tipsCents as number),
+      tipsRefundedCents: (t.tipsRefundedCents as number) + (r.tipsRefundedCents as number),
+      netTipsCents: (t.netTipsCents as number) + (r.netTipsCents as number),
+      tippedPaymentCount: (t.tippedPaymentCount as number) + (r.tippedPaymentCount as number),
+    }),
+    {
+      month: "Total",
+      tipsCents: 0,
+      tipsRefundedCents: 0,
+      netTipsCents: 0,
+      tippedPaymentCount: 0,
+    } as ReportRow,
+  );
+
+  return {
+    rows,
+    totals,
+    caveats: [
+      "Tips are income to the business when it keeps them. Tips paid on to technicians are wages, and go through payroll; Timesheets shows each technician's tips for the week and includes them in its CSV.",
+      "A tip is credited to the technician on the most recent completed visit on its invoice. A tip on an invoice with no completed visit is counted here and credited to no one.",
+      "Stripe includes tips in gross card volume, so they are part of the 1099-K reconciliation sheet's gross.",
     ],
   };
 }
@@ -818,9 +903,9 @@ async function loadCollectedForLocations(ctx: OrgContext, from: string, to: stri
     (supabaseAdmin as any)
       .from("payments")
       .select(
-        // surcharge_cents: the 1099-K reconciliation sheet needs what STRIPE
-        // reported, which is the charge — base + surcharge — not the revenue.
-        "id, invoice_id, amount_cents, surcharge_cents, status, paid_at, created_at, collected_by_organization_id",
+        // surcharge_cents and tip_cents: the 1099-K reconciliation sheet needs
+        // what STRIPE reported, which is the charge — base + surcharge + tip.
+        "id, invoice_id, amount_cents, surcharge_cents, tip_cents, status, paid_at, created_at, collected_by_organization_id",
       )
       .eq("collected_by_organization_id", ctx.orgId)
       .neq("organization_id", ctx.orgId)
@@ -869,7 +954,10 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
     // reconcile against the form, so it has to show the number Stripe put on
     // it. 400 charges of $100 + $3 left $1,200 unexplained, in the direction
     // the sheet's own caveats said was impossible.
-    b.gross += (p.amount_cents ?? 0) + (p.surcharge_cents ?? 0);
+    //
+    // A tip is inside the same charge and on the same form, for the same
+    // reason: Stripe reports what was charged, not what was invoiced.
+    b.gross += (p.amount_cents ?? 0) + (p.surcharge_cents ?? 0) + (p.tip_cents ?? 0);
     b.count += 1;
   }
   // One row per COLLECTING account, which is what a 1099-K is issued against —
@@ -879,7 +967,7 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
   for (const p of onBehalf) {
     const b = at(ctx.orgId);
     // Same reasoning as above: what Stripe reported, not what was revenue.
-    const chargedCents = (p.amount_cents ?? 0) + (p.surcharge_cents ?? 0);
+    const chargedCents = (p.amount_cents ?? 0) + (p.surcharge_cents ?? 0) + (p.tip_cents ?? 0);
     b.gross += chargedCents;
     b.count += 1;
     onBehalfGross += chargedCents;
@@ -1206,6 +1294,9 @@ export const getTaxReport = createServerFn({ method: "POST" })
     switch (def.id) {
       case "income_cash":
         built = await buildIncomeCash(supabase, ctx, from, to);
+        break;
+      case "tips_received":
+        built = await buildTipsReceived(supabase, ctx, from, to);
         break;
       case "income_accrual":
         built = await buildIncomeAccrual(supabase, ctx, from, to);

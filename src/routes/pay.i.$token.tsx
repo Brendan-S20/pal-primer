@@ -7,7 +7,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { LineQuantity } from "@/components/LineQuantity";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Loader2, ShieldCheck, CheckCircle2 } from "lucide-react";
@@ -18,6 +18,7 @@ import { stripeAppearance } from "@/lib/stripe-appearance";
 import { formatDay } from "@/lib/format";
 import { formatLineItemDescription } from "@/lib/invoice-labels";
 import { isInvoiceOverdue, todayISO } from "@/lib/overdue";
+import { TipPicker, TipTotals, useTipSync } from "@/components/TipPicker";
 
 export const Route = createFileRoute("/pay/i/$token")({
   head: () => ({ meta: [{ title: "Pay invoice" }] }),
@@ -92,7 +93,40 @@ function PublicPayPage() {
     enabled: payable,
     staleTime: 5 * 60 * 1000,
     retry: false,
+    // Every call re-prices the intent, and this one is sent with no tip. A
+    // refetch on refocus would quietly take a chosen tip back off the charge
+    // while the screen still showed it, so the intent is only ever re-priced
+    // by the tip picker below.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
+
+  // The tip, kept in step with the intent: see useTipSync. The initial answer
+  // is the intent above, which the server priced with no tip.
+  const initialTip = useMemo(
+    () =>
+      intentQ.data
+        ? {
+            clientSecret: intentQ.data.clientSecret,
+            amountCents: intentQ.data.amountCents,
+            dueCents: intentQ.data.dueCents,
+            tipCents: intentQ.data.tipCents,
+          }
+        : undefined,
+    [intentQ.data],
+  );
+  const tip = useTipSync(initialTip, async (choice) => {
+    const r = await intentFn({ data: { token, tip: choice } });
+    return {
+      clientSecret: r.clientSecret,
+      amountCents: r.amountCents,
+      dueCents: r.dueCents,
+      tipCents: r.tipCents,
+    };
+  });
+  const live = tip.synced ?? initialTip;
+  const tipsEnabled = !!intentQ.data?.tipsEnabled;
+  const [paying, setPaying] = useState(false);
 
   const stripePromise = useMemo(
     () =>
@@ -301,19 +335,45 @@ function PublicPayPage() {
               {(intentQ.error as Error).message ?? "Could not start payment."}
             </div>
           )}
-          {intentQ.data && stripePromise && (
-            <div className="mt-4">
+          {intentQ.data && live && stripePromise && (
+            <div className="mt-4 space-y-4">
+              {tipsEnabled && (
+                <div className="space-y-3">
+                  <TipPicker
+                    dueCents={live.dueCents}
+                    currency={intentQ.data.currency}
+                    onChange={tip.setChoice}
+                    disabled={paying}
+                  />
+                  <TipTotals
+                    dueCents={live.dueCents}
+                    tipCents={live.tipCents}
+                    amountCents={live.amountCents}
+                    currency={intentQ.data.currency}
+                    updating={!tip.ready}
+                  />
+                  {tip.error && <p className="text-sm text-destructive">{tip.error}</p>}
+                </div>
+              )}
+              {/* Keyed on the client secret: Stripe cannot swap a mounted
+                  Payment Element onto a different intent, so the rare re-mint
+                  remounts it rather than confirming the old one. */}
               <Elements
+                key={live.clientSecret}
                 stripe={stripePromise}
                 options={{
-                  clientSecret: intentQ.data.clientSecret,
+                  clientSecret: live.clientSecret,
                   appearance: stripeAppearance(),
                 }}
               >
                 <PublicPayForm
                   token={token}
-                  amountCents={intentQ.data.amountCents}
+                  amountCents={live.amountCents}
                   currency={intentQ.data.currency}
+                  // The charge must be the total on screen: while the tip is
+                  // still being priced there is nothing safe to confirm.
+                  canPay={!tipsEnabled || tip.ready}
+                  onPayingChange={setPaying}
                   onPaid={() => {
                     setJustPaid(true);
                     qc.invalidateQueries({ queryKey: ["public-invoice", token] });
@@ -337,11 +397,15 @@ function PublicPayForm({
   token,
   amountCents,
   currency,
+  canPay = true,
+  onPayingChange,
   onPaid,
 }: {
   token: string;
   amountCents: number;
   currency: string;
+  canPay?: boolean;
+  onPayingChange?: (paying: boolean) => void;
   onPaid: () => void;
 }) {
   const stripe = useStripe();
@@ -350,9 +414,17 @@ function PublicPayForm({
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
+  // The server re-priced the intent (a tip was chosen or changed). The
+  // Payment Element reads the amount for wallets and bank-debit mandates, so
+  // it has to be told.
+  useEffect(() => {
+    if (elements) void elements.fetchUpdates().catch(() => undefined);
+  }, [elements, amountCents]);
+  useEffect(() => onPayingChange?.(submitting), [submitting, onPayingChange]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || !canPay) return;
     setSubmitting(true);
     setError(null);
 
@@ -395,7 +467,7 @@ function PublicPayForm({
       <Button
         type="submit"
         className="w-full"
-        disabled={!stripe || !elements || !ready || submitting}
+        disabled={!stripe || !elements || !ready || !canPay || submitting}
       >
         {submitting ? (
           <>

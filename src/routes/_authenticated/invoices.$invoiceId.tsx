@@ -12,7 +12,7 @@ import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
-import { formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
+import { describePaymentSplit, formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -467,14 +467,24 @@ function InvoiceDetail() {
                           the base alone beside "$103.00 refunded" would read
                           as a refund larger than the payment. */}
                       {(() => {
-                        const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                        const split = surchargeSplit(
+                          p.amount_cents,
+                          p.surcharge_cents,
+                          p.tip_cents,
+                        );
                         return (
                           <>
                             {fmtCents(split?.chargedCents ?? p.amount_cents, invoice.currency)}
                             {split && (
                               <span className="block text-xs text-muted-foreground">
-                                {fmtCents(split.baseCents, invoice.currency)} service +{" "}
-                                {fmtCents(split.feeCents, invoice.currency)} card fee
+                                {describePaymentSplit(split, (c) => fmtCents(c, invoice.currency))}
+                              </span>
+                            )}
+                            {(p.tip_cents ?? 0) > 0 && (
+                              <span className="block text-xs text-muted-foreground">
+                                {p.tip_staff_name
+                                  ? `Tip credited to ${p.tip_staff_name}`
+                                  : "Tip not credited to a technician"}
                               </span>
                             )}
                           </>
