@@ -4325,6 +4325,7 @@ export type Database = {
           ip: unknown
           last_seen_at: string
           organization_id: string
+          preview_by: string | null
           revoked_at: string | null
           token_hash: string
           user_agent: string | null
@@ -4337,6 +4338,7 @@ export type Database = {
           ip?: unknown
           last_seen_at?: string
           organization_id: string
+          preview_by?: string | null
           revoked_at?: string | null
           token_hash: string
           user_agent?: string | null
@@ -4349,6 +4351,7 @@ export type Database = {
           ip?: unknown
           last_seen_at?: string
           organization_id?: string
+          preview_by?: string | null
           revoked_at?: string | null
           token_hash?: string
           user_agent?: string | null
