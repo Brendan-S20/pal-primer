@@ -25,11 +25,17 @@ export function invoiceKindLabel(kind: string | null | undefined): string {
  *  app's "store canonical, render humanized" rule (see format.ts), humanize any
  *  embedded YYYY-MM-DD at render time to "Thu, Jul 16" (C6.1). Handles every
  *  description shape (prepaid, service, skipped, add-on) and legacy rows. */
-export function formatLineItemDescription(desc: string | null | undefined): string {
+export function formatLineItemDescription(
+  desc: string | null | undefined,
+  /** How each embedded day is written. The screen's `formatDay` drops the
+   *  year in the current one; the PDF passes `formatDocumentDay`, which never
+   *  does, because a filed document is read in a later year. */
+  formatEmbeddedDay: (day: string) => string = formatDay,
+): string {
   if (!desc) return "";
   // Digit boundaries (?<!\d) / (?!\d) so a date embedded in a longer number
   // (an id like "Order 12026-07-16") isn't partially matched and mangled.
-  return desc.replace(/(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)/g, (m) => formatDay(m) || m);
+  return desc.replace(/(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)/g, (m) => formatEmbeddedDay(m) || m);
 }
 
 /**

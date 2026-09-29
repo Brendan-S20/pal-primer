@@ -823,6 +823,44 @@ export type Database = {
           },
         ]
       }
+      calendar_feeds: {
+        Row: {
+          created_at: string
+          id: string
+          last_fetched_at: string | null
+          organization_id: string
+          scope: string
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_fetched_at?: string | null
+          organization_id: string
+          scope: string
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_fetched_at?: string | null
+          organization_id?: string
+          scope?: string
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_feeds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_holds: {
         Row: {
           client_id: string
@@ -928,6 +966,48 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_unsubscribe_tokens: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          token: string
+          used_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_unsubscribe_tokens_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_unsubscribe_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1381,6 +1461,138 @@ export type Database = {
             columns: ["unit_id"]
             isOneToOne: false
             referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_campaign_recipients: {
+        Row: {
+          campaign_id: string
+          claimed_at: string | null
+          client_id: string
+          created_at: string
+          email: string
+          id: string
+          message_id: string | null
+          organization_id: string
+          queued_at: string | null
+          skip_reason: string | null
+          status: string
+        }
+        Insert: {
+          campaign_id: string
+          claimed_at?: string | null
+          client_id: string
+          created_at?: string
+          email: string
+          id?: string
+          message_id?: string | null
+          organization_id: string
+          queued_at?: string | null
+          skip_reason?: string | null
+          status?: string
+        }
+        Update: {
+          campaign_id?: string
+          claimed_at?: string | null
+          client_id?: string
+          created_at?: string
+          email?: string
+          id?: string
+          message_id?: string | null
+          organization_id?: string
+          queued_at?: string | null
+          skip_reason?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "email_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaign_recipients_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_campaign_recipients_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_campaigns: {
+        Row: {
+          audience_kind: string
+          audience_tag: string | null
+          body: string
+          button_label: string | null
+          button_url: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          heading: string
+          id: string
+          organization_id: string
+          recipient_count: number | null
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          audience_kind?: string
+          audience_tag?: string | null
+          body?: string
+          button_label?: string | null
+          button_url?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          heading?: string
+          id?: string
+          organization_id: string
+          recipient_count?: number | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
+        }
+        Update: {
+          audience_kind?: string
+          audience_tag?: string | null
+          body?: string
+          button_label?: string | null
+          button_url?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          heading?: string
+          id?: string
+          organization_id?: string
+          recipient_count?: number | null
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2872,6 +3084,8 @@ export type Database = {
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
           require_completion_photo: boolean
+          visit_checklist: Json
+          email_visit_checklist: boolean
           notify_email_weather_reschedule: boolean
           notify_email_weekly_digest: boolean
           notify_email_welcome: boolean
@@ -2888,6 +3102,7 @@ export type Database = {
           parent_organization_id: string | null
           park_walk_min: number
           payment_fee_pass_through: boolean
+          tips_enabled: boolean
           payments_collected_by_parent: boolean
           plan_id: string | null
           plan_status: Database["public"]["Enums"]["org_plan_status"]
@@ -2899,6 +3114,9 @@ export type Database = {
           portal_slug: string | null
           public_signup_enabled: boolean
           reclean_window_hours: number
+          calendar_feed_access_codes: boolean
+          one_off_price_cents: number | null
+          portal_auto_accept_bookings: boolean
           referral_code: string | null
           referral_reward_cents: number
           referred_by_org_id: string | null
@@ -3003,6 +3221,8 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
           require_completion_photo?: boolean
+          visit_checklist?: Json
+          email_visit_checklist?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -3019,6 +3239,7 @@ export type Database = {
           parent_organization_id?: string | null
           park_walk_min?: number
           payment_fee_pass_through?: boolean
+          tips_enabled?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -3030,6 +3251,9 @@ export type Database = {
           portal_slug?: string | null
           public_signup_enabled?: boolean
           reclean_window_hours?: number
+          calendar_feed_access_codes?: boolean
+          one_off_price_cents?: number | null
+          portal_auto_accept_bookings?: boolean
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -3134,6 +3358,8 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
           require_completion_photo?: boolean
+          visit_checklist?: Json
+          email_visit_checklist?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -3150,6 +3376,7 @@ export type Database = {
           parent_organization_id?: string | null
           park_walk_min?: number
           payment_fee_pass_through?: boolean
+          tips_enabled?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -3161,6 +3388,9 @@ export type Database = {
           portal_slug?: string | null
           public_signup_enabled?: boolean
           reclean_window_hours?: number
+          calendar_feed_access_codes?: boolean
+          one_off_price_cents?: number | null
+          portal_auto_accept_bookings?: boolean
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -3243,6 +3473,8 @@ export type Database = {
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
           surcharge_cents: number
+          tip_cents: number
+          tip_staff_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3262,6 +3494,8 @@ export type Database = {
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
           surcharge_cents?: number
+          tip_cents?: number
+          tip_staff_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3281,6 +3515,8 @@ export type Database = {
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
           surcharge_cents?: number
+          tip_cents?: number
+          tip_staff_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3303,6 +3539,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_tip_staff_id_fkey"
+            columns: ["tip_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]
@@ -4503,6 +4746,7 @@ export type Database = {
       qc_tickets: {
         Row: {
           category: string
+          booked_visit_id: string | null
           client_id: string
           created_at: string
           id: string
@@ -4510,7 +4754,9 @@ export type Database = {
           last_reply_at: string | null
           message: string | null
           organization_id: string
+          property_id: string | null
           reclean_visit_id: string | null
+          requested_on: string | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
@@ -4520,6 +4766,7 @@ export type Database = {
         }
         Insert: {
           category: string
+          booked_visit_id?: string | null
           client_id: string
           created_at?: string
           id?: string
@@ -4527,7 +4774,9 @@ export type Database = {
           last_reply_at?: string | null
           message?: string | null
           organization_id: string
+          property_id?: string | null
           reclean_visit_id?: string | null
+          requested_on?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -4537,6 +4786,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          booked_visit_id?: string | null
           client_id?: string
           created_at?: string
           id?: string
@@ -4544,7 +4794,9 @@ export type Database = {
           last_reply_at?: string | null
           message?: string | null
           organization_id?: string
+          property_id?: string | null
           reclean_visit_id?: string | null
+          requested_on?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -4553,6 +4805,13 @@ export type Database = {
           visit_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "qc_tickets_booked_visit_id_fkey"
+            columns: ["booked_visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qc_tickets_client_id_fkey"
             columns: ["client_id"]
@@ -4565,6 +4824,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
             referencedColumns: ["id"]
           },
           {
@@ -5676,6 +5942,7 @@ export type Database = {
           status: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
           tech_note: string | null
+          visit_checklist: Json | null
           completion_photo_waived_reason: string | null
           travel_km: number | null
           travel_min: number | null
@@ -5717,6 +5984,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
           tech_note?: string | null
+          visit_checklist?: Json | null
           completion_photo_waived_reason?: string | null
           travel_km?: number | null
           travel_min?: number | null
@@ -5758,6 +6026,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id?: string
           tech_note?: string | null
+          visit_checklist?: Json | null
           completion_photo_waived_reason?: string | null
           travel_km?: number | null
           travel_min?: number | null
@@ -6242,6 +6511,20 @@ export type Database = {
           skipped: number
         }[]
       }
+      calendar_feed_events: { Args: { _token_hash: string }; Returns: Json }
+      calendar_feed_revoke: { Args: { _scope: string }; Returns: boolean }
+      calendar_feed_rotate: {
+        Args: { _scope: string; _token_hash: string }
+        Returns: string
+      }
+      calendar_feed_status: {
+        Args: never
+        Returns: {
+          created_at: string
+          last_fetched_at: string
+          scope: string
+        }[]
+      }
       can_write_org: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
@@ -6265,6 +6548,16 @@ export type Database = {
           client_count: number
           reason: string
           revenue_at_risk_cents: number
+        }[]
+      }
+      claim_email_campaign_recipients: {
+        Args: { _limit: number }
+        Returns: {
+          campaign_id: string
+          client_id: string
+          email: string
+          organization_id: string
+          recipient_id: string
         }[]
       }
       client_cohort_retention: {
@@ -6292,6 +6585,10 @@ export type Database = {
         }[]
       }
       client_may_be_texted: { Args: { _client_id: string }; Returns: boolean }
+      client_unsubscribe_token_state: {
+        Args: { _token: string }
+        Returns: string
+      }
       clock_in: { Args: { _at?: string }; Returns: string }
       clock_out: { Args: { _at?: string }; Returns: string | null }
       close_abandoned_impersonation_grants: { Args: never; Returns: number }
@@ -6306,6 +6603,7 @@ export type Database = {
       }
       complete_visit: {
         Args: {
+          _checked_items?: string[]
           _completed_at?: string
           _no_photo_reason?: string
           _note?: string
@@ -6367,7 +6665,21 @@ export type Database = {
         Args: { _area_type: string; _traffic: string }
         Returns: number
       }
+      email_campaign_stats: {
+        Args: { _org_id: string }
+        Returns: {
+          bounced: number
+          campaign_id: string
+          failed: number
+          in_queue: number
+          recipients: number
+          sent: number
+          skipped: number
+          waiting: number
+        }[]
+      }
       email_has_account: { Args: { _email: string }; Returns: boolean }
+      email_queue_depth: { Args: { queue_name: string }; Returns: number }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
@@ -6858,9 +7170,11 @@ export type Database = {
       portal_list_my_requests: {
         Args: { _token: string }
         Returns: {
+          booked_on: string
           category: string
           created_at: string
           message: string
+          requested_on: string
           resolution_note: string
           resolved_at: string
           status: string
@@ -6932,6 +7246,18 @@ export type Database = {
           _visit_id: string
         }
         Returns: string
+      }
+      portal_request_one_off: {
+        Args: {
+          _message: string
+          _on: string
+          _property_id: string
+          _token: string
+        }
+        Returns: {
+          created: boolean
+          ticket_id: string
+        }[]
       }
       portal_request_reclean: {
         Args: { _message: string; _token: string; _visit_id: string }
@@ -7082,6 +7408,10 @@ export type Database = {
         Args: { _visit_id: string }
         Returns: number
       }
+      redeem_client_unsubscribe_token: {
+        Args: { _token: string }
+        Returns: string
+      }
       redeem_franchise_link_code: { Args: { _code: string }; Returns: string }
       redeem_gift_card: {
         Args: {
@@ -7203,6 +7533,7 @@ export type Database = {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined
       }
+      settle_email_campaigns: { Args: never; Returns: number }
       skip_visit: {
         Args: {
           _code?: Database["public"]["Enums"]["skip_reason_code"]
@@ -7268,9 +7599,22 @@ export type Database = {
           visits: number
         }[]
       }
+      start_email_campaign: {
+        Args: {
+          _campaign_id: string
+          _org_id: string
+          _recipients: Json
+          _user_id: string
+        }
+        Returns: string
+      }
       start_visit: {
         Args: { _started_at?: string; _visit_id: string }
         Returns: undefined
+      }
+      tip_staff_for_invoice: {
+        Args: { _invoice_id: string }
+        Returns: string | null
       }
       unlink_franchise_child: {
         Args: { _child_org_id: string }

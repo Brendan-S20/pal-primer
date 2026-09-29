@@ -26,6 +26,7 @@ import { MAX_SPEED_MPH, MIN_SPEED_MPH, mphFromStoredKmh, mphToStoredKmh } from "
 import { WorkDaysPicker } from "@/components/schedule/WorkDaysPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CalendarFeedCard } from "@/components/CalendarFeedCard";
 
 export const Route = createFileRoute("/_authenticated/settings/scheduling")({
   component: SchedulingSettings,
@@ -372,6 +373,10 @@ function SchedulingSettings() {
           .
         </p>
       </section>
+
+      {/* The schedule, outside the app: each person's own calendar link, and
+          the owner's decision about whether gate codes may travel with it. */}
+      <CalendarFeedCard showOrgSetting />
     </div>
   );
 }

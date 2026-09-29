@@ -12,7 +12,7 @@ import { join } from "node:path";
 // The authoritative answer is SQL: public.client_default_billing_cadence. The
 // app cannot call it — it is not granted to `authenticated`, and granting it
 // would be wrong, because it is SECURITY DEFINER and would then answer about
-// any client id in any tenant (the BUG-42 shape). So visits.functions.ts
+// any client id in any tenant (the BUG-42 shape). So one-off-visit.server.ts
 // restates the ordering against the caller's own RLS-scoped client.
 //
 // That is a second copy of a rule, and two copies that must agree are two
@@ -50,7 +50,9 @@ function latestCadenceDefinition(): string {
 
 describe("the TS mirror of client_default_billing_cadence", () => {
   const sql = latestCadenceDefinition();
-  const ts = readFileSync(join(ROOT, "src/lib/visits.functions.ts"), "utf8");
+  // The booking code moved out of visits.functions.ts on 2026-09-29 so the
+  // portal's auto-accept path could call it too; createOneOffVisit delegates.
+  const ts = readFileSync(join(ROOT, "src/lib/one-off-visit.server.ts"), "utf8");
   // The block that does the lookup, so assertions cannot be satisfied by some
   // unrelated query elsewhere in a 900-line file.
   const block = ts.slice(

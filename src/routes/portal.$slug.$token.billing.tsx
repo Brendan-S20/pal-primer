@@ -22,6 +22,8 @@ import {
   money,
 } from "@/lib/portal-ui";
 import { invoiceKindLabel } from "@/lib/invoice-labels";
+import { DownloadPdfButton } from "@/components/DownloadPdfButton";
+import { portalDownloadInvoicePdf } from "@/lib/document-pdf.functions";
 
 export const Route = createFileRoute("/portal/$slug/$token/billing")({
   component: PortalBilling,
@@ -60,6 +62,7 @@ function PortalBilling() {
     usePortalCtx();
   const c = clientQ.data as any;
   const [showCard, setShowCard] = useState(false);
+  const pdfFn = useServerFn(portalDownloadInvoicePdf);
 
   // In-app top-up: create the prepaid invoice, then pay it on the in-app pay
   // page (embedded checkout) instead of redirecting to hosted Stripe Checkout.
@@ -250,28 +253,41 @@ function PortalBilling() {
                       )}
                     </div>
                   </div>
-                  {i.status !== "paid" && i.status !== "void" && (
-                    <div className="flex gap-2">
-                      {c?.has_saved_card && (
+                  <div className="flex flex-wrap gap-2">
+                    {/* Every invoice, paid ones included: a paid invoice's PDF
+                        is the receipt the customer files. */}
+                    <DownloadPdfButton
+                      size="sm"
+                      label="PDF"
+                      load={() => pdfFn({ data: { token, invoiceId: i.invoice_id } })}
+                    />
+                    {i.status !== "paid" && i.status !== "void" && (
+                      <>
+                        {c?.has_saved_card && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            disabled={paySavedMut.isPending}
+                            onClick={() => paySavedMut.mutate(i.invoice_id)}
+                          >
+                            Pay with saved card
+                          </Button>
+                        )}
                         <Button
+                          asChild
                           size="sm"
-                          variant="default"
-                          disabled={paySavedMut.isPending}
-                          onClick={() => paySavedMut.mutate(i.invoice_id)}
+                          variant={c?.has_saved_card ? "outline" : "default"}
                         >
-                          Pay with saved card
+                          <Link
+                            to="/portal/$slug/$token/pay/$invoiceId"
+                            params={{ slug, token, invoiceId: i.invoice_id }}
+                          >
+                            Pay now
+                          </Link>
                         </Button>
-                      )}
-                      <Button asChild size="sm" variant={c?.has_saved_card ? "outline" : "default"}>
-                        <Link
-                          to="/portal/$slug/$token/pay/$invoiceId"
-                          params={{ slug, token, invoiceId: i.invoice_id }}
-                        >
-                          Pay now
-                        </Link>
-                      </Button>
-                    </div>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </li>
               );
             })}

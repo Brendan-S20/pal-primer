@@ -52,6 +52,14 @@ export type PendingAction =
        *  Optional: actions queued before these existed carry neither. */
       note?: string;
       noPhotoReason?: string;
+      /** The ids of the checklist items the tech checked, as they were when
+       *  Complete was tapped. Replayed as complete_visit's `_checked_items`,
+       *  which refuses the completion if a required one is missing, so a
+       *  completion queued in a dead zone is held to the same list as a live
+       *  one. Ids and not labels: the words on the record are the owner's,
+       *  copied by the server. Optional: actions queued before the checklist
+       *  existed carry none, and an org with no checklist asks for none. */
+      checkedItems?: string[];
     } & ActionBase)
   | ({ kind: "skip"; visitId: string; reason: string; code: string } & ActionBase)
   | ({

@@ -2,6 +2,7 @@ import type { BrowserContext, Route } from "@playwright/test";
 import { SUPABASE_ORIGIN, sweepUser } from "./session";
 import * as fx from "./dataset";
 import * as pfx from "./portal-dataset";
+import { tippedCharge } from "../../../src/lib/tips";
 
 /**
  * Everything the signed-in app asks the network for, answered locally.
@@ -100,6 +101,10 @@ const BASE_STUBS: Record<string, Stub> = {
     hasCommercialData: true,
     requireCompletionPhoto: true,
     recleanWindowHours: 48,
+    // Settings -> Preferences draws the checklist editor from this: one row
+    // per item, the 120-character label in a text field, at every width.
+    visitChecklist: fx.VISIT_CHECKLIST,
+    emailVisitChecklist: false,
   },
   // /leads, and /clients/new?fromLead=<id>. The wizard is answered with the
   // first (convertible) lead AND an existing client on the same email, so the
@@ -667,6 +672,12 @@ const BASE_STUBS: Record<string, Stub> = {
       created_at: "2026-09-26T14:00:00Z",
     },
   ],
+  // /campaigns, /campaigns/new and /campaigns/:id, added 2026-09-29. Keyed by
+  // id like quotes: the draft opens the editor, the sent one its record.
+  listCampaigns: fx.CAMPAIGNS,
+  getCampaign: (a) => fx.campaignDetail(String(a.id ?? fx.CAMPAIGN_DRAFT_ID)),
+  getCampaignAudience: fx.CAMPAIGN_AUDIENCE,
+  previewCampaignEmail: fx.CAMPAIGN_PREVIEW,
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
   // read these and threw on the null the fence answered — so the unlisted
@@ -795,6 +806,8 @@ const BASE_STUBS: Record<string, Stub> = {
   // The full invoice page and its Refund dialog. See REFUND_INVOICE.
   getInvoice: fx.REFUND_INVOICE,
   getPaymentRefundQuote: fx.REFUND_QUOTE,
+  // Fees & tips on /payments.
+  getTipSettings: { tipsEnabled: true },
   getCollectedThisMonth: { grossCents: 1_301_900, refundsCents: 63_500, netCents: 1_238_400 },
 
   // ── Address autocomplete (seven fields were wired to it today) ──────────
@@ -1030,6 +1043,21 @@ const BASE_STUBS: Record<string, Stub> = {
 
   getPlanCatalogMirror: { rows: [], mismatches: [] },
 
+  // The calendar feed card, on /profile and /settings/scheduling. The owner
+  // has BOTH rows (a staff record and view_client_directory), the own link
+  // already made and read, the all-visits link not yet made -- so both
+  // states draw, and the longer of the two status lines is the real one.
+  getMyCalendarFeeds: fx.CALENDAR_FEEDS,
+  // Settings -> Client portal's extra-cleanup card, and the /concerns "Book
+  // it" dialog, which starts its price from here. No price set: the longer
+  // of the card's two states ("Needs a price first") and the dialog's note
+  // that this one is the office's to price.
+  getPortalBookingSettings: fx.PORTAL_BOOKING_SETTINGS,
+  // "Create link" answers with a URL the length production makes: the app
+  // origin, the path, 43 base64url characters and `.ics`. A short fixture URL
+  // would never test the box it is shown in.
+  createCalendarFeedLink: { url: fx.CALENDAR_FEED_URL, createdAt: "2026-08-28T15:00:00.000Z" },
+
   // ── Writes. Nothing here writes anywhere; they exist so an accidental
   //    click during an interaction step does not throw a red toast into the
   //    measurement.
@@ -1090,6 +1118,14 @@ export type SweepRole = "owner" | "office_manager" | "dispatcher" | "tech";
  * portal-ui.tsx is `enabled: verified`, so a fixture that stops at the OTP gate
  * measures the OTP gate eleven times.
  */
+/** A pay-screen intent re-priced for the tip choice it was sent, with the
+ *  server's own function, so a sweep that taps 15% measures the total the
+ *  product would draw rather than a number the fixture made up. */
+function tippedIntent<T extends { dueCents: number }>(base: T, args: Record<string, any>) {
+  const charge = tippedCharge({ dueCents: base.dueCents, choice: args?.tip, tipsEnabled: true });
+  return { ...base, amountCents: charge.amountCents, tipCents: charge.tipCents };
+}
+
 const PORTAL_STUBS: Record<string, Stub> = {
   portalOrgBySlug: { found: true, branding: pfx.PORTAL_BRANDING },
   portalContext: {
@@ -1110,6 +1146,11 @@ const PORTAL_STUBS: Record<string, Stub> = {
   portalListMyRequests: pfx.PORTAL_REQUESTS,
   portalGetReferral: pfx.PORTAL_REFERRAL,
   portalListProperties: pfx.PORTAL_PROPERTIES,
+  // The extra-cleanup card on Requests. Without this the card draws nothing
+  // at all (it waits for its options), and the page measured is the page
+  // without the one control this was added for.
+  portalOneOffBookingOptions: pfx.PORTAL_ONE_OFF_OPTIONS,
+  portalRequestOneOff: { ticketId: "22222222-0000-4000-8000-000000002005", alreadyAsked: false, bookedOn: null },
   // `{ urls: Record<path, url> }`, not a list. A list crashed the Visits page
   // outright -- "Cannot read properties of undefined" on the first path -- and
   // the sweep would have measured the error boundary. The fence answers images
@@ -1125,6 +1166,11 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // /pay/i/:token, which is not a portal page but arrives the same way -- in a
   // text -- and has no session either.
   getPublicInvoice: pfx.PUBLIC_INVOICE,
+  // The pay link's intent, with tipping on, so the tip choices draw. Answers
+  // a tip choice with the server's own arithmetic, so tapping 15% in a sweep
+  // shows the same total production would.
+  createPublicInvoicePaymentIntent: (a) => tippedIntent(pfx.PUBLIC_INVOICE_INTENT, a),
+  portalCreateInvoicePaymentIntent: (a) => tippedIntent(pfx.PORTAL_INVOICE_INTENT, a),
   // /q/:token, the quote link. One fixture per state, keyed by the token in
   // the URL, because each state draws a different panel under the document.
   getPublicQuote: (a) => pfx.PUBLIC_QUOTES[a.token as string] ?? { found: false },

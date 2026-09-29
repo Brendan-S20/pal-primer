@@ -11,6 +11,9 @@ interface Props extends OrgContact {
   photoUrls?: string[];
   /** The latched-gate photo, captioned on its own. */
   gatePhotoUrl?: string;
+  /** The checklist items the tech checked, when the owner has chosen to tell
+   *  the customer. Empty (and absent from the email) by default. */
+  checklist?: string[];
 }
 
 const VisitCompleted = ({
@@ -20,6 +23,7 @@ const VisitCompleted = ({
   address = "",
   photoUrls = [],
   gatePhotoUrl,
+  checklist = [],
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -33,6 +37,16 @@ const VisitCompleted = ({
           {visitDate ? ` on ${visitDate}` : ""}
           {address ? ` at ${address}` : ""}.
         </Text>
+        {checklist.length > 0 ? (
+          <>
+            <Text style={styles.text}>What we checked:</Text>
+            {checklist.map((label, i) => (
+              <Text key={i} style={{ ...styles.text, margin: "2px 0" }}>
+                &#10003; {label}
+              </Text>
+            ))}
+          </>
+        ) : null}
         {photoUrls.slice(0, 3).map((url, i) => (
           <Img
             key={i}
@@ -70,5 +84,6 @@ export const template = {
     visitDate: "Jul 1, 2026",
     address: "123 Main St",
     photoUrls: [],
+    checklist: ["All areas walked", "Waste bagged and disposed", "Gate latched"],
   },
 } satisfies TemplateEntry;

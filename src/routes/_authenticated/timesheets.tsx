@@ -117,6 +117,7 @@ function TimesheetsPage() {
         staff: data.staff,
         entries: data.entries,
         visits: data.visits,
+        tips: data.tips,
       })
     : null;
   const entriesById = useMemo(
@@ -229,7 +230,7 @@ function TimesheetsPage() {
 
       {sheet && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Stat label="Hours this week" value={formatDuration(sheet.totalMinutes)} />
             <Stat
               label="Overtime"
@@ -239,6 +240,11 @@ function TimesheetsPage() {
             />
             <Stat label="On the clock now" value={String(onTheClock)} />
             <Stat label="Visits completed" value={String(visits)} />
+            <Stat
+              label="Tips"
+              value={tipMoney(sheet.tipsCents)}
+              hint="from the most recent visit on each tipped invoice"
+            />
           </div>
 
           {sheet.rows.length === 0 ? (
@@ -275,6 +281,7 @@ function TimesheetsPage() {
                       ))}
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-right">Visits</TableHead>
+                      <TableHead className="text-right">Tips</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -305,6 +312,9 @@ function TimesheetsPage() {
                         <TableCell className="text-right tabular-nums">
                           {row.visitsCompleted}
                         </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {row.tipsCents > 0 ? tipMoney(row.tipsCents) : "–"}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -326,6 +336,7 @@ function TimesheetsPage() {
                   {formatDay(openDay.day)} · {formatDuration(openDay.minutes)} ·{" "}
                   {openDay.visitsCompleted} visit{openDay.visitsCompleted === 1 ? "" : "s"}{" "}
                   completed
+                  {openDay.tipsCents > 0 ? ` · ${tipMoney(openDay.tipsCents)} in tips` : ""}
                 </DialogDescription>
               </DialogHeader>
               {openDay.segments.length === 0 ? (
@@ -412,6 +423,12 @@ function TimesheetsPage() {
       )}
     </div>
   );
+}
+
+/** "$12.50". The sheet's other figures are hours and counts, so this is its
+ *  only money and gets its own formatter rather than the invoice one. */
+function tipMoney(cents: number): string {
+  return `$${(Math.max(0, cents) / 100).toFixed(2)}`;
 }
 
 function Stat({
@@ -504,6 +521,7 @@ function PersonCard({
           <div className="break-words font-medium">{row.staff.display_name}</div>
           <div className="text-xs text-muted-foreground">
             {row.visitsCompleted} visit{row.visitsCompleted === 1 ? "" : "s"} completed
+            {row.tipsCents > 0 ? ` · ${tipMoney(row.tipsCents)} in tips` : ""}
             {row.onTheClock ? " · on the clock" : ""}
           </div>
         </div>

@@ -617,13 +617,20 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 // Stripe's fee, not the homeowner paying more for the service.
                 // Handing `pi.amount` in here would over-credit the invoice and
                 // report the recovery as revenue everywhere revenue is summed.
-                const { invoiceAppliedCents, surchargeFromMetadata } =
+                //
+                // A tipped charge is invoice + tip, and the tip is kept apart
+                // on exactly the same terms: `tip_cents` beside `amount_cents`,
+                // so the invoice is paid by its own amount and never credited
+                // the gratuity, and no revenue figure, royalty or AR balance
+                // ever counts it.
+                const { invoiceAppliedCents, surchargeFromMetadata, tipAppliedCents } =
                   await import("@/lib/processing-fee.server");
                 const claimed = await markInvoicePaidFromStripe(supabaseAdmin, {
                   invoiceId: inv.id,
                   organizationId: inv.organization_id,
                   amountCents: invoiceAppliedCents(pi.amount, pi.metadata),
                   surchargeCents: surchargeFromMetadata(pi.metadata),
+                  tipCents: tipAppliedCents(pi.amount, pi.metadata),
                   currency: pi.currency,
                   paymentIntentId: pi.id,
                   raw: event,
@@ -667,7 +674,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // Same split as the succeeded path: `amount_cents` means money
               // toward the invoice on every row, so a failed pass-through charge
               // does not read as a larger attempt than the invoice was for.
-              const { invoiceAppliedCents, surchargeFromMetadata } =
+              const { invoiceAppliedCents, surchargeFromMetadata, tipAppliedCents } =
                 await import("@/lib/processing-fee.server");
               await supabaseAdmin.from("payments").insert({
                 organization_id: (invOwner as any).organization_id,
@@ -677,6 +684,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 invoice_id: invoiceId,
                 amount_cents: invoiceAppliedCents(pi.amount, pi.metadata),
                 surcharge_cents: surchargeFromMetadata(pi.metadata),
+                tip_cents: tipAppliedCents(pi.amount, pi.metadata),
                 currency: pi.currency,
                 status: "failed",
                 stripe_payment_intent_id: pi.id,
@@ -864,7 +872,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
 
             const { data: rpay } = await (supabaseAdmin as any)
               .from("payments")
-              .select("id, organization_id, amount_cents, surcharge_cents")
+              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents")
               .eq("stripe_payment_intent_id", piId)
               .maybeSingle();
             if (!rpay) return new Response("ok", { status: 200 });
@@ -876,8 +884,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             const { splitRefund } = await import("@/lib/refund-split");
             const split = splitRefund(
               trueRefunded,
-              Number(rpay.amount_cents ?? 0) + Number(rpay.surcharge_cents ?? 0),
+              Number(rpay.amount_cents ?? 0) +
+                Number(rpay.surcharge_cents ?? 0) +
+                Number(rpay.tip_cents ?? 0),
               Number(rpay.surcharge_cents ?? 0),
+              Number(rpay.tip_cents ?? 0),
             );
             try {
               await (supabaseAdmin as any).rpc("file_reversal_review_item", {
@@ -1013,7 +1024,8 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // surcharge_cents: a refund's amount is the CHARGE total (base +
               // surcharge) but only the base was ever revenue, so the split
               // needs to know how much of this payment was recovered fee.
-              .select("id, organization_id, amount_cents, surcharge_cents, status")
+              // tip_cents: the same for a tip, which was never revenue either.
+              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents, status")
               .eq("stripe_payment_intent_id", paymentIntentId)
               .maybeSingle();
             if (!pay) return new Response("ok", { status: 200 });
@@ -1059,11 +1071,18 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // contained it — understating the tenant's income by exactly the
               // fee they never earned, on every refunded surcharged payment.
               const { splitRefund } = await import("@/lib/refund-split");
+              //
+              // The tip's share goes back to the customer too and comes off
+              // nothing: it was recorded beside the amount and never counted.
               revenueAmount = splitRefund(
                 amount,
-                // The charge total: base + surcharge, as stored on the payment.
-                Number(pay.amount_cents ?? 0) + Number(pay.surcharge_cents ?? 0),
+                // The charge total: base + surcharge + tip, as stored on the
+                // payment.
+                Number(pay.amount_cents ?? 0) +
+                  Number(pay.surcharge_cents ?? 0) +
+                  Number(pay.tip_cents ?? 0),
                 Number(pay.surcharge_cents ?? 0),
+                Number(pay.tip_cents ?? 0),
               ).revenueCents;
 
               // Give back our 50 bps on the refunded portion.
@@ -1137,6 +1156,12 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // the bank does not itemise it. Left whole on purpose: unlike a
               // refund the tenant does not get to keep the recovered fee
               // either, so the entire amount really is gone.
+              //
+              // A tip inside a disputed charge is treated the same way, on
+              // purpose and conservatively: the bank takes it along with
+              // everything else, the tenant is out all of it, and deducting
+              // the whole can only UNDERSTATE revenue, never overstate it.
+              // The Tips received report does not deduct it a second time.
               revenueAmount = amount;
               disputeRef = typeof obj?.id === "string" ? obj.id : null;
 
@@ -1187,7 +1212,9 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       // connected account, and it is the same number: a
                       // surcharged payment is charged base + surcharge.
                       const chargeTotal =
-                        Number(pay.amount_cents ?? 0) + Number(pay.surcharge_cents ?? 0);
+                        Number(pay.amount_cents ?? 0) +
+                        Number(pay.surcharge_cents ?? 0) +
+                        Number(pay.tip_cents ?? 0);
                       const target = feeReversalCents(
                         Number(fee.amount ?? 0),
                         chargeTotal,

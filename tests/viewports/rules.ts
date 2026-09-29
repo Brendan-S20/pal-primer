@@ -354,6 +354,29 @@ export async function findControlsUnder44px(page: Page): Promise<string[]> {
       // undocumented hole is a rule nobody can trust. If pins ever become the
       // primary way to open a stop, this exemption is the thing to revisit.
       if (el.closest(".leaflet-marker-pane, .leaflet-overlay-pane")) continue;
+
+      // ── AND ONE CONDITION: A MODAL IS OPEN ───────────────────────────────
+      //
+      // A Radix modal (Dialog, AlertDialog) sets `pointer-events: none` on
+      // <body> and gives it back only to its own content. Every control
+      // behind it is untappable for as long as it is open, and -- the part
+      // that produced a finding -- a checkbox's `::before` hit area INHERITS
+      // that `none`, so the pseudo-element credit above stops applying and a
+      // 16px checkbox that is 44px on the page itself reads as 16px. Found
+      // on 2026-09-29 when "/concerns · extra cleanup" opened its booking
+      // dialog over the inbox's row checkboxes: the same page measured
+      // closed, by the "/concerns" surface, passes.
+      //
+      // So while a modal holds the page, only what is inside the modal is
+      // measured. Keyed on the body's pointer-events rather than on a
+      // role="dialog" existing, because a Radix Popover is also a dialog and
+      // leaves the page behind it live -- those controls are still measured.
+      if (
+        getComputedStyle(document.body).pointerEvents === "none" &&
+        getComputedStyle(el).pointerEvents === "none"
+      ) {
+        continue;
+      }
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.display === "none") continue;
       // A checkbox or radio may be a small box with a larger hit area

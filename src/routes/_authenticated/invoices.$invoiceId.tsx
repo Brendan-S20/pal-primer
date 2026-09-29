@@ -12,11 +12,13 @@ import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
-import { formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
+import { describePaymentSplit, formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { DownloadPdfButton } from "@/components/DownloadPdfButton";
+import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
@@ -53,7 +55,7 @@ function InvoiceChip({
   );
 }
 
-// Print stylesheet for "Download / print": only the invoice document
+// Print stylesheet for "Print": only the invoice document
 // (.invoice-print-area — header, bill-to, line items, totals) prints. The
 // toolbar, payment form, and payment history live outside the print area and
 // are never included. On paper the card flattens to a plain white sheet.
@@ -77,6 +79,7 @@ function InvoiceDetail() {
   const voidFn = useServerFn(voidInvoice);
   const paidFn = useServerFn(bulkMarkInvoicesPaid);
   const orgFn = useServerFn(getMyOrg);
+  const pdfFn = useServerFn(downloadInvoicePdf);
   const qc = useQueryClient();
   const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
 
@@ -400,8 +403,19 @@ function InvoiceDetail() {
             {syncM.isPending ? "Syncing…" : "Sync to accounting"}
           </Button>
         )}
+        {/* A real PDF, made on the server: what a bookkeeper files. "Print"
+            stays for the paper copy, and used to be the only way to get
+            either (it was labelled "Download / print"). */}
+        <DownloadPdfButton
+          load={() => pdfFn({ data: { invoiceId } })}
+          nativeUrl={
+            (invoice as any).public_token
+              ? appUrl(`/api/public/invoice-pdf?token=${(invoice as any).public_token}`)
+              : null
+          }
+        />
         <Button variant="outline" onClick={() => window.print()}>
-          Download / print
+          Print
         </Button>
         {invoice.status !== "paid" && invoice.status !== "void" && (
           <ConfirmButton
@@ -467,14 +481,24 @@ function InvoiceDetail() {
                           the base alone beside "$103.00 refunded" would read
                           as a refund larger than the payment. */}
                       {(() => {
-                        const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                        const split = surchargeSplit(
+                          p.amount_cents,
+                          p.surcharge_cents,
+                          p.tip_cents,
+                        );
                         return (
                           <>
                             {fmtCents(split?.chargedCents ?? p.amount_cents, invoice.currency)}
                             {split && (
                               <span className="block text-xs text-muted-foreground">
-                                {fmtCents(split.baseCents, invoice.currency)} service +{" "}
-                                {fmtCents(split.feeCents, invoice.currency)} card fee
+                                {describePaymentSplit(split, (c) => fmtCents(c, invoice.currency))}
+                              </span>
+                            )}
+                            {(p.tip_cents ?? 0) > 0 && (
+                              <span className="block text-xs text-muted-foreground">
+                                {p.tip_staff_name
+                                  ? `Tip credited to ${p.tip_staff_name}`
+                                  : "Tip not credited to a technician"}
                               </span>
                             )}
                           </>

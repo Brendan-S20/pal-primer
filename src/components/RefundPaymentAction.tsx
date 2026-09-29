@@ -203,10 +203,12 @@ function RefundDialog({
 
   // The same division the webhook files, so the dialog and the ledger cannot
   // disagree about a cent.
-  const surchargeShare =
+  const share =
     quote && amountCents
-      ? splitRefund(amountCents, quote.chargedCents, quote.surchargeCents).surchargeCents
-      : 0;
+      ? splitRefund(amountCents, quote.chargedCents, quote.surchargeCents, quote.tipCents ?? 0)
+      : null;
+  const surchargeShare = share?.surchargeCents ?? 0;
+  const tipShare = share?.tipCents ?? 0;
 
   return (
     <Dialog open onOpenChange={(o) => !o && !refundM.isPending && onClose()}>
@@ -330,6 +332,12 @@ function RefundDialog({
                 <li>
                   About {fmt(surchargeShare, cur)} of it is the card fee they paid, which comes off
                   your fee recovery rather than your revenue.
+                </li>
+              )}
+              {tipShare > 0 && (
+                <li>
+                  About {fmt(tipShare, cur)} of it is the tip they added, which was never counted as
+                  revenue, so it comes off tips rather than income.
                 </li>
               )}
               {amountCents < quote.refundableCents && (

@@ -90,6 +90,7 @@ export type RefundablePaymentRow = {
   stripe_payment_intent_id: string | null;
   amount_cents: number | null;
   surcharge_cents?: number | null;
+  tip_cents?: number | null;
   /** Cumulative refunded, from the reversal ledger, when the caller has it. */
   refunded_cents?: number | null;
 };
@@ -118,7 +119,8 @@ export function canOfferRefund(
   if (!hasPermission(role, REFUND_PERMISSION)) return false;
   if (!payment.stripe_payment_intent_id) return false;
   if (payment.status !== "succeeded" && payment.status !== "refunded") return false;
-  const charged = (payment.amount_cents ?? 0) + (payment.surcharge_cents ?? 0);
+  const charged =
+    (payment.amount_cents ?? 0) + (payment.surcharge_cents ?? 0) + (payment.tip_cents ?? 0);
   if (charged <= 0) return false;
   const refunded = payment.refunded_cents ?? 0;
   return refunded < charged;

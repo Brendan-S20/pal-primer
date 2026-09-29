@@ -26,24 +26,39 @@ export function formatDay(iso: string | null | undefined): string {
   });
 }
 
-/** A payment's parts, when a card surcharge was passed through.
+/** A payment's parts, when a card surcharge was passed through or the
+ *  customer added a tip.
  *
- *  `payments.amount_cents` is the invoice amount; `surcharge_cents` sits
- *  beside it so the surcharge is never counted as revenue. Their sum is the
- *  only number the customer ever sees — it is what hit the card — so any
- *  screen showing a payment has to show the sum, and say where it came from
- *  or it looks like the invoice was wrong.
+ *  `payments.amount_cents` is the invoice amount; `surcharge_cents` and
+ *  `tip_cents` sit beside it so neither is ever counted as revenue. Their sum
+ *  is the only number the customer ever sees — it is what hit the card — so
+ *  any screen showing a payment has to show the sum, and say where it came
+ *  from or it looks like the invoice was wrong.
  *
- *  Returns null when there is no surcharge, which is the common case and
- *  means "just render the amount". */
+ *  Returns null when there is neither, which is the common case and means
+ *  "just render the amount". */
 export function surchargeSplit(
   amountCents: number | null | undefined,
   surchargeCents: number | null | undefined,
-): { chargedCents: number; baseCents: number; feeCents: number } | null {
+  tipCents?: number | null,
+): { chargedCents: number; baseCents: number; feeCents: number; tipCents: number } | null {
   const base = amountCents ?? 0;
-  const fee = surchargeCents ?? 0;
-  if (fee <= 0) return null;
-  return { chargedCents: base + fee, baseCents: base, feeCents: fee };
+  const fee = Math.max(surchargeCents ?? 0, 0);
+  const tip = Math.max(tipCents ?? 0, 0);
+  if (fee <= 0 && tip <= 0) return null;
+  return { chargedCents: base + fee + tip, baseCents: base, feeCents: fee, tipCents: tip };
+}
+
+/** "$100.00 service + $3.00 card fee + $15.00 tip" — the line under a split
+ *  payment's charged amount. */
+export function describePaymentSplit(
+  split: { baseCents: number; feeCents: number; tipCents: number },
+  money: (cents: number) => string,
+): string {
+  const parts = [`${money(split.baseCents)} service`];
+  if (split.feeCents > 0) parts.push(`${money(split.feeCents)} card fee`);
+  if (split.tipCents > 0) parts.push(`${money(split.tipCents)} tip`);
+  return parts.join(" + ");
 }
 
 /** "Jul 20, 3:42 PM" for timestamps.
@@ -100,4 +115,23 @@ export function formatClock(hhmm: string | null | undefined): string {
   const suffix = h >= 12 ? "PM" : "AM";
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
+}
+
+/** "Jul 20, 2026": a calendar day on a document that will be filed.
+ *
+ *  `formatDay` drops the year when it is the current one, which is right on
+ *  a screen read today and wrong on a PDF a bookkeeper opens next spring.
+ *  Takes a YYYY-MM-DD day that is ALREADY on the org's calendar (use
+ *  `orgLocalDay` for an instant first) and formats it in UTC, where a bare
+ *  date lives, so no server or device timezone can move it a day. */
+export function formatDocumentDay(day: string | null | undefined): string {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return day ?? "";
+  const d = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return day;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }

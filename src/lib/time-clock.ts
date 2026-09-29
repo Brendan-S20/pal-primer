@@ -209,12 +209,21 @@ export function hoursDecimal(minutes: number): string {
 
 export type TimesheetStaff = { id: string; display_name: string; active?: boolean };
 export type CompletedVisit = { assigned_staff_id: string | null; completed_at: string | null };
+/** A tip credited to somebody: `payments.tip_staff_id`, dated by when the
+ *  payment carrying it was received (`paid_at`), on the org's calendar. */
+export type ReceivedTip = {
+  tip_staff_id: string | null;
+  tip_cents: number | null;
+  paid_at: string | null;
+};
 
 export type TimesheetDay = {
   day: string;
   minutes: number;
   segments: DaySegment[];
   visitsCompleted: number;
+  /** Tips credited to this person on payments received this day. */
+  tipsCents: number;
 };
 
 export type TimesheetRow = {
@@ -223,6 +232,7 @@ export type TimesheetRow = {
   totalMinutes: number;
   overtimeMinutes: number;
   visitsCompleted: number;
+  tipsCents: number;
   /** Somebody is on the clock right now. */
   onTheClock: boolean;
 };
@@ -233,6 +243,7 @@ export type Timesheet = {
   rows: TimesheetRow[];
   totalMinutes: number;
   overtimeMinutes: number;
+  tipsCents: number;
 };
 
 /**
@@ -253,15 +264,18 @@ export function buildTimesheet(input: {
   staff: readonly TimesheetStaff[];
   entries: readonly ClockEntry[];
   visits: readonly CompletedVisit[];
+  /** Tips credited this week. Optional so a caller with none passes nothing. */
+  tips?: readonly ReceivedTip[];
 }): Timesheet {
   const days = weekDays(input.weekStart);
   const inWeek = new Set(days);
   const rows: TimesheetRow[] = input.staff.map((s) => ({
     staff: s,
-    days: days.map((day) => ({ day, minutes: 0, segments: [], visitsCompleted: 0 })),
+    days: days.map((day) => ({ day, minutes: 0, segments: [], visitsCompleted: 0, tipsCents: 0 })),
     totalMinutes: 0,
     overtimeMinutes: 0,
     visitsCompleted: 0,
+    tipsCents: 0,
     onTheClock: false,
   }));
   const byStaff = new Map(rows.map((r) => [r.staff.id, r]));
@@ -287,15 +301,30 @@ export function buildTimesheet(input: {
     row.days[i].visitsCompleted += 1;
     row.visitsCompleted += 1;
   }
+  // Tips on the org day the payment arrived, the same day rule as the hours
+  // and visits beside them. A tip with nobody against it (no completed visit
+  // on the invoice) is not anybody's pay and is left to the invoice and the
+  // Tips received report.
+  for (const t of input.tips ?? []) {
+    const cents = Math.max(0, Math.round(Number(t.tip_cents ?? 0)));
+    if (!t.tip_staff_id || !t.paid_at || cents <= 0) continue;
+    const row = byStaff.get(t.tip_staff_id);
+    const i = index.get(orgLocalDay(t.paid_at, input.tz));
+    if (!row || i == null) continue;
+    row.days[i].tipsCents += cents;
+    row.tipsCents += cents;
+  }
   let totalMinutes = 0;
   let overtimeMinutes = 0;
+  let tipsCents = 0;
   for (const r of rows) {
     for (const d of r.days) d.segments.sort((a, b) => a.start - b.start);
     r.overtimeMinutes = Math.max(0, r.totalMinutes - OVERTIME_THRESHOLD_MINUTES);
     totalMinutes += r.totalMinutes;
     overtimeMinutes += r.overtimeMinutes;
+    tipsCents += r.tipsCents;
   }
-  return { weekStart: input.weekStart, days, rows, totalMinutes, overtimeMinutes };
+  return { weekStart: input.weekStart, days, rows, totalMinutes, overtimeMinutes, tipsCents };
 }
 
 // ── the export ──────────────────────────────────────────────────────────────
@@ -307,8 +336,15 @@ export const TIMESHEET_CSV_HEADERS = [
   "Clock out",
   "Hours",
   "Visits completed",
+  "Tips",
   "Notes",
 ] as const;
+
+/** "12.50" -- dollars with two decimals and no symbol, which is what a
+ *  spreadsheet sums without being told the column is currency. */
+export function csvDollars(cents: number): string {
+  return (Math.max(0, Math.round(cents)) / 100).toFixed(2);
+}
 
 const localStampFormatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -347,14 +383,28 @@ export function orgLocalStamp(ms: number, tz: string): string {
  * time still gets a row, with no times and zero hours, because a person who
  * completed six visits without clocking in is the row an owner most needs to
  * see before running payroll.
+ *
+ * Tips follow the visits rule exactly: a day's tips are written once, on its
+ * first row, so summing the column gives the week's tips; and a day with tips
+ * and no clocked time still gets a row, because a tip is pay whether or not
+ * the shift was recorded.
  */
 export function timesheetCsvRows(sheet: Timesheet, tz: string): string[][] {
   const out: string[][] = [];
   for (const row of sheet.rows) {
     for (const d of row.days) {
       if (d.segments.length === 0) {
-        if (d.visitsCompleted > 0) {
-          out.push([row.staff.display_name, d.day, "", "", "0.00", String(d.visitsCompleted), "No time recorded"]);
+        if (d.visitsCompleted > 0 || d.tipsCents > 0) {
+          out.push([
+            row.staff.display_name,
+            d.day,
+            "",
+            "",
+            "0.00",
+            String(d.visitsCompleted),
+            csvDollars(d.tipsCents),
+            "No time recorded",
+          ]);
         }
         continue;
       }
@@ -370,6 +420,7 @@ export function timesheetCsvRows(sheet: Timesheet, tz: string): string[][] {
           s.open && !s.continuesIntoNextDay ? "" : orgLocalStamp(s.end, tz),
           hoursDecimal(s.minutes),
           i === 0 ? String(d.visitsCompleted) : "",
+          i === 0 ? csvDollars(d.tipsCents) : "",
           notes.join("; "),
         ]);
       });

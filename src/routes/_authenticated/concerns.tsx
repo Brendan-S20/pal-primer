@@ -1,6 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarCheck, CalendarOff, Inbox, Repeat, Sparkles } from "lucide-react";
+import { CalendarCheck, CalendarOff, CalendarPlus, Inbox, Repeat, Sparkles } from "lucide-react";
 import { ScheduleRecleanDialog, type RecleanTicket } from "@/components/ScheduleRecleanDialog";
+import {
+  BookOneOffRequestDialog,
+  type OneOffRequestTicket,
+} from "@/components/BookOneOffRequestDialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
@@ -99,6 +103,74 @@ function RecleanRow({
   );
 }
 
+/** What the office tells a customer whose extra cleanup it cannot fit in,
+ *  unless somebody writes something better in the resolution note. */
+const ONE_OFF_DECLINE_NOTE =
+  "We couldn't fit that day in. Please pick another day, or give us a call.";
+
+/**
+ * A customer's request for an extra cleanup: the day and the address, and
+ * either "Book it" or what became of it. Book it is manage_pricing only, for
+ * the same reason as Schedule re-clean: createOneOffVisit sets a price.
+ * Declining resolves the request with a note the customer reads in the
+ * portal, so they are never left looking at "Received" for a day that passed.
+ */
+function OneOffRow({
+  concern,
+  status,
+  canBook,
+  onBook,
+  onDecline,
+  declining,
+}: {
+  concern: any;
+  status: ConcernStatus;
+  canBook: boolean;
+  onBook: () => void;
+  onDecline: () => void;
+  declining: boolean;
+}) {
+  const booked = oneOf<{ scheduled_on: string }>(concern.booked_visit);
+  const property = oneOf<{ street: string; city: string | null }>(concern.property);
+  const where = property ? [property.street, property.city].filter(Boolean).join(", ") : null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm">
+      {booked ? (
+        <CalendarCheck className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-400" />
+      ) : (
+        <CalendarPlus className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-400" />
+      )}
+      <span className="min-w-0 flex-1 basis-48 break-words text-violet-900 dark:text-violet-200">
+        {booked
+          ? `Booked for ${formatDay(booked.scheduled_on)}.`
+          : status === "resolved"
+            ? `Asked for ${formatDay(concern.requested_on)}. Not booked.`
+            : `Asked for an extra cleanup on ${formatDay(concern.requested_on)}${
+                where ? ` at ${where}` : ""
+              }.`}
+      </span>
+      {!booked && status !== "resolved" && canBook && concern.property_id && (
+        <div className="ml-auto flex flex-wrap gap-2">
+          <ConfirmButton
+            title="Decline this request?"
+            description={`The customer sees it as not booked, with this reply: "${ONE_OFF_DECLINE_NOTE}" Write your own in the resolution note first if you'd rather.`}
+            confirmLabel="Decline"
+            onConfirm={onDecline}
+            trigger={
+              <Button size="sm" variant="outline" disabled={declining}>
+                Decline
+              </Button>
+            }
+          />
+          <Button size="sm" onClick={onBook}>
+            Book it
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConcernsPage() {
   // The one-click frequency apply is a manage_pricing action — hide it for
   // roles (dispatcher) that can reach Concerns but would be server-rejected.
@@ -136,6 +208,8 @@ function ConcernsPage() {
   const [appliedFreqTicketIds, setAppliedFreqTicketIds] = useState<Set<string>>(new Set());
   // The re-clean request being scheduled, if any.
   const [recleanFor, setRecleanFor] = useState<RecleanTicket | null>(null);
+  // The extra-cleanup request being booked, if any.
+  const [oneOffFor, setOneOffFor] = useState<OneOffRequestTicket | null>(null);
   const qc = useQueryClient();
   const listFn = useServerFn(listConcerns);
   const updateFn = useServerFn(updateConcernStatus);
@@ -224,8 +298,8 @@ function ConcernsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Concerns</h1>
         <p className="text-sm text-muted-foreground">
-          Issues clients submit from their portal, including re-clean requests. Triage and resolve
-          them here.
+          Issues clients submit from their portal, including re-clean requests and extra cleanups
+          they ask for. Triage and resolve them here.
         </p>
       </div>
 
@@ -407,6 +481,33 @@ function ConcernsPage() {
                   />
                 )}
 
+                {c.category === "one_off_request" && (
+                  <OneOffRow
+                    concern={c}
+                    status={status}
+                    canBook={canManagePricing}
+                    declining={mut.isPending}
+                    onDecline={() =>
+                      mut.mutate({
+                        ticketId: c.id,
+                        status: "resolved",
+                        resolutionNote: (notes[c.id] ?? "").trim() || ONE_OFF_DECLINE_NOTE,
+                      })
+                    }
+                    onBook={() => {
+                      const prop = oneOf<{ street: string; city: string | null }>(c.property);
+                      setOneOffFor({
+                        ticketId: c.id,
+                        clientId: c.client_id,
+                        clientName: client?.display_name ?? "this client",
+                        propertyId: c.property_id,
+                        address: prop ? [prop.street, prop.city].filter(Boolean).join(", ") : null,
+                        requestedOn: c.requested_on,
+                      });
+                    }}
+                  />
+                )}
+
                 {c.last_reply_at && (
                   <p className="mt-2 rounded bg-muted/50 p-2 text-xs text-muted-foreground">
                     You replied {fmt(c.last_reply_at)}: <span className="italic">{c.last_reply}</span>
@@ -518,6 +619,14 @@ function ConcernsPage() {
         ticket={recleanFor}
         onOpenChange={(o) => {
           if (!o) setRecleanFor(null);
+        }}
+      />
+
+      {/* Always mounted, for the same reason as the re-clean dialog. */}
+      <BookOneOffRequestDialog
+        ticket={oneOffFor}
+        onOpenChange={(o) => {
+          if (!o) setOneOffFor(null);
         }}
       />
 
