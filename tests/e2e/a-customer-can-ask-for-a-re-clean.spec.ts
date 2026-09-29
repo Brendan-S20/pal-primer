@@ -83,7 +83,49 @@ test("a customer's re-clean request is accepted once, inside the window only, an
       break;
     }
   }
-  if (!visit) throw new Error("no completed visit without a ticket to request a re-clean for");
+  if (!visit) {
+    // This failed once in CI (run 36512416754, PR #268) as the first spec
+    // after a seed that reported 149 visits, and passed on the rerun. It could
+    // not be reproduced: not by re-seeding at the same local hour, not by the
+    // seed, not by the stack wiring. So when it happens again it says what it
+    // saw, from the database directly rather than through the embed above.
+    const count = async (q: PromiseLike<{ count: number | null }>) => (await q).count ?? 0;
+    const completed = await count(
+      db
+        .from("visits")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("status", "completed"),
+    );
+    const assigned = await count(
+      db
+        .from("visits")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("status", "completed")
+        .not("assigned_staff_id", "is", null),
+    );
+    const clients = await count(
+      db
+        .from("clients")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("active", true)
+        .not("portal_token", "is", null),
+    );
+    const tickets = await count(
+      db
+        .from("qc_tickets")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId),
+    );
+    throw new Error(
+      `no completed visit without a ticket to request a re-clean for. ` +
+        `The embed returned ${candidates?.length ?? "null"} candidates; the org has ` +
+        `${completed} completed visits (${assigned} assigned), ${clients} active clients ` +
+        `with a portal link, and ${tickets} tickets.`,
+    );
+  }
   const client = Array.isArray(visit.clients) ? visit.clients[0] : visit.clients;
   const token = client.portal_token as string;
   const completedBefore = visit.completed_at;
