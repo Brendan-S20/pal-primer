@@ -8,10 +8,11 @@ import { bulkMarkInvoicesPaid, getInvoice, voidInvoice } from "@/lib/invoices.fu
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
 import { describeManualPayment } from "@/lib/manual-payments";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
+import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
-import { formatDay, formatDateTime } from "@/lib/format";
+import { formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -238,7 +239,11 @@ function InvoiceDetail() {
         <div className="mt-8">
           <SectionLabel>Billed to</SectionLabel>
           <p className="mt-1.5 text-sm font-medium">{client?.display_name ?? "Client"}</p>
-          <p className="text-sm text-muted-foreground">
+          {/* break-all: an address has no spaces, so a long one set the
+              width of the page. Measured when this page first entered the
+              width sweep: a 66-character address made the page 508px wide on
+              a 360px phone. */}
+          <p className="break-all text-sm text-muted-foreground">
             {client?.primary_email ?? "No email on file"}
           </p>
         </div>
@@ -455,8 +460,42 @@ function InvoiceDetail() {
                     <td className="px-4 py-2">
                       {formatDateTime(p.paid_at ?? p.created_at) || (p.paid_at ?? p.created_at)}
                     </td>
-                    <td className="px-4 py-2 tabular-nums">
-                      {fmtCents(p.amount_cents, invoice.currency)}
+                    <td className="px-4 py-2 align-top tabular-nums">
+                      {/* What the card was charged — base + any surcharge,
+                          as the invoice drawer shows it — because that is
+                          the figure a refund is measured against. Showing
+                          the base alone beside "$103.00 refunded" would read
+                          as a refund larger than the payment. */}
+                      {(() => {
+                        const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                        return (
+                          <>
+                            {fmtCents(split?.chargedCents ?? p.amount_cents, invoice.currency)}
+                            {split && (
+                              <span className="block text-xs text-muted-foreground">
+                                {fmtCents(split.baseCents, invoice.currency)} service +{" "}
+                                {fmtCents(split.feeCents, invoice.currency)} card fee
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
+                      {p.refunded_cents > 0 && (
+                        <span className="block text-xs text-muted-foreground">
+                          {fmtCents(p.refunded_cents, invoice.currency)} refunded
+                        </span>
+                      )}
+                      {/* In THIS column rather than a trailing one: the table
+                          scrolls sideways below 560px, and a control in the
+                          last column is off the edge of a phone. */}
+                      <div className="mt-1">
+                        <RefundPaymentAction
+                          payment={p}
+                          invoiceId={invoiceId}
+                          currency={invoice.currency}
+                          customerName={client?.display_name}
+                        />
+                      </div>
                     </td>
                     <td className="px-4 py-2">
                       <StatusChip status={p.status} />
