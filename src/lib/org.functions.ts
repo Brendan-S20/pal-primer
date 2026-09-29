@@ -177,8 +177,11 @@ export const getMyOrg = createServerFn({ method: "GET" })
       .select(
         // `timezone` is here for useOrgToday: components that judge whether a
         // date has passed must ask the org's calendar, not the server's
-        // default. See src/hooks/useOrgToday.ts.
-        "id, name, portal_slug, timezone, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id, slug, is_comped, require_completion_photo",
+        // default. See src/hooks/useOrgToday.ts. `require_completion_photo`
+        // and `visit_checklist` are here for My Day (useOrgFieldRules): this
+        // query is persisted for offline, so a tech in a dead zone still
+        // knows what finishing a visit asks of them.
+        "id, name, portal_slug, timezone, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id, slug, is_comped, require_completion_photo, visit_checklist",
       )
       .eq("id", role.organization_id)
       .single();

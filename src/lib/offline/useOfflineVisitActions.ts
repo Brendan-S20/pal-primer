@@ -23,9 +23,18 @@ import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import type { PhotoKind } from "@/lib/photo-kinds";
 
+/** What travels with a Complete, live or queued: the note, why there is no
+ *  photo, and the checklist items the tech checked. One type, so a field
+ *  added here reaches the network call and the queued action together. */
+export type CompleteExtra = {
+  note?: string;
+  noPhotoReason?: string;
+  checkedItems?: string[];
+};
+
 export interface OfflineVisitActions {
   start: () => Promise<{ queued: boolean }>;
-  complete: (extra?: { note?: string; noPhotoReason?: string }) => Promise<{ queued: boolean }>;
+  complete: (extra?: CompleteExtra) => Promise<{ queued: boolean }>;
   skip: (reason: string, code: string) => Promise<{ queued: boolean }>;
   uploadPhoto: (file: File, kind: PhotoKind) => Promise<{ queued: boolean }>;
 }
@@ -80,7 +89,7 @@ export function useOfflineVisitActions(
   );
 
   const complete = useCallback(
-    (extra: { note?: string; noPhotoReason?: string } = {}) =>
+    (extra: CompleteExtra = {}) =>
       runOrQueue({
         online: isNavigatorOnline(),
         label: "Complete visit",

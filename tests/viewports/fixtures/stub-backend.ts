@@ -101,6 +101,10 @@ const BASE_STUBS: Record<string, Stub> = {
     hasCommercialData: true,
     requireCompletionPhoto: true,
     recleanWindowHours: 48,
+    // Settings -> Preferences draws the checklist editor from this: one row
+    // per item, the 120-character label in a text field, at every width.
+    visitChecklist: fx.VISIT_CHECKLIST,
+    emailVisitChecklist: false,
   },
   // /leads, and /clients/new?fromLead=<id>. The wizard is answered with the
   // first (convertible) lead AND an existing client on the same email, so the
