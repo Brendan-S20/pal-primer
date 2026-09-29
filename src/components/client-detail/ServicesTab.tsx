@@ -1385,7 +1385,8 @@ function ServiceDrawer({
           {fromQuote.oneTimeCents > 0 && (
             <p className="text-muted-foreground">
               Its one-time charges ({formatQuoteMoney(fromQuote.oneTimeCents)}) are not billed by
-              adding a service. Invoice them from the Billing tab.
+              adding a service. Once the work is done, press &ldquo;Invoice one-time charges&rdquo;
+              on the quote.
             </p>
           )}
         </div>

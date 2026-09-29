@@ -17,10 +17,17 @@ import {
   deleteQuoteDraft,
   duplicateQuote,
   getQuote,
+  invoiceQuoteOneTimeCharges,
   sendQuote,
   withdrawQuote,
 } from "@/lib/quotes.functions";
-import { convertTarget, formatQuoteDay, sendResultMessage } from "@/lib/quotes";
+import {
+  convertTarget,
+  formatQuoteDay,
+  formatQuoteMoney,
+  quoteTotals,
+  sendResultMessage,
+} from "@/lib/quotes";
 import { formatDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/quotes/$quoteId")({
@@ -38,6 +45,7 @@ function QuoteDetailPage() {
   const withdrawFn = useServerFn(withdrawQuote);
   const deleteFn = useServerFn(deleteQuoteDraft);
   const duplicateFn = useServerFn(duplicateQuote);
+  const invoiceFn = useServerFn(invoiceQuoteOneTimeCharges);
 
   const q = useQuery({
     queryKey: ["quote", quoteId],
@@ -55,6 +63,19 @@ function QuoteDetailPage() {
       if (m.ok) toast.success(m.text);
       else toast.warning(m.text, { duration: 10_000 });
       refresh();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  // The initial cleanup and anything else that is not a per-visit price. The
+  // office presses this when the work is done: an open invoice is one
+  // autopay will charge, so creating it at conversion would bill early.
+  const invoiceM = useMutation({
+    mutationFn: () => invoiceFn({ data: { id: quoteId } }),
+    onSuccess: (r) => {
+      if (r.created) toast.success("Invoiced the one-time charges");
+      refresh();
+      if (r.invoiceId) navigate({ to: "/invoices/$invoiceId", params: { invoiceId: r.invoiceId } });
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -107,7 +128,14 @@ function QuoteDetailPage() {
   }
 
   const { quote, lines, today, timezone } = q.data;
-  const busy = sendM.isPending || withdrawM.isPending || deleteM.isPending || duplicateM.isPending;
+  const busy =
+    sendM.isPending ||
+    withdrawM.isPending ||
+    deleteM.isPending ||
+    duplicateM.isPending ||
+    invoiceM.isPending;
+  const oneTimeCents = quoteTotals(lines).oneTimeCents;
+  const billTo = quote.clientId ?? quote.convertedClientId;
 
   if (quote.rawStatus === "draft") {
     const initial: QuoteEditorValues = {
@@ -266,6 +294,36 @@ function QuoteDetailPage() {
               {target.kind === "client" ? "Convert to work" : "Convert to client"}
             </Button>
           )}
+          {quote.status === "accepted" &&
+            oneTimeCents > 0 &&
+            billTo &&
+            (quote.oneTimeInvoiceId ? (
+              <Button asChild variant="outline">
+                <Link to="/invoices/$invoiceId" params={{ invoiceId: quote.oneTimeInvoiceId }}>
+                  Open one-time invoice
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: `Invoice ${formatQuoteMoney(oneTimeCents)} of one-time charges?`,
+                      description: `An open invoice to ${quote.recipientName} for the lines on ${quote.label} that are not per visit. If they pay by autopay, it will be charged. Do this once the work is done.`,
+                      confirmLabel: "Create invoice",
+                    })
+                  )
+                    invoiceM.mutate();
+                }}
+              >
+                {invoiceM.isPending
+                  ? "Invoicing…"
+                  : `Invoice one-time charges · ${formatQuoteMoney(oneTimeCents)}`}
+              </Button>
+            ))}
           {quote.convertedClientId && (
             <Button asChild variant="outline">
               <Link to="/clients/$clientId" params={{ clientId: quote.convertedClientId }}>

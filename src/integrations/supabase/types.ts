@@ -4649,6 +4649,7 @@ export type Database = {
           title: string | null
           updated_at: string
           valid_until: string | null
+          one_time_invoice_id: string | null
         }
         Insert: {
           accepted_at?: string | null
@@ -4674,6 +4675,7 @@ export type Database = {
           title?: string | null
           updated_at?: string
           valid_until?: string | null
+          one_time_invoice_id?: string | null
         }
         Update: {
           accepted_at?: string | null
@@ -4699,6 +4701,7 @@ export type Database = {
           title?: string | null
           updated_at?: string
           valid_until?: string | null
+          one_time_invoice_id?: string | null
         }
         Relationships: [
           {
