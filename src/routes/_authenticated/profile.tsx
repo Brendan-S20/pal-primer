@@ -32,6 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { DeleteAccountCard } from "@/components/DeleteAccountCard";
 import { SignInMethodsCard } from "@/components/SignInMethodsCard";
+import { CalendarFeedCard } from "@/components/CalendarFeedCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { supabase } from "@/integrations/supabase/client";
@@ -358,6 +359,10 @@ function ProfilePage() {
           {!staff.active && <Badge variant="destructive">Deactivated</Badge>}
         </CardContent>
       </Card>
+
+      {/* Your own calendar link: a fact about you (which visits are yours),
+          so it is here as well as under Settings -> Scheduling. */}
+      <CalendarFeedCard />
 
       {/* App Review guideline 5.1.1(v): an app that can create an account must
           let a person delete it from inside the app. This sits under the

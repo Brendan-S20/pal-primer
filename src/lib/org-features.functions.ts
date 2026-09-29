@@ -3,6 +3,14 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
+import {
+  MAX_CHECKLIST_ID,
+  MAX_CHECKLIST_ITEMS,
+  MAX_CHECKLIST_LABEL,
+  checklistProblem,
+  parseChecklist,
+  type ChecklistItem,
+} from "@/lib/visit-checklist";
 
 // What KIND of business this org is, for rendering.
 //
@@ -37,6 +45,10 @@ export type MyOrgFeatures = {
   /** Re-clean guarantee: hours after a completed visit a customer can ask for
    *  a free re-clean from the portal. 0 is off. */
   recleanWindowHours: number;
+  /** What a tech confirms on every visit. Empty until the owner writes one. */
+  visitChecklist: ChecklistItem[];
+  /** Whether the completion email lists the items the tech checked. */
+  emailVisitChecklist: boolean;
 };
 
 export const getMyOrgFeatures = createServerFn({ method: "GET" })
@@ -46,7 +58,9 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
     const [{ data: org }, { data: hasData }] = await Promise.all([
       context.supabase
         .from("organizations")
-        .select("commercial_accounts, require_completion_photo, reclean_window_hours")
+        .select(
+          "commercial_accounts, require_completion_photo, reclean_window_hours, visit_checklist, email_visit_checklist",
+        )
         .eq("id", orgId)
         .maybeSingle(),
       context.supabase.rpc("org_has_commercial_data", { _org_id: orgId }),
@@ -60,6 +74,11 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
         (org as { reclean_window_hours?: number } | null)?.reclean_window_hours ??
           RECLEAN_WINDOW_DEFAULT_HOURS,
       ),
+      visitChecklist: parseChecklist(
+        (org as { visit_checklist?: unknown } | null)?.visit_checklist,
+      ),
+      emailVisitChecklist: !!(org as { email_visit_checklist?: boolean } | null)
+        ?.email_visit_checklist,
     };
   });
 
@@ -107,4 +126,49 @@ export const setRecleanWindowHours = createServerFn({ method: "POST" })
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { reclean_window_hours: data.hours });
     return { ok: true, recleanWindowHours: data.hours };
+  });
+
+/** The visit checklist. complete_visit reads the column and refuses while a
+ *  required item is unchecked; the CHECK on the column
+ *  (visit_checklist_is_valid) holds the same limits as the validator here, so
+ *  the owner reads a sentence rather than a constraint name. Labels are
+ *  trimmed before they are stored, because the database copies them onto
+ *  every visit completed against them. */
+export const setVisitChecklist = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        items: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(MAX_CHECKLIST_ID),
+              label: z.string().trim().min(1).max(MAX_CHECKLIST_LABEL),
+              required: z.boolean(),
+            }),
+          )
+          .max(MAX_CHECKLIST_ITEMS),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const problem = checklistProblem(data.items);
+    if (problem) throw new Error(problem);
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    await updateOwnOrg(context.supabase, orgId, { visit_checklist: data.items });
+    return { ok: true, visitChecklist: data.items };
+  });
+
+/** Whether the completion email tells the customer what was checked. */
+export const setEmailVisitChecklist = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ enabled: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    await updateOwnOrg(context.supabase, orgId, { email_visit_checklist: data.enabled });
+    return { ok: true, emailVisitChecklist: data.enabled };
   });

@@ -7,6 +7,7 @@
 import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
+import { appUrl } from "@/lib/app-origin";
 
 const SITE_NAME = "HoundStack";
 const SENDER_DOMAIN = "notify.houndstack.com";
@@ -37,7 +38,18 @@ interface EnqueueParams {
   recipientName?: string | null;
   templateName: string;
   templateData: Record<string, unknown>;
-  notifyKey: NotifyKey;
+  /** The organization's on/off switch for this kind of email. Omitted ONLY
+   *  for a campaign: a campaign is the owner pressing Send on this exact
+   *  message, so there is no standing preference for it to consult. */
+  notifyKey?: NotifyKey;
+  /** Which lane. `campaign_emails` is read after the other two by
+   *  /email/queue/process, so a campaign never delays an invoice. */
+  queue?: "transactional_emails" | "campaign_emails";
+  /** Mint (or reuse) a CLIENT-scoped unsubscribe token, hand the template its
+   *  URL as `unsubscribeUrl`, and point List-Unsubscribe at it. Redeeming it
+   *  sets email_opt_out on this client in this organization and nothing else;
+   *  see client_unsubscribe_tokens. Requires `clientId`. */
+  clientUnsubscribe?: boolean;
   idempotencyKey?: string;
   /** Override the client email lookup (rarely needed). */
   toOverride?: string | null;
@@ -96,10 +108,12 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     // contact_phone and contact_address join it here because every template
     // now ends in an OrgFooter. They were already on this row and already
     // editable in Settings; nothing had ever put them in an email.
-    .select(`id, name, contact_email, contact_phone, contact_address, ${params.notifyKey}`)
+    .select(
+      `id, name, contact_email, contact_phone, contact_address${params.notifyKey ? `, ${params.notifyKey}` : ""}`,
+    )
     .eq("id", params.organizationId)
     .maybeSingle();
-  if (!org || (org as any)[params.notifyKey] === false) {
+  if (!org || (params.notifyKey && (org as any)[params.notifyKey] === false)) {
     return { ok: false, reason: "org_toggle_off" };
   }
 
@@ -138,6 +152,37 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     .maybeSingle();
   if (suppressed) return { ok: false, reason: "suppressed" };
 
+  // A client-scoped unsubscribe link, minted BEFORE rendering because the
+  // template prints it. One token per client, reused by every campaign: the
+  // unique index on client_id makes a concurrent mint a no-op, and the row is
+  // read back either way.
+  //
+  // Every email to a KNOWN client carries it now, not only campaigns: it is
+  // what the one-click List-Unsubscribe header points at, and redeeming it
+  // opts that client out at this business and nowhere else. The address-wide
+  // token below it adds the address to the platform-wide suppression list,
+  // so one click on one business's invoice stopped every business's mail to
+  // that person. A campaign cannot go without it; anything else falls back.
+  let clientUnsubscribeToken: string | null = null;
+  if (params.clientUnsubscribe && !client) return { ok: false, reason: "no_recipient" };
+  if (client) {
+    await supabaseAdmin
+      .from("client_unsubscribe_tokens")
+      .upsert(
+        { token: hexToken(), organization_id: params.organizationId, client_id: client.id },
+        { onConflict: "client_id", ignoreDuplicates: true },
+      );
+    const { data: tok } = await supabaseAdmin
+      .from("client_unsubscribe_tokens")
+      .select("token")
+      .eq("client_id", client.id)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+    // No link, no campaign. CAN-SPAM has no "sent it anyway" branch.
+    if (!tok?.token && params.clientUnsubscribe) return { ok: false, reason: "enqueue_failed" };
+    clientUnsubscribeToken = tok?.token ?? null;
+  }
+
   // Attachments, now that nothing above has declined the send.
   let attachments: Array<{ filename: string; contentBase64: string }> = [];
   if (params.attachments) {
@@ -168,6 +213,10 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     orgAddress: orgContact.contact_address ?? null,
     clientName: client?.display_name ?? params.recipientName ?? undefined,
     ...params.templateData,
+    // After the spread: the link is minted here, never supplied by a caller.
+    ...(clientUnsubscribeToken && params.clientUnsubscribe
+      ? { unsubscribeUrl: appUrl(`/unsubscribe?token=${clientUnsubscribeToken}`) }
+      : {}),
   };
   let html: string, text: string;
   try {
@@ -180,11 +229,29 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   }
   const subject = typeof entry.subject === "function" ? entry.subject(mergedData) : entry.subject;
 
-  // Unsubscribe token
-  const unsubscribeToken = hexToken();
-  await supabaseAdmin
-    .from("email_unsubscribe_tokens")
-    .insert({ email: recipient, token: unsubscribeToken });
+  // Unsubscribe token: the client-scoped one minted above, or, for mail with
+  // no client row (a prospect's quote), the address-wide one. That table
+  // holds ONE token per address (email_unsubscribe_tokens_email_key), so the
+  // bare insert this used to do failed silently from the second email on and
+  // the header carried a token that did not exist. Reuse the address's token.
+  let unsubscribeToken: string;
+  if (clientUnsubscribeToken) {
+    unsubscribeToken = clientUnsubscribeToken;
+  } else {
+    await supabaseAdmin
+      .from("email_unsubscribe_tokens")
+      .upsert(
+        { email: recipient, token: hexToken() },
+        { onConflict: "email", ignoreDuplicates: true },
+      );
+    const { data: addrTok } = await supabaseAdmin
+      .from("email_unsubscribe_tokens")
+      .select("token")
+      .eq("email", recipient)
+      .maybeSingle();
+    unsubscribeToken = (addrTok?.token as string | undefined) ?? hexToken();
+  }
+  const queueName = params.queue ?? "transactional_emails";
 
   const messageId = crypto.randomUUID();
   const idempotencyKey = params.idempotencyKey || messageId;
@@ -197,7 +264,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   });
 
   const { error: enqueueError } = await supabaseAdmin.rpc("enqueue_email", {
-    queue_name: "transactional_emails",
+    queue_name: queueName,
     payload: {
       message_id: messageId,
       to: recipient,
@@ -216,10 +283,14 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       subject,
       html,
       text,
-      purpose: "transactional",
+      purpose: queueName === "campaign_emails" ? "marketing" : "transactional",
       label: params.templateName,
       idempotency_key: idempotencyKey,
       unsubscribe_token: unsubscribeToken,
+      // One-click (RFC 8058) needs a URL that answers a POST. The page does
+      // not; /email/unsubscribe does, and sends a browser on to the page. It
+      // redeems either kind of token.
+      unsubscribe_url: appUrl(`/email/unsubscribe?token=${unsubscribeToken}`),
       queued_at: new Date().toISOString(),
       ...(attachments.length
         ? {

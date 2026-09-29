@@ -36,6 +36,8 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/dashboard": ["owner", "office_manager", "dispatcher"],
   "/leads": ["owner", "office_manager"],
   "/clients": ["owner", "office_manager", "dispatcher"],
+  // The server gate is send_campaigns, which owner and office_manager hold.
+  "/campaigns": ["owner", "office_manager"],
   "/zones": ["owner", "office_manager", "dispatcher"],
   // Prices, not routing: a dispatcher moves visits around and has no reason
   // to see what every customer pays.

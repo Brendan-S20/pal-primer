@@ -35,7 +35,7 @@ import {
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow, type InvoiceRowData } from "@/components/InvoiceRow";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
-import { formatDay, surchargeSplit } from "@/lib/format";
+import { describePaymentSplit, formatDay, surchargeSplit } from "@/lib/format";
 import { humanizeEnum } from "@/lib/humanize";
 import { addonBillingTrail } from "@/lib/addon-billing";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
@@ -284,7 +284,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                   // invoice paid by card can be $47.13 on the customer's
                   // statement, and showing only the first number is how a
                   // "why is this different" call starts.
-                  const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                  const split = surchargeSplit(p.amount_cents, p.surcharge_cents, p.tip_cents);
                   return (
                     <span className="text-right">
                       <span className="font-medium">
@@ -292,8 +292,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                       </span>
                       {split && (
                         <span className="block text-2xs text-muted-foreground">
-                          ${(split.baseCents / 100).toFixed(2)} service + $
-                          {(split.feeCents / 100).toFixed(2)} card fee
+                          {describePaymentSplit(split, (c) => `$${(c / 100).toFixed(2)}`)}
                         </span>
                       )}
                     </span>

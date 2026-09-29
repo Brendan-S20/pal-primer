@@ -28,6 +28,8 @@ import {
   attestCardSurcharge,
 } from "@/lib/processing-fee.functions";
 import { describeStripeRates } from "@/lib/processing-fee";
+import { getTipSettings, setTipsEnabled } from "@/lib/tips.functions";
+import { Switch } from "@/components/ui/switch";
 import { getPlatformFeeSentence } from "@/lib/platform-fee.functions";
 import { sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
@@ -232,7 +234,14 @@ function PaymentsSettings() {
           <ConnectDashboard
             chargesEnabled={!!cfg.chargesEnabled}
             onOnboardingExit={() => refresh.mutate()}
-            settings={cfg.chargesEnabled ? <ProcessingFeeCard /> : null}
+            settings={
+              cfg.chargesEnabled ? (
+                <div className="space-y-4">
+                  <ProcessingFeeCard />
+                  <TipsCard />
+                </div>
+              ) : null
+            }
             accountExtras={
               <>
                 {/* Was a permanently-visible amber box at the foot of the page,
@@ -318,6 +327,58 @@ function PaymentsSettings() {
 }
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * Whether customers are offered a tip when they pay.
+ *
+ * Says where the choices appear and what they are, because the owner is
+ * deciding what their customers will be asked, and says where the money goes
+ * in the books, because "is this income" is the first question after "can I".
+ */
+function TipsCard() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getTipSettings);
+  const setFn = useServerFn(setTipsEnabled);
+  const q = useQuery({ queryKey: ["tip-settings"], queryFn: () => getFn() });
+  const set = useMutation({
+    mutationFn: (enabled: boolean) => setFn({ data: { enabled } }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["tip-settings"] });
+      toast.success(r.tipsEnabled ? "Customers can now add a tip" : "Tips turned off");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading tip settings…</p>;
+  if (!q.data) return null;
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-card p-4">
+      <div className="flex items-start justify-between gap-4">
+        <label htmlFor="tips-enabled" className="min-w-0 text-sm">
+          <span className="block font-medium">Let customers add a tip</span>
+          <span className="block text-muted-foreground">
+            On the payment link and the customer portal, customers can choose No tip, 10%, 15%, 20%
+            or their own amount. No tip is selected until they pick one.
+          </span>
+        </label>
+        <Switch
+          id="tips-enabled"
+          className="mt-1"
+          checked={q.data.tipsEnabled}
+          disabled={set.isPending}
+          onCheckedChange={(v) => set.mutate(v)}
+        />
+      </div>
+      <p className="border-t pt-2 text-xs text-muted-foreground">
+        A tip is paid to you with the invoice but kept apart from it: it never counts toward
+        revenue, royalties or the platform fee, and no card fee is added to it. It is credited to
+        the technician on the most recent completed visit on that invoice and shows on Timesheets
+        and in the Tips received report.
+      </p>
+    </div>
+  );
+}
 
 /**
  * Who pays Stripe's cost of acceptance.
@@ -674,7 +735,7 @@ function ConnectDashboard({
             <TabsList>
               <TabsTrigger value="money">Money</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
-              {settings && <TabsTrigger value="fees">Fees</TabsTrigger>}
+              {settings && <TabsTrigger value="fees">Fees &amp; tips</TabsTrigger>}
               <TabsTrigger value="account">Account</TabsTrigger>
             </TabsList>
 

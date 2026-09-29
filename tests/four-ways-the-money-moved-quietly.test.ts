@@ -270,14 +270,20 @@ describe("the card surcharge reaches the people who paid it", () => {
     ]) {
       const src = read(f);
       expect(src, f).toMatch(/surchargeSplit\(/);
-      expect(src, f).toMatch(/card fee/);
+      // The "... service + ... card fee" line now comes from one shared
+      // helper, which also names a tip when there is one
+      // (a-customer-could-not-leave-a-tip).
+      expect(src, f).toMatch(/describePaymentSplit\(split/);
     }
+    expect(read("src/lib/format.ts")).toMatch(/card fee/);
   });
 
   it("and the receipt email quotes what hit the card, not the invoice amount", () => {
     const tpl = read("src/lib/email-templates/payment-received.tsx");
-    expect(tpl).toMatch(/charged\(amountCents, surchargeCents\)/);
-    expect(tpl).toMatch(/for service \+ \{fmtMoney\(surchargeCents\)\} card processing/);
+    // Three parts since tips: the receipt leads with invoice + surcharge + tip.
+    expect(tpl).toMatch(/charged\(amountCents, surchargeCents, tipCents\)/);
+    expect(tpl).toMatch(/`\$\{fmtMoney\(amountCents\)\} for service`/);
+    expect(tpl).toMatch(/`\$\{fmtMoney\(surchargeCents\)\} card processing`/);
     // The subject line too — it is the first number the customer sees.
     expect(tpl).toMatch(/Receipt: \$\{fmtMoney\(charged\(/);
     expect(read("src/lib/invoice-reconcile.server.ts")).toMatch(
@@ -299,11 +305,18 @@ describe("surchargeSplit", () => {
       chargedCents: 4713,
       baseCents: 4575,
       feeCents: 138,
+      // No tip on this payment. See a-customer-could-not-leave-a-tip.
+      tipCents: 0,
     });
   });
 
   it("treats a missing amount as zero rather than NaN", () => {
-    expect(surchargeSplit(null, 138)).toEqual({ chargedCents: 138, baseCents: 0, feeCents: 138 });
+    expect(surchargeSplit(null, 138)).toEqual({
+      chargedCents: 138,
+      baseCents: 0,
+      feeCents: 138,
+      tipCents: 0,
+    });
   });
 
   it("ignores a negative surcharge instead of subtracting it", () => {

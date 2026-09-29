@@ -45,6 +45,8 @@ import {
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
+import { parseAnswers } from "@/lib/visit-checklist";
+import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -404,6 +406,10 @@ export function VisitDetailDrawer({
                 )}
               </section>
             )}
+
+            {/* What the tech confirmed, with the labels as they read the day
+                the visit was completed. Absent when nothing asked. */}
+            <VisitChecklistAnswers answers={parseAnswers(v.visit_checklist) ?? []} />
 
             <PhotosSection visitId={visitId!} photos={v.visit_photos ?? []} />
 

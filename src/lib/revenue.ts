@@ -67,9 +67,19 @@ export function receivedPaymentStatuses(): ReceivedPaymentStatus[] {
 export type ReceiptLike = {
   amount_cents?: number | null;
   status?: string | null;
+  /** Card processing recovered from the payer. Carried on the row, never
+   *  summed here: it is fee recovery, not revenue. */
+  surcharge_cents?: number | null;
+  /** The customer's tip. Carried on the row, never summed here: a tip is not
+   *  payment for the service, and it has its own report (Tips received). */
+  tip_cents?: number | null;
 };
 
-/** Gross received across a set of payment rows. Rows that never reached the
+/** Gross received across a set of payment rows — `amount_cents` only, which
+ *  is the invoice-applied amount on every row. The surcharge and the tip sit
+ *  beside it and are deliberately left out.
+ *
+ *  Gross received across a set of payment rows. Rows that never reached the
  *  account (pending, failed) are ignored even if the caller forgot to filter —
  *  counting a failed card as revenue is the other direction of the same
  *  mistake, and one call site was doing exactly that. */
@@ -78,6 +88,18 @@ export function grossReceivedCents(rows: ReceiptLike[]): number {
   for (const r of rows) {
     if (!paymentWasReceived(r.status)) continue;
     total += r.amount_cents ?? 0;
+  }
+  return total;
+}
+
+/** Tips received across a set of payment rows, on the same "did the money
+ *  arrive" rule as revenue. Kept apart from `grossReceivedCents` so no caller
+ *  can add a tip into revenue by summing the wrong helper. */
+export function tipsReceivedCents(rows: ReceiptLike[]): number {
+  let total = 0;
+  for (const r of rows) {
+    if (!paymentWasReceived(r.status)) continue;
+    total += Math.max(0, r.tip_cents ?? 0);
   }
   return total;
 }

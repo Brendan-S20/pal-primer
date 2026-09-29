@@ -18,7 +18,13 @@ import {
 export interface SyncCallers {
   startVisit: (args: { data: { visitId: string; startedAt?: string } }) => Promise<unknown>;
   completeVisit: (args: {
-    data: { visitId: string; completedAt?: string; note?: string; noPhotoReason?: string };
+    data: {
+      visitId: string;
+      completedAt?: string;
+      note?: string;
+      noPhotoReason?: string;
+      checkedItems?: string[];
+    };
   }) => Promise<unknown>;
   skipVisit: (args: {
     data: { visitId: string; reason: string; code: any; skippedAt?: string };
@@ -65,6 +71,11 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
           completedAt: new Date(action.ts).toISOString(),
           note: action.note,
           noPhotoReason: action.noPhotoReason,
+          // What the tech checked, carried exactly as the note is. Dropping it
+          // here would turn every queued completion on a checklist org into a
+          // refusal on replay: not a network error, so it burns attempts and
+          // is dead-lettered, and the work the tech did is undone on screen.
+          checkedItems: action.checkedItems,
         },
       });
       return;

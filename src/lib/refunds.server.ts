@@ -146,6 +146,8 @@ export type RefundQuote = {
   chargedCents: number;
   /** The recovered card fee inside that charge. */
   surchargeCents: number;
+  /** The customer's tip inside that charge. */
+  tipCents: number;
   /** Stripe's cumulative `amount_refunded`. */
   refundedCents: number;
   /** What can still go back. */
@@ -191,7 +193,7 @@ async function loadRefundable(env: RefundEnv, orgId: string, paymentId: string):
   const { data: pay, error } = await env.supabase
     .from("payments")
     .select(
-      "id, organization_id, invoice_id, amount_cents, surcharge_cents, currency, status, method, stripe_payment_intent_id",
+      "id, organization_id, invoice_id, amount_cents, surcharge_cents, tip_cents, currency, status, method, stripe_payment_intent_id",
     )
     .eq("id", paymentId)
     .eq("organization_id", orgId)
@@ -279,6 +281,7 @@ async function loadRefundable(env: RefundEnv, orgId: string, paymentId: string):
       currency: String(charge.currency ?? pay.currency ?? "usd"),
       chargedCents,
       surchargeCents: Math.max(Number(pay.surcharge_cents ?? 0), 0),
+      tipCents: Math.max(Number(pay.tip_cents ?? 0), 0),
       refundedCents,
       refundableCents,
     },
@@ -374,7 +377,7 @@ export async function issueRefund(
         .select("client_id")
         .eq("id", quote.invoiceId)
         .maybeSingle();
-      const split = splitRefund(amount, quote.chargedCents, quote.surchargeCents);
+      const split = splitRefund(amount, quote.chargedCents, quote.surchargeCents, quote.tipCents);
       const why = req.reason ? ` (${REFUND_REASON_LABELS[req.reason].toLowerCase()})` : "";
       await env.log({
         orgId: caller.orgId,
@@ -391,6 +394,7 @@ export async function issueRefund(
           // timeline next to a revenue figure and wonders why they differ.
           revenue_cents: split.revenueCents,
           surcharge_cents: split.surchargeCents,
+          tip_cents: split.tipCents,
           reason: req.reason ?? null,
           note: note || null,
         },

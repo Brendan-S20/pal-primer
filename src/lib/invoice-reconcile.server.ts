@@ -7,6 +7,7 @@
 // records the payment.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { tipFromMetadata, tipMetadata } from "@/lib/tips";
 
 type MarkPaidArgs = {
   invoiceId: string;
@@ -24,6 +25,13 @@ type MarkPaidArgs = {
    * charges had none.
    */
   surchargeCents?: number;
+  /**
+   * The tip the payer added, alongside `amountCents` exactly as the surcharge
+   * is: a gratuity is not a payment against what was owed, and folding it in
+   * would over-credit the invoice and count the tip as revenue in every figure
+   * that sums `amount_cents`. Absent on every caller that cannot carry one.
+   */
+  tipCents?: number;
   currency: string;
   paymentIntentId: string | null;
   checkoutSessionId?: string | null;
@@ -52,12 +60,34 @@ export async function markInvoicePaidFromStripe(
   const { collectingOrgIdFor } = await import("@/lib/stripe-connect.server");
   const collectedBy = await collectingOrgIdFor(args.organizationId);
 
+  // Who the tip is for, when there is one: the tech on the most recent
+  // completed visit billed on this invoice (tip_staff_for_invoice, in
+  // 20260929030000). Best-effort -- a lookup failure records the tip with
+  // nobody against it, which the invoice and the reports still show, rather
+  // than losing the payment row over a payroll nicety.
+  const tipCents = Math.max(0, Math.floor(args.tipCents ?? 0));
+  let tipStaffId: string | null = null;
+  if (tipCents > 0) {
+    try {
+      const { data: staffId, error: tipErr } = await (supabaseAdmin as any).rpc(
+        "tip_staff_for_invoice",
+        { _invoice_id: args.invoiceId },
+      );
+      if (tipErr) throw tipErr;
+      tipStaffId = typeof staffId === "string" && staffId ? staffId : null;
+    } catch (e) {
+      console.warn("tip attribution failed; recording the tip unattributed", args.invoiceId, e);
+    }
+  }
+
   const paymentRow = {
     organization_id: args.organizationId,
     collected_by_organization_id: collectedBy,
     invoice_id: args.invoiceId,
     amount_cents: args.amountCents,
     surcharge_cents: args.surchargeCents ?? 0,
+    tip_cents: tipCents,
+    tip_staff_id: tipStaffId,
     currency: args.currency,
     status: "succeeded",
     stripe_checkout_session_id: args.checkoutSessionId ?? null,
@@ -89,6 +119,8 @@ export async function markInvoicePaidFromStripe(
           status: "succeeded",
           amount_cents: paymentRow.amount_cents,
           surcharge_cents: paymentRow.surcharge_cents,
+          tip_cents: paymentRow.tip_cents,
+          tip_staff_id: paymentRow.tip_staff_id,
           paid_at: nowIso,
           raw_event: paymentRow.raw_event,
         })
@@ -126,10 +158,11 @@ export async function markInvoicePaidFromStripe(
       actorLabel: "Stripe",
       kind: "payment.received",
       summary:
-        `Payment of $${((args.amountCents + (args.surchargeCents ?? 0)) / 100).toFixed(2)} received for invoice ${ref}` +
+        `Payment of $${((args.amountCents + (args.surchargeCents ?? 0) + tipCents) / 100).toFixed(2)} received for invoice ${ref}` +
         (args.surchargeCents
           ? ` (includes $${(args.surchargeCents / 100).toFixed(2)} card processing)`
-          : ""),
+          : "") +
+        (tipCents > 0 ? ` (includes a $${(tipCents / 100).toFixed(2)} tip)` : ""),
     });
   } catch (e) {
     console.warn("payment activity log failed", e);
@@ -151,6 +184,9 @@ export async function markInvoicePaidFromStripe(
           // HoundStack's own receipt disagreed with the customer's statement
           // and nothing in the product could explain the gap.
           surchargeCents: args.surchargeCents ?? 0,
+          // The tip, so the receipt adds up to what hit the card and thanks
+          // the customer for it by name.
+          tipCents,
           paidAt: new Date().toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
@@ -247,7 +283,11 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
           // `pi.amount` raw credited base + surcharge against the invoice and
           // recorded surcharge_cents = 0, so a $100 invoice paid with an $0.80
           // ACH pass-through settled as $100.80 of revenue.
-          const { invoiceAppliedCents, surchargeFromMetadata } =
+          //
+          // The tip likewise: a tipped pay-link payment whose webhook was
+          // missed lands HERE, and crediting `pi.amount` would pay the invoice
+          // the tip and count it as revenue.
+          const { invoiceAppliedCents, surchargeFromMetadata, tipAppliedCents } =
             await import("@/lib/processing-fee.server");
           const charged = pi.amount ?? inv.total_cents ?? 0;
           const ok = await markInvoicePaidFromStripe(supabaseAdmin, {
@@ -255,6 +295,7 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
             organizationId: inv.organization_id,
             amountCents: invoiceAppliedCents(charged, pi.metadata),
             surchargeCents: surchargeFromMetadata(pi.metadata),
+            tipCents: tipAppliedCents(charged, pi.metadata),
             currency: pi.currency ?? inv.currency ?? "usd",
             paymentIntentId: pi.id,
             raw: { source: "reconcile", payment_intent_id: pi.id, pi_status: pi.status },
@@ -324,7 +365,7 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
       await stripe.paymentIntents.cancel(pi.id, {}, acctOpts);
       return "canceled";
     }
-    if (pi.amount !== dueCents) {
+    if (pi.amount !== dueCents || tipFromMetadata(pi.metadata) > 0) {
       await stripe.paymentIntents.update(
         pi.id,
         {
@@ -334,6 +375,12 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
           // charge after credit is applied, so leaving the fee behind is
           // guaranteed here rather than incidental.
           application_fee_amount: platformFeeCents(dueCents),
+          // A tip chosen against the OLD amount is dropped with it: the
+          // intent is reset to the invoice alone and the payer picks again.
+          // Written explicitly because Stripe merges metadata, and a stale
+          // tip_cents on an untipped amount would make the webhook
+          // under-credit the invoice by the tip that is no longer there.
+          metadata: tipMetadata(0),
         },
         acctOpts,
       );

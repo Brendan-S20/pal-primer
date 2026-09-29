@@ -107,6 +107,9 @@ import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { TimeClockCard } from "@/components/TimeClockCard";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
+import { Checkbox } from "@/components/ui/checkbox";
+import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
+import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -1492,9 +1495,11 @@ function VisitCard({
   });
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
-  // What the tech tells the office on completion, and why there is no photo
-  // when the business requires one. Both travel with the queued action.
-  const { requireCompletionPhoto } = useOrgFieldRules();
+  // What the tech tells the office on completion, why there is no photo when
+  // the business requires one, and which checklist items were checked. All
+  // three travel with the queued action.
+  const { requireCompletionPhoto, checklist } = useOrgFieldRules();
+  const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
@@ -1573,10 +1578,17 @@ function VisitCard({
       actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
+        // Only ids still on the owner's list: a tick left over from an item
+        // the owner has since removed means nothing to complete_visit.
+        checkedItems:
+          checklist.length > 0
+            ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
+            : undefined,
       }),
     onSuccess: (r) => {
       haptic("success");
       toast.success(r.queued ? "Queued. Completes when back online" : "Completed");
+      setCheckedItems([]);
       setNote("");
       setNoteOpen(false);
       setNoPhotoReason("");
@@ -1675,6 +1687,12 @@ function VisitCard({
   // The rule complete_visit enforces: a photo, or no photo required, or a
   // stated reason there is none.
   const photoRuleMet = photoOnFile || !requireCompletionPhoto || noPhotoReason.trim().length >= 3;
+  // The rule complete_visit enforces for the checklist: every required item
+  // checked. The server refuses otherwise, and a refused REPLAY is not a
+  // network error, so letting Complete through offline would queue a
+  // completion that is dead-lettered on reconnect.
+  const uncheckedRequired = missingRequired(checklist, checkedItems);
+  const checklistRuleMet = uncheckedRequired.length === 0;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
@@ -1683,6 +1701,13 @@ function VisitCard({
   // Complete button — because the work may well have been done.
   const missed = visit.status === "missed";
   const finalStatus = done || skipped;
+  // A completed card shows what was checked: the server's record once it has
+  // one, and until then the answers waiting in the offline queue, drawn
+  // against the list they were given for.
+  const completedAnswers = done
+    ? (parseAnswers(visit.visit_checklist) ??
+      (visit.queuedCheckedItems ? answersFor(checklist, visit.queuedCheckedItems) : null))
+    : null;
   const p = visit.properties;
   // Waste stations only exist on commercial or multi-unit properties. On a
   // residential card there are never any, so the button never appears.
@@ -1972,6 +1997,12 @@ function VisitCard({
         </div>
       )}
 
+      {!collapsed && completedAnswers && completedAnswers.length > 0 && (
+        <div className="mt-3">
+          <VisitChecklistAnswers answers={completedAnswers} />
+        </div>
+      )}
+
       <PhotoLightbox
         photos={photos.map((ph: any) => ({ url: photoUrls[ph.id] ?? null, kind: ph.kind }))}
         openIndex={lightboxIndex}
@@ -2035,6 +2066,49 @@ function VisitCard({
               tech who did the work without pressing Start can still close it —
               which is why a completion photo on a scheduled stop brings the
               button back rather than stranding the work behind Start. */}
+          {/* The owner's checklist, wherever Complete is on screen. Each row is
+              the label AND the box, 44px tall at every width, so a gloved
+              thumb anywhere on the line ticks it — the box alone is 16px. The
+              label wraps rather than truncates: it is a sentence the owner
+              wrote to be read, and at 320px a long one has to stay inside the
+              card. Absent entirely for an org with no checklist. */}
+          {(inProg || missed || photoOnFile) && canPerformVisit && checklist.length > 0 && (
+            <fieldset className="space-y-0.5 rounded-lg border p-1.5">
+              <legend className="px-1.5 text-xs font-semibold uppercase text-muted-foreground">
+                Checklist
+              </legend>
+              {checklist.map((item) => {
+                const id = `checklist-${visit.id}-${item.id}`;
+                const on = checkedItems.includes(item.id);
+                return (
+                  <label
+                    key={item.id}
+                    htmlFor={id}
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 active:bg-accent"
+                  >
+                    <Checkbox
+                      id={id}
+                      checked={on}
+                      onCheckedChange={(v) =>
+                        setCheckedItems((prev) =>
+                          v === true
+                            ? [...prev.filter((x) => x !== item.id), item.id]
+                            : prev.filter((x) => x !== item.id),
+                        )
+                      }
+                    />
+                    <span className="min-w-0 flex-1 text-sm leading-snug [overflow-wrap:anywhere]">
+                      {item.label}
+                      {item.required && (
+                        <span className="text-xs text-muted-foreground"> · required</span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
+
           {(inProg || missed) && canPerformVisit && (
             <div className="space-y-2">
               {noteOpen ? (
@@ -2071,6 +2145,7 @@ function VisitCard({
               disabled={
                 !canPerformVisit ||
                 !photoRuleMet ||
+                !checklistRuleMet ||
                 complete.isPending ||
                 // `missed` belongs here. complete_visit has accepted
                 // ('scheduled','in_progress','missed') since 20260804060000 --
@@ -2091,13 +2166,25 @@ function VisitCard({
               title={
                 !canPerformVisit
                   ? "Only field staff (owner, office manager, or tech) can complete a visit"
-                  : photoRuleMet
-                    ? ""
-                    : "Add a completion photo first"
+                  : !photoRuleMet
+                    ? "Add a completion photo first"
+                    : !checklistRuleMet
+                      ? "Check off the required checklist items first"
+                      : ""
               }
             >
               Complete
             </Button>
+          )}
+          {/* Why Complete is grey when the checklist is the reason, under the
+              button for the same reason as the photo line below: `title` is a
+              tooltip, and a phone has no hover. */}
+          {(inProg || missed || photoOnFile) && canPerformVisit && !checklistRuleMet && (
+            <p className="-mt-1 text-center text-xs text-muted-foreground">
+              {uncheckedRequired.length === 1
+                ? "Tick the required checklist item to finish this visit."
+                : `Tick the ${uncheckedRequired.length} required checklist items to finish this visit.`}
+            </p>
           )}
           {/* The reason Complete is grey, UNDER Complete. It lived at the
               bottom of the card, below More options, where the Resume strip

@@ -52,6 +52,7 @@ import {
   PORTAL_SLUG,
   PORTAL_TOKEN,
   PORTAL_CLIENT_NAME,
+  PORTAL_PAY_INVOICE_ID,
   PUBLIC_INVOICE,
   QUOTE_LONG_LINE,
   QUOTE_ORG_NAME,
@@ -78,8 +79,20 @@ const PAGES = [
   { path: "/visits", label: "visits", proof: /Upcoming visits/i, also: /Request a re-clean/i },
   { path: "/billing", label: "billing", proof: /PAYMENT METHOD/i },
   { path: "/property", label: "property", proof: /Your dogs on file/i },
-  { path: "/requests", label: "requests", proof: /Report a concern/i },
+  // The extra-cleanup card waits for its options, so a missing fixture draws
+  // a page with the heading and no form -- "Send request" is the proof that
+  // the pickers were actually laid out.
+  { path: "/requests", label: "requests", proof: /Report a concern/i, also: /Send request/i },
   { path: "/account", label: "account", proof: /Refer a neighbor/i },
+  // The pay screen, with tipping on. `also` is the 15% button's dollar
+  // figure: it only exists once the intent fixture reached the page, and it
+  // is the second line that makes the tip buttons the tallest row in the card.
+  {
+    path: `/pay/${PORTAL_PAY_INVOICE_ID}`,
+    label: "pay",
+    proof: /Add a tip/i,
+    also: /\$15\.60/,
+  },
 ];
 
 /** A customer opens this from a text. 360 and 430 are the two that matter;
@@ -185,6 +198,15 @@ test.describe("the payment link, which is not the portal and arrives the same wa
       // exists because credit was applied to it.
       const due = (PUBLIC_INVOICE.invoice.amountDueCents / 100).toFixed(2);
       await expect(page.getByText(`$${due}`).first()).toBeVisible();
+      // The tip choices, in their widest state: Custom picked, so the amount
+      // box is drawn under the five buttons, and an amount typed into it so
+      // the totals below show a tip. The total proves the intent fixture
+      // re-priced it (104.00 + 7.50), rather than the box merely existing.
+      await expect(page.getByText(/Add a tip/i).first()).toBeVisible({ timeout: 15_000 });
+      await page.getByRole("radio", { name: /Custom/ }).click();
+      await page.getByLabel("Tip amount").fill("7.50");
+      await page.getByLabel("Tip amount").blur();
+      await expect(page.getByText("$111.50").first()).toBeVisible({ timeout: 15_000 });
       await page.waitForTimeout(700);
 
       const { scrollW, innerW } = await measurePageOverflow(page);

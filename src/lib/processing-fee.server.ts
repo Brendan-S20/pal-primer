@@ -48,6 +48,7 @@ import {
   type FeeQuote,
   type PaymentRail,
 } from "@/lib/processing-fee";
+import { tipFromMetadata } from "@/lib/tips";
 
 /** What this module needs off a payment method — Stripe's own type, narrowed. */
 type PaymentMethodLike = Pick<Stripe.PaymentMethod, "type"> & {
@@ -200,7 +201,10 @@ export function surchargeFromMetadata(metadata: Record<string, string> | null | 
 /**
  * The part of a charge that pays down the invoice.
  *
- * Every reconcile path wants this and not `pi.amount`. Clamped at zero and
+ * Every reconcile path wants this and not `pi.amount`. A charge is
+ * invoice + surcharge + tip, and only the first is a payment against what was
+ * owed: the surcharge is fee recovery and the tip is a gratuity, and both are
+ * recorded BESIDE `amount_cents` (see src/lib/tips.ts). Clamped at zero and
  * never above the charge, because a metadata value larger than the charge would
  * otherwise credit a negative payment.
  */
@@ -211,7 +215,24 @@ export function invoiceAppliedCents(
   const amount = Number.isFinite(chargeAmountCents) ? Math.floor(chargeAmountCents) : 0;
   if (amount <= 0) return 0;
   const surcharge = Math.min(surchargeFromMetadata(metadata), amount);
-  return amount - surcharge;
+  const tip = Math.min(tipFromMetadata(metadata), amount - surcharge);
+  return amount - surcharge - tip;
+}
+
+/**
+ * The tip inside a charge, as it should be recorded on the payment row:
+ * `tip_cents` from the metadata, clamped so that surcharge + tip never exceeds
+ * the charge. Paired with `invoiceAppliedCents` so the three parts always add
+ * back to `pi.amount`.
+ */
+export function tipAppliedCents(
+  chargeAmountCents: number,
+  metadata: Record<string, string> | null | undefined,
+): number {
+  const amount = Number.isFinite(chargeAmountCents) ? Math.floor(chargeAmountCents) : 0;
+  if (amount <= 0) return 0;
+  const surcharge = Math.min(surchargeFromMetadata(metadata), amount);
+  return Math.min(tipFromMetadata(metadata), amount - surcharge);
 }
 
 /**
