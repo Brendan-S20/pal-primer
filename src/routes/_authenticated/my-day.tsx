@@ -104,6 +104,7 @@ import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { TimeClockCard } from "@/components/TimeClockCard";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -1486,7 +1487,7 @@ function VisitCard({
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
   const [noPhotoReason, setNoPhotoReason] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
+  const [photoKind, setPhotoKind] = useState<PhotoKind>("completion");
   // Which photo the in-app viewer is showing, and the signed URLs the
   // thumbnails have already fetched. Keyed by photo id rather than index so a
   // photo arriving mid-render cannot shift somebody else's URL onto it.
@@ -1682,15 +1683,17 @@ function VisitCard({
     <div className="flex flex-wrap items-center gap-2">
       <select
         value={photoKind}
-        onChange={(e) => setPhotoKind(e.target.value as any)}
+        onChange={(e) => setPhotoKind(e.target.value as PhotoKind)}
         // MEASURED 2026-08-19: 40px, four short of the floor, on the
         // screen a technician uses outdoors with gloves on.
         className="h-11 rounded-md border bg-background px-3 text-sm"
         aria-label="Photo type"
       >
-        <option value="before">Before</option>
-        <option value="completion">Completion</option>
-        <option value="issue">Issue</option>
+        {PHOTO_KIND_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
       </select>
       <Button
         type="button"
@@ -1948,7 +1951,7 @@ function VisitCard({
                 onUrl={(u) => setPhotoUrl(ph.id, u)}
               />
               <span className="pointer-events-none absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
-                {ph.kind}
+                {photoKindLabel(ph.kind)}
               </span>
             </div>
           ))}

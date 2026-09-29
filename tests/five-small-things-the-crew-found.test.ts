@@ -212,6 +212,6 @@ describe("the photo picker returns to the kind that finishes the visit", () => {
   });
 
   it("and completion is still the default a card opens with", () => {
-    expect(myDay).toMatch(/useState<"before" \| "completion" \| "issue">\("completion"\)/);
+    expect(myDay).toMatch(/useState<PhotoKind>\("completion"\)/);
   });
 });

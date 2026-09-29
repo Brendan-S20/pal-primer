@@ -24,6 +24,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { isLifecycleKind, lifecycleCollision } from "./queued-visit-state";
 import { clockCollision, isClockKind } from "./queued-clock-state";
+import type { PhotoKind } from "@/lib/photo-kinds";
 
 /** Fields every queued action carries, whatever its kind. */
 type ActionBase = {
@@ -65,7 +66,7 @@ export type PendingAction =
   | ({
       kind: "photo";
       visitId: string;
-      photoKind: "before" | "completion" | "issue";
+      photoKind: PhotoKind;
       /** ID pointing into the `photos` object store */
       photoId: string;
       /** Storage object key for this photo, minted BEFORE the first upload

@@ -79,13 +79,20 @@ describe("kind is the vocabulary the app actually writes", () => {
   });
 
   it("matches the enum the app validates uploads against", () => {
-    // If my-day's zod enum gains a kind, this constraint has to gain it too,
-    // or the upload starts failing at the database instead of the form.
+    // If the app gains a kind, the constraint has to gain it too, or the
+    // upload starts failing at the database instead of the form. The upload
+    // validates against PHOTO_KINDS, and the constraint that counts is the one
+    // the LAST migration to define it wrote (20260928140000 added 'gate').
     const src = readFileSync(join(root, "src/lib/my-day.functions.ts"), "utf8");
-    const m = src.match(/kind:\s*z\.enum\(\[([^\]]+)\]\)/);
-    expect(m, "the upload enum moved").not.toBeNull();
+    expect(src, "the upload enum moved").toMatch(/kind:\s*z\.enum\(PHOTO_KINDS\)/);
+    const kinds = readFileSync(join(root, "src/lib/photo-kinds.ts"), "utf8");
+    const m = kinds.match(/PHOTO_KINDS = \[([^\]]+)\] as const/);
+    expect(m, "PHOTO_KINDS moved").not.toBeNull();
     const appKinds = [...m![1].matchAll(/"([a-z_]+)"/g)].map((x) => x[1]).sort();
-    const check = mig.match(/CHECK \(kind IN \(([^)]+)\)\)/);
+    const latest = files
+      .filter((f) => /ADD CONSTRAINT visit_photos_kind_is_one_the_app_writes/.test(read(f)))
+      .at(-1)!;
+    const check = read(latest).match(/CHECK \(kind IN \(([^)]+)\)\)/);
     const dbKinds = [...check![1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort();
     expect(dbKinds).toEqual(appKinds);
   });
@@ -94,7 +101,7 @@ describe("kind is the vocabulary the app actually writes", () => {
     // An unknown kind renders with no caption, deliberately. That is the right
     // fallback and also why a fourth word was invisible for two months.
     const ui = readFileSync(join(root, "src/lib/portal-ui.tsx"), "utf8");
-    for (const k of ["before", "completion", "issue"]) {
+    for (const k of ["before", "completion", "issue", "gate"]) {
       expect(ui, `portal-ui does not caption ${k}`).toMatch(new RegExp(`kind === "${k}"`));
     }
   });

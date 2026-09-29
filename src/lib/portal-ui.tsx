@@ -1831,7 +1831,9 @@ export function photoCaption(kind?: string | null): string | null {
       ? "After"
       : kind === "issue"
         ? "Issue"
-        : null;
+        : kind === "gate"
+          ? "Gate latched"
+          : null;
 }
 
 /** One photo on a customer's visit card.
