@@ -93,9 +93,18 @@ describe("every 'is this service live' query uses the shared rule", () => {
     // generate_visits_through is org-wide; beyond the 60-day horizon one
     // booking pinned the whole org's schedule across a window with no
     // blackouts entered, and addBlackout does not remove visits already made.
-    const src = read("src/lib/visits.functions.ts");
-    const block = src.slice(src.indexOf("export const createOneOffVisit"));
+    // The body moved to one-off-visit.server.ts on 2026-09-29, when the
+    // portal's auto-accept path became its second caller. That path runs as
+    // the service role and so calls generate_visits_core, the function
+    // generate_visits_for_subscription wraps -- still scoped to one
+    // subscription, which is the property this test exists for.
+    const src = read("src/lib/one-off-visit.server.ts");
+    const block = src.slice(src.indexOf("export async function bookOneOffVisit"));
     expect(block).toContain("generate_visits_for_subscription");
+    expect(block).toMatch(/generate_visits_core[\s\S]{0,200}_subscription_id:\s*sub\.id/);
     expect(block).not.toMatch(/rpc\(\s*"generate_visits_through"/);
+    // And createOneOffVisit still reaches it rather than keeping a copy.
+    const fn = read("src/lib/visits.functions.ts");
+    expect(fn.slice(fn.indexOf("export const createOneOffVisit"))).toMatch(/bookOneOffVisit\(/);
   });
 });

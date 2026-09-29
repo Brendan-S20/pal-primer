@@ -41,6 +41,7 @@ export const CONCERN_CATEGORY_LABELS: Record<string, string> = {
   wrong_yard: "Wrong yard",
   other: "Other",
   reclean_request: "Re-clean request",
+  one_off_request: "Extra cleanup request",
 };
 
 export const listConcerns = createServerFn({ method: "GET" })
@@ -58,7 +59,7 @@ export const listConcerns = createServerFn({ method: "GET" })
         // Two foreign keys to visits now (the visit complained about, and the
         // free re-clean booked for it), so each embed names its constraint;
         // an unnamed `visits(...)` would be ambiguous and PostgREST refuses it.
-        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status)",
+        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status), requested_on, property_id, booked_visit_id, property:properties!qc_tickets_property_id_fkey(street, city), booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on, status)",
       )
       .eq("organization_id", orgId)
       // Unresolved first, then newest.
@@ -132,6 +133,68 @@ export const linkRecleanVisit = createServerFn({ method: "POST" })
     // org-write.server.ts for why that is not allowed to read as one here.
     if (!updated || updated.length === 0)
       throw new Error("The re-clean was booked, but it couldn't be linked to the request.");
+    return { ok: true, scheduledOn: visit.scheduled_on as string };
+  });
+
+/**
+ * Tie a booked visit to the customer's extra-cleanup request, and resolve the
+ * request: unlike a re-clean, there is nothing left to do once it is on the
+ * schedule, and the portal shows the customer "Booked for <day>".
+ *
+ * The visit is booked by createOneOffVisit first, exactly as "Book a one-off
+ * visit" books one; this only links. It checks what a link could get wrong:
+ * the ticket is an extra-cleanup request in the caller's org, and the visit is
+ * in the same org, for the same client, at the same property.
+ */
+export const linkOneOffBooking = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ ticketId: z.string().uuid(), visitId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "view_client_directory");
+    const { data: ticket, error: tErr } = await (context.supabase.from("qc_tickets") as any)
+      .select("id, category, client_id, property_id, booked_visit_id")
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (tErr) throw new Error(tErr.message);
+    if (!ticket) throw new Error("That request isn't in your organization.");
+    if (ticket.category !== "one_off_request")
+      throw new Error("Only an extra-cleanup request can have a booking linked to it.");
+    if (ticket.booked_visit_id && ticket.booked_visit_id !== data.visitId)
+      throw new Error("This request already has a visit booked for it.");
+
+    const { data: visit, error: vErr } = await context.supabase
+      .from("visits")
+      .select("id, client_id, property_id, organization_id, scheduled_on")
+      .eq("id", data.visitId)
+      .maybeSingle();
+    if (vErr) throw new Error(vErr.message);
+    if (!visit || visit.organization_id !== orgId)
+      throw new Error("That visit isn't in your organization.");
+    if (visit.client_id !== ticket.client_id)
+      throw new Error("That visit is for a different client than the request.");
+    if (ticket.property_id && visit.property_id !== ticket.property_id)
+      throw new Error("That visit is at a different address than the request.");
+
+    const { formatDay } = await import("@/lib/format");
+    const { data: updated, error } = await (context.supabase.from("qc_tickets") as any)
+      .update({
+        booked_visit_id: data.visitId,
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        resolved_by: context.userId,
+        resolution_note: `Booked for ${formatDay(visit.scheduled_on as string)}.`,
+      })
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    // An UPDATE that matched nothing is a success to Postgres; see
+    // org-write.server.ts for why that is not allowed to read as one here.
+    if (!updated || updated.length === 0)
+      throw new Error("The visit was booked, but it couldn't be linked to the request.");
     return { ok: true, scheduledOn: visit.scheduled_on as string };
   });
 

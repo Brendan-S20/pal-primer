@@ -423,6 +423,34 @@ export const SURFACES: Surface[] = [
     expectsData: "Kimberly-Anne Rutherford-Sinclair",
   },
   {
+    // Added 2026-09-29 with extra cleanups from the portal. The row puts the
+    // asked-for day and a long street beside Decline and Book it; "Book it"
+    // only draws on an open extra-cleanup request, and opening it draws the
+    // dialog with the date, the price the office must set (no one-off price
+    // in the fixture) and the technician picker.
+    id: "/concerns · extra cleanup",
+    path: "/concerns",
+    proof: (p) => p.getByRole("button", { name: "Book it", exact: true }).first(),
+    proofLabel: 'the "Book it" button, which only draws on an extra-cleanup request',
+    expectsData: "block party",
+    open: async (p) => {
+      await p.getByRole("button", { name: "Book it", exact: true }).first().click();
+    },
+    opened: (p) => p.getByRole("dialog", { name: "Book the extra cleanup" }),
+    openedLabel: "the Book the extra cleanup dialog",
+  },
+  {
+    // Added 2026-09-29. The page was only reached by the unlisted sweep and a
+    // one-off spec that checks the cards exist. The extra-cleanup card draws
+    // only for manage_settings and only once its settings arrived, and its
+    // "Needs a price first" line only when the fixture has no price.
+    id: "/settings/client-portal",
+    path: "/settings/client-portal",
+    proof: (p) => p.getByText("Extra cleanups from the portal", { exact: true }).first(),
+    proofLabel: 'the "Extra cleanups from the portal" card',
+    expectsData: "Needs a price first.",
+  },
+  {
     // Added 2026-09-28 with quotes. A row puts a label, a status badge and a
     // "not a client yet" note on one line, a 58-character prospect name under
     // it, and both totals beside it. The chips only draw once the list has

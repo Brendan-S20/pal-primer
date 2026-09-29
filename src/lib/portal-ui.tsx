@@ -46,6 +46,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { customerSkipReason } from "@/lib/skip-rules.functions";
 import { isInsideRecleanWindow, recleanDeadlineLabel } from "@/lib/reclean";
+import { oneOffRequestState } from "@/lib/one-off-booking";
 import {
   portalContext,
   portalRequestOtp,
@@ -186,6 +187,7 @@ export function friendlyCategory(c: string | null | undefined) {
     wrong_yard: "Wrong yard",
     other: "Other",
     reclean_request: "Re-clean request",
+    one_off_request: "Extra cleanup",
   };
   return map[c ?? ""] ?? c ?? "";
 }
@@ -2158,7 +2160,16 @@ export function RequestsList({ rows }: { rows: Array<any> }) {
     <ul className="space-y-2">
       {rows.map((r) => {
         const s = friendlyStatus(r.status);
-        const badge =
+        // An extra cleanup is answered by being booked or not, and "Resolved"
+        // says neither. Booked wins over the status, since it is the fact the
+        // customer is waiting for.
+        const oneOff = r.category === "one_off_request";
+        const oneOffState = oneOff ? oneOffRequestState(r) : null;
+        const badge = oneOffState === "booked" ? (
+          <Badge className="bg-emerald-600 hover:bg-emerald-600">Booked</Badge>
+        ) : oneOffState === "declined" ? (
+          <Badge variant="secondary">Not booked</Badge>
+        ) :
           s === "Resolved" ? (
             <Badge className="bg-emerald-600 hover:bg-emerald-600">Resolved</Badge>
           ) : s === "In review" ? (
@@ -2176,6 +2187,12 @@ export function RequestsList({ rows }: { rows: Array<any> }) {
                     <span className="text-muted-foreground">
                       {" "}
                       · visit {fmtDayShort(r.visit_date)}
+                    </span>
+                  )}
+                  {oneOff && r.requested_on && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {r.booked_on ? `booked for ${fmtDayShort(r.booked_on)}` : `for ${fmtDayShort(r.requested_on)}`}
                     </span>
                   )}
                 </div>

@@ -1118,6 +1118,194 @@ export const portalRequestReclean = createServerFn({ method: "POST" })
     return { ticketId, alreadyAsked };
   });
 
+/**
+ * What the portal needs to offer an extra cleanup: the days that can be
+ * asked for, the customer's own addresses, and whether it will be booked at
+ * once or wait for the office.
+ *
+ * The days are computed with bookableDays (src/lib/one-off-booking.ts), which
+ * restates portal_request_one_off's rules against the same columns -- the
+ * org's timezone, work_days and blackout_dates -- so the list and the refusal
+ * cannot disagree about which setting they read.
+ */
+export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const sb = await admin();
+    const { data: org } = await (sb.from("organizations") as any)
+      .select("timezone, work_days, portal_auto_accept_bookings, one_off_price_cents, currency")
+      .eq("id", session.organizationId)
+      .maybeSingle();
+    const tz = (org?.timezone as string | null) || "America/Chicago";
+    const today = orgToday(tz);
+    const { addDaysToDay } = await import("@/lib/reclean");
+    const { bookableDays, ONE_OFF_MAX_DAYS_AHEAD } = await import("@/lib/one-off-booking");
+    const [{ data: blackouts }, { data: props }] = await Promise.all([
+      sb
+        .from("blackout_dates")
+        .select("blackout_on")
+        .eq("organization_id", session.organizationId)
+        .gt("blackout_on", today)
+        .lte("blackout_on", addDaysToDay(today, ONE_OFF_MAX_DAYS_AHEAD)),
+      (sb.from("properties") as any)
+        .select("id, label, street, city")
+        .eq("client_id", session.clientId)
+        .is("archived_at", null)
+        .order("created_at"),
+    ]);
+    const priceCents = (org?.one_off_price_cents as number | null) ?? null;
+    return {
+      today,
+      days: bookableDays(
+        today,
+        (org?.work_days as number[] | null) ?? null,
+        (blackouts ?? []).map((b: { blackout_on: string }) => b.blackout_on),
+      ),
+      properties: (props ?? []) as Array<{
+        id: string;
+        label: string | null;
+        street: string;
+        city: string | null;
+      }>,
+      // Auto-accept books at the org's one-off price, so without a price it
+      // cannot book anything and the request waits for the office.
+      autoAccept: !!org?.portal_auto_accept_bookings && priceCents != null,
+      priceCents,
+      currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
+    };
+  });
+
+/**
+ * The customer asks for an extra cleanup on a day of their choosing.
+ *
+ * Same shape as portalRequestReclean: the session check, then the RPC as
+ * service_role, which resolves the client from the token itself and refuses
+ * anything outside the rules. Idempotent in the database -- a second tap
+ * returns the first request with created = false -- and only the call that
+ * CREATED the request books it (when the owner turned auto-accept on) or
+ * tells the office, so a double tap is one request, one visit, one email.
+ *
+ * Auto-accept books through bookOneOffVisit, the code behind the office's
+ * createOneOffVisit, at the org's one-off price. If that booking fails (a
+ * hold on the client, say) the request simply stays open for the office.
+ */
+export const portalRequestOneOff = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        token: z.string().uuid(),
+        propertyId: z.string().uuid(),
+        day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        message: z.string().max(1000).optional().default(""),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const sb = await admin();
+
+    const { data: rows, error } = await (sb as any).rpc("portal_request_one_off", {
+      _token: data.token,
+      _property_id: data.propertyId,
+      _on: data.day,
+      _message: data.message,
+    });
+    if (error) {
+      const { oneOffRefusalMessage } = await import("@/lib/one-off-booking");
+      throw new Error(oneOffRefusalMessage(error.message));
+    }
+    const row = ((rows ?? []) as Array<{ ticket_id: string; created: boolean }>)[0];
+    if (!row?.ticket_id) throw new Error("That request couldn't be saved. Please try again.");
+    const ticketId = row.ticket_id;
+
+    if (!row.created) {
+      // Asked already. Say what became of it, and tell nobody again.
+      const { data: t } = await (sb.from("qc_tickets") as any)
+        .select("booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on)")
+        .eq("id", ticketId)
+        .maybeSingle();
+      const bv = Array.isArray(t?.booked_visit) ? t.booked_visit[0] : t?.booked_visit;
+      return { ticketId, alreadyAsked: true, bookedOn: (bv?.scheduled_on as string) ?? null };
+    }
+
+    const dayLabel = formatDay(data.day);
+    let bookedOn: string | null = null;
+    const { data: org } = await (sb.from("organizations") as any)
+      .select("portal_auto_accept_bookings, one_off_price_cents")
+      .eq("id", session.organizationId)
+      .maybeSingle();
+    if (org?.portal_auto_accept_bookings && org?.one_off_price_cents != null) {
+      try {
+        const { bookOneOffVisit } = await import("@/lib/one-off-visit.server");
+        const { oneOffVisitNote } = await import("@/lib/one-off-booking");
+        const booked = await bookOneOffVisit(sb, {
+          orgId: session.organizationId,
+          actorUserId: null,
+          clientId: session.clientId,
+          propertyId: data.propertyId,
+          scheduledOn: data.day,
+          priceCents: Number(org.one_off_price_cents),
+          note: oneOffVisitNote(dayLabel, true),
+          asService: true,
+        });
+        const { data: linked } = await (sb.from("qc_tickets") as any)
+          .update({
+            booked_visit_id: booked.visitId,
+            status: "resolved",
+            resolved_at: new Date().toISOString(),
+            resolution_note: `Booked for ${formatDay(booked.scheduledOn)}.`,
+          })
+          .eq("id", ticketId)
+          .eq("organization_id", session.organizationId)
+          .select("id");
+        if (!linked || linked.length === 0) {
+          console.error("one-off auto-accept booked a visit it could not link", ticketId);
+        }
+        bookedOn = booked.scheduledOn;
+      } catch (e) {
+        // Not the customer's problem: the request is saved and the office
+        // will book it by hand.
+        console.error("one-off auto-accept failed; left for the office", (e as Error).message);
+      }
+    }
+
+    try {
+      await notifyOfficeOfConcern(
+        sb,
+        data.token,
+        "one_off_request",
+        data.message,
+        dayLabel,
+        bookedOn != null,
+      );
+    } catch (e) {
+      console.error("one-off office notification failed", (e as Error).message);
+    }
+    try {
+      const { data: cl } = await sb
+        .from("clients")
+        .select("display_name")
+        .eq("id", session.clientId)
+        .maybeSingle();
+      const { notifyRoles } = await import("@/lib/notify-center.server");
+      await notifyRoles(["owner", "office_manager"], {
+        orgId: session.organizationId,
+        type: "concern",
+        title: `${bookedOn ? "Extra cleanup booked" : "Extra cleanup requested"}: ${
+          cl?.display_name ?? "a client"
+        }`,
+        body: `For ${dayLabel}${data.message ? `: ${data.message.slice(0, 120)}` : ""}`,
+        link: "/concerns",
+      });
+    } catch (e) {
+      console.error("one-off in-app notification failed", (e as Error).message);
+    }
+    return { ticketId, alreadyAsked: false, bookedOn };
+  });
+
 const CONCERN_LABELS: Record<string, string> = {
   missed_spot: "Missed spot",
   gate_left_open: "Gate left open",
@@ -1125,6 +1313,7 @@ const CONCERN_LABELS: Record<string, string> = {
   wrong_yard: "Wrong yard",
   other: "Other",
   reclean_request: "Re-clean request",
+  one_off_request: "Extra cleanup request",
 };
 
 async function notifyOfficeOfConcern(
@@ -1135,6 +1324,8 @@ async function notifyOfficeOfConcern(
   /** The visit's day, for a re-clean request: the office needs to know WHICH
    *  visit the guarantee is being called on before they open anything. */
   visitDay: string | null = null,
+  /** A one-off request that auto-accept already booked. */
+  booked = false,
 ): Promise<void> {
   const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) return; // email not configured — banner + inbox still work
@@ -1152,25 +1343,36 @@ async function notifyOfficeOfConcern(
 
   const label = CONCERN_LABELS[category] ?? category;
   const isReclean = category === "reclean_request";
+  // For a one-off request `visitDay` is the day the customer ASKED for, and
+  // `booked` says whether auto-accept already put it on the schedule.
+  const isOneOff = category === "one_off_request";
   const crypto = await import("node:crypto");
   const messageId = `concern-${crypto.randomBytes(8).toString("hex")}`;
   const subject = isReclean
     ? `Re-clean requested by ${client.display_name}`
-    : `New client concern: ${label}`;
+    : isOneOff
+      ? `${booked ? "Extra cleanup booked" : "Extra cleanup requested"} by ${client.display_name}`
+      : `New client concern: ${label}`;
   const html =
     (isReclean
       ? `<p><strong>Re-clean requested</strong> under your re-clean guarantee${
           visitDay ? ` for the visit on ${visitDay}` : ""
         }.</p>`
-      : `<p><strong>New client concern:</strong> ${label}</p>`) +
+      : isOneOff
+        ? `<p><strong>${booked ? "Extra cleanup booked" : "Extra cleanup requested"}</strong>${
+            visitDay ? ` for ${visitDay}` : ""
+          }${booked ? ", automatically, at your one-off price." : "."}</p>`
+        : `<p><strong>New client concern:</strong> ${label}</p>`) +
     `<p>From: ${client.display_name}</p>` +
     (message ? `<p>${message.replace(/</g, "&lt;")}</p>` : "") +
     `<p><a href="${appUrl("/concerns")}">Open the Concerns inbox</a>${
-      isReclean ? " to schedule it" : ""
+      isReclean ? " to schedule it" : isOneOff && !booked ? " to book or decline it" : ""
     }</p>`;
   const text = isReclean
     ? `Re-clean requested by ${client.display_name}${visitDay ? ` for the visit on ${visitDay}` : ""}. ${message}`.trim()
-    : `New client concern (${label}) from ${client.display_name}. ${message}`.trim();
+    : isOneOff
+      ? `${booked ? "Extra cleanup booked" : "Extra cleanup requested"} by ${client.display_name}${visitDay ? ` for ${visitDay}` : ""}. ${message}`.trim()
+      : `New client concern (${label}) from ${client.display_name}. ${message}`.trim();
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -1286,6 +1488,9 @@ export const portalListMyRequests = createServerFn({ method: "GET" })
       resolution_note: string | null;
       resolved_at: string | null;
       created_at: string;
+      /** For an extra-cleanup request: the day asked for, and the day booked. */
+      requested_on: string | null;
+      booked_on: string | null;
     }>;
   });
 

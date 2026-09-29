@@ -6,6 +6,10 @@
 -- already has a calendar the person looks at forty times a day; this puts the
 -- visits in it.
 --
+-- And the customer's half of the same schedule could only be changed by
+-- phoning: nobody could ask for an extra cleanup before a party from the
+-- portal. PART 2, at the end of this file, adds that request.
+--
 -- ══ PART 1: CALENDAR FEEDS ═══════════════════════════════════════════════════
 --
 -- A feed is an iCalendar URL a calendar app polls. It carries no session, so
@@ -348,6 +352,285 @@ BEGIN
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.calendar_feed_rotate(text, text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'authenticated cannot mint its own calendar link';
+  END IF;
+END
+$check$;
+
+
+-- ══ PART 2: A CUSTOMER CAN ASK FOR AN EXTRA CLEANUP ══════════════════════════
+--
+-- Jobber has online booking; the review listed "customer self-booking of
+-- one-off dates" as missing. Here a customer wanting a cleanup before a party
+-- had to phone. Now they REQUEST one from the portal: a working day from the
+-- org's tomorrow through 30 days out, at one of their properties, with an
+-- optional note. It is a request the office approves, not a visit, unless the
+-- owner switched auto-accept on.
+--
+-- It rides the plumbing the re-clean request (20260928110000) already built,
+-- because it is the same kind of thing: a customer asking the office for a
+-- visit. qc_tickets is the inbox the office already works (/concerns), and
+-- the portal's "Your requests" list already reads it with its status.
+--
+-- 1. organizations.portal_auto_accept_bookings (default false) and
+--    organizations.one_off_price_cents (NULL = the office prices each one).
+--    Auto-accept needs a price: with none set, a request waits for the office
+--    whatever the switch says, because booking a visit means setting a price.
+--
+-- 2. qc_tickets accepts category 'one_off_request' and carries
+--      requested_on     the day the customer asked for,
+--      property_id      where,
+--      booked_visit_id  the visit once booked (by the office through
+--                       createOneOffVisit, or by auto-accept through the same
+--                       code), so the portal can say "Booked for Tue, Oct 6".
+--    One open request per property per day, held by a partial unique index.
+--
+-- 3. portal_request_one_off(_token, _property_id, _on, _message), modelled on
+--    portal_request_reclean and granted exactly as it is: service_role only,
+--    the portal reaching it through a server function after the session
+--    check. Refuses a property that is not this client's, a day before the
+--    org's tomorrow, a day more than 30 out, a day that is not one of the
+--    org's work_days, a blackout day, and a day the property already has a
+--    visit. Idempotent: the same property and day again returns the first
+--    request (created = false), whether it is still open or already booked,
+--    so a double tap -- or a second device -- makes one request and at most
+--    one visit.
+--
+-- 4. portal_list_my_requests gains requested_on and booked_on. Its return
+--    type changes, so it is dropped and recreated, and re-granted exactly as
+--    it was (service_role only).
+--
+-- Replays into an empty database: columns, constraints, indexes, two
+-- functions, grants. The DO block asserts only what this part creates.
+
+ALTER TABLE public.organizations
+  ADD COLUMN IF NOT EXISTS portal_auto_accept_bookings boolean NOT NULL DEFAULT false;
+ALTER TABLE public.organizations
+  ADD COLUMN IF NOT EXISTS one_off_price_cents integer;
+ALTER TABLE public.organizations DROP CONSTRAINT IF EXISTS organizations_one_off_price_cents_check;
+ALTER TABLE public.organizations ADD CONSTRAINT organizations_one_off_price_cents_check
+  CHECK (one_off_price_cents IS NULL OR one_off_price_cents BETWEEN 0 AND 1000000);
+
+COMMENT ON COLUMN public.organizations.portal_auto_accept_bookings IS
+  'Whether an extra cleanup requested from the customer portal is booked straight away (at one_off_price_cents) instead of waiting for the office. Off by default; needs a price to take effect.';
+COMMENT ON COLUMN public.organizations.one_off_price_cents IS
+  'The price of a one-off visit a customer requests from the portal. NULL: the office sets it when booking each one.';
+
+ALTER TABLE public.qc_tickets DROP CONSTRAINT IF EXISTS qc_tickets_category_check;
+ALTER TABLE public.qc_tickets ADD CONSTRAINT qc_tickets_category_check
+  CHECK (category IN ('missed_spot','gate_left_open','damage','wrong_yard','other','reclean_request','one_off_request'));
+
+ALTER TABLE public.qc_tickets ADD COLUMN IF NOT EXISTS requested_on date;
+ALTER TABLE public.qc_tickets ADD COLUMN IF NOT EXISTS property_id uuid;
+ALTER TABLE public.qc_tickets ADD COLUMN IF NOT EXISTS booked_visit_id uuid;
+
+ALTER TABLE public.qc_tickets DROP CONSTRAINT IF EXISTS qc_tickets_property_id_fkey;
+ALTER TABLE public.qc_tickets ADD CONSTRAINT qc_tickets_property_id_fkey
+  FOREIGN KEY (property_id) REFERENCES public.properties(id) ON DELETE SET NULL;
+ALTER TABLE public.qc_tickets DROP CONSTRAINT IF EXISTS qc_tickets_booked_visit_id_fkey;
+ALTER TABLE public.qc_tickets ADD CONSTRAINT qc_tickets_booked_visit_id_fkey
+  FOREIGN KEY (booked_visit_id) REFERENCES public.visits(id) ON DELETE SET NULL;
+-- A request for an extra visit without a day is not a request anyone can act on.
+ALTER TABLE public.qc_tickets DROP CONSTRAINT IF EXISTS qc_tickets_one_off_has_a_day;
+ALTER TABLE public.qc_tickets ADD CONSTRAINT qc_tickets_one_off_has_a_day
+  CHECK (category <> 'one_off_request' OR requested_on IS NOT NULL);
+
+CREATE INDEX IF NOT EXISTS qc_tickets_booked_visit_idx ON public.qc_tickets (booked_visit_id);
+CREATE INDEX IF NOT EXISTS qc_tickets_property_idx ON public.qc_tickets (property_id);
+CREATE UNIQUE INDEX IF NOT EXISTS qc_tickets_one_open_one_off_per_property_day
+  ON public.qc_tickets (property_id, requested_on)
+  WHERE category = 'one_off_request' AND status <> 'resolved';
+
+COMMENT ON COLUMN public.qc_tickets.requested_on IS
+  'For a one_off_request: the day the customer asked for.';
+COMMENT ON COLUMN public.qc_tickets.booked_visit_id IS
+  'For a one_off_request: the visit booked for it, by the office or by auto-accept.';
+
+CREATE OR REPLACE FUNCTION public.portal_request_one_off(
+  _token uuid, _property_id uuid, _on date, _message text
+)
+RETURNS TABLE (ticket_id uuid, created boolean)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+DECLARE
+  _client_id uuid;
+  _org_id uuid;
+  _tz text;
+  _work int[];
+  _today date;
+  _id uuid;
+BEGIN
+  SELECT c.id, c.organization_id INTO _client_id, _org_id
+    FROM public.clients c WHERE c.portal_token = _token AND c.active = true;
+  IF _client_id IS NULL THEN RAISE EXCEPTION 'invalid_token'; END IF;
+
+  -- The client's own, live property. Anything else -- another client's, an
+  -- archived one, one that does not exist -- is the same refusal, so the
+  -- answer says nothing about properties that are not theirs.
+  PERFORM 1 FROM public.properties p
+    WHERE p.id = _property_id AND p.client_id = _client_id
+      AND p.organization_id = _org_id AND p.archived_at IS NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'property_not_found'; END IF;
+
+  SELECT COALESCE(NULLIF(o.timezone, ''), 'America/Chicago'), o.work_days
+    INTO _tz, _work
+    FROM public.organizations o WHERE o.id = _org_id;
+  -- "Tomorrow" on the ORGANIZATION's calendar, not the server's.
+  _today := (now() AT TIME ZONE _tz)::date;
+
+  IF _on IS NULL OR _on < _today THEN RAISE EXCEPTION 'date_in_past'; END IF;
+  IF _on = _today THEN RAISE EXCEPTION 'date_too_soon'; END IF;
+  IF _on > _today + 30 THEN RAISE EXCEPTION 'date_too_far'; END IF;
+  -- work_days is 0 = Sunday, the same numbering as extract(dow) and as the
+  -- visit generator that would otherwise decline the booking.
+  IF NOT (extract(dow FROM _on)::int = ANY (COALESCE(_work, ARRAY[0,1,2,3,4,5,6]))) THEN
+    RAISE EXCEPTION 'not_a_working_day';
+  END IF;
+  PERFORM 1 FROM public.blackout_dates b WHERE b.organization_id = _org_id AND b.blackout_on = _on;
+  IF FOUND THEN RAISE EXCEPTION 'blackout_day'; END IF;
+
+  -- Asked already: hand back that request, open or already booked. Before the
+  -- "already has a visit" refusal on purpose -- after auto-accept books the
+  -- first tap, the second tap must find the request, not the visit.
+  SELECT t.id INTO _id FROM public.qc_tickets t
+   WHERE t.category = 'one_off_request' AND t.client_id = _client_id
+     AND t.property_id = _property_id AND t.requested_on = _on
+     AND (t.status <> 'resolved' OR t.booked_visit_id IS NOT NULL)
+   ORDER BY t.created_at DESC
+   LIMIT 1;
+  IF _id IS NOT NULL THEN
+    RETURN QUERY SELECT _id, false;
+    RETURN;
+  END IF;
+
+  PERFORM 1 FROM public.visits v
+    WHERE v.property_id = _property_id AND v.scheduled_on = _on
+      AND v.status NOT IN ('skipped', 'canceled');
+  IF FOUND THEN RAISE EXCEPTION 'already_scheduled'; END IF;
+
+  INSERT INTO public.qc_tickets (organization_id, client_id, property_id, category, requested_on, message)
+  VALUES (_org_id, _client_id, _property_id, 'one_off_request', _on,
+          left(NULLIF(btrim(COALESCE(_message, '')), ''), 1000))
+  ON CONFLICT (property_id, requested_on) WHERE category = 'one_off_request' AND status <> 'resolved'
+  DO NOTHING
+  RETURNING id INTO _id;
+
+  IF _id IS NOT NULL THEN
+    RETURN QUERY SELECT _id, true;
+    RETURN;
+  END IF;
+  -- Lost a race with a concurrent tap: the other one's request is this one.
+  SELECT t.id INTO _id FROM public.qc_tickets t
+   WHERE t.category = 'one_off_request' AND t.property_id = _property_id
+     AND t.requested_on = _on AND t.status <> 'resolved'
+   LIMIT 1;
+  RETURN QUERY SELECT _id, false;
+END $function$;
+
+-- Mirrors portal_request_reclean exactly: postgres and service_role, nobody
+-- else. The default privileges on public hand new functions to authenticated
+-- too, so that grant is taken back here as well.
+REVOKE ALL ON FUNCTION public.portal_request_one_off(uuid, uuid, date, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.portal_request_one_off(uuid, uuid, date, text) TO service_role;
+
+-- The portal's "Your requests", now with the day asked for and the day booked.
+DROP FUNCTION IF EXISTS public.portal_list_my_requests(uuid);
+CREATE FUNCTION public.portal_list_my_requests(_token uuid)
+RETURNS TABLE (
+  ticket_id uuid, visit_id uuid, visit_date date, category text, message text,
+  status text, resolution_note text, resolved_at timestamptz, created_at timestamptz,
+  requested_on date, booked_on date
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+  SELECT t.id, t.visit_id, v.scheduled_on, t.category, t.message,
+         t.status, t.resolution_note, t.resolved_at, t.created_at,
+         t.requested_on, b.scheduled_on
+    FROM public.clients c
+    JOIN public.qc_tickets t ON t.client_id = c.id AND t.organization_id = c.organization_id
+    LEFT JOIN public.visits v ON v.id = t.visit_id
+    LEFT JOIN public.visits b ON b.id = t.booked_visit_id
+   WHERE c.portal_token = _token AND c.active = true
+   ORDER BY t.created_at DESC
+   LIMIT 40
+$function$;
+REVOKE ALL ON FUNCTION public.portal_list_my_requests(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.portal_list_my_requests(uuid) TO service_role;
+
+-- What part 2 establishes.
+DO $check$
+DECLARE _def text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'organizations'
+       AND column_name = 'portal_auto_accept_bookings' AND is_nullable = 'NO'
+       AND column_default = 'false'
+  ) THEN
+    RAISE EXCEPTION 'organizations.portal_auto_accept_bookings is missing, nullable, or not off by default';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'organizations'
+       AND column_name = 'one_off_price_cents' AND is_nullable = 'YES'
+  ) THEN
+    RAISE EXCEPTION 'organizations.one_off_price_cents is missing or not nullable';
+  END IF;
+
+  _def := pg_get_constraintdef((SELECT oid FROM pg_constraint
+            WHERE conrelid = 'public.qc_tickets'::regclass AND conname = 'qc_tickets_category_check'));
+  IF _def !~ 'one_off_request' THEN
+    RAISE EXCEPTION 'qc_tickets does not accept one_off_request';
+  END IF;
+  IF _def !~ 'missed_spot.*gate_left_open.*damage.*wrong_yard.*other.*reclean_request' THEN
+    RAISE EXCEPTION 'qc_tickets_category_check dropped an existing category';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'public.qc_tickets'::regclass
+                    AND conname = 'qc_tickets_booked_visit_id_fkey'
+                    AND confrelid = 'public.visits'::regclass AND confdeltype = 'n') THEN
+    RAISE EXCEPTION 'qc_tickets.booked_visit_id does not reference visits ON DELETE SET NULL';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'public.qc_tickets'::regclass
+                    AND conname = 'qc_tickets_property_id_fkey'
+                    AND confrelid = 'public.properties'::regclass AND confdeltype = 'n') THEN
+    RAISE EXCEPTION 'qc_tickets.property_id does not reference properties ON DELETE SET NULL';
+  END IF;
+  IF NOT (SELECT indisunique FROM pg_index
+            WHERE indexrelid = 'public.qc_tickets_one_open_one_off_per_property_day'::regclass) THEN
+    RAISE EXCEPTION 'one open one-off request per property per day is not enforced';
+  END IF;
+
+  IF (SELECT prosecdef FROM pg_proc
+       WHERE oid = 'public.portal_request_one_off(uuid, uuid, date, text)'::regprocedure) IS NOT TRUE THEN
+    RAISE EXCEPTION 'portal_request_one_off is not SECURITY DEFINER';
+  END IF;
+  IF (SELECT prosrc FROM pg_proc
+       WHERE oid = 'public.portal_request_one_off(uuid, uuid, date, text)'::regprocedure)
+       !~ 'work_days' THEN
+    RAISE EXCEPTION 'portal_request_one_off does not read the organization''s working days';
+  END IF;
+  IF has_function_privilege('anon', 'public.portal_request_one_off(uuid, uuid, date, text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.portal_request_one_off(uuid, uuid, date, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'portal_request_one_off is callable by a client role; the portal reaches it only through service_role';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.portal_request_one_off(uuid, uuid, date, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'service_role cannot execute portal_request_one_off';
+  END IF;
+
+  IF has_function_privilege('anon', 'public.portal_list_my_requests(uuid)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.portal_list_my_requests(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'portal_list_my_requests came back callable by a client role';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.portal_list_my_requests(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'service_role cannot execute portal_list_my_requests';
   END IF;
 END
 $check$;

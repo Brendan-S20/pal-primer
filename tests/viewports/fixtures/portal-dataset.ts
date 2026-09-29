@@ -290,7 +290,64 @@ export const PORTAL_REQUESTS = [
     resolved_at: null,
     created_at: stamp(-1),
   },
+  // An extra cleanup already booked, and one still waiting: the row puts a
+  // "booked for" day beside the category, which is the widest title the list
+  // draws, and the badge says Booked rather than Resolved.
+  {
+    ticket_id: "22222222-0000-4000-8000-000000002003",
+    visit_id: null,
+    visit_date: null,
+    category: "one_off_request",
+    message: "Having thirty people over for my daughter's graduation on Saturday afternoon.",
+    status: "resolved",
+    resolution_note: "Booked for Fri, Sep 4.",
+    resolved_at: stamp(-1),
+    created_at: stamp(-2),
+    requested_on: day(7),
+    booked_on: day(7),
+  },
+  {
+    ticket_id: "22222222-0000-4000-8000-000000002004",
+    visit_id: null,
+    visit_date: null,
+    category: "one_off_request",
+    message: null,
+    status: "open",
+    resolution_note: null,
+    resolved_at: null,
+    created_at: stamp(0),
+    requested_on: day(12),
+    booked_on: null,
+  },
 ];
+
+/**
+ * `portalOneOffBookingOptions`, the extra-cleanup card on Requests. Two
+ * properties, so the "Where" picker draws beside the day picker -- the wider
+ * of the card's two layouts -- and the longest street in the dataset in it. A
+ * price, so the sentence above the pickers is its longer form. Weekdays only,
+ * from the fixture's tomorrow through 30 days, as the server would send.
+ */
+const WEEKDAYS_AHEAD = Array.from({ length: 30 }, (_, i) => day(i + 1)).filter((d) => {
+  const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+  return dow >= 1 && dow <= 5;
+});
+export const PORTAL_ONE_OFF_OPTIONS = {
+  today: day(0),
+  days: WEEKDAYS_AHEAD,
+  properties: [
+    { id: "11111111-0000-4000-8000-000000001001", label: "Home", street: STREET, city: "Ridgefield Heights" },
+    {
+      id: "11111111-0000-4000-8000-000000001002",
+      label: "Lake house",
+      street: "4 Old Mill Pond Road West",
+      city: "Wauconda Harbor",
+    },
+  ],
+  autoAccept: false,
+  priceCents: 4500,
+  currency: "usd",
+};
 
 /** The handler unwraps the RPC's single row, so the page reads an object.
  *  An array here renders "No referral code yet" -- true-looking, and wrong. */

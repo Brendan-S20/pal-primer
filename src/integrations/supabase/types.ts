@@ -2938,6 +2938,8 @@ export type Database = {
           public_signup_enabled: boolean
           reclean_window_hours: number
           calendar_feed_access_codes: boolean
+          one_off_price_cents: number | null
+          portal_auto_accept_bookings: boolean
           referral_code: string | null
           referral_reward_cents: number
           referred_by_org_id: string | null
@@ -3070,6 +3072,8 @@ export type Database = {
           public_signup_enabled?: boolean
           reclean_window_hours?: number
           calendar_feed_access_codes?: boolean
+          one_off_price_cents?: number | null
+          portal_auto_accept_bookings?: boolean
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -3202,6 +3206,8 @@ export type Database = {
           public_signup_enabled?: boolean
           reclean_window_hours?: number
           calendar_feed_access_codes?: boolean
+          one_off_price_cents?: number | null
+          portal_auto_accept_bookings?: boolean
           referral_code?: string | null
           referral_reward_cents?: number
           referred_by_org_id?: string | null
@@ -4544,6 +4550,7 @@ export type Database = {
       qc_tickets: {
         Row: {
           category: string
+          booked_visit_id: string | null
           client_id: string
           created_at: string
           id: string
@@ -4551,7 +4558,9 @@ export type Database = {
           last_reply_at: string | null
           message: string | null
           organization_id: string
+          property_id: string | null
           reclean_visit_id: string | null
+          requested_on: string | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
@@ -4561,6 +4570,7 @@ export type Database = {
         }
         Insert: {
           category: string
+          booked_visit_id?: string | null
           client_id: string
           created_at?: string
           id?: string
@@ -4568,7 +4578,9 @@ export type Database = {
           last_reply_at?: string | null
           message?: string | null
           organization_id: string
+          property_id?: string | null
           reclean_visit_id?: string | null
+          requested_on?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -4578,6 +4590,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          booked_visit_id?: string | null
           client_id?: string
           created_at?: string
           id?: string
@@ -4585,7 +4598,9 @@ export type Database = {
           last_reply_at?: string | null
           message?: string | null
           organization_id?: string
+          property_id?: string | null
           reclean_visit_id?: string | null
+          requested_on?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -4594,6 +4609,13 @@ export type Database = {
           visit_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "qc_tickets_booked_visit_id_fkey"
+            columns: ["booked_visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qc_tickets_client_id_fkey"
             columns: ["client_id"]
@@ -4606,6 +4628,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
             referencedColumns: ["id"]
           },
           {
@@ -6913,9 +6942,11 @@ export type Database = {
       portal_list_my_requests: {
         Args: { _token: string }
         Returns: {
+          booked_on: string
           category: string
           created_at: string
           message: string
+          requested_on: string
           resolution_note: string
           resolved_at: string
           status: string
@@ -6987,6 +7018,18 @@ export type Database = {
           _visit_id: string
         }
         Returns: string
+      }
+      portal_request_one_off: {
+        Args: {
+          _message: string
+          _on: string
+          _property_id: string
+          _token: string
+        }
+        Returns: {
+          created: boolean
+          ticket_id: string
+        }[]
       }
       portal_request_reclean: {
         Args: { _message: string; _token: string; _visit_id: string }

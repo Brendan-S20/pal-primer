@@ -956,6 +956,11 @@ const BASE_STUBS: Record<string, Stub> = {
   // already made and read, the all-visits link not yet made -- so both
   // states draw, and the longer of the two status lines is the real one.
   getMyCalendarFeeds: fx.CALENDAR_FEEDS,
+  // Settings -> Client portal's extra-cleanup card, and the /concerns "Book
+  // it" dialog, which starts its price from here. No price set: the longer
+  // of the card's two states ("Needs a price first") and the dialog's note
+  // that this one is the office's to price.
+  getPortalBookingSettings: fx.PORTAL_BOOKING_SETTINGS,
   // "Create link" answers with a URL the length production makes: the app
   // origin, the path, 43 base64url characters and `.ics`. A short fixture URL
   // would never test the box it is shown in.
@@ -1041,6 +1046,11 @@ const PORTAL_STUBS: Record<string, Stub> = {
   portalListMyRequests: pfx.PORTAL_REQUESTS,
   portalGetReferral: pfx.PORTAL_REFERRAL,
   portalListProperties: pfx.PORTAL_PROPERTIES,
+  // The extra-cleanup card on Requests. Without this the card draws nothing
+  // at all (it waits for its options), and the page measured is the page
+  // without the one control this was added for.
+  portalOneOffBookingOptions: pfx.PORTAL_ONE_OFF_OPTIONS,
+  portalRequestOneOff: { ticketId: "22222222-0000-4000-8000-000000002005", alreadyAsked: false, bookedOn: null },
   // `{ urls: Record<path, url> }`, not a list. A list crashed the Visits page
   // outright -- "Cannot read properties of undefined" on the first path -- and
   // the sweep would have measured the error boundary. The fence answers images

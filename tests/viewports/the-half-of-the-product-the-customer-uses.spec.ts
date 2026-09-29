@@ -75,7 +75,10 @@ const PAGES = [
   { path: "/visits", label: "visits", proof: /Upcoming visits/i, also: /Request a re-clean/i },
   { path: "/billing", label: "billing", proof: /PAYMENT METHOD/i },
   { path: "/property", label: "property", proof: /Your dogs on file/i },
-  { path: "/requests", label: "requests", proof: /Report a concern/i },
+  // The extra-cleanup card waits for its options, so a missing fixture draws
+  // a page with the heading and no form -- "Send request" is the proof that
+  // the pickers were actually laid out.
+  { path: "/requests", label: "requests", proof: /Report a concern/i, also: /Send request/i },
   { path: "/account", label: "account", proof: /Refer a neighbor/i },
 ];
 
