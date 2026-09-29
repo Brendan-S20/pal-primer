@@ -14,8 +14,7 @@ import {
   receivedAtInstant,
   receivedOnProblem,
 } from "@/lib/manual-payments";
-import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
-import { addDaysToDay } from "@/lib/reclean";
+import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import { QUANTITY_MAX, lineTotalCents } from "@/lib/invoice-lines";
 
 /** Each payment row with how much of it has been refunded, from the reversal
@@ -226,64 +225,14 @@ export const createManualInvoice = createServerFn({ method: "POST" })
     if (cErr) throw new Error(cErr.message);
     if (client.organization_id !== orgId) throw new Error("Client not found");
 
-    const total = data.items.reduce((s, i) => s + i.amountCents, 0);
-    const nowIso = new Date().toISOString();
-    // Due date = issued date + the org's payment terms. (A DB trigger also
-    // fills due_on for paths that don't set it, e.g. the generate RPCs.)
-    //
-    // Both dates are the ORG's day. They were the UTC day, so an invoice made
-    // at 8 PM in California was dated tomorrow and due a day late.
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("invoice_net_days, timezone")
-      .eq("id", orgId)
-      .single();
-    const today = orgToday(org?.timezone || DEFAULT_ORG_TIMEZONE);
-    const netDays = org?.invoice_net_days ?? 15;
-    const dueOn = addDaysToDay(today, netDays);
-    const { data: inv, error: iErr } = await supabase
-      .from("invoices")
-      .insert({
-        organization_id: orgId,
-        client_id: data.clientId,
-        kind: "postpaid",
-        status: "open",
-        subtotal_cents: total,
-        total_cents: total,
-        period_start: today,
-        period_end: today,
-        issued_at: nowIso,
-        due_on: dueOn,
-        notes: data.notes ?? "Manual invoice",
-      })
-      .select("id")
-      .single();
-    if (iErr) throw new Error(iErr.message);
-
-    const { error: lErr } = await supabase.from("invoice_line_items").insert(
-      data.items.map((i) => ({
-        invoice_id: inv.id,
-        description: i.description,
-        amount_cents: i.amountCents,
-        ...(i.quantity !== undefined
-          ? { quantity: i.quantity, unit_amount_cents: i.unitAmountCents! }
-          : {}),
-      })),
-    );
-    if (lErr) {
-      // Don't leave a headless invoice behind if the lines failed.
-      await supabase.from("invoices").delete().eq("id", inv.id);
-      throw new Error(lErr.message);
-    }
-    const { logActivity } = await import("@/lib/activity.server");
-    await logActivity(supabase, {
+    const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
+    return insertManualInvoice(supabase, {
       orgId,
+      userId: context.userId,
       clientId: data.clientId,
-      actorUserId: context.userId,
-      kind: "invoice.created",
-      summary: `Created manual invoice ${await invoiceRef(supabase, String(inv.id))} for $${(total / 100).toFixed(2)}`,
+      items: data.items,
+      notes: data.notes,
     });
-    return { invoiceId: inv.id as string, totalCents: total };
   });
 
 export const voidInvoice = createServerFn({ method: "POST" })
