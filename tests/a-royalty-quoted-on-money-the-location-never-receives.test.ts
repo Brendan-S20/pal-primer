@@ -181,7 +181,11 @@ describe("nothing about the arithmetic moved", () => {
   it("still builds that total out of payments.amount_cents", () => {
     // Which is base only — the surcharge never entered it — and gross of both
     // fees, which is the fact the copy above now discloses.
-    expect(body).toMatch(/coalesce\(sum\(p\.amount_cents\), 0\)::bigint AS total/);
+    // Less the payment's sales-tax share since 20260929110000: tax is the
+    // state's, never the location's revenue, so it carries no royalty.
+    expect(body).toMatch(
+      /coalesce\(sum\(p\.amount_cents(?: - p\.tax_cents)?\), 0\)::bigint AS total/,
+    );
   });
 
   it("deducts no fee from the royalty base", () => {

@@ -195,7 +195,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt",
       )
       .eq("id", data.clientId)
       .single();
@@ -230,6 +230,9 @@ export const updateClient = createServerFn({ method: "POST" })
         billingFrequency: z
           .enum(["after_each_visit", "weekly", "monthly", "quarterly", "yearly"])
           .optional(),
+        // No sales tax on this client's invoices. A billing decision, so it
+        // takes the billing permission below.
+        taxExempt: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -242,7 +245,9 @@ export const updateClient = createServerFn({ method: "POST" })
     await requirePermission(
       supabase,
       userId,
-      data.active !== undefined ? "manage_client_billing" : "view_client_directory",
+      data.active !== undefined || data.taxExempt !== undefined
+        ? "manage_client_billing"
+        : "view_client_directory",
     );
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -305,13 +310,17 @@ export const updateClient = createServerFn({ method: "POST" })
       patch.billing_frequency = data.billingFrequency;
       changed.push("billing cadence");
     }
+    if (data.taxExempt !== undefined) {
+      patch.tax_exempt = data.taxExempt;
+      changed.push("sales tax exemption");
+    }
     if (changed.length === 0) return { ok: true };
 
     // Before-image so the timeline can show before -> after (spec Stage 5).
     const { data: beforeRow } = await supabase
       .from("clients")
       .select(
-        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused",
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt",
       )
       .eq("id", data.clientId)
       .single();

@@ -193,6 +193,17 @@ export const SURFACES: Surface[] = [
     expectsData: REFUND_CLIENT_NAME,
   },
   {
+    // Added 2026-09-29 with sales tax. The same invoice, proved by its tax
+    // line: the one row a business that never set a rate never draws, so no
+    // untaxed fixture could have measured it. The label is 39 characters and
+    // has to wrap beside its amount on a 360px phone.
+    id: "/invoices/:id · sales tax line",
+    path: `/invoices/${REFUND_INVOICE_ID}`,
+    proof: (p) => p.getByText("County and Special District Service Tax (8.25%)").first(),
+    proofLabel: "the invoice's sales tax line",
+    expectsData: REFUND_CLIENT_NAME,
+  },
+  {
     // The dialog, walked to its confirm step: the sentence with the exact
     // dollars and a 39-character name in it, and the button that moves money.
     // A 360px phone is where this has to fit, because that is where the owner

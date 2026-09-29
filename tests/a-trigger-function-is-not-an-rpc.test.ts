@@ -143,7 +143,11 @@ describe("no trigger function is executable by a signed-in user", () => {
     // quotes_guard_answer, which keeps a sent quote as sent and lets only the
     // customer's link accept or decline it. Both carry their own REVOKE from
     // PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(39);
+    //
+    // 39 -> 40 on 2026-09-29 (20260929110000, sales tax): tg_payments_tax_share,
+    // which fills a payment's sales-tax share from its invoice on every write.
+    // It carries its own REVOKE from PUBLIC, anon and authenticated.
+    expect(triggerFunctions().size).toBe(40);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
