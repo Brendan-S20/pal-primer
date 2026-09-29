@@ -604,6 +604,8 @@ const BASE_STUBS: Record<string, Stub> = {
       description: "Zapier: new clients to Mailchimp, completed visits to the Google review request sheet",
       events: ["client.created", "visit.completed", "visit.skipped", "invoice.paid", "payment.received"],
       enabled: true,
+      // The Mailchimp Zap needs the address, so this one sends it.
+      include_contact: true,
       secret_last4: "Qz9x",
       consecutive_failures: 2,
       disabled_at: null,
@@ -619,6 +621,7 @@ const BASE_STUBS: Record<string, Stub> = {
       description: "",
       events: ["lead.created"],
       enabled: false,
+      include_contact: false,
       secret_last4: "a1B2",
       consecutive_failures: 5,
       disabled_at: "2026-09-27T03:00:00Z",
