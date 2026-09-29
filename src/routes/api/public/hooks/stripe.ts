@@ -147,6 +147,29 @@ async function provisionSignup(
       console.error("signup visit generation failed", signupRequestId, e);
     }
 
+    // The first cleanup, written down. It was always in the charge and was
+    // never recorded anywhere after it — see first-cleanup-billing.server.ts.
+    // Guarded for the same reason as the schedule above: the customer has an
+    // account by this line, and a record that failed to write must not become
+    // the sale being refunded.
+    if ((sr.initial_cleanup_cents ?? 0) > 0) {
+      try {
+        const { billSignupFirstCleanup } = await import("@/lib/first-cleanup-billing.server");
+        await billSignupFirstCleanup(supabaseAdmin, {
+          orgId: sr.organization_id,
+          clientId: client.id,
+          amountCents: sr.initial_cleanup_cents,
+          currency: sr.currency ?? "usd",
+          tierLabel: sr.first_cleanup_label ?? null,
+          dogCount: sr.dog_count ?? 1,
+          paymentIntentId: paid.paymentIntentId,
+          stripeRef: paid.stripeRef,
+        });
+      } catch (e) {
+        console.error("signup first-cleanup invoice failed", signupRequestId, e);
+      }
+    }
+
     // Credit the prepay portion to the client's balance
     const prepay = paid.amountTotalCents - (sr.initial_cleanup_cents ?? 0);
     if (prepay > 0) {

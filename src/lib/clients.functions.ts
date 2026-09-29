@@ -675,6 +675,16 @@ const onboardSchema = z.object({
   // Set when the wizard was opened from a lead. The lead is checked before
   // anything is created and marked converted, linked to this client, after.
   fromLeadId: z.string().uuid().optional(),
+  // The first cleanup, when the office charged one: billed as its own open
+  // invoice once the client exists. The price is the office's — prefilled
+  // from the owner's first-cleanup pricing and editable in the wizard — and
+  // taken only from someone who may bill clients (checked below).
+  firstCleanup: z
+    .object({
+      priceCents: z.number().int().min(1).max(1_000_000),
+      description: z.string().trim().min(1).max(300),
+    })
+    .optional(),
   // subscription (optional — user may skip)
   subscription: z
     .object({
@@ -703,6 +713,13 @@ export const onboardClient = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
+
+    // Billing a first cleanup is billing. Refused before anything is written,
+    // so a person who may add clients but not bill them is told now rather
+    // than after a client exists with half of what they asked for.
+    if (data.firstCleanup) {
+      await requirePermission(supabase, userId, "manage_client_billing");
+    }
 
     // 0) the lead this client is converted from, if any. Checked BEFORE the
     // client exists: a lead that is already a client is refused here, not
@@ -907,6 +924,36 @@ export const onboardClient = createServerFn({ method: "POST" })
         ? await leadConversion.markLeadConverted(supabase, fromLead.id, clientId)
         : null;
 
+    // 7) the first cleanup, as a one-time line on its own invoice. Same shape
+    // as a quote's one-time charges (invoiceQuoteOneTimeCharges), through the
+    // same helper, and reported rather than thrown for the same reason as the
+    // note: the client exists, and a thrown error invites a duplicate.
+    let firstCleanupInvoiced: boolean | null = null;
+    if (data.firstCleanup) {
+      try {
+        const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
+        await insertManualInvoice(supabase, {
+          orgId,
+          userId,
+          clientId,
+          items: [
+            {
+              description: data.firstCleanup.description,
+              amountCents: data.firstCleanup.priceCents,
+              quantity: 1,
+              unitAmountCents: data.firstCleanup.priceCents,
+            },
+          ],
+          notes: "First cleanup",
+          activityLabel: "first-cleanup invoice",
+        });
+        firstCleanupInvoiced = true;
+      } catch (e) {
+        console.error("first-cleanup invoice on new client failed", e);
+        firstCleanupInvoiced = false;
+      }
+    }
+
     {
       const { logActivity } = await import("@/lib/activity.server");
       await logActivity(supabase, {
@@ -943,7 +990,14 @@ export const onboardClient = createServerFn({ method: "POST" })
       }
     }
 
-    return { id: clientId, firstVisitOn, welcomeEmailed, officeNoteSaved, leadLinked };
+    return {
+      id: clientId,
+      firstVisitOn,
+      welcomeEmailed,
+      officeNoteSaved,
+      leadLinked,
+      firstCleanupInvoiced,
+    };
   });
 
 

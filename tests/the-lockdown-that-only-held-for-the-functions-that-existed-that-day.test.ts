@@ -102,19 +102,31 @@ describe("the anonymous surface is a list, not an accident", () => {
       "no migration sweeps the catalog; the anon surface is unbounded",
     ).toBeGreaterThan(-1);
 
-    // From the sweep onward: granted to anon minus revoked from anon/PUBLIC.
+    // From the sweep onward: granted to anon minus revoked from anon/PUBLIC,
+    // applied IN THE ORDER THE STATEMENTS RUN. It used to apply every GRANT in
+    // a file and then every REVOKE, which is not what Postgres does: a file
+    // that drops and recreates an anon function has to REVOKE the fresh
+    // PUBLIC grant and then GRANT anon back (20260929120000 does exactly that
+    // for public_quote), and grants-then-revokes read that as the function
+    // leaving the surface when it had only been re-granted.
     const granted = new Set<string>();
     for (const { sql } of files.slice(lastSweep)) {
       const code = codeOnly(sql);
+      const events: Array<{ at: number; fn: string; grant: boolean }> = [];
       for (const m of code.matchAll(
         /GRANT\s+(?:ALL|EXECUTE)[^;]*?\bON\s+FUNCTION\s+public\.([a-z0-9_]+)\s*\([^;]*?\)\s*TO\s+([^;]*);/gi,
       )) {
-        if (/\banon\b/i.test(m[2])) granted.add(m[1].toLowerCase());
+        if (/\banon\b/i.test(m[2])) events.push({ at: m.index!, fn: m[1].toLowerCase(), grant: true });
       }
       for (const m of code.matchAll(
         /REVOKE\s+(?:ALL|EXECUTE)[^;]*?\bON\s+FUNCTION\s+public\.([a-z0-9_]+)\s*\([^;]*?\)\s*FROM\s+([^;]*);/gi,
       )) {
-        if (/\b(anon|PUBLIC)\b/i.test(m[2])) granted.delete(m[1].toLowerCase());
+        if (/\b(anon|PUBLIC)\b/i.test(m[2]))
+          events.push({ at: m.index!, fn: m[1].toLowerCase(), grant: false });
+      }
+      for (const e of events.sort((a, b) => a.at - b.at)) {
+        if (e.grant) granted.add(e.fn);
+        else granted.delete(e.fn);
       }
     }
 

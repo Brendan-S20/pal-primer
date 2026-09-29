@@ -555,3 +555,62 @@ export const PUBLIC_QUOTES: Record<string, ReturnType<typeof publicQuote>> = Obj
     publicQuote(s),
   ]),
 );
+
+// ── /signup/:slug, the public signup, with first-cleanup tiers ─────────────
+//
+// The business prices the first cleanup by "when was your yard last
+// cleaned?", so the page draws a fourth question in the service card and a
+// first-cleanup line in the quote panel beside the per-visit price. The last
+// answer is long on purpose: it is the label a Select trigger and the quote
+// panel's "Last cleaned:" line both have to hold at 320px. Wording like this
+// is the owner's to choose, and an owner will choose a sentence.
+
+export const SIGNUP_LONG_TIER_LABEL = "Three months or more, or honestly never since we moved in";
+
+const SIGNUP_TIERS = [
+  { id: "within_a_week", label: "Within a week", price_cents: 4500 },
+  { id: "one_to_four_weeks", label: "1–4 weeks", price_cents: 7500 },
+  { id: "one_to_three_months", label: "1–3 months", price_cents: 11000 },
+  { id: "three_months_or_never", label: SIGNUP_LONG_TIER_LABEL, price_cents: 15000 },
+];
+
+/** `getSignupOrg`: the RPC's row plus `firstCleanup`, which the server adds. */
+export const SIGNUP_ORG = {
+  id: PORTAL_ORG_ID,
+  name: PORTAL_ORG_NAME,
+  currency: "usd",
+  public_signup_enabled: true,
+  resolved_slug: PORTAL_SLUG,
+  logo_url: null,
+  brand_color: null,
+  firstCleanup: {
+    mode: "by_last_cleaned",
+    tiers: SIGNUP_TIERS.map(({ id, label }) => ({ id, label })),
+  },
+};
+
+/** `getSignupQuote` for one dog: every answer priced for this yard, and the
+ *  answer the sweep picks priced into `initial_cleanup_cents`. */
+export function signupQuote(lastCleaned: string | undefined) {
+  const picked = SIGNUP_TIERS.find((t) => t.id === lastCleaned) ?? null;
+  return {
+    available: true as const,
+    quote: {
+      organization_id: PORTAL_ORG_ID,
+      zone_id: "dddddddd-0000-4000-8000-00000000d0f1",
+      zone_name: "Ravenswood Manor / Lincoln Square North",
+      base_price_cents: 2500,
+      per_dog_addl_cents: 500,
+      recurring_price_cents: 2500,
+      initial_cleanup_cents: picked ? picked.price_cents : null,
+      currency: "usd",
+      first_cleanup_mode: "by_last_cleaned",
+      first_cleanup_label: picked?.label ?? null,
+      first_cleanup_options: SIGNUP_TIERS.map((t) => ({
+        id: t.id,
+        label: t.label,
+        priceCents: t.price_cents,
+      })),
+    },
+  };
+}
