@@ -189,6 +189,8 @@ export const getQuote = createServerFn({ method: "GET" })
         // A draft has no link: public_quote_document returns nothing for it,
         // so handing one out would be handing out a dead end.
         publicUrl: q.status === "draft" ? null : publicQuoteUrl(q.public_token as string),
+        /** The link's token, for the same reason and on the same condition. */
+        publicToken: q.status === "draft" ? null : ((q.public_token as string | null) ?? null),
       },
       lines: normalizedLines,
       totals: quoteTotals(normalizedLines),
