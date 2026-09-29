@@ -14,7 +14,8 @@ import {
   receivedAtInstant,
   receivedOnProblem,
 } from "@/lib/manual-payments";
-import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
+import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { addDaysToDay } from "@/lib/reclean";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -189,16 +190,19 @@ export const createManualInvoice = createServerFn({ method: "POST" })
 
     const total = data.items.reduce((s, i) => s + i.amountCents, 0);
     const nowIso = new Date().toISOString();
-    const today = nowIso.slice(0, 10);
     // Due date = issued date + the org's payment terms. (A DB trigger also
     // fills due_on for paths that don't set it, e.g. the generate RPCs.)
+    //
+    // Both dates are the ORG's day. They were the UTC day, so an invoice made
+    // at 8 PM in California was dated tomorrow and due a day late.
     const { data: org } = await supabase
       .from("organizations")
-      .select("invoice_net_days")
+      .select("invoice_net_days, timezone")
       .eq("id", orgId)
       .single();
+    const today = orgToday(org?.timezone || DEFAULT_ORG_TIMEZONE);
     const netDays = org?.invoice_net_days ?? 15;
-    const dueOn = new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
+    const dueOn = addDaysToDay(today, netDays);
     const { data: inv, error: iErr } = await supabase
       .from("invoices")
       .insert({

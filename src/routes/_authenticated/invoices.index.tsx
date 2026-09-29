@@ -81,12 +81,18 @@ function NewInvoiceDialog() {
   const qc = useQueryClient();
   const clientsFn = useServerFn(listClients);
   const createFn = useServerFn(createManualInvoice);
+  const emailFn = useServerFn(sendInvoiceEmail);
   const openedFromLink = Route.useSearch().new === true;
   const [open, setOpen] = useState(openedFromLink);
   const [clientId, setClientId] = useState("");
   const [items, setItems] = useState<Array<{ description: string; amount: string }>>([
     { description: "", amount: "" },
   ]);
+  // Emailed as it is created, by default. A manual invoice has no send_after,
+  // so the nightly auto-send never picks it up: before this, "Create invoice"
+  // left it Open, unsent, and waiting for somebody to find the Send button on
+  // a page they had just been navigated away from.
+  const [sendNow, setSendNow] = useState(true);
 
   const clientsQ = useQuery({
     queryKey: ["clients", "picker"],
@@ -94,8 +100,15 @@ function NewInvoiceDialog() {
     enabled: open,
     staleTime: 60_000,
   });
-  const clients: Array<{ id: string; display_name: string; active: boolean }> =
-    (clientsQ.data as any)?.clients ?? (clientsQ.data as any) ?? [];
+  const clients: Array<{
+    id: string;
+    display_name: string;
+    active: boolean;
+    primary_email?: string | null;
+  }> = (clientsQ.data as any)?.clients ?? (clientsQ.data as any) ?? [];
+  const picked = clients.find((c) => c.id === clientId);
+  const pickedEmail = picked?.primary_email?.trim() || null;
+  const willEmail = sendNow && !!pickedEmail;
 
   const parsedItems = items
     .map((i) => ({
@@ -106,9 +119,28 @@ function NewInvoiceDialog() {
   const totalCents = parsedItems.reduce((s, i) => s + i.amountCents, 0);
 
   const createM = useMutation({
-    mutationFn: () => createFn({ data: { clientId, items: parsedItems } }),
+    mutationFn: async () => {
+      const r = await createFn({ data: { clientId, items: parsedItems } });
+      if (!willEmail) return { ...r, emailed: null as null | { ok: boolean; error?: string } };
+      // The invoice exists either way; a failed email must not read as a
+      // failed invoice, or the retry creates a second one.
+      try {
+        await emailFn({ data: { invoiceId: r.invoiceId } });
+        return { ...r, emailed: { ok: true } };
+      } catch (e) {
+        return { ...r, emailed: { ok: false, error: (e as Error).message } };
+      }
+    },
     onSuccess: (r) => {
-      toast.success(`Invoice created: ${fmtCents(r.totalCents)}`);
+      if (r.emailed?.ok) {
+        toast.success(`Invoice created and emailed to ${pickedEmail}: ${fmtCents(r.totalCents)}`);
+      } else if (r.emailed) {
+        toast.warning(
+          `Invoice created, but it was not emailed (${r.emailed.error}). Send it from the invoice.`,
+        );
+      } else {
+        toast.success(`Invoice created: ${fmtCents(r.totalCents)}`);
+      }
       qc.invalidateQueries({ queryKey: ["invoices"] });
       setOpen(false);
       setClientId("");
@@ -139,7 +171,7 @@ function NewInvoiceDialog() {
           <DialogTitle>New invoice</DialogTitle>
           <DialogDescription>
             Bill a client directly, no visit needed. The invoice opens immediately and is payable
-            from their portal or a checkout link.
+            from their portal or the link in the email.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -210,6 +242,27 @@ function NewInvoiceDialog() {
             </Button>
           </div>
           {totalCents > 0 && <p className="text-sm font-medium">Total: {fmtCents(totalCents)}</p>}
+          {clientId && (
+            <label className="flex min-h-11 items-start gap-3 text-sm">
+              <Checkbox
+                id="new-invoice-send-now"
+                className="mt-0.5"
+                checked={willEmail}
+                disabled={!pickedEmail}
+                onCheckedChange={(v) => setSendNow(v === true)}
+              />
+              <span className="min-w-0">
+                {pickedEmail ? (
+                  <>
+                    Email it to <span className="break-all font-medium">{pickedEmail}</span> now,
+                    with a link to pay
+                  </>
+                ) : (
+                  <>This client has no email address, so the invoice will not be sent.</>
+                )}
+              </span>
+            </label>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -217,8 +270,10 @@ function NewInvoiceDialog() {
             onClick={() => createM.mutate()}
           >
             {createM.isPending
-              ? "Creating…"
-              : `Create invoice${totalCents > 0 ? ` · ${fmtCents(totalCents)}` : ""}`}
+              ? willEmail
+                ? "Creating and sending…"
+                : "Creating…"
+              : `${willEmail ? "Create and send" : "Create invoice"}${totalCents > 0 ? ` · ${fmtCents(totalCents)}` : ""}`}
           </Button>
         </DialogFooter>
       </DialogContent>
