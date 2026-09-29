@@ -68,6 +68,7 @@ import {
   formatExpenseCents,
   formatRate,
   isExpenseCategory,
+  IRS_STANDARD_MILEAGE_RATE_CENTS,
   mileageAmountCents,
   mileageRateFor,
   parseAmountCents,
@@ -567,8 +568,9 @@ function MileageRateCard({ rateCents }: { rateCents: number }) {
         <div className="min-w-0">
           <div className="text-sm font-medium">Mileage rate: {formatRate(rateCents)}</div>
           <p className="text-xs text-muted-foreground">
-            What a mileage expense is priced at when it is logged. The IRS standard rate for 2026 is
-            72.5¢. Changing it prices new trips only; every trip already logged keeps its rate.
+            What a mileage expense is priced at when it is logged. The IRS standard business rate is
+            {formatRate(IRS_STANDARD_MILEAGE_RATE_CENTS)} (from July 2026). Changing it prices new
+            trips only; every trip already logged keeps its rate.
           </p>
         </div>
         {!editing && (
