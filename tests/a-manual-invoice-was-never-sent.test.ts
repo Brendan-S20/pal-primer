@@ -63,7 +63,8 @@ describe("the invoice is dated in the organization's day", () => {
     // one-time charges use; createManualInvoice has to still go through it.
     expect(create).toMatch(/insertManualInvoice\(supabase,/);
     const core = strip(read("src/lib/manual-invoice.server.ts"));
-    expect(core).toMatch(/select\("invoice_net_days, timezone"\)/);
+    // Plus the sales-tax rate and label since 20260929110000.
+    expect(core).toMatch(/select\("invoice_net_days, timezone(?:, [a-z_, ]+)?"\)/);
     expect(core).toMatch(/const today = orgToday\(/);
     expect(core).toMatch(/const dueOn = addDaysToDay\(today, netDays\)/);
     expect(core).not.toMatch(/nowIso\.slice\(0, 10\)/);

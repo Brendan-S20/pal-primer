@@ -22,6 +22,7 @@ import {
   money,
 } from "@/lib/portal-ui";
 import { invoiceKindLabel } from "@/lib/invoice-labels";
+import { taxLineLabel } from "@/lib/sales-tax";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { portalDownloadInvoicePdf } from "@/lib/document-pdf.functions";
 
@@ -231,6 +232,13 @@ function PortalBilling() {
                       {i.status === "open" && (i.credit_applied_cents ?? 0) > 0 && (
                         <span className="text-xs text-muted-foreground">
                           after {money(i.credit_applied_cents)} credit
+                        </span>
+                      )}
+                      {/* Sales tax inside the total, only when there is some. */}
+                      {(i.tax_cents ?? 0) > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          includes {money(i.tax_cents)}{" "}
+                          {taxLineLabel(i.tax_label, i.tax_rate_bps)}
                         </span>
                       )}
                       <InvoiceStatusBadge status={i.status} />

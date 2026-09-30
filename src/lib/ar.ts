@@ -23,6 +23,10 @@ export type ArInvoice = {
   credit_applied_cents?: number | null;
   due_on?: string | null;
   client_id?: string | null;
+  /** Sales tax inside total_cents. Part of what the customer owes, so every
+   *  receivable figure keeps it; taken back out only where the question is
+   *  revenue (billedInPeriod). Absent means 0. */
+  tax_cents?: number | null;
 };
 
 const OUTSTANDING_STATUSES = new Set(["open"]);
@@ -230,11 +234,17 @@ export function billedDay(
 }
 
 export type BilledTotals = {
-  /** Gross invoiced in the period. */
+  /** Gross invoiced in the period, EXCLUDING sales tax: billed revenue. The
+   *  tax on the same invoices is `taxBilledCents`, a liability. */
   billedCents: number;
+  /** Sales tax on the invoices billed in the period. Zero for every org that
+   *  never set a rate. */
+  taxBilledCents: number;
   /** The part of it settled from the client's account credit rather than money. */
   creditsAppliedCents: number;
-  /** billedCents − creditsAppliedCents. */
+  /** billedCents − creditsAppliedCents. Credit reduces what was owed, not
+   *  the taxable base, so a credit-covered invoice's tax stays in
+   *  `taxBilledCents` and the whole credit comes off here. */
   netBilledCents: number;
   invoiceCount: number;
 };
@@ -250,6 +260,7 @@ export function billedInPeriod(
 ): BilledTotals {
   const totals: BilledTotals = {
     billedCents: 0,
+    taxBilledCents: 0,
     creditsAppliedCents: 0,
     netBilledCents: 0,
     invoiceCount: 0,
@@ -257,7 +268,9 @@ export function billedInPeriod(
   for (const inv of invoices) {
     const day = billedDay(inv, tz);
     if (!day || day < from || day > to) continue;
-    totals.billedCents += inv.total_cents ?? 0;
+    const tax = Math.max(0, inv.tax_cents ?? 0);
+    totals.billedCents += (inv.total_cents ?? 0) - tax;
+    totals.taxBilledCents += tax;
     totals.creditsAppliedCents += inv.credit_applied_cents ?? 0;
     totals.invoiceCount += 1;
   }

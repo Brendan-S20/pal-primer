@@ -153,6 +153,18 @@ function PortalShell() {
   return (
     <div className="min-h-screen bg-muted/20 pb-28">
       <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-8">
+        {ctx.preview && (
+          // A staff preview (clients.functions previewClientPortal). The
+          // server refuses every action on it; this says so before anybody
+          // taps one and wonders why it failed.
+          <div
+            role="status"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+          >
+            <strong>Preview.</strong> This is what {c.display_name} sees. Nothing here can be
+            changed from a preview, and it ends after an hour.
+          </div>
+        )}
         {/* Header — always visible across tabs */}
         <header className="overflow-hidden rounded-2xl p-6 shadow-lg" style={headerStyle}>
           <div className="flex items-start justify-between gap-3">
