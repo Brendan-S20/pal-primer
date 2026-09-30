@@ -4934,6 +4934,8 @@ export type Database = {
           created_by: string | null
           decline_reason: string | null
           declined_at: string | null
+          deposit_cents: number | null
+          deposit_invoice_id: string | null
           id: string
           lead_id: string | null
           message: string | null
@@ -4961,6 +4963,8 @@ export type Database = {
           created_by?: string | null
           decline_reason?: string | null
           declined_at?: string | null
+          deposit_cents?: number | null
+          deposit_invoice_id?: string | null
           id?: string
           lead_id?: string | null
           message?: string | null
@@ -4988,6 +4992,8 @@ export type Database = {
           created_by?: string | null
           decline_reason?: string | null
           declined_at?: string | null
+          deposit_cents?: number | null
+          deposit_invoice_id?: string | null
           id?: string
           lead_id?: string | null
           message?: string | null

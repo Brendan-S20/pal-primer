@@ -25,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { QuoteDocument } from "@/components/quotes/QuoteDocument";
 import { DownloadPdfLink } from "@/components/DownloadPdfButton";
 import { getPublicQuote, respondToPublicQuote } from "@/lib/quotes.functions";
-import { QUOTE_LIMITS, formatQuoteDay, isUsableSignature } from "@/lib/quotes";
+import { QUOTE_LIMITS, formatQuoteDay, formatQuoteMoney, isUsableSignature } from "@/lib/quotes";
 import { orgLocalDay } from "@/lib/org-day";
 
 export const Route = createFileRoute("/q/$token")({
@@ -151,6 +151,30 @@ function Answer({ token, data }: { token: string; data: Loaded }) {
             Signed by {data.quote.acceptedName} on {answeredOn(data.quote.acceptedAt, tz)}.{" "}
             {data.org.name} has been told and will be in touch to get you scheduled.
           </p>
+          {data.quote.depositCents != null &&
+            (data.quote.depositPaid ? (
+              <p>
+                Your {formatQuoteMoney(data.quote.depositCents)} deposit is paid. It is on your
+                account as credit and comes off your first invoices.
+              </p>
+            ) : data.quote.depositPayUrl ? (
+              <div className="space-y-2 pt-1">
+                <p>
+                  A {formatQuoteMoney(data.quote.depositCents)} deposit is due now. It goes on your
+                  account as credit and comes off your first invoices.
+                </p>
+                <Button asChild className="w-full sm:w-auto">
+                  <a href={data.quote.depositPayUrl}>
+                    Pay {formatQuoteMoney(data.quote.depositCents)} deposit
+                  </a>
+                </Button>
+              </div>
+            ) : (
+              <p>
+                {data.org.name} will send you a link for the{" "}
+                {formatQuoteMoney(data.quote.depositCents)} deposit.
+              </p>
+            ))}
         </div>
       </div>
     );
@@ -228,6 +252,13 @@ function Answer({ token, data }: { token: string; data: Loaded }) {
             <p className="text-xs text-muted-foreground">
               Typing your name and pressing Accept is your signature agreeing to this quote.
             </p>
+            {data.quote.depositCents != null && (
+              <p className="text-sm">
+                A <span className="font-medium">{formatQuoteMoney(data.quote.depositCents)}</span>{" "}
+                deposit is due when you accept. It is credited to your account and comes off your
+                first invoices.
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button type="submit" className="sm:flex-1" disabled={!canAccept || respondM.isPending}>

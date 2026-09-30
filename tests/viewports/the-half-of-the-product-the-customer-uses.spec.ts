@@ -240,9 +240,15 @@ test.describe("the quote link, which a customer signs on a phone", () => {
    * both totals prove the lines drew, one-time AND per-visit.
    */
   const STATES = [
-    { state: "sent", proof: /Accept quote/ },
-    { state: "accepted", proof: /You accepted this quote/, also: QUOTE_SIGNER },
-    { state: "declined", proof: /You declined this quote/, also: "holding next year" },
+    // The deposit (added 2026-09-30): due-on-accepting before, the Pay
+    // button after. Both are the longest things on their pages at 320px.
+    { state: "sent", proof: /Accept quote/, also: ["deposit is due when you accept"] },
+    {
+      state: "accepted",
+      proof: /You accepted this quote/,
+      also: [QUOTE_SIGNER, "Pay $1,500.00 deposit"],
+    },
+    { state: "declined", proof: /You declined this quote/, also: ["holding next year"] },
     { state: "expired", proof: /This quote has expired/ },
   ] as const;
 
@@ -257,7 +263,9 @@ test.describe("the quote link, which a customer signs on a phone", () => {
 
           await expect(page.getByText(QUOTE_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
           await expect(page.getByText(s.proof).first()).toBeVisible({ timeout: 15_000 });
-          if ("also" in s) await expect(page.getByText(s.also).first()).toBeVisible();
+          if ("also" in s) {
+            for (const text of s.also) await expect(page.getByText(text).first()).toBeVisible();
+          }
           await expect(page.getByText(QUOTE_LONG_LINE).first()).toBeVisible();
           // Both totals: $51.00 per visit and $165.00 once.
           await expect(page.getByText("$51.00").first()).toBeVisible();

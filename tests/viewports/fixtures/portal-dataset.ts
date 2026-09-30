@@ -551,6 +551,14 @@ function publicQuote(status: keyof typeof QUOTE_TOKENS) {
           : null,
       recipientName: "Lakeview Terrace Condominium Association Board of Managers",
       currency: "usd",
+      // A deposit on every state, so the notice before accepting and the Pay
+      // button after it are both on a page the sweep measures.
+      depositCents: 150000,
+      depositPayUrl:
+        status === "accepted"
+          ? "https://app.houndstack.com/pay/i/eeeeeeee-0000-4000-8000-00000000d002"
+          : null,
+      depositPaid: false,
     },
     org: {
       name: QUOTE_ORG_NAME,

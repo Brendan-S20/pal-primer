@@ -36,6 +36,10 @@ export const QUOTE_LIMITS = {
   signatureMin: 2,
   signatureMax: 120,
   declineReason: 1000,
+  /** A deposit's range, $1 to $10,000, in cents; the same as the
+   *  quotes_deposit_cents_range CHECK. */
+  minDepositCents: 100,
+  maxDepositCents: 1_000_000,
 } as const;
 
 /** "Q-1001". The number a customer reads aloud on the phone. */

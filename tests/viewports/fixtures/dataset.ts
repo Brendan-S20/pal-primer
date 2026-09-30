@@ -1233,6 +1233,11 @@ export function quoteDetail(id: string) {
       declineReason: null,
       convertedAt: null,
       convertedClientId: null,
+      oneTimeInvoiceId: null,
+      // A prospect's deposit: the accepted view says it is invoiced on
+      // conversion, and the draft opens with it filled in.
+      depositCents: 150000,
+      depositInvoice: null,
       createdAt: iso(new Date(Date.now() - 3 * 864e5)),
       clientId: null,
       clientName: null,
