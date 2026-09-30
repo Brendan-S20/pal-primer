@@ -180,6 +180,12 @@ on an org id should be read with it in mind.
 `impersonation_grants`, `oauth_states`, `org_twilio_credentials`, `roadmap_votes`,
 `roadmap_vote_throttle`.
 
+A tenth arrived with 20260929080000: `webhook_endpoint_secrets`, the encrypted
+HMAC keys outbound webhooks are signed with. Deny-all for the same reason as
+`org_twilio_credentials` — the owner sees a secret once, in the response that
+created or rotated it, and only the delivery worker on the service role reads
+it afterwards. The advisor count above will read 10 once it is applied.
+
 RLS enabled, zero policies — deny-all to `anon` and `authenticated`, evaluated
 after the blanket table grants, so those grants buy nothing.
 `relforcerowsecurity` is false, so the postgres-owned definer functions and the
