@@ -63,7 +63,7 @@ import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-vi
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import {
   describeReadFreshness,
-  formatCacheAge,
+  cacheAgeParts,
   READ_CACHE_MAX_AGE_MS,
 } from "@/lib/offline/read-cache-policy";
 import { PhotoLightbox } from "@/components/PhotoLightbox";
@@ -96,6 +96,9 @@ import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { useIntlLocale } from "@/lib/i18n";
+import { formatClock, formatDay } from "@/lib/format";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useTabletTier } from "@/hooks/useTabletTier";
@@ -244,6 +247,13 @@ function MyDay() {
   }, []);
   const pending = usePendingCount();
   const { t } = useTranslation();
+  const locale = useIntlLocale();
+  // The sync driver's toasts read the CURRENT language through a ref rather
+  // than closing over `t`: `t` in runSync's dependencies would rebuild the
+  // driver on a language change, and startAutoSync below treats a new driver
+  // as a new mount and replays the queue again.
+  const tRef = useRef(t);
+  tRef.current = t;
   const { role } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
@@ -346,8 +356,9 @@ function MyDay() {
     const named = ids.map((id) => visitNames.current.get(id)).filter(Boolean) as string[];
     if (named.length === 0) return undefined;
     if (named.length === 1) return named[0];
-    if (named.length === 2) return `${named[0]} and ${named[1]}`;
-    return `${named[0]} and ${named.length - 1} others`;
+    if (named.length === 2)
+      return tRef.current("sync.twoNames", { first: named[0], second: named[1] });
+    return tRef.current("sync.andOthers", { first: named[0], count: named.length - 1 });
   }, []);
 
   const runSync = useCallback(
@@ -379,20 +390,19 @@ function MyDay() {
         // online) is not a request anybody made, and the replay in flight is
         // already doing its job; telling the tech "Already syncing…" on opening
         // the page, with nothing queued, was noise. See lib/offline/auto-sync.
-        if (trigger === "tap") toast.info("Already syncing…");
+        if (trigger === "tap") toast.info(tRef.current("sync.alreadySyncing"));
         return;
       }
       if (res.succeeded > 0) {
-        toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
+        toast.success(tRef.current("sync.synced", { count: res.succeeded }));
         qc.invalidateQueries({ queryKey: ["my-day"] });
       }
       if (res.dropped > 0) {
         // Never folded into the success count: this is a photo whose bytes are
         // gone, and the tech is the only person who can retake it.
-        toast.error(
-          `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device. Retake if the visit still needs one`,
-          { description: namesFor(res.droppedVisitIds) },
-        );
+        toast.error(tRef.current("sync.photosLost", { count: res.dropped }), {
+          description: namesFor(res.droppedVisitIds),
+        });
         qc.invalidateQueries({ queryKey: ["my-day"] });
       }
       if (res.deadLettered > 0) {
@@ -404,14 +414,14 @@ function MyDay() {
         // asks somebody to drive somewhere a second time, and it used to end
         // "Check the visit and redo it if needed" without saying which visit --
         // on a twenty-stop day, with the queue already emptied of the evidence.
-        toast.error(
-          `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Go back and redo the work if it still needs doing`,
-          { duration: 12_000, description: namesFor(res.deadLetteredVisitIds) },
-        );
+        toast.error(tRef.current("sync.deadLettered", { count: res.deadLettered }), {
+          duration: 12_000,
+          description: namesFor(res.deadLetteredVisitIds),
+        });
         qc.invalidateQueries({ queryKey: ["my-day"] });
       }
       if (res.failed > 0) {
-        toast.error(`Sync stalled on 1 action, will retry`);
+        toast.error(tRef.current("sync.stalled"));
       }
     },
     [callers, qc, namesFor],
@@ -449,7 +459,7 @@ function MyDay() {
   visitNames.current = new Map(
     visits.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
       v.id,
-      v.clients?.display_name ?? "a visit",
+      v.clients?.display_name ?? t("myDay.aVisit"),
     ]),
   );
   const staff = data?.staff;
@@ -515,7 +525,7 @@ function MyDay() {
     return () => cancelAnimationFrame(raf);
   }, [activeVisitId]);
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
+  if (isLoading) return <p className="text-muted-foreground">{t("common.loading")}</p>;
 
   // Fetch failed and nothing is cached for this day — say so plainly instead
   // of falling through to the misleading "not linked to a staff record" state.
@@ -524,11 +534,10 @@ function MyDay() {
       <div className="space-y-3 py-10 text-center">
         <WifiOff className="mx-auto h-6 w-6 text-muted-foreground shrink-0" />
         <p className="text-sm text-muted-foreground">
-          Couldn't load this day{online ? "" : " (you're offline)"}, and no synced copy is saved on
-          this device.
+          {online ? t("myDay.loadFailed") : t("myDay.loadFailedOffline")}
         </p>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Retry
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5 shrink-0" /> {t("common.retryShort")}
         </Button>
       </div>
     );
@@ -607,21 +616,21 @@ function MyDay() {
                     <WifiOff className="h-4 w-4 shrink-0" />
                   )}
                   <span className="font-medium">
-                    {online ? "Couldn't refresh" : "Offline"}: saved copy,{" "}
-                    {formatCacheAge(freshness.ageMs)}
+                    {t(online ? "myDay.cachedRefreshFailed" : "myDay.cachedOffline", {
+                      age: cacheAgeText(t, freshness.ageMs),
+                    })}
                   </span>
                 </div>
                 <div className="pl-6 text-xs opacity-90">
-                  Last updated{" "}
-                  {new Date(freshness.fetchedAt).toLocaleString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
+                  {t("myDay.lastUpdated", {
+                    when: new Date(freshness.fetchedAt).toLocaleString(locale, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    }),
                   })}
-                  {freshness.beyondTrustHorizon
-                    ? " . This route may have changed. Confirm before driving it."
-                    : ""}
+                  {freshness.beyondTrustHorizon ? ` . ${t("myDay.routeMayHaveChanged")}` : ""}
                 </div>
               </div>
               <button
@@ -631,7 +640,7 @@ function MyDay() {
                 }}
                 className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
               >
-                <RefreshCw className="h-3 w-3 shrink-0" /> Retry
+                <RefreshCw className="h-3 w-3 shrink-0" /> {t("common.retryShort")}
               </button>
             </div>
           )}
@@ -676,12 +685,12 @@ function MyDay() {
                         a date -- whereas "My d…" is not a heading. Every real
                         phone in the 360-430 band keeps the full label. */}
                     <span className="max-[359px]:hidden">
-                      {new Date(`${day}T00:00:00`).toLocaleDateString(undefined, {
+                      {new Date(`${day}T00:00:00`).toLocaleDateString(locale, {
                         weekday: "short",
                       })}
                       {", "}
                     </span>
-                    {new Date(`${day}T00:00:00`).toLocaleDateString(undefined, {
+                    {new Date(`${day}T00:00:00`).toLocaleDateString(locale, {
                       month: "short",
                       day: "numeric",
                     })}
@@ -690,7 +699,7 @@ function MyDay() {
                 </div>
                 <input
                   type="date"
-                  aria-label="Pick a day"
+                  aria-label={t("myDay.pickADay")}
                   value={day}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -738,7 +747,7 @@ function MyDay() {
                   {completedCount} {t("common.of")} {total} {t("common.done")}
                   {skippedCount > 0 && (
                     <span className="ml-1 font-normal text-muted-foreground">
-                      · {skippedCount} skipped
+                      · {t("myDay.skippedCount", { count: skippedCount })}
                     </span>
                   )}
                 </div>
@@ -761,7 +770,11 @@ function MyDay() {
                   list and a folded map, which are not far apart at 16px. Still
                   44px tall -- the height is now the padding plus the label
                   rather than a fixed square, so min-h-11 states it outright. */}
-              <div className="flex shrink-0 rounded-lg border p-0.5" role="group" aria-label="View">
+              <div
+                className="flex shrink-0 rounded-lg border p-0.5"
+                role="group"
+                aria-label={t("myDay.view")}
+              >
                 {(["list", "map"] as const).map((v) => (
                   <button
                     key={v}
@@ -782,7 +795,7 @@ function MyDay() {
                     ) : (
                       <MapIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
                     )}
-                    {v === "list" ? "List" : "Map"}
+                    {v === "list" ? t("myDay.viewList") : t("myDay.viewMap")}
                   </button>
                 ))}
               </div>
@@ -792,7 +805,7 @@ function MyDay() {
           {isOfficeRole && fieldStaff.length > 0 && (
             <div className="flex min-w-0 items-center gap-2 text-xs">
               <label htmlFor="my-day-staff" className="shrink-0 text-muted-foreground">
-                Viewing:
+                {t("myDay.viewing")}
               </label>
               <select
                 id="my-day-staff"
@@ -815,7 +828,7 @@ function MyDay() {
                 className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
               >
                 <option value="">
-                  {data?.staff && !previewing ? "My day" : "(Select technician)"}
+                  {data?.staff && !previewing ? t("myDay.title") : t("myDay.selectTechnician")}
                 </option>
                 {fieldStaff.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -826,7 +839,7 @@ function MyDay() {
               </select>
               {previewing && (
                 <span className="rounded-full border px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
-                  Preview · read-only
+                  {t("myDay.previewReadOnly")}
                 </span>
               )}
             </div>
@@ -850,9 +863,7 @@ function MyDay() {
 
         {!staff && isOfficeRole && (
           <div className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
-            {fieldStaff.length === 0
-              ? "No active technicians in your organization yet."
-              : "Pick a technician above to preview their day."}
+            {fieldStaff.length === 0 ? t("myDay.noTechnicians") : t("myDay.pickTechnician")}
           </div>
         )}
 
@@ -860,7 +871,10 @@ function MyDay() {
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
             <p>
               {previewing
-                ? `${staff.display_name} has nothing scheduled on ${day}.`
+                ? t("myDay.previewNothingScheduled", {
+                    name: staff.display_name,
+                    day: formatDay(day, locale),
+                  })
                 : t("myDay.nothingScheduled")}
             </p>
             <Button asChild variant="outline" size="sm" className="mt-4">
@@ -869,7 +883,7 @@ function MyDay() {
                   "You don't have access to that page" — the only action on the
                   screen was a dead end for the only role the screen is for.
                   /my-schedule is their own forward view and they can open it. */}
-              <Link to="/my-schedule">View my schedule</Link>
+              <Link to="/my-schedule">{t("myDay.viewMySchedule")}</Link>
             </Button>
           </div>
         )}
@@ -877,7 +891,7 @@ function MyDay() {
         {view === "map" ? (
           <MyDayMap
             visits={visits}
-            staffName={data?.staff?.display_name ?? "My route"}
+            staffName={data?.staff?.display_name ?? t("myDay.myRoute")}
             onVisitClick={(id) => {
               // Back to the list, at that stop. A pin answers "where", the
               // card answers "what do I do here", and a tech tapping a pin is
@@ -982,6 +996,7 @@ function MyDayMap({
   staffName: string;
   onVisitClick: (visitId: string) => void;
 }) {
+  const { t } = useTranslation();
   const mappable = visits.filter(
     (v) => v.properties?.latitude != null && v.properties?.longitude != null,
   );
@@ -1083,9 +1098,7 @@ function MyDayMap({
   if (mappable.length === 0) {
     return (
       <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
-        {visits.length === 0
-          ? "Nothing scheduled for this day."
-          : "None of today's stops have coordinates yet, so there is nothing to plot. The office can geocode these properties."}
+        {visits.length === 0 ? t("map.nothingScheduled") : t("map.noCoordinates")}
       </div>
     );
   }
@@ -1098,7 +1111,7 @@ function MyDayMap({
             className="grid place-items-center bg-muted/30 text-sm text-muted-foreground"
             style={{ height: mapHeight ?? 360 }}
           >
-            Loading map...
+            {t("map.loading")}
           </div>
         }
       >
@@ -1121,24 +1134,34 @@ function MyDayMap({
       </Suspense>
       {mappable.length < visits.length && (
         <div className="border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          {visits.length - mappable.length} of {visits.length} stops have no coordinates and are not
-          shown.
+          {t("map.unmapped", { missing: visits.length - mappable.length, total: visits.length })}
         </div>
       )}
     </div>
   );
 }
 
-/** What the badge says when the status came from the device's queue rather than
- *  the server. "Syncing" rather than "queued": the work is done, the tech can
- *  move on, and the only thing outstanding is the device telling the office. */
-const QUEUED_BADGE_LABELS: Record<LifecycleKind, string> = {
-  start: "in progress · syncing",
-  complete: "done · syncing",
-  skip: "skipped · syncing",
-};
+/** The age of the saved copy, in the tech's language. The buckets are
+ *  read-cache-policy's, so this and the English `formatCacheAge` agree. */
+function cacheAgeText(t: TFunction, ageMs: number): string {
+  const age = cacheAgeParts(ageMs);
+  return "count" in age
+    ? t(`cacheAge.${age.unit}`, { count: age.count })
+    : t(`cacheAge.${age.unit}`);
+}
 
-function statusBadge(status: string, queuedSync?: LifecycleKind) {
+/** A skip reason code in the tech's language, by code (`skipReason.<code>`),
+ *  with the office's English as the fallback and an unknown code shown as-is. */
+function skipReasonLabel(t: TFunction, code: string): string {
+  const english = SKIP_REASON_LABELS[code as keyof typeof SKIP_REASON_LABELS];
+  return english ? t(`skipReason.${code}`, { defaultValue: english }) : code;
+}
+
+/** What the badge says when the status came from the device's queue rather than
+ *  the server (`queuedStatus.*`). "Syncing" rather than "queued": the work is
+ *  done, the tech can move on, and the only thing outstanding is the device
+ *  telling the office. */
+function statusBadge(status: string, queuedSync: LifecycleKind | undefined, t: TFunction) {
   const map: Record<string, string> = {
     scheduled: "bg-muted text-muted-foreground",
     in_progress: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
@@ -1150,7 +1173,9 @@ function statusBadge(status: string, queuedSync?: LifecycleKind) {
     <span
       className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-muted"}`}
     >
-      {queuedSync ? QUEUED_BADGE_LABELS[queuedSync] : status.replace("_", " ")}
+      {queuedSync
+        ? t(`queuedStatus.${queuedSync}`)
+        : t(`status.${status}`, { defaultValue: status.replace("_", " ") })}
     </span>
   );
 }
@@ -1165,34 +1190,36 @@ type HazardKey =
   | "slippery_surfaces"
   | "dog_in_yard_during_service";
 
-const HAZARD_LABELS: Record<HazardKey, { label: string; severity: "critical" | "warn" }> = {
-  do_not_enter_if_dog_out: { label: "DO NOT ENTER if dog is outside", severity: "critical" },
-  aggressive_dog: { label: "Aggressive dog", severity: "critical" },
-  escape_risk: { label: "Escape risk: close gate immediately", severity: "critical" },
-  invisible_fence: { label: "Invisible fence", severity: "warn" },
-  dog_in_yard_during_service: { label: "Dog in yard during service", severity: "warn" },
-  bees_wasps: { label: "Bees / wasps", severity: "warn" },
-  sharp_objects: { label: "Sharp objects", severity: "warn" },
-  slippery_surfaces: { label: "Slippery surfaces", severity: "warn" },
+/** Severity per hazard flag. The words are `hazard.<key>` in lib/i18n. */
+const HAZARD_SEVERITY: Record<HazardKey, "critical" | "warn"> = {
+  do_not_enter_if_dog_out: "critical",
+  aggressive_dog: "critical",
+  escape_risk: "critical",
+  invisible_fence: "warn",
+  dog_in_yard_during_service: "warn",
+  bees_wasps: "warn",
+  sharp_objects: "warn",
+  slippery_surfaces: "warn",
 };
 
 function HazardBanner({ property }: { property: any }) {
+  const { t } = useTranslation();
   if (!property) return null;
-  const active = (Object.keys(HAZARD_LABELS) as HazardKey[]).filter((k) => property[k]);
+  const active = (Object.keys(HAZARD_SEVERITY) as HazardKey[]).filter((k) => property[k]);
   const notes = property.hazard_notes as string | undefined;
   if (active.length === 0 && !notes) return null;
-  const critical = active.filter((k) => HAZARD_LABELS[k].severity === "critical");
-  const warn = active.filter((k) => HAZARD_LABELS[k].severity === "warn");
+  const critical = active.filter((k) => HAZARD_SEVERITY[k] === "critical");
+  const warn = active.filter((k) => HAZARD_SEVERITY[k] === "warn");
   return (
     <div className="mb-3 space-y-2">
       {critical.length > 0 && (
         <div className="rounded-md border-2 border-destructive bg-destructive/10 p-3">
           <div className="text-xs font-bold uppercase tracking-wide text-destructive">
-            ⚠ Safety warnings: read before entering
+            ⚠ {t("hazard.heading")}
           </div>
           <ul className="mt-1 space-y-0.5 text-sm font-semibold text-destructive">
             {critical.map((k) => (
-              <li key={k}>• {HAZARD_LABELS[k].label}</li>
+              <li key={k}>• {t(`hazard.${k}`)}</li>
             ))}
           </ul>
         </div>
@@ -1201,14 +1228,14 @@ function HazardBanner({ property }: { property: any }) {
         <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-2">
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-amber-700 dark:text-amber-400">
             {warn.map((k) => (
-              <span key={k}>⚠ {HAZARD_LABELS[k].label}</span>
+              <span key={k}>⚠ {t(`hazard.${k}`)}</span>
             ))}
           </div>
         </div>
       )}
       {notes && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-800 dark:text-amber-300">
-          <span className="font-semibold">Hazard notes:</span> {notes}
+          <span className="font-semibold">{t("hazard.notes")}</span> {notes}
         </div>
       )}
     </div>
@@ -1217,6 +1244,8 @@ function HazardBanner({ property }: { property: any }) {
 
 function ElapsedTimer({ startedAt }: { startedAt: string }) {
   const tz = useOrgTimezone();
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -1237,7 +1266,11 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     const sameDay = orgLocalDay(new Date(startedMs), tz) === orgLocalDay(new Date(now), tz);
     return (
       <span className="text-xs text-muted-foreground">
-        Over 8h · started {sameDay ? orgLocalTime(startedAt, tz) : orgLocalDayTime(startedAt, tz)}
+        {t("when.over8h", {
+          time: sameDay
+            ? orgLocalTime(startedAt, tz, locale)
+            : orgLocalDayTime(startedAt, tz, locale),
+        })}
       </span>
     );
   }
@@ -1267,6 +1300,7 @@ function PhotoThumb({
   // Distinguish "still loading" from "can't be shown" so a broken photo shows a
   // clear placeholder instead of the browser's broken-image icon (finding #35).
   const { url, status } = useSignedUrl("visit-photos", path);
+  const { t } = useTranslation();
   const [imgFailed, setImgFailed] = useState(false);
   const state = imgFailed ? "error" : status;
 
@@ -1278,10 +1312,10 @@ function PhotoThumb({
     return (
       <div
         className="flex h-14 w-14 flex-col items-center justify-center rounded border bg-muted/50 text-center text-3xs leading-tight text-muted-foreground"
-        title="This photo couldn't be loaded. It may not have finished uploading."
+        title={t("photo.unavailableTitle")}
       >
-        <span>Photo</span>
-        <span>unavailable</span>
+        <span>{t("photo.unavailableLine1")}</span>
+        <span>{t("photo.unavailableLine2")}</span>
       </div>
     );
   }
@@ -1294,11 +1328,11 @@ function PhotoThumb({
       // 56px square: already over the 44px floor, so the thumbnail itself is
       // the target and there is nothing smaller to hit.
       className="block rounded border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label="Open photo"
+      aria-label={t("photo.open")}
     >
       <img
         src={url}
-        alt="Visit"
+        alt={t("photo.alt")}
         className="h-14 w-14 rounded object-cover"
         onError={() => setImgFailed(true)}
       />
@@ -1311,44 +1345,39 @@ function mapsUrl(p: any): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
-/** "HH:MM[:SS]" wall-clock (property service window) → "8:00 AM". */
-function fmtWindowTime(hhmm: string): string {
-  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm);
-  if (!m) return "";
-  let h = Number(m[1]);
-  const min = m[2];
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12 || 12;
-  return `${h}:${min} ${ampm}`;
+/** "HH:MM[:SS]" wall-clock (property service window) → "8:00 AM", or
+ *  "8:00 a.m." for a Spanish-speaking tech. formatClock does the work; this
+ *  keeps the old "" for a value that is not a clock at all. */
+function fmtWindowTime(hhmm: string, locale?: string): string {
+  if (!/^(\d{1,2}):(\d{2})/.test(hhmm)) return "";
+  return formatClock(hhmm, locale);
 }
 
 /** The best per-card time label: a computed ETA if the route was optimized,
  *  else the property's configured service window, else nothing. ETAs are
  *  instants, rendered on the ORG's clock; the window fallback is a `time`
  *  column and stays timezone-free. */
-function visitWindowLabel(visit: any, tz: string): string | null {
+function visitWindowLabel(visit: any, tz: string, t: TFunction, locale?: string): string | null {
   if (visit?.eta_start) {
-    const start = orgLocalTime(visit.eta_start, tz);
-    const end = visit?.eta_end ? orgLocalTime(visit.eta_end, tz) : "";
-    if (start) return end ? `ETA ${start}–${end}` : `ETA ${start}`;
+    const start = orgLocalTime(visit.eta_start, tz, locale);
+    const end = visit?.eta_end ? orgLocalTime(visit.eta_end, tz, locale) : "";
+    if (start) return end ? t("when.etaRange", { start, end }) : t("when.eta", { start });
   }
   const p = visit?.properties;
-  const early = p?.earliest_service_time ? fmtWindowTime(p.earliest_service_time) : "";
-  const late = p?.latest_service_time ? fmtWindowTime(p.latest_service_time) : "";
-  if (early && late) return `Window ${early}–${late}`;
-  if (early) return `After ${early}`;
-  if (late) return `By ${late}`;
+  const early = p?.earliest_service_time ? fmtWindowTime(p.earliest_service_time, locale) : "";
+  const late = p?.latest_service_time ? fmtWindowTime(p.latest_service_time, locale) : "";
+  if (early && late) return t("when.window", { early, late });
+  if (early) return t("when.after", { time: early });
+  if (late) return t("when.by", { time: late });
   return null;
 }
 
-const DOG_TEMPERAMENT_LABELS: Record<string, string> = {
-  friendly: "friendly",
-  nervous: "nervous",
-  aggressive: "aggressive",
-  unknown: "temperament unknown",
-};
+/** Temperaments the app writes, worded by `dog.<temperament>`. Anything else
+ *  is shown as stored. */
+const DOG_TEMPERAMENTS = new Set(["friendly", "nervous", "aggressive", "unknown"]);
 
 function DogsRow({ dogs }: { dogs: any }) {
+  const { t } = useTranslation();
   const list: any[] = Array.isArray(dogs) ? dogs : dogs ? [dogs] : [];
   if (list.length === 0) return null;
   return (
@@ -1373,11 +1402,11 @@ function DogsRow({ dogs }: { dogs: any }) {
                 picture on every platform. Same reason the clock, parking and
                 phone emoji went. */}
             <Dog className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="sr-only">Dog on site:</span>
-            {d?.name ?? "Dog"}
+            <span className="sr-only">{t("dog.onSite")}</span>
+            {d?.name ?? t("dog.fallbackName")}
             {d?.temperament && (
               <span className="font-normal opacity-80">
-                · {DOG_TEMPERAMENT_LABELS[d.temperament] ?? d.temperament}
+                · {DOG_TEMPERAMENTS.has(d.temperament) ? t(`dog.${d.temperament}`) : d.temperament}
               </span>
             )}
           </span>
@@ -1434,6 +1463,8 @@ function VisitCard({
   preview?: boolean;
 }) {
   const qc = useQueryClient();
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
   const smsFn = useServerFn(sendVisitStatusSms);
   const onMyWayFn = useServerFn(sendOnMyWayMessage);
   const { role } = useMyRole();
@@ -1486,7 +1517,7 @@ function VisitCard({
         },
       }),
     onSuccess: () => {
-      toast.success("Add-on billed");
+      toast.success(t("addon.billed"));
       setShowAddon(false);
       setAddonSvcId("");
       setAddonQty("1");
@@ -1565,7 +1596,7 @@ function VisitCard({
     mutationFn: () => actions.start(),
     onSuccess: (r) => {
       haptic("select");
-      toast.success(r.queued ? "Queued. Starts when back online" : "Started");
+      toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
       if (!r.queued) invalidate();
     },
     onError: (e: Error) => {
@@ -1587,7 +1618,7 @@ function VisitCard({
       }),
     onSuccess: (r) => {
       haptic("success");
-      toast.success(r.queued ? "Queued. Completes when back online" : "Completed");
+      toast.success(r.queued ? t("visit.completeQueued") : t("visit.completed"));
       setCheckedItems([]);
       setNote("");
       setNoteOpen(false);
@@ -1604,7 +1635,7 @@ function VisitCard({
     mutationFn: () => actions.skip(reason, reasonCode),
     onSuccess: (r) => {
       haptic("warning");
-      toast.success(r.queued ? "Queued. Will skip when back online" : "Marked skipped");
+      toast.success(r.queued ? t("visit.skipQueued") : t("visit.markedSkipped"));
       setShowSkip(false);
       if (!r.queued) invalidate();
     },
@@ -1618,7 +1649,9 @@ function VisitCard({
     mutationFn: () => onMyWayFn({ data: { visitId: visit.id, trigger: "button" } }),
     onSuccess: (r) => {
       haptic("select");
-      toast.success(r.sent && r.channel === "email" ? "Emailed: on my way" : "Texted: on my way");
+      toast.success(
+        r.sent && r.channel === "email" ? t("visit.onMyWayEmailed") : t("visit.onMyWayTexted"),
+      );
     },
     onError: (e: Error) => {
       haptic("error");
@@ -1635,7 +1668,9 @@ function VisitCard({
     onMyWayFn({ data: { visitId: visit.id, trigger: "navigate" } })
       .then((r) => {
         if (r.sent)
-          toast.success(r.channel === "email" ? "Emailed: on my way" : "Texted: on my way");
+          toast.success(
+            r.channel === "email" ? t("visit.onMyWayEmailed") : t("visit.onMyWayTexted"),
+          );
       })
       .catch((e) => console.warn("on-my-way on navigate failed", visit.id, e));
   };
@@ -1643,7 +1678,7 @@ function VisitCard({
     mutationFn: (kind: "reminder" | "completed") => smsFn({ data: { visitId: visit.id, kind } }),
     onSuccess: () => {
       haptic("select");
-      toast.success("SMS sent");
+      toast.success(t("visit.smsSent"));
     },
     onError: (e: Error) => {
       haptic("error");
@@ -1656,10 +1691,11 @@ function VisitCard({
     try {
       const r = await actions.uploadPhoto(file, photoKind);
       haptic("tap");
+      // The kind in the picker's own words ("Gate latched", "Terminado"), so
+      // the toast names the photo the way the tech just chose it.
+      const kind = t(`photoKind.${photoKind}`, { defaultValue: photoKindLabel(photoKind) });
       toast.success(
-        r.queued
-          ? `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo queued. Uploads when online`
-          : `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`,
+        r.queued ? t("photo.queuedToast", { kind }) : t("photo.uploadedToast", { kind }),
       );
       if (!r.queued) invalidate();
       // Back to the kind that finishes the visit. The picker used to keep
@@ -1671,7 +1707,7 @@ function VisitCard({
       setPhotoKind("completion");
     } catch (e: any) {
       haptic("error");
-      toast.error(e.message ?? "Upload failed");
+      toast.error(e.message ?? t("photo.uploadFailed"));
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -1712,6 +1748,7 @@ function VisitCard({
   // Waste stations only exist on commercial or multi-unit properties. On a
   // residential card there are never any, so the button never appears.
   const hasStations = p?.account_type === "commercial" || !!p?.has_units;
+  const windowLabel = visitWindowLabel(visit, tz, t, locale);
 
   // The photo control appears in two places — primary once the visit is under
   // way, behind More before that — so it is written once. A FUNCTION and not a
@@ -1725,11 +1762,11 @@ function VisitCard({
         // MEASURED 2026-08-19: 40px, four short of the floor, on the
         // screen a technician uses outdoors with gloves on.
         className="h-11 rounded-md border bg-background px-3 text-sm"
-        aria-label="Photo type"
+        aria-label={t("photo.type")}
       >
         {PHOTO_KIND_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
-            {o.label}
+            {t(`photoKind.${o.value}`, { defaultValue: o.label })}
           </option>
         ))}
       </select>
@@ -1760,7 +1797,7 @@ function VisitCard({
         }}
       >
         <Camera className="mr-1.5 h-4 w-4 shrink-0" />
-        {uploading ? "Uploading…" : "Take photo"}
+        {uploading ? t("photo.uploading") : t("photo.take")}
       </Button>
     </div>
   );
@@ -1796,12 +1833,12 @@ function VisitCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span className="sr-only">Stop {visit.sequence ?? index}.</span>
-            {statusBadge(visit.status, visit.queuedSync)}
+            <span className="sr-only">{t("visit.stop", { number: visit.sequence ?? index })}</span>
+            {statusBadge(visit.status, visit.queuedSync, t)}
             {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">
-                {pendingLocal} queued
+                {t("visit.queuedCount", { count: pendingLocal })}
               </span>
             )}
             {inProg && visit.started_at && (
@@ -1820,12 +1857,12 @@ function VisitCard({
               (it is who you greet, and who you are calling) and keeps the line
               below. */}
           <div className="mt-1 text-lg font-bold leading-tight">
-            {p?.street ?? visit.clients?.display_name ?? "Visit"}
+            {p?.street ?? visit.clients?.display_name ?? t("visit.fallbackTitle")}
           </div>
           <div className="truncate text-sm text-muted-foreground">
             {[p?.city, p?.postal_code].filter(Boolean).join(" ")}
             {p?.city || p?.postal_code ? " · " : ""}
-            {visit.clients?.display_name ?? "Client"}
+            {visit.clients?.display_name ?? t("visit.fallbackClient")}
           </div>
 
           {/* When this stop is expected, and how big the yard is — one line of
@@ -1837,18 +1874,25 @@ function VisitCard({
               code and no key it was the block's only occupant, which drew a
               framed panel around one word. The block is for things you have to
               read correctly to get in. */}
-          {(visitWindowLabel(visit, tz) || p?.yard_size) && (
+          {(windowLabel || p?.yard_size) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-              {visitWindowLabel(visit, tz) && (
+              {windowLabel && (
                 <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                   <Clock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  {visitWindowLabel(visit, tz)}
+                  {windowLabel}
                 </span>
               )}
               {p?.yard_size && (
                 <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                   <Ruler className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? p.yard_size} yard
+                  {t("yard.label", {
+                    size:
+                      p.yard_size in YARD_SIZE_LABELS
+                        ? t(`yard.${p.yard_size}`, {
+                            defaultValue: YARD_SIZE_LABELS[p.yard_size as YardSizeCategory],
+                          })
+                        : p.yard_size,
+                  })}
                 </span>
               )}
             </div>
@@ -1875,9 +1919,11 @@ function VisitCard({
                   )}
                   <span className="min-w-0">
                     {visit.gate_reply === "do_not_enter"
-                      ? "Customer says do not enter"
-                      : "Customer says the dogs are secured"}
-                    {visit.gate_reply_at ? ` (${orgLocalTime(visit.gate_reply_at, tz)})` : ""}
+                      ? t("visit.customerSaysDoNotEnter")
+                      : t("visit.customerSaysDogsSecured")}
+                    {visit.gate_reply_at
+                      ? ` (${orgLocalTime(visit.gate_reply_at, tz, locale)})`
+                      : ""}
                   </span>
                 </div>
               )}
@@ -1891,14 +1937,19 @@ function VisitCard({
               {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
                 <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border bg-muted/30 p-2.5">
                   {p?.gate_code && (
-                    <AccessFact icon={Fence} label="Gate" value={p.gate_code} mono />
+                    <AccessFact icon={Fence} label={t("access.gate")} value={p.gate_code} mono />
                   )}
                   {p?.lock_box_code && (
-                    <AccessFact icon={LockKeyhole} label="Lock box" value={p.lock_box_code} mono />
+                    <AccessFact
+                      icon={LockKeyhole}
+                      label={t("access.lockBox")}
+                      value={p.lock_box_code}
+                      mono
+                    />
                   )}
                   {p?.key_location && (
                     <div className="col-span-2">
-                      <AccessFact icon={KeyRound} label="Key" value={p.key_location} />
+                      <AccessFact icon={KeyRound} label={t("access.key")} value={p.key_location} />
                     </div>
                   )}
                 </div>
@@ -1914,16 +1965,16 @@ function VisitCard({
               )}
               {skipped && (
                 <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                  Skipped
+                  {t("visit.skipped")}
                   {/* The TIME it was skipped, which for a queued skip replayed
                       on reconnect is hours before the row was written. Null on
                       every skip recorded before `skipped_at` existed, so it is
                       rendered only when present rather than falling back to a
                       row timestamp that would mean something else. */}
-                  {visit.skipped_at ? ` at ${orgLocalTime(visit.skipped_at, tz)}` : ""}
-                  {visit.skip_reason_code
-                    ? ` (${SKIP_REASON_LABELS[visit.skip_reason_code as keyof typeof SKIP_REASON_LABELS] ?? visit.skip_reason_code})`
+                  {visit.skipped_at
+                    ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
+                  {visit.skip_reason_code ? ` (${skipReasonLabel(t, visit.skip_reason_code)})` : ""}
                   {visit.skip_reason ? `: ${visit.skip_reason}` : ""}
                 </div>
               )}
@@ -1935,7 +1986,7 @@ function VisitCard({
           <button
             onClick={() => setCollapsed((c) => !c)}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label={collapsed ? "Expand" : "Collapse"}
+            aria-label={collapsed ? t("visit.expand") : t("visit.collapse")}
           >
             {collapsed ? (
               <ChevronDown className="h-5 w-5 shrink-0" />
@@ -1964,7 +2015,7 @@ function VisitCard({
                 visit.clients?.primary_phone ? "" : "col-span-2"
               }`}
             >
-              <Navigation className="h-4 w-4 shrink-0" aria-hidden="true" /> Navigate
+              <Navigation className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("visit.navigate")}
             </a>
           )}
           {visit.clients?.primary_phone && (
@@ -1974,7 +2025,7 @@ function VisitCard({
                 p?.street ? "" : "col-span-2"
               }`}
             >
-              <Phone className="h-4 w-4 shrink-0" aria-hidden="true" /> Call
+              <Phone className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("myDay.call")}
             </a>
           )}
         </div>
@@ -1990,7 +2041,7 @@ function VisitCard({
                 onUrl={(u) => setPhotoUrl(ph.id, u)}
               />
               <span className="pointer-events-none absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
-                {photoKindLabel(ph.kind)}
+                {t(`photoKind.${ph.kind}`, { defaultValue: photoKindLabel(ph.kind) })}
               </span>
             </div>
           ))}
@@ -2007,6 +2058,7 @@ function VisitCard({
         photos={photos.map((ph: any) => ({ url: photoUrls[ph.id] ?? null, kind: ph.kind }))}
         openIndex={lightboxIndex}
         onClose={() => setLightboxIndex(null)}
+        staff
       />
 
       {!preview && !finalStatus && (
@@ -2041,20 +2093,12 @@ function VisitCard({
             <Button
               className="h-12 w-full text-base"
               onClick={() =>
-                canPerformVisit
-                  ? start.mutate()
-                  : toast.error(
-                      "You're not authorized to start visits. Dispatchers can schedule, but field staff must start the visit.",
-                    )
+                canPerformVisit ? start.mutate() : toast.error(t("visit.notAuthorizedStart"))
               }
               disabled={start.isPending || !canPerformVisit}
-              title={
-                canPerformVisit
-                  ? ""
-                  : "Only field staff (owner, office manager, or tech) can start a visit"
-              }
+              title={canPerformVisit ? "" : t("visit.notAuthorizedStartTitle")}
             >
-              Start
+              {t("myDay.start")}
             </Button>
           )}
 
@@ -2075,7 +2119,7 @@ function VisitCard({
           {(inProg || missed || photoOnFile) && canPerformVisit && checklist.length > 0 && (
             <fieldset className="space-y-0.5 rounded-lg border p-1.5">
               <legend className="px-1.5 text-xs font-semibold uppercase text-muted-foreground">
-                Checklist
+                {t("visit.checklist")}
               </legend>
               {checklist.map((item) => {
                 const id = `checklist-${visit.id}-${item.id}`;
@@ -2100,7 +2144,10 @@ function VisitCard({
                     <span className="min-w-0 flex-1 text-sm leading-snug [overflow-wrap:anywhere]">
                       {item.label}
                       {item.required && (
-                        <span className="text-xs text-muted-foreground"> · required</span>
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          · {t("visit.required")}
+                        </span>
                       )}
                     </span>
                   </label>
@@ -2114,13 +2161,13 @@ function VisitCard({
               {noteOpen ? (
                 <div>
                   <Label htmlFor={`visit-note-${visit.id}`} className="text-xs">
-                    Note for the office
+                    {t("visit.noteLabel")}
                   </Label>
                   <Textarea
                     id={`visit-note-${visit.id}`}
                     rows={2}
                     maxLength={1000}
-                    placeholder="Gate latched, dog barking, bags by the shed"
+                    placeholder={t("visit.notePlaceholder")}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
@@ -2132,7 +2179,7 @@ function VisitCard({
                   className="h-11 w-full text-sm text-muted-foreground"
                   onClick={() => setNoteOpen(true)}
                 >
-                  Add a note for the office
+                  {t("visit.addNote")}
                 </Button>
               )}
             </div>
@@ -2157,23 +2204,19 @@ function VisitCard({
                 (!inProg && !scheduled && !missed)
               }
               onClick={() =>
-                canPerformVisit
-                  ? complete.mutate()
-                  : toast.error(
-                      "You're not authorized to complete visits. Dispatchers can schedule, but field staff must complete the visit.",
-                    )
+                canPerformVisit ? complete.mutate() : toast.error(t("visit.notAuthorizedComplete"))
               }
               title={
                 !canPerformVisit
-                  ? "Only field staff (owner, office manager, or tech) can complete a visit"
+                  ? t("visit.notAuthorizedCompleteTitle")
                   : !photoRuleMet
-                    ? "Add a completion photo first"
+                    ? t("visit.needCompletionPhotoTitle")
                     : !checklistRuleMet
-                      ? "Check off the required checklist items first"
+                      ? t("visit.needChecklistTitle")
                       : ""
               }
             >
-              Complete
+              {t("myDay.complete")}
             </Button>
           )}
           {/* Why Complete is grey when the checklist is the reason, under the
@@ -2181,9 +2224,7 @@ function VisitCard({
               tooltip, and a phone has no hover. */}
           {(inProg || missed || photoOnFile) && canPerformVisit && !checklistRuleMet && (
             <p className="-mt-1 text-center text-xs text-muted-foreground">
-              {uncheckedRequired.length === 1
-                ? "Tick the required checklist item to finish this visit."
-                : `Tick the ${uncheckedRequired.length} required checklist items to finish this visit.`}
+              {t("visit.tickRequired", { count: uncheckedRequired.length })}
             </p>
           )}
           {/* The reason Complete is grey, UNDER Complete. It lived at the
@@ -2194,17 +2235,17 @@ function VisitCard({
           {(inProg || missed) && canPerformVisit && requireCompletionPhoto && !photoOnFile && (
             <div className="-mt-1 space-y-2">
               <p className="text-center text-xs text-muted-foreground">
-                Take a completion photo to finish this visit.
+                {t("visit.takeCompletionPhoto")}
               </p>
               {noPhotoOpen ? (
                 <div>
                   <Label htmlFor={`no-photo-${visit.id}`} className="text-xs">
-                    Why no photo? The office sees this.
+                    {t("visit.whyNoPhoto")}
                   </Label>
                   <Input
                     id={`no-photo-${visit.id}`}
                     maxLength={300}
-                    placeholder="Camera would not open"
+                    placeholder={t("visit.noPhotoPlaceholder")}
                     value={noPhotoReason}
                     onChange={(e) => setNoPhotoReason(e.target.value)}
                   />
@@ -2216,18 +2257,13 @@ function VisitCard({
                   className="h-11 w-full text-xs text-muted-foreground"
                   onClick={() => setNoPhotoOpen(true)}
                 >
-                  Can't take a photo?
+                  {t("visit.cantTakePhoto")}
                 </Button>
               )}
             </div>
           )}
 
-          {missed && (
-            <p className="text-xs text-muted-foreground">
-              Marked missed overnight. If you did the work, you can still complete it here and it
-              will be recorded late.
-            </p>
-          )}
+          {missed && <p className="text-xs text-muted-foreground">{t("visit.missedNote")}</p>}
 
           {/* Logging the work itself.
               Stations stays primary on any property that has them, in every
@@ -2248,12 +2284,12 @@ function VisitCard({
           <div className="grid grid-cols-2 gap-2 empty:hidden">
             {hasStations && (
               <Button variant="outline" className="h-11" onClick={() => setShowStations((s) => !s)}>
-                Stations
+                {t("myDay.stations")}
               </Button>
             )}
             {(inProg || missed) && dnaEnrolled && canPerformVisit && (
               <Button variant="outline" className="h-11" onClick={() => setShowDna((s) => !s)}>
-                DNA sample
+                {t("visit.dnaSample")}
               </Button>
             )}
           </div>
@@ -2264,7 +2300,7 @@ function VisitCard({
             aria-expanded={showMore}
             className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            {showMore ? "Fewer options" : "More options"}
+            {showMore ? t("visit.fewerOptions") : t("visit.moreOptions")}
             {showMore ? (
               <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
             ) : (
@@ -2282,7 +2318,7 @@ function VisitCard({
                   className="h-11 px-4 sm:h-8 sm:px-3"
                   onClick={() => setShowSkip((s) => !s)}
                 >
-                  Skip
+                  {t("myDay.skip")}
                 </Button>
                 <Button
                   size="sm"
@@ -2290,7 +2326,7 @@ function VisitCard({
                   className="h-11 px-4 sm:h-8 sm:px-3"
                   onClick={() => setShowAddon((s) => !s)}
                 >
-                  + Add-on
+                  + {t("visit.addOn")}
                 </Button>
                 {scheduled && dnaEnrolled && canPerformVisit && (
                   <Button
@@ -2299,7 +2335,7 @@ function VisitCard({
                     className="h-11 px-4 sm:h-8 sm:px-3"
                     onClick={() => setShowDna((s) => !s)}
                   >
-                    DNA sample
+                    {t("visit.dnaSample")}
                   </Button>
                 )}
                 {visit.clients?.primary_phone && (
@@ -2310,7 +2346,7 @@ function VisitCard({
                     disabled={sms.isPending}
                     onClick={() => sms.mutate("reminder")}
                   >
-                    Text reminder
+                    {t("visit.textReminder")}
                   </Button>
                 )}
                 {/* Not gated on a phone number: with no phone, or no texting
@@ -2322,7 +2358,7 @@ function VisitCard({
                   disabled={onMyWay.isPending}
                   onClick={() => onMyWay.mutate()}
                 >
-                  Send &ldquo;on my way&rdquo;
+                  {t("visit.sendOnMyWay")}
                 </Button>
               </div>
             </div>
@@ -2331,7 +2367,9 @@ function VisitCard({
           {showSkip && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Reason</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  {t("skip.reason")}
+                </label>
                 <select
                   value={reasonCode}
                   onChange={(e) => setReasonCode(e.target.value as any)}
@@ -2339,7 +2377,7 @@ function VisitCard({
                 >
                   {TECH_SKIP_REASON_CODES.map((c) => (
                     <option key={c} value={c}>
-                      {SKIP_REASON_LABELS[c]}
+                      {skipReasonLabel(t, c)}
                     </option>
                   ))}
                 </select>
@@ -2347,7 +2385,7 @@ function VisitCard({
               <Textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Details (what happened, photos, etc.)"
+                placeholder={t("skip.detailsPlaceholder")}
                 rows={2}
               />
               <div className="flex gap-2">
@@ -2357,15 +2395,13 @@ function VisitCard({
                   disabled={!reason.trim() || skip.isPending}
                   onClick={() => skip.mutate()}
                 >
-                  Confirm skip
+                  {t("skip.confirm")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowSkip(false)}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               </div>
-              <p className="text-2xs text-muted-foreground">
-                The office sets the billing rules for each skip reason.
-              </p>
+              <p className="text-2xs text-muted-foreground">{t("skip.billingNote")}</p>
             </div>
           )}
 
@@ -2386,24 +2422,14 @@ function VisitCard({
                 // correct.
                 return (
                   <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                    {cardOnline ? (
-                      <>
-                        No add-on services are set up yet, so there's nothing to bill. Ask the
-                        office to add them under Settings → Add-ons.
-                      </>
-                    ) : (
-                      <>
-                        You're offline, so the add-on price list isn't available. Note it on the
-                        visit and bill it when you have signal, or call the office.
-                      </>
-                    )}
+                    {cardOnline ? t("addon.noneSetUp") : t("addon.offlineNoList")}
                   </div>
                 );
               }
               return (
                 <div className="space-y-2 rounded-md border bg-muted/30 p-3">
                   <div className="text-xs font-medium text-muted-foreground">
-                    Bill an add-on to this client
+                    {t("addon.heading")}
                   </div>
                   {/* Six columns at every width gave the quantity box and the
                       Bill button one column each — about 38px on the one
@@ -2417,7 +2443,7 @@ function VisitCard({
                       value={addonSvcId}
                       onChange={(e) => setAddonSvcId(e.target.value)}
                     >
-                      <option value="">Select service…</option>
+                      <option value="">{t("addon.selectService")}</option>
                       {addonServices.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}: ${(s.unit_price_cents / 100).toFixed(2)}
@@ -2442,37 +2468,44 @@ function VisitCard({
                           className="col-span-4 touch:min-h-11 sm:col-span-1"
                           disabled={!addonSvcId || !svc || addonMut.isPending || !cardOnline}
                         >
-                          {addonMut.isPending ? "…" : "Bill"}
+                          {addonMut.isPending ? "…" : t("addon.bill")}
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>
-                            Bill ${(totalCents / 100).toFixed(2)} to{" "}
-                            {visit.clients?.display_name ?? "this client"}?
+                            {t("addon.confirmTitle", {
+                              amount: `$${(totalCents / 100).toFixed(2)}`,
+                              client: visit.clients?.display_name ?? t("addon.thisClient"),
+                            })}
                           </AlertDialogTitle>
                           <AlertDialogDescription>
                             {svc
-                              ? `${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""} at the catalog price. `
+                              ? `${
+                                  qtyNum > 1
+                                    ? t("addon.atCatalogPriceQty", {
+                                        service: svc.name,
+                                        quantity: qtyNum,
+                                      })
+                                    : t("addon.atCatalogPrice", { service: svc.name })
+                                } `
                               : ""}
-                            The office will see this charge for review.
+                            {t("addon.officeWillReview")}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                           <AlertDialogAction
                             disabled={addonMut.isPending}
                             onClick={() => {
                               if (!svc) {
-                                toast.error(
-                                  "That add-on service is no longer available. Pick another from the list.",
-                                );
+                                toast.error(t("addon.noLongerAvailable"));
                                 return;
                               }
                               addonMut.mutate();
                             }}
                           >
-                            Bill it
+                            {t("addon.billIt")}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -2480,7 +2513,7 @@ function VisitCard({
                   </div>
                   {svc && (
                     <p className="text-2xs font-medium">
-                      Total: ${(totalCents / 100).toFixed(2)} at the catalog price
+                      {t("addon.total", { amount: `$${(totalCents / 100).toFixed(2)}` })}
                     </p>
                   )}
                   {!cardOnline && (
@@ -2489,15 +2522,10 @@ function VisitCard({
                     // the Bill button looks live, and pressing it used to fail
                     // with a raw network error on a real charge.
                     <p className="text-2xs font-medium text-amber-600 dark:text-amber-500">
-                      You're offline. Unlike start, complete, skip and photos, an add-on charge is
-                      not queued. Bill it when you have signal.
+                      {t("addon.offlineNotQueued")}
                     </p>
                   )}
-                  <p className="text-2xs text-muted-foreground">
-                    Prepaid clients are debited immediately; postpaid clients see it on the next
-                    invoice. Field charges are capped per charge and reviewed by the office;
-                    anything larger needs the office to bill it.
-                  </p>
+                  <p className="text-2xs text-muted-foreground">{t("addon.howCharged")}</p>
                 </div>
               );
             })()}
@@ -2535,13 +2563,14 @@ function DnaSamplePanel({
 }) {
   const logFn = useServerFn(logDnaSampleFromField);
   const online = useOnline();
+  const { t } = useTranslation();
   const [kind, setKind] = useState<"pile_sample" | "cheek_swab">("pile_sample");
   const [where, setWhere] = useState("");
   const mut = useMutation({
     mutationFn: () =>
       logFn({ data: { visitId, sampleKind: kind, locationNote: where.trim() || undefined } }),
     onSuccess: () => {
-      toast.success("Sample logged. The office will send it to the lab.");
+      toast.success(t("dna.logged"));
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -2549,21 +2578,22 @@ function DnaSamplePanel({
 
   return (
     <div className="mt-2 space-y-2 rounded-md border bg-muted/30 p-3">
-      <div className="text-xs font-medium text-muted-foreground">Log a DNA sample</div>
+      <div className="text-xs font-medium text-muted-foreground">{t("dna.heading")}</div>
       <div className="flex gap-2">
         <select
           className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+          aria-label={t("dna.sampleKind")}
           value={kind}
           onChange={(e) => setKind(e.target.value as "pile_sample" | "cheek_swab")}
         >
-          <option value="pile_sample">Waste sample</option>
-          <option value="cheek_swab">Cheek swab</option>
+          <option value="pile_sample">{t("dna.pileSample")}</option>
+          <option value="cheek_swab">{t("dna.cheekSwab")}</option>
         </select>
       </div>
       <input
         className="h-9 w-full rounded-md border bg-background px-2 text-sm"
         maxLength={300}
-        placeholder={hasUnits ? "Where, e.g. by building C bins" : "Where, e.g. side yard"}
+        placeholder={hasUnits ? t("dna.wherePlaceholderUnits") : t("dna.wherePlaceholder")}
         value={where}
         onChange={(e) => setWhere(e.target.value)}
       />
@@ -2572,16 +2602,13 @@ function DnaSamplePanel({
         // queued actions, and a live-looking button that fails with a raw
         // network error is worse than one that says why.
         <p className="text-2xs font-medium text-amber-600 dark:text-amber-500">
-          You're offline. A sample isn't queued like start, complete and photos. Log it when you
-          have signal.
+          {t("dna.offline")}
         </p>
       )}
       <Button size="sm" disabled={mut.isPending || !online} onClick={() => mut.mutate()}>
-        {mut.isPending ? "Logging…" : "Log sample"}
+        {mut.isPending ? t("dna.logging") : t("dna.log")}
       </Button>
-      <p className="text-2xs text-muted-foreground">
-        Goes to the office unmatched and unpriced. They decide whose dog it was.
-      </p>
+      <p className="text-2xs text-muted-foreground">{t("dna.footnote")}</p>
     </div>
   );
 }
@@ -2655,6 +2682,7 @@ function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; read
   const listFn = useServerFn(getVisitStations);
   const logFn = useServerFn(logStationService);
   const online = useOnline();
+  const { t } = useTranslation();
   const queuedStationIds = useQueuedStationIds(visitId);
   const { data, isPending } = useQuery({
     queryKey: ["visit-stations", visitId],
@@ -2703,7 +2731,7 @@ function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; read
         },
       }),
     onSuccess: (r) => {
-      toast.success(r.queued ? "Queued. Logs when back online" : "Station logged");
+      toast.success(r.queued ? t("stations.queuedToast") : t("stations.logged"));
       // Only when it actually landed. Refetching after a queue write would show
       // the tech the server's copy — no log for this station — directly
       // contradicting the toast that just said it was saved.
@@ -2726,10 +2754,10 @@ function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; read
     return (
       <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
         {isPending
-          ? "Loading stations…"
+          ? t("stations.loading")
           : online
-            ? "Couldn't load this property's stations. Try again in a moment."
-            : "No saved copy of this property's stations on this device. Open My Day where you have signal and they'll be here next time."}
+            ? t("stations.couldNotLoad")
+            : t("stations.noSavedCopy")}
       </div>
     );
   }
@@ -2737,14 +2765,14 @@ function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; read
   if (stations.length === 0) {
     return (
       <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-        No waste stations configured for this property. Ask the office to add them.
+        {t("stations.noneConfigured")}
       </div>
     );
   }
 
   return (
     <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-      <div className="text-xs font-medium text-muted-foreground">Station service log</div>
+      <div className="text-xs font-medium text-muted-foreground">{t("stations.heading")}</div>
       {stations.map((s) => {
         const existing = logFor(s.id);
         return (
@@ -2790,6 +2818,7 @@ function StationRow({
    *  never be saved. */
   readOnly?: boolean;
 }) {
+  const { t } = useTranslation();
   const [bags, setBags] = useState<string>(String(existing?.bags_collected ?? "0"));
   const [liner, setLiner] = useState<boolean>(existing?.liner_replaced ?? false);
   const [refill, setRefill] = useState<string>(String(existing?.refill_bags_added ?? "0"));
@@ -2803,10 +2832,12 @@ function StationRow({
             the older of the two answers. */}
         {queued ? (
           <span className="shrink-0 text-2xs font-medium text-amber-600 dark:text-amber-500">
-            queued
+            {t("stations.queued")}
           </span>
         ) : (
-          existing && <span className="shrink-0 text-2xs text-emerald-600">saved</span>
+          existing && (
+            <span className="shrink-0 text-2xs text-emerald-600">{t("stations.saved")}</span>
+          )
         )}
       </div>
       {station.location_description && (
@@ -2814,7 +2845,9 @@ function StationRow({
       )}
       <div className="mt-2 grid grid-cols-6 gap-2 text-xs">
         <label className="col-span-2">
-          <span className="block text-2xs text-muted-foreground">Bags collected</span>
+          <span className="block text-2xs text-muted-foreground">
+            {t("stations.bagsCollected")}
+          </span>
           <input
             type="number"
             min="0"
@@ -2825,7 +2858,9 @@ function StationRow({
           />
         </label>
         <label className="col-span-2">
-          <span className="block text-2xs text-muted-foreground">Refill bags added</span>
+          <span className="block text-2xs text-muted-foreground">
+            {t("stations.refillBagsAdded")}
+          </span>
           <input
             type="number"
             min="0"
@@ -2843,19 +2878,17 @@ function StationRow({
             onChange={(e) => setLiner(e.target.checked)}
             className="h-4 w-4 disabled:opacity-60"
           />
-          <span>Liner replaced</span>
+          <span>{t("stations.linerReplaced")}</span>
         </label>
         <input
           className="col-span-6 h-9 rounded-md border bg-background px-2 disabled:opacity-60"
-          placeholder="Notes (optional)"
+          placeholder={t("stations.notesPlaceholder")}
           value={notes}
           disabled={readOnly}
           onChange={(e) => setNotes(e.target.value)}
         />
         {readOnly ? (
-          <p className="col-span-6 text-2xs text-muted-foreground">
-            Read-only while previewing another technician's day.
-          </p>
+          <p className="col-span-6 text-2xs text-muted-foreground">{t("stations.readOnly")}</p>
         ) : (
           <Button
             size="sm"
@@ -2870,7 +2903,7 @@ function StationRow({
               })
             }
           >
-            {existing ? "Update" : "Save"}
+            {existing ? t("common.update") : t("common.save")}
           </Button>
         )}
       </div>

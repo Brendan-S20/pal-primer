@@ -2,6 +2,7 @@ import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-r
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
+import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -79,6 +80,11 @@ const TAB_GROUPS: TabGroup[] = [
 function SettingsLayout() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { role } = useMyRole();
+  // Only the heading follows the interface language. A tech reaches exactly
+  // one section, their own Preferences, which is translated; the section
+  // picker below is office-only and stays in English with the screens it
+  // opens.
+  const { t } = useTranslation();
   const groups = TAB_GROUPS.map((g) => ({
     ...g,
     // Hide tabs the role can't open — showing a link that bounces to the
@@ -109,9 +115,9 @@ function SettingsLayout() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
+        <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          {oneSection ? "How the app works on this device." : "Configure how your business runs."}
+          {oneSection ? t("settings.subtitleOneSection") : t("settings.subtitle")}
         </p>
       </div>
 

@@ -1,4 +1,6 @@
 import { MapPin, Radio } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { useIntlLocale } from "@/lib/i18n";
 import { useShareLocationEnRoute } from "@/hooks/useShareLocationEnRoute";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
@@ -19,6 +21,8 @@ import { useOrgTimezone } from "@/hooks/useOrgToday";
 export function EnRouteLocationChip({ visit }: { visit: { id: string; status: string } }) {
   const s = useShareLocationEnRoute(visit);
   const tz = useOrgTimezone();
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
 
   if (s.kind === "off") return null;
 
@@ -26,11 +30,7 @@ export function EnRouteLocationChip({ visit }: { visit: { id: string; status: st
     return (
       <p className="mb-3 flex items-start gap-1.5 text-xs text-muted-foreground">
         <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="min-w-0">
-          Live tracking is on. Once this customer is told you&apos;re on the way, they can see
-          your approximate location until you start the visit (2 hours at most), while this app
-          is open.
-        </span>
+        <span className="min-w-0">{t("enRoute.armed")}</span>
       </p>
     );
   }
@@ -43,14 +43,14 @@ export function EnRouteLocationChip({ visit }: { visit: { id: string; status: st
       <Radio className="h-4 w-4 shrink-0 animate-pulse" aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="font-medium break-words">
-          Sharing your location with {s.customerName} until you arrive
+          {t("enRoute.sharing", { name: s.customerName })}
         </div>
         <div className="text-xs opacity-80">
           {s.problem === "denied"
-            ? "Location is turned off for this app, so they see the arrival time only."
+            ? t("enRoute.denied")
             : s.problem === "unavailable"
-              ? "Waiting for a location fix."
-              : `Approximate, while this app is open. Ends when you start, or at ${orgLocalTime(s.until, tz)}.`}
+              ? t("enRoute.unavailable")
+              : t("enRoute.approximate", { time: orgLocalTime(s.until, tz, locale) })}
         </div>
       </div>
       <button
@@ -59,7 +59,7 @@ export function EnRouteLocationChip({ visit }: { visit: { id: string; status: st
         disabled={s.stopping}
         className="shrink-0 rounded-md border border-blue-500/50 bg-background px-3 text-sm font-medium min-h-9 touch:min-h-11 touch:min-w-11 disabled:opacity-50"
       >
-        {s.stopping ? "Stopping…" : "Stop"}
+        {s.stopping ? t("enRoute.stopping") : t("enRoute.stop")}
       </button>
     </div>
   );

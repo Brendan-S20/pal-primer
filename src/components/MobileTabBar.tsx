@@ -21,9 +21,12 @@ import { useTabletTier } from "@/hooks/useTabletTier";
 import {
   NAV_GROUPS,
   isNavItemVisible,
+  navGroupLabel,
+  navItemTitle,
   useNavVisibility,
   type NavItem,
 } from "@/components/AppSidebar";
+import { useTranslation } from "react-i18next";
 import { CreateSheet } from "@/components/CreateSheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -68,6 +71,7 @@ export function MobileTabBar() {
   const { signOut, dialog: signOutDialog } = useOfflineSignOut();
   const { confirm: confirmSignOut, dialog: confirmSignOutDialog } = useConfirmDialog();
   const { staff: me } = useMyProfile();
+  const { t } = useTranslation();
   // Also above the early return, and for the same reason.
   const navVisibility = useNavVisibility();
   // Unread badge on the Alerts tab. `staleTime` keeps it off the wire on every
@@ -112,11 +116,10 @@ export function MobileTabBar() {
     // their password mid-shift. The unsynced-work prompt below only fires
     // when there IS unsynced work; this one always does.
     const sure = await confirmSignOut({
-      title: "Sign out?",
-      description:
-        "Today's route is cleared from this device. You'll need your password to sign back in.",
-      confirmLabel: "Sign out",
-      cancelLabel: "Stay signed in",
+      title: t("nav.signOutTitle"),
+      description: t("nav.signOutDescription"),
+      confirmLabel: t("nav.signOut"),
+      cancelLabel: t("nav.staySignedIn"),
     });
     if (!sure) return;
     // Wipes this device's persisted day along with the session: the next tech
@@ -154,14 +157,14 @@ export function MobileTabBar() {
       className={tabClass(moreOpen)}
     >
       <Menu className="h-5 w-5 shrink-0" />
-      <span>More</span>
+      <span>{t("nav.more")}</span>
     </button>
   );
 
   return (
     <>
       <nav
-        aria-label="Primary"
+        aria-label={t("nav.primary")}
         // Marks this as one of the bars pinned to the bottom of the screen.
         // My Day's map measures the gap between its own top edge and the
         // highest of these, so a full-height map stops above the navigation
@@ -197,7 +200,7 @@ export function MobileTabBar() {
                 }}
               >
                 <Sun className="h-5 w-5 shrink-0" />
-                <span>Today</span>
+                <span>{t("nav.today")}</span>
               </Link>
             </li>
             <li>
@@ -208,7 +211,7 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/waste-log"))}
               >
                 <Trash2 className="h-5 w-5 shrink-0" />
-                <span>Waste log</span>
+                <span>{t("nav.wasteLogTab")}</span>
               </Link>
             </li>
             <li>
@@ -232,8 +235,10 @@ export function MobileTabBar() {
                     </span>
                   )}
                 </span>
-                <span>Alerts</span>
-                {unread > 0 && <span className="sr-only">{unread} unread</span>}
+                <span>{t("nav.alerts")}</span>
+                {unread > 0 && (
+                  <span className="sr-only">{t("nav.unread", { count: unread })}</span>
+                )}
               </Link>
             </li>
             <li>{moreButton}</li>
@@ -248,7 +253,7 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/dashboard"))}
               >
                 <LayoutDashboard className="h-5 w-5 shrink-0" />
-                <span>Home</span>
+                <span>{t("nav.home")}</span>
               </Link>
             </li>
             <li>
@@ -259,13 +264,13 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/routes"))}
               >
                 <CalendarDays className="h-5 w-5 shrink-0" />
-                <span>Schedule</span>
+                <span>{t("nav.item.routes")}</span>
               </Link>
             </li>
             <li>
               <button
                 type="button"
-                aria-label="Create"
+                aria-label={t("nav.create")}
                 onClick={() => setCreateOpen(true)}
                 className={tabClass(createOpen)}
               >
@@ -282,7 +287,7 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/clients"))}
               >
                 <Users className="h-5 w-5 shrink-0" />
-                <span>Clients</span>
+                <span>{t("nav.item.clients")}</span>
               </Link>
             </li>
             <li>{moreButton}</li>
@@ -298,7 +303,7 @@ export function MobileTabBar() {
           className={`max-h-[80dvh] overflow-y-auto rounded-t-xl p-0 pb-[env(safe-area-inset-bottom)] ${barHiddenFrom}`}
         >
           <SheetHeader className="border-b px-4 py-3 text-left">
-            <SheetTitle className="text-base">More</SheetTitle>
+            <SheetTitle className="text-base">{t("nav.more")}</SheetTitle>
           </SheetHeader>
           {/* Your account, at the top rather than buried above Sign out. On a
               phone this sheet is the ONLY place the signed-in identity appears
@@ -317,18 +322,18 @@ export function MobileTabBar() {
             />
             <span className="min-w-0">
               <span className="block truncate font-medium">
-                {me?.display_name ?? "Your account"}
+                {me?.display_name ?? t("nav.yourAccount")}
               </span>
               <span className="block truncate text-xs text-muted-foreground">
-                View and edit your account
+                {t("nav.viewAccount")}
               </span>
             </span>
           </Link>
-          <nav aria-label="All sections" className="p-2">
+          <nav aria-label={t("nav.allSections")} className="p-2">
             {moreGroups.map((group) => (
               <div key={group.label} className="py-1">
                 <div className="px-3 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {group.label}
+                  {navGroupLabel(t, group.label)}
                 </div>
                 <ul>
                   {group.items.map((item: NavItem) => (
@@ -341,7 +346,7 @@ export function MobileTabBar() {
                         }`}
                       >
                         <item.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        {item.title}
+                        {navItemTitle(t, item)}
                       </Link>
                     </li>
                   ))}
@@ -365,7 +370,7 @@ export function MobileTabBar() {
                       {/* The page this opens is titled Alerts, like the tech
                           tab; a link that names its destination differently
                           from the destination's own heading reads as two places. */}
-                      Alerts
+                      {t("nav.alerts")}
                     </Link>
                   </li>
                 )}
@@ -377,7 +382,7 @@ export function MobileTabBar() {
                     className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors hover:bg-muted active:bg-muted"
                   >
                     <HelpCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    Help
+                    {t("nav.help")}
                   </Link>
                 </li>
                 <li>
@@ -387,7 +392,7 @@ export function MobileTabBar() {
                     className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium transition-colors hover:bg-muted active:bg-muted"
                   >
                     <LogOut className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    Sign out
+                    {t("nav.signOut")}
                   </button>
                 </li>
               </ul>

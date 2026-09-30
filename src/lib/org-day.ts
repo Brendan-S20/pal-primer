@@ -97,12 +97,20 @@ export function orgToday(tz: string = DEFAULT_ORG_TIMEZONE, now: Date = new Date
  */
 const timeFormatters = new Map<string, Intl.DateTimeFormat>();
 
-function timeFormatterFor(tz: string, style: "time" | "daytime" | "parts"): Intl.DateTimeFormat {
-  const key = `${tz}|${style}`;
+/** `locale` is the interface language's Intl locale (see `intlLocaleFor` in
+ *  lib/i18n). Undefined is the device's own, which is what every label here
+ *  used before a Spanish-speaking tech needed "2:42 p.m." rather than
+ *  "2:42 PM". The "parts" style ignores it: that one is parsed, not read. */
+function timeFormatterFor(
+  tz: string,
+  style: "time" | "daytime" | "parts",
+  locale?: string,
+): Intl.DateTimeFormat {
+  const key = `${tz}|${style}|${locale ?? ""}`;
   let f = timeFormatters.get(key);
   if (!f) {
     f = new Intl.DateTimeFormat(
-      style === "parts" ? "en-GB" : undefined,
+      style === "parts" ? "en-GB" : locale,
       style === "time"
         ? { timeZone: tz, hour: "numeric", minute: "2-digit" }
         : style === "daytime"
@@ -114,26 +122,28 @@ function timeFormatterFor(tz: string, style: "time" | "daytime" | "parts"): Intl
   return f;
 }
 
-/** "3:42 PM", on the organization's clock. */
+/** "3:42 PM", on the organization's clock. `locale` as in timeFormatterFor. */
 export function orgLocalTime(
   instant: string | number | Date | null | undefined,
   tz: string = DEFAULT_ORG_TIMEZONE,
+  locale?: string,
 ): string {
   if (instant == null || instant === "") return "";
   const d = instant instanceof Date ? instant : new Date(instant);
   if (Number.isNaN(d.getTime())) return "";
-  return timeFormatterFor(tz || DEFAULT_ORG_TIMEZONE, "time").format(d);
+  return timeFormatterFor(tz || DEFAULT_ORG_TIMEZONE, "time", locale).format(d);
 }
 
-/** "Sat, 3:42 PM", on the organization's clock. */
+/** "Sat, 3:42 PM", on the organization's clock. `locale` as in timeFormatterFor. */
 export function orgLocalDayTime(
   instant: string | number | Date | null | undefined,
   tz: string = DEFAULT_ORG_TIMEZONE,
+  locale?: string,
 ): string {
   if (instant == null || instant === "") return "";
   const d = instant instanceof Date ? instant : new Date(instant);
   if (Number.isNaN(d.getTime())) return "";
-  return timeFormatterFor(tz || DEFAULT_ORG_TIMEZONE, "daytime").format(d);
+  return timeFormatterFor(tz || DEFAULT_ORG_TIMEZONE, "daytime", locale).format(d);
 }
 
 /**
