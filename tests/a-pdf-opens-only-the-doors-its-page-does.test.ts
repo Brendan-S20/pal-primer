@@ -384,8 +384,9 @@ describe("the entry points", () => {
 
   it("checks the portal session before it draws anything", () => {
     const body = fns.slice(fns.indexOf("export const portalDownloadInvoicePdf"));
-    expect(body.indexOf("requirePortalSession(data.token)")).toBeGreaterThan(-1);
-    expect(body.indexOf("requirePortalSession(data.token)")).toBeLessThan(
+    // `readOnly: true` since the owner's preview: a PDF is a read.
+    expect(body.indexOf("requirePortalSession(data.token")).toBeGreaterThan(-1);
+    expect(body.indexOf("requirePortalSession(data.token")).toBeLessThan(
       body.indexOf("portalInvoicePdf(supabaseAdmin"),
     );
   });

@@ -73,11 +73,18 @@ export type ReceiptLike = {
   /** The customer's tip. Carried on the row, never summed here: a tip is not
    *  payment for the service, and it has its own report (Tips received). */
   tip_cents?: number | null;
+  /** The sales-tax share INSIDE amount_cents (payments.tax_cents, filled by
+   *  the database pro rata from the invoice). Tax collected is owed to the
+   *  state: subtracted from revenue here, summed on its own by
+   *  `taxReceivedCents`. Zero on every payment against an untaxed invoice,
+   *  which is every payment of a business that never set a rate. */
+  tax_cents?: number | null;
 };
 
-/** Gross received across a set of payment rows — `amount_cents` only, which
- *  is the invoice-applied amount on every row. The surcharge and the tip sit
- *  beside it and are deliberately left out.
+/** Gross received across a set of payment rows — `amount_cents` less its
+ *  sales-tax share, which is the invoice-applied amount on every row minus the
+ *  part of it that belongs to the state. The surcharge and the tip sit beside
+ *  it and are deliberately left out.
  *
  *  Gross received across a set of payment rows. Rows that never reached the
  *  account (pending, failed) are ignored even if the caller forgot to filter —
@@ -87,7 +94,26 @@ export function grossReceivedCents(rows: ReceiptLike[]): number {
   let total = 0;
   for (const r of rows) {
     if (!paymentWasReceived(r.status)) continue;
-    total += r.amount_cents ?? 0;
+    total += revenueCentsOf(r);
+  }
+  return total;
+}
+
+/** One payment's revenue: what it applied to the invoice, less the tax share
+ *  inside that. The only per-row definition, so a caller summing rows itself
+ *  cannot count the tax by summing the wrong column. */
+export function revenueCentsOf(r: Pick<ReceiptLike, "amount_cents" | "tax_cents">): number {
+  return (r.amount_cents ?? 0) - Math.max(0, r.tax_cents ?? 0);
+}
+
+/** Sales tax received across a set of payment rows, on the same "did the
+ *  money arrive" rule as revenue. A liability, reported by the accountant
+ *  pack's Sales tax collected sheet and never added to income. */
+export function taxReceivedCents(rows: ReceiptLike[]): number {
+  let total = 0;
+  for (const r of rows) {
+    if (!paymentWasReceived(r.status)) continue;
+    total += Math.max(0, r.tax_cents ?? 0);
   }
   return total;
 }

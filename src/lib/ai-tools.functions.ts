@@ -319,7 +319,7 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
         .gte("scheduled_on", weekAgoDate),
       context.supabase
         .from("invoices")
-        .select("status, total_cents, issued_at")
+        .select("status, total_cents, tax_cents, issued_at")
         .eq("organization_id", orgId)
         .gte("issued_at", weekAgoIso),
       // IMP-10: this had NO status filter at all, so a declined card and a
@@ -328,7 +328,7 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       // Wrong in the flattering direction, stated confidently.
       context.supabase
         .from("payments")
-        .select("amount_cents, status, paid_at")
+        .select("amount_cents, tax_cents, status, paid_at")
         .eq("organization_id", orgId)
         .in("status", receivedPaymentStatuses())
         .gte("paid_at", weekAgoIso),
@@ -382,7 +382,9 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     const revenueGrossCollected = grossReceivedCents(payments ?? []);
     const revenueCollected = revenueGrossCollected - reversals.netCents;
     const revenueInvoiced = (invoices ?? []).reduce(
-      (s: number, i: any) => s + (i.total_cents ?? 0),
+      // Sales tax is billed with the invoice but is not the business's
+      // revenue; zero on every invoice until a rate is set.
+      (s: number, i: any) => s + (i.total_cents ?? 0) - (i.tax_cents ?? 0),
       0,
     );
     const openInvoices = (invoices ?? []).filter((i: any) => i.status === "open").length;

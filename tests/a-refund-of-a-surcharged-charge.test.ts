@@ -172,13 +172,22 @@ describe("the webhook passes both numbers", () => {
     expect(src).toMatch(/select\(\s*$|surcharge_cents/m);
     // tip_cents too: a tip is inside the same charge and was never revenue
     // either (a-customer-could-not-leave-a-tip).
-    expect(src).toMatch(/"id, organization_id, amount_cents, surcharge_cents, tip_cents, status"/);
+    // tax_cents too since 20260929110000: the sales tax inside amount_cents
+    // was never revenue either.
+    expect(src).toMatch(
+      /"id, organization_id, amount_cents, surcharge_cents, tip_cents, (?:tax_cents, )?status"/,
+    );
   });
 
   it("leaves a chargeback whole", () => {
     // The bank takes the surcharge too and does not itemise it, so unlike a
     // refund the tenant does not keep the recovered fee.
-    expect(src).toMatch(/revenueAmount = amount;/);
+    // Since sales tax the chargeback goes through splitRefund with a zero
+    // surcharge and a zero tip, which is "whole" for both and takes only the
+    // payment's sales-tax share back out (it was never revenue).
+    expect(src).toMatch(
+      /revenueAmount = amount;|revenueAmount = splitRefund\(amount, chargeTotal, 0, 0, Number\(pay\.tax_cents \?\? 0\)\)/,
+    );
   });
 });
 
