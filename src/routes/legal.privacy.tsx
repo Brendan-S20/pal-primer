@@ -14,7 +14,7 @@ export const Route = createFileRoute("/legal/privacy")({
 
 function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="August 20, 2026">
+    <LegalShell title="Privacy Policy" updated="September 29, 2026">
       <section>
         <p>
           {APP_NAME} ("we", "us") provides field-service software for pet-care businesses at
@@ -41,6 +41,16 @@ function PrivacyPage() {
             <strong>Payment information:</strong> payments are processed by Stripe. We never see or
             store full card numbers; we keep references (such as card brand and last four digits)
             that Stripe provides.
+          </li>
+          <li>
+            <strong>Location of field staff:</strong> when a technician uses the app to navigate or
+            view a route map, the device's location is used on the device to show where they are. If
+            a business turns on live tracking, a technician's approximate location (rounded to about
+            100 meters) is sent to us while they are on the way to a customer, from the &ldquo;on my
+            way&rdquo; message until they start that visit, for at most two hours, and only while
+            the app is open. Only the latest position is kept, and it is deleted when the visit
+            starts. Live tracking is off unless the business turns it on, and the technician can
+            stop it at any time.
           </li>
           <li>
             <strong>Usage and device information:</strong> log data, browser type, and similar
@@ -99,6 +109,16 @@ function PrivacyPage() {
           <li>Resend (email delivery)</li>
           <li>Cloud hosting and infrastructure providers</li>
         </ul>
+        <p>
+          A business can also choose to connect other services, such as its accounting software or
+          an automation tool through a webhook. When it does, the data it chose to send goes to that
+          service on the business&apos;s instruction.
+        </p>
+        <p>
+          When a business turns on live tracking, the customer who received the &ldquo;on my
+          way&rdquo; message can see the technician&apos;s first name and approximate location on a
+          map until the technician arrives.
+        </p>
         <p>
           We may also disclose information if required by law, or as part of a business transfer (in
           which case this policy continues to apply).

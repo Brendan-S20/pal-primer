@@ -126,9 +126,14 @@ function ReportsPage() {
           value={fmtMoney(data.netBilledCents)}
           valueClass={data.netBilledCents > 0 ? "text-sky-700 dark:text-sky-400" : undefined}
           hint={
-            data.creditsAppliedCents > 0
+            (data.creditsAppliedCents > 0
               ? `${fmtMoney(data.billedCents)} invoiced, less ${fmtMoney(data.creditsAppliedCents)} of credit`
-              : `${data.invoiceCount} invoice${data.invoiceCount === 1 ? "" : "s"} issued`
+              : `${data.invoiceCount} invoice${data.invoiceCount === 1 ? "" : "s"} issued`) +
+            // Only when there is some: a business with no tax rate sees the
+            // hint it always saw.
+            ((data.taxBilledCents ?? 0) > 0
+              ? `; excludes ${fmtMoney(data.taxBilledCents)} sales tax`
+              : "")
           }
         />
         <Metric

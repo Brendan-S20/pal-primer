@@ -703,6 +703,10 @@ const BASE_STUBS: Record<string, Stub> = {
     // On, so the "On my way" card is measured in its checked state.
     on_my_way_on_navigate: true,
   },
+  // The Sales tax card on /settings/invoicing. Set, with a label one character
+  // short of the most the settings accept, so the card draws its worked example ("A $100.00 invoice
+  // becomes $108.25, with a line for ...") rather than the one-line zero state.
+  getSalesTaxSettings: { rateBps: 825, label: "County and Special District Service Tax" },
   getEmailSettings: {
     notify_email_invoice_sent: true,
     notify_email_payment_received: true,

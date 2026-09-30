@@ -28,6 +28,7 @@
 //
 // Server-only: imported from handlers with `await import(...)`.
 
+import { taxLineLabel } from "@/lib/sales-tax";
 import { invoiceOutstandingCents } from "@/lib/ar";
 import { appUrl } from "@/lib/app-origin";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
@@ -54,7 +55,7 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 
 /** Everything an invoice PDF prints, in one read. */
 export const INVOICE_PDF_SELECT =
-  "id, number, organization_id, client_id, status, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone, contact_email, contact_phone, contact_address), clients(display_name, primary_email)";
+  "id, number, organization_id, client_id, status, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone, contact_email, contact_phone, contact_address), clients(display_name, primary_email)";
 
 type InvoicePdfRow = {
   id: string;
@@ -64,6 +65,10 @@ type InvoicePdfRow = {
   status: string;
   currency: string | null;
   subtotal_cents: number | null;
+  /** Optional: a row read before sales tax existed has none, and prints none. */
+  tax_cents?: number | null;
+  tax_rate_bps?: number | null;
+  tax_label?: string | null;
   total_cents: number | null;
   credit_applied_cents: number | null;
   period_start: string | null;
@@ -160,6 +165,8 @@ export async function invoicePdfForRow(
       unitAmountCents: l.unit_amount_cents ?? null,
     })),
     subtotalCents: inv.subtotal_cents,
+    taxCents: Math.max(0, inv.tax_cents ?? 0),
+    taxLabel: taxLineLabel(inv.tax_label, inv.tax_rate_bps),
     totalCents,
     creditAppliedCents: creditCents,
     amountPaidCents,

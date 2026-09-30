@@ -236,7 +236,9 @@ describe("no charge escapes the fee", () => {
     for (const f of found) {
       const pairs = [
         ...f.src.matchAll(
-          /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)\)/g,
+          // An optional second argument, the invoice: the fee is not taken on
+          // its sales tax (20260929110000).
+          /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)(?:, \w+)?\)/g,
         ),
       ];
       expect(pairs.length, `${f.file} has no amount/fee pair to check`).toBeGreaterThan(0);

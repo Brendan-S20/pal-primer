@@ -148,6 +148,9 @@ export type RefundQuote = {
   surchargeCents: number;
   /** The customer's tip inside that charge. */
   tipCents: number;
+  /** The sales tax inside the invoiced part of that charge. Optional so a
+   *  quote from before sales tax existed still reads as "no tax". */
+  taxCents?: number;
   /** Stripe's cumulative `amount_refunded`. */
   refundedCents: number;
   /** What can still go back. */
@@ -193,7 +196,7 @@ async function loadRefundable(env: RefundEnv, orgId: string, paymentId: string):
   const { data: pay, error } = await env.supabase
     .from("payments")
     .select(
-      "id, organization_id, invoice_id, amount_cents, surcharge_cents, tip_cents, currency, status, method, stripe_payment_intent_id",
+      "id, organization_id, invoice_id, amount_cents, surcharge_cents, tip_cents, tax_cents, currency, status, method, stripe_payment_intent_id",
     )
     .eq("id", paymentId)
     .eq("organization_id", orgId)
@@ -282,6 +285,7 @@ async function loadRefundable(env: RefundEnv, orgId: string, paymentId: string):
       chargedCents,
       surchargeCents: Math.max(Number(pay.surcharge_cents ?? 0), 0),
       tipCents: Math.max(Number(pay.tip_cents ?? 0), 0),
+      taxCents: Math.max(Number((pay as { tax_cents?: number | null }).tax_cents ?? 0), 0),
       refundedCents,
       refundableCents,
     },
@@ -377,7 +381,13 @@ export async function issueRefund(
         .select("client_id")
         .eq("id", quote.invoiceId)
         .maybeSingle();
-      const split = splitRefund(amount, quote.chargedCents, quote.surchargeCents, quote.tipCents);
+      const split = splitRefund(
+        amount,
+        quote.chargedCents,
+        quote.surchargeCents,
+        quote.tipCents,
+        quote.taxCents ?? 0,
+      );
       const why = req.reason ? ` (${REFUND_REASON_LABELS[req.reason].toLowerCase()})` : "";
       await env.log({
         orgId: caller.orgId,
@@ -395,6 +405,7 @@ export async function issueRefund(
           revenue_cents: split.revenueCents,
           surcharge_cents: split.surchargeCents,
           tip_cents: split.tipCents,
+          tax_cents: split.taxCents,
           reason: req.reason ?? null,
           note: note || null,
         },

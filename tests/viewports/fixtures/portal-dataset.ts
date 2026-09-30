@@ -139,6 +139,12 @@ const INVOICE_ROWS = [
     due_on: day(-2),
     credit_applied_cents: 0,
     amount_due_cents: 10400,
+    // Taxed, so the row draws "includes $7.93 Sales tax (8.25%)" beside the
+    // amount and the status chips, and has to wrap on a phone. 9,607 x 8.25%
+    // = 792.58 -> 793; total 10,400.
+    tax_cents: 793,
+    tax_rate_bps: 825,
+    tax_label: "Sales tax",
     overdue: true,
   },
   {
@@ -387,7 +393,13 @@ export const PUBLIC_INVOICE = {
     label: "INV-10427",
     status: "open",
     currency: "usd",
-    subtotalCents: 12900,
+    // Taxed, so the pay link draws its sales-tax line: 11,917 x 8.25% =
+    // 983.15 -> 983. The total, the credit and the amount due are unchanged,
+    // so the tip arithmetic the spec checks (104.00 + 7.50) still holds.
+    subtotalCents: 11917,
+    taxCents: 983,
+    taxRateBps: 825,
+    taxLabel: "Sales tax",
     totalCents: 12900,
     // Credit applied, so the "you owe less than the total" layout is the one
     // measured -- it is two lines where the simple case is one.
@@ -405,7 +417,9 @@ export const PUBLIC_INVOICE = {
     {
       id: "88888888-0000-4000-8000-000000008001",
       description: "Weekly yard service — 4 visits",
-      amountCents: 9600,
+      // 8,617 + 3,600 - 300 = 11,917, the taxed subtotal, so the lines, the
+      // tax and the total on the page all add up.
+      amountCents: 8617,
       quantity: 1,
       unitAmountCents: null,
     },
