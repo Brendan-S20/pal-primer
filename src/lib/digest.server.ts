@@ -131,13 +131,13 @@ export async function computeDigestMetrics(
   const [{ data: payThis }, { data: payPrev }] = await Promise.all([
     supabaseAdmin
       .from("payments")
-      .select("amount_cents, status, paid_at")
+      .select("amount_cents, tax_cents, status, paid_at")
       .eq("organization_id", orgId)
       .in("status", receivedPaymentStatuses())
       .gte("paid_at", weekStartIso),
     supabaseAdmin
       .from("payments")
-      .select("amount_cents, status, paid_at")
+      .select("amount_cents, tax_cents, status, paid_at")
       .eq("organization_id", orgId)
       .in("status", receivedPaymentStatuses())
       .gte("paid_at", prevStartIso)

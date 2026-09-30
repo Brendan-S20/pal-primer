@@ -71,6 +71,14 @@ const TAB_GROUPS: TabGroup[] = [
     ],
   },
   {
+    // Outbound webhooks, so a business can send its events to Zapier, Make,
+    // n8n or its own systems. Its own group rather than under Financial:
+    // most of what people connect is not money (new clients to a mailing
+    // list, completed visits to a review tool).
+    title: "Integrations",
+    tabs: [{ label: "Webhooks", to: "/settings/webhooks" }],
+  },
+  {
     title: "Team",
     tabs: [{ label: "Users & roles", to: "/settings/users" }],
   },

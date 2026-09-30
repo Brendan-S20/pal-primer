@@ -198,6 +198,10 @@ test.describe("the payment link, which is not the portal and arrives the same wa
       // exists because credit was applied to it.
       const due = (PUBLIC_INVOICE.invoice.amountDueCents / 100).toFixed(2);
       await expect(page.getByText(`$${due}`).first()).toBeVisible();
+      // The sales-tax line, which only a taxed invoice draws: measured here
+      // because it is the one row an untaxed fixture would never put on the
+      // page.
+      await expect(page.getByText("Sales tax (8.25%)").first()).toBeVisible();
       // The tip choices, in their widest state: Custom picked, so the amount
       // box is drawn under the five buttons, and an amount typed into it so
       // the totals below show a tip. The total proves the intent fixture

@@ -46,6 +46,7 @@ export function EditClientDrawer({
         | "monthly"
         | "quarterly"
         | "yearly",
+      taxExempt: !!client?.tax_exempt,
     }),
     [client],
   );
@@ -96,6 +97,9 @@ export function EditClientDrawer({
           smsOptOut: form.smsOptOut,
           emailOptOut: form.emailOptOut,
           billingFrequency: form.billingFrequency,
+          // Sent only when changed: it takes the billing permission, and an
+          // unrelated edit should not need it on its account.
+          ...(form.taxExempt !== initial.taxExempt ? { taxExempt: form.taxExempt } : {}),
         },
       }),
     onSuccess: () => {
@@ -251,6 +255,20 @@ export function EditClientDrawer({
           <p className="mt-1 text-xs text-muted-foreground">
             Invoices for completed visits generate automatically at the end of each cycle, then
             send after your grace period (Settings, Automation).
+          </p>
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm touch:min-h-11">
+            <input
+              type="checkbox"
+              checked={form.taxExempt}
+              onChange={(e) => set("taxExempt", e.target.checked)}
+            />
+            <span>Tax-exempt: no sales tax on this client's invoices</span>
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Only matters if you charge sales tax (Settings, Invoicing). Applies to invoices made
+            after you save; ones already issued keep their tax.
           </p>
         </div>
         <fieldset className="rounded-md border bg-muted/20 p-3">

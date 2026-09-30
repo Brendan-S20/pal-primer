@@ -149,7 +149,9 @@ describe("the platform fee is taken on the base, never on the surcharge", () => 
     const idx = src.indexOf(`source: "${source}"`);
     const before = src.slice(Math.max(0, idx - 1200), idx);
     const feeLine = [
-      ...before.matchAll(/application_fee_amount: platformFeeCents\((\w+)\)/g),
+      // The second argument is the invoice, whose sales tax the fee is not
+      // taken on (20260929110000).
+      ...before.matchAll(/application_fee_amount: platformFeeCents\((\w+)(?:, \w+)?\)/g),
     ].pop();
     expect(feeLine?.[1]).toBe("dueCents");
   });

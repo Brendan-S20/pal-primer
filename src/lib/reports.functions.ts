@@ -52,6 +52,9 @@ type ReportInvoice = Pick<
   | "client_id"
   | "status"
   | "total_cents"
+  // Sales tax inside total_cents: kept in receivables, taken out of billed
+  // revenue by billedInPeriod.
+  | "tax_cents"
   | "credit_applied_cents"
   | "due_on"
   | "issued_at"
@@ -173,7 +176,7 @@ export const getReports = createServerFn({ method: "POST" })
       supabase
         .from("invoices")
         .select(
-          "id, client_id, status, total_cents, credit_applied_cents, due_on, issued_at, paid_at, voided_at, updated_at, kind",
+          "id, client_id, status, total_cents, tax_cents, credit_applied_cents, due_on, issued_at, paid_at, voided_at, updated_at, kind",
         )
         .eq("organization_id", orgId)
         .order("id")
@@ -290,6 +293,7 @@ export const getReports = createServerFn({ method: "POST" })
 
       // ── ACCRUAL ─────────────────────────────────────────────────────────
       billedCents: billed.billedCents,
+      taxBilledCents: billed.taxBilledCents,
       creditsAppliedCents: billed.creditsAppliedCents,
       netBilledCents: billed.netBilledCents,
       invoiceCount: billed.invoiceCount,
