@@ -59,7 +59,15 @@ export const portalContext = createServerFn({ method: "GET" })
     const client = rows?.[0];
     if (!client)
       return { verified: false as const, valid: false as const, channels: [], branding: null };
-    return { verified: true as const, valid: true as const, client, branding: contact.branding };
+    return {
+      verified: true as const,
+      valid: true as const,
+      client,
+      branding: contact.branding,
+      // A staff preview: the portal shows a banner and the server refuses
+      // every action (requirePortalSession).
+      preview: session.preview,
+    };
   });
 
 // ── Generic company sign-in (/portal/{slug}) ────────────────────────────────
@@ -152,7 +160,7 @@ export const portalGetClient = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
     if (error) throw new Error(error.message);
@@ -197,7 +205,7 @@ export const portalListUpcomingVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", {
       _token: data.token,
@@ -210,7 +218,7 @@ export const portalListInvoices = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     // Webhook-independent safety net: the client may have just returned from a
     // paid Checkout (?paid=1) before the webhook landed — verify this client's
@@ -299,7 +307,7 @@ export const portalListPrepaidSubs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_prepaid_subscriptions", {
       _token: data.token,
@@ -387,7 +395,7 @@ export const portalListProperties = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb
       .from("properties")
@@ -406,7 +414,7 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     // Sequential, not Promise.all: the standing-plan filter below judges
     // "still running" by a date, this code runs on a UTC worker, and the org
@@ -481,7 +489,7 @@ export const portalListAddonCatalog = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_addon_catalog", { _token: data.token });
     if (error) throw new Error(error.message);
@@ -492,7 +500,7 @@ export const portalListClientAddons = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_client_addons", { _token: data.token });
     if (error) throw new Error(error.message);
@@ -945,7 +953,7 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
     if (error) throw new Error(error.message);
@@ -974,7 +982,7 @@ export const portalListDogs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_dogs", { _token: data.token });
     if (error) throw new Error(error.message);
@@ -1144,7 +1152,7 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: org } = await (sb.from("organizations") as any)
       .select("timezone, work_days, portal_auto_accept_bookings, one_off_price_cents, currency")
@@ -1422,7 +1430,7 @@ export const portalSignPhotoUrls = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token, { readOnly: true });
     if (data.paths.length === 0) return { urls: {} as Record<string, string> };
     const supabaseAdmin = await admin();
     // Only sign photos that belong to this client's own visits — never sign an
@@ -1451,7 +1459,7 @@ export const portalGetReferral = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_get_referral", { _token: data.token });
     if (error) throw new Error(error.message);
@@ -1464,7 +1472,7 @@ export const portalListStations = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_stations" as any, {
       _token: data.token,
@@ -1484,7 +1492,7 @@ export const portalListMyRequests = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, {
       _token: data.token,

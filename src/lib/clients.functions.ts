@@ -520,6 +520,56 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
   });
 
 /**
+ * Open a client's portal as a read-only preview, on the caller's own
+ * browser. "Open portal" used to drop the owner on a sign-in screen that
+ * sends a code to the CUSTOMER'S phone; the only way past was to reveal an
+ * office-read code and sign in as the customer with every button live.
+ *
+ * Gated like the rest of the client's money (the portal shows invoices and
+ * the card on file): owner and office manager. The session it mints is an
+ * hour long and read-only in the server (requirePortalSession), and each
+ * preview is written to the client's Activity with the name of whoever
+ * opened it, before the session exists.
+ */
+export const previewClientPortal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_client_billing",
+    );
+    const { data: client } = await context.supabase
+      .from("clients")
+      .select("id, display_name")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (!client) throw new Error("Client not found");
+
+    const { data: staffRow } = await context.supabase
+      .from("staff")
+      .select("display_name")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    const { error: auditErr } = await context.supabase.from("activity_log").insert({
+      organization_id: orgId,
+      client_id: data.clientId,
+      actor_user_id: context.userId,
+      actor_label: (staffRow as { display_name?: string } | null)?.display_name ?? null,
+      kind: "portal.previewed",
+      summary: `Previewed ${(client as { display_name?: string }).display_name ?? "the client"}'s portal`,
+      meta: {},
+    });
+    if (auditErr) throw new Error("Couldn't record the preview in the activity log. Try again.");
+
+    const { startPortalPreview } = await import("@/lib/portal-auth.server");
+    await startPortalPreview(data.clientId, context.userId);
+    return { ok: true };
+  });
+
+/**
  * The portal sign-in channels we can actually deliver a code to for this
  * client, so staff copy ("code texted to …") matches what the portal really
  * offers (G2 channel mismatch: SMS is only offered when Twilio is configured).
