@@ -17,8 +17,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { getSalesTaxSettings, updateSalesTaxSettings } from "@/lib/sales-tax.functions";
+import {
+  DEFAULT_SALES_TAX_LABEL,
+  formatTaxRate,
+  invoiceTotals,
+  parseTaxRatePercent,
+  taxLineLabel,
+} from "@/lib/sales-tax";
 
 const key = ["automation"] as const;
+const taxKey = ["sales-tax-settings"] as const;
 
 // B9: the discoverable home for client-invoicing settings (net terms, grace
 // period, auto-send). Lives in the Financial settings group next to the
@@ -168,6 +177,105 @@ function InvoicingPage() {
       <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
         {mut.isPending ? "Saving…" : "Save invoicing settings"}
       </Button>
+
+      <SalesTaxCard />
     </div>
+  );
+}
+
+/** "8.25" from 825, for the input box: no % sign, no trailing zeros. */
+function percentText(bps: number): string {
+  return formatTaxRate(bps).replace(/%$/, "");
+}
+
+// Its own card with its own Save: the rate is a separate decision from the
+// payment terms above, and it moves every invoice made after it is saved.
+function SalesTaxCard() {
+  const load = useServerFn(getSalesTaxSettings);
+  const save = useServerFn(updateSalesTaxSettings);
+  const { data, refetch } = useSuspenseQuery(
+    queryOptions({ queryKey: taxKey, queryFn: () => load() }),
+  );
+  const [rateText, setRateText] = useState<string>(percentText(data.rateBps));
+  const [label, setLabel] = useState<string>(data.label);
+
+  useEffect(() => {
+    setRateText(percentText(data.rateBps));
+    setLabel(data.label);
+  }, [data]);
+
+  const rateBps = parseTaxRatePercent(rateText);
+  const example = rateBps !== null && rateBps > 0 ? invoiceTotals(10_000, rateBps, label) : null;
+
+  const mut = useMutation({
+    mutationFn: () => {
+      if (rateBps === null) throw new Error("Enter a rate between 0 and 25, like 8.25.");
+      return save({ data: { rateBps, label: label.trim() || DEFAULT_SALES_TAX_LABEL } });
+    },
+    onSuccess: () => {
+      toast.success("Sales tax saved");
+      refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sales tax</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Most pet-waste services are not taxable, so this starts at 0% and most businesses leave
+          it there. Some states do tax them. Ask your accountant whether you need to charge sales
+          tax, and at what rate, before you set one.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <Label htmlFor="taxrate">Tax rate (%)</Label>
+            <Input
+              id="taxrate"
+              inputMode="decimal"
+              autoComplete="off"
+              value={rateText}
+              onChange={(e) => setRateText(e.target.value)}
+              aria-invalid={rateBps === null}
+            />
+          </div>
+          <div className="min-w-0">
+            <Label htmlFor="taxlabel">Name on the invoice</Label>
+            <Input
+              id="taxlabel"
+              maxLength={40}
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={DEFAULT_SALES_TAX_LABEL}
+            />
+          </div>
+        </div>
+        {rateBps === null ? (
+          <p className="text-xs text-destructive">Enter a rate between 0 and 25, like 8.25.</p>
+        ) : example ? (
+          <p className="text-xs text-muted-foreground">
+            A $100.00 invoice becomes ${(example.totalCents / 100).toFixed(2)}, with a line for{" "}
+            {taxLineLabel(example.taxLabel, rateBps)} of ${(example.taxCents / 100).toFixed(2)}.
+            Tax is charged on the whole invoice and rounded once to the nearest cent.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            No sales tax is added to invoices, and no tax line is shown.
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          A new rate applies to invoices made after you save it. Invoices already issued keep the
+          rate they were made at. Mark a client tax-exempt on their page (Edit client) and their
+          invoices carry no tax at any rate. Tax you collect is kept out of your revenue and
+          reported on its own in Tax reports, under Sales tax collected.
+        </p>
+        <Button onClick={() => mut.mutate()} disabled={mut.isPending || rateBps === null}>
+          {mut.isPending ? "Saving…" : "Save sales tax"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

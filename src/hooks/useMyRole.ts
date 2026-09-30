@@ -72,6 +72,9 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/onboarding": ["owner"],
   // Must precede the "/settings" prefix entry — canAccess takes the first match.
   "/settings/billing": ["owner"],
+  // Outbound webhooks send the tenant's events to a third party: the same
+  // audience as the server gate, manage_settings.
+  "/settings/webhooks": ["owner", "office_manager"],
   // Client-invoicing config (net terms, grace, auto-send) — office-level money
   // settings, same audience as the Invoices page.
   "/settings/invoicing": ["owner", "office_manager"],

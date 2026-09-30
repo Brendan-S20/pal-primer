@@ -481,6 +481,8 @@ export const billDnaViolation = createServerFn({ method: "POST" })
         client_id: clientId,
         kind: "postpaid",
         status: "open",
+        // No sales tax: a fine is a penalty, not a sale of service.
+        // tax_cents and tax_rate_bps default to 0.
         subtotal_cents: m.fine_cents,
         total_cents: m.fine_cents,
         period_start: today,

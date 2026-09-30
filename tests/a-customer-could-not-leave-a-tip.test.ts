@@ -190,7 +190,9 @@ describe("the server refuses a forged tip", () => {
   it.each(PAY_SCREENS)("%s %s takes a tip CHOICE and prices it itself", (file, name) => {
     const fn = serverFn(file, name);
     expect(fn).toContain("tip: tipChoiceSchema.optional()");
-    expect(fn).toMatch(/tippedCharge\(\{\s*dueCents, choice: data\.tip, tipsEnabled \}\)/);
+    // `invoice` rides along since sales tax (20260929110000): the platform fee
+    // is taken on the invoice's pre-tax share, so tippedCharge needs its tax.
+    expect(fn).toMatch(/tippedCharge\(\{\s*dueCents, choice: data\.tip, tipsEnabled(?:, invoice)? \}\)/);
     // tipsEnabled comes from the organization row, never from the request.
     expect(fn).toMatch(/tips_enabled/);
     expect(fn).not.toMatch(/data\.tipsEnabled|data\.amount|data\.total/);
@@ -340,7 +342,10 @@ describe("revenue excludes tips", () => {
       src.indexOf("async function buildIncomeCash"),
       src.indexOf("async function buildTipsReceived"),
     );
-    expect(cash).toContain("b.gross += p.amount_cents ?? 0;");
+    // incomeOf(p) since sales tax: amount_cents less its tax share, and still
+    // never the tip.
+    expect(cash).toContain("b.gross += incomeOf(p);");
+    expect(src).toMatch(/\(p\.amount_cents \?\? 0\) - Math\.max\(0, p\.tax_cents \?\? 0\)/);
     expect(cash).not.toMatch(/tip_cents/);
     expect(cash).toMatch(/Tips received report/);
   });
@@ -396,6 +401,7 @@ describe("the refund split with a tip", () => {
       revenueCents: 12_500,
       surchargeCents: 0,
       tipCents: 1_500,
+      taxCents: 0,
     });
   });
 
@@ -413,6 +419,7 @@ describe("the refund split with a tip", () => {
       revenueCents: 10_000,
       surchargeCents: 250,
       tipCents: 500,
+      taxCents: 0,
     });
   });
 
@@ -442,9 +449,13 @@ describe("the refund split with a tip", () => {
 
   it("the webhook and the refund dialog both pass the tip to the split", () => {
     const hook = code(read("src/routes/api/public/hooks/stripe.ts"));
-    expect(hook.match(/Number\((?:rpay|pay)\.tip_cents \?\? 0\),\s*\)/g)?.length).toBe(2);
+    // Followed by the payment's sales tax since 20260929110000.
+    expect(
+      hook.match(/Number\((?:rpay|pay)\.tip_cents \?\? 0\),\s*(?:Number\((?:rpay|pay)\.tax_cents \?\? 0\),\s*)?\)/g)
+        ?.length,
+    ).toBe(2);
     expect(code(read("src/lib/refunds.server.ts"))).toMatch(
-      /splitRefund\(\s*amount,\s*quote\.chargedCents,\s*quote\.surchargeCents,\s*quote\.tipCents,?\s*\)/,
+      /splitRefund\(\s*amount,\s*quote\.chargedCents,\s*quote\.surchargeCents,\s*quote\.tipCents,?\s*(?:quote\.taxCents \?\? 0,?\s*)?\)/,
     );
   });
 

@@ -20,6 +20,13 @@ interface Props extends OrgContact {
   periodLabel?: string;
   /** Reminder re-send of an already-sent invoice (QA round 8). */
   reminder?: boolean;
+  /** Sales tax inside amountCents, and the subtotal it was charged on. The
+   *  sentence below the amount is drawn only when taxCents > 0, so an email
+   *  for an untaxed invoice reads exactly as it always did. */
+  subtotalCents?: number;
+  taxCents?: number;
+  /** "Sales tax (8.25%)". */
+  taxLabel?: string;
 }
 
 const InvoiceSent = ({
@@ -29,6 +36,9 @@ const InvoiceSent = ({
   invoiceUrl,
   periodLabel,
   reminder = false,
+  subtotalCents,
+  taxCents = 0,
+  taxLabel,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -47,6 +57,12 @@ const InvoiceSent = ({
             : `Hi ${clientName}, a new invoice from ${orgName} is ready.`}
         </Text>
         <Text style={styles.amount}>{fmtMoney(amountCents)}</Text>
+        {taxCents > 0 ? (
+          <Text style={styles.small}>
+            {subtotalCents != null ? `${fmtMoney(subtotalCents)} plus ` : "Includes "}
+            {fmtMoney(taxCents)} {taxLabel || "sales tax"}
+          </Text>
+        ) : null}
         {periodLabel ? <Text style={styles.text}>{periodLabel}</Text> : null}
         {invoiceUrl ? (
           <Button style={styles.button} href={invoiceUrl}>

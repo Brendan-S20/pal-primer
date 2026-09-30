@@ -99,6 +99,7 @@ import { Route as ApiPublicVerifyEmailRouteImport } from './routes/api/public/ve
 import { Route as ApiPublicQuotePdfRouteImport } from './routes/api/public/quote-pdf'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
 import { Route as ApiPublicInvoicePdfRouteImport } from './routes/api/public/invoice-pdf'
+import { Route as AuthenticatedSettingsWebhooksRouteImport } from './routes/_authenticated/settings.webhooks'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
@@ -139,6 +140,7 @@ import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slu
 import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
 import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/public/hooks/xero-callback'
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
+import { Route as ApiPublicHooksWebhookDeliveriesRouteImport } from './routes/api/public/hooks/webhook-deliveries'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
@@ -609,6 +611,12 @@ const ApiPublicInvoicePdfRoute = ApiPublicInvoicePdfRouteImport.update({
   path: '/api/public/invoice-pdf',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSettingsWebhooksRoute =
+  AuthenticatedSettingsWebhooksRouteImport.update({
+    id: '/webhooks',
+    path: '/webhooks',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsUsersRoute =
   AuthenticatedSettingsUsersRouteImport.update({
     id: '/users',
@@ -840,6 +848,12 @@ const ApiPublicHooksWeeklyDigestRoute =
     path: '/api/public/hooks/weekly-digest',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksWebhookDeliveriesRoute =
+  ApiPublicHooksWebhookDeliveriesRouteImport.update({
+    id: '/api/public/hooks/webhook-deliveries',
+    path: '/api/public/hooks/webhook-deliveries',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksTwilioVoiceRoute =
   ApiPublicHooksTwilioVoiceRouteImport.update({
     id: '/api/public/hooks/twilio-voice',
@@ -999,6 +1013,7 @@ export interface FileRoutesByFullPath {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
+  '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1028,6 +1043,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
@@ -1132,6 +1148,7 @@ export interface FileRoutesByTo {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
+  '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1160,6 +1177,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
@@ -1274,6 +1292,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
+  '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1303,6 +1322,7 @@ export interface FileRoutesById {
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
@@ -1417,6 +1437,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/api/public/invoice-pdf'
+    | '/settings/webhooks'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1446,6 +1467,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
@@ -1550,6 +1572,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/api/public/invoice-pdf'
+    | '/settings/webhooks'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1578,6 +1601,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
@@ -1691,6 +1715,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
     | '/api/public/invoice-pdf'
+    | '/_authenticated/settings/webhooks'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1720,6 +1745,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
@@ -1772,6 +1798,7 @@ export interface RootRouteChildren {
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
+  ApiPublicHooksWebhookDeliveriesRoute: typeof ApiPublicHooksWebhookDeliveriesRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
   ApiPublicHooksXeroCallbackRoute: typeof ApiPublicHooksXeroCallbackRoute
 }
@@ -2408,6 +2435,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicInvoicePdfRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/settings/webhooks': {
+      id: '/_authenticated/settings/webhooks'
+      path: '/webhooks'
+      fullPath: '/settings/webhooks'
+      preLoaderRoute: typeof AuthenticatedSettingsWebhooksRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/users': {
       id: '/_authenticated/settings/users'
       path: '/users'
@@ -2688,6 +2722,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksWeeklyDigestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/webhook-deliveries': {
+      id: '/api/public/hooks/webhook-deliveries'
+      path: '/api/public/hooks/webhook-deliveries'
+      fullPath: '/api/public/hooks/webhook-deliveries'
+      preLoaderRoute: typeof ApiPublicHooksWebhookDeliveriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/twilio-voice': {
       id: '/api/public/hooks/twilio-voice'
       path: '/api/public/hooks/twilio-voice'
@@ -2864,6 +2905,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedSettingsUsersRoute: typeof AuthenticatedSettingsUsersRoute
+  AuthenticatedSettingsWebhooksRoute: typeof AuthenticatedSettingsWebhooksRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
@@ -2894,6 +2936,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedSettingsUsersRoute: AuthenticatedSettingsUsersRoute,
+  AuthenticatedSettingsWebhooksRoute: AuthenticatedSettingsWebhooksRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
 }
 
@@ -3105,6 +3148,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
+  ApiPublicHooksWebhookDeliveriesRoute: ApiPublicHooksWebhookDeliveriesRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
   ApiPublicHooksXeroCallbackRoute: ApiPublicHooksXeroCallbackRoute,
 }

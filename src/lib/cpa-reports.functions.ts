@@ -15,6 +15,7 @@ import {
   reportsFor,
   reversalLabel,
   routingAudience,
+  salesTaxByMonth,
   tipsByMonth,
   settlementOverlapsPeriod,
   stripe1099kGuidance,
@@ -179,11 +180,18 @@ type PaymentRow = {
    *  in the sheets that sum `amount_cents`; its own report, and part of the
    *  CHARGE on the 1099-K sheet. */
   tip_cents?: number | null;
+  /** The sales-tax share INSIDE amount_cents. Owed to the state: taken out of
+   *  every income sheet, reported on its own by Sales tax collected. */
+  tax_cents?: number | null;
   status: string;
   paid_at: string | null;
   created_at: string;
   collected_by_organization_id: string | null;
 };
+
+/** A payment's income: what it applied to the invoice, less the tax share. */
+const incomeOf = (p: { amount_cents?: number | null; tax_cents?: number | null }) =>
+  (p.amount_cents ?? 0) - Math.max(0, p.tax_cents ?? 0);
 
 /** Money that actually arrived. Includes 'refunded' on purpose — see the
  *  refunds note at the top of cpa-reports.ts. Excludes 'pending' and 'failed',
@@ -197,7 +205,7 @@ async function loadReceipts(supabase: any, ctx: OrgContext, from: string, to: st
         // surcharge_cents and tip_cents: the 1099-K reconciliation sheet needs
         // what STRIPE reported, which is the charge — base + surcharge + tip —
         // not the revenue.
-        "id, invoice_id, amount_cents, surcharge_cents, tip_cents, status, paid_at, created_at, collected_by_organization_id",
+        "id, invoice_id, amount_cents, surcharge_cents, tip_cents, tax_cents, status, paid_at, created_at, collected_by_organization_id",
       )
       .eq("organization_id", ctx.orgId)
       .in("status", ["succeeded", "refunded"])
@@ -236,6 +244,10 @@ type InvoiceRow = {
   client_id: string;
   status: string;
   total_cents: number | null;
+  /** Sales tax inside total_cents, and the rate/label it was made at. */
+  tax_cents?: number | null;
+  tax_rate_bps?: number | null;
+  tax_label?: string | null;
   credit_applied_cents: number | null;
   issued_at: string | null;
   paid_at: string | null;
@@ -245,7 +257,7 @@ type InvoiceRow = {
 };
 
 const INVOICE_COLS =
-  "id, number, client_id, status, total_cents, credit_applied_cents, issued_at, paid_at, voided_at, due_on, updated_at";
+  "id, number, client_id, status, total_cents, tax_cents, tax_rate_bps, tax_label, credit_applied_cents, issued_at, paid_at, voided_at, due_on, updated_at";
 
 /** The whole invoice ledger for this org. The bridge and the aging report both
  *  need point-in-time positions, which cannot be derived from a filtered
@@ -318,13 +330,23 @@ async function buildQuickbooksInvoices(supabase: any, ctx: OrgContext, from: str
     }
   }
 
+  const { taxLineLabel } = await import("@/lib/sales-tax");
   const invoices: QboInvoice[] = billed.map(({ inv, day }) => ({
     invoiceNo: invoiceNumberLabel(inv),
     customer: names.get(inv.client_id) ?? "Unknown customer",
     issuedDay: day,
     dueOn: inv.due_on,
     totalCents: inv.total_cents ?? 0,
-    lines: linesByInvoice.get(inv.id) ?? [],
+    // Sales tax travels as its own line, after the service lines, so the
+    // lines still add up to the total the customer was billed. Absent on
+    // every invoice with no tax, which is every invoice of a business that
+    // never set a rate.
+    lines: [
+      ...(linesByInvoice.get(inv.id) ?? []),
+      ...((inv.tax_cents ?? 0) > 0
+        ? [{ description: taxLineLabel(inv.tax_label, inv.tax_rate_bps), amountCents: inv.tax_cents ?? 0 }]
+        : []),
+    ],
   }));
   const { rows, excluded } = qboRows(invoices);
   const files = splitForImport(rows);
@@ -344,6 +366,11 @@ async function buildQuickbooksInvoices(supabase: any, ctx: OrgContext, from: str
   caveats.push(
     "Account credit applied to an invoice is not a line, so QuickBooks will show the full invoice as owed. Record the credit as a payment there.",
   );
+  if (billed.some(({ inv }) => (inv.tax_cents ?? 0) > 0)) {
+    caveats.push(
+      "Sales tax is a line of its own on each taxed invoice. When QuickBooks asks what product or service a line is, map that line to your sales-tax liability, not to income.",
+    );
+  }
   return { rows: rows as unknown as ReportRow[], totals: null, caveats };
 }
 
@@ -368,7 +395,8 @@ async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to:
 
   for (const p of receipts) {
     const b = bucket(monthKey(p.day));
-    b.gross += p.amount_cents ?? 0;
+    // Income, not tax: the sales-tax share of a payment is owed to the state.
+    b.gross += incomeOf(p);
     b.count += 1;
   }
   // Every reversal, recoveries included. Skipping the won disputes here — which
@@ -412,6 +440,13 @@ async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to:
       "Cash paid directly to you and recorded manually is included, and is not part of any 1099-K.",
       "Tips customers added when paying are not in these figures: they are not payment for the service. They are in the Tips received report, and they are still income to the business (or wages, if you pass them to your team through payroll). A chargeback is deducted here whole, tip included.",
       "Refunds & chargebacks is net of disputes you won: the deduction stands in the month the funds were withdrawn and the recovery is added back in the month they returned. A month can therefore show a negative figure in that column, and a dispute opened in one period and won in the next moves income between the two rather than restating either.",
+      // Only said when there is some, so a business with no tax rate gets the
+      // sheet it always got.
+      ...(receipts.some((p) => (p.tax_cents ?? 0) > 0)
+        ? [
+            "Sales tax collected with these payments is not in these figures: it is owed to the state, not earned. It is in the Sales tax collected report, and the part of a refund or chargeback that was tax is deducted there rather than here.",
+          ]
+        : []),
     ],
   };
 }
@@ -494,10 +529,110 @@ async function buildTipsReceived(supabase: any, ctx: OrgContext, from: string, t
   };
 }
 
+/**
+ * Sales tax billed and collected, by month.
+ *
+ * Billed: `invoices.tax_cents` on every invoice billed in the period, by the
+ * same `billedDay` rule as the accrual income sheet. Collected:
+ * `payments.tax_cents` — each payment's pro-rata share of its invoice's tax,
+ * written by the database — on the same receipts and dating as the cash income
+ * sheet. Refunded: each reversal's tax share, divided by `splitRefund` exactly
+ * as the webhook divided it when it took the tax back out of the revenue it
+ * filed. A refund splits the charge (base, surcharge, tip, then base into
+ * revenue and tax); a chargeback takes the whole charge as its base, as the
+ * webhook does; a won dispute puts its share back.
+ */
+async function buildSalesTaxCollected(supabase: any, ctx: OrgContext, from: string, to: string) {
+  const [receipts, reversals, invoices] = await Promise.all([
+    loadReceipts(supabase, ctx, from, to),
+    loadReversals(supabase, ctx, from, to),
+    loadInvoices(supabase, ctx),
+  ]);
+
+  const paymentIds = [...new Set(reversals.map((r) => r.paymentId).filter(Boolean))] as string[];
+  const split = new Map<string, { amount: number; surcharge: number; tip: number; tax: number }>();
+  for (let i = 0; i < paymentIds.length; i += 200) {
+    const { data } = await supabase
+      .from("payments")
+      .select("id, amount_cents, surcharge_cents, tip_cents, tax_cents")
+      .eq("organization_id", ctx.orgId)
+      .in("id", paymentIds.slice(i, i + 200));
+    for (const p of data ?? []) {
+      split.set(p.id, {
+        amount: Number(p.amount_cents ?? 0),
+        surcharge: Number(p.surcharge_cents ?? 0),
+        tip: Number(p.tip_cents ?? 0),
+        tax: Number(p.tax_cents ?? 0),
+      });
+    }
+  }
+  const { splitRefund } = await import("@/lib/refund-split");
+  const taxReversals = reversals.map((r) => {
+    const p = split.get(r.paymentId ?? "");
+    if (!p || p.tax <= 0) return { day: r.day, taxCents: 0 };
+    const charge = p.amount + p.surcharge + p.tip;
+    const share =
+      r.kind === "payment_refunded"
+        ? splitRefund(r.movedCents, charge, p.surcharge, p.tip, p.tax).taxCents
+        : splitRefund(r.movedCents, charge, 0, 0, p.tax).taxCents;
+    return { day: r.day, taxCents: r.deducts ? share : -share };
+  });
+
+  const billed = invoices
+    .map((inv) => ({ day: billedDay(inv, ctx.timezone), taxCents: inv.tax_cents ?? 0 }))
+    .filter((x): x is { day: string; taxCents: number } => !!x.day && inRange(x.day, from, to));
+
+  const rows: ReportRow[] = salesTaxByMonth(
+    monthsBetween(from, to),
+    billed,
+    receipts.map((p) => ({ day: p.day, taxCents: Number(p.tax_cents ?? 0) })),
+    taxReversals,
+  ).map((r) => ({ ...r, month: monthLabel(r.month) }));
+
+  const totals = rows.reduce(
+    (t, r) => ({
+      month: "Total",
+      taxBilledCents: (t.taxBilledCents as number) + (r.taxBilledCents as number),
+      taxCollectedCents: (t.taxCollectedCents as number) + (r.taxCollectedCents as number),
+      taxRefundedCents: (t.taxRefundedCents as number) + (r.taxRefundedCents as number),
+      netTaxCollectedCents: (t.netTaxCollectedCents as number) + (r.netTaxCollectedCents as number),
+      taxedPaymentCount: (t.taxedPaymentCount as number) + (r.taxedPaymentCount as number),
+    }),
+    {
+      month: "Total",
+      taxBilledCents: 0,
+      taxCollectedCents: 0,
+      taxRefundedCents: 0,
+      netTaxCollectedCents: 0,
+      taxedPaymentCount: 0,
+    } as ReportRow,
+  );
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("sales_tax_rate_bps")
+    .eq("id", ctx.orgId)
+    .maybeSingle();
+  const rateBps = Number((org as { sales_tax_rate_bps?: number | null } | null)?.sales_tax_rate_bps ?? 0);
+  const { formatTaxRate } = await import("@/lib/sales-tax");
+  return {
+    rows,
+    totals,
+    caveats: [
+      rateBps > 0
+        ? `New invoices are taxed at ${formatTaxRate(rateBps)} (Settings, Invoicing). Each invoice keeps the rate it was made at, and clients marked tax-exempt are charged none.`
+        : "No sales tax rate is set (Settings, Invoicing), so new invoices carry no tax. Most pet-waste services are not taxable; some states do tax them. Your accountant can tell you whether yours does.",
+      "Tax is charged on each invoice's whole subtotal and rounded once, to the nearest cent. Imported opening balances and DNA-match fines carry no tax.",
+      "This report is what HoundStack billed and collected. It is not a return: the rate, what is taxable, and where it is owed are for you and your accountant to confirm.",
+    ],
+  };
+}
+
 async function buildIncomeAccrual(supabase: any, ctx: OrgContext, from: string, to: string) {
   const invoices = await loadInvoices(supabase, ctx);
   const byMonth = new Map<string, { invoiced: number; credits: number; count: number }>();
   for (const m of monthsBetween(from, to)) byMonth.set(m, { invoiced: 0, credits: 0, count: 0 });
+  let anyTax = false;
 
   for (const inv of invoices) {
     // Shared with /reports: one definition of what "billed in a period" means.
@@ -509,9 +644,11 @@ async function buildIncomeAccrual(supabase: any, ctx: OrgContext, from: string, 
       b = { invoiced: 0, credits: 0, count: 0 };
       byMonth.set(m, b);
     }
-    b.invoiced += inv.total_cents ?? 0;
+    // Billed revenue excludes the invoice's sales tax, which is a liability.
+    b.invoiced += (inv.total_cents ?? 0) - Math.max(0, inv.tax_cents ?? 0);
     b.credits += inv.credit_applied_cents ?? 0;
     b.count += 1;
+    if ((inv.tax_cents ?? 0) > 0) anyTax = true;
   }
 
   const rows: ReportRow[] = [...byMonth.entries()]
@@ -547,6 +684,11 @@ async function buildIncomeAccrual(supabase: any, ctx: OrgContext, from: string, 
     caveats: [
       "Credit applied is shown against the month the invoice was issued, which is where the credit reduced what was billed.",
       "A prepaid top-up is billed when it is sold, not when the service is delivered. If you file accrual basis, unused prepaid balances are a liability and your accountant may need to defer part of this figure.",
+      ...(anyTax
+        ? [
+            "Invoiced excludes the sales tax on those invoices, which is owed to the state; it is the Tax billed column of the Sales tax collected report. Credit applied reduces what the customer owed, not the tax, so it is shown here whole.",
+          ]
+        : []),
     ],
   };
 }
@@ -649,7 +791,7 @@ async function buildRevenueByClient(supabase: any, ctx: OrgContext, from: string
   };
   for (const p of receipts) {
     const b = at(paymentClient.get(p.id) ?? "");
-    b.gross += p.amount_cents ?? 0;
+    b.gross += incomeOf(p);
     b.count += 1;
   }
   // Recoveries as well as deductions — a customer whose disputed payment was
@@ -1289,7 +1431,7 @@ export const getTaxReportIndex = createServerFn({ method: "GET" })
           basis: d.basis,
         })),
       gaps: [
-        "Sales tax is not tracked. HoundStack does not hold a tax rate or a taxable flag on invoices, so no sales-tax return can be produced from this data.",
+        "Sales tax is billed at one rate per business (Settings, Invoicing), on the whole invoice, with tax-exempt clients charged none. It is not tracked by jurisdiction or by line, so a business that owes tax to more than one state or city, or sells some services that are taxable and some that are not, will need its accountant to split the Sales tax collected report.",
         "Expenses are tracked only as far as they are logged in HoundStack: fuel, disposal fees, supplies, equipment, vehicle maintenance, mileage and other, in the expenses report. Payroll and Stripe's processing fees are not tracked and come from elsewhere.",
         "Stripe processing fees are netted out before payout and never recorded here, so gross card volume in HoundStack will exceed what actually reached the bank.",
       ],
@@ -1335,6 +1477,9 @@ export const getTaxReport = createServerFn({ method: "POST" })
         break;
       case "tips_received":
         built = await buildTipsReceived(supabase, ctx, from, to);
+        break;
+      case "sales_tax_collected":
+        built = await buildSalesTaxCollected(supabase, ctx, from, to);
         break;
       case "income_accrual":
         built = await buildIncomeAccrual(supabase, ctx, from, to);

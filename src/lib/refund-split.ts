@@ -36,8 +36,12 @@ export type RefundSplit = {
    *  quotes, and what reconciles against Stripe. */
   refundedCents: number;
   /** The share attributable to invoiced service — the ONLY part that comes off
-   *  revenue. */
+   *  revenue. Excludes the sales tax inside the invoiced amount. */
   revenueCents: number;
+  /** The share attributable to sales tax the invoice carried. Tax was never
+   *  revenue (it is owed to the state), so refunding it reduces the tax
+   *  collected, not income. Zero whenever the payment carried no tax. */
+  taxCents: number;
   /** The share attributable to the recovered processing fee. Reported as fee
    *  recovery reversing, never as lost revenue. */
   surchargeCents: number;
@@ -59,6 +63,18 @@ export type RefundSplit = {
  *   — in which case this is a straight pass-through of the refunded amount.
  * @param tipCents The tip inside that total. Zero for every untipped payment,
  *   which leaves the split exactly what it was before tipping existed.
+ * @param taxCents The sales tax inside the INVOICED part of that total
+ *   (`payments.tax_cents`, which sits inside `amount_cents`). Zero for every
+ *   payment against an untaxed invoice, which leaves the split byte-identical
+ *   to what it was before sales tax existed.
+ *
+ * ── AND THE TAX, THE SAME WAY AGAIN ───────────────────────────────────────
+ *
+ * The invoiced share is divided once more, between revenue and tax, in the
+ * ratio the payment itself carried them: a $108 payment of which $8 was tax,
+ * refunded in full, returns $100 of revenue and $8 of tax; refunded half,
+ * $50 and $4. Rounded on the tax and derived on the revenue, so the parts
+ * still add back to the amount refunded.
  *
  * ── WHY THE TIP IS SPLIT THE SAME WAY ─────────────────────────────────────
  *
@@ -74,11 +90,31 @@ export function splitRefund(
   chargeTotalCents: number,
   surchargeCents: number,
   tipCents = 0,
+  taxCents = 0,
 ): RefundSplit {
   const refunded = Math.max(0, Math.round(refundedCents));
   const total = Math.max(0, Math.round(chargeTotalCents));
   const surcharge = Math.max(0, Math.round(surchargeCents));
   const tip = Math.max(0, Math.round(tipCents));
+  const tax = Math.max(0, Math.round(taxCents));
+  const split = splitChargeParts(refunded, total, surcharge, tip);
+  if (tax <= 0) return { ...split, taxCents: 0 };
+  // The invoiced share, divided between revenue and tax in the payment's own
+  // ratio: tax / (total - surcharge - tip), i.e. tax / amount_cents.
+  const invoiced = total - surcharge - tip;
+  if (invoiced <= 0) return { ...split, taxCents: 0 };
+  const taxPart = Math.min(tax, Math.round((split.revenueCents * tax) / invoiced));
+  return { ...split, revenueCents: split.revenueCents - taxPart, taxCents: taxPart };
+}
+
+/** The pre-tax split: the invoiced share, the surcharge and the tip. Exactly
+ *  what `splitRefund` returned before sales tax existed. */
+function splitChargeParts(
+  refunded: number,
+  total: number,
+  surcharge: number,
+  tip: number,
+): Omit<RefundSplit, "taxCents"> {
   const nonRevenue = surcharge + tip;
 
   // No surcharge and no tip, or a total that cannot be trusted to divide by.

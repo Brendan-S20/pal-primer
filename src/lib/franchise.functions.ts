@@ -180,6 +180,9 @@ export function franchiseTrendWeeks(now: Date): TrendWeek[] {
 export type TrendPayment = {
   organization_id: string;
   amount_cents: number | string | null;
+  /** Sales-tax share inside amount_cents: not revenue, so not on the chart.
+   *  Absent is 0. */
+  tax_cents?: number | string | null;
   status: string | null;
   created_at: string;
 };
@@ -235,7 +238,9 @@ export function franchiseTrendSeries(
     const w = weekFor(p.created_at);
     if (!w) continue;
     bucket[w.key][p.organization_id] =
-      (bucket[w.key][p.organization_id] ?? 0) + Number(p.amount_cents ?? 0);
+      (bucket[w.key][p.organization_id] ?? 0) +
+      Number(p.amount_cents ?? 0) -
+      Math.max(0, Number(p.tax_cents ?? 0));
   }
   for (const r of reversals) {
     const w = weekFor(r.detected_at);
@@ -285,7 +290,7 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: pays } = await (supabaseAdmin as any)
       .from("payments")
-      .select("organization_id, amount_cents, status, created_at")
+      .select("organization_id, amount_cents, tax_cents, status, created_at")
       .in(
         "organization_id",
         lines.map((k) => k.id),
@@ -472,7 +477,7 @@ export const listRoyaltyInvoices = createServerFn({ method: "GET" })
       // generator has written the split since 2026-07-30 and no screen has ever
       // shown it.
       .select(
-        "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, royalty_cents, adjustments_applied_cents, revenue_collected_by_parent_cents, revenue_collected_by_location_cents, direction, net_due_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
+        "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, royalty_cents, adjustments_applied_cents, revenue_collected_by_parent_cents, revenue_collected_by_location_cents, sales_tax_collected_by_parent_cents, direction, net_due_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
       )
       .eq("parent_organization_id", orgId)
       .order("period_start", { ascending: false })

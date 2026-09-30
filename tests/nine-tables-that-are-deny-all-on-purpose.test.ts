@@ -37,6 +37,7 @@ const DENY_ALL: Record<string, string> = {
   org_twilio_credentials: "holds an encrypted carrier auth token; deny-all is the entire point",
   roadmap_votes: "reached only through cast_roadmap_vote / roadmap_vote_counts; nothing in src/ names it",
   roadmap_vote_throttle: "salted hashes of voters' addresses; a readable row is the list the poll promises not to keep",
+  webhook_endpoint_secrets: "encrypted webhook signing keys; read only by the delivery worker on the service role",
 };
 
 /** `CREATE POLICY ... ON [public.]<table>` — parsed, because these migrations

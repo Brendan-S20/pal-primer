@@ -211,6 +211,16 @@ export function FranchiseSettlementStatements({
                       {line.adjustmentsCents !== 0 && (
                         <> · adjustments {settlementSignedMoney(line.adjustmentsCents)}</>
                       )}
+                      {/* Sales tax the franchise collected for the location:
+                          the location's to remit, so passed on whole and never
+                          in the royalty. Absent when there is none. */}
+                      {line.taxHeldByFranchiseCents > 0 && (
+                        <>
+                          {" "}
+                          · plus sales tax the franchise collected{" "}
+                          {settlementMoney(line.taxHeldByFranchiseCents)}
+                        </>
+                      )}
                     </p>
                   </div>
 

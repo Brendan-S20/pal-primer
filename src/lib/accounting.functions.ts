@@ -22,7 +22,7 @@ export const listAccountingConnections = createServerFn({ method: "GET" })
     await requireAccountingOrg(supabase, userId);
     const { data, error } = await supabase
       .from("accounting_connections")
-      .select("id, provider, realm_id, tenant_id, auto_sync, connected_at, last_sync_at, token_expires_at, default_income_account, default_ar_account, default_payment_account")
+      .select("id, provider, realm_id, tenant_id, auto_sync, connected_at, last_sync_at, token_expires_at, default_income_account, default_ar_account, default_payment_account, default_sales_tax_account")
       .order("connected_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -41,6 +41,7 @@ export const upsertAccountingConnection = createServerFn({ method: "POST" })
       default_income_account: z.string().optional().nullable(),
       default_ar_account: z.string().optional().nullable(),
       default_payment_account: z.string().optional().nullable(),
+      default_sales_tax_account: z.string().optional().nullable(),
       auto_sync: z.boolean().optional(),
     }).parse(d)
   )
@@ -64,6 +65,11 @@ export const upsertAccountingConnection = createServerFn({ method: "POST" })
       default_payment_account: data.default_payment_account ?? null,
       auto_sync: data.auto_sync ?? false,
     };
+    // Only when sent: a caller that does not know about the sales-tax account
+    // must not clear one set earlier.
+    if (data.default_sales_tax_account !== undefined) {
+      payload.default_sales_tax_account = data.default_sales_tax_account || null;
+    }
     // IMP-1: encrypted before it ever reaches the table.
     if (data.access_token) payload.access_token = encryptSecret(data.access_token);
     if (data.refresh_token) payload.refresh_token = encryptSecret(data.refresh_token);

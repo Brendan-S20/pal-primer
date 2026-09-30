@@ -52,6 +52,11 @@ export type InvoicePdfModel = {
     unitAmountCents?: number | null;
   }>;
   subtotalCents: number | null;
+  /** Sales tax inside totalCents; a line of its own only when > 0. Optional
+   *  so a model built before sales tax existed prints exactly as it did. */
+  taxCents?: number;
+  /** "Sales tax (8.25%)", from taxLineLabel. */
+  taxLabel?: string | null;
   totalCents: number;
   creditAppliedCents: number;
   amountPaidCents: number;
@@ -235,6 +240,10 @@ export async function renderInvoicePdf(
   const rows: Array<{ label: string; value: string; strong?: boolean; color?: typeof INK }> = [];
   if (m.subtotalCents != null && m.subtotalCents !== m.totalCents)
     rows.push({ label: "Subtotal", value: money(m.subtotalCents) });
+  // Sales tax, between the subtotal and the total, and only when there is
+  // some: an invoice made at a zero rate prints exactly as it always did.
+  if ((m.taxCents ?? 0) > 0)
+    rows.push({ label: m.taxLabel || "Sales tax", value: money(m.taxCents ?? 0) });
   rows.push({ label: "Total", value: money(m.totalCents), strong: true });
   if (m.creditAppliedCents > 0)
     rows.push({ label: "Account credit applied", value: `-${money(m.creditAppliedCents)}` });

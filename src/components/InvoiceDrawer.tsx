@@ -38,6 +38,7 @@ import {
   invoiceNumberLabel,
 } from "@/lib/invoice-labels";
 import { bulkMarkInvoicesPaid, getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
+import { showsTaxLine, taxLineLabel } from "@/lib/sales-tax";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
 import { describeManualPayment } from "@/lib/manual-payments";
 import { sendInvoiceEmail } from "@/lib/notifications.functions";
@@ -367,6 +368,14 @@ export function InvoiceDrawer({
                 <div className="mt-2 flex items-center justify-between border-t pt-2 text-muted-foreground">
                   <span>Subtotal</span>
                   <span>{fmtCents(inv.subtotal_cents, inv.currency ?? "usd")}</span>
+                </div>
+              )}
+              {/* Sales tax, its own line and only when there is some: an
+                  invoice made at a zero rate looks exactly as it always did. */}
+              {showsTaxLine(inv) && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-muted-foreground">
+                  <span className="min-w-0">{taxLineLabel(inv.tax_label, inv.tax_rate_bps)}</span>
+                  <span className="shrink-0">{fmtCents(inv.tax_cents, inv.currency ?? "usd")}</span>
                 </div>
               )}
               <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
