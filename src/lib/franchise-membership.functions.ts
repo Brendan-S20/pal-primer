@@ -331,7 +331,7 @@ export const getMyFranchiseSettlements = createServerFn({ method: "GET" })
       // false zero), which is why this was invisible rather than wrong: the
       // location's copy simply never showed the split.
       .select(
-        "id, period_start, period_end, revenue_cents, royalty_percent, royalty_cents, amount_cents, adjustments_applied_cents, revenue_collected_by_parent_cents, direction, net_due_cents, status",
+        "id, period_start, period_end, revenue_cents, royalty_percent, royalty_cents, amount_cents, adjustments_applied_cents, revenue_collected_by_parent_cents, sales_tax_collected_by_parent_cents, direction, net_due_cents, status",
       )
       .eq("child_organization_id", orgId)
       .neq("status", "draft")

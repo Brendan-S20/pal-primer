@@ -205,10 +205,17 @@ function RefundDialog({
   // disagree about a cent.
   const share =
     quote && amountCents
-      ? splitRefund(amountCents, quote.chargedCents, quote.surchargeCents, quote.tipCents ?? 0)
+      ? splitRefund(
+          amountCents,
+          quote.chargedCents,
+          quote.surchargeCents,
+          quote.tipCents ?? 0,
+          quote.taxCents ?? 0,
+        )
       : null;
   const surchargeShare = share?.surchargeCents ?? 0;
   const tipShare = share?.tipCents ?? 0;
+  const taxShare = share?.taxCents ?? 0;
 
   return (
     <Dialog open onOpenChange={(o) => !o && !refundM.isPending && onClose()}>
@@ -338,6 +345,12 @@ function RefundDialog({
                 <li>
                   About {fmt(tipShare, cur)} of it is the tip they added, which was never counted as
                   revenue, so it comes off tips rather than income.
+                </li>
+              )}
+              {taxShare > 0 && (
+                <li>
+                  About {fmt(taxShare, cur)} of it is sales tax, which was never your revenue, so
+                  it comes off the tax you collected rather than your income.
                 </li>
               )}
               {amountCents < quote.refundableCents && (

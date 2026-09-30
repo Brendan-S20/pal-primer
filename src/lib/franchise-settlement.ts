@@ -53,6 +53,9 @@ export type SettlementRow = {
    *  caller's query did not select them — see `collectedByFranchiseCents`. */
   revenue_collected_by_parent_cents?: number | string | null;
   revenue_collected_by_location_cents?: number | string | null;
+  /** Sales tax the franchise's account took in for the location. The
+   *  location's liability, so owed to it in full and carrying no royalty. */
+  sales_tax_collected_by_parent_cents?: number | string | null;
   direction: string | null;
   net_due_cents: number | string | null;
   status: string | null;
@@ -82,6 +85,13 @@ export type SettlementLine = {
    *  `collected_by_franchise` — so a period where the franchise collected half
    *  showed a net that followed from none of the numbers beside it. */
   collectedByFranchiseCents: number | null;
+  /** Sales tax the franchise collected on the location's behalf. Not revenue
+   *  (it is not in `revenueCents`, and carries no royalty), and passed to the
+   *  location whole, so with it the statement's arithmetic is
+   *  net = |collected_by_franchise + tax_held_by_franchise − royalty − adjustments|.
+   *  0 when the query did not select it, or there was no tax — which is every
+   *  statement of a franchise whose locations never set a tax rate. */
+  taxHeldByFranchiseCents: number;
   direction: SettlementDirection;
   /** "The franchise owes you", "You owe the franchise", … */
   directionLabel: string;
@@ -206,6 +216,7 @@ export function describeSettlement(
       row.revenue_collected_by_parent_cents == null
         ? null
         : num(row.revenue_collected_by_parent_cents),
+    taxHeldByFranchiseCents: num(row.sales_tax_collected_by_parent_cents),
     direction,
     directionLabel: settlementDirectionLabel(direction, audience),
     flow: settlementFlow(direction, audience),

@@ -35,7 +35,12 @@
 // that shrank with nothing to explain it — the exact complaint the review queue
 // exists to answer.
 
-import { grossReceivedCents, paymentWasReceived, receivedPaymentStatuses } from "@/lib/revenue";
+import {
+  grossReceivedCents,
+  paymentWasReceived,
+  receivedPaymentStatuses,
+  revenueCentsOf,
+} from "@/lib/revenue";
 import { orgLocalDay } from "@/lib/cpa-reports";
 import {
   loadOrgReversals,
@@ -51,7 +56,10 @@ import {
 export type Receipt = {
   id: string;
   invoiceId: string | null;
+  /** Revenue: amount applied to the invoice less its sales-tax share. */
   amountCents: number;
+  /** The sales-tax share of this receipt. A liability, never revenue. */
+  taxCents: number;
   day: string;
 };
 
@@ -141,6 +149,7 @@ export async function collectedInPeriod(
     id: string;
     invoice_id: string | null;
     amount_cents: number | null;
+    tax_cents?: number | null;
     status: string;
     paid_at: string | null;
     created_at: string;
@@ -148,7 +157,9 @@ export async function collectedInPeriod(
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from("payments")
-      .select("id, invoice_id, amount_cents, status, paid_at, created_at")
+      // tax_cents: the sales-tax share inside amount_cents, which is owed to
+      // the state and comes back OUT of every figure this returns.
+      .select("id, invoice_id, amount_cents, tax_cents, status, paid_at, created_at")
       .eq("organization_id", orgId)
       .in("status", receivedPaymentStatuses())
       .gte("created_at", lo.toISOString())
@@ -180,7 +191,8 @@ export async function collectedInPeriod(
     .map((p) => ({
       id: p.id,
       invoiceId: p.invoice_id ?? null,
-      amountCents: p.amount_cents ?? 0,
+      amountCents: revenueCentsOf(p),
+      taxCents: Math.max(0, p.tax_cents ?? 0),
       day: orgLocalDay(p.paid_at ?? p.created_at, timezone),
     }));
 

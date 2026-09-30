@@ -25,7 +25,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { updateClient, deleteClientIfNoHistory, listClientHolds } from "@/lib/clients.functions";
+import {
+  updateClient,
+  deleteClientIfNoHistory,
+  listClientHolds,
+  previewClientPortal,
+} from "@/lib/clients.functions";
+import { usePermissions } from "@/hooks/useMyRole";
+import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { pauseSubscription } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
 import { getMyOrg } from "@/lib/org.functions";
@@ -98,6 +105,8 @@ export function ClientHeader({
   // active or upcoming hold shows as a chip next to the status.
   const [holdDrawerOpen, setHoldDrawerOpen] = useState(false);
   const listHoldsFn = useServerFn(listClientHolds);
+  const previewFn = useServerFn(previewClientPortal);
+  const { can } = usePermissions();
   const { data: holdsData } = useQuery({
     queryKey: ["client-holds", clientId],
     queryFn: () => listHoldsFn({ data: { clientId } }),
@@ -350,9 +359,36 @@ export function ClientHeader({
               )}
               {portalUrl && (
                 <>
-                  <DropdownMenuItem onClick={() => window.open(portalUrl, "_blank", "noopener")}>
-                    Open portal
-                  </DropdownMenuItem>
+                  {/* Native: the preview's session cookie lives in this WebView and
+                      the portal opens in the system browser, which has none of it,
+                      so the phone keeps the plain link. */}
+                  {!IS_NATIVE_BUNDLE && can("manage_client_billing") ? (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        // Opened before the await: Safari blocks a window opened
+                        // after one, as a popup nobody asked for.
+                        const w = window.open("", "_blank");
+                        previewFn({ data: { clientId } }).then(
+                          () => {
+                            if (w) {
+                              w.opener = null;
+                              w.location.href = portalUrl;
+                            } else window.location.href = portalUrl;
+                          },
+                          (e: Error) => {
+                            w?.close();
+                            toast.error(e.message || "Couldn't open the preview.");
+                          },
+                        );
+                      }}
+                    >
+                      Preview portal
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => window.open(portalUrl, "_blank", "noopener")}>
+                      Open portal
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onClick={() =>
                       navigator.clipboard.writeText(portalUrl).then(

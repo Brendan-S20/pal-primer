@@ -46,7 +46,7 @@ export const portalDownloadInvoicePdf = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await import("@/lib/portal-auth.server");
-    const session = await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token, { readOnly: true });
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { portalInvoicePdf } = await import("@/lib/document-pdf.server");
     return encode(await portalInvoicePdf(supabaseAdmin, session, data.invoiceId));

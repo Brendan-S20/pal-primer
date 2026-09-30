@@ -195,7 +195,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt",
       )
       .eq("id", data.clientId)
       .single();
@@ -230,6 +230,9 @@ export const updateClient = createServerFn({ method: "POST" })
         billingFrequency: z
           .enum(["after_each_visit", "weekly", "monthly", "quarterly", "yearly"])
           .optional(),
+        // No sales tax on this client's invoices. A billing decision, so it
+        // takes the billing permission below.
+        taxExempt: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -242,7 +245,9 @@ export const updateClient = createServerFn({ method: "POST" })
     await requirePermission(
       supabase,
       userId,
-      data.active !== undefined ? "manage_client_billing" : "view_client_directory",
+      data.active !== undefined || data.taxExempt !== undefined
+        ? "manage_client_billing"
+        : "view_client_directory",
     );
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -305,13 +310,17 @@ export const updateClient = createServerFn({ method: "POST" })
       patch.billing_frequency = data.billingFrequency;
       changed.push("billing cadence");
     }
+    if (data.taxExempt !== undefined) {
+      patch.tax_exempt = data.taxExempt;
+      changed.push("sales tax exemption");
+    }
     if (changed.length === 0) return { ok: true };
 
     // Before-image so the timeline can show before -> after (spec Stage 5).
     const { data: beforeRow } = await supabase
       .from("clients")
       .select(
-        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused",
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt",
       )
       .eq("id", data.clientId)
       .single();
@@ -508,6 +517,56 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
       throw new Error("Couldn't record the sign-in code reveal to the activity log. Try again.");
     }
     return result;
+  });
+
+/**
+ * Open a client's portal as a read-only preview, on the caller's own
+ * browser. "Open portal" used to drop the owner on a sign-in screen that
+ * sends a code to the CUSTOMER'S phone; the only way past was to reveal an
+ * office-read code and sign in as the customer with every button live.
+ *
+ * Gated like the rest of the client's money (the portal shows invoices and
+ * the card on file): owner and office manager. The session it mints is an
+ * hour long and read-only in the server (requirePortalSession), and each
+ * preview is written to the client's Activity with the name of whoever
+ * opened it, before the session exists.
+ */
+export const previewClientPortal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_client_billing",
+    );
+    const { data: client } = await context.supabase
+      .from("clients")
+      .select("id, display_name")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (!client) throw new Error("Client not found");
+
+    const { data: staffRow } = await context.supabase
+      .from("staff")
+      .select("display_name")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    const { error: auditErr } = await context.supabase.from("activity_log").insert({
+      organization_id: orgId,
+      client_id: data.clientId,
+      actor_user_id: context.userId,
+      actor_label: (staffRow as { display_name?: string } | null)?.display_name ?? null,
+      kind: "portal.previewed",
+      summary: `Previewed ${(client as { display_name?: string }).display_name ?? "the client"}'s portal`,
+      meta: {},
+    });
+    if (auditErr) throw new Error("Couldn't record the preview in the activity log. Try again.");
+
+    const { startPortalPreview } = await import("@/lib/portal-auth.server");
+    await startPortalPreview(data.clientId, context.userId);
+    return { ok: true };
   });
 
 /**
