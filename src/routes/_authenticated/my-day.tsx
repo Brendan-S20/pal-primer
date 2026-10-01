@@ -2606,7 +2606,7 @@ function DnaSamplePanel({
         </p>
       )}
       <Button size="sm" disabled={mut.isPending || !online} onClick={() => mut.mutate()}>
-        {mut.isPending ? t("dna.logging") : t("dna.log")}
+        {mut.isPending ? t("common.logging") : t("dna.log")}
       </Button>
       <p className="text-2xs text-muted-foreground">{t("dna.footnote")}</p>
     </div>

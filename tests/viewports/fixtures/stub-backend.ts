@@ -879,6 +879,76 @@ const BASE_STUBS: Record<string, Stub> = {
       },
     ],
   },
+  // ── THE WASTE LOG, a tab on every tech's bar ─────────────────────────────
+  //
+  // Until a-tech-who-reads-spanish measured it, nothing answered these and the
+  // page drew "No manifests yet." and an empty facility list — the narrowest
+  // thing it can draw. So: a facility name and address long enough to wrap
+  // beside the Directions link, an inactive one (its badge sits beside the
+  // name), a ticket number with no space in it, one manifest with no facility
+  // (the fallback label), one with a receipt (the Receipt button), and both
+  // sides of the bag plural. Shapes are listManifests' select: the row, plus
+  // `waste_disposal_facilities(name)` and `staff(display_name)`.
+  listFacilities: {
+    facilities: [
+      {
+        id: "f0f0f0f0-0000-4000-8000-000000000001",
+        name: "Northbrook–Glenview Regional Transfer & Recycling Station",
+        address: "4413 North Ravenswood Manor Terrace, Building C Scale House, Glenview, IL 60025",
+        active: true,
+      },
+      {
+        id: "f0f0f0f0-0000-4000-8000-000000000002",
+        name: "Old Harper Woods Municipal Compost Yard",
+        address: null,
+        active: false,
+      },
+    ],
+  },
+  listManifests: {
+    manifests: [
+      {
+        id: "f1f1f1f1-0000-4000-8000-000000000001",
+        disposed_on: fx.TODAY,
+        weight_lbs: 1284.5,
+        bag_count: 46,
+        ticket_number: "TKT-2026-0930-0048812-NB-GLENVIEW",
+        notes:
+          "Scale house closed at 3:30, used the after-hours drop. Attendant asked for the bags to be double-tied from now on.",
+        photo_url: `${fx.ORG_ID}/1759252800000.jpg`,
+        waste_disposal_facilities: {
+          name: "Northbrook–Glenview Regional Transfer & Recycling Station",
+        },
+        staff: { display_name: "Alejandro Villanueva-Castro" },
+      },
+      {
+        id: "f1f1f1f1-0000-4000-8000-000000000002",
+        disposed_on: fx.day(-3),
+        weight_lbs: 38,
+        bag_count: 1,
+        ticket_number: null,
+        notes: null,
+        photo_url: null,
+        waste_disposal_facilities: null,
+        staff: { display_name: "Dana Whitfield-Ramirez" },
+      },
+    ],
+  },
+  // The notification settings panel on /notifications: every type the server
+  // lists (notifications-center.functions.ts NOTIFICATION_TYPES, same words),
+  // one of them muted so both switch states are drawn.
+  getNotificationPrefs: {
+    mutedTypes: ["lead"],
+    types: [
+      { type: "concern", label: "Client concerns" },
+      { type: "payment_failed", label: "Failed client payments" },
+      { type: "lead", label: "New website leads" },
+      { type: "quote_response", label: "Quotes accepted or declined" },
+      { type: "receptionist_escalation", label: "AI receptionist escalations" },
+      { type: "inbound_sms", label: "Texts needing a reply" },
+      { type: "teammate_joined", label: "Teammate joined" },
+    ],
+  },
   // Live tracking ON, and the technician's scheduled stop today is the one
   // being shared: so /my-day draws the "Sharing your location with ..." chip,
   // with its Stop button, on a real card at every width. Off would render

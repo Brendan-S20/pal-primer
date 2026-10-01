@@ -28,4 +28,16 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
     file: "src/routes/_authenticated/settings.preferences.tsx",
     only: ["PreferencesPage", "AppearanceCard"],
   },
+  // The other two tabs on a tech's bar, and the forward view the sidebar and
+  // an empty My Day point at. Each with what it draws: the notification
+  // settings panel, the "?" beside the waste log's heading, and the address
+  // field on its Facilities form. A notification's own title and body are
+  // stored server-written text and stay as written; the Knowledge Center
+  // article behind the "?" is English-only.
+  { file: "src/routes/_authenticated/my-schedule.tsx" },
+  { file: "src/routes/_authenticated/waste-log.tsx" },
+  { file: "src/routes/_authenticated/notifications.tsx" },
+  { file: "src/components/NotificationPrefs.tsx" },
+  { file: "src/components/HelpTip.tsx" },
+  { file: "src/components/AddressAutocomplete.tsx" },
 ];

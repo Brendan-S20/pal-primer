@@ -117,6 +117,39 @@ describe("en and es", () => {
   });
 });
 
+describe("a notification type's name", () => {
+  // The types a person can mute are listed, with an English label, in
+  // notifications-center.functions.ts, and the server hands that list to the
+  // settings panel. The panel translates by type code with the label as the
+  // fallback, so en.ts carries a second copy of each label. Two copies drift;
+  // this keeps them one. Read from source, because importing the module
+  // pulls in the server-function runtime.
+  const src = readFileSync(join(root, "src/lib/notifications-center.functions.ts"), "utf8");
+  const listed = [...src.matchAll(/\{ type: "(\w+)", label: "([^"]+)" \}/g)].map((m) => ({
+    type: m[1],
+    label: m[2],
+  }));
+
+  it("is in en.ts for every type the server lists, with the same English", () => {
+    expect(listed.length, "found the NOTIFICATION_TYPES list").toBeGreaterThan(5);
+    const mismatched = listed
+      .filter(({ type, label }) => EN.get(`notificationType.${type}`) !== label)
+      .map(
+        ({ type, label }) =>
+          `${type}: server says "${label}", en.ts says "${EN.get(`notificationType.${type}`)}"`,
+      );
+    expect(mismatched).toEqual([]);
+  });
+
+  it("names no type the server does not list", () => {
+    const types = new Set(listed.map((l) => l.type));
+    const stale = [...EN.keys()]
+      .filter((k) => k.startsWith("notificationType."))
+      .filter((k) => !types.has(k.slice("notificationType.".length)));
+    expect(stale).toEqual([]);
+  });
+});
+
 describe("a sentence with a client's name in it", () => {
   // closeOut.description is the one string rendered through <Trans>, because
   // the name is bold in the middle of it and Spanish puts it somewhere else.

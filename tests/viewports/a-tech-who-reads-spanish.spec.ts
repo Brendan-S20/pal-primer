@@ -26,6 +26,16 @@
  * English would say "My day") and something only the fixture holds (a
  * client's name). A green run against /auth, or against My Day in English,
  * would be worthless and would look the same.
+ *
+ * ── AND THE REST OF THE DAY ───────────────────────────────────────────────
+ *
+ * The tab bar's other two tabs, Desechos and Avisos, and Mi calendario, which
+ * the sidebar and an empty My Day point at. Each proves itself the same two
+ * ways. /waste-log had no fixture until this spec measured it, so it had only
+ * ever been drawn empty; it now has a long facility, a ticket number with no
+ * space in it and a manifest with no facility. Each page is measured as it
+ * opens and again with what it folds away open: the log form, and the
+ * notification settings panel.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
@@ -53,7 +63,13 @@ const ENGLISH_THAT_WAS_THERE = [
   "Waste log",
 ];
 
-async function openMyDayInSpanish(page: Page, width: number) {
+async function openInSpanish(
+  page: Page,
+  width: number,
+  path: string,
+  heading: string | RegExp,
+  fromFixture: string,
+) {
   await page.setViewportSize({ width, height: 900 });
   await page.addInitScript(() => {
     try {
@@ -65,14 +81,54 @@ async function openMyDayInSpanish(page: Page, width: number) {
   });
   await installSignedInSession(page);
   await installStubBackend(page, { role: "tech" });
-  await page.goto("/my-day");
+  await page.goto(path);
   await page.waitForLoadState("networkidle").catch(() => {});
-  await expect(page.getByRole("heading", { name: "Mi día" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: heading, exact: typeof heading === "string" }),
+  ).toBeVisible({
     timeout: FIRST_PAINT_MS,
   });
-  await expect(page.getByText("Anastasia Vandermolen-Whitaker").first()).toBeVisible();
+  await expect(page.getByText(fromFixture).first()).toBeVisible();
   await page.evaluate(() => document.fonts?.ready).catch(() => {});
   await page.waitForTimeout(250);
+}
+
+const openMyDayInSpanish = (page: Page, width: number) =>
+  openInSpanish(page, width, "/my-day", "Mi día", "Anastasia Vandermolen-Whitaker");
+
+/** What each of the other pages said in English, by page. Words a fixture
+ *  holds are left out: a notification's title is written by the server in
+ *  English and stays so, and is not a finding. */
+const ENGLISH_ELSEWHERE = {
+  "/my-schedule": ["My schedule", "The next two weeks", "stops", "Today", "left"],
+  "/waste-log": [
+    "Waste disposal log",
+    "Log a dump",
+    "Recent total",
+    "Facilities",
+    "Directions",
+    "Recent manifests",
+    "No facility recorded",
+    "Receipt",
+    "Delete",
+    "Back to My Day",
+    "46 bags",
+    "1284.5 lbs",
+  ],
+  "/notifications": [
+    "Alerts",
+    "Recent activity",
+    "Unread",
+    "Mark all read",
+    "Settings",
+    " ago",
+    "just now",
+  ],
+};
+
+async function englishLeftOn(page: Page, path: keyof typeof ENGLISH_ELSEWHERE) {
+  const text = await page.evaluate(() => document.body.innerText);
+  return { text, leftover: ENGLISH_ELSEWHERE[path].filter((w) => text.includes(w)) };
 }
 
 async function measure(page: Page, width: number, where: string) {
@@ -114,5 +170,69 @@ for (const width of [360, 768]) {
     await expect(page.getByText("Enviar “voy en camino”").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Confirmar omisión" })).toBeVisible();
     await measure(page, width, `/my-day (es, options open) @${width}px`);
+  });
+
+  test(`My schedule in Spanish fits at ${width}px`, async ({ page }) => {
+    await openInSpanish(page, width, "/my-schedule", "Mi calendario", "Grosse Pointe Woods");
+    // The list's accessible name follows the language too.
+    await expect(page.locator('ul[aria-label="Tus próximos días"]')).toBeVisible();
+    await measure(page, width, `/my-schedule (es) @${width}px`);
+
+    const { text, leftover } = await englishLeftOn(page, "/my-schedule");
+    // Both plural sides and the partly worked day: 12 paradas / 1 parada,
+    // "faltan 7" on today's row, and today badged Hoy.
+    expect(text).toMatch(/paradas/i);
+    expect(text).toMatch(/\bparada\b/i);
+    expect(text).toMatch(/faltan 7/i);
+    expect(text).toMatch(/\bhoy\b/i);
+    expect(leftover, `English still on /my-schedule @${width}px`).toEqual([]);
+  });
+
+  test(`the waste log in Spanish fits at ${width}px, with its form open`, async ({ page }) => {
+    await openInSpanish(
+      page,
+      width,
+      "/waste-log",
+      // The "?" beside it is part of the heading's accessible name, and its
+      // Knowledge Center article title is English-only, so match the start.
+      /^Registro de desechos/,
+      "TKT-2026-0930-0048812-NB-GLENVIEW",
+    );
+    await measure(page, width, `/waste-log (es) @${width}px`);
+
+    const first = await englishLeftOn(page, "/waste-log");
+    expect(first.text).toContain("Sin centro registrado");
+    expect(first.text).toContain("46 bolsas");
+    expect(first.text).toContain("1 bolsa");
+    expect(first.text).toContain("Cómo llegar");
+    expect(first.leftover, `English still on /waste-log @${width}px`).toEqual([]);
+
+    await page.getByRole("button", { name: "Registrar descarga" }).click();
+    await expect(page.getByText("Foto del recibo (opcional)")).toBeVisible();
+    await measure(page, width, `/waste-log (es, form open) @${width}px`);
+    const open = await englishLeftOn(page, "/waste-log");
+    expect(open.leftover, `English in the open form @${width}px`).toEqual([]);
+  });
+
+  test(`Alerts in Spanish fit at ${width}px, with the settings open`, async ({ page }) => {
+    await openInSpanish(
+      page,
+      width,
+      "/notifications",
+      "Avisos",
+      "Northbrook Homeowners Association #4471",
+    );
+    await measure(page, width, `/notifications (es) @${width}px`);
+    const first = await englishLeftOn(page, "/notifications");
+    expect(first.text).toContain("Marcar todo como leído");
+    expect(first.text).toMatch(/hace 3 h/);
+    expect(first.leftover, `English still on /notifications @${width}px`).toEqual([]);
+
+    await page.getByRole("button", { name: "Ajustes de avisos" }).click();
+    await expect(page.getByText("Quejas de clientes")).toBeVisible();
+    await measure(page, width, `/notifications (es, settings open) @${width}px`);
+    const open = await englishLeftOn(page, "/notifications");
+    expect(open.text).toContain("Casos que la recepcionista IA pasó al equipo");
+    expect(open.leftover, `English in the settings panel @${width}px`).toEqual([]);
   });
 }
