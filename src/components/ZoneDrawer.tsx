@@ -507,6 +507,9 @@ export function ZoneDrawer({
                   value={initialCleanup}
                   onChange={mark(setInitialCleanup)}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Charged when First cleanup on the Zones page is set to Flat price.
+                </p>
               </div>
             </div>
 

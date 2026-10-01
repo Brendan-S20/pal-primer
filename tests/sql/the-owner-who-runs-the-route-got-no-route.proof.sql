@@ -13,6 +13,12 @@ SET client_min_messages TO notice;
 
 BEGIN;
 
+-- Both seed proofs replace seed_demo_org inside their transaction and then
+-- seed. Run side by side (vitest runs files in parallel) they deadlocked in
+-- CI on 2026-10-01. One lock, held to the end of the transaction, puts them
+-- in a queue.
+SELECT pg_advisory_xact_lock(hashtext('houndstack.proof.seed_demo_org'));
+
 \i :migration
 
 INSERT INTO auth.users (id, email) VALUES
