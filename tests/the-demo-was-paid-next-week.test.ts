@@ -73,17 +73,37 @@ if (!reachable) {
   );
 }
 
+/** Run the proof, again if and only if Postgres chose it as a deadlock victim.
+ *  Every proof here re-applies migrations inside its own transaction, and one
+ *  that runs ALTER TABLE takes an exclusive lock; vitest runs files side by
+ *  side, so two can cross (CI, 2026-10-01: "deadlock detected" on this
+ *  proof's first INSERT). A deadlock rolls the whole transaction back, so a
+ *  retry starts clean; Postgres's own advice is to retry. Any other failure
+ *  is returned as it is. */
+function runProof(args: string[]) {
+  let r = spawnSync(psql!, args, { encoding: "utf8", timeout: 180_000 });
+  for (let i = 0; i < 2 && /deadlock detected/.test(`${r.stdout}${r.stderr}`); i++) {
+    r = spawnSync(psql!, args, { encoding: "utf8", timeout: 180_000 });
+  }
+  return r;
+}
+
 describe.skipIf(!reachable)("a seeded demo, in a real database", () => {
   it("has the files it runs", () => {
     for (const f of [MIGRATION, ROUTE, PROOF]) expect(existsSync(f), f).toBe(true);
   });
 
   it("dates nothing after now, and leaves nothing behind", () => {
-    const r = spawnSync(
-      psql!,
-      [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-v", `route=${ROUTE}`, "-f", PROOF],
-      { encoding: "utf8", timeout: 180_000 },
-    );
+    const r = runProof([
+      DB_URL,
+      "-X",
+      "-v",
+      `migration=${MIGRATION}`,
+      "-v",
+      `route=${ROUTE}`,
+      "-f",
+      PROOF,
+    ]);
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
