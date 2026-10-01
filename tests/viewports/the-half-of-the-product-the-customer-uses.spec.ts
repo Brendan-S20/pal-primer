@@ -378,6 +378,7 @@ test.describe("the live map, which a customer opens from the on-my-way text", ()
     const { scrollW, innerW } = await measurePageOverflow(page);
     expect(scrollW).toBeLessThanOrEqual(innerW + 1);
   });
+});
 
 test.describe("the signup page, which prices the first cleanup by the customer's answer", () => {
   /**
