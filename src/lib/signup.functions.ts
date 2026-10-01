@@ -6,6 +6,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
+import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 
 function anon() {
   return createClient<Database>(
@@ -25,7 +27,34 @@ export const getSignupOrg = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const org = rows?.[0];
     if (!org) throw new Error("Signup is not available for this URL.");
-    return org;
+
+    // Whether to ask "when was your yard last cleaned?", and with which
+    // answers. Labels and ids only: a price depends on the zone and the dogs,
+    // so it comes back with the quote, priced by the database. Read with the
+    // service role because the anon key cannot read organizations, and only
+    // for the org the public lookup above already resolved.
+    let firstCleanup: { mode: string; tiers: Array<{ id: string; label: string }> } = {
+      mode: "off",
+      tiers: [],
+    };
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: cfg } = await (supabaseAdmin as any)
+        .from("organizations")
+        .select("first_cleanup_pricing")
+        .eq("id", org.id)
+        .maybeSingle();
+      const pricing = parseFirstCleanupPricing(cfg?.first_cleanup_pricing);
+      firstCleanup = {
+        mode: pricing.mode,
+        tiers: pricing.tiers.map((t) => ({ id: t.id, label: t.label })),
+      };
+    } catch (e) {
+      // Without it the page still quotes; the server refuses to charge a
+      // tiered first cleanup nobody answered for, so this cannot under-bill.
+      console.error("signup first-cleanup settings lookup failed", org.id, e);
+    }
+    return { ...org, firstCleanup };
   });
 
 const quoteSchema = z.object({
@@ -33,6 +62,9 @@ const quoteSchema = z.object({
   postal_code: z.string().trim().min(3).max(12),
   dog_count: z.coerce.number().int().min(1).max(20),
   frequency: z.enum(FREQS),
+  // The customer's answer to "when was your yard last cleaned?", as the
+  // owner's tier id. An id, never a price: public_quote prices it.
+  last_cleaned: z.string().trim().max(40).optional().or(z.literal("")),
 });
 
 export const getSignupQuote = createServerFn({ method: "POST" })
@@ -44,14 +76,20 @@ export const getSignupQuote = createServerFn({ method: "POST" })
       _postal_code: data.postal_code.trim(),
       _dog_count: data.dog_count,
       _frequency: data.frequency,
+      ...(data.last_cleaned ? { _last_cleaned: data.last_cleaned } : {}),
     });
     if (error) throw new Error(error.message);
     const q = rows?.[0];
     if (!q) return { available: false as const };
-    return { available: true as const, quote: q };
+    return {
+      available: true as const,
+      quote: { ...q, first_cleanup_options: parseQuoteOptions(q.first_cleanup_options) },
+    };
   });
 
-const checkoutSchema = quoteSchema.extend({
+/** Exported for the test that proves a price in the request body is dropped
+ *  before the handler runs. zod strips keys a schema does not name. */
+export const signupCheckoutSchema = quoteSchema.extend({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(255),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
@@ -66,7 +104,7 @@ const checkoutSchema = quoteSchema.extend({
  * payment_intent.succeeded (source "signup_inline"). Card only so payment
  * settles instantly and provisioning isn't delayed by ACH clearing. */
 export const createSignupPaymentIntent = createServerFn({ method: "POST" })
-  .inputValidator((d) => checkoutSchema.parse(d))
+  .inputValidator((d) => signupCheckoutSchema.parse(d))
   .handler(async ({ data }) => {
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", {
@@ -74,10 +112,14 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       _postal_code: data.postal_code.trim(),
       _dog_count: data.dog_count,
       _frequency: data.frequency,
+      ...(data.last_cleaned ? { _last_cleaned: data.last_cleaned } : {}),
     });
     if (qErr) throw new Error(qErr.message);
     const q = qRows?.[0];
     if (!q) throw new Error("No service in that ZIP code yet. Try another.");
+    // Everything charged below comes from `q`, which the database priced. See
+    // signup-charge.ts: there is no path from the request body to an amount.
+    const charge = signupChargeFromQuote(q);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -140,8 +182,10 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         postal_code: data.postal_code.trim(),
         dog_count: data.dog_count,
         frequency: data.frequency,
-        recurring_price_cents: q.recurring_price_cents,
-        initial_cleanup_cents: q.initial_cleanup_cents,
+        recurring_price_cents: charge.recurringCents,
+        initial_cleanup_cents: charge.firstCleanupCents,
+        first_cleanup_tier_id: charge.firstCleanupLabel ? data.last_cleaned || null : null,
+        first_cleanup_label: charge.firstCleanupLabel,
         currency: q.currency,
       })
       .select("id")
@@ -155,7 +199,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     const acct = await requireOrgStripeAccount(q.organization_id);
     const stripe = await connectStripe();
 
-    const amountCents = q.initial_cleanup_cents + q.recurring_price_cents;
+    const amountCents = charge.amountCents;
     const pi = await stripe.paymentIntents.create(
       {
         amount: amountCents,
@@ -163,7 +207,10 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         currency: q.currency,
         receipt_email: data.email.toLowerCase(),
         payment_method_types: ["card"],
-        description: `First-time cleanup + first month prepay (${data.frequency.replace("_", "-")}, ${data.dog_count} dog${data.dog_count > 1 ? "s" : ""})`,
+        // "first visit", not "first month": the recurring price is PER VISIT
+        // (see the note in SignupFlow.tsx), and the credit this funds pays
+        // for exactly one.
+        description: `${charge.firstCleanupCents > 0 ? "First cleanup + first visit" : "First visit"} prepay (${data.frequency.replace("_", "-")}, ${data.dog_count} dog${data.dog_count > 1 ? "s" : ""})`,
         metadata: {
           signup_request_id: sr.id,
           organization_id: q.organization_id,

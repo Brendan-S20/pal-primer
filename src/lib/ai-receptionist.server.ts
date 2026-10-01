@@ -82,10 +82,26 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
         if (error) return { available: false, reason: error.message };
         const row = Array.isArray(data) ? data[0] : data;
         if (!row) return { available: false, reason: "No service in that zip." };
+        // When the owner prices the first cleanup by how long since the yard
+        // was last cleaned, there is no single number to quote until the
+        // caller says; `initial_cleanup_cents` is null then, and reading it as
+        // 0 would promise a free first cleanup. Quote the owner's answers.
+        const options = Array.isArray(row.first_cleanup_options)
+          ? (row.first_cleanup_options as Array<{ label?: string; price_cents?: number }>)
+          : [];
         return {
           available: true,
           price_per_visit_usd: (row.recurring_price_cents ?? 0) / 100,
-          first_cleanup_usd: (row.initial_cleanup_cents ?? 0) / 100,
+          first_cleanup_usd:
+            row.initial_cleanup_cents == null ? null : row.initial_cleanup_cents / 100,
+          ...(options.length
+            ? {
+                first_cleanup_depends_on_when_last_cleaned: options.map((o) => ({
+                  last_cleaned: o.label ?? "",
+                  usd: (o.price_cents ?? 0) / 100,
+                })),
+              }
+            : {}),
           zone_name: row.zone_name ?? null,
         };
       },

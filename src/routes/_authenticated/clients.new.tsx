@@ -4,6 +4,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
+import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
+import {
+  firstCleanupDescription,
+  firstCleanupPriceCents,
+  LAST_CLEANED_QUESTION,
+} from "@/lib/first-cleanup";
+import { usePermissions } from "@/hooks/useMyRole";
 import { getLeadForConversion, linkLeadToExistingClient } from "@/lib/leads.functions";
 import { getQuote, markQuoteConverted } from "@/lib/quotes.functions";
 import { convertTarget, quoteConversion, quoteToWizardPrefill } from "@/lib/quotes";
@@ -559,6 +566,51 @@ function NewClientWizard({
   })();
   const needsPrice = !skipPlan && priceCents == null;
 
+  // ── The first cleanup ────────────────────────────────────────────────────
+  // Offered when the owner prices one, to someone who may bill, and not when
+  // the client comes from a quote that already carries one-time charges —
+  // those are billed from the quote, and offering it here would bill twice.
+  // Nothing is picked by default: the office decides per client.
+  const { can } = usePermissions();
+  const firstCleanupFn = useServerFn(getFirstCleanupPricing);
+  const firstCleanupQ = useQuery({
+    queryKey: ["first-cleanup-pricing"],
+    queryFn: () => firstCleanupFn(),
+    staleTime: 60_000,
+  });
+  const fcPricing = firstCleanupQ.data?.pricing ?? null;
+  const offersFirstCleanup =
+    !!fcPricing &&
+    fcPricing.mode !== "off" &&
+    accountType === "residential" &&
+    can("manage_client_billing") &&
+    !(fromQuote && fromQuote.oneTimeCents > 0);
+  // "" = no first cleanup; "flat" = the zone's fee; otherwise a tier id.
+  const [fcChoice, setFcChoice] = useState("");
+  const [fcOverride, setFcOverride] = useState("");
+  const zoneFlatCents =
+    quoteQ.data && "quote" in quoteQ.data
+      ? ((quoteQ.data as any).quote.initialCleanupCents as number)
+      : null;
+  const fcSuggestedCents =
+    fcPricing && fcChoice
+      ? firstCleanupPriceCents(fcPricing, {
+          zoneFlatCents,
+          dogCount,
+          tierId: fcChoice === "flat" ? null : fcChoice,
+        })
+      : null;
+  const fcCents = (() => {
+    if (!offersFirstCleanup || !fcChoice) return null;
+    const override = parseFloat(fcOverride);
+    if (!isNaN(override) && override >= 0) return Math.round(override * 100);
+    return fcSuggestedCents;
+  })();
+  const fcTierLabel =
+    fcPricing?.mode === "by_last_cleaned"
+      ? (fcPricing.tiers.find((t) => t.id === fcChoice)?.label ?? null)
+      : null;
+
   const mutation = useMutation({
     mutationFn: () =>
       onboardFn({
@@ -606,14 +658,28 @@ function NewClientWizard({
               },
           officeNote: officeNote.trim() || undefined,
           fromLeadId: fromLead?.id,
+          firstCleanup:
+            !skipPlan && fcCents != null && fcCents > 0
+              ? { priceCents: fcCents, description: firstCleanupDescription(fcTierLabel, dogCount) }
+              : undefined,
         },
       }),
-    onSuccess: ({ id, firstVisitOn, welcomeEmailed, officeNoteSaved, leadLinked }) => {
+    onSuccess: ({
+      id,
+      firstVisitOn,
+      welcomeEmailed,
+      officeNoteSaved,
+      leadLinked,
+      firstCleanupInvoiced,
+    }) => {
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
+      if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
       if (welcomeEmailed && primaryEmail) parts.push(`Welcome email sent to ${primaryEmail}.`);
       toast.success(parts.join(" "), { duration: 8000 });
       if (!officeNoteSaved) toast.error("The office note did not save. Add it from the client's Notes.");
+      if (firstCleanupInvoiced === false)
+        toast.error("The first-cleanup invoice was not created. Create it from Invoices, New invoice.");
       if (leadLinked === false)
         toast.error("The lead could not be marked converted. Mark it from the Leads page.");
       qc.invalidateQueries({ queryKey: ["clients"] });
@@ -1281,6 +1347,71 @@ function NewClientWizard({
                     )}
                   </div>
                 </div>
+
+                {offersFirstCleanup && fcPricing && (
+                  <div className="space-y-3 rounded-md border p-4">
+                    <div>
+                      <div className="text-sm font-medium">First cleanup</div>
+                      <p className="text-xs text-muted-foreground">
+                        One-time, billed on its own invoice when the client is created.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="min-w-0 space-y-2">
+                        <Label htmlFor="fc-choice">
+                          {fcPricing.mode === "by_last_cleaned"
+                            ? LAST_CLEANED_QUESTION.replace("your yard", "the yard")
+                            : "Charge a first cleanup?"}
+                        </Label>
+                        <select
+                          id="fc-choice"
+                          value={fcChoice}
+                          onChange={(e) => {
+                            setFcChoice(e.target.value);
+                            setFcOverride("");
+                          }}
+                          className="h-10 w-full min-w-0 rounded-md border bg-background px-3 text-sm touch:min-h-11"
+                        >
+                          <option value="">No first-cleanup charge</option>
+                          {fcPricing.mode === "flat" ? (
+                            <option value="flat">Yes, the zone&apos;s first-cleanup fee</option>
+                          ) : (
+                            fcPricing.tiers.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.label}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                      {fcChoice && (
+                        <div className="space-y-2">
+                          <Label htmlFor="fc-price">First-cleanup price</Label>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-muted-foreground">$</span>
+                            <Input
+                              id="fc-price"
+                              inputMode="decimal"
+                              placeholder={
+                                fcSuggestedCents != null
+                                  ? (fcSuggestedCents / 100).toFixed(2)
+                                  : "Enter a price"
+                              }
+                              value={fcOverride}
+                              onChange={(e) => setFcOverride(e.target.value)}
+                              className="max-w-[160px]"
+                            />
+                            {fcCents != null && (
+                              <span className="text-xs text-muted-foreground">
+                                Invoiced: <strong>{money(fcCents)}</strong>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
