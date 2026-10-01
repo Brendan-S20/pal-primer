@@ -567,6 +567,11 @@ const BASE_STUBS: Record<string, Stub> = {
     problem:
       "56 of 110 properties fall outside every zone, 54 still carry a zone the rules would no longer give them, Uptown / Edgewater Beach Commercial Grounds matches no properties.",
   },
+  // First-cleanup pricing: tiered, with the long answer, so the Zones page's
+  // summary card, its editor, the quote editor's "Add first cleanup" and the
+  // new-client wizard all draw it. Off would draw one sentence and nothing to
+  // measure.
+  getFirstCleanupPricing: fx.FIRST_CLEANUP_PRICING,
   listZones: {
     zones: [
       {
@@ -1202,6 +1207,10 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // /track/:token, the live map. Keyed by token like the quote link: each
   // state draws a different page.
   getPublicTracking: (a) => pfx.PUBLIC_TRACKING[a.token as string] ?? { found: false },
+  // /signup/:slug with first-cleanup tiers: the question in the service card,
+  // and the quote priced for whichever answer the sweep picked.
+  getSignupOrg: pfx.SIGNUP_ORG,
+  getSignupQuote: (a) => pfx.signupQuote(a.last_cleaned as string | undefined),
   portalSelfServeOptions: {
     allow_self_reschedule: true,
     allow_vacation_hold: true,

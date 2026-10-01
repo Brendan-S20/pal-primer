@@ -3106,6 +3106,7 @@ export type Database = {
           require_completion_photo: boolean
           visit_checklist: Json
           email_visit_checklist: boolean
+          first_cleanup_pricing: Json
           notify_email_weather_reschedule: boolean
           notify_email_weekly_digest: boolean
           notify_email_welcome: boolean
@@ -3246,6 +3247,7 @@ export type Database = {
           require_completion_photo?: boolean
           visit_checklist?: Json
           email_visit_checklist?: boolean
+          first_cleanup_pricing?: Json
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -3386,6 +3388,7 @@ export type Database = {
           require_completion_photo?: boolean
           visit_checklist?: Json
           email_visit_checklist?: boolean
+          first_cleanup_pricing?: Json
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -5186,6 +5189,8 @@ export type Database = {
           dog_count: number
           email: string
           error_message: string | null
+          first_cleanup_label: string | null
+          first_cleanup_tier_id: string | null
           frequency: string
           id: string
           initial_cleanup_cents: number
@@ -5213,6 +5218,8 @@ export type Database = {
           dog_count: number
           email: string
           error_message?: string | null
+          first_cleanup_label?: string | null
+          first_cleanup_tier_id?: string | null
           frequency: string
           id?: string
           initial_cleanup_cents: number
@@ -5240,6 +5247,8 @@ export type Database = {
           dog_count?: number
           email?: string
           error_message?: string | null
+          first_cleanup_label?: string | null
+          first_cleanup_tier_id?: string | null
           frequency?: string
           id?: string
           initial_cleanup_cents?: number
@@ -7454,13 +7463,17 @@ export type Database = {
         Args: {
           _dog_count: number
           _frequency: string
+          _last_cleaned?: string
           _postal_code: string
           _slug: string
         }
         Returns: {
           base_price_cents: number
           currency: string
-          initial_cleanup_cents: number
+          first_cleanup_label: string | null
+          first_cleanup_mode: string
+          first_cleanup_options: Json
+          initial_cleanup_cents: number | null
           organization_id: string
           per_dog_addl_cents: number
           recurring_price_cents: number
