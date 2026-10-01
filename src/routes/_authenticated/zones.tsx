@@ -35,6 +35,8 @@ import {
   type OverviewZone,
 } from "@/components/ZonesOverviewMap";
 import { HelpTip } from "@/components/HelpTip";
+import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
+import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 
 export const Route = createFileRoute("/_authenticated/zones")({
   component: ZonesPage,
@@ -81,6 +83,14 @@ function ZonesPage() {
   });
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
+  // A zone's own first-cleanup fee is only a price in "flat" mode; in the
+  // other two it is a number nothing charges, so the card does not show it.
+  const firstCleanupFn = useServerFn(getFirstCleanupPricing);
+  const firstCleanupQ = useQuery({
+    queryKey: ["first-cleanup-pricing"],
+    queryFn: () => firstCleanupFn(),
+  });
+  const zoneFeeIsCharged = firstCleanupQ.data?.pricing.mode === "flat";
 
   // null = closed, "new" = create, otherwise the zone row being edited.
   const [drawer, setDrawer] = useState<"new" | any | null>(null);
@@ -264,6 +274,7 @@ function ZonesPage() {
             zone={z}
             canEdit={canEdit}
             onEdit={() => setDrawer(z)}
+            showFirstCleanup={zoneFeeIsCharged}
             selected={sel.isSelected(z.id)}
             onToggleSelect={canEdit ? (next) => sel.toggle(z.id, next) : undefined}
           />
@@ -275,6 +286,8 @@ function ZonesPage() {
           </Card>
         )}
       </div>
+
+      <FirstCleanupPricingCard canEdit={canEdit} />
 
       {bulkDialog}
       {drawer !== null && (
@@ -303,12 +316,14 @@ function ZoneCard({
   zone,
   canEdit,
   onEdit,
+  showFirstCleanup = false,
   selected = false,
   onToggleSelect,
 }: {
   zone: any;
   canEdit: boolean;
   onEdit: () => void;
+  showFirstCleanup?: boolean;
   selected?: boolean;
   onToggleSelect?: (next: boolean) => void;
 }) {
@@ -440,7 +455,7 @@ function ZoneCard({
           <div className="text-xs text-muted-foreground">
             base + {money(zone.per_dog_addl_cents)} / extra dog
           </div>
-          {zone.initial_cleanup_cents > 0 && (
+          {showFirstCleanup && zone.initial_cleanup_cents > 0 && (
             <div className="text-xs text-muted-foreground">
               First cleanup: {money(zone.initial_cleanup_cents)}
             </div>

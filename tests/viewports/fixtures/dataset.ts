@@ -37,6 +37,34 @@ export const ORG_NAME = "Whitfield-Ramirez Yard & Waste Services LLC";
 export const SIGNUP_URL =
   "https://app.houndstack.com/signup/whitfield-ramirez-yard-and-waste-services-llc";
 
+/** An owner's own wording for the last first-cleanup answer: a sentence, not
+ *  "3+ months". It is what the Zones page's summary row, its editor's label
+ *  input, and the wizard's and quote editor's pickers all have to hold. */
+export const FIRST_CLEANUP_LONG_TIER_LABEL =
+  "Three months or more, or honestly never since we moved in";
+
+/** `getFirstCleanupPricing`: tiered, with an extra-dog add-on, and the zone
+ *  list in the shape the server returns (camelCase). */
+export const FIRST_CLEANUP_PRICING = {
+  pricing: {
+    mode: "by_last_cleaned",
+    perExtraDogCents: 1000,
+    tiers: [
+      { id: "within_a_week", label: "Within a week", priceCents: 4500 },
+      { id: "one_to_four_weeks", label: "1–4 weeks", priceCents: 7500 },
+      { id: "one_to_three_months", label: "1–3 months", priceCents: 11000 },
+      { id: "three_months_or_never", label: FIRST_CLEANUP_LONG_TIER_LABEL, priceCents: 15000 },
+    ],
+  },
+  zones: [
+    {
+      id: "zzzz1111-0000-4000-8000-000000000001",
+      name: "Ravenswood Manor / Lincoln Square North",
+      initialCleanupCents: 7500,
+    },
+  ],
+};
+
 const iso = (d: Date) => d.toISOString();
 /** A date `offset` days from today, org-local, as YYYY-MM-DD. Exported since
  *  2026-09-14 so a fixture can place a day AFTER today without recomputing the
