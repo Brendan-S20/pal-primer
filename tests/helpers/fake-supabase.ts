@@ -12,7 +12,7 @@
 // use, and nothing else — a fake that grows past its callers stops being a test
 // double and becomes a second database to keep correct.
 
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 export type Row = Record<string, unknown>;
 export type Write = { table: string; op: string; payload: unknown };
@@ -30,6 +30,10 @@ export type Builder = PromiseLike<Result> & {
    *  this codebase (`.is("billed_at", null)`, `.is("warned_at", null)`), which
    *  is how a job that must run once proves it is the one running it. */
   is: (k: string, v: null) => Builder;
+  /** Case-insensitive equality: `.ilike(col, value)` with no `%` or `_` in
+   *  the value, which is how provisionSignup's email dedupe uses it. A
+   *  pattern with wildcards is refused rather than half-implemented. */
+  ilike: (k: string, v: string) => Builder;
   maybeSingle: () => Promise<Result>;
   single: () => Promise<Result>;
 };
@@ -61,8 +65,11 @@ export function createFakeAdmin(): Fake {
   const rpcImpls = new Map<string, (args: Record<string, unknown>) => unknown>();
 
   function builder(table: string): Builder {
-    const filters: Array<[string, "eq" | "neq" | "in" | "is", unknown]> = [];
+    const filters: Array<[string, "eq" | "neq" | "in" | "is" | "ilike", unknown]> = [];
     let op: "select" | "update" | "insert" | "upsert" = "select";
+    // `.insert(...).select(...)` returns the inserted rows, as PostgREST does
+    // with `Prefer: return=representation`; a bare insert returns nothing.
+    let returning = false;
     let payload: Row | Row[] = {};
     let conflictKey: string | undefined;
 
@@ -79,7 +86,9 @@ export function createFakeAdmin(): Fake {
                   // — otherwise a claim like `.is("billed_at", null)` matches
                   // nothing and every "runs once" test passes vacuously.
                   (r[k] ?? null) === v
-                : (v as unknown[]).includes(r[k]),
+                : kind === "ilike"
+                  ? String(r[k] ?? "").toLowerCase() === String(v).toLowerCase()
+                  : (v as unknown[]).includes(r[k]),
         ),
       );
 
@@ -89,9 +98,12 @@ export function createFakeAdmin(): Fake {
       if (op === "select") return { data: matched(), error: null };
 
       if (op === "insert") {
-        (fake.tables[table] ??= []).push(...rowsOf(payload).map((r) => ({ ...r })));
+        // Every table here has a uuid primary key with a default, so a row
+        // inserted without one gets one, as it would in Postgres.
+        const rows = rowsOf(payload).map((r) => ({ id: randomUUID(), ...r }));
+        (fake.tables[table] ??= []).push(...rows);
         fake.writes.push({ table, op, payload });
-        return { data: null, error: null };
+        return { data: returning ? rows.map((r) => ({ ...r })) : null, error: null };
       }
 
       if (op === "upsert") {
@@ -118,7 +130,7 @@ export function createFakeAdmin(): Fake {
     };
 
     const api: Builder = {
-      select: () => api,
+      select: () => ((returning = true), api),
       update: (p) => ((op = "update"), (payload = p), api),
       insert: (p) => ((op = "insert"), (payload = p), api),
       upsert: (p, opts) => ((op = "upsert"), (payload = p), (conflictKey = opts?.onConflict), api),
@@ -126,6 +138,10 @@ export function createFakeAdmin(): Fake {
       neq: (k, v) => (filters.push([k, "neq", v]), api),
       in: (k, v) => (filters.push([k, "in", v]), api),
       is: (k, v) => (filters.push([k, "is", v]), api),
+      ilike: (k, v) => {
+        if (/[%_]/.test(v)) throw new Error(`fake ilike does not model wildcards: ${v}`);
+        return filters.push([k, "ilike", v]), api;
+      },
       // `.update(...).select(...).maybeSingle()` is a WRITE that returns the
       // row, and PostgREST applies it. This used to read `matched()` directly,
       // so the pending update never ran and the pattern looked like a silent

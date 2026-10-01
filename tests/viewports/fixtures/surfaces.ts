@@ -5,6 +5,7 @@ import {
   CAMPAIGN_SENT_ID,
   CAMPAIGN_SENT_SUBJECT,
   CLIENT_ID,
+  FIRST_CLEANUP_LONG_TIER_LABEL,
   LEAD_ID,
   LEAD_NAME,
   LONG_STAFF_NAME,
@@ -267,6 +268,24 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("heading", { name: "Zones" }).first(),
     proofLabel: 'the "Zones" heading',
     expectsData: "Ravenswood Manor / Lincoln Square North",
+  },
+  {
+    // Added 2026-09-29 with first-cleanup pricing. The summary is measured by
+    // "/zones" above; this opens the editor, where each answer is a row of a
+    // label input, a price input and a remove button that has to WRAP at
+    // 320px rather than squeeze the label to nothing. The long answer is the
+    // proof the fixture reached the card: expectsData is checked before the
+    // editor opens, while it is still text in the summary.
+    id: "/zones · first-cleanup pricing",
+    path: "/zones",
+    proof: (p) => p.getByRole("heading", { name: "First cleanup" }),
+    proofLabel: 'the "First cleanup" card',
+    expectsData: FIRST_CLEANUP_LONG_TIER_LABEL,
+    open: async (p) => {
+      await p.getByRole("button", { name: "Edit first-cleanup pricing" }).click();
+    },
+    opened: (p) => p.getByRole("button", { name: "Save first-cleanup pricing" }),
+    openedLabel: 'the editor\'s "Save first-cleanup pricing" button',
   },
   {
     id: "/notifications",
@@ -541,6 +560,22 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("button", { name: "Save and send" }),
     proofLabel: 'the editor\'s "Save and send" button',
     expectsData: LEAD_NAME,
+  },
+  {
+    // The same draft with "Add first cleanup" open: a picker holding the
+    // owner's longest answer beside a dog count, and the add button that
+    // carries the price. Added 2026-09-29 with first-cleanup pricing.
+    id: "/quotes/:id · draft · first cleanup",
+    path: `/quotes/${QUOTE_DRAFT_ID}`,
+    proof: (p) => p.getByRole("button", { name: "Save and send" }),
+    proofLabel: 'the editor\'s "Save and send" button',
+    expectsData: LEAD_NAME,
+    open: async (p) => {
+      await p.getByRole("button", { name: "Add first cleanup" }).first().click();
+      await p.locator("#quote-fc-choice").selectOption("three_months_or_never");
+    },
+    opened: (p) => p.getByRole("button", { name: "Add first cleanup, $150.00" }),
+    openedLabel: 'the helper\'s "Add first cleanup, $150.00" button',
   },
   {
     // Added 2026-09-29 with campaigns. A row puts a status badge and an

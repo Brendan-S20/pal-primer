@@ -16,7 +16,7 @@
 import { appUrl } from "@/lib/app-origin";
 import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
@@ -32,7 +32,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getSignupQuote, createSignupPaymentIntent } from "@/lib/signup.functions";
+import { getSignupOrg, getSignupQuote, createSignupPaymentIntent } from "@/lib/signup.functions";
+import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
@@ -88,6 +89,19 @@ export function SignupFlow({
 }) {
   const getQuote = useServerFn(getSignupQuote);
   const createIntent = useServerFn(createSignupPaymentIntent);
+  const getOrg = useServerFn(getSignupOrg);
+
+  // Whether the business prices the first cleanup by when the yard was last
+  // cleaned, and the answers it offers. Same query key as the public route,
+  // so on /signup/{slug} this is the lookup the page already made.
+  const orgQ = useQuery({
+    queryKey: ["signup-org", slug],
+    queryFn: () => getOrg({ data: { slug } }),
+    retry: false,
+  });
+  const tiers =
+    orgQ.data?.firstCleanup?.mode === "by_last_cleaned" ? orgQ.data.firstCleanup.tiers : [];
+  const asksLastCleaned = tiers.length > 0;
 
   const [form, setForm] = useState({
     postal_code: prefill?.postal_code ?? "",
@@ -99,6 +113,7 @@ export function SignupFlow({
     street: prefill?.street ?? "",
     city: prefill?.city ?? "",
     region: prefill?.region ?? "",
+    last_cleaned: "",
   });
 
   const quoteMut = useMutation({
@@ -109,6 +124,7 @@ export function SignupFlow({
           postal_code: form.postal_code,
           dog_count: Number(form.dog_count),
           frequency: form.frequency as any,
+          last_cleaned: form.last_cleaned,
         },
       }),
     onError: (e: Error) => toast.error(e.message),
@@ -131,6 +147,9 @@ export function SignupFlow({
           postal_code: form.postal_code,
           dog_count: Number(form.dog_count),
           frequency: form.frequency as any,
+          // The answer, as a tier id. The price is not sent: the server asks
+          // the database for it and charges that.
+          last_cleaned: form.last_cleaned,
           name: form.name,
           email: form.email,
           phone: form.phone,
@@ -145,9 +164,29 @@ export function SignupFlow({
 
   const quote = quoteMut.data && quoteMut.data.available ? quoteMut.data.quote : null;
 
-  const canQuote = form.postal_code.trim().length >= 3 && Number(form.dog_count) >= 1;
+  const canQuote =
+    form.postal_code.trim().length >= 3 &&
+    Number(form.dog_count) >= 1 &&
+    (!asksLastCleaned || !!form.last_cleaned);
 
-  const canCheckout = !!quote && form.name.trim() && form.email.trim() && form.street.trim();
+  // The first cleanup as the database priced it. Priced by tier, the quote
+  // carries every answer's price for this yard, so changing the answer after
+  // quoting updates the line without a round trip; the charge is still
+  // re-priced on the server from the id at checkout.
+  const quoteOptions = quote?.first_cleanup_options ?? [];
+  const pickedOption = quoteOptions.find((o) => o.id === form.last_cleaned) ?? null;
+  const firstCleanupCents: number | null = !quote
+    ? null
+    : quote.first_cleanup_mode === "by_last_cleaned"
+      ? (pickedOption?.priceCents ?? null)
+      : (quote.initial_cleanup_cents ?? 0);
+
+  const canCheckout =
+    !!quote &&
+    firstCleanupCents != null &&
+    form.name.trim() &&
+    form.email.trim() &&
+    form.street.trim();
 
   const serviceCard = (
     <div className="rounded-2xl border bg-card p-6">
@@ -190,6 +229,30 @@ export function SignupFlow({
             </SelectContent>
           </Select>
         </div>
+        {asksLastCleaned && (
+          <div className="min-w-0 space-y-1.5 sm:col-span-3">
+            <Label htmlFor="last_cleaned">{LAST_CLEANED_QUESTION}</Label>
+            <Select
+              value={form.last_cleaned}
+              onValueChange={(v) => setFormField({ ...form, last_cleaned: v })}
+            >
+              <SelectTrigger id="last_cleaned" className="min-w-0 whitespace-normal text-left">
+                <SelectValue placeholder="Pick one" />
+              </SelectTrigger>
+              <SelectContent>
+                {tiers.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              A yard that has waited longer takes longer the first time, so this sets the price of
+              your first cleanup.
+            </p>
+          </div>
+        )}
       </div>
       <div className="mt-4">
         <Button
@@ -296,12 +359,25 @@ export function SignupFlow({
           <div className="text-xs uppercase tracking-wide text-muted-foreground">
             {quote.zone_name}
           </div>
-          <div className="flex items-baseline justify-between">
-            <div className="text-sm">First cleanup (one-time)</div>
-            <div className="font-medium">{money(quote.initial_cleanup_cents, quote.currency)}</div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <div className="text-sm">Ongoing ({FREQ_LABELS[form.frequency]})</div>
+          {(firstCleanupCents == null || firstCleanupCents > 0) && (
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="min-w-0 text-sm">
+                First cleanup (one-time)
+                {pickedOption && (
+                  <span className="block break-words text-xs text-muted-foreground">
+                    Last cleaned: {pickedOption.label}
+                  </span>
+                )}
+              </div>
+              <div className="shrink-0 font-medium">
+                {firstCleanupCents == null
+                  ? "Answer above"
+                  : money(firstCleanupCents, quote.currency)}
+              </div>
+            </div>
+          )}
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="min-w-0 text-sm">Ongoing ({FREQ_LABELS[form.frequency]})</div>
             {/* PER VISIT, not per month. `public_quote` returns
                 `round(base_visit_cents × frequency_multiplier)`, and
                 pricing.ts documents it as "Per-visit price after the
@@ -311,15 +387,25 @@ export function SignupFlow({
                 this one said /mo and the line below sold "a prepaid first
                 month" for what buys ONE visit. Weekly service at $25 read
                 "$25.00/mo". */}
-            <div className="font-medium">{money(quote.recurring_price_cents, quote.currency)}/visit</div>
+            <div className="shrink-0 font-medium">
+              {money(quote.recurring_price_cents, quote.currency)}/visit
+            </div>
           </div>
           <div className="border-t pt-3 text-xs text-muted-foreground">
-            Charged today:{" "}
-            <strong className="text-foreground">
-              {money(quote.initial_cleanup_cents + quote.recurring_price_cents, quote.currency)}
-            </strong>
-            , which covers your first cleanup plus your first scheduled visit. After that you are
-            billed for visits as they happen. Cancel anytime.
+            {firstCleanupCents == null ? (
+              <>Tell us when your yard was last cleaned to see today's total.</>
+            ) : (
+              <>
+                Charged today:{" "}
+                <strong className="text-foreground">
+                  {money(firstCleanupCents + quote.recurring_price_cents, quote.currency)}
+                </strong>
+                {firstCleanupCents > 0
+                  ? ", which covers your first cleanup plus your first scheduled visit."
+                  : ", which covers your first scheduled visit."}{" "}
+                After that you are billed for visits as they happen. Cancel anytime.
+              </>
+            )}
           </div>
           {intent ? (
             <Elements
