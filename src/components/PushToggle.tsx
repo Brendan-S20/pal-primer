@@ -3,6 +3,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import i18n from "@/lib/i18n";
 import {
   getPushPublicKey,
   subscribeStaffPush,
@@ -47,7 +49,9 @@ function urlBase64ToUint8Array(base64String: string) {
 // for one that is not coming.
 const SW_READY_TIMEOUT_MS = 5000;
 
-async function serviceWorkerReady(): Promise<ServiceWorkerRegistration> {
+async function serviceWorkerReady(
+  unavailableMessage = "Notifications are not available right now. Reload the page and try again.",
+): Promise<ServiceWorkerRegistration> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -58,9 +62,7 @@ async function serviceWorkerReady(): Promise<ServiceWorkerRegistration> {
             reject(
               // Reaches the user through the catch blocks below, so it says
               // what they can do rather than what failed internally.
-              new Error(
-                "Notifications are not available right now. Reload the page and try again.",
-              ),
+              new Error(unavailableMessage),
             ),
           SW_READY_TIMEOUT_MS,
         );
@@ -100,6 +102,11 @@ interface Props {
 }
 
 export function PushToggle({ portalToken, className, compact }: Props) {
+  // Staff hear the language this device is set to. The portal passes a token
+  // and is a customer's screen, which speaks the business's language: English,
+  // whatever the customer's browser prefers.
+  const { t: interfaceT } = useTranslation();
+  const t = portalToken ? i18n.getFixedT("en") : interfaceT;
   const [supported, setSupported] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -136,15 +143,15 @@ export function PushToggle({ portalToken, className, compact }: Props) {
       const permission = await Notification.requestPermission();
       setPerm(permission);
       if (permission !== "granted") {
-        toast.error("Notifications blocked");
+        toast.error(t("push.blocked"));
         return;
       }
       const { publicKey } = await getKey();
       if (!publicKey) {
-        toast.error("Push not configured on server");
+        toast.error(t("push.notConfigured"));
         return;
       }
-      const reg = await serviceWorkerReady();
+      const reg = await serviceWorkerReady(t("push.unavailable"));
       const existing = await reg.pushManager.getSubscription();
       const sub =
         existing ??
@@ -165,9 +172,9 @@ export function PushToggle({ portalToken, className, compact }: Props) {
         await subStaff({ data: payload });
       }
       setSubscribed(true);
-      toast.success("Notifications on");
+      toast.success(t("push.on"));
     } catch (e: any) {
-      toast.error(e?.message ?? "Could not enable notifications");
+      toast.error(e?.message ?? t("push.enableFailed"));
     } finally {
       setBusy(false);
     }
@@ -176,7 +183,7 @@ export function PushToggle({ portalToken, className, compact }: Props) {
   async function disable() {
     setBusy(true);
     try {
-      const reg = await serviceWorkerReady();
+      const reg = await serviceWorkerReady(t("push.unavailable"));
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         const endpoint = sub.endpoint;
@@ -188,9 +195,9 @@ export function PushToggle({ portalToken, className, compact }: Props) {
         }
       }
       setSubscribed(false);
-      toast.success("Notifications off");
+      toast.success(t("push.off"));
     } catch (e: any) {
-      toast.error(e?.message ?? "Could not disable");
+      toast.error(e?.message ?? t("push.disableFailed"));
     } finally {
       setBusy(false);
     }
@@ -211,15 +218,15 @@ export function PushToggle({ portalToken, className, compact }: Props) {
             ? "inline-flex h-11 w-11 items-center justify-center text-muted-foreground"
             : "text-xs text-muted-foreground inline-flex items-center gap-1"
         }
-        title={compact ? "Notifications blocked" : undefined}
+        title={compact ? t("push.blocked") : undefined}
       >
         <BellOff className={compact ? "h-4 w-4" : "h-3 w-3"} />
-        {compact ? <span className="sr-only">Notifications blocked</span> : " Notifications blocked"}
+        {compact ? <span className="sr-only">{t("push.blocked")}</span> : ` ${t("push.blocked")}`}
       </span>
     );
   }
 
-  const label = subscribed ? "Notifications on" : "Enable notifications";
+  const label = subscribed ? t("push.on") : t("push.enable");
   return subscribed ? (
     <Button
       size="sm"
@@ -231,7 +238,7 @@ export function PushToggle({ portalToken, className, compact }: Props) {
       className={(compact ? "min-h-11 w-11 px-0 " : "min-h-[36px] ") + (className ?? "")}
     >
       <Bell className={compact ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-      {compact ? <span className="sr-only">{label}</span> : "On"}
+      {compact ? <span className="sr-only">{label}</span> : t("push.onShort")}
     </Button>
   ) : (
     <Button
@@ -244,7 +251,7 @@ export function PushToggle({ portalToken, className, compact }: Props) {
       className={(compact ? "min-h-11 w-11 px-0 " : "min-h-[36px] ") + (className ?? "")}
     >
       <BellOff className={compact ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-      {compact ? <span className="sr-only">{label}</span> : "Enable notifications"}
+      {compact ? <span className="sr-only">{label}</span> : t("push.enable")}
     </Button>
   );
 }

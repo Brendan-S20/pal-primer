@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { etaPhrase, onMyWayText, shouldSendOnNavigate, techFirstName } from "@/lib/on-my-way";
+import { trackingUrl } from "@/lib/live-tracking";
 
 /** Tell a customer their tech is on the way: by text when a text can go,
  *  otherwise by email.
@@ -33,7 +34,7 @@ export async function sendOnMyWay(opts: {
   const { data: v, error } = await supabase
     .from("visits")
     .select(
-      "id, organization_id, client_id, status, scheduled_on, eta_start, eta_end, on_my_way_sent_at, clients(display_name, primary_phone, sms_opt_out, comms_paused), properties(street, city, visit_contact_name, visit_contact_phone, visit_contact_email)",
+      "id, organization_id, client_id, status, scheduled_on, eta_start, eta_end, on_my_way_sent_at, tracking_token, clients(display_name, primary_phone, sms_opt_out, comms_paused), properties(street, city, visit_contact_name, visit_contact_phone, visit_contact_email)",
     )
     .eq("id", visitId)
     .single();
@@ -42,7 +43,7 @@ export async function sendOnMyWay(opts: {
   const { data: org } = await supabase
     .from("organizations")
     .select(
-      "name, timezone, sms_from_number, notify_sms_on_my_way, notify_email_on_my_way, on_my_way_on_navigate",
+      "name, timezone, sms_from_number, notify_sms_on_my_way, notify_email_on_my_way, on_my_way_on_navigate, live_tracking_enabled",
     )
     .eq("id", v.organization_id)
     .single();
@@ -87,6 +88,12 @@ export async function sendOnMyWay(opts: {
     .maybeSingle();
   const techName = techFirstName(staff?.display_name);
   const eta = etaPhrase(v.eta_start, v.eta_end, tz, now);
+  // The live map, only when the business has turned it on. Off, and the
+  // text and email are exactly what they were before it existed.
+  const trackUrl =
+    org.live_tracking_enabled === true
+      ? trackingUrl(await ensureTrackingToken(visitId, v.tracking_token))
+      : null;
 
   const sms = await trySms({
     supabase,
@@ -95,7 +102,13 @@ export async function sendOnMyWay(opts: {
     client,
     destPhone: prop?.visit_contact_phone || client?.primary_phone || null,
     staffId: staff?.id ?? null,
-    body: onMyWayText({ customerName, orgName: org.name ?? "your service", techName, eta }),
+    body: onMyWayText({
+      customerName,
+      orgName: org.name ?? "your service",
+      techName,
+      eta,
+      trackUrl,
+    }),
   });
 
   let result: OnMyWayResult;
@@ -114,7 +127,12 @@ export async function sendOnMyWay(opts: {
       idempotencyKey:
         trigger === "navigate" ? `on-my-way-${visitId}` : `on-my-way-${visitId}-${now.getTime()}`,
       toOverride: prop?.visit_contact_email || undefined,
-      templateData: { techName: techName ?? undefined, eta: eta ?? undefined, address },
+      templateData: {
+        techName: techName ?? undefined,
+        eta: eta ?? undefined,
+        address,
+        trackUrl: trackUrl ?? undefined,
+      },
       manual: trigger === "button",
     });
     result = r.ok
@@ -130,6 +148,28 @@ export async function sendOnMyWay(opts: {
       .eq("id", visitId);
   }
   return result;
+}
+
+/** The visit's tracking token, minted on first use. One per visit, kept
+ *  across re-sends, so a customer holding the first text's link still has a
+ *  working map after the button is pressed again. Written with the service
+ *  role, like on_my_way_sent_at: it is bookkeeping about a message. */
+async function ensureTrackingToken(visitId: string, existing: string | null): Promise<string> {
+  if (existing) return existing;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const minted = crypto.randomUUID();
+  await supabaseAdmin
+    .from("visits")
+    .update({ tracking_token: minted })
+    .eq("id", visitId)
+    .is("tracking_token", null);
+  // Whoever won a race, the stored one is the link.
+  const { data } = await supabaseAdmin
+    .from("visits")
+    .select("tracking_token")
+    .eq("id", visitId)
+    .single();
+  return (data?.tracking_token as string | null) ?? minted;
 }
 
 async function trySms(p: {

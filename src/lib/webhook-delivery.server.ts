@@ -354,7 +354,7 @@ export async function sendWebhook(
 
 // ── The worker ───────────────────────────────────────────────────────────
 
-type ClaimedRow = {
+export type ClaimedRow = {
   delivery_id: string;
   organization_id: string;
   endpoint_id: string;
@@ -399,6 +399,35 @@ export type RpcClient = {
 };
 
 /**
+ * The client's or lead's email and phone, added to `data.contact` at send
+ * time — but only for an endpoint whose owner switched "Include customer
+ * email and phone" on, and only for a record in that endpoint's own
+ * business. The database decides both (webhook_contact_for); this only asks.
+ *
+ * Added before signing, so the signature covers it. A lookup that fails
+ * throws rather than sending without it: the row's lease runs out and it is
+ * tried again, and a fault on our side is not counted against the
+ * receiver's endpoint.
+ */
+export async function withContact(admin: RpcClient, row: ClaimedRow): Promise<unknown> {
+  const p = row.payload as { data?: Record<string, unknown> } | null;
+  const data = p && typeof p === "object" ? p.data : undefined;
+  if (!data || typeof data !== "object") return row.payload;
+  const clientId = typeof data.client_id === "string" ? data.client_id : null;
+  const leadId = typeof data.lead_id === "string" ? data.lead_id : null;
+  if (!clientId && !leadId) return row.payload;
+
+  const { data: contact, error } = await admin.rpc("webhook_contact_for", {
+    _endpoint_id: row.endpoint_id,
+    _client_id: clientId,
+    _lead_id: clientId ? null : leadId,
+  });
+  if (error) throw new Error(`could not read contact details: ${error.message}`);
+  if (!contact) return row.payload;
+  return { ...p, data: { ...data, contact } };
+}
+
+/**
  * Claim due deliveries (or exactly one, for a test send), send each, and
  * record what happened.
  */
@@ -437,6 +466,7 @@ export async function processWebhookDeliveries(
 
   const handle = async (row: ClaimedRow) => {
     const key = readSecret(row);
+    const payload = await withContact(admin, row);
     const result: SendResult =
       "error" in key
         ? { ok: false, statusCode: null, error: key.error }
@@ -444,7 +474,7 @@ export async function processWebhookDeliveries(
             {
               url: row.url,
               secret: key.secret,
-              body: JSON.stringify(row.payload),
+              body: JSON.stringify(payload),
               eventType: row.event_type,
               deliveryId: row.delivery_id,
             },

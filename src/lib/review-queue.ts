@@ -121,7 +121,7 @@ export const REVIEW_KIND_COPY: Record<
     whatItMeans:
       "You have used most of the AI actions included in your plan for this month. Nothing is paused and nothing is broken. This is here so the overage on the next invoice is not the first you hear of it.",
     howToFix:
-      "Nothing, if the spend is expected. If it is not, the monthly ceiling and which tools may spend against it are in Settings → AI Tools.",
+      "Nothing, if the spend is expected. If it is not, the monthly ceiling and which tools may spend against it are in Settings → AI usage.",
   },
 };
 

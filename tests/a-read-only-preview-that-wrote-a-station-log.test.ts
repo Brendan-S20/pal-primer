@@ -54,6 +54,7 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import en from "@/lib/i18n/locales/en";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 // Lazy. A read resolved in a describe body turns a missing file into an
@@ -107,12 +108,14 @@ describe("a preview badged read-only does not write a station log", () => {
     // temporarily unavailable. It is not unavailable; it does not apply.
     const body = functionBody(myDay(), "StationRow");
     expect(body).toMatch(/readOnly\s*\?\s*\(/);
-    expect(body).toMatch(/Read-only while previewing/);
+    // The words are in lib/i18n (a tech can read them in Spanish).
+    expect(body).toMatch(/t\("stations\.readOnly"\)/);
+    expect(en.stations.readOnly).toMatch(/Read-only while previewing/);
     // The Save/Update button must sit on the non-readOnly branch.
     const branch = body.slice(body.indexOf("readOnly ? ("));
     const elseAt = branch.indexOf(") : (");
     expect(elseAt, "the read-only ternary has no else branch").toBeGreaterThan(-1);
-    expect(branch.slice(elseAt)).toMatch(/existing \? "Update" : "Save"/);
+    expect(branch.slice(elseAt)).toMatch(/existing \? t\("common\.update"\) : t\("common\.save"\)/);
   });
 
   it("takes the inputs down with it, so nothing invites an unsaveable edit", () => {

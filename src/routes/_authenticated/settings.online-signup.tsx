@@ -128,7 +128,7 @@ function OnlineSignupSettings() {
             {cfg?.publicSignupEnabled && !effective ? (
               <div className="mt-3 rounded-md border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-900">
                 Online signup is on, but you have no web address yet, so there's no link to give
-                anyone. Set one below (or set your portal address in Settings → Preferences, and signup
+                anyone. Set one below (or set your portal address in Settings → Client portal, and signup
                 will use that).
               </div>
             ) : null}

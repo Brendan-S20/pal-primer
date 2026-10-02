@@ -327,7 +327,11 @@ export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
   issued_at: iso(new Date(Date.now() - (i + 4) * 864e5)),
   client_id: c.id,
   clients: { display_name: c.display_name },
-  number: `INV-2026-${String(1041 + i)}`,
+  // There was a second `number` here, a string ("INV-2026-1041"), which
+  // silently overrode the integer above. invoices.number is an integer column
+  // and invoiceNumberLabel prefixes it, so every invoice list in the sweep
+  // read "INV-INV-2026-1041" -- three lines tall in a phone card -- for a
+  // label production draws as "INV-10420".
 }));
 
 /**

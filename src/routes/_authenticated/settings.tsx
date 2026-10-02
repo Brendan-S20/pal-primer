@@ -2,6 +2,7 @@ import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-r
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
+import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -25,7 +26,7 @@ const TAB_GROUPS: TabGroup[] = [
       { label: "Skip rules", to: "/settings/skip-rules" },
       { label: "Blackouts", to: "/settings/blackouts" },
       { label: "Add-ons", to: "/settings/addons" },
-      { label: "Deep-clean", to: "/settings/deep-clean" },
+      { label: "Deep clean", to: "/settings/deep-clean" },
     ],
   },
   {
@@ -43,12 +44,12 @@ const TAB_GROUPS: TabGroup[] = [
       // stranger's details, or let the stranger buy.
       { label: "Online signup", to: "/settings/online-signup" },
       { label: "Promotions", to: "/settings/promotions" },
-      { label: "Refer a business", to: "/settings/referrals" },
-      // BUILD-6: the child side of a franchise. Reachable by any plan on
-      // purpose — a franchisee is a location someone else recruited, and
-      // gating this behind Enterprise would make joining impossible for the
-      // orgs that actually need to join.
-      { label: "Franchise", to: "/settings/franchise" },
+      // Moved from Communications (launch pass, 2026-10). The page is
+      // "Reviews & referrals": the Google review link customers are sent to
+      // and the reward a customer earns for referring a neighbour, both
+      // things the customer sees, so they sit beside Promotions. The label
+      // now matches the page's own heading.
+      { label: "Reviews & referrals", to: "/settings/reviews" },
     ],
   },
   {
@@ -56,9 +57,7 @@ const TAB_GROUPS: TabGroup[] = [
     tabs: [
       { label: "SMS", to: "/settings/sms" },
       { label: "Emails", to: "/settings/emails" },
-      { label: "AI Tools", to: "/settings/ai" },
       { label: "AI receptionist", to: "/settings/ai-receptionist" },
-      { label: "Reviews", to: "/settings/reviews" },
       { label: "Automation", to: "/settings/automation" },
     ],
   },
@@ -66,7 +65,6 @@ const TAB_GROUPS: TabGroup[] = [
     title: "Financial",
     tabs: [
       { label: "Invoicing", to: "/settings/invoicing" },
-      { label: "Billing", to: "/settings/billing" },
       { label: "Accounting", to: "/settings/accounting" },
     ],
   },
@@ -75,18 +73,56 @@ const TAB_GROUPS: TabGroup[] = [
     // n8n or its own systems. Its own group rather than under Financial:
     // most of what people connect is not money (new clients to a mailing
     // list, completed visits to a review tool).
+    //
+    // Labelled by the thing an owner has heard of. Nobody running two trucks
+    // goes looking for "Webhooks"; they go looking for how to hook this up to
+    // Zapier, and the page's own first sentence names Zapier, Make and n8n.
     title: "Integrations",
-    tabs: [{ label: "Webhooks", to: "/settings/webhooks" }],
+    tabs: [{ label: "Zapier & webhooks", to: "/settings/webhooks" }],
   },
   {
     title: "Team",
     tabs: [{ label: "Users & roles", to: "/settings/users" }],
+  },
+  {
+    // ── THE BUSINESS'S OWN ACCOUNT WITH HOUNDSTACK ──────────────────────────
+    //
+    // Until the launch pass (2026-10) these four were scattered. "Billing" sat
+    // under Financial beside Invoicing: two words for money, where one is what
+    // you charge your customers and the other is what HoundStack charges you.
+    // "Refer a business" and "Franchise" sat under Customer-facing, although
+    // no customer ever sees either. All four are about this business's
+    // relationship with HoundStack, so they are one group.
+    //
+    // "Plan & billing" is also what onboarding and the plan picker already
+    // told people to look for, in a rail that said "Billing". "AI usage"
+    // because that is what the page shows (the monthly allowance, the ceiling,
+    // what has been spent); there are no tools on it to configure.
+    //
+    // tests/a-signpost-names-a-real-setting.test.ts holds every
+    // "Settings → X" in the product's copy to a label in this list.
+    title: "Your HoundStack account",
+    tabs: [
+      { label: "Plan & billing", to: "/settings/billing" },
+      { label: "AI usage", to: "/settings/ai" },
+      { label: "Refer a business", to: "/settings/referrals" },
+      // BUILD-6: the child side of a franchise. Reachable by any plan on
+      // purpose — a franchisee is a location someone else recruited, and
+      // gating this behind Enterprise would make joining impossible for the
+      // orgs that actually need to join.
+      { label: "Franchise", to: "/settings/franchise" },
+    ],
   },
 ];
 
 function SettingsLayout() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { role } = useMyRole();
+  // Only the heading follows the interface language. A tech reaches exactly
+  // one section, their own Preferences, which is translated; the section
+  // picker below is office-only and stays in English with the screens it
+  // opens.
+  const { t } = useTranslation();
   const groups = TAB_GROUPS.map((g) => ({
     ...g,
     // Hide tabs the role can't open — showing a link that bounces to the
@@ -117,9 +153,9 @@ function SettingsLayout() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
+        <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          {oneSection ? "How the app works on this device." : "Configure how your business runs."}
+          {oneSection ? t("settings.subtitleOneSection") : t("settings.subtitle")}
         </p>
       </div>
 

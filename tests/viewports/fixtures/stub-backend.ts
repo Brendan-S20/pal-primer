@@ -328,11 +328,10 @@ const BASE_STUBS: Record<string, Stub> = {
       {
         id: "route",
         label: "Assign your first route",
-        description:
-          "Assign visits to a tech from the Today board so the field crew has work loaded.",
+        description: "Assign visits to a tech on the Schedule so the field crew has work loaded.",
         done: false,
         to: "/routes",
-        cta: "Open Today",
+        cta: "Open schedule",
       },
       {
         id: "billing",
@@ -360,7 +359,7 @@ const BASE_STUBS: Record<string, Stub> = {
       {
         id: "aaaa1111-0000-4000-8000-000000000002",
         kind: "invoice_overdue",
-        title: "Invoice INV-2026-1041 is 6 days overdue",
+        title: "Invoice INV-10420 is 6 days overdue",
         body: "Anastasia Vandermolen-Whitaker owes $185.00.",
         link: "/invoices",
         read_at: null,
@@ -652,6 +651,8 @@ const BASE_STUBS: Record<string, Stub> = {
       description: "Zapier: new clients to Mailchimp, completed visits to the Google review request sheet",
       events: ["client.created", "visit.completed", "visit.skipped", "invoice.paid", "payment.received"],
       enabled: true,
+      // The Mailchimp Zap needs the address, so this one sends it.
+      include_contact: true,
       secret_last4: "Qz9x",
       consecutive_failures: 2,
       disabled_at: null,
@@ -667,6 +668,7 @@ const BASE_STUBS: Record<string, Stub> = {
       description: "",
       events: ["lead.created"],
       enabled: false,
+      include_contact: false,
       secret_last4: "a1B2",
       consecutive_failures: 5,
       disabled_at: "2026-09-27T03:00:00Z",
@@ -1010,6 +1012,97 @@ const BASE_STUBS: Record<string, Stub> = {
       },
     ],
   },
+  // ── THE WASTE LOG, a tab on every tech's bar ─────────────────────────────
+  //
+  // Until a-tech-who-reads-spanish measured it, nothing answered these and the
+  // page drew "No manifests yet." and an empty facility list — the narrowest
+  // thing it can draw. So: a facility name and address long enough to wrap
+  // beside the Directions link, an inactive one (its badge sits beside the
+  // name), a ticket number with no space in it, one manifest with no facility
+  // (the fallback label), one with a receipt (the Receipt button), and both
+  // sides of the bag plural. Shapes are listManifests' select: the row, plus
+  // `waste_disposal_facilities(name)` and `staff(display_name)`.
+  listFacilities: {
+    facilities: [
+      {
+        id: "f0f0f0f0-0000-4000-8000-000000000001",
+        name: "Northbrook–Glenview Regional Transfer & Recycling Station",
+        address: "4413 North Ravenswood Manor Terrace, Building C Scale House, Glenview, IL 60025",
+        active: true,
+      },
+      {
+        id: "f0f0f0f0-0000-4000-8000-000000000002",
+        name: "Old Harper Woods Municipal Compost Yard",
+        address: null,
+        active: false,
+      },
+    ],
+  },
+  listManifests: {
+    manifests: [
+      {
+        id: "f1f1f1f1-0000-4000-8000-000000000001",
+        disposed_on: fx.TODAY,
+        weight_lbs: 1284.5,
+        bag_count: 46,
+        ticket_number: "TKT-2026-0930-0048812-NB-GLENVIEW",
+        notes:
+          "Scale house closed at 3:30, used the after-hours drop. Attendant asked for the bags to be double-tied from now on.",
+        photo_url: `${fx.ORG_ID}/1759252800000.jpg`,
+        waste_disposal_facilities: {
+          name: "Northbrook–Glenview Regional Transfer & Recycling Station",
+        },
+        staff: { display_name: "Alejandro Villanueva-Castro" },
+      },
+      {
+        id: "f1f1f1f1-0000-4000-8000-000000000002",
+        disposed_on: fx.day(-3),
+        weight_lbs: 38,
+        bag_count: 1,
+        ticket_number: null,
+        notes: null,
+        photo_url: null,
+        waste_disposal_facilities: null,
+        staff: { display_name: "Dana Whitfield-Ramirez" },
+      },
+    ],
+  },
+  // The notification settings panel on /notifications: every type the server
+  // lists (notifications-center.functions.ts NOTIFICATION_TYPES, same words),
+  // one of them muted so both switch states are drawn.
+  getNotificationPrefs: {
+    mutedTypes: ["lead"],
+    types: [
+      { type: "concern", label: "Client concerns" },
+      { type: "payment_failed", label: "Failed client payments" },
+      { type: "lead", label: "New website leads" },
+      { type: "quote_response", label: "Quotes accepted or declined" },
+      { type: "receptionist_escalation", label: "AI receptionist escalations" },
+      { type: "inbound_sms", label: "Texts needing a reply" },
+      { type: "teammate_joined", label: "Teammate joined" },
+    ],
+  },
+  // Live tracking ON, and the technician's scheduled stop today is the one
+  // being shared: so /my-day draws the "Sharing your location with ..." chip,
+  // with its Stop button, on a real card at every width. Off would render
+  // nothing, and a chip nobody measured is the fault this file exists for.
+  // The customer name is the fixture's own, 40-odd characters of it.
+  getMyLiveShare: () => {
+    const v = fx
+      .visitsBetween(fx.TODAY, fx.TODAY)
+      .find((x) => x.assigned_staff_id === fx.STAFF[0].id && x.status === "scheduled");
+    return v
+      ? {
+          enabled: true,
+          active: {
+            visitId: v.id,
+            customerName: (v.clients as any).display_name,
+            until: new Date(Date.now() + 90 * 60_000).toISOString(),
+          },
+          nextVisitId: null,
+        }
+      : { enabled: false };
+  },
   getMyDay: () => {
     // ── ONE STOP IN EACH STATE, ON PURPOSE ──────────────────────────────
     //
@@ -1226,6 +1319,9 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // /q/:token, the quote link. One fixture per state, keyed by the token in
   // the URL, because each state draws a different panel under the document.
   getPublicQuote: (a) => pfx.PUBLIC_QUOTES[a.token as string] ?? { found: false },
+  // /track/:token, the live map. Keyed by token like the quote link: each
+  // state draws a different page.
+  getPublicTracking: (a) => pfx.PUBLIC_TRACKING[a.token as string] ?? { found: false },
   // /signup/:slug with first-cleanup tiers: the question in the service card,
   // and the quote priced for whichever answer the sweep picked.
   getSignupOrg: pfx.SIGNUP_ORG,

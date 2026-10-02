@@ -67,6 +67,24 @@ describe("what it says", () => {
     ).toBe("Hi Jane, your Acme Scoop tech is on the way for today's visit. Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.");
   });
 
+  it("adds the live map link only when it is handed one, and keeps the handshake after it", () => {
+    // Changed deliberately on 2026-09-29 (20260929100000, live tracking). The
+    // two strings above are unchanged: a business with live tracking off
+    // sends exactly this. With it on, two words and a link go after the
+    // arrival window and before ENT / DNE, which the customer still needs.
+    expect(
+      onMyWayText({
+        customerName: "Jane",
+        orgName: "Acme Scoop",
+        techName: "Sam",
+        eta: "by 10:30 AM",
+        trackUrl: "https://app.houndstack.com/track/7a000000-0000-4000-8000-0000000000a1",
+      }),
+    ).toBe(
+      "Hi Jane, Sam from Acme Scoop is on the way for today's visit, arriving by 10:30 AM. Live map: https://app.houndstack.com/track/7a000000-0000-4000-8000-0000000000a1 Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.",
+    );
+  });
+
   it("has an email for when it cannot be texted", async () => {
     const html = await render(
       React.createElement(TEMPLATES["on-my-way"].component, {
@@ -148,7 +166,7 @@ describe("the wiring", () => {
   });
 
   it("offers the button whether or not the client has a phone", () => {
-    const i = myDay.indexOf("Send &ldquo;on my way&rdquo;");
+    const i = myDay.indexOf(`{t("visit.sendOnMyWay")}`);
     expect(i).toBeGreaterThan(-1);
     const before = myDay.slice(i - 600, i);
     expect(before).toMatch(/onMyWay\.mutate\(\)/);

@@ -165,7 +165,8 @@ describe("the account is reachable from everywhere it should be", () => {
     // On a phone this sheet is the only place the identity appears at all —
     // the header is hidden on My Day.
     const profileIdx = tabbar.indexOf('to="/profile"');
-    const navIdx = tabbar.indexOf('aria-label="All sections"');
+    const navIdx = tabbar.indexOf('aria-label={t("nav.allSections")}');
+    expect(navIdx).toBeGreaterThan(-1);
     expect(profileIdx).toBeGreaterThan(-1);
     expect(profileIdx).toBeLessThan(navIdx);
   });

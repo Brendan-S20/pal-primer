@@ -348,11 +348,6 @@ export function growthPausedFor(state: TrialState): boolean {
   return state.phase === "expired" || state.phase === "lapsed";
 }
 
-/** What a paused account can and cannot do, in one sentence, for the banner. */
-export const GROWTH_PAUSED_NOTE =
-  "Paused means new customers only. Everything you already have keeps running: " +
-  "your clients, jobs and routes, your invoices and history, and the customer portal.";
-
 /** Why AI is unavailable, in words a tenant can act on. Never "unavailable". */
 export function aiUnavailableReason(state: TrialState): string | null {
   if (aiAvailableFor(state)) return null;
