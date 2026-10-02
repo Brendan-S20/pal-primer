@@ -232,7 +232,7 @@ function BillingPage() {
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Billing</h2>
+          <h2 className="text-lg font-semibold">Plan &amp; billing</h2>
           <p className="text-sm text-muted-foreground">
             Your HoundStack subscription: plan, add-ons, and invoices.
           </p>

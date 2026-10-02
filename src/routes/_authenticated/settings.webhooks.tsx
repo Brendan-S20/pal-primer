@@ -465,7 +465,7 @@ function WebhookSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Webhooks</h2>
+        <h2 className="text-lg font-semibold">Zapier &amp; webhooks</h2>
         <p className="text-sm text-muted-foreground">
           Send events from HoundStack to Zapier, Make, n8n or your own system as they happen: a
           visit completed, an invoice paid, a new lead. Each one is a signed JSON POST to an HTTPS

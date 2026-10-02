@@ -162,7 +162,11 @@ async function callProvider(
         res.status,
         detail.slice(0, 1000),
       );
-      const hint = res.status === 401 ? " (check your API key in Settings → AI)" : "";
+      // There is no API key in Settings any more (BYOK went with IMP-9; see
+      // line 78), so a 401 is ours to fix, not the tenant's. The hint used to
+      // send them to look for a field that does not exist.
+      const hint =
+        res.status === 401 ? " (a HoundStack configuration issue, not your account)" : "";
       throw new AiGenerationError(label, `The AI request was rejected (${res.status})${hint}.`);
     }
     const json = await res.json();

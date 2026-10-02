@@ -88,23 +88,43 @@ function MessagesLayout() {
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-[280px_1fr]">
+      {/* The one top-level page with no heading. Every other screen in the
+          sidebar opens on an h1 naming it; this one opened on a card titled
+          "Conversations", so the page and the nav item did not agree on what
+          the place was called (launch pass, 2026-10). Hidden on a phone
+          inside a thread, where the thread's own header with its back link
+          is the heading and a second one would push the messages down. */}
+      <div className={`md:col-span-2 ${onThread ? "max-md:hidden" : ""}`}>
+        <h1 className="text-2xl font-semibold">Messages</h1>
+        <p className="text-sm text-muted-foreground">
+          Text conversations between your business and your clients.
+        </p>
+      </div>
       <aside className={`rounded-lg border bg-card ${onThread ? "max-md:hidden" : ""}`}>
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Conversations</h2>
+          {/* Labelled. It was a 36px icon with only a `title`, which is a
+              tooltip, so on a phone the way to start a conversation was an
+              unnamed glyph, and the empty state told people to press a
+              "+ button" that is drawn as a speech bubble. */}
           <Button
-            variant="ghost"
-            size="icon"
-            title="New message"
+            variant="outline"
+            size="sm"
+            className="touch:min-h-11"
+            aria-expanded={composing}
             onClick={() => setComposing((v) => !v)}
           >
-            <MessageSquarePlus className="h-4 w-4 shrink-0" />
+            <MessageSquarePlus className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            New message
           </Button>
         </div>
         {composing && <NewMessagePicker onClose={() => setComposing(false)} />}
         <div className="max-h-[70vh] overflow-y-auto">
           {isLoading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
           {!isLoading && (data?.threads?.length ?? 0) === 0 && (
-            <p className="p-4 text-sm text-muted-foreground">No messages yet.</p>
+            <p className="p-4 text-sm text-muted-foreground">
+              No conversations yet. Press New message to text a client; their replies show up here.
+            </p>
           )}
           <ul className="divide-y">
             {(data?.threads ?? []).map((t: any) => (

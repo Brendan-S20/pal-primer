@@ -47,7 +47,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Invite your team in [Users & roles](/settings/users) and give each person the right role. See [What each role can see and do](article:roles).",
       "Add clients: one at a time from [Clients](/clients), or bring everything over at once with [Import](article:import-clients).",
       "Define your [add-on services](article:add-ons) in [Settings -> Add-ons](/settings/addons) so techs can bill extras from the field.",
-      "Plan a day on [Routes](/routes): assign visits to techs by zone and drag to reorder. See [Plan your first routes](article:routes-planning).",
+      "Plan a day on the [Schedule](/routes): assign visits to techs by zone and drag to reorder. See [Plan your first routes](article:routes-planning).",
       "Connect payments in [Payments](/payments) so invoices are payable online. See [Getting paid](article:getting-paid).",
     ],
     appLink: { to: "/dashboard", label: "Open the dashboard" },
@@ -124,7 +124,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Only people set to run routes appear here. If someone is missing, turn on \"Runs routes\" for them in [Users & roles](/settings/users).",
     ],
     steps: [
-      "Open [Routes](/routes) and pick Today, Week, or Month.",
+      "Open the [Schedule](/routes) and pick Today, Week, or Month.",
       "In week or month, filter by type, team or status to narrow both the calendar and the map at once.",
       "Unassigned visits appear grouped by zone. Drag them onto a tech, or use auto-assign to balance by capacity.",
       "Drag within a tech's column to set the drive order. Directions links use the property's address or coordinates.",
@@ -147,7 +147,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Business setup",
     body: [
       "The cloud icon in the top bar opens this week's forecast for your main service areas. Nearby [zones](article:zones) are grouped into one card, and risky days (heavy rain, high wind, storms, hard freezes) are highlighted so you can spot trouble at a glance.",
-      "To act on a risky day, open [Routes](/routes): the weather check there flags at-risk visits and can move them to a safe day. Clients can get an automatic weather-reschedule email when their visit moves.",
+      "To act on a risky day, open the [Schedule](/routes): the weather check there flags at-risk visits and can move them to a safe day. Clients can get an automatic weather-reschedule email when their visit moves.",
       "Forecasts are cached, so if the weather service is briefly unavailable you'll see the last saved forecast instead of an error.",
     ],
     // Same page, same name as the nav gives it. See routes-planning above.
@@ -297,11 +297,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Where the AI tools live",
     section: "Communications",
     body: [
-      "AI tools are embedded where they're useful, not on a separate page: review-reply suggestions on [Reviews](/settings/reviews), [churn risk](article:churn-score) on Clients, dispatch suggestions on [Routes](/routes), and the weekly digest + marketing content on the [Dashboard](/dashboard).",
-      "They're bring-your-own-key: add your Anthropic or OpenAI API key once in [AI Tools settings](/settings/ai) and every panel uses it.",
+      "AI tools are embedded where they're useful, not on a separate page: review-reply suggestions on [Reviews & referrals](/settings/reviews), [churn risk](article:churn-score) on Clients, dispatch suggestions on the [Schedule](/routes), and the weekly digest + marketing content on the [Dashboard](/dashboard).",
+      "There is no key to set up. The AI runs on HoundStack's own models and your plan includes a monthly allowance; [Settings → AI usage](/settings/ai) shows what you have used and lets you set a ceiling.",
       "The [AI Receptionist](article:platform-addons) is separate: a paid add-on that answers client texts for you around the clock.",
     ],
-    appLink: { to: "/settings/ai", label: "Open AI Tools settings" },
+    appLink: { to: "/settings/ai", label: "Open AI usage" },
     related: ["churn-score", "platform-addons", "texting-setup"],
   },
   // ── Financial ──────────────────────────────────────────────────────────────

@@ -96,6 +96,7 @@ import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
+import i18n from "@/lib/i18n";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useTabletTier } from "@/hooks/useTabletTier";
@@ -781,7 +782,7 @@ function MyDay() {
                     ) : (
                       <MapIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
                     )}
-                    {v === "list" ? "List" : "Map"}
+                    {v === "list" ? t("myDay.list") : t("myDay.map")}
                   </button>
                 ))}
               </div>
@@ -1149,7 +1150,9 @@ function statusBadge(status: string, queuedSync?: LifecycleKind) {
     <span
       className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-muted"}`}
     >
-      {queuedSync ? QUEUED_BADGE_LABELS[queuedSync] : status.replace("_", " ")}
+      {queuedSync
+        ? QUEUED_BADGE_LABELS[queuedSync]
+        : i18n.t(`status.${status}`, { defaultValue: status.replace("_", " ") })}
     </span>
   );
 }
@@ -1176,6 +1179,7 @@ const HAZARD_LABELS: Record<HazardKey, { label: string; severity: "critical" | "
 };
 
 function HazardBanner({ property }: { property: any }) {
+  const { t } = useTranslation();
   if (!property) return null;
   const active = (Object.keys(HAZARD_LABELS) as HazardKey[]).filter((k) => property[k]);
   const notes = property.hazard_notes as string | undefined;
@@ -1187,11 +1191,11 @@ function HazardBanner({ property }: { property: any }) {
       {critical.length > 0 && (
         <div className="rounded-md border-2 border-destructive bg-destructive/10 p-3">
           <div className="text-xs font-bold uppercase tracking-wide text-destructive">
-            ⚠ Safety warnings: read before entering
+            ⚠ {t("myDay.safetyWarnings")}
           </div>
           <ul className="mt-1 space-y-0.5 text-sm font-semibold text-destructive">
             {critical.map((k) => (
-              <li key={k}>• {HAZARD_LABELS[k].label}</li>
+              <li key={k}>• {t(`hazards.${k}`, { defaultValue: HAZARD_LABELS[k].label })}</li>
             ))}
           </ul>
         </div>
@@ -1200,14 +1204,14 @@ function HazardBanner({ property }: { property: any }) {
         <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-2">
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-amber-700 dark:text-amber-400">
             {warn.map((k) => (
-              <span key={k}>⚠ {HAZARD_LABELS[k].label}</span>
+              <span key={k}>⚠ {t(`hazards.${k}`, { defaultValue: HAZARD_LABELS[k].label })}</span>
             ))}
           </div>
         </div>
       )}
       {notes && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-800 dark:text-amber-300">
-          <span className="font-semibold">Hazard notes:</span> {notes}
+          <span className="font-semibold">{t("myDay.hazardNotes")}</span> {notes}
         </div>
       )}
     </div>
@@ -1432,6 +1436,7 @@ function VisitCard({
   day: string;
   preview?: boolean;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
   const onMyWayFn = useServerFn(sendOnMyWayMessage);
@@ -1728,7 +1733,7 @@ function VisitCard({
       >
         {PHOTO_KIND_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
-            {o.label}
+            {t(`photoKinds.${o.value}`, { defaultValue: o.label })}
           </option>
         ))}
       </select>
@@ -1759,7 +1764,7 @@ function VisitCard({
         }}
       >
         <Camera className="mr-1.5 h-4 w-4 shrink-0" />
-        {uploading ? "Uploading…" : "Take photo"}
+        {uploading ? t("myDay.uploading") : t("myDay.takePhoto")}
       </Button>
     </div>
   );
@@ -1962,7 +1967,7 @@ function VisitCard({
                 visit.clients?.primary_phone ? "" : "col-span-2"
               }`}
             >
-              <Navigation className="h-4 w-4 shrink-0" aria-hidden="true" /> Navigate
+              <Navigation className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("myDay.navigate")}
             </a>
           )}
           {visit.clients?.primary_phone && (
@@ -1972,7 +1977,7 @@ function VisitCard({
                 p?.street ? "" : "col-span-2"
               }`}
             >
-              <Phone className="h-4 w-4 shrink-0" aria-hidden="true" /> Call
+              <Phone className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("myDay.call")}
             </a>
           )}
         </div>
@@ -2052,7 +2057,7 @@ function VisitCard({
                   : "Only field staff (owner, office manager, or tech) can start a visit"
               }
             >
-              Start
+              {t("myDay.start")}
             </Button>
           )}
 
@@ -2073,7 +2078,7 @@ function VisitCard({
           {(inProg || missed || photoOnFile) && canPerformVisit && checklist.length > 0 && (
             <fieldset className="space-y-0.5 rounded-lg border p-1.5">
               <legend className="px-1.5 text-xs font-semibold uppercase text-muted-foreground">
-                Checklist
+                {t("myDay.checklist")}
               </legend>
               {checklist.map((item) => {
                 const id = `checklist-${visit.id}-${item.id}`;
@@ -2130,7 +2135,7 @@ function VisitCard({
                   className="h-11 w-full text-sm text-muted-foreground"
                   onClick={() => setNoteOpen(true)}
                 >
-                  Add a note for the office
+                  {t("myDay.addNote")}
                 </Button>
               )}
             </div>
@@ -2171,7 +2176,7 @@ function VisitCard({
                       : ""
               }
             >
-              Complete
+              {t("myDay.complete")}
             </Button>
           )}
           {/* Why Complete is grey when the checklist is the reason, under the
@@ -2214,7 +2219,7 @@ function VisitCard({
                   className="h-11 w-full text-xs text-muted-foreground"
                   onClick={() => setNoPhotoOpen(true)}
                 >
-                  Can't take a photo?
+                  {t("myDay.cantTakePhoto")}
                 </Button>
               )}
             </div>
@@ -2262,7 +2267,7 @@ function VisitCard({
             aria-expanded={showMore}
             className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            {showMore ? "Fewer options" : "More options"}
+            {showMore ? t("myDay.fewerOptions") : t("myDay.moreOptions")}
             {showMore ? (
               <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
             ) : (
@@ -2280,7 +2285,7 @@ function VisitCard({
                   className="h-11 px-4 sm:h-8 sm:px-3"
                   onClick={() => setShowSkip((s) => !s)}
                 >
-                  Skip
+                  {t("myDay.skip")}
                 </Button>
                 <Button
                   size="sm"
@@ -2288,7 +2293,7 @@ function VisitCard({
                   className="h-11 px-4 sm:h-8 sm:px-3"
                   onClick={() => setShowAddon((s) => !s)}
                 >
-                  + Add-on
+                  + {t("myDay.addOn")}
                 </Button>
                 {scheduled && dnaEnrolled && canPerformVisit && (
                   <Button
