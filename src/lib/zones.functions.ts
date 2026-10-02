@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
+import { searchBox, classifyZipCentroids, MAX_CANDIDATES } from "@/lib/zone-zip-fill";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
@@ -11,7 +12,11 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
 // detection across the org's properties so pre-existing clients pick up the
 // new boundaries without someone re-saving each address. Best effort — a
 // redetect failure must never fail the zone save itself.
-async function redetectBestEffort(supabase: any, orgId: string, actorUserId?: string | null): Promise<number> {
+async function redetectBestEffort(
+  supabase: any,
+  orgId: string,
+  actorUserId?: string | null,
+): Promise<number> {
   try {
     const { redetectZonesForOrg } = await import("@/lib/zones-redetect.server");
     const updated = await redetectZonesForOrg(supabase, orgId, actorUserId);
@@ -404,10 +409,12 @@ export const updateZone = createServerFn({ method: "POST" })
     if (data.pricingMode !== undefined) patch.pricing_mode = data.pricingMode;
     if (data.pricePerSqftCents !== undefined) patch.price_per_sqft_cents = data.pricePerSqftCents;
     if (data.pricePerAcreCents !== undefined) patch.price_per_acre_cents = data.pricePerAcreCents;
-    if (data.areaMinChargeCents !== undefined) patch.area_min_charge_cents = data.areaMinChargeCents;
+    if (data.areaMinChargeCents !== undefined)
+      patch.area_min_charge_cents = data.areaMinChargeCents;
     if (data.areaMaxChargeCents !== undefined)
       patch.area_max_charge_cents = data.areaMaxChargeCents;
-    if (data.commercialBaseCents !== undefined) patch.commercial_base_cents = data.commercialBaseCents;
+    if (data.commercialBaseCents !== undefined)
+      patch.commercial_base_cents = data.commercialBaseCents;
     if (data.commercialPerUnitCents !== undefined)
       patch.commercial_per_unit_cents = data.commercialPerUnitCents;
     if (data.commercialPerAcreCents !== undefined)
@@ -443,6 +450,59 @@ export const geocodePostal = createServerFn({ method: "POST" })
     const { geocodeAddress } = await import("@/lib/geocode.server");
     const geo = await geocodeAddress({ postal_code: data.postalCode });
     return { point: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null };
+  });
+
+// The ZIPs inside a drawn shape (owner, 2026-10-01: "it does not auto insert
+// all the zip codes that are within that"). The database answers only "which
+// ZIP centers are in this box"; which of those are INSIDE is decided by
+// classifyZipCentroids, which asks zone-match.ts -- the same code that assigns
+// properties -- so the fill and the matcher are one rule. See
+// src/lib/zone-zip-fill.ts and 20261001120000_a-zone-you-drew-named-no-zips.sql.
+const zipShapeSchema = z.object({
+  mode: z.enum(["radius", "drive_time", "polygon"]),
+  polygon: polygonSchema.optional(),
+  centerLat: z.number().min(-90).max(90).nullable().optional(),
+  centerLng: z.number().min(-180).max(180).nullable().optional(),
+  radiusMeters: z.number().min(1).max(200000).nullable().optional(),
+  driveTimeMinutes: z.number().min(1).max(180).nullable().optional(),
+});
+
+export const zipsInZoneShape = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => zipShapeSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const box = searchBox(data);
+    if (!box)
+      return { inside: [], insideTotal: 0, edge: [], candidatesCapped: false, tooLarge: false };
+    if (box.north - box.south > 10 || box.east - box.west > 10) {
+      return { inside: [], insideTotal: 0, edge: [], candidatesCapped: false, tooLarge: true };
+    }
+    const { data: rows, error } = await (supabase as any).rpc("zip_centroids_in_box", {
+      _org_id: orgId,
+      _south: box.south,
+      _west: box.west,
+      _north: box.north,
+      _east: box.east,
+      _limit: MAX_CANDIDATES,
+    });
+    if (error) throw new Error(error.message);
+    const centroids = (
+      (rows ?? []) as Array<{ zip: string; lat: number; lng: number; radius_m: number }>
+    ).map((r) => ({
+      zip: r.zip,
+      lat: Number(r.lat),
+      lng: Number(r.lng),
+      radiusM: Number(r.radius_m),
+    }));
+    const result = classifyZipCentroids(data, centroids);
+    return {
+      ...result,
+      // The box was full, so ZIPs far from the middle were never looked at.
+      candidatesCapped: centroids.length >= MAX_CANDIDATES,
+      tooLarge: false,
+    };
   });
 
 export const deleteZone = createServerFn({ method: "POST" })

@@ -78,8 +78,7 @@ function ZonesPage() {
     },
     // Deliberately loud. The side-effect version of this swallows its failure
     // and logs it; a person who pressed a button is owed the error.
-    onError: (e: unknown) =>
-      toast.error(`Could not re-run detection: ${(e as Error).message}`),
+    onError: (e: unknown) => toast.error(`Could not re-run detection: ${(e as Error).message}`),
   });
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
@@ -94,6 +93,8 @@ function ZonesPage() {
 
   // null = closed, "new" = create, otherwise the zone row being edited.
   const [drawer, setDrawer] = useState<"new" | any | null>(null);
+  // Set when the drawer was opened by a card's "Fill ZIPs from the area".
+  const [fillOnOpen, setFillOnOpen] = useState(false);
 
   const zones = data?.zones ?? [];
   const noGeoZones = zones.filter((z: any) => !zoneHasGeo(z as OverviewZone));
@@ -112,8 +113,7 @@ function ZonesPage() {
       return { ok, failed: results.length - ok };
     },
     onSuccess: (r) => {
-      if (r.failed)
-        toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} zones, ${r.failed} failed`);
+      if (r.failed) toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} zones, ${r.failed} failed`);
       else toast.success(`Deleted ${r.ok} zone${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["zones"] });
@@ -144,7 +144,12 @@ function ZonesPage() {
           )}
         </div>
         {canEdit && (
-          <Button onClick={() => setDrawer("new")}>
+          <Button
+            onClick={() => {
+              setFillOnOpen(false);
+              setDrawer("new");
+            }}
+          >
             <Plus className="mr-1 h-4 w-4 shrink-0" /> New zone
           </Button>
         )}
@@ -178,9 +183,9 @@ function ZonesPage() {
         >
           <p className="font-medium">{coverage.problem}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Checked by running the matching rules over every property again, so this
-            reflects the zones as they are saved right now, not what was recorded the
-            last time a property was matched.
+            Checked by running the matching rules over every property again, so this reflects the
+            zones as they are saved right now, not what was recorded the last time a property was
+            matched.
             {coverage.summary.orphaned > 0
               ? " A property that keeps a zone the rules would no longer give it still shows that zone everywhere else in the app."
               : ""}
@@ -198,9 +203,7 @@ function ZonesPage() {
                   willClear > 0
                     ? `${willClear} propert${willClear === 1 ? "y" : "ies"} will lose the zone they currently show, because no zone matches them under the rules as saved right now.`
                     : null,
-                  c.reassigned > 0
-                    ? `${c.reassigned} will move to a different zone.`
-                    : null,
+                  c.reassigned > 0 ? `${c.reassigned} will move to a different zone.` : null,
                   c.unassigned > 0 ? `${c.unassigned} will gain a zone.` : null,
                 ].filter(Boolean) as string[];
                 const ok = await confirm({
@@ -273,7 +276,14 @@ function ZonesPage() {
             key={z.id}
             zone={z}
             canEdit={canEdit}
-            onEdit={() => setDrawer(z)}
+            onEdit={() => {
+              setFillOnOpen(false);
+              setDrawer(z);
+            }}
+            onFillZips={() => {
+              setFillOnOpen(true);
+              setDrawer(z);
+            }}
             showFirstCleanup={zoneFeeIsCharged}
             selected={sel.isSelected(z.id)}
             onToggleSelect={canEdit ? (next) => sel.toggle(z.id, next) : undefined}
@@ -296,11 +306,15 @@ function ZonesPage() {
           open
           onClose={() => setDrawer(null)}
           zone={drawer === "new" ? null : drawer}
+          fillOnOpen={drawer !== "new" && fillOnOpen}
         />
       )}
     </div>
   );
 }
+
+/** Fewer listed ZIPs than this on a drawn zone, and the card offers a fill. */
+const FEW_ZIPS = 3;
 
 function coverageSummary(zone: any): string {
   const mode = (zone.geo_match_mode ?? "zip") as string;
@@ -316,6 +330,7 @@ function ZoneCard({
   zone,
   canEdit,
   onEdit,
+  onFillZips,
   showFirstCleanup = false,
   selected = false,
   onToggleSelect,
@@ -323,6 +338,8 @@ function ZoneCard({
   zone: any;
   canEdit: boolean;
   onEdit: () => void;
+  /** Open the drawer and fill the ZIP list from the zone's drawn area. */
+  onFillZips?: () => void;
   showFirstCleanup?: boolean;
   selected?: boolean;
   onToggleSelect?: (next: boolean) => void;
@@ -440,6 +457,27 @@ function ZoneCard({
                 : `${deadZips.join(", ")} are not US 5-digit ZIPs and match no addresses.`}{" "}
               Edit the zone to correct {deadZips.length === 1 ? "it" : "them"}.
             </p>
+          )}
+          {/* A drawn zone with no ZIPs quotes nobody on the signup page or the
+              lead form: public_quote matches a visitor by ZIP alone. Zones
+              drawn before 2026-10-01 were never filled, so say so and offer
+              the fill -- one click that opens the zone with the ZIPs inside
+              its area added, for the owner to look over and save. Not a
+              silent backfill: a ZIP list decides which zone an address goes
+              to, and that is the owner's call. */}
+          {hasGeo && zipList.length < FEW_ZIPS && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
+                {zipList.length === 0
+                  ? "No ZIPs listed, so the signup page and lead form can't quote this area."
+                  : `Only ${zipList.length} ${zipList.length === 1 ? "ZIP" : "ZIPs"} listed. The signup page and lead form quote by ZIP.`}
+              </p>
+              {canEdit && onFillZips && (
+                <Button size="sm" variant="outline" onClick={onFillZips}>
+                  Fill ZIPs from the area
+                </Button>
+              )}
+            </div>
           )}
           {zipList.length === 0 && !zone.postal_prefix && !hasGeo && (
             <p className="mt-2 text-xs text-amber-600">

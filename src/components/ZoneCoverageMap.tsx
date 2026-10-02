@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Undo2, Trash2, Save, MousePointer2, Pencil, Circle as CircleIcon, Clock } from "lucide-react";
 import type { PolygonGeoJSON } from "@/components/BoundarySketch";
+import { DRIVE_M_PER_MIN } from "@/lib/zone-match";
 import { useMapRenderer } from "@/lib/maps/use-map-renderer";
 import { OverlayGroup, US_VIEW, circleBoundsPoints, type LatLng } from "@/lib/maps/types";
 
@@ -31,9 +32,10 @@ function fromPolygon(poly: PolygonGeoJSON | null): LatLng[] {
   return ring.slice(0, Math.max(0, ring.length - 1)).map(([lng, lat]) => ({ lat, lng }));
 }
 
-// Rough urban drive speed used to visualize drive-time as an approximate radius.
-// ~800m per minute ≈ 30 mph average with stops.
-export const DRIVE_M_PER_MIN = 800;
+// Rough urban drive speed used to visualize drive-time as an approximate radius
+// (~800m per minute ≈ 30 mph average with stops). Defined once, by the matcher,
+// so what is drawn is what is matched; re-exported for existing importers.
+export { DRIVE_M_PER_MIN };
 
 export function ZoneCoverageMap({
   initial,

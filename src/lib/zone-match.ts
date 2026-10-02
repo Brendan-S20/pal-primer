@@ -70,8 +70,11 @@ export function pointInPolygon(point: { lat: number; lng: number }, ring: number
   return inside;
 }
 
-/** Rough urban driving speed used to turn drive-time into a radius. */
-const DRIVE_M_PER_MIN = 800;
+/** Rough urban driving speed used to turn drive-time into a radius. The ONE
+ *  definition: the coverage map draws with it, and the ZIP fill
+ *  (zone-zip-fill.ts) asks matchZone itself, so a drive-time zone's circle,
+ *  its auto-filled ZIPs and the properties it claims are the same circle. */
+export const DRIVE_M_PER_MIN = 800;
 
 /** Specificity levels — lower is more specific. */
 const LEVEL_POLYGON = 0;
