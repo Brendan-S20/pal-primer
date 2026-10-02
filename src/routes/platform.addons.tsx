@@ -63,9 +63,9 @@ function AddonsAdminPage() {
       <div>
         <h1 className="text-2xl font-semibold">Add-ons</h1>
         <p className="text-sm text-muted-foreground">
-          The upsell catalog tenants see on Settings → Billing. Active add-ons can be purchased;
-          coming-soon ones are shown but not buyable; disabled ones are hidden. Changing status
-          never affects existing subscriptions.
+          The upsell catalog tenants see on Settings → Plan &amp; billing. Active add-ons can be
+          purchased; coming-soon ones are shown but not buyable; disabled ones are hidden. Changing
+          status never affects existing subscriptions.
         </p>
       </div>
 

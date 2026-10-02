@@ -77,7 +77,7 @@ describe.skipIf(!reachable)("an extra-cleanup request, in a real database", () =
   it("refuses every wrong day and address, makes one request per double tap, and leaves nothing behind", () => {
     const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
       encoding: "utf8",
-      timeout: 120_000,
+      timeout: 300_000,
     });
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);

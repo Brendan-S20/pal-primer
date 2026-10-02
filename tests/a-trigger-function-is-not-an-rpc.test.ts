@@ -155,12 +155,20 @@ describe("no trigger function is executable by a signed-in user", () => {
     // _invoice, _payment, _quote and _lead. All seven carry their own REVOKE
     // from PUBLIC, anon and authenticated.
     //
-    // 47 -> 48 on 2026-10-02 (20261002090200, the routing trials):
+    // 47 -> 50 on 2026-09-29 (20260929100000, live tracking):
+    // visit_live_locations_stamp, which puts recorded_at on the database's
+    // clock; visit_live_locations_forget_visit, which deletes a tech's
+    // position when the visit starts or they press Stop; and
+    // visit_live_locations_forget_org, which deletes an org's positions when
+    // tracking is turned off. All three carry their own REVOKE from PUBLIC,
+    // anon and authenticated.
+    //
+    // 50 -> 51 on 2026-10-02 (20261002090200, the routing trials):
     // tg_properties_coordinates_are_a_place, which stores 0,0 and an
     // off-the-globe coordinate as NULL -- "no location" -- instead of a point
     // in the Gulf of Guinea that refused a whole day's routing. It carries its
     // own REVOKE from PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(48);
+    expect(triggerFunctions().size).toBe(51);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
