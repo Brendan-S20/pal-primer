@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { Trans, useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
+import { useIntlLocale } from "@/lib/i18n";
 import { orgLocalDayTime } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
@@ -41,6 +43,8 @@ function toLocalInputValue(d: Date): string {
 
 export function CloseOutOpenVisits() {
   const tz = useOrgTimezone();
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
   const qc = useQueryClient();
   const listFn = useServerFn(listVisitsAwaitingCloseOut);
   const confirmFn = useServerFn(confirmOpenVisit);
@@ -82,9 +86,9 @@ export function CloseOutOpenVisits() {
         },
       }),
     onSuccess: (r) => {
-      if (r.outcome === "completed") toast.success("Visit closed out");
-      else if (r.outcome === "missed") toast.success("Marked as not completed");
-      else toast.info("That visit was already resolved");
+      if (r.outcome === "completed") toast.success(t("closeOut.closedOut"));
+      else if (r.outcome === "missed") toast.success(t("closeOut.markedNotCompleted"));
+      else toast.info(t("closeOut.alreadyResolved"));
       qc.invalidateQueries({ queryKey: ["visits-awaiting-close-out"] });
       qc.invalidateQueries({ queryKey: ["my-day"] });
     },
@@ -94,32 +98,32 @@ export function CloseOutOpenVisits() {
   if (!visit) return null;
 
   const startedLabel = visit.started_at
-    ? orgLocalDayTime(visit.started_at, tz)
-    : "an unrecorded time";
+    ? orgLocalDayTime(visit.started_at, tz, locale)
+    : t("closeOut.unrecordedTime");
   const where =
     visit.clients?.display_name ||
     [visit.properties?.street, visit.properties?.city].filter(Boolean).join(", ") ||
-    "this visit";
+    t("closeOut.thisVisit");
 
   const submitCompleted = () => {
     setError(null);
     if (!finishedAt) {
-      setError("Enter the time you finished.");
+      setError(t("closeOut.enterTime"));
       return;
     }
     const asDate = new Date(finishedAt);
     if (Number.isNaN(asDate.getTime())) {
-      setError("That time isn't valid.");
+      setError(t("closeOut.invalidTime"));
       return;
     }
     // The server validates this against the recorded start regardless; checking
     // here just avoids a round-trip to be told the obvious.
     if (visit.started_at && asDate.getTime() <= new Date(visit.started_at).getTime()) {
-      setError("The finish time has to be after you started.");
+      setError(t("closeOut.afterStart"));
       return;
     }
     if (asDate.getTime() > Date.now()) {
-      setError("The finish time can't be in the future.");
+      setError(t("closeOut.notInFuture"));
       return;
     }
     m.mutate({ completed: true, completedAt: asDate.toISOString() });
@@ -131,22 +135,28 @@ export function CloseOutOpenVisits() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
-            Did you finish this visit?
+            {t("closeOut.title")}
           </DialogTitle>
           <DialogDescription>
             {/* formatDay, not the raw column: this sentence already speaks the
                 org's clock ("Sat 5:59 PM"), and the one ISO date beside it
                 ("2026-09-26") was the walk-mode screenshot's sore thumb. */}
-            You started <strong className="text-foreground">{where}</strong> at {startedLabel} on{" "}
-            {formatDay(visit.scheduled_on)} and it was never closed. We won't guess, so tell us
-            what happened.
+            {/* `<where/>` is self-closing in the string and the name goes in
+                as the element's own child, never through interpolation: it is
+                a client's name somebody typed, and Trans parses its string
+                for tags. */}
+            <Trans
+              i18nKey="closeOut.description"
+              values={{ time: startedLabel, day: formatDay(visit.scheduled_on, locale) }}
+              components={{ where: <strong className="text-foreground">{where}</strong> }}
+            />
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           <div>
             <Label htmlFor="finished-at" className="text-xs">
-              If you completed it, what time did you finish?
+              {t("closeOut.finishedLabel")}
             </Label>
             <Input
               id="finished-at"
@@ -155,17 +165,14 @@ export function CloseOutOpenVisits() {
               onChange={(e) => setFinishedAt(e.target.value)}
               className="mt-1"
             />
-            <p className="mt-1 text-2xs text-muted-foreground">
-              Recorded as a time you entered afterwards, not a measured one, so it won't be reported
-              as service duration.
-            </p>
+            <p className="mt-1 text-2xs text-muted-foreground">{t("closeOut.enteredNote")}</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button onClick={submitCompleted} disabled={m.isPending} className="w-full">
-            {m.isPending ? "Saving…" : "Yes, I completed it"}
+            {m.isPending ? t("common.saving") : t("closeOut.yesCompleted")}
           </Button>
           <Button
             variant="outline"
@@ -173,7 +180,7 @@ export function CloseOutOpenVisits() {
             onClick={() => m.mutate({ completed: false })}
             className="w-full"
           >
-            No, it wasn't completed
+            {t("closeOut.notCompleted")}
           </Button>
           <Button
             variant="ghost"
@@ -181,7 +188,7 @@ export function CloseOutOpenVisits() {
             onClick={() => setDeferred((d) => [...d, visit.id])}
             className="w-full"
           >
-            I'm still working on it
+            {t("closeOut.stillWorking")}
           </Button>
         </DialogFooter>
       </DialogContent>

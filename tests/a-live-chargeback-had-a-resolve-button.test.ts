@@ -36,6 +36,7 @@ import {
   type ReviewQueueKind,
 } from "@/lib/review-queue";
 import { DISPUTE_KINDS } from "@/lib/disputes";
+import en from "@/lib/i18n/locales/en";
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -234,7 +235,13 @@ describe("desktop and mobile call the page the same thing", () => {
   // catching anything of ours.
 
   it("the mobile tab bar is the name everything else is being matched to", () => {
-    expect(read("src/components/MobileTabBar.tsx")).toMatch(/<span>Schedule<\/span>/);
+    // The words live in lib/i18n now (a tech can read the bar in Spanish);
+    // the tab reads the sidebar's own key for /routes, and in English that
+    // key still says Schedule.
+    expect(read("src/components/MobileTabBar.tsx")).toMatch(
+      /<span>\{t\("nav\.item\.routes"\)\}<\/span>/,
+    );
+    expect(en.nav.item.routes).toBe("Schedule");
   });
 
   it("the keyboard shortcut and the command palette both say Schedule", () => {
@@ -267,8 +274,9 @@ describe("desktop and mobile call the page the same thing", () => {
     // tech — lives in tests/the-only-button-on-an-empty-day-was-a-dead-end.ts,
     // which catches the next one rather than just this one.
     expect(codeOnly(read("src/routes/_authenticated/my-day.tsx"))).toMatch(
-      /<Link to="\/my-schedule">View my schedule<\/Link>/,
+      /<Link to="\/my-schedule">\{t\("myDay\.viewMySchedule"\)\}<\/Link>/,
     );
+    expect(en.myDay.viewMySchedule).toBe("View my schedule");
   });
 
   it("but the URL is untouched everywhere — the label changed, not the route", () => {

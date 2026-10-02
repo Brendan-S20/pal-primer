@@ -48,6 +48,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import en from "@/lib/i18n/locales/en";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -231,15 +232,19 @@ describe("what the panel says when it has no copy", () => {
     // missing for ANY reason, including the fetch failing in the dead zone the
     // panel is opened in. Not knowing has to look different from knowing there
     // are none.
+    // The sentences are lib/i18n's now (stations.noSavedCopy and
+    // stations.noneConfigured), so the order is checked on the keys.
     const src = codeOnly(myDaySrc());
-    expect(src).toMatch(/No saved copy of this property's stations/);
+    expect(en.stations.noSavedCopy).toMatch(/No saved copy of this property's stations/);
+    expect(en.stations.noneConfigured).toMatch(/No waste stations configured for this property/);
+    expect(src).toMatch(/t\("stations\.noSavedCopy"\)/);
     expect(src).toMatch(/if \(!data\) \{/);
 
     // And the honest copy has to come FIRST — a `stations.length === 0` branch
     // ahead of it catches the missing-data case on the way past and prints the
     // wrong sentence anyway.
-    expect(src.indexOf("No saved copy of this property's stations")).toBeLessThan(
-      src.indexOf("No waste stations configured for this property"),
+    expect(src.indexOf('t("stations.noSavedCopy")')).toBeLessThan(
+      src.indexOf('t("stations.noneConfigured")'),
     );
   });
 });

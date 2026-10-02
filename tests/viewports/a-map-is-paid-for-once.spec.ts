@@ -123,7 +123,7 @@ async function officeDay(page: Page, mapIsUp: (page: Page) => Promise<void>) {
   // screen at 1280x900. Under Leaflet it was built anyway; now it waits to be
   // scrolled to, so the walk scrolls to it.
   await page
-    .getByRole("link", { name: /Open routes/ })
+    .getByRole("link", { name: /Open schedule/ })
     .first()
     .scrollIntoViewIfNeeded();
   await page.mouse.wheel(0, 300);

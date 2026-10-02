@@ -91,27 +91,23 @@ function PreferencesPage() {
       {/* See the note in settings.deep-clean: this page also opened straight
           into a card while the other eighteen led with a heading. */}
       <div>
-        <h2 className="text-lg font-semibold">Preferences</h2>
+        <h2 className="text-lg font-semibold">{t("preferences.title")}</h2>
         <p className="text-sm text-muted-foreground">
-          {canManageSettings
-            ? "Language, branding and the defaults this workspace uses."
-            : "Language and how the app behaves on your route."}
+          {canManageSettings ? t("preferences.subtitleManager") : t("preferences.subtitle")}
         </p>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Language</CardTitle>
+          <CardTitle>{t("common.language")}</CardTitle>
           {/* It is per DEVICE (lib/i18n setLanguage writes localStorage).
               This said it applied "across the app, including the tech's My
               Day view", which an owner reads as "my techs get Spanish" and
               a tech reads as being talked about in the third person. */}
-          <CardDescription>
-            Changes the language on this device only. Each person picks their own.
-          </CardDescription>
+          <CardDescription>{t("preferences.languageDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           <Label htmlFor="lang" className="text-xs">
-            Interface language
+            {t("preferences.interfaceLanguage")}
           </Label>
           <Select
             value={lang}
@@ -119,15 +115,16 @@ function PreferencesPage() {
               setLang(v);
               setLanguage(v as "en" | "es");
               i18n.changeLanguage(v);
-              toast.success(t("common.language") + " updated");
+              // Read in the language just chosen, which is the proof it took.
+              toast.success(i18n.getFixedT(v)("preferences.languageUpdated"));
             }}
           >
             <SelectTrigger id="lang" className="mt-1 w-56">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="es">Español</SelectItem>
+              <SelectItem value="en">{t("common.english")}</SelectItem>
+              <SelectItem value="es">{t("common.spanish")}</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
@@ -135,15 +132,15 @@ function PreferencesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Field tech app</CardTitle>
-          <CardDescription>Behavior on route.</CardDescription>
+          <CardTitle>{t("preferences.fieldAppTitle")}</CardTitle>
+          <CardDescription>{t("preferences.fieldAppDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium">Haptic feedback</div>
+              <div className="text-sm font-medium">{t("preferences.haptics")}</div>
               <div className="text-xs text-muted-foreground">
-                Vibrate on start/complete/skip actions.
+                {t("preferences.hapticsDescription")}
               </div>
             </div>
             <Switch
@@ -156,9 +153,9 @@ function PreferencesPage() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium">Keep screen awake on route</div>
+              <div className="text-sm font-medium">{t("preferences.keepAwake")}</div>
               <div className="text-xs text-muted-foreground">
-                Prevents auto-lock while My Day is open.
+                {t("preferences.keepAwakeDescription")}
               </div>
             </div>
             <Switch
@@ -171,7 +168,7 @@ function PreferencesPage() {
           </div>
           <div>
             <Label htmlFor="map" className="text-xs">
-              Default map app for directions
+              {t("preferences.mapApp")}
             </Label>
             <Select
               value={mapApp}
@@ -183,6 +180,7 @@ function PreferencesPage() {
               <SelectTrigger id="map" className="mt-1 w-56">
                 <SelectValue />
               </SelectTrigger>
+              {/* i18n-ignore: product names, the same in every language */}
               <SelectContent>
                 <SelectItem value="google">Google Maps</SelectItem>
                 <SelectItem value="apple">Apple Maps</SelectItem>
@@ -289,18 +287,16 @@ function PricingBaselineCard() {
  */
 function AppearanceCard() {
   const { prefs, setPref } = useHeaderPrefs();
+  const { t } = useTranslation();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Menus and top bar</CardTitle>
-        <CardDescription>
-          How this app looks to you on this device. Your other devices keep their own settings, and
-          nobody else is affected.
-        </CardDescription>
+        <CardTitle>{t("preferences.menusTitle")}</CardTitle>
+        <CardDescription>{t("preferences.menusDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div>
-          <Label className="text-xs">Menu on a phone</Label>
+          <Label className="text-xs">{t("preferences.phoneMenu")}</Label>
           {/* ── ONE MENU, NOT TWO ────────────────────────────────────────
               The tab bar's More button and the top bar's hamburger opened two
               sheets listing the same destinations, in two corners of the same
@@ -316,39 +312,35 @@ function AppearanceCard() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="bottom">Bottom bar with More</SelectItem>
-              <SelectItem value="side">Side menu</SelectItem>
+              <SelectItem value="bottom">{t("preferences.phoneMenuBottom")}</SelectItem>
+              <SelectItem value="side">{t("preferences.phoneMenuSide")}</SelectItem>
             </SelectContent>
           </Select>
-          <p className="pt-1.5 text-xs text-muted-foreground">
-            Both menus reach every screen, so this is only about where the button is. Tablets and
-            computers always use the side menu.
-          </p>
+          <p className="pt-1.5 text-xs text-muted-foreground">{t("preferences.phoneMenuNote")}</p>
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">Optional buttons beside the search box</Label>
+          <Label className="text-xs">{t("preferences.optionalButtons")}</Label>
           <p className="pb-1 text-xs text-muted-foreground">
-            Turning one off only hides the shortcut. The Knowledge Center is still in the menu and
-            the command palette, and the weather is still on the dashboard.
+            {t("preferences.optionalButtonsNote")}
           </p>
           {/* The label wraps the switch so the whole row is the hit area, and
               min-h-11 makes that row legal at every width. A bare switch is a
               ~36px target with an unclickable label beside it. */}
           <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
-            <span className="min-w-0 flex-1 text-sm">Knowledge Center (?)</span>
+            <span className="min-w-0 flex-1 text-sm">{t("preferences.knowledgeCenter")}</span>
             <Switch
               checked={prefs.showHelp}
               onCheckedChange={(v) => setPref("showHelp", v)}
-              aria-label="Show the Knowledge Center button in the top bar"
+              aria-label={t("preferences.knowledgeCenterAria")}
             />
           </label>
           <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
-            <span className="min-w-0 flex-1 text-sm">Weather</span>
+            <span className="min-w-0 flex-1 text-sm">{t("preferences.weather")}</span>
             <Switch
               checked={prefs.showWeather}
               onCheckedChange={(v) => setPref("showWeather", v)}
-              aria-label="Show the weather button in the top bar"
+              aria-label={t("preferences.weatherAria")}
             />
           </label>
         </div>

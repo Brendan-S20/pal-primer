@@ -2,10 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarDays, MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { getMyUpcomingDays, type UpcomingDay } from "@/lib/my-day.functions";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { APP_NAME } from "@/lib/scoop";
+import { useIntlLocale } from "@/lib/i18n";
 
 /**
  * A technician's own next two weeks.
@@ -38,14 +40,18 @@ export const Route = createFileRoute("/_authenticated/my-schedule")({
   component: MySchedulePage,
 });
 
-const fmtDay = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+// `locale` is the interface language's (lib/i18n `intlLocaleFor`); English
+// passes none and keeps the device's, as it always did.
+const fmtDay = (iso: string, locale: string | undefined) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(locale, {
     weekday: "long",
     month: "short",
     day: "numeric",
   });
 
 function MySchedulePage() {
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
   const tz = useOrgTimezone();
   const fn = useServerFn(getMyUpcomingDays);
   const { data, isLoading } = useQuery({
@@ -63,29 +69,30 @@ function MySchedulePage() {
     <div className="mx-auto w-full max-w-2xl space-y-4">
       <div className="min-w-0">
         <h1 className="truncate text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
-          My schedule
+          {t("nav.item.my-schedule")}
         </h1>
-        <p className="text-xs text-muted-foreground">The next two weeks you are on.</p>
+        <p className="text-xs text-muted-foreground">{t("schedule.subtitle")}</p>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading your days…</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">{t("schedule.loading")}</p>}
 
       {!isLoading && days.length === 0 && (
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
           <CalendarDays className="mx-auto mb-3 h-8 w-8 opacity-60 shrink-0" />
-          <p>You have no visits assigned in the next two weeks.</p>
-          <p className="mt-1 text-xs">Days appear here as soon as work is assigned to you.</p>
+          <p>{t("schedule.empty")}</p>
+          <p className="mt-1 text-xs">{t("schedule.emptyHint")}</p>
         </div>
       )}
 
       {/* Named, so a screen reader announces what the list is and so a test can
           address these rows without also catching the mobile tab bar's, which
-          are also <li><a> and sit in the same document. */}
-      <ul aria-label="Your upcoming days" className="space-y-2">
+          are also <li><a> and sit in the same document. In Spanish the name
+          is Spanish too: "Tus próximos días". */}
+      <ul aria-label={t("schedule.listLabel")} className="space-y-2">
         {days.map((d) => {
           const left = d.stops - d.done;
-          const first = orgLocalTime(d.firstEta, tz) || null;
-          const last = orgLocalTime(d.lastEta, tz) || null;
+          const first = orgLocalTime(d.firstEta, tz, locale) || null;
+          const last = orgLocalTime(d.lastEta, tz, locale) || null;
           return (
             <li key={d.date}>
               {/* The whole row is the link. A tech reading "Thursday, 6 stops"
@@ -97,10 +104,10 @@ function MySchedulePage() {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
-                    <span className="truncate font-semibold">{fmtDay(d.date)}</span>
+                    <span className="truncate font-semibold">{fmtDay(d.date, locale)}</span>
                     {d.date === todayISO && (
                       <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-3xs font-medium uppercase tracking-wide text-primary">
-                        Today
+                        {t("nav.today")}
                       </span>
                     )}
                   </div>
@@ -123,13 +130,13 @@ function MySchedulePage() {
                 <div className="shrink-0 text-right">
                   <div className="text-lg font-semibold leading-none tabular-nums">{d.stops}</div>
                   <div className="text-3xs uppercase tracking-wide text-muted-foreground">
-                    {d.stops === 1 ? "stop" : "stops"}
+                    {t("schedule.stops", { count: d.stops })}
                   </div>
                   {/* Only when it says something. "0 done" on a day that has
                       not started is noise on every future row in the list. */}
                   {d.done > 0 && (
                     <div className="mt-1 text-3xs text-muted-foreground">
-                      {left === 0 ? "all done" : `${left} left`}
+                      {left === 0 ? t("schedule.allDone") : t("schedule.left", { count: left })}
                     </div>
                   )}
                 </div>

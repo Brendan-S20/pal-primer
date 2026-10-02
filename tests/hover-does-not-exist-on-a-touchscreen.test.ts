@@ -33,6 +33,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { repoRelative } from "./support/repo-paths";
+import en from "@/lib/i18n/locales/en";
 
 const root = join(import.meta.dirname, "..");
 
@@ -132,9 +133,10 @@ describe("there is now ONE notification row, and it agrees that phones exist", (
 
   /** The attributes of the button carrying `aria-label`, up to its icon.
    *  Anchoring on the label rather than on a character offset is what stops
-   *  this from re-breaking every time a comment above it grows a line. */
-  const buttonAttrs = (src: string, label: string) => {
-    const at = src.indexOf(`aria-label="${label}"`);
+   *  this from re-breaking every time a comment above it grows a line. The
+   *  label is a lib/i18n key, since the page speaks the tech's language. */
+  const buttonAttrs = (src: string, key: string) => {
+    const at = src.indexOf(`aria-label={t("${key}")}`);
     expect(at).toBeGreaterThan(0);
     return src.slice(at, src.indexOf("<X ", at));
   };
@@ -147,8 +149,10 @@ describe("there is now ONE notification row, and it agrees that phones exist", (
     // The bell is a link to /notifications now, so there is one copy and this
     // is it. The duplication is guarded separately below, because deleting a
     // divergence is worth nothing if the next change puts it back.
-    expect(buttonAttrs(read("src/routes/_authenticated/notifications.tsx"), "Delete notification"))
-      .toMatch(TOUCH_ESCAPE);
+    expect(
+      buttonAttrs(read("src/routes/_authenticated/notifications.tsx"), "alerts.delete"),
+    ).toMatch(TOUCH_ESCAPE);
+    expect(en.alerts.delete).toBe("Delete notification");
   });
 
   it("does not put a duplicate Mark read on top of the title", () => {
@@ -159,7 +163,12 @@ describe("there is now ONE notification row, and it agrees that phones exist", (
     // Anchored inside the reveal container, because the prose above it also
     // says the words "Mark read" and `indexOf` found the explanation first.
     const container = src.slice(src.indexOf('className="absolute right-3 top-3'));
-    expect(container.slice(0, container.indexOf("Mark read"))).toMatch(/touch:hidden/);
+    // The button's words are lib/i18n's. Asserted present first: an indexOf
+    // of -1 slices the whole container, which contains touch:hidden anyway.
+    const label = container.indexOf(`{t("alerts.markRead")}`);
+    expect(label).toBeGreaterThan(0);
+    expect(container.slice(0, label)).toMatch(/touch:hidden/);
+    expect(en.alerts.markRead).toBe("Mark read");
   });
 
   it("keeps the header bell a link rather than a second copy of the list", () => {

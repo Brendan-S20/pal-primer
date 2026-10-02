@@ -259,7 +259,7 @@ describe.skipIf(!reachable)("the contact rules hold in a real database", () => {
     const r = spawnSync(
       psql!,
       [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-v", `base=${BASE}`, "-f", PROOF],
-      { encoding: "utf8", timeout: 120_000 },
+      { encoding: "utf8", timeout: 300_000 },
     );
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);

@@ -10,6 +10,7 @@ import {
   withQueuedLifecycle,
 } from "@/lib/offline/queued-visit-state";
 import { dayAtAGlance } from "@/lib/my-day-progress";
+import en from "@/lib/i18n/locales/en";
 
 // Found by a field tester on 2026-09-27. Completing a visit OFFLINE queued
 // correctly — the toast said "Queued. Completes when back online", the replay
@@ -373,7 +374,9 @@ describe("My Day draws from the day as worked", () => {
   });
 
   it("says a queued status is syncing, rather than passing it off as the server's", () => {
-    expect(page).toMatch(/statusBadge\(visit\.status, visit\.queuedSync\)/);
-    expect(read("src/routes/_authenticated/my-day.tsx")).toMatch(/complete: "done · syncing"/);
+    expect(page).toMatch(/statusBadge\(visit\.status, visit\.queuedSync, t\)/);
+    // The badge's words are lib/i18n's, keyed by the queued kind.
+    expect(page).toMatch(/t\(`queuedStatus\.\$\{queuedSync\}`\)/);
+    expect(en.queuedStatus.complete).toBe("done · syncing");
   });
 });

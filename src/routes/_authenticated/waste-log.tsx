@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useMyRole } from "@/hooks/useMyRole";
 import {
@@ -19,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { HelpTip } from "@/components/HelpTip";
 import { formatDay } from "@/lib/format";
+import { useIntlLocale } from "@/lib/i18n";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { Camera, Plus, X } from "lucide-react";
 
@@ -28,6 +30,8 @@ export const Route = createFileRoute("/_authenticated/waste-log")({
 });
 
 function WasteLogPage() {
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
   const qc = useQueryClient();
   const listMans = useServerFn(listManifests);
   const listFacs = useServerFn(listFacilities);
@@ -59,20 +63,21 @@ function WasteLogPage() {
     mutationFn: async (v: any) => {
       let photoUrl: string | undefined;
       if (receipt) {
-        if (!orgId) throw new Error("Still loading your organization. Try again in a second.");
+        if (!orgId) throw new Error(t("wasteLog.orgLoading"));
         const { compressImage } = await import("@/lib/offline/compressImage");
         const { file, contentType, ext } = await compressImage(receipt);
         const path = `${orgId}/${Date.now()}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from("waste-receipts")
           .upload(path, file, { contentType, upsert: false });
-        if (upErr) throw new Error(`Receipt upload failed: ${upErr.message}`);
+        // The storage error itself is shown as the server wrote it.
+        if (upErr) throw new Error(t("wasteLog.receiptUploadFailed", { message: upErr.message }));
         photoUrl = path;
       }
       return createFn({ data: { ...v, photoUrl } });
     },
     onSuccess: () => {
-      toast.success("Manifest logged");
+      toast.success(t("wasteLog.manifestLogged"));
       qc.invalidateQueries({ queryKey: ["waste-manifests"] });
       setDraft({
         facilityId: draft.facilityId,
@@ -89,14 +94,14 @@ function WasteLogPage() {
   const delMut = useMutation({
     mutationFn: (id: string) => delFn({ data: { id } }),
     onSuccess: () => {
-      toast.success("Deleted");
+      toast.success(t("wasteLog.deleted"));
       qc.invalidateQueries({ queryKey: ["waste-manifests"] });
     },
   });
   const facMut = useMutation({
     mutationFn: (v: any) => upsertFacFn({ data: v }),
     onSuccess: () => {
-      toast.success("Facility added");
+      toast.success(t("wasteLog.facilityAdded"));
       qc.invalidateQueries({ queryKey: ["waste-facilities"] });
       setNewFacility({ name: "", address: "" });
     },
@@ -112,34 +117,34 @@ function WasteLogPage() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
-            Waste disposal log <HelpTip article="waste-log" />
+            {t("wasteLog.title")} <HelpTip article="waste-log" />
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Track dumps at transfer stations and disposal facilities.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("wasteLog.subtitle")}</p>
         </div>
-        <Badge variant="secondary">Recent total: {totalLbs.toFixed(0)} lbs</Badge>
+        <Badge variant="secondary">
+          {t("wasteLog.recentTotal", { weight: totalLbs.toFixed(0) })}
+        </Badge>
       </div>
 
       <section className="rounded-lg border bg-card p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Log a dump</h2>
+          <h2 className="text-sm font-medium">{t("wasteLog.logADump")}</h2>
           <Button
             size="sm"
             variant={showForm ? "ghost" : "outline"}
             onClick={() => setShowForm((v) => !v)}
             // Visible "Add" beside the "Log a dump" heading; the accessible name
             // carries the whole action for a screen reader.
-            aria-label={showForm ? "Close log a dump" : "Log a dump"}
+            aria-label={showForm ? t("wasteLog.closeLogADump") : t("wasteLog.logADump")}
             aria-expanded={showForm}
           >
             {showForm ? (
               <>
-                <X className="mr-1.5 h-4 w-4 shrink-0" /> Close
+                <X className="mr-1.5 h-4 w-4 shrink-0" /> {t("common.close")}
               </>
             ) : (
               <>
-                <Plus className="mr-1.5 h-4 w-4 shrink-0" /> Add
+                <Plus className="mr-1.5 h-4 w-4 shrink-0" /> {t("common.add")}
               </>
             )}
           </Button>
@@ -160,14 +165,14 @@ function WasteLogPage() {
           }}
         >
           <div className="sm:col-span-2">
-            <Label htmlFor="dump-facility">Facility</Label>
+            <Label htmlFor="dump-facility">{t("wasteLog.facility")}</Label>
             <select
               id="dump-facility"
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               value={draft.facilityId}
               onChange={(e) => setDraft({ ...draft, facilityId: e.target.value })}
             >
-              <option value="">Select a facility…</option>
+              <option value="">{t("wasteLog.selectFacility")}</option>
               {facilities
                 .filter((f) => f.active)
                 .map((f) => (
@@ -178,7 +183,7 @@ function WasteLogPage() {
             </select>
           </div>
           <div>
-            <Label htmlFor="dump-date">Date</Label>
+            <Label htmlFor="dump-date">{t("wasteLog.date")}</Label>
             <Input
               id="dump-date"
               type="date"
@@ -187,7 +192,7 @@ function WasteLogPage() {
             />
           </div>
           <div>
-            <Label htmlFor="dump-weight">Weight (lbs)</Label>
+            <Label htmlFor="dump-weight">{t("wasteLog.weightLbs")}</Label>
             <Input
               id="dump-weight"
               inputMode="decimal"
@@ -199,7 +204,7 @@ function WasteLogPage() {
             />
           </div>
           <div>
-            <Label htmlFor="dump-bags">Bags</Label>
+            <Label htmlFor="dump-bags">{t("wasteLog.bags")}</Label>
             <Input
               id="dump-bags"
               inputMode="numeric"
@@ -210,7 +215,7 @@ function WasteLogPage() {
             />
           </div>
           <div>
-            <Label htmlFor="dump-ticket">Ticket #</Label>
+            <Label htmlFor="dump-ticket">{t("wasteLog.ticket")}</Label>
             <Input
               id="dump-ticket"
               value={draft.ticketNumber}
@@ -218,7 +223,7 @@ function WasteLogPage() {
             />
           </div>
           <div className="sm:col-span-6">
-            <Label htmlFor="dump-notes">Notes</Label>
+            <Label htmlFor="dump-notes">{t("myDay.notes")}</Label>
             <Textarea
               id="dump-notes"
               rows={2}
@@ -227,7 +232,7 @@ function WasteLogPage() {
             />
           </div>
           <div className="sm:col-span-6">
-            <Label>Receipt photo (optional)</Label>
+            <Label>{t("wasteLog.receiptPhoto")}</Label>
             <div className="mt-1 flex items-center gap-2">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground transition hover:border-primary hover:bg-accent">
                 <input
@@ -238,7 +243,7 @@ function WasteLogPage() {
                   onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
                 />
                 <Camera className="h-4 w-4 shrink-0" />
-                {receipt ? "Change photo" : "Add receipt photo"}
+                {receipt ? t("wasteLog.changePhoto") : t("wasteLog.addReceiptPhoto")}
               </label>
               {receipt && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -247,7 +252,7 @@ function WasteLogPage() {
                     type="button"
                     className="rounded p-0.5 hover:bg-muted"
                     onClick={() => setReceipt(null)}
-                    aria-label="Remove receipt"
+                    aria-label={t("wasteLog.removeReceipt")}
                   >
                     <X className="h-3.5 w-3.5 shrink-0" />
                   </button>
@@ -257,7 +262,7 @@ function WasteLogPage() {
           </div>
           <div className="sm:col-span-6">
             <Button type="submit" disabled={createMut.isPending}>
-              {createMut.isPending ? "Logging…" : "Log dump"}
+              {createMut.isPending ? t("common.logging") : t("wasteLog.logDump")}
             </Button>
           </div>
         </form>
@@ -266,7 +271,7 @@ function WasteLogPage() {
 
       <section className="rounded-lg border bg-card p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Facilities</h2>
+          <h2 className="text-sm font-medium">{t("wasteLog.facilities")}</h2>
         </div>
         <form
           className="mt-3 flex flex-wrap items-end gap-2"
@@ -277,12 +282,12 @@ function WasteLogPage() {
           }}
         >
           <div className="flex-1 min-w-40">
-            <Label htmlFor="facility-name">Name</Label>
+            <Label htmlFor="facility-name">{t("wasteLog.name")}</Label>
             <Input
               id="facility-name"
               value={newFacility.name}
               onChange={(e) => setNewFacility({ ...newFacility, name: e.target.value })}
-              placeholder="Transfer Station"
+              placeholder={t("wasteLog.namePlaceholder")}
             />
           </div>
           {/* min-w-40 and flex-1, so the field and the dropdown it hangs over
@@ -298,15 +303,15 @@ function WasteLogPage() {
               name typed by hand still saves exactly as it does today. The
               workspace bias is right too — the dump is near the routes. */}
           <div className="flex-1 min-w-40">
-            <Label>Address</Label>
+            <Label>{t("wasteLog.address")}</Label>
             <AddressAutocomplete
               value={newFacility.address}
-              onChangeText={(t) => setNewFacility({ ...newFacility, address: t })}
+              onChangeText={(text) => setNewFacility({ ...newFacility, address: text })}
               onResolved={(r) => setNewFacility({ ...newFacility, address: r.address.formatted })}
             />
           </div>
           <Button type="submit" disabled={facMut.isPending}>
-            Add
+            {t("common.add")}
           </Button>
         </form>
         {facilities.length > 0 && (
@@ -318,7 +323,7 @@ function WasteLogPage() {
                     {f.name}
                     {!f.active && (
                       <Badge variant="outline" className="ml-2">
-                        inactive
+                        {t("wasteLog.inactive")}
                       </Badge>
                     )}
                   </div>
@@ -331,7 +336,7 @@ function WasteLogPage() {
                     rel="noreferrer"
                     className="text-xs text-primary underline"
                   >
-                    Directions
+                    {t("myDay.directions")}
                   </a>
                 )}
               </li>
@@ -341,26 +346,25 @@ function WasteLogPage() {
       </section>
 
       <section className="rounded-lg border bg-card p-5">
-        <h2 className="text-sm font-medium">Recent manifests</h2>
+        <h2 className="text-sm font-medium">{t("wasteLog.recentManifests")}</h2>
         {manifests.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No manifests yet.</p>
+          <p className="mt-3 text-sm text-muted-foreground">{t("wasteLog.noManifests")}</p>
         ) : (
           <ul className="mt-3 divide-y text-sm">
             {manifests.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <div>
                   <div className="font-medium">
-                    {formatDay(m.disposed_on)}
-                    {m.waste_disposal_facilities?.name
-                      ? ` · ${m.waste_disposal_facilities.name}`
-                      : " · No facility recorded"}
+                    {formatDay(m.disposed_on, locale)}
+                    {" · "}
+                    {m.waste_disposal_facilities?.name || t("wasteLog.noFacility")}
                     {m.ticket_number && (
                       <span className="ml-2 text-xs text-muted-foreground">#{m.ticket_number}</span>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {m.weight_lbs ? `${m.weight_lbs} lbs` : ""}
-                    {m.bag_count ? ` · ${m.bag_count} bags` : ""}
+                    {m.weight_lbs ? t("wasteLog.weight", { weight: m.weight_lbs }) : ""}
+                    {m.bag_count ? ` · ${t("wasteLog.bagCount", { count: m.bag_count })}` : ""}
                     {m.staff?.display_name ? ` · ${m.staff.display_name}` : ""}
                   </div>
                   {m.notes && <div className="text-xs text-muted-foreground">{m.notes}</div>}
@@ -375,17 +379,17 @@ function WasteLogPage() {
                           .from("waste-receipts")
                           .createSignedUrl(m.photo_url, 300);
                         if (error || !data?.signedUrl) {
-                          toast.error("Couldn't open the receipt");
+                          toast.error(t("wasteLog.couldNotOpenReceipt"));
                           return;
                         }
                         window.open(data.signedUrl, "_blank", "noreferrer");
                       }}
                     >
-                      Receipt
+                      {t("wasteLog.receipt")}
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => delMut.mutate(m.id)}>
-                    Delete
+                    {t("common.delete")}
                   </Button>
                 </div>
               </li>
@@ -396,7 +400,7 @@ function WasteLogPage() {
 
       <p className="text-xs text-muted-foreground">
         <Link to="/my-day" className="underline">
-          Back to My Day
+          {t("wasteLog.backToMyDay")}
         </Link>
       </p>
     </div>
