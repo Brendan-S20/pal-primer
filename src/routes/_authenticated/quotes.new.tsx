@@ -49,7 +49,9 @@ function NewQuotePage() {
     message: "",
     validUntil: defaultQuoteValidUntil(today),
     deposit: "",
-    lines: [blankEditorLine(false), blankEditorLine(true)],
+    // One per-visit line, priced for you when the person has an address. A
+    // one-time line is a button away; a blank line is ignored on save.
+    lines: [blankEditorLine(true)],
   };
 
   const header = (

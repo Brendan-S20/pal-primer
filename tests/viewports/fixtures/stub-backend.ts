@@ -571,6 +571,49 @@ const BASE_STUBS: Record<string, Stub> = {
   // new-client wizard all draw it. Off would draw one sentence and nothing to
   // measure.
   getFirstCleanupPricing: fx.FIRST_CLEANUP_PRICING,
+  // The quote editor's pricing (2026-10-01, "a quote started from nothing"):
+  // a priced zone with the long name, the standard price, and a client with
+  // three dogs every two weeks. So /quotes/new from a lead opens with its
+  // per-visit line already priced and the "Priced from ..." note under it --
+  // the longest thing the line card draws -- and the picker has three rows.
+  getQuotePricing: (a: Record<string, any>) => ({
+    zones: [
+      {
+        id: "zzzz1111-0000-4000-8000-000000000001",
+        name: "Ravenswood Manor / Lincoln Square North",
+        zip_codes: ["60625"],
+        geo_match_mode: "zip",
+        base_price_cents: 2800,
+        per_dog_addl_cents: 600,
+        pricing_mode: "flat",
+      },
+      {
+        id: "zzzz1111-0000-4000-8000-000000000002",
+        name: "Uptown / Edgewater Beach Commercial Grounds",
+        zip_codes: ["60640"],
+        geo_match_mode: "zip",
+        base_price_cents: 3400,
+        per_dog_addl_cents: 500,
+        pricing_mode: "flat",
+      },
+    ],
+    standard: {
+      basePriceCents: 2500,
+      perDogAddlCents: 500,
+      frequencyMultipliers: { weekly: 1, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 },
+    },
+    subject:
+      a.clientId || a.leadId
+        ? {
+            zoneId: "zzzz1111-0000-4000-8000-000000000001",
+            postalCode: "60625",
+            dogCount: 3,
+            frequency: "biweekly",
+            accountType: "residential",
+          }
+        : null,
+    subjectLabel: null,
+  }),
   listZones: {
     zones: [
       {

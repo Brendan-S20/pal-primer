@@ -33,7 +33,14 @@
 export type GeocodePrecision = "house" | "street" | "area";
 
 export type GeocodeResult =
-  | { latitude: number; longitude: number; precision: GeocodePrecision }
+  | {
+      latitude: number;
+      longitude: number;
+      precision: GeocodePrecision;
+      /** The town the match is in (city, town, village or suburb), when the
+       *  reply names one. Used to suggest a name for a new zone. */
+      place?: string | null;
+    }
   | null;
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -156,7 +163,7 @@ function geocodioCountry(parts: AddressParts): "US" | "CA" | null {
 }
 
 type GeocodioResult = {
-  address_components?: { country?: string };
+  address_components?: { country?: string; city?: string };
   formatted_address?: string;
   location?: { lat?: number; lng?: number };
   accuracy?: number;
@@ -210,7 +217,10 @@ function pickGeocodio(address: string, results: unknown): GeocodeResult {
         `[geocode] ${precision}-level match only for "${address}" (geocodio ${r.accuracy_type ?? "?"} ${r.accuracy ?? "?"})`,
       );
     }
-    return { latitude: lat, longitude: lon, precision };
+    // The town, for the same reason the Nominatim branch returns one: a new
+    // zone is named after it (src/lib/zones.functions.ts).
+    const place = r.address_components?.city ?? null;
+    return { latitude: lat, longitude: lon, precision, place: place ? String(place) : null };
   }
   console.warn(
     list.length
@@ -389,7 +399,9 @@ async function geocodeWithNominatim(address: string): Promise<GeocodeResult> {
       // signup over a road OSM has not house-numbered. It has to be VISIBLE.
       console.warn(`[geocode] ${precision}-level match only for "${address}"`);
     }
-    return { latitude: lat, longitude: lon, precision };
+    const place =
+      detail.city ?? detail.town ?? detail.village ?? detail.suburb ?? detail.hamlet ?? null;
+    return { latitude: lat, longitude: lon, precision, place: place ? String(place) : null };
   }
 
   console.warn(`[geocode] no result for address "${address}"`);

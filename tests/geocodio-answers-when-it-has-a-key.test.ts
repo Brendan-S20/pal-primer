@@ -176,7 +176,12 @@ describe("with no GEOCODIO_API_KEY, Nominatim answers exactly as before", () => 
 
   it("a single lookup goes to Nominatim, US and Canada only, and never to Geocodio", async () => {
     const geo = await settle(geocodeAddress(OAK));
-    expect(geo).toEqual({ latitude: 40.0001, longitude: -75.0001, precision: "house" });
+    expect(geo).toEqual({
+      latitude: 40.0001,
+      longitude: -75.0001,
+      precision: "house",
+      place: "Springfield",
+    });
     expect(calls).toHaveLength(1);
     expect(isNominatim(calls[0])).toBe(true);
     expect(calls[0].url).toMatch(/[?&]countrycodes=us,ca(&|$)/);
@@ -202,7 +207,12 @@ describe("with GEOCODIO_API_KEY set, a single lookup goes to Geocodio", () => {
   it("asks Geocodio, not Nominatim, with the key and the address", async () => {
     geocodio = () => json(single(ROOFTOP));
     const geo = await settle(geocodeAddress(OAK));
-    expect(geo).toEqual({ latitude: 38.886672, longitude: -77.094735, precision: "house" });
+    expect(geo).toEqual({
+      latitude: 38.886672,
+      longitude: -77.094735,
+      precision: "house",
+      place: "Arlington",
+    });
     expect(calls).toHaveLength(1);
     const url = new URL(calls[0].url);
     expect(url.origin + url.pathname).toBe("https://api.geocod.io/v1.7/geocode");
@@ -244,7 +254,7 @@ describe("with GEOCODIO_API_KEY set, a single lookup goes to Geocodio", () => {
   ] as const)("maps accuracy_type %s at accuracy %s to %s", async (type, accuracy, precision) => {
     geocodio = () => json(single({ lat: 41.5, lng: -87.5, accuracy, accuracy_type: type }));
     const geo = await settle(geocodeAddress(OAK));
-    expect(geo).toEqual({ latitude: 41.5, longitude: -87.5, precision });
+    expect(geo).toEqual({ latitude: 41.5, longitude: -87.5, precision, place: "Arlington" });
     if (precision !== "house") {
       // Imprecise is used, not refused -- but it is visible.
       expect(logged.some((l) => l.includes(`${precision}-level match only`))).toBe(true);
@@ -266,7 +276,12 @@ describe("with GEOCODIO_API_KEY set, a single lookup goes to Geocodio", () => {
         ),
       );
     const geo = await settle(geocodeAddress({ street: "12 Oak St", city: "Paris" }));
-    expect(geo).toEqual({ latitude: 33.6609, longitude: -95.5555, precision: "street" });
+    expect(geo).toEqual({
+      latitude: 33.6609,
+      longitude: -95.5555,
+      precision: "street",
+      place: "Arlington",
+    });
   });
 
   it("returns null when every result is outside the US and Canada", async () => {
@@ -290,7 +305,12 @@ describe("with GEOCODIO_API_KEY set, a single lookup goes to Geocodio", () => {
     geocodio = () =>
       typeof body === "string" ? new Response(body, { status }) : json(body, status);
     const geo = await settle(geocodeAddress(OAK));
-    expect(geo).toEqual({ latitude: 40.0001, longitude: -75.0001, precision: "house" });
+    expect(geo).toEqual({
+      latitude: 40.0001,
+      longitude: -75.0001,
+      precision: "house",
+      place: "Springfield",
+    });
     expect(calls.map((c) => (isGeocodio(c) ? "geocodio" : "nominatim"))).toEqual([
       "geocodio",
       "nominatim",
@@ -352,12 +372,12 @@ describe("with GEOCODIO_API_KEY set, the bulk path is one batch request", () => 
     ]);
 
     expect(geos).toEqual([
-      { latitude: 30, longitude: -97, precision: "house" },
-      { latitude: 31, longitude: -98, precision: "house" },
+      { latitude: 30, longitude: -97, precision: "house", place: "Arlington" },
+      { latitude: 31, longitude: -98, precision: "house", place: "Arlington" },
       null,
-      { latitude: 32, longitude: -99, precision: "street" },
-      { latitude: 33, longitude: -100, precision: "area" },
-      { latitude: 34, longitude: -101, precision: "house" },
+      { latitude: 32, longitude: -99, precision: "street", place: "Arlington" },
+      { latitude: 33, longitude: -100, precision: "area", place: "Arlington" },
+      { latitude: 34, longitude: -101, precision: "house", place: "Arlington" },
     ]);
     expect(calls.some(isNominatim)).toBe(false);
   });
@@ -377,12 +397,32 @@ describe("with GEOCODIO_API_KEY set, the bulk path is one batch request", () => 
       return json(body);
     };
     const geos = await settle(geocodeAddresses(ROWS));
-    expect(geos[0]).toEqual({ latitude: 30, longitude: -97, precision: "house" });
-    expect(geos[1]).toEqual({ latitude: 40.0001, longitude: -75.0001, precision: "house" }); // Nominatim
+    expect(geos[0]).toEqual({
+      latitude: 30,
+      longitude: -97,
+      precision: "house",
+      place: "Arlington",
+    });
+    expect(geos[1]).toEqual({
+      latitude: 40.0001,
+      longitude: -75.0001,
+      precision: "house",
+      place: "Springfield",
+    }); // Nominatim
     expect(geos[2]).toBeNull();
-    expect(geos[3]).toEqual({ latitude: 32, longitude: -99, precision: "street" });
+    expect(geos[3]).toEqual({
+      latitude: 32,
+      longitude: -99,
+      precision: "street",
+      place: "Arlington",
+    });
     expect(geos[4]).toBeNull(); // the MX answer, rejected
-    expect(geos[5]).toEqual({ latitude: 34, longitude: -101, precision: "house" });
+    expect(geos[5]).toEqual({
+      latitude: 34,
+      longitude: -101,
+      precision: "house",
+      place: "Arlington",
+    });
 
     expect(calls.filter(isGeocodio)).toHaveLength(1);
     const nominatimCalls = calls.filter(isNominatim);
@@ -429,6 +469,11 @@ describe("with GEOCODIO_API_KEY set, the bulk path is one batch request", () => 
     const geos = await settle(geocodeAddresses(ROWS));
     expect(geos[0]?.latitude).toBe(40.0001); // Nominatim, not row 1's point
     expect(geos[1]?.latitude).toBe(40.0001);
-    expect(geos[3]).toEqual({ latitude: 32, longitude: -99, precision: "street" });
+    expect(geos[3]).toEqual({
+      latitude: 32,
+      longitude: -99,
+      precision: "street",
+      place: "Arlington",
+    });
   });
 });
