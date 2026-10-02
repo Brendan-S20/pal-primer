@@ -85,7 +85,7 @@ function Page() {
         <p className="text-xs text-muted-foreground">
           The AI Receptionist is a plan add-on. If it isn't on your plan yet, add it in{" "}
           <Link to="/settings/billing" className="underline">
-            Settings → Billing
+            Settings → Plan &amp; billing
           </Link>{" "}
           first; you can draft the persona and FAQ below either way.
         </p>

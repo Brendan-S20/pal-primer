@@ -39,7 +39,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       .single();
     if (oErr) throw new Error(oErr.message);
     if (!org.google_review_url)
-      throw new Error("Add a Google review URL in Settings → Reviews first");
+      throw new Error("Add a Google review URL in Settings → Reviews & referrals first");
 
     // Review asks go out on the tenant's OWN connected Twilio number; when they
     // haven't connected one, fall back to email — never the platform SMS number.

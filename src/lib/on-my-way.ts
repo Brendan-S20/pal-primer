@@ -38,18 +38,26 @@ export function etaPhrase(
 }
 
 /** The text. The org name is in it because automated texts go from the
- *  platform's number, which the customer has never seen before. */
+ *  platform's number, which the customer has never seen before.
+ *
+ *  `trackUrl` is the live map (src/lib/live-tracking.ts), present only when
+ *  the business has live tracking on. Without it the text is exactly what it
+ *  was before live tracking existed, word for word: a business that has not
+ *  turned it on sends nothing new. Two words and a link with it, because the
+ *  text is already two segments and a third costs every business money. */
 export function onMyWayText(p: {
   customerName: string;
   orgName: string;
   techName: string | null;
   eta: string | null;
+  trackUrl?: string | null;
 }): string {
   const who = p.techName ? `${p.techName} from ${p.orgName}` : `your ${p.orgName} tech`;
   const when = p.eta ? `, arriving ${p.eta}` : "";
+  const track = p.trackUrl ? ` Live map: ${p.trackUrl}` : "";
   // ENT / DNE is the handshake operators teach their customers; the reply
   // lands on the visit (platform-inbound.server.ts) and shows on the stop.
-  return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}. Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.`;
+  return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}.${track} Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.`;
 }
 
 export type NavigateCheck =

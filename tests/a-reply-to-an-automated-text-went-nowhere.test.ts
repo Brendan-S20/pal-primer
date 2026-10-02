@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { classifyReply, samePhone, textsTo } from "@/lib/platform-replies";
+import { onMyWayText } from "@/lib/on-my-way";
 
 type Call = { table: string; op: string; payload?: unknown; filters: Array<[string, unknown]> };
 const calls: Call[] = [];
@@ -231,6 +232,18 @@ describe("the wiring", () => {
     const text = readFileSync(join(import.meta.dirname, "../src/lib/on-my-way.ts"), "utf8");
     expect(text).toMatch(/Reply ENT/);
     expect(text).toMatch(/Reply DNE/);
+    // Updated deliberately with live tracking (2026-09-29): the live map link
+    // goes BEFORE the handshake, so a customer who reads to the link still
+    // reads the question, and the text still ends on the opt-out.
+    const withMap = onMyWayText({
+      customerName: "Jane",
+      orgName: "Acme Scoop",
+      techName: "Sam",
+      eta: null,
+      trackUrl: "https://app.houndstack.com/track/7a000000-0000-4000-8000-0000000000a1",
+    });
+    expect(withMap.indexOf("Live map:")).toBeLessThan(withMap.indexOf("Reply ENT"));
+    expect(withMap).toMatch(/Reply ENT\. Rather we didn't come in\? Reply DNE\. Reply STOP to opt out\.$/);
     const myDay = readFileSync(
       join(import.meta.dirname, "../src/routes/_authenticated/my-day.tsx"),
       "utf8",

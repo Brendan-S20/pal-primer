@@ -90,7 +90,7 @@ export function decideAiCall(state: AiUsageState): AiUsageDecision {
       allow: false,
       reason:
         `AI is paused for this month: ${used} actions used against a ceiling of ${cap}. ` +
-        `Raise the ceiling in Settings → AI Tools, or it resets at the start of next month.`,
+        `Raise the ceiling in Settings → AI usage, or it resets at the start of next month.`,
     };
   }
   return { allow: true, overAllowance: state.overAllowance };
