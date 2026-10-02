@@ -104,8 +104,13 @@ describe("the optimization level is not a question any more", () => {
   it("offers no level choice in the UI", () => {
     expect(panel).not.toMatch(/section === "level"/);
     expect(panel).not.toMatch(/setLevel\(/);
-    // The union that drove the disclosure sections.
-    expect(panel).toMatch(/type Section = "dates" \| "techs" \| null;/);
+    // The union that drove the disclosure sections. CHANGED 2026-10-02: a
+    // third, "windows" -- not a level, and not `fast` by another name. `fast`
+    // dropped a customer's window silently; the owner asked for the choice to
+    // set windows aside OUT LOUD ("settings for route optimization to avoid
+    // arrival windows"), and every window the plan then misses is named on
+    // the toast. The level is still gone.
+    expect(panel).toMatch(/type Section = "dates" \| "techs" \| "windows" \| null;/);
   });
 
   it("always asks for the best one", () => {

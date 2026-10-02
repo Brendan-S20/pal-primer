@@ -12,6 +12,7 @@ import {
   ORG_ID,
   REFUND_CLIENT_NAME,
   REFUND_INVOICE_ID,
+  ROUTING_UNKNOWN_REASON,
   QUOTE_ACCEPTED_ID,
   QUOTE_DRAFT_ID,
   QUOTE_PROSPECT_NAME,
@@ -142,6 +143,22 @@ export const SURFACES: Surface[] = [
     openedLabel: "the auto-routing card",
   },
   {
+    // The arrival-window override (20261002090400): a third pill, and the
+    // two-row choice it opens inside the 320px card.
+    id: "/routes · auto-routing arrival windows open",
+    path: "/routes",
+    prefs: { "routes.viewMode": "board", "routes.range": "today" },
+    proof: (p) => p.getByRole("button", { name: "Auto-routing" }),
+    proofLabel: "the dispatch toolbar",
+    expectsData: "Anastasia Vandermolen-Whitaker",
+    open: async (p) => {
+      await p.getByRole("button", { name: "Auto-routing" }).click();
+      await p.getByRole("button", { name: "Keep windows" }).click();
+    },
+    opened: (p) => p.getByRole("radiogroup", { name: "Arrival windows this run" }),
+    openedLabel: "the arrival-window choice",
+  },
+  {
     id: "/clients",
     path: "/clients",
     proof: (p) => p.getByRole("heading", { name: "Clients", exact: true }).first(),
@@ -245,6 +262,15 @@ export const SURFACES: Surface[] = [
     expectsData: "The working day",
   },
   {
+    // The two arrival-window rows and the read-only line that replaced the
+    // "Average speed" field (20261002090400, 20261002090500).
+    id: "/settings/scheduling · route optimizing",
+    path: "/settings/scheduling",
+    proof: (p) => p.getByText("Shortest driving (ignore arrival windows)").first(),
+    proofLabel: "the arrival-window choice",
+    expectsData: "Drive times come from real road data",
+  },
+  {
     // The owner's side of the calendar card: the access-code switch with the
     // paragraph explaining why it is off, under the same two link rows. The
     // switch only draws for manage_settings, and its label is the proof.
@@ -302,7 +328,12 @@ export const SURFACES: Surface[] = [
     path: "/platform/overview",
     proof: (p) => p.getByText("Health of the SaaS at a glance").first(),
     proofLabel: "the overview strapline",
-    expectsData: "CONVERSION PIPELINE",
+    // Was "CONVERSION PIPELINE", a section heading the page draws with or
+    // without data. The routing-health card is the widest thing on this page
+    // -- five-digit counts, and a failure reason that is one 66-character
+    // word -- and this string is only on screen if getRoutingHealth reached
+    // the card AND the card showed an unlabelled reason rather than drop it.
+    expectsData: ROUTING_UNKNOWN_REASON,
   },
   {
     id: "/platform/tenants",

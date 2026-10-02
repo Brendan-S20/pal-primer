@@ -349,7 +349,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         // how a nightly job turns into an incident.
         let anchors: Record<string, unknown>;
         try {
-          const { geocodeAddress } = await import("@/lib/geocode.server");
+          const { geocodeAddresses } = await import("@/lib/geocode.server");
           let orgsFixed = 0;
           let facilitiesFixed = 0;
 
@@ -359,8 +359,25 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             .not("contact_address", "is", null)
             .is("latitude", null)
             .limit(25);
-          for (const o of needOrg ?? []) {
-            const geo = await geocodeAddress({ street: (o as any).contact_address });
+          const { data: needFac } = await supabaseAdmin
+            .from("waste_disposal_facilities")
+            .select("id, address")
+            .not("address", "is", null)
+            .is("latitude", null)
+            .limit(25);
+
+          // Both lists in ONE geocoder call: a single Geocodio batch request
+          // when GEOCODIO_API_KEY is set, the 1/s Nominatim loop when not.
+          // Answers come back in input order, orgs first.
+          const orgRows = needOrg ?? [];
+          const facRows = needFac ?? [];
+          const geos = await geocodeAddresses([
+            ...orgRows.map((o) => ({ street: o.contact_address })),
+            ...facRows.map((f) => ({ street: f.address })),
+          ]);
+
+          for (const [i, o] of orgRows.entries()) {
+            const geo = geos[i];
             if (!geo) continue;
             await supabaseAdmin
               .from("organizations")
@@ -369,14 +386,8 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             orgsFixed++;
           }
 
-          const { data: needFac } = await supabaseAdmin
-            .from("waste_disposal_facilities")
-            .select("id, address")
-            .not("address", "is", null)
-            .is("latitude", null)
-            .limit(25);
-          for (const f of needFac ?? []) {
-            const geo = await geocodeAddress({ street: (f as any).address });
+          for (const [i, f] of facRows.entries()) {
+            const geo = geos[orgRows.length + i];
             if (!geo) continue;
             await supabaseAdmin
               .from("waste_disposal_facilities")

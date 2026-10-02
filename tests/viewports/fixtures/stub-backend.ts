@@ -875,6 +875,7 @@ const BASE_STUBS: Record<string, Stub> = {
     converted_this_month: 1,
     at_risk: 2,
   },
+  getRoutingHealth: fx.ROUTING_HEALTH,
   getPlatformStripeConfig: { stripeConfigured: true, mode: "test" },
   getTenantDetail: {
     id: fx.ORG_ID,

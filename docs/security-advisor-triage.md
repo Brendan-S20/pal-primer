@@ -186,6 +186,13 @@ HMAC keys outbound webhooks are signed with. Deny-all for the same reason as
 created or rotated it, and only the delivery worker on the service role reads
 it afterwards. The advisor count above will read 10 once it is applied.
 
+An eleventh arrived with 20261002090600: `road_leg_runs`, one row per day the
+road-leg measurer ran (measured / cached / estimated, and why), counted so the
+platform console can see how often the free public router fails us. Written by
+`refreshRoadLegs` and read by the platform's routing-health card, both through
+the service role; there is no tenant-side reader, so there is nothing to open
+it for. The advisor count will read 11 once it is applied.
+
 RLS enabled, zero policies — deny-all to `anon` and `authenticated`, evaluated
 after the blanket table grants, so those grants buy nothing.
 `relforcerowsecurity` is false, so the postgres-owned definer functions and the

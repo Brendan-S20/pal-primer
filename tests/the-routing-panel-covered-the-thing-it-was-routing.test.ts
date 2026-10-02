@@ -86,9 +86,14 @@ describe("one control open at a time", () => {
     // silently discarded a customer's arrival window. See the LEVEL note in
     // the panel, and the measurements in
     // routing-said-nothing-about-the-technician-with-no-start-address.
-    expect(panel).toMatch(/type Section = "dates" \| "techs" \| null/);
+    //
+    // Three again since 2026-10-02, and the third is not the level: it is
+    // the owner's arrival-window choice for this one run (honour them, or
+    // shortest driving with every miss named). Still one value, so still one
+    // open at a time.
+    expect(panel).toMatch(/type Section = "dates" \| "techs" \| "windows" \| null/);
     expect(panel).toMatch(/const \[section, setSection\] = useState<Section>\(null\)/);
-    for (const s of ["dates", "techs"]) {
+    for (const s of ["dates", "techs", "windows"]) {
       expect(panel).toMatch(new RegExp(`setSection\\(section === "${s}" \\? null : "${s}"\\)`));
     }
   });

@@ -203,39 +203,29 @@ describe("speed converts, because a relabel would have made it worse", () => {
     expect(mphToStoredKmh(MAX_SPEED_MPH + 1)).toBeGreaterThan(120);
   });
 
-  it("shows a stored speed as the mph a dispatcher would recognise", async () => {
+  it("shows a measured speed as the mph a dispatcher would recognise", async () => {
     const { mphFromStoredKmh, mphToStoredKmh } = await measures();
     // The round trip is lossy: 30 km/h shows as 19 mph and 19 mph stores as
-    // 31. That USED to be a hazard as well as an imprecision — while 30 meant
-    // "unset", tabbing through this field without editing it took the
-    // workspace off area-based speeds forever. 20260903090000 removed the
-    // sentinel, so 30 is now just 30 and the round trip is only a rounding.
+    // 31. Since 2026-10 nothing is typed back, so it is only a display.
     expect(mphFromStoredKmh(30)).toBe(19);
     expect(mphToStoredKmh(19)).toBe(31);
-
-    const settings = codeOnly(read("src/routes/_authenticated/settings.scheduling.tsx"));
-    // The no-op guard stays, on the raw text rather than the parsed number,
-    // because the field can now legitimately be empty and Number("") is 0.
-    expect(settings).toMatch(/if \(raw === shownSpeedMph\) return/);
-    expect(settings).toMatch(/Average speed \(mph\)/);
-    expect(settings).not.toMatch(/Average speed \(km\/h\)/);
   });
 
-  it("lets a workspace hand the speed back to the road data", async () => {
-    // The column is nullable since 20260903090000 and NULL means "work it out
-    // from the routes actually driven". A screen that can set a value and
-    // never unset it turns a preference into a one-way door.
+  it("asks for no common speed at all (the owner, 2026-10-02)", async () => {
+    // "I don't think it looks good to ask for a common speed (it shouldn't
+    // be based on that)." The field is gone from the screen, the server no
+    // longer accepts it, and drive_minutes no longer reads it, so a speed
+    // typed before the change cannot keep steering estimates from a setting
+    // nobody can see.
     const settings = codeOnly(read("src/routes/_authenticated/settings.scheduling.tsx"));
-    expect(settings).toMatch(/if \(raw === ""\)/);
-    expect(settings).toMatch(/mut\.mutate\(\{ avg_speed_kmh: null \}\)/);
-    // Empty is shown as empty, not as the old default wearing a number.
-    expect(settings).toMatch(/settings\.avg_speed_kmh == null \? "" :/);
-
-    // And the server can tell "clear it" from "leave it alone", which the
-    // COALESCE-everything RPC could not.
+    expect(settings).not.toMatch(/Average speed/);
+    expect(settings).not.toMatch(/avg_speed_kmh/);
     const fns = codeOnly(read("src/lib/visits.functions.ts"));
-    expect(fns).toMatch(/avg_speed_kmh: z\.number\(\)\.int\(\)\.min\(5\)\.max\(120\)\.nullable\(\)\.optional\(\)/);
-    expect(fns).toMatch(/_clear_avg_speed: data\.avg_speed_kmh === null/);
+    expect(fns).not.toMatch(/avg_speed_kmh/);
+    const migration = read("supabase/migrations/20261002090500_drive-times-are-not-a-typed-speed.sql");
+    const body = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION public.drive_minutes"));
+    expect(body).toMatch(/_speed\s*:=\s*COALESCE\(\s*_o\.measured_speed_kmh,\s*public\.effective_speed_kmh\(/);
+    expect(body.slice(0, body.indexOf("$function$;"))).not.toMatch(/_o\.avg_speed_kmh/);
   });
 
   it("shows what the roads turned out to be worth", async () => {
@@ -245,7 +235,7 @@ describe("speed converts, because a relabel would have made it worse", () => {
     const settings = codeOnly(read("src/routes/_authenticated/settings.scheduling.tsx"));
     expect(settings).toMatch(/settings\.measured_speed_kmh/);
     expect(settings).toMatch(/settings\.measured_legs/);
-    expect(settings).toMatch(/Measured from your routes/);
+    expect(settings).toMatch(/Drive times come from real road data/);
     const fns = codeOnly(read("src/lib/visits.functions.ts"));
     expect(fns).toMatch(/measured_speed_kmh, measured_road_factor, measured_legs, measured_at/);
   });

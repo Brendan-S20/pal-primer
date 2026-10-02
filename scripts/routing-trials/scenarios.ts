@@ -63,6 +63,8 @@ export type Scenario = {
     workdayStart?: string;
     workdayEnd?: string;
     business?: LatLon | null;
+    /** organizations.route_windows; default honour. */
+    windows?: "honour" | "ignore";
   };
   day: string;
   techs: TechSpec[];
@@ -596,6 +598,25 @@ export const SCENARIOS: Scenario[] = [
     title: "Time windows: 2 techs, 16 stops, 5 windows and a preference",
     question: "Are arrival windows honoured, and is a missed one reported?",
     org: { tz: "America/Chicago", areaType: "suburban", business: PLANO_CITY_HALL },
+    day: DAY,
+    techs: [
+      { key: "cara", name: "Cara", start: [33.1507, -96.8236] },
+      { key: "dev", name: "Dev", start: [32.9483, -96.7299] },
+    ],
+    stops: windowStops,
+    osrm: "down",
+  },
+  {
+    id: "windows-ignored",
+    title: "Time windows set aside: the same 16 stops, shortest driving",
+    question:
+      "With the organization's setting on 'ignore arrival windows', is the drive shorter, and is every miss still reported?",
+    org: {
+      tz: "America/Chicago",
+      areaType: "suburban",
+      business: PLANO_CITY_HALL,
+      windows: "ignore",
+    },
     day: DAY,
     techs: [
       { key: "cara", name: "Cara", start: [33.1507, -96.8236] },

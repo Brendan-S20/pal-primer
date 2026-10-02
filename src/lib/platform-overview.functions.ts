@@ -107,6 +107,69 @@ export const getPlatformOverview = createServerFn({ method: "GET" })
     };
   });
 
+/**
+ * How the road-leg measurer did across every workspace, last 7 days.
+ *
+ * Launch measures roads on the free public OSRM demo, and when it fails a day
+ * is planned on straight-line estimates. The dispatcher sees a toast; until
+ * this card nobody on the platform side saw anything. One row per day planned
+ * lands in `road_leg_runs` (see 20261002090600); this reads the aggregate.
+ */
+export type RoutingHealth = {
+  days: number;
+  /** Router asked, answer written. Includes `partlyMeasured`. */
+  measured: number;
+  /** Measured, but some stops snapped too far to trust; their legs stayed estimated. */
+  partlyMeasured: number;
+  /** Every leg already fresh in road_legs; the router was not asked. */
+  cached: number;
+  /** No measured legs at all. */
+  estimated: number;
+  /** `estimated`, by RoadLegProblem, largest first. */
+  estimatedByReason: Array<{ reason: string; runs: number; workspaces: number }>;
+};
+
+export const getRoutingHealth = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<RoutingHealth> => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const days = 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    // Aggregated in SQL: the rows are unbounded and PostgREST would silently
+    // stop at max_rows, under-counting exactly when routing is busiest.
+    const { data, error } = await supabaseAdmin.rpc("road_leg_run_summary", { _since: since });
+    if (error) throw new Error(error.message);
+
+    const health: RoutingHealth = {
+      days,
+      measured: 0,
+      partlyMeasured: 0,
+      cached: 0,
+      estimated: 0,
+      estimatedByReason: [],
+    };
+    for (const row of data ?? []) {
+      const runs = Number(row.runs ?? 0);
+      if (row.outcome === "measured") {
+        health.measured += runs;
+        if (row.reason === "points_outside_graph") health.partlyMeasured += runs;
+      } else if (row.outcome === "cached") {
+        health.cached += runs;
+      } else if (row.outcome === "estimated") {
+        health.estimated += runs;
+        health.estimatedByReason.push({
+          reason: row.reason ?? "unknown",
+          runs,
+          workspaces: Number(row.workspaces ?? 0),
+        });
+      }
+    }
+    health.estimatedByReason.sort((a, b) => b.runs - a.runs);
+    return health;
+  });
+
 export type PlatformTenantRow = {
   id: string;
   name: string;

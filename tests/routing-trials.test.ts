@@ -28,20 +28,30 @@ vi.mock("@/integrations/supabase/client.server", () => ({
   },
 }));
 
-import { refreshRoadLegs } from "@/lib/road-legs.server";
+import { refreshRoadLegs, setRoadLegTiming } from "@/lib/road-legs.server";
+import { BAL_TOLERANCE } from "@/lib/route-solver";
 import {
   DB_URL,
+  STATEMENT_TIMEOUT_MS,
   databaseReachable,
   runTrial,
+  uuidFor,
   type TrialResult,
 } from "../scripts/routing-trials/harness";
 import { SCENARIOS } from "../scripts/routing-trials/scenarios";
-import { formatAll } from "../scripts/routing-trials/report";
+import { benchmarkRows, formatAll, formatBenchmark } from "../scripts/routing-trials/report";
 import { formatReferee, referee, sourceFromEnv } from "../scripts/routing-trials/google-referee";
 
 const reachable = databaseReachable();
 const only = process.env.ROUTING_TRIALS_ONLY?.split(",");
+// Every assertion below is about the planner the app SHIPS: the TypeScript
+// solver (route-solver.ts) between route_day_inputs and apply_route_plan.
 const results = new Map<string, TrialResult>();
+// The plpgsql planner it replaced, on the same days, for the benchmark.
+// ROUTING_TRIALS_BENCH=0 skips it (it is the slow half: the Phoenix day alone
+// is two 7-23 s statements).
+const baseline = new Map<string, TrialResult>();
+const bench = process.env.ROUTING_TRIALS_BENCH !== "0";
 const ran = () => [...results.values()];
 const get = (id: string) => {
   const r = results.get(id);
@@ -58,10 +68,45 @@ if (!reachable) {
 
 describe.skipIf(!reachable)("routing trials: every plan is complete and honest", () => {
   beforeAll(async () => {
+    // The trials replay recorded answers, so the 1.1 s spacing the public
+    // demo router is owed (and a 429's Retry-After) would only make them slow.
+    setRoadLegTiming({ sleep: async () => {} });
     for (const sc of SCENARIOS.filter((s) => !only || only.includes(s.id))) {
-      results.set(sc.id, await runTrial(sc, refreshRoadLegs, (a) => (h.admin = a as Admin)));
+      const setAdmin = (a: unknown) => (h.admin = a as Admin);
+      results.set(sc.id, await runTrial(sc, refreshRoadLegs, setAdmin, "ts"));
+      if (bench) baseline.set(sc.id, await runTrial(sc, refreshRoadLegs, setAdmin, "sql"));
     }
-    if (process.env.ROUTING_TRIALS_REPORT === "1") process.stdout.write(formatAll(ran()));
+    // ROUTING_TRIALS_DUMP=<dir>: each day's solver inputs and both planners'
+    // routes as JSON, so the solver can be studied without a database.
+    const dump = process.env.ROUTING_TRIALS_DUMP;
+    if (dump) {
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      mkdirSync(dump, { recursive: true });
+      for (const r of ran()) {
+        const routesOf = (x: TrialResult | undefined) =>
+          x?.techs.map((t) => ({ tech: t.key, stops: t.stops.map((v) => v.key) })) ?? null;
+        writeFileSync(
+          `${dump}/${r.sc.id}.json`,
+          JSON.stringify({
+            id: r.sc.id,
+            day: r.sc.day,
+            inputs: r.ts?.inputs ?? null,
+            visitIdOf: Object.fromEntries(
+              r.sc.stops.map((st) => [st.key, uuidFor(r.sc.id, "visit", st.key)]),
+            ),
+            staffIdOf: Object.fromEntries(
+              r.sc.techs.map((t) => [t.key, uuidFor(r.sc.id, "staff", t.key)]),
+            ),
+            ts: routesOf(r),
+            sql: routesOf(baseline.get(r.sc.id)),
+          }),
+        );
+      }
+    }
+    if (process.env.ROUTING_TRIALS_REPORT === "1") {
+      process.stdout.write(formatAll(ran()));
+      if (bench) process.stdout.write(formatBenchmark(benchmarkRows(ran(), baseline)));
+    }
     // Google as the referee (npm run trials:routing:google). Bills a few
     // thousand Distance Matrix elements, so only when asked for.
     if (process.env.ROUTING_TRIALS_GOOGLE === "1") {
@@ -152,7 +197,10 @@ describe.skipIf(!reachable)("routing trials: specific scenarios", () => {
     for (const id of ["manhattan-router-down", "plano-router-down", "tampa-router-down"]) {
       expect(get(id).legResult.problem, id).toBe("router_unreachable");
     }
-    expect(get("plano-rate-limited").legResult.problem).toBe("router_error");
+    // A 429 is now its own answer: asked once more after Retry-After, and
+    // reported as "busy" rather than as a generic router error.
+    expect(get("plano-rate-limited").legResult.problem).toBe("router_busy");
+    expect(get("plano-rate-limited").osrmRequests).toBe(2);
     // 206 points against a 90-point request: refused, said, never sent.
     expect(get("large-phoenix").legResult.problem).toBe("too_many_points");
     expect(get("large-phoenix").osrmRequests).toBe(0);
@@ -248,3 +296,72 @@ describe.skipIf(!reachable)("routing trials: specific scenarios", () => {
     ]);
   });
 });
+
+describe.skipIf(!reachable)(
+  "routing trials: the TypeScript solver against the planner it replaced",
+  () => {
+    // The same day, the same road data, the same write: only the search
+    // differs. ROUTING_TRIALS_BENCH=0 skips the old planner, and these with it.
+    const pairs = () => (bench ? benchmarkRows(ran(), baseline).filter((r) => r.sql) : []);
+
+    it("prices every leg exactly as drive_minutes does", () => {
+      // The solver orders the day on route-inputs.ts's drive model; Postgres
+      // times it with drive_minutes. drive_minutes is printed to 3 decimals.
+      for (const r of ran()) {
+        expect(r.modelMismatch, r.sc.id).not.toBeNull();
+        expect(r.modelMismatch!, r.sc.id).toBeLessThan(0.001);
+      }
+    });
+
+    it("keeps every database statement far inside the 8 s API limit, the 200-stop day included", () => {
+      for (const r of ran()) {
+        expect(r.ts!.inputsMs, `${r.sc.id} read`).toBeLessThan(STATEMENT_TIMEOUT_MS / 2);
+        expect(r.ts!.applyMs, `${r.sc.id} write`).toBeLessThan(STATEMENT_TIMEOUT_MS / 2);
+      }
+      // The old planner could not: this is the reason the solver moved.
+      const old = bench ? baseline.get("large-phoenix") : undefined;
+      if (old)
+        expect(Math.max(old.forecast.ms, old.apply.ms)).toBeGreaterThan(STATEMENT_TIMEOUT_MS);
+    });
+
+    it("never drives further than the old planner on the same day", () => {
+      for (const p of pairs()) {
+        if (p.id === "windows-ignored") continue; // compared below, by design
+        expect(p.ts.driveMin, p.id).toBeLessThanOrEqual(p.sql!.driveMin + 0.05);
+      }
+    });
+
+    it("never misses more arrival windows than the old planner while honouring them", () => {
+      for (const p of pairs()) {
+        if (p.id === "windows-ignored") continue;
+        expect(p.ts.lateMisses, p.id).toBeLessThanOrEqual(p.sql!.lateMisses);
+      }
+    });
+
+    it("balances no worse than the old planner, beyond the 10-minute tolerance both aim for", () => {
+      // Within ten minutes of each other the solver lets driving decide: on
+      // the measured Tampa day that is 8.9 -> 9.4 minutes of spread for less
+      // driving, which is the trade the tolerance exists to make.
+      for (const p of pairs()) {
+        expect(p.ts.spreadMin, p.id).toBeLessThanOrEqual(Math.max(p.sql!.spreadMin, BAL_TOLERANCE));
+      }
+    });
+
+    it("sets windows aside when the organization says so: shorter driving, every miss still named", () => {
+      const honoured = get("windows");
+      const ignored = get("windows-ignored");
+      expect(ignored.ts!.honourWindows).toBe(false);
+      expect(honoured.ts!.honourWindows).toBe(true);
+      const drive = (r: TrialResult) =>
+        r.techs.filter((t) => t.eligible).reduce((s, t) => s + t.driveMin, 0);
+      expect(drive(ignored)).toBeLessThan(drive(honoured));
+      // Every late arrival the check finds is flagged and named; early ones are
+      // named too, and nobody waited for a window that was set aside.
+      const late = ignored.checks.windowTruth.filter((w) => w.missed).length;
+      expect(ignored.ts!.misses.filter((m) => m.kind === "late")).toHaveLength(late);
+      expect(ignored.ts!.misses.every((m) => m.client)).toBe(true);
+      expect(ignored.ts!.misses.some((m) => m.kind === "early")).toBe(true);
+      expect(ignored.checks.etaChainBroken).toEqual([]);
+    });
+  },
+);

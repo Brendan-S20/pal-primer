@@ -107,6 +107,10 @@ export type RoadLegProblem =
   | "too_many_points"
   | "router_unreachable"
   | "router_error"
+  /** HTTP 429 twice: asked to slow down, waited as told (up to 5 s), and was
+   *  refused again. The free public demo does this under load; it is an
+   *  outage of minutes, not a configuration fault, and retrying later fixes it. */
+  | "router_busy"
   | "wrong_region"
   | "nothing_usable"
   | "save_failed";
@@ -141,16 +145,204 @@ export type RoadLegResult = {
    * measured nor cleanly estimated.
    */
   pointsOutsideGraph: number;
+  /**
+   * True when every leg the day needs was already in `road_legs` and younger
+   * than 90 days, so the router was not asked at all. `measured` is then 0
+   * (nothing was written) and `problem` is null: a cached day is a MEASURED
+   * day -- drive_minutes reads the same rows either way -- and must not be
+   * reported as degraded.
+   */
+  cached: boolean;
 };
 
-const nothingToMeasure: RoadLegResult = { measured: 0, problem: null, pointsOutsideGraph: 0 };
+const nothingToMeasure: RoadLegResult = {
+  measured: 0,
+  problem: null,
+  pointsOutsideGraph: 0,
+  cached: false,
+};
 const failed = (problem: RoadLegProblem): RoadLegResult => ({
   measured: 0,
   problem,
   pointsOutsideGraph: 0,
+  cached: false,
 });
+const alreadyCached: RoadLegResult = {
+  measured: 0,
+  problem: null,
+  pointsOutsideGraph: 0,
+  cached: true,
+};
 
+// ── BEING A POLITE GUEST ON A FREE SERVER ────────────────────────────────
+//
+// The public demo's usage policy asks for at most one request per second, and
+// a multi-day applyOptimize calls refreshRoadLegs once per day in a loop -- a
+// week planned at once was seven requests in as long as the planner took
+// between them, which on a small org is well under a second. So requests to
+// the demo host are spaced DEMO_GAP_MS apart within this process. A
+// self-hosted OSRM_URL is ours to hammer and is not paced.
+//
+// Per process, not global: two server instances each keep their own clock.
+// That is a known limit, accepted because the alternative is a shared lock
+// on the dispatch path for the sake of a server we intend to replace.
+const PUBLIC_DEMO_HOST = "router.project-osrm.org";
+const DEMO_GAP_MS = 1100;
+/** A Retry-After longer than this is not waited for: the dispatcher is
+ *  watching a spinner, and an estimate now beats a measurement in a minute. */
+const RETRY_AFTER_CAP_MS = 5000;
+/** A 429 with no usable Retry-After waits this long before its one retry. */
+const RETRY_AFTER_DEFAULT_MS = 1000;
+
+/** The clock this file waits on. Injectable so tests and the routing-trials
+ *  harness do not sleep for real; see setRoadLegTiming. */
+export type RoadLegTiming = {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  /** False turns off demo-server pacing (Retry-After is still honoured). */
+  paceDemo: boolean;
+};
+const realTiming: RoadLegTiming = {
+  now: () => Date.now(),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  paceDemo: true,
+};
+let timing: RoadLegTiming = realTiming;
+let lastDemoRequestAt = Number.NEGATIVE_INFINITY;
+
+/**
+ * Replace the clock (or turn pacing off), for tests and the trial harness.
+ * Pass null to restore the real clock. Either way the pacing memory is reset,
+ * so one test's last request does not delay the next test's first.
+ */
+export function setRoadLegTiming(t: Partial<RoadLegTiming> | null): void {
+  timing = t ? { ...realTiming, ...t } : realTiming;
+  lastDemoRequestAt = Number.NEGATIVE_INFINITY;
+}
+
+function isPublicDemo(base: string): boolean {
+  try {
+    return new URL(base).hostname === PUBLIC_DEMO_HOST;
+  } catch {
+    return false;
+  }
+}
+
+/** Wait for this request's slot on the demo server. The slot is RESERVED
+ *  before sleeping, so two days measured concurrently queue behind each other
+ *  rather than both reading the same last-request time and firing together. */
+async function paceFor(base: string): Promise<void> {
+  if (!timing.paceDemo || !isPublicDemo(base)) return;
+  const now = timing.now();
+  const slot = Math.max(now, lastDemoRequestAt + DEMO_GAP_MS);
+  lastDemoRequestAt = slot;
+  if (slot > now) await timing.sleep(slot - now);
+}
+
+/** Retry-After is either delta-seconds or an HTTP-date (RFC 9110 §10.2.3). */
+function retryAfterMs(header: string | null): number {
+  const v = header?.trim();
+  if (!v) return RETRY_AFTER_DEFAULT_MS;
+  let ms: number;
+  if (/^\d+(\.\d+)?$/.test(v)) ms = Number(v) * 1000;
+  else {
+    const at = Date.parse(v);
+    if (Number.isNaN(at)) return RETRY_AFTER_DEFAULT_MS;
+    ms = at - timing.now();
+  }
+  return Math.min(Math.max(ms, 0), RETRY_AFTER_CAP_MS);
+}
+
+/**
+ * Measure every pair among a day's stops and start points, and cache them --
+ * then count what happened in `road_leg_runs`, for the platform console.
+ *
+ * The count is best-effort and after the fact: a failed insert is logged and
+ * never changes the result, because a planner that refuses to run when its
+ * own bookkeeping fails is worse than a counter that missed one.
+ */
 export async function refreshRoadLegs(orgId: string, day: string): Promise<RoadLegResult> {
+  const tally = { points: 0 };
+  const result = await measureDay(orgId, day, tally);
+  await countRun(orgId, day, result, tally.points);
+  return result;
+}
+
+/** Retention for road_leg_runs, matching how long a road leg itself is trusted. */
+const RUN_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+async function countRun(
+  orgId: string,
+  day: string,
+  result: RoadLegResult,
+  points: number,
+): Promise<void> {
+  // A day with nothing to measure is not a routing outcome; see the migration.
+  let outcome: "measured" | "cached" | "estimated";
+  let reason: string | null = null;
+  if (result.cached) outcome = "cached";
+  else if (result.problem) {
+    outcome = "estimated";
+    reason = result.problem;
+  } else if (result.measured > 0) {
+    outcome = "measured";
+    if (result.pointsOutsideGraph > 0) reason = "points_outside_graph";
+  } else return;
+
+  try {
+    // Typed, unlike the reads above: road_leg_runs and its RPCs are in types.ts.
+    const admin = supabaseAdmin;
+    const { error } = await admin
+      .from("road_leg_runs")
+      .insert({ organization_id: orgId, day, outcome, reason, points });
+    if (error) {
+      console.error("[road-legs] could not count this run", error.message);
+      return;
+    }
+    // The writer is the pruner: see 20261002090600.
+    const cutoff = new Date(Date.now() - RUN_RETENTION_MS).toISOString();
+    const { error: pruneError } = await admin
+      .from("road_leg_runs")
+      .delete()
+      .eq("organization_id", orgId)
+      .lt("at", cutoff);
+    if (pruneError) console.error("[road-legs] could not prune old runs", pruneError.message);
+  } catch (err) {
+    console.error("[road-legs] could not count this run", (err as Error).message);
+  }
+}
+
+/**
+ * Is every ordered pair among these points already measured, and fresh?
+ *
+ * One RPC (count_fresh_road_legs) rather than a PostgREST filter: 90 points is
+ * 8,010 pairs, and either the URL or `max_rows` gives out long before that. Any
+ * failure answers "no", which costs one request to a router -- the behaviour
+ * before this check existed -- and never a day planned on missing legs.
+ */
+async function everyLegIsFresh(orgId: string, points: Point[]): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc("count_fresh_road_legs", {
+      _org_id: orgId,
+      _lats: points.map((p) => p.lat),
+      _lons: points.map((p) => p.lon),
+    });
+    if (error) {
+      console.error("[road-legs] cache check failed; asking the router", error.message);
+      return false;
+    }
+    return typeof data === "number" && data >= points.length * (points.length - 1);
+  } catch (err) {
+    console.error("[road-legs] cache check failed; asking the router", (err as Error).message);
+    return false;
+  }
+}
+
+async function measureDay(
+  orgId: string,
+  day: string,
+  tally: { points: number },
+): Promise<RoadLegResult> {
   const admin = supabaseAdmin as any;
 
   const { data: visits } = await admin
@@ -235,8 +427,21 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<RoadL
   for (const d of (dumps ?? []) as Coord[]) add(d.latitude, d.longitude);
   add((business as Coord | null)?.latitude, (business as Coord | null)?.longitude);
 
+  tally.points = points.length;
   // One point is a matrix of itself; nothing to measure.
   if (points.length < 2) return nothingToMeasure;
+
+  // Every leg already measured and still trusted: do not ask a free server a
+  // question we already hold the answer to. Before the size check on purpose --
+  // a day too big to measure in one request is still fully measured if its
+  // legs were (by a bigger self-hosted router, or over earlier smaller days).
+  //
+  // A point the router cannot place (snapped too far, or no road to it) never
+  // gets a row, so a day containing one is never "cached" and is re-asked on
+  // every plan. That is one request per such day, and the honest answer: its
+  // other legs might be stale, and nothing here can tell.
+  if (await everyLegIsFresh(orgId, points)) return alreadyCached;
+
   if (points.length > MAX_POINTS) {
     // Deliberately not silently truncating: a partial matrix would measure some
     // legs and estimate others, and the mix is harder to reason about than
@@ -253,12 +458,33 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<RoadL
   const base = endpointFor(points[0].lat, points[0].lon);
   const url = `${base}/table/v1/driving/${coords}?annotations=duration,distance`;
 
-  let json: any;
-  try {
-    const res = await fetch(url, {
+  const ask = async () => {
+    await paceFor(base);
+    return fetch(url, {
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
       signal: AbortSignal.timeout(20_000),
     });
+  };
+
+  let json: any;
+  try {
+    let res = await ask();
+    // Too Many Requests: wait as told (capped), ask ONCE more, and then stop.
+    // A second refusal means the server is shedding load, and the dispatcher
+    // is better served by an estimate now than by a loop.
+    if (res.status === 429) {
+      const wait = retryAfterMs(res.headers.get("retry-after"));
+      await res.body?.cancel().catch(() => {});
+      console.warn(`[road-legs] OSRM 429 for ${orgId} ${day}; retrying once in ${wait} ms`);
+      await timing.sleep(wait);
+      res = await ask();
+      if (res.status === 429) {
+        console.error(
+          `[road-legs] OSRM 429 again for ${orgId} ${day}; leaving this day on estimates`,
+        );
+        return failed("router_busy");
+      }
+    }
     if (!res.ok) {
       console.error(`[road-legs] OSRM ${res.status} for ${orgId} ${day}`);
       return failed("router_error");
@@ -355,5 +581,5 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<RoadL
     console.error("[road-legs] road profile refresh failed", profileError.message);
   }
 
-  return { measured: rows.length, problem: null, pointsOutsideGraph: bad.size };
+  return { measured: rows.length, problem: null, pointsOutsideGraph: bad.size, cached: false };
 }

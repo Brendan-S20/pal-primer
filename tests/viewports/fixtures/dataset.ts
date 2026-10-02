@@ -588,6 +588,28 @@ export const PLATFORM_TENANTS = [
  *  at 150 — a page that only ever holds one page cannot show that it was fixed. */
 export const PLATFORM_USER_TOTAL = 173;
 
+/** A road-leg failure reason this build has no label for -- what a newer
+ *  deploy writes into road_leg_runs before the console has caught up. One
+ *  word, no spaces, longer than a phone is wide: the long-value fault, on the
+ *  routing-health card, which shows an unknown code raw rather than dropping it. */
+export const ROUTING_UNKNOWN_REASON =
+  "a_reason_written_by_a_newer_deploy_than_this_console_has_ever_seen";
+
+/** Five-digit counts and a partial: the widest the routing-health card gets. */
+export const ROUTING_HEALTH = {
+  days: 7,
+  measured: 12_840,
+  partlyMeasured: 1_207,
+  cached: 48_311,
+  estimated: 2_093,
+  estimatedByReason: [
+    { reason: "router_busy", runs: 1_766, workspaces: 214 },
+    { reason: "router_unreachable", runs: 301, workspaces: 88 },
+    { reason: ROUTING_UNKNOWN_REASON, runs: 19, workspaces: 3 },
+    { reason: "too_many_points", runs: 7, workspaces: 1 },
+  ],
+};
+
 export function platformUsers(offset: number, limit: number) {
   const rows = [];
   for (let i = offset; i < Math.min(offset + limit, PLATFORM_USER_TOTAL); i++) {
