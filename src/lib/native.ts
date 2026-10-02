@@ -83,6 +83,53 @@ export async function getPositionNative(): Promise<NativePosition | null> {
   }
 }
 
+/**
+ * Follow the device's position on a native build, for the "on my way" live
+ * map (src/hooks/useShareLocationEnRoute.ts). Returns a function that stops
+ * watching, or null when this is not a native build — the caller's signal to
+ * use navigator.geolocation instead.
+ *
+ * Foreground only, deliberately: this is the plain Capacitor plugin, not a
+ * background-location service. When the app is not on screen the OS stops
+ * delivering fixes, which is the privacy rule ("only while the tech's app is
+ * open") rather than a gap in it. Permission is checked the same way as
+ * getPositionNative above, and a denial arrives as onError("denied").
+ */
+export async function watchPositionNative(
+  onPosition: (p: { latitude: number; longitude: number; accuracy: number }) => void,
+  onError: (reason: "denied" | "unavailable") => void,
+): Promise<(() => void) | null> {
+  if (!isNative()) return null;
+  const { Geolocation } = await import("@capacitor/geolocation");
+
+  let status = await Geolocation.checkPermissions();
+  if (status.location === "prompt" || status.location === "prompt-with-rationale") {
+    status = await Geolocation.requestPermissions({ permissions: ["location"] });
+  }
+  if (status.location !== "granted") {
+    onError("denied");
+    return () => {};
+  }
+
+  const id = await Geolocation.watchPosition(
+    { enableHighAccuracy: true, timeout: 20_000, maximumAge: 15_000 },
+    (pos, err) => {
+      if (err || !pos) {
+        onError("unavailable");
+        return;
+      }
+      onPosition({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      });
+    },
+  );
+  return () => {
+    void Geolocation.clearWatch({ id });
+  };
+}
+
 export async function registerPushNotifications(onToken: (token: string) => void) {
   if (!isNative()) return;
 
