@@ -441,8 +441,14 @@ export const geocodePostal = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ postalCode: z.string().trim().min(3).max(20) }).parse(d))
   .handler(async ({ data }) => {
     const { geocodeAddress } = await import("@/lib/geocode.server");
-    const geo = await geocodeAddress({ postal_code: data.postalCode });
-    return { point: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null };
+    // Zone ZIPs are US ZIPs (see the note at the top of this file), so the
+    // country is said: a bare "78701" is a postcode somewhere else too.
+    const geo = await geocodeAddress({ postal_code: data.postalCode, country: "United States" });
+    return {
+      point: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null,
+      // The town the ZIP is in, offered as a new zone's name.
+      place: geo?.place ?? null,
+    };
   });
 
 export const deleteZone = createServerFn({ method: "POST" })

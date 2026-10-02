@@ -26,7 +26,14 @@
 export type GeocodePrecision = "house" | "street" | "area";
 
 export type GeocodeResult =
-  | { latitude: number; longitude: number; precision: GeocodePrecision }
+  | {
+      latitude: number;
+      longitude: number;
+      precision: GeocodePrecision;
+      /** The town the match is in (city, town, village or suburb), when the
+       *  reply names one. Used to suggest a name for a new zone. */
+      place?: string | null;
+    }
   | null;
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -107,7 +114,9 @@ export async function geocodeAddress(parts: {
       // signup over a road OSM has not house-numbered. It has to be VISIBLE.
       console.warn(`[geocode] ${precision}-level match only for "${address}"`);
     }
-    return { latitude: lat, longitude: lon, precision };
+    const place =
+      detail.city ?? detail.town ?? detail.village ?? detail.suburb ?? detail.hamlet ?? null;
+    return { latitude: lat, longitude: lon, precision, place: place ? String(place) : null };
   }
 
   console.warn(`[geocode] no result for address "${address}"`);

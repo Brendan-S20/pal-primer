@@ -4,11 +4,11 @@
 // residential/commercial type, priority, ZIPs, REQUIRED map coverage
 // (centered on the first typed ZIP), residential pricing, and commercial
 // rates. Server-side validation in zones.functions.ts mirrors every rule.
-import { useMemo, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import {
   createZone,
   updateZone,
@@ -22,6 +22,7 @@ import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer"
 import { SectionLabel } from "@/components/client-detail/primitives";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
 import { Badge } from "@/components/ui/badge";
+import { getStandardPricing } from "@/lib/subscriptions.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -208,6 +209,7 @@ export function ZoneDrawer({
     };
 
   const [name, setName] = useState<string>(zone?.name ?? "");
+  const [suggestedName, setSuggestedName] = useState<string | null>(null);
   const [priceNote, setPriceNote] = useState<string>(zone?.price_note ?? "");
   // A NEW zone defaults to the kind of work this business actually does.
   // It used to default to "all", which meant every operator — including one
@@ -222,13 +224,49 @@ export function ZoneDrawer({
   const [priority, setPriority] = useState<string>(String(zone?.priority ?? 0));
   const [zips, setZips] = useState<string[]>(zone?.zip_codes ?? []);
 
-  // Residential pricing
+  // Residential pricing. A NEW zone starts from the org's standard price
+  // (Settings > Preferences) when one is set -- the owner already told the
+  // app what a visit costs, and $25 + $5 was a number nobody chose. Seeded
+  // once, and only over the untouched placeholders.
   const [basePrice, setBasePrice] = useState<string>(
     zone ? ((zone.base_price_cents ?? 0) / 100).toFixed(2) : "25.00",
   );
   const [perDog, setPerDog] = useState<string>(
     zone ? ((zone.per_dog_addl_cents ?? 0) / 100).toFixed(2) : "5.00",
   );
+  const stdFn = useServerFn(getStandardPricing);
+  const stdQ = useQuery({
+    queryKey: ["std-pricing"],
+    queryFn: () => stdFn(),
+    enabled: isNew,
+    staleTime: 60_000,
+  });
+  const [pricedFromStandard, setPricedFromStandard] = useState<string | null>(null);
+  const stdSeeded = useRef(false);
+  useEffect(() => {
+    const std = stdQ.data;
+    if (!isNew || stdSeeded.current || !std || std.basePriceCents == null) return;
+    stdSeeded.current = true;
+    if (basePrice !== "25.00" || perDog !== "5.00") return; // already typed over
+    const b = (std.basePriceCents / 100).toFixed(2);
+    const d = ((std.perDogAddlCents ?? 0) / 100).toFixed(2);
+    setBasePrice(b);
+    setPerDog(d);
+    setPricedFromStandard(`${b}|${d}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stdQ.data]);
+  const showsStandard = pricedFromStandard === `${basePrice}|${perDog}`;
+
+  // An existing zone that uses a note, a non-default type or a priority shows
+  // them; anything else starts with them folded away.
+  const [moreOpen, setMoreOpen] = useState<boolean>(
+    !!zone &&
+      (!!zone.price_note ||
+        (zone.priority ?? 0) !== 0 ||
+        // Typed other than a new zone here would be: worth seeing.
+        (zone.account_type ?? "all") !== (commercialEnabled ? "all" : "residential")),
+  );
+  const showMore = moreOpen || !!priceNote || priority !== "0";
   const [initialCleanup, setInitialCleanup] = useState<string>(
     zone ? ((zone.initial_cleanup_cents ?? 0) / 100).toFixed(2) : "0",
   );
@@ -308,6 +346,12 @@ export function ZoneDrawer({
     onSuccess: (res: any, postalCode) => {
       setGeocodedZip(postalCode);
       if (res?.point) setFocusPoint({ lat: res.point.latitude, lng: res.point.longitude });
+      // A new zone with no name yet is offered the town its first ZIP is in.
+      // Typed into the box, so it is plainly a suggestion and one edit away.
+      if (isNew && res?.place && !name.trim()) {
+        setName(String(res.place));
+        setSuggestedName(String(res.place));
+      }
     },
   });
   const handleZips = (next: string[]) => {
@@ -398,65 +442,89 @@ export function ZoneDrawer({
           if (canSave && !saveMut.isPending) saveMut.mutate();
         }}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="zone-name">Zone name</Label>
-            <Input
-              id="zone-name"
-              value={name}
-              onChange={(e) => mark(setName)(e.target.value)}
-              placeholder="Central Austin"
-              required
-            />
-            {name.length > 0 && !nameOk && (
-              <p className="text-xs text-destructive">
-                Zone name must include letters, not just numbers.
-              </p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="zone-note">Internal note (optional)</Label>
-            <Input
-              id="zone-note"
-              value={priceNote}
-              onChange={(e) => mark(setPriceNote)(e.target.value)}
-              placeholder="Weekday only, gate codes"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="zone-name">Zone name</Label>
+          <Input
+            id="zone-name"
+            value={name}
+            onChange={(e) => {
+              mark(setName)(e.target.value);
+              setSuggestedName(null);
+            }}
+            placeholder="Central Austin"
+            required
+          />
+          {suggestedName && name === suggestedName && (
+            <p className="text-xs text-muted-foreground">
+              Suggested from the first ZIP you typed. Change it to anything.
+            </p>
+          )}
+          {name.length > 0 && !nameOk && (
+            <p className="text-xs text-destructive">
+              Zone name must include letters, not just numbers.
+            </p>
+          )}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="zone-type">Zone type</Label>
-            <select
-              id="zone-type"
-              value={zoneType}
-              onChange={(e) => mark(setZoneType)(e.target.value as ZoneType)}
-              className="h-10 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="all">All accounts</option>
-              <option value="residential">Residential</option>
-              <option value="commercial">Commercial</option>
-            </select>
-            <p className="text-xs text-muted-foreground">
-              When zones overlap, a property prefers a zone typed for its account.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="zone-priority">Priority</Label>
-            <Input
-              id="zone-priority"
-              type="number"
-              inputMode="numeric"
-              className="w-32"
-              value={priority}
-              onChange={(e) => mark(setPriority)(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              When zones overlap at the same match level, the higher priority wins.
-            </p>
-          </div>
-        </div>
+        {/* Note, type and priority: each has a sensible default and most zones
+            never change one, so on a NEW zone they wait behind one button. A
+            zone that already uses any of them opens with them showing. */}
+        {showMore ? (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="zone-note">Internal note (optional)</Label>
+              <Input
+                id="zone-note"
+                value={priceNote}
+                onChange={(e) => mark(setPriceNote)(e.target.value)}
+                placeholder="Weekday only, gate codes"
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="zone-type">Zone type</Label>
+                <select
+                  id="zone-type"
+                  value={zoneType}
+                  onChange={(e) => mark(setZoneType)(e.target.value as ZoneType)}
+                  className="h-10 w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
+                >
+                  <option value="all">All accounts</option>
+                  <option value="residential">Residential</option>
+                  <option value="commercial">Commercial</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  When zones overlap, a property prefers a zone typed for its account.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="zone-priority">Priority</Label>
+                <Input
+                  id="zone-priority"
+                  type="number"
+                  inputMode="numeric"
+                  className="w-32"
+                  value={priority}
+                  onChange={(e) => mark(setPriority)(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  When zones overlap at the same match level, the higher priority wins.
+                </p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={false}
+            onClick={() => setMoreOpen(true)}
+          >
+            <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Note, zone type and priority
+          </Button>
+        )}
 
         <div className="space-y-2">
           <Label>ZIP codes served (US)</Label>
@@ -495,6 +563,12 @@ export function ZoneDrawer({
               <div className="space-y-2">
                 <Label htmlFor="zone-bp">Base price / visit</Label>
                 <MoneyInput id="zone-bp" value={basePrice} onChange={mark(setBasePrice)} />
+                {showsStandard && (
+                  <p className="text-xs text-muted-foreground">
+                    From your standard pricing. Change it for this zone if it costs more or less
+                    here.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="zone-pd">Each additional dog</Label>

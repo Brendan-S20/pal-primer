@@ -7,10 +7,10 @@
 // needs (description, quantity, price, per-visit) do not fit across a 320px
 // phone, and a table that scrolls sideways under a thumb while you type into
 // it is worse than one that stacks.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,6 +23,20 @@ import { listClients } from "@/lib/clients.functions";
 import { saveQuoteDraft, sendQuote } from "@/lib/quotes.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanup";
+import { getQuotePricing } from "@/lib/quote-pricing.functions";
+import {
+  QUOTE_FREQUENCIES,
+  type QuotePricingZone,
+  type QuoteStandardPricing,
+  type QuoteSubject,
+  choiceToLine,
+  pricingChoices,
+  quoteFrequency,
+  suggestedServicePrice,
+  type PricingChoice,
+  type QuoteFrequency,
+} from "@/lib/quote-pricing";
+import { frequencyLabel } from "@/lib/frequency-request";
 import {
   QUOTE_LIMITS,
   RECURRING_LABEL,
@@ -40,7 +54,41 @@ export type EditorLine = {
   quantity: string;
   price: string;
   recurring: boolean;
+  /** Set when the line was filled from a price the owner already set (a
+   *  zone's, or the standard price), so the line can say where its number
+   *  came from -- and say so honestly once somebody has typed over it. Never
+   *  saved: a quote line stores what it charges, not why. */
+  pricedFrom?: { note: string; breakdown: string; description: string; price: string };
 };
+
+/** A line nobody has written anything on. Ignored on save, so the editor can
+ *  open with a line ready without that line becoming a form to fill or
+ *  delete before the quote will send. */
+export function isBlankLine(l: Pick<EditorLine, "description" | "price">): boolean {
+  return !l.description.trim() && !l.price.trim();
+}
+
+/** A line still exactly as a price filled it. Safe to re-price. */
+function isUntouchedPrefill(l: EditorLine): boolean {
+  return (
+    !!l.pricedFrom && l.description === l.pricedFrom.description && l.price === l.pricedFrom.price
+  );
+}
+
+function lineFromChoice(c: PricingChoice, key?: string): EditorLine {
+  const line = choiceToLine(c);
+  return {
+    ...blankEditorLine(true),
+    ...(key ? { key } : {}),
+    ...line,
+    pricedFrom: {
+      note: c.note,
+      breakdown: c.breakdown,
+      description: line.description,
+      price: line.price,
+    },
+  };
+}
 
 export type QuoteEditorValues = {
   mode: "client" | "prospect";
@@ -56,6 +104,49 @@ export type QuoteEditorValues = {
   deposit: string;
   lines: EditorLine[];
 };
+
+/** What getQuotePricing returns, as far as the editor reads it. */
+export type QuotePricingData = {
+  zones: QuotePricingZone[];
+  standard: QuoteStandardPricing | null;
+  subject: QuoteSubject | null;
+};
+
+export const quotePricingKey = (clientId: string | null, leadId: string | null) =>
+  ["quote-pricing", clientId, leadId] as const;
+
+/** Who a quote prices from: the client when one is picked, else its lead. */
+export function pricingSubjectIds(v: Pick<QuoteEditorValues, "mode" | "clientId" | "leadId">) {
+  const clientId = v.mode === "client" && v.clientId ? v.clientId : null;
+  const leadId = !clientId && v.leadId ? v.leadId : null;
+  return { clientId, leadId };
+}
+
+/**
+ * The service line, priced from what the owner already set. Fills the first
+ * per-visit line that is blank, or that still holds an earlier prefill nobody
+ * touched (a different client was picked). A line somebody typed on is never
+ * replaced, and with nothing to price from an untouched prefill goes back to
+ * blank rather than keeping the last person's price.
+ */
+export function prefillServiceLine(
+  values: QuoteEditorValues,
+  pricing: QuotePricingData,
+): QuoteEditorValues {
+  const suggestion = pricing.subject
+    ? suggestedServicePrice(pricing.zones, pricing.standard, pricing.subject)
+    : null;
+  const i = values.lines.findIndex((l) => l.recurring && (isBlankLine(l) || isUntouchedPrefill(l)));
+  if (i === -1) return values;
+  const old = values.lines[i];
+  const next = suggestion
+    ? lineFromChoice(suggestion, old.key)
+    : isUntouchedPrefill(old)
+      ? { ...blankEditorLine(true), key: old.key }
+      : old;
+  if (next === old) return values;
+  return { ...values, lines: values.lines.map((l, j) => (j === i ? next : l)) };
+}
 
 let lineSeq = 0;
 export function blankEditorLine(recurring = false): EditorLine {
@@ -83,8 +174,17 @@ export function QuoteEditor({
   const clientsFn = useServerFn(listClients);
   const saveFn = useServerFn(saveQuoteDraft);
   const sendFn = useServerFn(sendQuote);
-  const [v, setV] = useState<QuoteEditorValues>(initial);
+  // A new quote whose prices are already in the cache opens priced, rather
+  // than blank for a moment and then filled.
+  const [v, setV] = useState<QuoteEditorValues>(() => {
+    if (quoteId) return initial;
+    const ids = pricingSubjectIds(initial);
+    const cached = qc.getQueryData<QuotePricingData>(quotePricingKey(ids.clientId, ids.leadId));
+    return cached ? prefillServiceLine(initial, cached) : initial;
+  });
   const [attempted, setAttempted] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(!!initial.deposit.trim());
+  const [messageOpen, setMessageOpen] = useState(!!initial.message.trim());
   const set = <K extends keyof QuoteEditorValues>(k: K, val: QuoteEditorValues[K]) =>
     setV((s) => ({ ...s, [k]: val }));
   const setLine = (key: string, patch: Partial<EditorLine>) =>
@@ -119,12 +219,77 @@ export function QuoteEditor({
       const line = { ...blankEditorLine(false), ...fcLine };
       // The editor opens on one blank line; fill that rather than leaving it
       // above the new one as a line that fails validation.
-      const onlyBlank =
-        s.lines.length === 1 && !s.lines[0].description.trim() && !s.lines[0].price.trim();
+      const onlyBlank = s.lines.length === 1 && isBlankLine(s.lines[0]);
       return { ...s, lines: onlyBlank ? [line] : [...s.lines, line] };
     });
     setFcOpen(false);
     setFcChoice("");
+  };
+
+  // ── Pricing the service line from what the owner already set ──────────
+  //
+  // Owner, 2026-10-01: "I'm not sure why zone pricing or base pricing isn't
+  // already pre-inputted or have them available as an option." Now both: a
+  // NEW quote for somebody with an address opens with its per-visit line
+  // priced from their zone (or the standard price when no zone has one), and
+  // "Add service from pricing" lists every price the owner has set for a
+  // quote with no address to go on. See src/lib/quote-pricing.ts.
+  const pricingFn = useServerFn(getQuotePricing);
+  const { clientId: pricingClientId, leadId: pricingLeadId } = pricingSubjectIds(v);
+  const pricingQ = useQuery({
+    queryKey: quotePricingKey(pricingClientId, pricingLeadId),
+    queryFn: () => pricingFn({ data: { clientId: pricingClientId, leadId: pricingLeadId } }),
+    staleTime: 60_000,
+  });
+  const pricing = pricingQ.data ?? null;
+  const subject = pricing?.subject ?? null;
+
+  // Prefill, on a new quote only: a draft already says what it says. Fills
+  // the first per-visit line that is blank, or that still holds an earlier
+  // prefill nobody has touched (the owner picked a different client). A line
+  // somebody typed on is never replaced.
+  const prefilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (quoteId || !pricing) return;
+    const forKey = `${pricingClientId ?? ""}|${pricingLeadId ?? ""}`;
+    if (prefilledFor.current === forKey) return;
+    prefilledFor.current = forKey;
+    setV((s) => prefillServiceLine(s, pricing));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricing, pricingClientId, pricingLeadId, quoteId]);
+
+  // "Add service from pricing": every price the owner has set, at the dogs
+  // and frequency given here (seeded from what we know about the subject).
+  const [svcOpen, setSvcOpen] = useState(false);
+  const [svcDogs, setSvcDogs] = useState("");
+  const [svcFreq, setSvcFreq] = useState<QuoteFrequency | "">("");
+  const svcSubject = {
+    ...(subject ?? {}),
+    dogCount: Math.max(1, Math.min(20, parseInt(svcDogs, 10) || 1)),
+    frequency: svcFreq || quoteFrequency(subject?.frequency),
+  };
+  const openService = () => {
+    if (!svcOpen) {
+      // Seeded from what is known about the person, every time it opens.
+      setSvcDogs(String(subject?.dogCount || 1));
+      setSvcFreq(quoteFrequency(subject?.frequency));
+    }
+    setSvcOpen((o) => !o);
+  };
+  const svcChoices = pricing ? pricingChoices(pricing.zones, pricing.standard, svcSubject) : [];
+  const addService = (c: PricingChoice) => {
+    setV((s) => {
+      const i = s.lines.findIndex((l) => l.recurring && (isBlankLine(l) || isUntouchedPrefill(l)));
+      if (i !== -1) {
+        return {
+          ...s,
+          lines: s.lines.map((l, j) => (j === i ? lineFromChoice(c, l.key) : l)),
+        };
+      }
+      const onlyBlank = s.lines.length === 1 && isBlankLine(s.lines[0]);
+      return { ...s, lines: onlyBlank ? [lineFromChoice(c)] : [...s.lines, lineFromChoice(c)] };
+    });
+    setSvcOpen(false);
   };
 
   const clientsQ = useQuery({
@@ -139,6 +304,7 @@ export function QuoteEditor({
   const parsed = useMemo(
     () =>
       v.lines.map((l) => {
+        const blank = isBlankLine(l);
         const quantity = parseQuantity(l.quantity);
         const unit = parseMoneyToCents(l.price);
         const description = l.description.trim();
@@ -149,7 +315,8 @@ export function QuoteEditor({
           unit,
           recurring: l.recurring,
           amount: quantity != null && unit != null ? lineAmountCents(quantity, unit) : null,
-          ok: !!description && quantity != null && unit != null,
+          blank,
+          ok: blank || (!!description && quantity != null && unit != null),
         };
       }),
     [v.lines],
@@ -164,7 +331,10 @@ export function QuoteEditor({
   const emailOk =
     v.mode === "client" || !v.prospectEmail.trim() || /^\S+@\S+\.\S+$/.test(v.prospectEmail.trim());
   const dateOk = !v.validUntil || v.validUntil >= today;
-  const linesOk = parsed.length > 0 && parsed.every((p) => p.ok);
+  // A line nobody wrote on does not block the quote and is not saved; at least
+  // one line has to have something on it.
+  const filled = parsed.filter((p) => !p.blank);
+  const linesOk = filled.length > 0 && parsed.every((p) => p.ok);
   const depositCents = v.deposit.trim() ? parseMoneyToCents(v.deposit) : null;
   const depositOk =
     !v.deposit.trim() ||
@@ -172,6 +342,8 @@ export function QuoteEditor({
       depositCents >= QUOTE_LIMITS.minDepositCents &&
       depositCents <= QUOTE_LIMITS.maxDepositCents);
   const valid = recipientOk && emailOk && dateOk && linesOk && depositOk;
+  const showDeposit = depositOpen || !!v.deposit.trim() || (attempted && !depositOk);
+  const showMessage = messageOpen || !!v.message.trim();
 
   const payload = () => ({
     id: quoteId,
@@ -189,7 +361,7 @@ export function QuoteEditor({
     message: v.message,
     validUntil: v.validUntil || null,
     depositCents: v.deposit.trim() ? depositCents : null,
-    lines: parsed.map((p) => ({
+    lines: filled.map((p) => ({
       description: p.description,
       quantity: p.quantity as number,
       unitAmountCents: p.unit as number,
@@ -356,6 +528,9 @@ export function QuoteEditor({
             charge, like an initial cleanup.
           </p>
         </div>
+        {attempted && filled.length === 0 && (
+          <p className="text-xs text-destructive">Add at least one line.</p>
+        )}
         {v.lines.map((l, i) => {
           const p = parsed[i];
           return (
@@ -429,6 +604,21 @@ export function QuoteEditor({
                   {p.amount != null ? formatQuoteMoney(p.amount) : "–"}
                 </p>
               </div>
+              {l.pricedFrom && (
+                <p className="text-xs text-muted-foreground" data-testid="line-priced-from">
+                  {isUntouchedPrefill(l) ? (
+                    <>
+                      <span className="font-medium text-foreground">{l.pricedFrom.note}.</span>{" "}
+                      {l.pricedFrom.breakdown}. Change anything here; it is only a starting point.
+                    </>
+                  ) : (
+                    <>
+                      Started from {l.pricedFrom.note.replace(/^Priced from /, "")} at $
+                      {l.pricedFrom.price}, then changed here.
+                    </>
+                  )}
+                </p>
+              )}
               {attempted && !p.ok && (
                 <p className="text-xs text-destructive">
                   A line needs a description, a quantity above zero and a price.
@@ -456,6 +646,18 @@ export function QuoteEditor({
           >
             <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Per-visit line
           </Button>
+          {pricing && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-expanded={svcOpen}
+              disabled={v.lines.length >= QUOTE_LIMITS.maxLines}
+              onClick={openService}
+            >
+              <Tag className="mr-1 h-3.5 w-3.5 shrink-0" /> Add service from pricing
+            </Button>
+          )}
           {fcPricing && fcPricing.mode !== "off" && (
             <Button
               type="button"
@@ -469,6 +671,78 @@ export function QuoteEditor({
             </Button>
           )}
         </div>
+        {svcOpen && pricing && (
+          <div
+            className="space-y-3 rounded-md border bg-muted/20 p-3"
+            data-testid="quote-service-picker"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="quote-svc-dogs" className="text-xs">
+                  Dogs
+                </Label>
+                <Input
+                  id="quote-svc-dogs"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={svcDogs}
+                  onChange={(e) => setSvcDogs(e.target.value)}
+                />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <Label htmlFor="quote-svc-freq" className="text-xs">
+                  How often
+                </Label>
+                <select
+                  id="quote-svc-freq"
+                  value={svcSubject.frequency}
+                  onChange={(e) => setSvcFreq(e.target.value as QuoteFrequency)}
+                  className="h-9 w-full min-w-0 rounded-md border bg-background px-3 text-sm touch:min-h-11"
+                >
+                  {QUOTE_FREQUENCIES.map((f) => (
+                    <option key={f} value={f}>
+                      {frequencyLabel(f)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {svcChoices.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No prices are set yet. Set a standard price in Settings &gt; Preferences, or give a
+                zone a base price on the Zones page, and they will be offered here.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {svcChoices.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-background p-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-medium">{c.label}</p>
+                      <p className="break-words text-xs text-muted-foreground">{c.breakdown}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="shrink-0"
+                      onClick={() => addService(c)}
+                      aria-label={`Add ${c.label}, ${formatQuoteMoney(c.priceCents)} ${RECURRING_LABEL}`}
+                    >
+                      {formatQuoteMoney(c.priceCents)} {RECURRING_LABEL}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSvcOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        )}
         {fcOpen && fcPricing && fcPricing.mode !== "off" && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             {fcPricing.mode === "flat" && fcZones.length === 0 ? (
@@ -545,39 +819,59 @@ export function QuoteEditor({
         </dl>
       </Card>
 
-      <Card className="space-y-2 p-4 sm:p-6">
-        <Label htmlFor="quote-deposit">Deposit when they accept (optional)</Label>
-        <Input
-          id="quote-deposit"
-          inputMode="decimal"
-          className="sm:max-w-48"
-          value={v.deposit}
-          onChange={(e) => set("deposit", e.target.value)}
-          placeholder="0.00"
-          aria-invalid={attempted && !depositOk ? true : undefined}
-          aria-describedby="quote-deposit-help"
-        />
-        <p id="quote-deposit-help" className="text-sm text-muted-foreground">
-          The customer is asked to pay it right after accepting. It goes on their account as credit
-          and comes off their first invoices. A quote to a prospect gets its deposit invoice when
-          you convert it to a client.
-        </p>
-        {attempted && !depositOk && (
-          <p className="text-xs text-destructive">A deposit is between $1.00 and $10,000.</p>
-        )}
-      </Card>
-
-      <Card className="space-y-2 p-4 sm:p-6">
-        <Label htmlFor="quote-message">Note to the customer (optional)</Label>
-        <Textarea
-          id="quote-message"
-          rows={4}
-          maxLength={QUOTE_LIMITS.message}
-          value={v.message}
-          onChange={(e) => set("message", e.target.value)}
-          placeholder="Thanks for walking the yard with me today. This covers the back lawn and the side run."
-        />
-      </Card>
+      {/* Optional, and most quotes have neither: one tap away rather than two
+          more boxes on every quote. Open from the start when a draft already
+          holds one, or when a save was refused for one. */}
+      {showDeposit ? (
+        <Card className="space-y-2 p-4 sm:p-6">
+          <Label htmlFor="quote-deposit">Deposit when they accept (optional)</Label>
+          <Input
+            id="quote-deposit"
+            inputMode="decimal"
+            className="sm:max-w-48"
+            value={v.deposit}
+            onChange={(e) => set("deposit", e.target.value)}
+            placeholder="0.00"
+            aria-invalid={attempted && !depositOk ? true : undefined}
+            aria-describedby="quote-deposit-help"
+          />
+          <p id="quote-deposit-help" className="text-sm text-muted-foreground">
+            The customer is asked to pay it right after accepting. It goes on their account as
+            credit and comes off their first invoices. A quote to a prospect gets its deposit
+            invoice when you convert it to a client.
+          </p>
+          {attempted && !depositOk && (
+            <p className="text-xs text-destructive">A deposit is between $1.00 and $10,000.</p>
+          )}
+        </Card>
+      ) : null}
+      {showMessage ? (
+        <Card className="space-y-2 p-4 sm:p-6">
+          <Label htmlFor="quote-message">Note to the customer (optional)</Label>
+          <Textarea
+            id="quote-message"
+            rows={4}
+            maxLength={QUOTE_LIMITS.message}
+            value={v.message}
+            onChange={(e) => set("message", e.target.value)}
+            placeholder="Thanks for walking the yard with me today. This covers the back lawn and the side run."
+          />
+        </Card>
+      ) : null}
+      {(!showDeposit || !showMessage) && (
+        <div className="flex flex-wrap gap-2">
+          {!showDeposit && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setDepositOpen(true)}>
+              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Ask for a deposit
+            </Button>
+          )}
+          {!showMessage && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setMessageOpen(true)}>
+              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add a note to the customer
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button
