@@ -46,8 +46,8 @@ function LeadFormSettings() {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : !slug ? (
         <div className="rounded-lg border bg-card p-4 text-sm">
-          Set your portal address first (Settings → Client portal branding). The lead form uses the
-          same short web address.
+          Set your portal address first (Settings → Client portal). The lead form uses the same
+          short web address.
         </div>
       ) : (
         <>

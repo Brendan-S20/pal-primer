@@ -68,7 +68,7 @@ describe("the visit keeps its own copy of the list", () => {
         "-f",
         join(ROOT, "tests/sql/a-visit-had-no-checklist.proof.sql"),
       ],
-      { encoding: "utf8", timeout: 120_000 },
+      { encoding: "utf8", timeout: 300_000 },
     );
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);

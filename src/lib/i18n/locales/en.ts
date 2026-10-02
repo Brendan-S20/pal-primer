@@ -568,6 +568,7 @@ const en = {
     inbound_sms: "Texts needing a reply",
     teammate_joined: "Teammate joined",
     field_collection: "Cash or checks collected in the field",
+    webhook_disabled: "A webhook switched off after failing",
   },
   help: {
     learnMore: "Learn more: {{title}}",

@@ -64,6 +64,7 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   { type: "inbound_sms", label: "Texts needing a reply" },
   { type: "teammate_joined", label: "Teammate joined" },
   { type: "field_collection", label: "Cash or checks collected in the field" },
+  { type: "webhook_disabled", label: "A webhook switched off after failing" },
 ];
 
 export const getNotificationPrefs = createServerFn({ method: "GET" })

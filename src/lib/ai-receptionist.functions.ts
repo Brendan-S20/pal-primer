@@ -59,7 +59,7 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
         .maybeSingle();
       if (!sub) {
         throw new Error(
-          "The AI Receptionist is a plan add-on. Add it in Settings -> Billing first, then enable it here.",
+          "The AI Receptionist is a plan add-on. Add it in Settings → Plan & billing first, then enable it here.",
         );
       }
     }

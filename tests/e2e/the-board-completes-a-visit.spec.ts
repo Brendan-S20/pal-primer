@@ -21,9 +21,24 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
+// "Today" is the BUSINESS's day, which is what the board shows -- not the
+// runner's. The seeded org is on America/Chicago and the runner on Eastern, so
+// a local date put this spec on tomorrow for the hour after midnight Eastern:
+// the board completed one of today's visits and the count of tomorrow's never
+// moved (0 received, 1 expected, at 12:08 a.m. on 2026-10-02).
+async function businessToday(orgId: string) {
+  const { data, error } = await serviceDb()
+    .from("organizations")
+    .select("timezone")
+    .eq("id", orgId)
+    .single();
+  if (error) throw new Error(`reading the org's time zone: ${error.message}`);
+  return new Date().toLocaleDateString("en-CA", { timeZone: data.timezone ?? "America/Chicago" });
+}
+
 async function completedToday(orgId: string) {
   const db = serviceDb();
-  const today = new Date().toLocaleDateString("en-CA");
+  const today = await businessToday(orgId);
   const { count, error } = await db
     .from("visits")
     .select("*", { count: "exact", head: true })
@@ -77,7 +92,7 @@ test("Complete on a board card flips the visit in Postgres and logs the action",
 
   // Postgres: one more completed visit today, with completed_at actually set.
   await expect.poll(() => completedToday(orgId), { timeout: 20_000 }).toBe(doneBefore + 1);
-  const today = new Date().toLocaleDateString("en-CA");
+  const today = await businessToday(orgId);
   const { data: fresh } = await db
     .from("visits")
     .select("completed_at")

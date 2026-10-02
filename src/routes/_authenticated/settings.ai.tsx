@@ -49,7 +49,7 @@ function AiSettings() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">AI Tools</h2>
+        <h2 className="text-lg font-semibold">AI usage</h2>
         <p className="text-sm text-muted-foreground">
           The AI features (marketing content, review replies, churn scoring, AI dispatch, and zone
           pricing) run on HoundStack&apos;s own models. There is no key to set up and no separate

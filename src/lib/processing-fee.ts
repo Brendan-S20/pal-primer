@@ -78,6 +78,18 @@
 // file that once on their behalf. `organizations.card_surcharge_attested_at` records
 // that a tenant said they had; this module only answers "given they may, how
 // much."
+//
+// ── SALES TAX IS NOT SURCHARGED ───────────────────────────────────────────
+//
+// When the invoice carries sales tax, `taxCents` names the part of the base
+// that is tax, and the surcharge is computed on `base − taxCents` only — the
+// same way it is already computed without the tip. Tax is the state's money
+// passing through, not the price of the service, and card-network surcharge
+// rules are written against the transaction amount before tax; computing on
+// the smaller figure is the direction that can only ever under-recover, never
+// breach a cap. The CHARGE is still base + surcharge, so `invoiceAppliedCents`
+// (charge − surcharge − tip) is still exactly the invoice's due amount, tax
+// included. With no tax on the invoice every number here is what it was.
 
 /** Which rail a payment actually settled on. */
 export type PaymentRail = "card" | "ach";
@@ -217,6 +229,8 @@ export type QuoteInput = {
   passThroughEnabled: boolean;
   /** `organizations.card_surcharge_attested_at` — non-null once they confirmed they notified. */
   attested: boolean;
+  /** The sales tax inside `baseCents`, which is not surcharged. Omitted is 0. */
+  taxCents?: number;
 };
 
 /**
@@ -229,6 +243,10 @@ export type QuoteInput = {
 export function quoteProcessingFee(input: QuoteInput): FeeQuote {
   const base = Number.isFinite(input.baseCents) ? Math.max(Math.floor(input.baseCents), 0) : 0;
   const rail = input.rail;
+  // What the surcharge is computed ON: the base less its sales tax. Equal to
+  // `base` whenever there is no tax. See "SALES TAX IS NOT SURCHARGED".
+  const tax = Number.isFinite(input.taxCents) ? Math.max(Math.floor(input.taxCents ?? 0), 0) : 0;
+  const surchargeable = Math.max(base - tax, 0);
 
   const suppressed = (reason: SuppressionReason): FeeQuote => ({
     baseCents: base,
@@ -246,7 +264,7 @@ export function quoteProcessingFee(input: QuoteInput): FeeQuote {
   // ACH first: a bank debit is not a card, so none of the card rules reach it —
   // no attestation, no funding check, no state ban, no cap.
   if (rail === "ach") {
-    const surcharge = stripeCostCents(base, "ach");
+    const surcharge = stripeCostCents(surchargeable, "ach");
     const total = base + surcharge;
     const cost = stripeCostCents(total, "ach");
     return {
@@ -273,8 +291,8 @@ export function quoteProcessingFee(input: QuoteInput): FeeQuote {
   if (funding !== "credit") return suppressed("unknown_funding");
 
   // Both ceilings, on the base — see "NOT GROSSED UP" in the header.
-  const cost = stripeCostCents(base, "card");
-  const cap = Math.floor((base * SURCHARGE_CAP_BPS) / 10_000);
+  const cost = stripeCostCents(surchargeable, "card");
+  const cap = Math.floor((surchargeable * SURCHARGE_CAP_BPS) / 10_000);
   const surcharge = Math.max(Math.min(cost, cap), 0);
   const total = base + surcharge;
   const actualCost = stripeCostCents(total, "card");

@@ -1,5 +1,10 @@
 // The platform's cut of a tenant→client payment. One definition, one file.
 //
+// Taken on REVENUE only: the sales tax inside an invoice's amount is the
+// state's, so `platformFeeCents(amount, invoice)` takes the fee on
+// `preTaxShareCents(amount, invoice)` (src/lib/sales-tax.ts).
+import { preTaxShareCents } from "@/lib/sales-tax";
+//
 // ── THE TERM ──────────────────────────────────────────────────────────────
 //
 // ZERO, as of 2026-09-08. `platformFeeCents()` returns undefined for every
@@ -149,9 +154,17 @@ export function describePlatformFee(): string | null {
  * application fee fails the whole charge and the customer's payment is what
  * matters most.
  */
-export function platformFeeCents(amountCents: number): number | undefined {
+export function platformFeeCents(
+  amountCents: number,
+  /** The invoice this amount pays down, when there is one. Its sales tax is
+   *  owed to the state, not earned by the tenant, so the fee is taken on the
+   *  pre-tax share of the amount only (pro rata, `preTaxShareCents`). Omitted,
+   *  or an invoice with no tax, the base is `amountCents` exactly — which is
+   *  every invoice of every business that never set a tax rate. */
+  invoice?: { tax_cents?: number | null; total_cents?: number | null } | null,
+): number | undefined {
   if (!Number.isFinite(amountCents)) return undefined;
-  const amount = Math.floor(amountCents);
+  const amount = preTaxShareCents(Math.floor(amountCents), invoice);
   if (amount <= PLATFORM_FEE_THRESHOLD_CENTS) return undefined;
   const fee = Math.round((amount * PLATFORM_FEE_BPS) / 10_000);
   return fee > 0 ? fee : undefined;

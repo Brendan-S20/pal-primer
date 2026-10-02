@@ -914,7 +914,7 @@ export const commitImport = createServerFn({ method: "POST" })
         if (!gateErr && canAdd === false) {
           throw new Error(
             `This import would add ${createCount} new client${createCount === 1 ? "" : "s"}, but your subscription doesn't currently allow adding customers. ` +
-            `Reactivate your plan in Settings → Billing, then commit this import again. Nothing has been imported yet.`,
+            `Reactivate your plan in Settings → Plan & billing, then commit this import again. Nothing has been imported yet.`,
           );
         }
       }
@@ -1163,6 +1163,9 @@ export const commitImport = createServerFn({ method: "POST" })
                 client_id: row.target_id,
                 kind: "postpaid",
                 status: "open",
+                // No sales tax, whatever the org's rate: an opening balance is
+                // historical, already taxed (or not) in the books it came from.
+                // tax_cents and tax_rate_bps default to 0.
                 subtotal_cents: m.amount_cents,
                 total_cents: m.amount_cents,
                 period_start: today,

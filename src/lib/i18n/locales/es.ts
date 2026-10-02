@@ -568,6 +568,7 @@ const es: Translations = {
     inbound_sms: "Mensajes que esperan respuesta",
     teammate_joined: "Se unió un compañero",
     field_collection: "Efectivo o cheques cobrados en campo",
+    webhook_disabled: "Un webhook se desactivó tras fallar",
   },
   help: {
     learnMore: "Más información: {{title}}",

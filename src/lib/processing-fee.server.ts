@@ -126,6 +126,8 @@ export async function quoteForPaymentMethodId(
     stripeAccount: string;
     baseCents: number;
     config: OrgFeeConfig;
+    /** Sales tax inside `baseCents`; not surcharged. Omitted is 0. */
+    taxCents?: number;
   },
 ): Promise<FeeQuote> {
   let pm: PaymentMethodLike | null = null;
@@ -137,7 +139,7 @@ export async function quoteForPaymentMethodId(
     console.error("payment method retrieve failed; absorbing fee", args.paymentMethodId, e);
     return absorbedQuote(args.baseCents);
   }
-  return quoteForPaymentMethod(pm, args.baseCents, args.config);
+  return quoteForPaymentMethod(pm, args.baseCents, args.config, args.taxCents ?? 0);
 }
 
 /** The same decision when the PaymentMethod object is already in hand. */
@@ -145,10 +147,13 @@ export function quoteForPaymentMethod(
   pm: PaymentMethodLike | null,
   baseCents: number,
   config: OrgFeeConfig,
+  /** Sales tax inside `baseCents`; not surcharged. */
+  taxCents = 0,
 ): FeeQuote {
   const { rail, funding } = railOfPaymentMethod(pm);
   return quoteProcessingFee({
     baseCents,
+    taxCents,
     rail,
     funding,
     merchantRegion: config.merchantRegion,

@@ -147,6 +147,29 @@ async function provisionSignup(
       console.error("signup visit generation failed", signupRequestId, e);
     }
 
+    // The first cleanup, written down. It was always in the charge and was
+    // never recorded anywhere after it — see first-cleanup-billing.server.ts.
+    // Guarded for the same reason as the schedule above: the customer has an
+    // account by this line, and a record that failed to write must not become
+    // the sale being refunded.
+    if ((sr.initial_cleanup_cents ?? 0) > 0) {
+      try {
+        const { billSignupFirstCleanup } = await import("@/lib/first-cleanup-billing.server");
+        await billSignupFirstCleanup(supabaseAdmin, {
+          orgId: sr.organization_id,
+          clientId: client.id,
+          amountCents: sr.initial_cleanup_cents,
+          currency: sr.currency ?? "usd",
+          tierLabel: sr.first_cleanup_label ?? null,
+          dogCount: sr.dog_count ?? 1,
+          paymentIntentId: paid.paymentIntentId,
+          stripeRef: paid.stripeRef,
+        });
+      } catch (e) {
+        console.error("signup first-cleanup invoice failed", signupRequestId, e);
+      }
+    }
+
     // Credit the prepay portion to the client's balance
     const prepay = paid.amountTotalCents - (sr.initial_cleanup_cents ?? 0);
     if (prepay > 0) {
@@ -872,7 +895,9 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
 
             const { data: rpay } = await (supabaseAdmin as any)
               .from("payments")
-              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents")
+              // tax_cents: the sales-tax share inside amount_cents, which a
+              // refund gives back to the customer but never took off revenue.
+              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents")
               .eq("stripe_payment_intent_id", piId)
               .maybeSingle();
             if (!rpay) return new Response("ok", { status: 200 });
@@ -889,6 +914,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 Number(rpay.tip_cents ?? 0),
               Number(rpay.surcharge_cents ?? 0),
               Number(rpay.tip_cents ?? 0),
+              Number(rpay.tax_cents ?? 0),
             );
             try {
               await (supabaseAdmin as any).rpc("file_reversal_review_item", {
@@ -1025,7 +1051,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // surcharge) but only the base was ever revenue, so the split
               // needs to know how much of this payment was recovered fee.
               // tip_cents: the same for a tip, which was never revenue either.
-              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents, status")
+              // tax_cents: the sales tax inside amount_cents. Owed to the state,
+              // so the part of a reversal that was tax comes off tax collected,
+              // not off revenue.
+              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents, status")
               .eq("stripe_payment_intent_id", paymentIntentId)
               .maybeSingle();
             if (!pay) return new Response("ok", { status: 200 });
@@ -1083,6 +1112,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   Number(pay.tip_cents ?? 0),
                 Number(pay.surcharge_cents ?? 0),
                 Number(pay.tip_cents ?? 0),
+                Number(pay.tax_cents ?? 0),
               ).revenueCents;
 
               // Give back our 50 bps on the refunded portion.
@@ -1162,7 +1192,22 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // everything else, the tenant is out all of it, and deducting
               // the whole can only UNDERSTATE revenue, never overstate it.
               // The Tips received report does not deduct it a second time.
-              revenueAmount = amount;
+              //
+              // Sales tax is the one part taken back out. It was never in
+              // revenue, so deducting it would understate income by money
+              // that was the state's; the disputed amount's tax share comes
+              // off tax collected instead. The whole charge is treated as the
+              // base here (surcharge and tip stay in, as above), so with no
+              // tax on the payment this is exactly `amount`.
+              {
+                const { splitRefund } = await import("@/lib/refund-split");
+                const chargeTotal =
+                  Number(pay.amount_cents ?? 0) +
+                  Number(pay.surcharge_cents ?? 0) +
+                  Number(pay.tip_cents ?? 0);
+                revenueAmount = splitRefund(amount, chargeTotal, 0, 0, Number(pay.tax_cents ?? 0))
+                  .revenueCents;
+              }
               disputeRef = typeof obj?.id === "string" ? obj.id : null;
 
               // ── AND OUR FEE GOES BACK TOO ───────────────────────────────

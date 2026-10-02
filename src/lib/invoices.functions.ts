@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tipMetadata, tippedCharge } from "@/lib/tips";
 import { invoiceNumberLabel, invoiceRef } from "@/lib/invoice-labels";
 import {
@@ -537,7 +538,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     const { data: invoice, error } = await supabase
       .from("invoices")
       .select(
-        "id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
       )
       .eq("id", data.id)
       .single();
@@ -634,7 +635,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
             // where it was: $150 of credit on a $200 invoice charged $50 with
             // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
             // $1.00 due the fee equalled the whole charge.
-            application_fee_amount: platformFeeCents(dueCents),
+            application_fee_amount: platformFeeCents(dueCents, invoice),
             currency,
             metadata,
             setup_future_usage: "" as const,
@@ -674,7 +675,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
       // method without the client's own consent (portal flow only).
       const createParams = {
         amount: dueCents,
-        application_fee_amount: platformFeeCents(dueCents),
+        application_fee_amount: platformFeeCents(dueCents, invoice),
         currency,
         customer: customerId,
         metadata,
@@ -733,7 +734,7 @@ async function chargeSavedCardCore(
   const { data: invoiceRow, error: iErr } = await supabase
     .from("invoices")
     .select(
-      "id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+      "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
     )
     .eq("id", invoiceId)
     .single();
@@ -829,13 +830,15 @@ async function chargeSavedCardCore(
     paymentMethodId: c.default_payment_method_id,
     stripeAccount: acct.accountId,
     baseCents: dueCents,
+    // The sales tax inside what is due is not surcharged (processing-fee.ts).
+    taxCents: taxShareCents(dueCents, invoice.tax_cents, invoice.total_cents),
     config: await orgFeeConfig(feeAdmin, invoice.organization_id),
   });
   try {
     const pi = await stripe.paymentIntents.create(
       {
         amount: quote.totalCents,
-        application_fee_amount: platformFeeCents(dueCents),
+        application_fee_amount: platformFeeCents(dueCents, invoice),
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -1211,7 +1214,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
         )
         .eq("id", data.invoiceId)
         .single(),
@@ -1338,7 +1341,7 @@ async function invoiceByPublicToken(token: string) {
       // `organizations(timezone)` so the public pay page can date "overdue" in
       // the business's day rather than the server's — it used to keep its own
       // copy of the date logic, with the bug src/lib/overdue.ts documents.
-      "id, number, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone), clients(display_name)",
+      "id, number, organization_id, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone), clients(display_name)",
     )
     .eq("public_token", token)
     .maybeSingle();
@@ -1381,6 +1384,10 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
         status: invoice.status as string,
         currency: (invoice.currency ?? "usd") as string,
         subtotalCents: invoice.subtotal_cents as number | null,
+        // Sales tax, drawn as its own line only when non-zero.
+        taxCents: (invoice.tax_cents ?? 0) as number,
+        taxRateBps: (invoice.tax_rate_bps ?? 0) as number,
+        taxLabel: (invoice.tax_label ?? null) as string | null,
         totalCents: (invoice.total_cents ?? 0) as number,
         // B7: credit already applied and the net amount actually due.
         creditAppliedCents: (invoice.credit_applied_cents ?? 0) as number,
@@ -1441,7 +1448,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       .eq("id", invoice.organization_id)
       .maybeSingle();
     const tipsEnabled = !!(tipOrg as { tips_enabled?: boolean | null } | null)?.tips_enabled;
-    const charge = tippedCharge({ dueCents, choice: data.tip, tipsEnabled });
+    const charge = tippedCharge({ dueCents, choice: data.tip, tipsEnabled, invoice });
     // If the stored intent OR a legacy hosted-checkout session already
     // succeeded but the status is stale (webhook missed), reconcile instead
     // of minting a new intent and charging a second time.
