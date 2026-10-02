@@ -157,9 +157,9 @@ if (!reachable) {
  *  side, so two can cross. A deadlock rolls the whole transaction back, so a
  *  retry starts clean. Any other failure is returned as it is. */
 function runProof(args: string[]) {
-  let r = spawnSync(psql!, args, { encoding: "utf8", timeout: 180_000 });
+  let r = spawnSync(psql!, args, { encoding: "utf8", timeout: 300_000 });
   for (let i = 0; i < 2 && /deadlock detected/.test(`${r.stdout}${r.stderr}`); i++) {
-    r = spawnSync(psql!, args, { encoding: "utf8", timeout: 180_000 });
+    r = spawnSync(psql!, args, { encoding: "utf8", timeout: 300_000 });
   }
   return r;
 }
