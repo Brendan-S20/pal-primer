@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { getTrialState } from "@/lib/trial.functions";
-import { TRIAL_COPY, GROWTH_PAUSED_NOTE, growthPausedFor } from "@/lib/trial";
+import { TRIAL_COPY } from "@/lib/trial";
 
 // BUILD-7 — the trial, said out loud.
 //
@@ -86,14 +86,14 @@ export function TrialBanner() {
       </button>
       <div className={`w-full ${showWhy ? "" : "hidden sm:block"}`}>
         <span className="text-muted-foreground">{copy.body}</span>
-        {/* The ratified definition, stated on the surface a paused tenant sees.
-            Derived from growthPausedFor rather than `restricted`, because the
-            database gate that does the pausing is not grandfathered and
-            `restricted` is — reading the latter would tell a grandfathered org
-            nothing is paused while their next customer is refused. */}
-        {growthPausedFor(data) ? (
-          <span className="mt-1 block text-xs text-muted-foreground">{GROWTH_PAUSED_NOTE}</span>
-        ) : null}
+        {/* There used to be a second line here, GROWTH_PAUSED_NOTE, shown
+            whenever growthPausedFor() was true. That is exactly the expired
+            and lapsed phases, and the body for both already says the same
+            thing word for word ("Everything you already have keeps running:
+            your clients, jobs and routes, your invoices and history, and the
+            customer portal"), so a paused tenant read the same sentence
+            twice in one banner. The body carries the ratified definition;
+            tests/paused-means-growth-not-the-whole-account.test.ts pins it. */}
       </div>
     </div>
   );

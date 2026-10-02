@@ -104,6 +104,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
+import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { TimeClockCard } from "@/components/TimeClockCard";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { createExpense } from "@/lib/expenses.functions";
@@ -1803,6 +1804,7 @@ function VisitCard({
       className={`animate-fade-in scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm transition-shadow ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}
     >
       {!collapsed && <HazardBanner property={p} />}
+      {!preview && <EnRouteLocationChip visit={visit} />}
 
       <div className="flex items-start gap-3">
         {/* The stop's place in the route, as a target rather than a `#3` in a

@@ -1,5 +1,15 @@
 import * as React from "react";
-import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
+import {
+  Body,
+  Button,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Preview,
+  Section,
+  Text,
+} from "@react-email/components";
 import { styles, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
@@ -15,6 +25,9 @@ interface Props extends OrgContact {
   /** "between 10:15 AM and 10:45 AM", already on the org's clock, or absent. */
   eta?: string;
   address?: string;
+  /** The live map (/track/<token>). Only when the business has live tracking
+   *  on; without it this email is exactly what it was before. */
+  trackUrl?: string;
 }
 
 const OnMyWay = ({
@@ -23,6 +36,7 @@ const OnMyWay = ({
   techName,
   eta,
   address,
+  trackUrl,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -47,6 +61,16 @@ const OnMyWay = ({
           ) : null}
           .
         </Text>
+        {trackUrl ? (
+          <Section style={{ margin: "8px 0 20px" }}>
+            <Button href={trackUrl} style={styles.button}>
+              {`See ${techName ?? "your tech"} on the map`}
+            </Button>
+            <Text style={{ ...styles.small, margin: "8px 0 0" }}>
+              The map shows an approximate position until the visit starts.
+            </Text>
+          </Section>
+        ) : null}
         <Text style={styles.text}>
           If there is a dog out in the yard, or anything the tech should know, reply to this email.
         </Text>
