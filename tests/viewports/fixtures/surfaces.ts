@@ -103,7 +103,7 @@ export const SURFACES: Surface[] = [
   {
     id: "/dashboard",
     path: "/dashboard",
-    proof: (p) => p.getByText("Today's routes", { exact: false }).first(),
+    proof: (p) => p.getByText("Today's schedule", { exact: false }).first(),
     proofLabel: 'the "Today\'s routes" header block',
     expectsData: "Alejandro Villanueva-Castro",
   },

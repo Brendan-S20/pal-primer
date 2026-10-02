@@ -4,7 +4,7 @@
 // beside it: an endpoint sends the tenant's events to somebody else's
 // system, which is the same kind of decision as connecting QuickBooks.
 //
-// Reads, edits of description/events/enabled, and deletes run as the
+// Reads, edits of description/events/enabled/include_contact, and deletes run as the
 // signed-in user, so RLS is the boundary and requirePermission turns a denial
 // into a sentence. Creating an endpoint and rotating its secret use the
 // service-role client AFTER the permission check, because those are the two
@@ -29,7 +29,7 @@ import {
 import { MAX_WEBHOOK_ENDPOINTS, WEBHOOK_EVENT_TYPES, WEBHOOK_TEST_EVENT } from "@/lib/webhooks";
 
 const ENDPOINT_COLUMNS =
-  "id, url, description, events, enabled, secret_last4, consecutive_failures, disabled_at, disabled_reason, last_success_at, last_failure_at, created_at, updated_at";
+  "id, url, description, events, enabled, include_contact, secret_last4, consecutive_failures, disabled_at, disabled_reason, last_success_at, last_failure_at, created_at, updated_at";
 
 const eventsSchema = z
   .array(z.enum(WEBHOOK_EVENT_TYPES as unknown as [string, ...string[]]))
@@ -98,6 +98,7 @@ export const createWebhookEndpoint = createServerFn({ method: "POST" })
         url: z.string().trim().min(1).max(2048),
         description: z.string().trim().max(200).default(""),
         events: eventsSchema,
+        includeContact: z.boolean().default(false),
       })
       .parse(d),
   )
@@ -127,6 +128,7 @@ export const createWebhookEndpoint = createServerFn({ method: "POST" })
         url: dest.href,
         description: data.description,
         events: data.events,
+        include_contact: data.includeContact,
         secret_last4: secretLast4(secret),
         created_by: userId,
       })
@@ -161,6 +163,7 @@ export const updateWebhookEndpoint = createServerFn({ method: "POST" })
         description: z.string().trim().max(200).optional(),
         events: eventsSchema.optional(),
         enabled: z.boolean().optional(),
+        includeContact: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -180,6 +183,7 @@ export const updateWebhookEndpoint = createServerFn({ method: "POST" })
     if (data.description !== undefined) patch.description = data.description;
     if (data.events !== undefined) patch.events = data.events;
     if (data.enabled !== undefined) patch.enabled = data.enabled;
+    if (data.includeContact !== undefined) patch.include_contact = data.includeContact;
     if (!Object.keys(patch).length) return { ok: true };
 
     const { error } = await (supabase as any)

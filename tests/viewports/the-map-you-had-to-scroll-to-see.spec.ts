@@ -111,7 +111,12 @@ test("a scheduled stop asks for one thing, and hides nothing", async ({ page, co
     });
 
   const closed = await visible();
+  // "Stop" is the live-tracking banner's control, first on the card while the
+  // fixture has this stop's location being shared (getMyLiveShare). It is
+  // deliberately never folded away: a tech must always be one tap from ending
+  // what their customer can see of them.
   expect(closed, `a scheduled card shows too much: ${closed.join(" | ")}`).toEqual([
+    "Stop",
     "Navigate",
     "Call",
     "Start",

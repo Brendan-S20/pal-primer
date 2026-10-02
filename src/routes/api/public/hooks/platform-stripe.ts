@@ -277,8 +277,8 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   type: "trial_ending",
                   title: "Your trial ends soon",
                   body: endsAt
-                    ? `Your free trial ends on ${endsAt.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, and your card will be charged then. Change or cancel your plan in Settings → Billing before that if you need to.`
-                    : "Your free trial is ending and your card will be charged. Change or cancel your plan in Settings → Billing before that if you need to.",
+                    ? `Your free trial ends on ${endsAt.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, and your card will be charged then. Change or cancel your plan in Settings → Plan & billing before that if you need to.`
+                    : "Your free trial is ending and your card will be charged. Change or cancel your plan in Settings → Plan & billing before that if you need to.",
                   link: "/settings/billing",
                 });
               } catch (e) {

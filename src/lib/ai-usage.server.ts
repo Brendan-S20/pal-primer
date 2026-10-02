@@ -163,7 +163,7 @@ async function warnOnceIfNeeded(orgId: string, state: AiUsageState): Promise<voi
     // <= 500 chars: review_items_reason_check.
     reason:
       `AI usage is at ${used} of the ${included} actions included this month.${after} ` +
-      `Nothing is paused. AI only stops at the ceiling, which you set in Settings → AI Tools.`,
+      `Nothing is paused. AI only stops at the ceiling, which you set in Settings → AI usage.`,
     detail: {
       actions_used: state.actionsUsed,
       actions_included: state.actionsIncluded,

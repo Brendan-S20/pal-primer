@@ -10,6 +10,12 @@
 // was already there and stays: it is what a screen reader gets, and the fill
 // is what everybody else gets.
 //
+// ── THE DEFAULT, AND WHERE IT LIVES ──────────────────────────────────────
+//
+// Since 20260929130000 a new business defaults to Monday to Friday (the
+// owner's decision on 2026-09-29); existing ones kept their days. The
+// history below is why the pair is pinned together.
+//
 // ── THE DEFAULT IS NOT THIS FILE'S TO CHANGE ─────────────────────────────
 //
 // The review also asked for a new org to default to Mon–Fri rather than all
@@ -50,12 +56,19 @@ describe("a selected work day", () => {
 });
 
 describe("the settings fallback agrees with the column default", () => {
-  it("both are all seven days, until a migration changes them together", () => {
-    const migration = read("supabase/migrations/20260719110000_org-work-days.sql");
-    expect(migration).toMatch(/work_days integer\[\] NOT NULL DEFAULT '\{0,1,2,3,4,5,6\}'/);
+  it("both are Monday to Friday, and a migration changed them together", () => {
+    // The column default a replay ends with is the LAST migration to set it.
+    const migration = read("supabase/migrations/20260929130000_a-new-business-worked-weekends.sql");
+    expect(migration).toMatch(/ALTER COLUMN work_days SET DEFAULT '\{1,2,3,4,5\}'/);
     const settings = read("src/routes/_authenticated/settings.scheduling.tsx");
     expect(settings).toMatch(
-      /\(settings\.work_days as number\[\] \| null\) \?\? \[0, 1, 2, 3, 4, 5, 6\]/,
+      /\(settings\.work_days as number\[\] \| null\) \?\? \[1, 2, 3, 4, 5\]/,
     );
+  });
+
+  it("and no existing business had its days changed", () => {
+    const migration = read("supabase/migrations/20260929130000_a-new-business-worked-weekends.sql")
+      .replace(/--[^\n]*/g, "");
+    expect(migration).not.toMatch(/UPDATE\s+public\.organizations/i);
   });
 });

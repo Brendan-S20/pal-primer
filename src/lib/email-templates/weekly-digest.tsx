@@ -135,7 +135,8 @@ const Digest = ({
 
         <Hr style={{ margin: "24px 0" }} />
         <Text style={styles.small}>
-          Generated automatically each week. You can turn this off in Settings → Notifications.
+          Generated automatically each week. You can turn this off in HoundStack under Analytics →
+          Weekly digest.
         </Text>
       </Container>
     </Body>
