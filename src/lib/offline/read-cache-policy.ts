@@ -342,19 +342,41 @@ export function describeReadFreshness(input: {
 
 /** Compact age for the banner. Rounds DOWN so the copy never claims the data is
  * fresher than it is (59 minutes reads as "59 min", never "1 hour"). */
-export function formatCacheAge(ageMs: number): string {
+/** The age of a saved copy as a unit and a count, before it is put into
+ *  words. My Day says it in the tech's language (`cacheAge.*` in lib/i18n)
+ *  and `formatCacheAge` below says it in English; both read these buckets, so
+ *  "12 min ago" and "hace 12 min" cannot disagree about where an hour starts. */
+export type CacheAge =
+  { unit: "unknown" } | { unit: "now" } | { unit: "minutes" | "hours" | "days"; count: number };
+
+export function cacheAgeParts(ageMs: number): CacheAge {
   // A negative age means the device clock moved backward since the fetch. It
   // used to clamp to 0 and print "just now" — the most reassuring thing it
   // could possibly say about data whose age is unknown.
-  if (ageMs < 0) return "at an unknown time";
+  if (ageMs < 0) return { unit: "unknown" };
   const ms = Math.max(0, ageMs);
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return { unit: "now" };
+  if (minutes < 60) return { unit: "minutes", count: minutes };
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hr ago`;
-  const days = Math.floor(hours / 24);
-  return days === 1 ? "1 day ago" : `${days} days ago`;
+  if (hours < 24) return { unit: "hours", count: hours };
+  return { unit: "days", count: Math.floor(hours / 24) };
+}
+
+export function formatCacheAge(ageMs: number): string {
+  const age = cacheAgeParts(ageMs);
+  switch (age.unit) {
+    case "unknown":
+      return "at an unknown time";
+    case "now":
+      return "just now";
+    case "minutes":
+      return `${age.count} min ago`;
+    case "hours":
+      return `${age.count} hr ago`;
+    case "days":
+      return age.count === 1 ? "1 day ago" : `${age.count} days ago`;
+  }
 }
 
 /**

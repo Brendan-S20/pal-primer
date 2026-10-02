@@ -35,6 +35,8 @@ import {
   FileSignature,
 } from "lucide-react";
 import { Megaphone } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import {
   Sidebar,
@@ -93,6 +95,13 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // anchors and the nightly push deep-links, to change a string no
       // customer ever reads.
       { title: "Schedule", url: "/routes", icon: RouteIcon },
+      // Messages and Concerns were under Field until the launch pass
+      // (2026-10). Neither is a field screen: both are the office answering
+      // customers, and neither is open to a technician (ROUTE_ROLES gives
+      // both to owner, office manager and dispatcher only), so for the one
+      // role Field exists for they were never in it at all.
+      { title: "Messages", url: "/messages", icon: MessageSquare },
+      { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
       // Inventory and Timesheets were a sixth group called "Ops", two groups
       // below one called "Operations" — the same word twice, once abbreviated,
       // in the sidebar and again in the phone's More sheet, which is built from
@@ -103,27 +112,6 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // the people who open it are the owner and the office manager; the
       // techs' half is the card at the top of My day.
       { title: "Timesheets", url: "/timesheets", icon: Timer },
-    ],
-  },
-  {
-    label: "Field",
-    items: [
-      { title: "My day", url: "/my-day", icon: Truck },
-      // Directly under My day, because it answers the question My day raises:
-      // this is today, what about Thursday. Filtered by canAccess like every
-      // other item, and the tab bar's More sheet is built from this list, so
-      // adding it here is also how a technician on a phone reaches it.
-      { title: "My schedule", url: "/my-schedule", icon: CalendarDays },
-      { title: "Waste log", url: "/waste-log", icon: Trash2 },
-      { title: "Messages", url: "/messages", icon: MessageSquare },
-      { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
-      { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
-      // Commercial-only: /dna lists clients filtered to account_type
-      // 'commercial', so for a residential-only business this entry opens a
-      // permanently empty workspace. Hidden by commercialOnly below rather
-      // than removed, because the orgs that do serve HOAs bill violation
-      // fines from it.
-      { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true },
     ],
   },
   {
@@ -140,6 +128,32 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // review queue. A chargeback has a deadline attached, and one buried
       // under visit-timestamp warnings is one nobody answers in time.
       { title: "Disputes", url: "/disputes", icon: ShieldAlert },
+    ],
+  },
+  // Field comes AFTER Billing since the launch pass (2026-10). At 1280x800,
+  // a 13-inch laptop, the sidebar showed Overview, Operations and Field and
+  // cut off at DNA compliance, so Invoices and Quotes, which the owner opens
+  // every evening, needed a scroll inside the sidebar to reach, while My day
+  // and Waste log, which the owner rarely opens from a laptop, did not.
+  // Technicians see only Field (plus Help), so its position changes nothing
+  // for them.
+  {
+    label: "Field",
+    items: [
+      { title: "My day", url: "/my-day", icon: Truck },
+      // Directly under My day, because it answers the question My day raises:
+      // this is today, what about Thursday. Filtered by canAccess like every
+      // other item, and the tab bar's More sheet is built from this list, so
+      // adding it here is also how a technician on a phone reaches it.
+      { title: "My schedule", url: "/my-schedule", icon: CalendarDays },
+      { title: "Waste log", url: "/waste-log", icon: Trash2 },
+      { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
+      // Commercial-only: /dna lists clients filtered to account_type
+      // 'commercial', so for a residential-only business this entry opens a
+      // permanently empty workspace. Hidden by commercialOnly below rather
+      // than removed, because the orgs that do serve HOAs bill violation
+      // fines from it.
+      { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true },
     ],
   },
   {
@@ -201,6 +215,20 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
  */
 export type NavVisibility = { commercialEnabled: boolean; franchiseParent: boolean };
 
+/** A nav entry's name in the interface language: `nav.item.<url without the
+ *  slash>`, falling back to the English title above. Keyed by URL rather than
+ *  by title because the URL is what stays put when an entry is renamed — the
+ *  "Routes"/"Schedule" note above is exactly that case. Shared with
+ *  MobileTabBar's More sheet, for the same reason the list is. */
+export function navItemTitle(t: TFunction, item: Pick<NavItem, "title" | "url">): string {
+  return t(`nav.item.${item.url.replace(/^\//, "")}`, { defaultValue: item.title });
+}
+
+/** A group heading in the interface language, keyed by its English label. */
+export function navGroupLabel(t: TFunction, label: string): string {
+  return t(`nav.group.${label}`, { defaultValue: label });
+}
+
 export function useNavVisibility(): NavVisibility {
   const { enabled: commercialEnabled } = useCommercialAccounts();
   const ctxFn = useServerFn(getFranchiseContext);
@@ -248,6 +276,7 @@ export function AppSidebar() {
   }, [pathname]);
   const { role } = useMyRole();
   const { staff: me } = useMyProfile();
+  const { t } = useTranslation();
 
   const isActive = (url: string) =>
     url === "/dashboard"
@@ -329,7 +358,7 @@ export function AppSidebar() {
       <SidebarContent>
         {visibleGroups.map((group) => (
           <SidebarGroup key={group.label}>
-            {!collapsed && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            {!collapsed && <SidebarGroupLabel>{navGroupLabel(t, group.label)}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
@@ -339,13 +368,13 @@ export function AppSidebar() {
                       isActive={isActive(item.url)}
                       tooltip={
                         item.url === "/review" && openReviews > 0
-                          ? `${item.title} (${openReviews})`
-                          : item.title
+                          ? `${navItemTitle(t, item)} (${openReviews})`
+                          : navItemTitle(t, item)
                       }
                     >
                       <Link to={item.url} className="flex items-center gap-2" data-tour={item.url}>
                         <item.icon className="h-4 w-4 shrink-0" />
-                        {!collapsed && <span className="truncate">{item.title}</span>}
+                        {!collapsed && <span className="truncate">{navItemTitle(t, item)}</span>}
                         {/* Expanded: a count. Collapsed to the icon rail there is
                             no room for one, so it degrades to a dot — still
                             "there is something here", which is the whole job. */}
@@ -378,7 +407,11 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={isActive("/profile")} tooltip="Your account">
+            <SidebarMenuButton
+              asChild
+              isActive={isActive("/profile")}
+              tooltip={t("nav.yourAccount")}
+            >
               <Link to="/profile" className="flex items-center gap-2">
                 <UserAvatar
                   name={me?.display_name}
@@ -388,7 +421,7 @@ export function AppSidebar() {
                   textClassName="text-3xs"
                 />
                 {!collapsed && (
-                  <span className="truncate">{me?.display_name ?? "Your account"}</span>
+                  <span className="truncate">{me?.display_name ?? t("nav.yourAccount")}</span>
                 )}
               </Link>
             </SidebarMenuButton>
