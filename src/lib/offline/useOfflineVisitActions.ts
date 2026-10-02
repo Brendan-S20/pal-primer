@@ -13,6 +13,7 @@
 // eight lines and a fix to one of them would have left the other three.
 
 import { useCallback } from "react";
+import i18n from "@/lib/i18n";
 import { isDefinitelyOffline } from "./connectivity";
 import { useServerFn } from "@tanstack/react-start";
 import { startVisit, completeVisit, skipVisit, recordVisitPhoto } from "@/lib/my-day.functions";
@@ -170,7 +171,8 @@ export function useOfflineVisitActions(
         },
         queue: async () => {
           if (!cachedOrgId) {
-            throw new Error("Can't queue this photo offline. Reload My Day while online first.");
+            // In the tech's language: this message is the toast My Day shows.
+            throw new Error(i18n.t("sync.photoCannotQueue"));
           }
           // Owner resolved BEFORE the blob is written. storePhoto then
           // enqueueAction was the order, and if the enqueue failed the blob was

@@ -32,6 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { DeleteAccountCard } from "@/components/DeleteAccountCard";
 import { SignInMethodsCard } from "@/components/SignInMethodsCard";
+import { TwoStepCard } from "@/components/TwoStepCard";
 import { CalendarFeedCard } from "@/components/CalendarFeedCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useMyProfile } from "@/hooks/useMyProfile";
@@ -369,6 +370,7 @@ function ProfilePage() {
           person's own details on purpose -- it is a fact about them, not a
           workspace setting -- and it ships in the native bundle, which is the
           part the guideline is actually about. */}
+      <TwoStepCard />
       <SignInMethodsCard />
       <DeleteAccountCard />
     </div>

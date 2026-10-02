@@ -62,6 +62,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { applyOptimize } from "@/lib/visits.functions";
 import type { RoadLegProblem } from "@/lib/road-legs.server";
+import { orgLocalTime } from "@/lib/org-day";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 
 // ── THERE IS NO LEVEL TO CHOOSE ANY MORE ────────────────────────────────
 //
@@ -192,6 +194,7 @@ export function AutoRoutingPanel({
 }) {
   const qc = useQueryClient();
   const applyFn = useServerFn(applyOptimize);
+  const tz = useOrgTimezone();
 
   const techs = useMemo(() => staff.filter((s: any) => s.is_field_tech), [staff]);
 
@@ -325,6 +328,42 @@ export function AutoRoutingPanel({
           `On ${days === 1 ? "1 day" : `${days} days`}, some stops sit outside the routing map, so those legs were estimated.`,
           {
             description: "Usually an address whose coordinates are wrong, or a region the router does not cover.",
+            duration: 12000,
+          },
+        );
+      }
+      // A route that does not fit the day. The planner plans it anyway --
+      // the dispatcher may choose to run late or move stops by hand -- but
+      // until this, "Routed 40 stops" was all anyone was told about a day
+      // the routing trials planned to finish at 02:51 the next morning.
+      const over = r.fit?.overruns ?? [];
+      if (over.length > 0) {
+        const multiDay = from !== to;
+        const lines = over
+          .slice(0, 3)
+          .map((o) =>
+            o.minutesPastEnd > 0
+              ? `${nameOf(o.staffId)} finishes at ${orgLocalTime(o.endsAt, tz)}${multiDay ? ` on ${shortDay(o.day)}` : ""}, ${mins(o.minutesPastEnd)} after the workday ends.`
+              : `${nameOf(o.staffId)} has ${mins(o.plannedMin)} planned${multiDay ? ` on ${shortDay(o.day)}` : ""}, over their ${mins(o.capacityMin)} day.`,
+          );
+        if (over.length > 3) lines.push(`${over.length - 3} more.`);
+        toast.warning(
+          over.length === 1
+            ? "One route does not fit the workday."
+            : `${over.length} routes do not fit the workday.`,
+          { description: lines.join(" "), duration: 12000 },
+        );
+      }
+      // Stops with no map location are routed last, because nobody knows
+      // where they are. Their ETA is a guess, so the dispatcher is told.
+      const unlocated = (r.fit?.unlocated ?? []).reduce((n, u) => n + u.count, 0);
+      if (unlocated > 0) {
+        toast.warning(
+          unlocated === 1
+            ? "1 stop has no map location, so it was put at the end of the day."
+            : `${unlocated} stops have no map location, so they were put at the end of the day.`,
+          {
+            description: "Fix the address on the customer's property so it can be routed.",
             duration: 12000,
           },
         );

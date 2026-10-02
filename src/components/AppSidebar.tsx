@@ -36,6 +36,8 @@ import {
   FileSignature,
 } from "lucide-react";
 import { Megaphone } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import {
   Sidebar,
@@ -215,6 +217,20 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
  */
 export type NavVisibility = { commercialEnabled: boolean; franchiseParent: boolean };
 
+/** A nav entry's name in the interface language: `nav.item.<url without the
+ *  slash>`, falling back to the English title above. Keyed by URL rather than
+ *  by title because the URL is what stays put when an entry is renamed — the
+ *  "Routes"/"Schedule" note above is exactly that case. Shared with
+ *  MobileTabBar's More sheet, for the same reason the list is. */
+export function navItemTitle(t: TFunction, item: Pick<NavItem, "title" | "url">): string {
+  return t(`nav.item.${item.url.replace(/^\//, "")}`, { defaultValue: item.title });
+}
+
+/** A group heading in the interface language, keyed by its English label. */
+export function navGroupLabel(t: TFunction, label: string): string {
+  return t(`nav.group.${label}`, { defaultValue: label });
+}
+
 export function useNavVisibility(): NavVisibility {
   const { enabled: commercialEnabled } = useCommercialAccounts();
   const ctxFn = useServerFn(getFranchiseContext);
@@ -262,6 +278,7 @@ export function AppSidebar() {
   }, [pathname]);
   const { role } = useMyRole();
   const { staff: me } = useMyProfile();
+  const { t } = useTranslation();
 
   const isActive = (url: string) =>
     url === "/dashboard"
@@ -343,7 +360,7 @@ export function AppSidebar() {
       <SidebarContent>
         {visibleGroups.map((group) => (
           <SidebarGroup key={group.label}>
-            {!collapsed && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            {!collapsed && <SidebarGroupLabel>{navGroupLabel(t, group.label)}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
@@ -353,13 +370,13 @@ export function AppSidebar() {
                       isActive={isActive(item.url)}
                       tooltip={
                         item.url === "/review" && openReviews > 0
-                          ? `${item.title} (${openReviews})`
-                          : item.title
+                          ? `${navItemTitle(t, item)} (${openReviews})`
+                          : navItemTitle(t, item)
                       }
                     >
                       <Link to={item.url} className="flex items-center gap-2" data-tour={item.url}>
                         <item.icon className="h-4 w-4 shrink-0" />
-                        {!collapsed && <span className="truncate">{item.title}</span>}
+                        {!collapsed && <span className="truncate">{navItemTitle(t, item)}</span>}
                         {/* Expanded: a count. Collapsed to the icon rail there is
                             no room for one, so it degrades to a dot — still
                             "there is something here", which is the whole job. */}
@@ -392,7 +409,11 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={isActive("/profile")} tooltip="Your account">
+            <SidebarMenuButton
+              asChild
+              isActive={isActive("/profile")}
+              tooltip={t("nav.yourAccount")}
+            >
               <Link to="/profile" className="flex items-center gap-2">
                 <UserAvatar
                   name={me?.display_name}
@@ -402,7 +423,7 @@ export function AppSidebar() {
                   textClassName="text-3xs"
                 />
                 {!collapsed && (
-                  <span className="truncate">{me?.display_name ?? "Your account"}</span>
+                  <span className="truncate">{me?.display_name ?? t("nav.yourAccount")}</span>
                 )}
               </Link>
             </SidebarMenuButton>

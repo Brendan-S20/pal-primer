@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { classifyReply, samePhone, textsTo } from "@/lib/platform-replies";
 import { onMyWayText } from "@/lib/on-my-way";
+import en from "@/lib/i18n/locales/en";
 
 type Call = { table: string; op: string; payload?: unknown; filters: Array<[string, unknown]> };
 const calls: Call[] = [];
@@ -248,7 +249,9 @@ describe("the wiring", () => {
       join(import.meta.dirname, "../src/routes/_authenticated/my-day.tsx"),
       "utf8",
     );
-    expect(myDay).toMatch(/Customer says do not enter/);
+    // The card's words are in lib/i18n; the card asks for them by key.
+    expect(myDay).toMatch(/t\("visit\.customerSaysDoNotEnter"\)/);
+    expect(en.visit.customerSaysDoNotEnter).toBe("Customer says do not enter");
     const fn = readFileSync(join(import.meta.dirname, "../src/lib/my-day.functions.ts"), "utf8");
     expect(fn).toMatch(/gate_reply, gate_reply_at/);
   });

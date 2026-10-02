@@ -163,11 +163,17 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tracking is turned off. All three carry their own REVOKE from PUBLIC,
     // anon and authenticated.
     //
-    // 50 -> 51 on 2026-09-29 (20260929090000, expenses): expenses_before_write,
+    // 50 -> 51 on 2026-10-02 (20261002090200, the routing trials):
+    // tg_properties_coordinates_are_a_place, which stores 0,0 and an
+    // off-the-globe coordinate as NULL -- "no location" -- instead of a point
+    // in the Gulf of Guinea that refused a whole day's routing. It carries its
+    // own REVOKE from PUBLIC, anon and authenticated.
+    //
+    // 51 -> 52 on 2026-09-29 (20260929090000, expenses): expenses_before_write,
     // which keeps an expense's staff inside its tenant and prices a mileage row
     // at the rate stored on it. REVOKEd from PUBLIC, anon and authenticated in
     // the same file.
-    expect(triggerFunctions().size).toBe(51);
+    expect(triggerFunctions().size).toBe(52);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

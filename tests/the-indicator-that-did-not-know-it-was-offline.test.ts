@@ -21,6 +21,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import en from "@/lib/i18n/locales/en";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -127,6 +128,7 @@ describe("two dead branches, now live", () => {
     expect(page).toMatch(/\(!inProg && !scheduled && !missed\)/);
     // And says so, rather than silently enabling a button that was dead
     // yesterday.
-    expect(page).toMatch(/Marked missed overnight/);
+    expect(page).toMatch(/t\("visit\.missedNote"\)/);
+    expect(en.visit.missedNote).toMatch(/^Marked missed overnight/);
   });
 });

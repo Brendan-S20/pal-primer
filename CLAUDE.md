@@ -220,6 +220,38 @@ Prior art worth reading rather than rediscovering: `docs/mobile-ux-audit.md`
 (2026-07-23) audited the staff app against this standard and its findings are
 still the best map of where the weak points are.
 
+## A tech's screen speaks the tech's language.
+
+The screens a field technician reads in a working day are listed in
+`tests/support/tech-screens.ts` — My Day and everything it opens, the tab bar,
+the sidebar, Preferences. On those screens every word a person reads comes from
+`t()` in `src/lib/i18n/`, with the same key in `en.ts` and `es.ts`. Many
+scooping techs work in Spanish, and the owner who hires them may not.
+
+**Why this is stated as a rule:** until 2026-09-29 the language picker existed
+and translated about a dozen strings on My Day. A tech who chose Español got a
+Spanish page title over an English route. A picker that half-works is worse
+than none, because it tells the owner the job is done.
+
+- `tests/a-tech-screen-has-no-english-left-in-it.test.ts` parses the listed
+  files and names file:line for any hardcoded English: JSX text, rendered
+  strings, literal `aria-label`/`title`/`placeholder`/`alt`, and `toast.*` /
+  `confirm*` arguments. The escape is an `i18n-ignore` comment, used once
+  (map app brand names), and the test pins that list.
+- `tests/en-and-es-have-the-same-keys.test.ts`: both locales have the same
+  keys, placeholders and plural pairs, and every key a tech screen asks for
+  exists.
+- Fixed codes (skip reasons, photo kinds, statuses) are translated by code,
+  with English as the fallback. Dates go through the formatters' locale
+  argument, not a second formatter.
+- **What stays English on purpose:** office-only screens, anything sent to a
+  customer (email, SMS, portal, PDFs — those speak the business's language),
+  and anything a person typed. The portal's shared components are pinned to
+  English so a customer's browser language never switches them.
+
+Adding a screen to `TECH_SCREENS` is the whole of extending the rule. Like the
+rules above, this one is also in the Lovable project knowledge.
+
 ## A list renders by key, and `<>` cannot carry one.
 
 `{rows.map(r => <>…</>)}` has no key. Not a missing one — an impossible one:

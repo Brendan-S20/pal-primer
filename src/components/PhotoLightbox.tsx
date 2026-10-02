@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { photoKindLabel } from "@/lib/photo-kinds";
+import i18n from "@/lib/i18n";
 
 /**
  * A visit photo, opened inside the app.
@@ -49,12 +51,21 @@ export function PhotoLightbox({
   photos,
   openIndex,
   onClose,
+  staff = false,
 }: {
   photos: LightboxPhoto[];
   /** Index to show, or null when closed. */
   openIndex: number | null;
   onClose: () => void;
+  /** Opened by staff (My Day), so it speaks the language this device is set
+   *  to. The customer portal leaves it off: a customer reads the business's
+   *  language, not whatever their browser happens to prefer. */
+  staff?: boolean;
 }) {
+  const { t: interfaceT } = useTranslation();
+  const t = staff ? interfaceT : i18n.getFixedT("en");
+  const kindLabel = (kind: string) =>
+    t(`photoKind.${kind}`, { defaultValue: photoKindLabel(kind) });
   const [index, setIndex] = useState(openIndex ?? 0);
   const [failed, setFailed] = useState(false);
 
@@ -105,20 +116,22 @@ export function PhotoLightbox({
           aria-describedby={undefined}
         >
           <DialogPrimitive.Title className="sr-only">
-            {photo.kind ? `${photoKindLabel(photo.kind)} photo` : "Visit photo"}
-            {count > 1 ? `, ${index + 1} of ${count}` : ""}
+            {photo.kind
+              ? t("photo.kindPhoto", { kind: kindLabel(photo.kind) })
+              : t("photo.visitPhoto")}
+            {count > 1 ? `, ${t("photo.position", { index: index + 1, count })}` : ""}
           </DialogPrimitive.Title>
 
           {/* Bar sits above the image and inside the safe area: on a notched
               phone in a full-screen WebView, `inset-0` is behind the clock. */}
           <div className="flex items-center justify-between gap-2 px-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-white/90">
-              {photo.kind ? photoKindLabel(photo.kind) : "photo"}
+              {photo.kind ? kindLabel(photo.kind) : t("photo.badgeFallback")}
               {count > 1 ? ` · ${index + 1}/${count}` : ""}
             </span>
             <DialogPrimitive.Close
               className="grid h-11 w-11 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 active:bg-white/20"
-              aria-label="Close photo"
+              aria-label={t("photo.close")}
             >
               <X className="h-6 w-6 shrink-0" />
             </DialogPrimitive.Close>
@@ -127,14 +140,16 @@ export function PhotoLightbox({
           <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
             {failed || !photo.url ? (
               <div className="px-6 text-center text-sm text-white/70">
-                {photo.url
-                  ? "This photo couldn't be loaded. It may not have finished uploading."
-                  : "This photo hasn't finished uploading yet."}
+                {photo.url ? t("photo.unavailableTitle") : t("photo.notUploadedYet")}
               </div>
             ) : (
               <img
                 src={photo.url}
-                alt={photo.kind ? `${photoKindLabel(photo.kind)} photo` : "Visit photo"}
+                alt={
+                  photo.kind
+                    ? t("photo.kindPhoto", { kind: kindLabel(photo.kind) })
+                    : t("photo.visitPhoto")
+                }
                 className="max-h-full max-w-full object-contain"
                 onError={() => setFailed(true)}
               />
@@ -145,7 +160,7 @@ export function PhotoLightbox({
                 <button
                   type="button"
                   onClick={() => go(-1)}
-                  aria-label="Previous photo"
+                  aria-label={t("photo.previous")}
                   className="absolute left-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
                 >
                   <ChevronLeft className="h-6 w-6 shrink-0" />
@@ -153,7 +168,7 @@ export function PhotoLightbox({
                 <button
                   type="button"
                   onClick={() => go(1)}
-                  aria-label="Next photo"
+                  aria-label={t("photo.next")}
                   className="absolute right-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
                 >
                   <ChevronRight className="h-6 w-6 shrink-0" />

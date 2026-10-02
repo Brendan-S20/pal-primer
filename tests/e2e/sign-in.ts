@@ -47,6 +47,26 @@ export async function waitForHydration(page: Page, selector: string) {
  * reports "sign-in is broken" about a page working exactly as designed.
  */
 export async function signIn(page: Page, who = OWNER) {
+  // The seed stamps `tour_seen_at` on the server, but OnboardingTour only
+  // believes the server when `getUser()` ANSWERS -- a failed or slow call
+  // fails open and the full-screen tour intercepts every click. On a loaded
+  // CI runner that happened mid-suite (/invoices, 285 retries against "Guided
+  // tour subtree intercepts pointer events"). The device record is the
+  // tour's own first check and needs no network, so write it on every page
+  // load for whoever the stored session says is signed in.
+  await page.addInitScript(() => {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !/^sb-.*-auth-token$/.test(k)) continue;
+        const id = JSON.parse(localStorage.getItem(k) ?? "null")?.user?.id;
+        if (id) localStorage.setItem(`hs:tour-seen:${id}`, new Date().toISOString());
+      }
+    } catch {
+      /* no storage, no session: nothing to remember */
+    }
+  });
+
   await page.goto("/auth");
   await waitForHydration(page, 'input[type="email"]');
 

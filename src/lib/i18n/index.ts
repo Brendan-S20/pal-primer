@@ -1,5 +1,5 @@
 import i18n from "i18next";
-import { initReactI18next } from "react-i18next";
+import { initReactI18next, useTranslation } from "react-i18next";
 import en from "./locales/en";
 import es from "./locales/es";
 
@@ -45,3 +45,23 @@ export function currentLanguage(): "en" | "es" {
 }
 
 export default i18n;
+
+/**
+ * The locale to hand `Intl` for dates and times, from the interface language.
+ *
+ * `undefined` for English on purpose: before this existed every date on My
+ * Day was formatted with the device's own locale, and an English-speaking tech
+ * keeps exactly that. Spanish asks for `es-US` — Latin American month and
+ * weekday names ("mar, 6 oct") on a US business's 12-hour clock ("2:42 p.m."),
+ * which is the clock the office and the customer are reading.
+ */
+export function intlLocaleFor(lang: string | undefined | null): string | undefined {
+  return lang?.startsWith("es") ? "es-US" : undefined;
+}
+
+/** `intlLocaleFor` for the language this component is rendering in, so a
+ *  language change re-renders the dates along with the words. */
+export function useIntlLocale(): string | undefined {
+  const { i18n: instance } = useTranslation();
+  return intlLocaleFor(instance.language);
+}
