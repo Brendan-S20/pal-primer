@@ -65,7 +65,9 @@ describe("CSRF is registered, not merely defined", () => {
 });
 
 describe("every cron endpoint enforces the auth it computes", () => {
-  const ROUTES = ["nightly", "announcement-emails", "weekly-digest"] as const;
+  // webhook-deliveries joined on 2026-09-29: the outbound webhook worker, which
+  // signs and sends tenants' events to URLs they chose.
+  const ROUTES = ["nightly", "announcement-emails", "weekly-digest", "webhook-deliveries"] as const;
 
   for (const route of ROUTES) {
     it(`${route} refuses an unauthorized request`, () => {
@@ -93,7 +95,9 @@ describe("credentials are encrypted at every write site", () => {
   // `access_token:` anywhere and flagged a zod schema and a variable being read
   // out of an OAuth response — neither is a write. A check that cries wolf gets
   // muted, which is how a real one stops being read.
-  const CREDENTIAL_TABLES = ["accounting_connections", "org_twilio_credentials"];
+  // webhook_endpoint_secrets joined on 2026-09-29: the HMAC key a tenant's
+  // receiver verifies our webhooks with. Written as `secret_ciphertext`.
+  const CREDENTIAL_TABLES = ["accounting_connections", "org_twilio_credentials", "webhook_endpoint_secrets"];
 
   it("finds the credential writes at all", () => {
     const found = credentialWrites();
@@ -132,7 +136,7 @@ describe("credentials are encrypted at every write site", () => {
     const offenders: string[] = [];
     for (const { file, payload } of credentialWrites()) {
       for (const m of payload.matchAll(
-        /\b(access_token|refresh_token|auth_token)\s*:\s*([^,\n]+)/g,
+        /\b(access_token|refresh_token|auth_token|secret_ciphertext)\s*:\s*([^,\n]+)/g,
       )) {
         const value = m[2].trim();
         if (/^(null|undefined)\b/.test(value)) continue;
@@ -479,7 +483,11 @@ describe("a database can actually be built from these files", () => {
       // customer has gone: every row is a pair of coordinates where somebody
       // lives, and a distance cache is the derived table that keeps holding an
       // address after the obvious places have been cleared.
-    ).toEqual(["prune-road-legs", "run-billing-cycles", "weekly-digest"]);
+      //
+      // deliver-webhooks joined on 2026-09-29 (20260929080000). Every minute,
+      // and it only makes a request when the outbox has something due. Its
+      // own file only WARNS about it, as this test requires.
+    ).toEqual(["deliver-webhooks", "prune-road-legs", "run-billing-cycles", "weekly-digest"]);
     expect([...unschedulable]).toEqual([]);
   });
 

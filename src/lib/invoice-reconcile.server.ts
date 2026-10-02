@@ -332,7 +332,7 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
     const { data: inv } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, organization_id, status, total_cents, credit_applied_cents, currency, stripe_payment_intent_id",
+        "id, organization_id, status, total_cents, tax_cents, credit_applied_cents, currency, stripe_payment_intent_id",
       )
       .eq("id", invoiceId)
       .maybeSingle();
@@ -374,7 +374,7 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
           // sites. This one is the sharpest: it exists precisely to shrink a
           // charge after credit is applied, so leaving the fee behind is
           // guaranteed here rather than incidental.
-          application_fee_amount: platformFeeCents(dueCents),
+          application_fee_amount: platformFeeCents(dueCents, inv),
           // A tip chosen against the OLD amount is dropped with it: the
           // intent is reset to the invoice alone and the payer picks again.
           // Written explicitly because Stripe merges metadata, and a stale

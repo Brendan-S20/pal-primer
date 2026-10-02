@@ -22,6 +22,19 @@ const OTP_MIN_INTERVAL_MS = 30_000; // between requests for one client
 const OTP_MAX_PER_CLIENT_HOUR = 5;
 const OTP_MAX_PER_IP_HOUR = 15;
 
+/** Thrown when a staff preview tries to do something only the customer may.
+ *  The message is what the owner sees in the toast. */
+export class PortalPreviewIsReadOnly extends Error {
+  code = "PORTAL_PREVIEW_READ_ONLY" as const;
+  constructor() {
+    super("This is a preview of the customer's portal, so nothing here can be changed.");
+  }
+}
+
+/** How long a staff preview lasts. Long enough to look around, short enough
+ *  that the owner's browser does not stay signed in as the customer. */
+const PREVIEW_TTL_MINUTES = 60;
+
 /** Thrown when a portal action is attempted without a valid session. */
 export class PortalVerificationRequired extends Error {
   code = "PORTAL_VERIFICATION_REQUIRED" as const;
@@ -221,9 +234,14 @@ export async function slugForToken(token: string): Promise<string | null> {
  * client the token currently points to — rotating the token (Regenerate)
  * orphans every old session.
  */
-export async function getPortalSession(
-  token: string,
-): Promise<{ clientId: string; organizationId: string } | null> {
+export type PortalSession = {
+  clientId: string;
+  organizationId: string;
+  /** True for a staff preview, which may read but never act. */
+  preview: boolean;
+};
+
+export async function getPortalSession(token: string): Promise<PortalSession | null> {
   const { getCookie } = await reqres();
   const raw = getCookie(cookieName(token));
   if (!raw) return null;
@@ -233,7 +251,7 @@ export async function getPortalSession(
 
   const { data: sess } = await supabaseAdmin
     .from("portal_sessions")
-    .select("id, client_id, organization_id, expires_at, revoked_at")
+    .select("id, client_id, organization_id, expires_at, revoked_at, preview_by")
     .eq("token_hash", sha256(raw))
     .maybeSingle();
   if (!sess) return null;
@@ -245,15 +263,32 @@ export async function getPortalSession(
     .from("portal_sessions")
     .update({ last_seen_at: new Date().toISOString() })
     .eq("id", sess.id);
-  return { clientId: sess.client_id, organizationId: sess.organization_id };
+  return {
+    clientId: sess.client_id,
+    organizationId: sess.organization_id,
+    preview: sess.preview_by != null,
+  };
 }
 
-/** Throws PortalVerificationRequired unless a valid session exists. */
+/**
+ * Throws PortalVerificationRequired unless a valid session exists, and
+ * PortalPreviewIsReadOnly if it is a staff preview and the caller did not
+ * say it only reads.
+ *
+ * The default is refusal on purpose. A portal action written tomorrow that
+ * forgets the option is read-only in a preview, which is a bug somebody
+ * notices; the other default would let an owner's look around the portal
+ * skip a visit or charge a card, which is a bug nobody notices.
+ * tests/an-owner-could-not-see-the-portal.test.ts checks that only reads
+ * pass `readOnly: true`.
+ */
 export async function requirePortalSession(
   token: string,
-): Promise<{ clientId: string; organizationId: string }> {
+  opts: { readOnly?: boolean } = {},
+): Promise<PortalSession> {
   const s = await getPortalSession(token);
   if (!s) throw new PortalVerificationRequired();
+  if (s.preview && !opts.readOnly) throw new PortalPreviewIsReadOnly();
   return s;
 }
 
@@ -512,15 +547,22 @@ export async function verifyPortalOtp(token: string, code: string): Promise<bool
  * to those requests, so verification would appear to fail even though it
  * succeeded. This was the finding-#4 verify incident.
  */
-async function createPortalSession(token: string, clientId: string, orgId: string): Promise<void> {
+async function createPortalSession(
+  token: string,
+  clientId: string,
+  orgId: string,
+  previewBy: string | null = null,
+): Promise<void> {
   const supabaseAdmin = await sbAdmin();
   const { setCookie, getRequestHeader } = await reqres();
   const secret = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
-  await supabaseAdmin.from("portal_sessions").insert({
+  const ttlSeconds = previewBy ? PREVIEW_TTL_MINUTES * 60 : SESSION_TTL_DAYS * 86_400;
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+  const { error } = await supabaseAdmin.from("portal_sessions").insert({
     client_id: clientId,
     organization_id: orgId,
     token_hash: sha256(secret),
+    preview_by: previewBy,
     expires_at: expiresAt.toISOString(),
     ip: await callerIp(),
     user_agent: (() => {
@@ -531,13 +573,36 @@ async function createPortalSession(token: string, clientId: string, orgId: strin
       }
     })(),
   });
+  // A cookie for a row that was never written is a sign-in that silently
+  // does not work; say so instead.
+  if (error) throw new Error(`Could not start the portal session: ${error.message}`);
   setCookie(cookieName(token), secret, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_TTL_DAYS * 86_400,
+    maxAge: ttlSeconds,
   });
+}
+
+/**
+ * A staff member's read-only look at a client's portal: a session on THIS
+ * browser, marked with who opened it, that lasts an hour and that
+ * requirePortalSession refuses for anything but reads. The caller has
+ * already checked the permission and that the client is in the caller's
+ * organization.
+ */
+export async function startPortalPreview(clientId: string, staffUserId: string): Promise<void> {
+  const supabaseAdmin = await sbAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("clients")
+    .select("portal_token, organization_id, active")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data?.portal_token) throw new Error("This client has no portal link yet.");
+  if (!data.active) throw new Error("An inactive client's portal is switched off.");
+  await createPortalSession(data.portal_token, clientId, data.organization_id, staffUserId);
 }
 
 // ── Generic company sign-in (/portal/{slug}): identify → OTP → verify ────────

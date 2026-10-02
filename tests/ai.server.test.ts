@@ -148,9 +148,13 @@ describe("generateStructured — shared behavior", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces a 401 as a key hint", async () => {
+  it("surfaces a 401 as ours to fix, not a key the tenant should go and find", async () => {
+    // The hint used to say "check your API key in Settings → AI". That field
+    // was deleted with BYOK, so it sent people looking for nothing.
     fetchMock.mockResolvedValueOnce(new Response("unauthorized", { status: 401 }));
-    await expect(generateStructured(structuredOpts())).rejects.toThrow(/check your API key/i);
+    await expect(generateStructured(structuredOpts())).rejects.toThrow(
+      /HoundStack configuration issue/i,
+    );
   });
 
   it("retries transient 5xx then succeeds", async () => {

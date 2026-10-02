@@ -95,6 +95,13 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // anchors and the nightly push deep-links, to change a string no
       // customer ever reads.
       { title: "Schedule", url: "/routes", icon: RouteIcon },
+      // Messages and Concerns were under Field until the launch pass
+      // (2026-10). Neither is a field screen: both are the office answering
+      // customers, and neither is open to a technician (ROUTE_ROLES gives
+      // both to owner, office manager and dispatcher only), so for the one
+      // role Field exists for they were never in it at all.
+      { title: "Messages", url: "/messages", icon: MessageSquare },
+      { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
       // Inventory and Timesheets were a sixth group called "Ops", two groups
       // below one called "Operations" — the same word twice, once abbreviated,
       // in the sidebar and again in the phone's More sheet, which is built from
@@ -105,27 +112,6 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // the people who open it are the owner and the office manager; the
       // techs' half is the card at the top of My day.
       { title: "Timesheets", url: "/timesheets", icon: Timer },
-    ],
-  },
-  {
-    label: "Field",
-    items: [
-      { title: "My day", url: "/my-day", icon: Truck },
-      // Directly under My day, because it answers the question My day raises:
-      // this is today, what about Thursday. Filtered by canAccess like every
-      // other item, and the tab bar's More sheet is built from this list, so
-      // adding it here is also how a technician on a phone reaches it.
-      { title: "My schedule", url: "/my-schedule", icon: CalendarDays },
-      { title: "Waste log", url: "/waste-log", icon: Trash2 },
-      { title: "Messages", url: "/messages", icon: MessageSquare },
-      { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
-      { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
-      // Commercial-only: /dna lists clients filtered to account_type
-      // 'commercial', so for a residential-only business this entry opens a
-      // permanently empty workspace. Hidden by commercialOnly below rather
-      // than removed, because the orgs that do serve HOAs bill violation
-      // fines from it.
-      { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true },
     ],
   },
   {
@@ -142,6 +128,32 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // review queue. A chargeback has a deadline attached, and one buried
       // under visit-timestamp warnings is one nobody answers in time.
       { title: "Disputes", url: "/disputes", icon: ShieldAlert },
+    ],
+  },
+  // Field comes AFTER Billing since the launch pass (2026-10). At 1280x800,
+  // a 13-inch laptop, the sidebar showed Overview, Operations and Field and
+  // cut off at DNA compliance, so Invoices and Quotes, which the owner opens
+  // every evening, needed a scroll inside the sidebar to reach, while My day
+  // and Waste log, which the owner rarely opens from a laptop, did not.
+  // Technicians see only Field (plus Help), so its position changes nothing
+  // for them.
+  {
+    label: "Field",
+    items: [
+      { title: "My day", url: "/my-day", icon: Truck },
+      // Directly under My day, because it answers the question My day raises:
+      // this is today, what about Thursday. Filtered by canAccess like every
+      // other item, and the tab bar's More sheet is built from this list, so
+      // adding it here is also how a technician on a phone reaches it.
+      { title: "My schedule", url: "/my-schedule", icon: CalendarDays },
+      { title: "Waste log", url: "/waste-log", icon: Trash2 },
+      { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
+      // Commercial-only: /dna lists clients filtered to account_type
+      // 'commercial', so for a residential-only business this entry opens a
+      // permanently empty workspace. Hidden by commercialOnly below rather
+      // than removed, because the orgs that do serve HOAs bill violation
+      // fines from it.
+      { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true },
     ],
   },
   {

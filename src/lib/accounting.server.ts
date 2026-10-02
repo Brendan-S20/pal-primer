@@ -1,5 +1,6 @@
 import { DEFAULT_ORG_TIMEZONE, orgLocalDay } from "@/lib/org-day";
 import { accountingLine } from "@/lib/invoice-lines";
+import { taxLineLabel } from "@/lib/sales-tax";
 
 /**
  * Provider-specific accounting drivers.
@@ -20,6 +21,9 @@ type Conn = {
   token_expires_at: string | null;
   default_income_account: string | null;
   default_ar_account: string | null;
+  /** Where an invoice's sales-tax line posts. Absent on a connection made
+   *  before sales tax existed. */
+  default_sales_tax_account?: string | null;
 };
 
 /**
@@ -93,6 +97,10 @@ type InvoicePayload = {
    *  which tax year the invoice belongs to in the customer's own books. */
   timezone?: string | null;
   total_cents: number;
+  /** Sales tax inside total_cents, and the rate/label it was made at. */
+  tax_cents?: number | null;
+  tax_rate_bps?: number | null;
+  tax_label?: string | null;
   currency: string;
   issued_at: string | null;
   period_start: string | null;
@@ -124,6 +132,51 @@ const QBO_BASE =
     ? "https://quickbooks.api.intuit.com"
     : "https://sandbox-quickbooks.api.intuit.com";
 
+/**
+ * The sales-tax line an invoice sends to the books, or null when it has none.
+ *
+ * THE CHOICE: tax goes across as a separate LINE, posted to the account the
+ * owner names as their sales-tax liability (`default_sales_tax_account`), not
+ * through the provider's own tax engine. QuickBooks' automated sales tax and
+ * Xero's tax rates both compute tax themselves from settings HoundStack cannot
+ * see, and a figure they recompute can differ by a cent from the one the
+ * customer was billed and paid. A line carries the exact amount on the
+ * invoice, so the synced total always equals ours. What it must not do is
+ * post to income, so an invoice with tax refuses to sync until the account is
+ * set rather than guessing. Every invoice with no tax (every invoice of a
+ * business that never set a rate) sends exactly the lines it always sent.
+ */
+export function accountingTaxLine(
+  conn: Pick<Conn, "default_sales_tax_account">,
+  invoice: Pick<InvoicePayload, "tax_cents" | "tax_rate_bps" | "tax_label">,
+): { description: string; amountCents: number; account: string } | null {
+  const tax = Number(invoice.tax_cents ?? 0);
+  if (!(tax > 0)) return null;
+  const account = conn.default_sales_tax_account?.trim();
+  if (!account) {
+    throw new Error(
+      "This invoice carries sales tax. Set a sales tax account on the accounting settings page first, so the tax posts as a liability and not as income.",
+    );
+  }
+  return { description: taxLineLabel(invoice.tax_label, invoice.tax_rate_bps), amountCents: tax, account };
+}
+
+/** The invoice's lines, each with the account it posts to: the service lines
+ *  to income, then the tax line (if any) to the sales-tax account. One list,
+ *  so both drivers build every line through `accountingLine` alike. */
+function linesWithAccounts(
+  conn: Conn,
+  invoice: InvoicePayload,
+  taxLine: ReturnType<typeof accountingTaxLine>,
+): Array<{ li: InvoicePayload["invoice_line_items"][number]; account: string | null }> {
+  return [
+    ...(invoice.invoice_line_items ?? []).map((li) => ({ li, account: conn.default_income_account })),
+    ...(taxLine
+      ? [{ li: { description: taxLine.description, amount_cents: taxLine.amountCents }, account: taxLine.account }]
+      : []),
+  ];
+}
+
 export async function pushInvoice(conn: Conn, invoice: InvoicePayload): Promise<string> {
   if (conn.provider === "quickbooks") return pushInvoiceQBO(conn, invoice);
   return pushInvoiceXero(conn, invoice);
@@ -133,19 +186,23 @@ async function pushInvoiceQBO(conn: Conn, invoice: InvoicePayload): Promise<stri
   if (!conn.realm_id) throw new Error("QuickBooks realm_id missing");
   if (!conn.default_income_account) throw new Error("Set a default income account first");
 
+  // Before anything is created remotely: an invoice with tax and no tax
+  // account refuses here, not after its customer exists in QuickBooks.
+  const taxLine = accountingTaxLine(conn, invoice);
+
   const customerRef = invoice.clients?.accounting_remote_id
     ?? (await ensureQBOCustomer(conn, invoice.clients?.display_name ?? "Client", invoice.clients?.primary_email));
 
   // Qty and UnitPrice go across when the product is exact; see accountingLine.
   const money = centsFormatter(invoice.currency);
-  const lines = (invoice.invoice_line_items ?? []).map((li) => {
+  const lines = linesWithAccounts(conn, invoice, taxLine).map(({ li, account }) => {
     const l = accountingLine(li, money);
     return {
       Amount: l.amount,
       DetailType: "SalesItemLineDetail",
       Description: l.description,
       SalesItemLineDetail: {
-        ItemAccountRef: { value: conn.default_income_account },
+        ItemAccountRef: { value: account },
         Qty: l.quantity,
         UnitPrice: l.unitAmount,
       },
@@ -206,14 +263,15 @@ async function pushInvoiceXero(conn: Conn, invoice: InvoicePayload): Promise<str
     ? { ContactID: invoice.clients.accounting_remote_id }
     : { Name: invoice.clients?.display_name ?? "Client", EmailAddress: invoice.clients?.primary_email ?? undefined };
 
+  const taxLine = accountingTaxLine(conn, invoice);
   const money = centsFormatter(invoice.currency);
-  const lineItems = (invoice.invoice_line_items ?? []).map((li) => {
+  const lineItems = linesWithAccounts(conn, invoice, taxLine).map(({ li, account }) => {
     const l = accountingLine(li, money);
     return {
       Description: l.description,
       Quantity: l.quantity,
       UnitAmount: l.unitAmount,
-      AccountCode: conn.default_income_account,
+      AccountCode: account,
     };
   });
 

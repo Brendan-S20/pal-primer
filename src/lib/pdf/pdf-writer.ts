@@ -70,8 +70,25 @@ export type DrawnText = {
   text: string;
 };
 
-/** Characters with an obvious WinAnsi stand-in that NFKD does not find. */
+/** Characters with an obvious WinAnsi stand-in that NFKD does not find.
+ *
+ *  The letters below are Latin, appear in customers' names, and have no
+ *  decomposition to fold: NFKD leaves "Łukasz" and "Đorđević" alone, so they
+ *  used to print as "?ukasz" and "?or?evi?". Their plain base letter is how
+ *  the same names are spelled on anything that cannot take the stroke. */
 const REPLACEMENTS: Record<string, string> = {
+  Ł: "L",
+  ł: "l",
+  Đ: "D",
+  đ: "d",
+  Ħ: "H",
+  ħ: "h",
+  ı: "i",
+  Ŀ: "L",
+  ŀ: "l",
+  Ŧ: "T",
+  ŧ: "t",
+  ĸ: "k",
   "−": "-", // minus sign
   "‐": "-",
   "‑": "-",
