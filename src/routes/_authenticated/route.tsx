@@ -13,6 +13,7 @@ import { resolveIdentity } from "@/lib/offline/identity";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
+import { needsSecondStep } from "@/lib/mfa";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
@@ -37,7 +38,7 @@ import { useBrandAccent } from "@/hooks/useBrandAccent";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async ({ context, location }) => {
     // NATIVE ONLY: not navigator.onLine — see lib/offline/connectivity.ts, a
     // WKWebView resumed from a dead zone can still be claiming to be online.
     // The hosted app keeps the property it has always read.
@@ -61,6 +62,15 @@ export const Route = createFileRoute("/_authenticated")({
       // the tech's route exactly when they need it most.
       if (identity.rejected) clearPersistedReadCaches();
       throw redirect({ to: "/auth" });
+    }
+
+    // Two-step sign-in: somebody who turned it on and signed in with the
+    // password alone is asked for the code before anything loads. The
+    // database refuses such a session anyway (public.mfa_satisfied); asking
+    // first means they see a code box, not a workspace that will not load.
+    // Read from the session on the device, so this works offline too.
+    if (await needsSecondStep()) {
+      throw redirect({ to: "/two-step", search: { next: location.href } });
     }
 
     // Put this user's persisted reads back into the query cache before anything

@@ -595,12 +595,14 @@ BEGIN
     RAISE EXCEPTION 'an email_campaigns write policy does not require a draft and send_campaigns';
   END IF;
   IF (SELECT count(*) FROM pg_policies
-       WHERE schemaname = 'public' AND tablename = 'email_campaigns') <> 4 THEN
+       WHERE schemaname = 'public' AND tablename = 'email_campaigns'
+         AND permissive = 'PERMISSIVE') <> 4 THEN
     RAISE EXCEPTION 'email_campaigns does not have exactly its four policies';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_policies
               WHERE schemaname = 'public'
-                AND tablename IN ('email_campaign_recipients', 'client_unsubscribe_tokens')) THEN
+                AND tablename IN ('email_campaign_recipients', 'client_unsubscribe_tokens')
+                AND permissive = 'PERMISSIVE') THEN
     RAISE EXCEPTION 'a service-role-only table has an API policy';
   END IF;
 
