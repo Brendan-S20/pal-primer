@@ -353,7 +353,10 @@ export async function findControlsUnder44px(page: Page): Promise<string[]> {
       // Recorded here instead of quietly dropped, because a rule with an
       // undocumented hole is a rule nobody can trust. If pins ever become the
       // primary way to open a stop, this exemption is the thing to revisit.
-      if (el.closest(".leaflet-marker-pane, .leaflet-overlay-pane")) continue;
+      // `.hs-map-marker` is the same pin drawn by the Google renderer
+      // (src/lib/maps/google-renderer.ts), so the exemption follows the pins
+      // to whichever provider draws them and to nothing else.
+      if (el.closest(".leaflet-marker-pane, .leaflet-overlay-pane, .hs-map-marker")) continue;
 
       // ── AND ONE CONDITION: A MODAL IS OPEN ───────────────────────────────
       //

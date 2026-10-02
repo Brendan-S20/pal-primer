@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Undo2, Trash2, Save, MousePointer2, Pencil, Circle as CircleIcon, Clock } from "lucide-react";
 import type { PolygonGeoJSON } from "@/components/BoundarySketch";
-import { addBaseTiles } from "@/lib/map-tiles";
 import { DRIVE_M_PER_MIN } from "@/lib/zone-match";
+import { useMapRenderer } from "@/lib/maps/use-map-renderer";
+import { OverlayGroup, US_VIEW, circleBoundsPoints, type LatLng } from "@/lib/maps/types";
 
 export type CoverageMode = "polygon" | "radius" | "drive_time";
 
@@ -18,7 +17,7 @@ export type CoverageValue = {
   driveTimeMinutes: number | null;
 };
 
-function toRing(latlngs: L.LatLng[]): number[][] {
+function toRing(latlngs: LatLng[]): number[][] {
   const ring = latlngs.map((p) => [p.lng, p.lat]);
   if (ring.length > 0) {
     const [fx, fy] = ring[0];
@@ -27,10 +26,10 @@ function toRing(latlngs: L.LatLng[]): number[][] {
   }
   return ring;
 }
-function fromPolygon(poly: PolygonGeoJSON | null): L.LatLng[] {
+function fromPolygon(poly: PolygonGeoJSON | null): LatLng[] {
   if (!poly) return [];
   const ring = poly.coordinates?.[0] ?? [];
-  return ring.slice(0, Math.max(0, ring.length - 1)).map(([lng, lat]) => L.latLng(lat, lng));
+  return ring.slice(0, Math.max(0, ring.length - 1)).map(([lng, lat]) => ({ lat, lng }));
 }
 
 // Rough urban drive speed used to visualize drive-time as an approximate radius
@@ -59,12 +58,10 @@ export function ZoneCoverageMap({
   focusPoint?: { lat: number; lng: number } | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const drawLayer = useRef<L.LayerGroup | null>(null);
-  const pointsRef = useRef<L.LatLng[]>(fromPolygon(initial.polygon));
-  const centerRef = useRef<L.LatLng | null>(
+  const pointsRef = useRef<LatLng[]>(fromPolygon(initial.polygon));
+  const centerRef = useRef<LatLng | null>(
     initial.centerLat != null && initial.centerLng != null
-      ? L.latLng(initial.centerLat, initial.centerLng)
+      ? { lat: initial.centerLat, lng: initial.centerLng }
       : null,
   );
   const [mode, setMode] = useState<CoverageMode>(initial.mode);
@@ -75,96 +72,112 @@ export function ZoneCoverageMap({
   const [tick, setTick] = useState(0);
   const fittedRef = useRef(false);
 
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const start: [number, number] =
-      centerRef.current
-        ? [centerRef.current.lat, centerRef.current.lng]
-        : pointsRef.current[0]
-          ? [pointsRef.current[0].lat, pointsRef.current[0].lng]
-          : [39.5, -98.35];
-    const map = L.map(containerRef.current, { center: start, zoom: centerRef.current || pointsRef.current[0] ? 12 : 4, maxZoom: 19, scrollWheelZoom: true });
-    addBaseTiles(map);
-    mapRef.current = map;
-    drawLayer.current = L.layerGroup().addTo(map);
+  const startAt = centerRef.current ?? pointsRef.current[0] ?? null;
+  // One map per mount; every edit redraws overlays on it.
+  const map = useMapRenderer(containerRef, {
+    initialView: startAt ? { center: startAt, zoom: 12 } : US_VIEW,
+    style: "street",
+    gestures: "map",
+    maxZoom: 19,
+  });
 
-    map.on("click", (e: L.LeafletMouseEvent) => {
-      // Read the current mode from the ref — the handler is registered once at
-      // init, so closing over the initial `mode` state would misroute clicks
-      // after the user switches tabs.
+  useEffect(() => {
+    if (!map) return;
+    return map.onMapClick((p) => {
+      // Read the current mode from the ref — the handler is registered once
+      // per map, so closing over the initial `mode` state would misroute
+      // clicks after the user switches tabs.
       if (modeRef.current === "polygon") {
-        pointsRef.current = [...pointsRef.current, e.latlng];
-        setTick((t) => t + 1);
+        pointsRef.current = [...pointsRef.current, p];
       } else {
-        centerRef.current = e.latlng;
-        setTick((t) => t + 1);
+        centerRef.current = p;
       }
+      setTick((t) => t + 1);
     });
-    return () => {
-      try { map.off(); map.remove(); } catch { /* ignore */ }
-      mapRef.current = null;
-      drawLayer.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [map]);
 
   // Redraw on any state change
   useEffect(() => {
-    const map = mapRef.current;
-    const layer = drawLayer.current;
-    if (!map || !layer) return;
-    // Stop any in-flight interactions before we tear down the layer — otherwise
-    // a marker mid-drag whose ._map has already been detached crashes Leaflet's
-    // mouse plumbing with `Cannot read properties of undefined (reading 'layerPointToLatLng')`.
-    try { (map as any).dragging?.enable(); } catch { /* ignore */ }
-    layer.clearLayers();
+    if (!map) return;
+    const layer = new OverlayGroup();
 
     if (mode === "polygon") {
       const pts = pointsRef.current;
-      if (pts.length >= 3) L.polygon(pts, { color: "#2563eb", weight: 2, fillColor: "#3b82f6", fillOpacity: 0.2 }).addTo(layer);
-      else if (pts.length >= 2) L.polyline(pts, { color: "#2563eb", dashArray: "4 4" }).addTo(layer);
+      if (pts.length >= 3) {
+        layer.add(
+          map.addPolygon(pts, {
+            color: "#2563eb",
+            weight: 2,
+            fillColor: "#3b82f6",
+            fillOpacity: 0.2,
+            interactive: false,
+          }),
+        );
+      } else if (pts.length >= 2) {
+        layer.add(
+          map.addPolyline({ path: pts, color: "#2563eb", weight: 3, opacity: 1, dashed: true }),
+        );
+      }
       pts.forEach((p, i) => {
-        const icon = L.divIcon({
-          className: "zone-vertex",
-          html: `<div style="background:${i === 0 ? "#f59e0b" : "#2563eb"};color:white;border:2px solid white;border-radius:9999px;width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
-          iconSize: [12, 12], iconAnchor: [6, 6],
-        });
-        const m = L.marker(p, { icon, draggable: true }).addTo(layer);
-        m.on("drag", (ev: any) => {
-          if (!ev.target?._map) return; // detached mid-drag
-          pointsRef.current = pointsRef.current.map((q, idx) => idx === i ? ev.target.getLatLng() : q);
-        });
-        m.on("dragend", (ev: any) => { if (ev.target?._map) setTick((t) => t + 1); });
-        m.on("click", (ev) => {
-          if (!(ev as any).target?._map) return;
-          L.DomEvent.stopPropagation(ev);
-          pointsRef.current = pointsRef.current.filter((_, idx) => idx !== i);
-          setTick((t) => t + 1);
-        });
+        layer.add(
+          map.addMarker({
+            position: p,
+            className: "zone-vertex",
+            html: `<div style="background:${i === 0 ? "#f59e0b" : "#2563eb"};color:white;border:2px solid white;border-radius:9999px;width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+            size: [12, 12],
+            anchor: [6, 6],
+            title: `Coverage point ${i + 1}`,
+            draggable: true,
+            onDrag: (ll) => {
+              pointsRef.current = pointsRef.current.map((q, idx) => (idx === i ? ll : q));
+            },
+            onDragEnd: () => setTick((t) => t + 1),
+            onClick: () => {
+              pointsRef.current = pointsRef.current.filter((_, idx) => idx !== i);
+              setTick((t) => t + 1);
+            },
+          }),
+        );
       });
       if (pts.length >= 3 && !fittedRef.current) {
-        try { map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 15 }); } catch { /* ignore */ }
+        map.fitBounds(pts, { padding: 30, maxZoom: 15 });
         fittedRef.current = true;
       }
     } else {
       const c = centerRef.current;
       if (c) {
         const r = mode === "radius" ? radius : minutes * DRIVE_M_PER_MIN;
-        L.circle(c, { radius: r, color: mode === "drive_time" ? "#0891b2" : "#2563eb", weight: 2, fillOpacity: 0.15 }).addTo(layer);
-        const icon = L.divIcon({ className: "zone-center", html: `<div style="background:#f59e0b;border:2px solid white;border-radius:9999px;width:14px;height:14px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
-        const m = L.marker(c, { icon, draggable: true }).addTo(layer);
-        m.on("dragend", (ev: any) => {
-          if (!ev.target?._map) return;
-          centerRef.current = ev.target.getLatLng();
-          setTick((t) => t + 1);
-        });
+        layer.add(
+          map.addCircle(c, r, {
+            color: mode === "drive_time" ? "#0891b2" : "#2563eb",
+            weight: 2,
+            fillOpacity: 0.15,
+            interactive: false,
+          }),
+        );
+        layer.add(
+          map.addMarker({
+            position: c,
+            className: "zone-center",
+            html: `<div style="background:#f59e0b;border:2px solid white;border-radius:9999px;width:14px;height:14px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+            size: [14, 14],
+            anchor: [7, 7],
+            title: "Coverage center (drag to move)",
+            draggable: true,
+            onDragEnd: (ll) => {
+              centerRef.current = ll;
+              setTick((t) => t + 1);
+            },
+          }),
+        );
         if (!fittedRef.current) {
-          try { map.fitBounds(L.circle(c, { radius: r }).getBounds(), { padding: [30, 30], maxZoom: 14 }); } catch { /* ignore */ }
+          map.fitBounds(circleBoundsPoints(c, r), { padding: 30, maxZoom: 14 });
           fittedRef.current = true;
         }
       }
     }
-  }, [tick, mode, radius, minutes]);
+    return () => layer.clear();
+  }, [map, tick, mode, radius, minutes]);
 
   // Reset the fit-once guard whenever the drawing mode changes so a fresh
   // mode gets one fit; individual drags/edits do not refit.
@@ -198,15 +211,14 @@ export function ZoneCoverageMap({
   // Pan to an externally supplied point (typed ZIP centroid) and seed the
   // center for circle modes so "ZIP + radius" works without a map click.
   useEffect(() => {
-    const map = mapRef.current;
     if (!map || !focusPoint) return;
-    map.setView([focusPoint.lat, focusPoint.lng], 12);
+    map.setView(focusPoint, 12);
     if (modeRef.current !== "polygon" && !centerRef.current) {
-      centerRef.current = L.latLng(focusPoint.lat, focusPoint.lng);
+      centerRef.current = { lat: focusPoint.lat, lng: focusPoint.lng };
       setTick((t) => t + 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusPoint?.lat, focusPoint?.lng]);
+  }, [map, focusPoint?.lat, focusPoint?.lng]);
 
   const save = () => onSave?.(currentValue());
 

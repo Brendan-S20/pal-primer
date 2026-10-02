@@ -99,6 +99,13 @@ export default defineConfig({
           SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY ?? "",
           VITE_SUPABASE_URL: process.env.SUPABASE_URL ?? "",
           VITE_SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY ?? "",
+          // Empty so a developer's `.env` cannot point a local run at real
+          // Google from 127.0.0.1 — a referrer no key allows, which Google
+          // answers with a console error these specs would report. Maps draw
+          // with the Leaflet fallback here.
+          VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY: "",
+          // ...and the runtime name `getMapsBrowserKey` reads, for the same reason.
+          GOOGLE_MAPS_BROWSER_KEY: "",
         },
       },
 });

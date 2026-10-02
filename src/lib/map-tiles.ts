@@ -1,8 +1,20 @@
-import L from "leaflet";
+import type * as Leaflet from "leaflet";
 
 /**
- * Centralized Leaflet tile-layer definitions so every map on the app renders
- * against consistent tiles. Two variants:
+ * THE FALLBACK BASEMAP. Since 2026-10-02 every map is drawn by the Google
+ * Maps JavaScript API (src/lib/maps/), and these tiles are used only when no
+ * browser key is configured or Google refuses to load — local dev, the unit
+ * tests, the viewport sweeps behind their network fence, a misconfigured
+ * build. The owner moved off these hosts because OpenStreetMap's tile usage
+ * policy lets them block a commercial app and Esri's free imagery has similar
+ * terms; they stay here so that a missing key degrades to a map rather than a
+ * grey box. Only src/lib/maps/leaflet-renderer.ts calls into this file.
+ *
+ * Leaflet arrives as a PARAMETER rather than an import, so that importing the
+ * style list (routes.tsx does) does not pull Leaflet into a chunk that, in
+ * production, never draws with it.
+ *
+ * Two variants:
  *  - "street" (default) — OpenStreetMap, used everywhere except yard sketching.
  *  - "satellite" — Esri World Imagery, used by BoundarySketch where seeing
  *    the actual yard matters. A labels overlay is added on top so streets
@@ -44,7 +56,7 @@ export type TileVariant = "street" | "satellite";
  *  absent: it is chosen by the SURFACE (yard sketching needs imagery), not by
  *  preference, and offering it as a route basemap makes stop pins unreadable. */
 export const BASE_STYLES: Array<{ value: TileVariant; label: string; hint: string }> = [
-  { value: "street", label: "Detailed", hint: "Full OpenStreetMap detail" },
+  { value: "street", label: "Detailed", hint: "Streets and place names" },
 ];
 
 export const DEFAULT_BASE_STYLE: TileVariant = "street";
@@ -70,7 +82,11 @@ const ESRI_TRANSPORT_URL =
  * Callers should not add tile layers by hand — use this so all maps stay
  * visually consistent.
  */
-export function addBaseTiles(map: L.Map, variant: TileVariant = "street"): void {
+export function addBaseTiles(
+  L: typeof Leaflet,
+  map: Leaflet.Map,
+  variant: TileVariant = "street",
+): void {
   if (variant === "satellite") {
     L.tileLayer(ESRI_IMAGERY_URL, {
       attribution: ESRI_IMAGERY_ATTR,

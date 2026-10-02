@@ -53,6 +53,10 @@
 // functions asserted here are pure by design, and they are pure BECAUSE the
 // alternative was asserting on the shape of the source text, which passes just
 // as happily when the message is an empty string.
+//
+// Since 2026-10-02 RouteMap no longer imports Leaflet at all — the fallback
+// renderer in src/lib/maps/ loads it on demand — so the mock is now a
+// backstop for the day somebody adds a top-level import back.
 
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -144,14 +148,29 @@ describe("a plain scroll over a docked map belongs to the page", () => {
   });
 
   it("does not hand the wheel back to Leaflet's own handler", () => {
-    const src = source();
+    // Since 2026-10-02 the map is drawn through src/lib/maps/, and RouteMap
+    // asks for the gate by name (`gestures: "gated"`) instead of configuring
+    // Leaflet itself. So the Leaflet half of this lives in the fallback
+    // renderer, in the one options block the gated mode uses.
+    expect(source()).toMatch(/gestures:\s*"gated"/);
+    const leaflet = codeOnly(read("src/lib/maps/leaflet-renderer.ts"));
+    const at = leaflet.indexOf("const GATED_WHEEL");
+    expect(at, "GATED_WHEEL not found in the Leaflet renderer").toBeGreaterThan(-1);
+    const gated = leaflet.slice(at, leaflet.indexOf(";", at));
     // `scrollWheelZoom: true` is what shipped, and it is a one-word edit away
     // at all times. Leaflet's handler cannot be gated — it binds its own
     // listener — so having it on at the same time means two zooms per notch.
-    expect(src).not.toMatch(/scrollWheelZoom:\s*true/);
-    expect(src).toMatch(/scrollWheelZoom:\s*false/);
+    expect(gated).not.toMatch(/scrollWheelZoom:\s*true/);
+    expect(gated).toMatch(/scrollWheelZoom:\s*false/);
     // Pinch is never ambiguous, so it is never gated.
-    expect(src).toMatch(/touchZoom:\s*true/);
+    expect(gated).toMatch(/touchZoom:\s*true/);
+    expect(leaflet).toMatch(/o\.gestures === "map" \? \{ scrollWheelZoom: true \} : GATED_WHEEL/);
+    // The Google half: an un-armed gated map is "cooperative" (ctrl/⌘ +
+    // scroll or a pinch zooms, a plain scroll moves the page, and Google says
+    // so on the map), and only arming makes it "greedy".
+    const google = codeOnly(read("src/lib/maps/google-renderer.ts"));
+    expect(google).toMatch(/gestureHandling: o\.gestures === "map" \? "greedy" : "cooperative"/);
+    expect(google).toMatch(/gestureHandling: armed \? "greedy" : "cooperative"/);
   });
 
   it("says something when it declines to zoom", () => {
@@ -416,7 +435,7 @@ describe("you are here is not a stop on somebody's route", () => {
     // location that disappears on the next poll is one the owner presses twice
     // and then stops believing.
     const src = source();
-    expect(src).toMatch(/meRef = useRef<L\.LayerGroup \| null>\(null\)/);
+    expect(src).toMatch(/meRef = useRef<OverlayGroup \| null>\(null\)/);
     // Checked from inside `locate`, which is the end that can be got wrong:
     // `const layer = layerRef.current` there is a one-word slip that reads
     // perfectly and loses the dot on the next poll.
