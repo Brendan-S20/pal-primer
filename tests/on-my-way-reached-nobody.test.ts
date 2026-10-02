@@ -166,7 +166,7 @@ describe("the wiring", () => {
   });
 
   it("offers the button whether or not the client has a phone", () => {
-    const i = myDay.indexOf("Send &ldquo;on my way&rdquo;");
+    const i = myDay.indexOf(`{t("visit.sendOnMyWay")}`);
     expect(i).toBeGreaterThan(-1);
     const before = myDay.slice(i - 600, i);
     expect(before).toMatch(/onMyWay\.mutate\(\)/);

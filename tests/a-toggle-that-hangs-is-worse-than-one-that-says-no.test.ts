@@ -33,6 +33,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import en from "@/lib/i18n/locales/en";
+import es from "@/lib/i18n/locales/es";
+
 const root = join(import.meta.dirname, "..");
 const source = readFileSync(join(root, "src/components/PushToggle.tsx"), "utf8");
 
@@ -49,7 +52,8 @@ describe("waiting on a service worker is bounded", () => {
   it("routes every wait through the timeout helper", () => {
     // Three call sites: the mount effect, enable(), disable(). If a fourth
     // appears and skips the helper, the first assertion catches it.
-    const viaHelper = [...source.matchAll(/serviceWorkerReady\(\)/g)];
+    // enable() and disable() pass the message in the person's language.
+    const viaHelper = [...source.matchAll(/serviceWorkerReady\((t\("push\.unavailable"\))?\)/g)];
     expect(viaHelper.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -69,9 +73,19 @@ describe("waiting on a service worker is bounded", () => {
     // The catch blocks surface `e.message` directly, so this string is what a
     // technician or a customer actually reads. "Service worker unavailable" is
     // a sentence for us; "reload the page and try again" is one for them.
-    const rejection = source.match(/new Error\(\s*\n?\s*"([^"]+)"/)?.[1];
-    expect(rejection).toBeTruthy();
-    expect(rejection!.toLowerCase()).toMatch(/reload/);
-    expect(rejection!.toLowerCase()).not.toMatch(/service worker|registration|promise/);
+    //
+    // The helper rejects with the message it is handed, which enable() and
+    // disable() take from lib/i18n (push.unavailable) so a tech reads it in
+    // their language and a customer on the portal reads it in English. The
+    // helper's own default is the same English sentence, for the mount-time
+    // call that never shows it.
+    expect(source).toMatch(/new Error\(unavailableMessage\)/);
+    const fallback = source.match(/unavailableMessage = "([^"]+)"/)?.[1];
+    expect(fallback).toBe(en.push.unavailable);
+    for (const rejection of [en.push.unavailable, fallback!]) {
+      expect(rejection.toLowerCase()).toMatch(/reload/);
+      expect(rejection.toLowerCase()).not.toMatch(/service worker|registration|promise/);
+    }
+    expect(es.push.unavailable.toLowerCase()).toMatch(/recarga/);
   });
 });

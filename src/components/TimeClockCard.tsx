@@ -17,6 +17,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { CloudOff, Timer } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { useIntlLocale } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { clockIn, clockOut, getMyClock, type MyClock } from "@/lib/time-clock.functions";
 import { formatDuration, minutesBetween, minutesOnDay } from "@/lib/time-clock";
@@ -51,6 +53,8 @@ export function TimeClockCard({
   });
   const taps = useQueuedClock(dataUpdatedAt);
   const [busy, setBusy] = useState(false);
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
 
   // The running total has to keep running.
   const [, repaint] = useState(0);
@@ -72,8 +76,8 @@ export function TimeClockCard({
   const shiftMinutes = open ? minutesBetween(open.clock_in, now) : 0;
 
   const summarise = (minutes: number, visits: number | null) => {
-    const parts = [`${formatDuration(minutes)} today`];
-    if (visits != null) parts.push(`${visits} visit${visits === 1 ? "" : "s"} completed`);
+    const parts = [t("clock.today", { duration: formatDuration(minutes) })];
+    if (visits != null) parts.push(t("clock.visitsCompleted", { count: visits }));
     return parts.join(" · ");
   };
 
@@ -97,11 +101,11 @@ export function TimeClockCard({
       });
 
       if (kind === "clock_in") {
-        toast.success(queued ? "Clocked in. Saved on this device until you have signal" : "Clocked in");
+        toast.success(queued ? t("clock.clockedInQueued") : t("clock.clockedIn"));
       } else if (live.clock) {
         const c = live.clock;
         qc.setQueryData(MY_CLOCK_QUERY_KEY, c);
-        toast.success("Clocked out", {
+        toast.success(t("clock.clockedOut"), {
           description: summarise(
             minutesOnDay(c.entries, c.today, c.timezone, Date.now()),
             visitsCompletedToday ?? c.visitsCompletedToday,
@@ -115,7 +119,7 @@ export function TimeClockCard({
           ...taps,
           { id: "this-tap", kind: "clock_out", at: Date.now() },
         ]);
-        toast.success("Clocked out. Saved on this device until you have signal", {
+        toast.success(t("clock.clockedOutQueued"), {
           description: summarise(
             minutesOnDay(after.entries, today, tz, Date.now()),
             visitsCompletedToday ?? data.visitsCompletedToday,
@@ -125,7 +129,7 @@ export function TimeClockCard({
       }
       if (!queued) await qc.invalidateQueries({ queryKey: MY_CLOCK_QUERY_KEY });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not reach the time clock");
+      toast.error(e instanceof Error ? e.message : t("clock.unreachable"));
     } finally {
       setBusy(false);
     }
@@ -135,7 +139,7 @@ export function TimeClockCard({
 
   return (
     <section
-      aria-label="Time clock"
+      aria-label={t("clock.label")}
       className={`flex items-center gap-3 rounded-lg border p-3 ${
         open ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card"
       }`}
@@ -150,20 +154,26 @@ export function TimeClockCard({
               not "On the clock since 7:42 AM" as one: at 360px beside the
               button that sentence truncated exactly the part being asked
               about, the time. */}
-          {open ? `On the clock · ${formatDuration(shiftMinutes)}` : "Off the clock"}
+          {open
+            ? t("clock.onTheClock", { duration: formatDuration(shiftMinutes) })
+            : t("clock.offTheClock")}
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {open
-            ? `Since ${orgLocalTime(open.clock_in, tz)}${earlierToday >= 1 ? ` · ${formatDuration(todayMinutes)} today` : ""}`
+            ? `${t("clock.since", { time: orgLocalTime(open.clock_in, tz, locale) })}${
+                earlierToday >= 1
+                  ? ` · ${t("clock.today", { duration: formatDuration(todayMinutes) })}`
+                  : ""
+              }`
             : todayMinutes >= 1
-              ? `${formatDuration(todayMinutes)} today`
-              : "Clock in when your day starts"}
+              ? t("clock.today", { duration: formatDuration(todayMinutes) })
+              : t("clock.prompt")}
         </p>
         {shown.queued && (
           <p className="flex min-w-0 items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
             <CloudOff className="h-3 w-3 shrink-0" aria-hidden="true" />
             <span className="truncate">
-              {shown.queued === "clock_in" ? "Clock-in" : "Clock-out"} waiting to sync
+              {shown.queued === "clock_in" ? t("clock.clockInWaiting") : t("clock.clockOutWaiting")}
             </span>
           </p>
         )}
@@ -175,7 +185,7 @@ export function TimeClockCard({
         onClick={() => tap(open ? "clock_out" : "clock_in")}
         className="min-h-11 shrink-0 px-4"
       >
-        {open ? "Clock out" : "Clock in"}
+        {open ? t("clock.clockOut") : t("clock.clockIn")}
       </Button>
     </section>
   );

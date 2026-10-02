@@ -11,14 +11,16 @@ export function formatPhone(raw: string | null | undefined): string {
 }
 
 /** "Mon, Jul 20" (adds the year when it isn't the current one). */
-export function formatDay(iso: string | null | undefined): string {
+export function formatDay(iso: string | null | undefined, locale?: string): string {
   if (!iso) return "";
   // Date-only strings are parsed as UTC by Date; anchor to noon local so the
   // rendered weekday can't slip a day in western timezones.
   const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`) : new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const sameYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleDateString([], {
+  // `locale` is the interface language's (lib/i18n `intlLocaleFor`); without
+  // one this is the device's, as it always was.
+  return d.toLocaleDateString(locale ?? [], {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -108,10 +110,20 @@ export function formatWindow(
 }
 
 /** "8:00 AM" from a Postgres time-of-day string like "08:00:00". */
-export function formatClock(hhmm: string | null | undefined): string {
+export function formatClock(hhmm: string | null | undefined, locale?: string): string {
   if (!hhmm) return "";
   const [h, m] = hhmm.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  // A locale asks Intl, on a date pinned to UTC so no zone can move the wall
+  // clock this column already is. Without one it is the hand-built "8:00 AM"
+  // it has always been, byte for byte.
+  if (locale) {
+    return new Intl.DateTimeFormat(locale, {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "UTC",
+    }).format(new Date(Date.UTC(2000, 0, 1, h, m)));
+  }
   const suffix = h >= 12 ? "PM" : "AM";
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
