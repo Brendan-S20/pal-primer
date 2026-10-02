@@ -37,6 +37,7 @@ import {
 } from "../scripts/routing-trials/harness";
 import { SCENARIOS } from "../scripts/routing-trials/scenarios";
 import { formatAll } from "../scripts/routing-trials/report";
+import { formatReferee, referee, sourceFromEnv } from "../scripts/routing-trials/google-referee";
 
 const reachable = databaseReachable();
 const only = process.env.ROUTING_TRIALS_ONLY?.split(",");
@@ -61,6 +62,17 @@ describe.skipIf(!reachable)("routing trials: every plan is complete and honest",
       results.set(sc.id, await runTrial(sc, refreshRoadLegs, (a) => (h.admin = a as Admin)));
     }
     if (process.env.ROUTING_TRIALS_REPORT === "1") process.stdout.write(formatAll(ran()));
+    // Google as the referee (npm run trials:routing:google). Bills a few
+    // thousand Distance Matrix elements, so only when asked for.
+    if (process.env.ROUTING_TRIALS_GOOGLE === "1") {
+      const source = sourceFromEnv();
+      if (!source) {
+        throw new Error(
+          "ROUTING_TRIALS_GOOGLE=1 needs GOOGLE_MAPS_API_KEY, or ROUTE_REFEREE_URL + ROUTE_REFEREE_TOKEN.",
+        );
+      }
+      process.stdout.write(formatReferee(await referee(ran(), source)));
+    }
   }, 900_000);
 
   it("ran every scenario through the forecast and the write", () => {

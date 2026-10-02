@@ -556,6 +556,14 @@ export type TechOut = {
   /** The planner's order re-scored on the recorded OSRM road times. */
   roadCost: number | null;
   goodRoadCost: number | null;
+  /** For a referee with its own drive times (the Google comparison): where the
+   *  truck starts, its stops in the planner's order, and the same stops in the
+   *  best order found on the recorded OSRM times. Located stops only. */
+  route?: {
+    start: [number, number] | null;
+    planner: Array<[number, number]>;
+    osrmBest: Array<[number, number]> | null;
+  };
 };
 
 export type TrialResult = {
@@ -752,10 +760,12 @@ export async function runTrial(
       ...routed.map((v) => [v.stop.lat!, v.stop.lon!] as [number, number]),
     ];
     const sides = routed.map((v) => v.stop.side).filter(Boolean) as string[];
-    const goodRoad = (() => {
-      if (!usable || !roadComplete(from, idx)) return null;
-      return M.pathCost(roadM as M.Matrix, from, M.goodOrder(roadM as M.Matrix, from, idx));
-    })();
+    const goodRoadOrder =
+      usable && roadComplete(from, idx) ? M.goodOrder(roadM as M.Matrix, from, idx) : null;
+    const goodRoad = goodRoadOrder ? M.pathCost(roadM as M.Matrix, from, goodRoadOrder) : null;
+    const coordOfNode = new Map(
+      located.map((v, i) => [idx[i], [v.stop.lat!, v.stop.lon!] as [number, number]]),
+    );
     return {
       key: t.key,
       name: t.name,
@@ -775,6 +785,11 @@ export async function runTrial(
       goodCost: good ? M.pathCost(plannerM, from, good) : null,
       roadCost: usable ? roadCost(from, idx) : null,
       goodRoadCost: goodRoad,
+      route: {
+        start: sp?.lat != null && sp?.lon != null ? [Number(sp.lat), Number(sp.lon)] : null,
+        planner: located.map((v) => [v.stop.lat!, v.stop.lon!] as [number, number]),
+        osrmBest: goodRoadOrder ? goodRoadOrder.map((n) => coordOfNode.get(n)!) : null,
+      },
     };
   });
 

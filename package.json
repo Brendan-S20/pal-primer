@@ -29,6 +29,7 @@
     "measure:routing": "node scripts/how-good-is-the-routing.mjs",
     "trials:routing": "ROUTING_TRIALS_REPORT=1 vitest run tests/routing-trials.test.ts",
     "trials:routing:record": "ROUTING_TRIALS_RECORD=1 ROUTING_TRIALS_REPORT=1 vitest run tests/routing-trials.test.ts",
+    "trials:routing:google": "ROUTING_TRIALS_GOOGLE=1 ROUTING_TRIALS_REPORT=1 vitest run tests/routing-trials.test.ts",
     "check:pwa": "node scripts/check-pwa-output.mjs",
     "test:viewports:apple": "APPLE_SIZES=1 playwright test",
     "test:viewports:apple:sweeps": "APPLE_SIZES=1 playwright test every-public-page every-signed-in-page",
