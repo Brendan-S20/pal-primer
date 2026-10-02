@@ -105,8 +105,14 @@ describe("applying auto-routing hands the whole team to one planner", () => {
     // only partly measured. Still named individually rather than relaxed to a
     // wildcard, for the reason above: this assertion exists to notice a member
     // going MISSING.
+    //
+    // CHANGED 2026-10-02: a seventh, `fit` -- which technician-days finish
+    // after the workday ends or run past capacity, and which stops have no
+    // location -- because the routing trials planned a day to 02:51 the next
+    // morning and the toast said only "Routed 40 stops". Named individually,
+    // for the same reason as the others.
     expect(apply).toMatch(
-      /return \{ stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays \}/,
+      /return \{ stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays, fit \}/,
     );
 
     const panel = codeOnly(read("src/components/routes/AutoRoutingPanel.tsx"));

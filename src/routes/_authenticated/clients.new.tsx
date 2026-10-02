@@ -623,6 +623,11 @@ function NewClientWizard({
           city,
           region: region || undefined,
           postalCode,
+          // The pin this screen showed (the picker's match, or the Yard
+          // step's lookup), so the server stores the point the boundary was
+          // drawn on instead of geocoding the address a second time.
+          latitude: geo?.lat,
+          longitude: geo?.lng,
           gateCode: gateCode || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
