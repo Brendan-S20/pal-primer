@@ -95,7 +95,10 @@ describe("the fetcher is a cache warm, not a dependency", () => {
   it("is called before planning, and cannot block it", () => {
     expect(visits).toMatch(/refreshRoadLegs\(orgId, day\)/);
     const at = visits.indexOf("refreshRoadLegs(orgId, day)");
-    const rpc = visits.indexOf('rpc("plan_day_across_staff"');
+    // CHANGED 2026-10-02: the planner is planAndApplyDay (read, solve,
+    // write) rather than one plan_day_across_staff call; still after this.
+    const rpc = visits.indexOf("planAndApplyDay(supabase");
+    expect(rpc).toBeGreaterThan(0);
     expect(at, "the refresh runs after the planner, so it warms nothing").toBeLessThan(rpc);
     const region = visits.slice(at - 400, at + 200);
     expect(region, "the refresh is not wrapped in try/catch").toMatch(/try \{/);

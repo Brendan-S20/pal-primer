@@ -274,9 +274,14 @@ describe("it refuses to invent a saving", () => {
   });
 
   it("sums the saving only over days that had one", () => {
+    // CHANGED 2026-10-02: the numbers are read off the write (apply_route_plan)
+    // rather than a dry run, and route_day_inputs carries route_cost_current's
+    // `sequenced` for each technician's day as it was. The fence is the same:
+    // a technician-day with no order before the run adds nothing to the saving.
     const fn = readFileSync(join(import.meta.dirname, "..", "src/lib/visits.functions.ts"), "utf8");
-    expect(fn).toMatch(/const measured = days\.filter\(\(d\) => d\.before_known\)/);
-    expect(fn).toMatch(/measured\.reduce/);
+    expect(fn).toMatch(/if \(b\?\.sequenced\) \{\s*techDaysMeasured\+\+;\s*savedMin \+= b\.minutes - r\.travel_min;/);
+    const plan = readFileSync(join(import.meta.dirname, "..", "src/lib/route-plan.server.ts"), "utf8");
+    expect(plan).toMatch(/sequenced: Boolean\(t\.current_sequenced\)/);
   });
 
   it("the UI says 'new route' rather than a number when nothing was ordered", () => {

@@ -45,6 +45,17 @@ export interface SyncCallers {
       servicedAt?: string;
     };
   }) => Promise<unknown>;
+  /** Cash or a check taken at a stop, waiting for the office to confirm. */
+  recordFieldCollection: (args: {
+    data: {
+      visitId: string;
+      amountCents: number;
+      method: "cash" | "check";
+      reference?: string;
+      clientKey: string;
+      collectedAt?: string;
+    };
+  }) => Promise<unknown>;
   /** The time clock. `at` is the tap time; the SQL decides whether to believe
    *  it, as complete_visit does with `completedAt`. */
   clockIn: (args: { data: { at?: string } }) => Promise<unknown>;
@@ -121,6 +132,21 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
           refillBagsAdded: action.refillBagsAdded,
           notes: action.notes,
           servicedAt: new Date(action.ts).toISOString(),
+        },
+      });
+      return;
+    case "collection":
+      // Same rule again: the money changed hands at the gate at 9:15, not on
+      // the highway at 4. And the same key every attempt, so a request that
+      // landed before its deadline is found rather than recorded twice.
+      await callers.recordFieldCollection({
+        data: {
+          visitId: action.visitId,
+          amountCents: action.amountCents,
+          method: action.method,
+          reference: action.reference,
+          clientKey: action.clientKey,
+          collectedAt: new Date(action.ts).toISOString(),
         },
       });
       return;

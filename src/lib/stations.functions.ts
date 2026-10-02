@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isValidLabel } from "@/lib/dna-linkage";
+import { lastServicedByStation } from "@/lib/stop-facts";
 
 async function orgId(supabase: any, userId: string) {
   const { data, error } = await supabase
@@ -29,18 +30,15 @@ export const listStations = createServerFn({ method: "GET" })
     // Last-serviced per station: newest visit date across its service logs.
     // Populated by record_visit_station_service() on visit completion (G7).
     const ids = stations.map((s: any) => s.id);
-    const lastServiced: Record<string, string> = {};
+    // The same rule the tech's stop card uses (lib/stop-facts), so "last
+    // serviced" is one answer in two places.
+    let lastServiced: Record<string, string> = {};
     if (ids.length) {
       const { data: logs } = await context.supabase
         .from("station_service_logs")
         .select("waste_station_id, serviced_at, visits(scheduled_on)")
         .in("waste_station_id", ids);
-      for (const l of (logs ?? []) as any[]) {
-        const when = l.visits?.scheduled_on ?? (l.serviced_at ? String(l.serviced_at).slice(0, 10) : null);
-        if (!when) continue;
-        const cur = lastServiced[l.waste_station_id];
-        if (!cur || when > cur) lastServiced[l.waste_station_id] = when;
-      }
+      lastServiced = lastServicedByStation((logs ?? []) as any[]);
     }
     return {
       stations: stations.map((s: any) => ({

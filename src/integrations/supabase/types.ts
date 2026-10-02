@@ -1731,6 +1731,95 @@ export type Database = {
           },
         ]
       }
+      field_collections: {
+        Row: {
+          amount_cents: number
+          applied_cents: number
+          applied_invoice_ids: string[]
+          client_id: string
+          client_key: string | null
+          collected_at: string
+          collected_by_staff_id: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by_user_id: string | null
+          decision_note: string | null
+          id: string
+          method: string
+          organization_id: string
+          reference: string | null
+          status: string
+          visit_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          applied_cents?: number
+          applied_invoice_ids?: string[]
+          client_id: string
+          client_key?: string | null
+          collected_at?: string
+          collected_by_staff_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          method: string
+          organization_id: string
+          reference?: string | null
+          status?: string
+          visit_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          applied_cents?: number
+          applied_invoice_ids?: string[]
+          client_id?: string
+          client_key?: string | null
+          collected_at?: string
+          collected_by_staff_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          method?: string
+          organization_id?: string
+          reference?: string | null
+          status?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_collections_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_collections_collected_by_staff_id_fkey"
+            columns: ["collected_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_collections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_collections_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       franchise_adjustments: {
         Row: {
           amount_cents: number
@@ -3144,6 +3233,7 @@ export type Database = {
           review_ask_enabled: boolean
           review_ask_template: string | null
           road_factor: number
+          route_windows: string
           schedule_horizon_notified_on: string | null
           seasonal_deepclean_charge_cents: number
           seasonal_deepclean_enabled: boolean
@@ -3285,6 +3375,7 @@ export type Database = {
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           road_factor?: number
+          route_windows?: string
           schedule_horizon_notified_on?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
@@ -3426,6 +3517,7 @@ export type Database = {
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           road_factor?: number
+          route_windows?: string
           schedule_horizon_notified_on?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
@@ -5104,6 +5196,44 @@ export type Database = {
           },
         ]
       }
+      road_leg_runs: {
+        Row: {
+          at: string
+          day: string
+          id: string
+          organization_id: string
+          outcome: string
+          points: number
+          reason: string | null
+        }
+        Insert: {
+          at?: string
+          day: string
+          id?: string
+          organization_id: string
+          outcome: string
+          points: number
+          reason?: string | null
+        }
+        Update: {
+          at?: string
+          day?: string
+          id?: string
+          organization_id?: string
+          outcome?: string
+          points?: number
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "road_leg_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       road_legs: {
         Row: {
           fetched_at: string
@@ -6570,6 +6700,17 @@ export type Database = {
         }[]
       }
       apply_credit_to_invoice: { Args: { _invoice_id: string }; Returns: Json }
+      apply_route_plan: {
+        Args: {
+          _day: string
+          _honour_windows?: boolean
+          _org_id: string
+          _reassign: boolean
+          _routes: Json
+          _staff_ids: string[]
+        }
+        Returns: Json
+      }
       apply_referral_code: {
         Args: { _code: string; _new_client_id: string }
         Returns: Json
@@ -6717,6 +6858,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      confirm_field_collection: {
+        Args: { _collection_id: string; _invoice_ids?: string[] }
+        Returns: Json
+      }
       confirm_open_visit: {
         Args: {
           _completed: boolean
@@ -6725,6 +6870,10 @@ export type Database = {
           _visit_id: string
         }
         Returns: string
+      }
+      count_fresh_road_legs: {
+        Args: { _lats: number[]; _lons: number[]; _org_id: string }
+        Returns: number
       }
       create_addon_charge: {
         Args: {
@@ -7024,6 +7173,18 @@ export type Database = {
           source_queue: string
         }
         Returns: number
+      }
+      my_day_stop_facts: {
+        Args: { _visit_ids: string[] }
+        Returns: {
+          autopay: boolean
+          awaiting_cents: number
+          card_on_file: boolean
+          dog_count: number
+          open_balance_cents: number
+          pays_cash_check: boolean
+          visit_id: string
+        }[]
       }
       next_station_number: { Args: { _property_id: string }; Returns: number }
       next_visit_date: {
@@ -7510,6 +7671,17 @@ export type Database = {
         Args: { _client_id: string; _source: string; _text: string }
         Returns: undefined
       }
+      record_field_collection: {
+        Args: {
+          _amount_cents: number
+          _client_key?: string
+          _collected_at?: string
+          _method: string
+          _reference?: string
+          _visit_id: string
+        }
+        Returns: string
+      }
       record_franchise_adjustment: {
         Args: {
           _amount_cents: number
@@ -7564,6 +7736,10 @@ export type Database = {
         }[]
       }
       regenerate_portal_token: { Args: { _client_id: string }; Returns: string }
+      reject_field_collection: {
+        Args: { _collection_id: string; _note?: string }
+        Returns: undefined
+      }
       renumber_property_stations: {
         Args: { _property_id: string }
         Returns: number
@@ -7599,6 +7775,15 @@ export type Database = {
         }
         Returns: number
       }
+      road_leg_run_summary: {
+        Args: { _since: string }
+        Returns: {
+          outcome: string
+          reason: string
+          runs: number
+          workspaces: number
+        }[]
+      }
       roadmap_vote_counts: {
         Args: never
         Returns: {
@@ -7617,6 +7802,15 @@ export type Database = {
           sequenced: boolean
           stops: number
         }[]
+      }
+      route_day_inputs: {
+        Args: {
+          _day: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_ids: string[]
+        }
+        Returns: Json
       }
       route_segment_km: {
         Args: { _ids: string[]; _start_lat: number; _start_lon: number }
@@ -7644,6 +7838,10 @@ export type Database = {
       set_org_commercial_accounts: {
         Args: { _enabled: boolean }
         Returns: Json
+      }
+      set_route_windows: {
+        Args: { _org_id: string; _policy: string }
+        Returns: undefined
       }
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }

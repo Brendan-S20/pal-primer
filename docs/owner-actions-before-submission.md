@@ -519,6 +519,9 @@ coverage from several extracts rather than one national graph.
 - [ ] Decide where OSRM runs in production: self-hosted, or a paid routing
       provider.
 - [ ] Decide the same for Nominatim geocoding, which rides the same terms.
+      The paid way out is already wired: setting `GEOCODIO_API_KEY` switches
+      every server-side geocode to Geocodio (imports and backfills as one batch
+      request), with Nominatim kept as the fallback when it errors.
 
 What makes this yours rather than mine is that both answers cost money or a box
 to run, forever, and the alternative is a third-party demo server on the path a

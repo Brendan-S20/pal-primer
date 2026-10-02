@@ -98,3 +98,6 @@ agentdb.rvf.lock
 # command a developer runs shows up as a modified file. It was committed in
 # #113 by accident rather than by decision.
 supabase/.temp/
+
+# Google Distance Matrix answers for the one-off routing referee; delete after.
+scripts/routing-trials/.google-cache/

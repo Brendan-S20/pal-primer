@@ -22,7 +22,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
-import { MAX_SPEED_MPH, MIN_SPEED_MPH, mphFromStoredKmh, mphToStoredKmh } from "@/lib/measures";
+import { mphFromStoredKmh } from "@/lib/measures";
 import { WorkDaysPicker } from "@/components/schedule/WorkDaysPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,23 +44,9 @@ function SchedulingSettings() {
   const settings: any = data?.settings ?? {
     workday_start: "08:00",
     workday_end: "17:00",
-    avg_speed_kmh: null,
     traffic_profile: "normal",
+    route_windows: "honour",
   };
-
-  /** The speed the field shows, in the units the operator thinks in, or "" for
-   *  a workspace that has not set one.
-   *
-   *  Empty is a real state now. `avg_speed_kmh` used to be NOT NULL DEFAULT 30
-   *  with 30 read as "unset", so the field always had a number in it and the
-   *  number was a lie 30 was telling on behalf of a lookup table. It is
-   *  nullable since 20260903090000, and blank here means "work it out from the
-   *  routes" — which is what the panel underneath reports.
-   *
-   *  Also the value the blur handler compares against, so an untouched field
-   *  writes nothing. */
-  const shownSpeedMph =
-    settings.avg_speed_kmh == null ? "" : String(mphFromStoredKmh(settings.avg_speed_kmh));
 
   /** What this workspace's own roads turned out to be worth.
    *
@@ -250,76 +236,84 @@ function SchedulingSettings() {
       </section>
 
       <section className="rounded-lg border bg-card p-5">
-        <h3 className="text-sm font-semibold">Travel assumptions</h3>
+        <h3 className="text-sm font-semibold">When optimizing routes</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          Used to estimate drive time between stops when sequencing a route. They do not change what
-          is scheduled, only the predicted arrival times and which routes look overloaded.
+          What auto-routing puts first when a customer has an arrival window. You can still choose
+          the other way for a single run in the Auto-routing panel.
+        </p>
+        {/* Two choices, one of them the default, so a radio pair rather than a
+            switch: "off" would not say what happens instead. Each row is the
+            44px target, not the dot (the label:has(radio) rule in styles.css). */}
+        <div role="radiogroup" aria-label="Arrival windows" className="mt-4 grid gap-2">
+          {(
+            [
+              [
+                "honour",
+                "Honour customers' arrival windows",
+                "A truck drives further, or waits, rather than arrive outside a window. A window that cannot be met is still planned and flagged.",
+              ],
+              [
+                "ignore",
+                "Shortest driving (ignore arrival windows)",
+                "Windows play no part in the order. After each run the panel lists every window the plan misses, so you can tell the customer or move the stop.",
+              ],
+            ] as const
+          ).map(([value, title, hint]) => (
+            <label
+              key={value}
+              className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3 text-sm ${
+                (settings.route_windows ?? "honour") === value ? "border-primary bg-primary/5" : ""
+              }`}
+            >
+              <input
+                type="radio"
+                name="route-windows"
+                className="mt-0.5 h-4 w-4 shrink-0"
+                value={value}
+                defaultChecked={(settings.route_windows ?? "honour") === value}
+                disabled={mut.isPending}
+                onChange={() => mut.mutate({ route_windows: value })}
+              />
+              <span className="min-w-0">
+                <span className="block font-medium">{title}</span>
+                <span className="block text-xs text-muted-foreground">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-lg border bg-card p-5">
+        <h3 className="text-sm font-semibold">Travel</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          How long the drive between stops is taken to be when routes are sequenced and arrival
+          times predicted. Nothing here changes what is scheduled.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            {/* Shown and typed in mph, stored in km/h.
-
-                This field used to read "Average speed (km/h)" and write the
-                typed number straight to the column. A dispatcher entering the
-                number they know — 25, meaning miles per hour — set the ETA
-                engine to 25 km/h, which is 15.5 mph, and every arrival time in
-                the app ran about 60% slow with no error anywhere.
-
-                The blur guard used to carry a second, worse reason. While 30
-                meant "unset", rounding 30 km/h to 19 mph and back gave 31, so
-                tabbing through this field without editing it took the
-                workspace off area-based speeds forever. That hazard is gone:
-                unset is NULL now, and this field is empty when it is unset. The
-                guard stays because writing on a blur that changed nothing is
-                still pointless. */}
-            <Label className="text-xs">Average speed (mph)</Label>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={MIN_SPEED_MPH}
-              max={MAX_SPEED_MPH}
-              defaultValue={shownSpeedMph}
-              placeholder={measured ? `${measuredMph} (from your routes)` : "Worked out for you"}
-              onBlur={(e) => {
-                const raw = e.target.value.trim();
-                if (raw === shownSpeedMph) return;
-                // Emptying the field is how you hand the estimate back to the
-                // road data. It has to be distinguishable from "unchanged",
-                // which is why the server takes null and undefined differently.
-                if (raw === "") {
-                  if (settings.avg_speed_kmh != null) mut.mutate({ avg_speed_kmh: null });
-                  return;
-                }
-                const mph = Number(raw);
-                if (!Number.isFinite(mph)) return;
-                mut.mutate({ avg_speed_kmh: mphToStoredKmh(mph) });
-              }}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Leave this empty and HoundStack works it out from the routes your technicians have
-              actually driven.
-            </p>
-          </div>
-          {/* What the road data says, so the estimate is legible rather than
-              magic. This is the FIRST source the planner reaches for when it
-              has to estimate a leg nobody has driven yet, so an owner looking
-              at an arrival time can find out where the number came from. */}
+          {/* There used to be an "Average speed (mph)" field here. The owner,
+              2026-10-02: "I don't think it looks good to ask for a common
+              speed (it shouldn't be based on that)." One number for a whole
+              service area is the model the road data replaced, so the field
+              is gone and drive_minutes no longer reads it
+              (20261002090500). What is left is a sentence saying where the
+              times DO come from, which is the honest answer to "why does it
+              say 14 minutes". */}
           <div className="sm:col-span-2 rounded-md border bg-muted/30 p-3">
             {measured ? (
               <p className="text-xs text-muted-foreground">
-                Measured from your routes:{" "}
-                <span className="font-medium text-foreground">{measuredMph} mph</span> average, over{" "}
+                Drive times come from real road data, measured from{" "}
                 <span className="font-medium text-foreground">
                   {Number(settings.measured_legs ?? 0).toLocaleString()}
                 </span>{" "}
-                road legs{measuredWhen ? `, last checked ${measuredWhen}` : ""}. Arrival times use
-                the real road wherever we have it and this figure everywhere else.
+                trips between your stops{measuredWhen ? ` (last checked ${measuredWhen})` : ""}.
+                Where a trip has not been measured yet, it is estimated from your roads&apos;{" "}
+                <span className="font-medium text-foreground">{measuredMph} mph</span> average.
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                No road measurements yet. Once you have optimized a day or two, HoundStack works out
-                your real average from the roads your technicians drove and uses that instead of a
-                guess.
+                Drive times come from real road data. Each time you optimize a day, the trips
+                between its stops are measured on the road network; until there are enough of them,
+                a trip nobody has measured is estimated from the straight-line distance.
               </p>
             )}
           </div>

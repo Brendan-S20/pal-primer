@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { startVisit, completeVisit, skipVisit, recordVisitPhoto } from "@/lib/my-day.functions";
 import { logStationService } from "@/lib/stations.functions";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
+import { recordFieldCollection } from "@/lib/field-collections.functions";
 import { createExpense } from "@/lib/expenses.functions";
 import { flushThenClearAndSignOut } from "@/lib/offline/sign-out";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -34,6 +35,7 @@ export function useOfflineSignOut() {
   const stationFn = useServerFn(logStationService);
   const clockInFn = useServerFn(clockIn);
   const clockOutFn = useServerFn(clockOut);
+  const collectionFn = useServerFn(recordFieldCollection);
   const expenseFn = useServerFn(createExpense);
   const callers = useMemo(
     () => ({
@@ -44,9 +46,20 @@ export function useOfflineSignOut() {
       logStationService: stationFn,
       clockIn: clockInFn,
       clockOut: clockOutFn,
+      recordFieldCollection: collectionFn,
       createExpense: expenseFn,
     }),
-    [startFn, completeFn, skipFn, photoFn, stationFn, clockInFn, clockOutFn, expenseFn],
+    [
+      startFn,
+      completeFn,
+      skipFn,
+      photoFn,
+      stationFn,
+      clockInFn,
+      clockOutFn,
+      collectionFn,
+      expenseFn,
+    ],
   );
 
   const { confirm, dialog } = useConfirmDialog();
@@ -64,8 +77,8 @@ export function useOfflineSignOut() {
           description: (
             <>
               <p>
-                Signing out erases this device's copy, and{" "}
-                {remaining === 1 ? "it" : "they"} can only be redone by hand.
+                Signing out erases this device's copy, and {remaining === 1 ? "it" : "they"} can
+                only be redone by hand.
               </p>
               <p>
                 Stay signed in and reconnect if you can. The app will send{" "}

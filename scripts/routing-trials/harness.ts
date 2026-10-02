@@ -38,6 +38,8 @@ import { orgLocalDay, orgLocalMinutes } from "@/lib/org-day";
 import { findRouteWarnings } from "@/lib/route-plausibility";
 import { measureDayFit } from "@/lib/route-day-fit";
 import type { RoadLegResult } from "@/lib/road-legs.server";
+import { driveModel, planDay, type DayPlan, type RouteDayInputs } from "@/lib/route-inputs";
+import type { SolverOptions } from "@/lib/route-solver";
 
 import type { Scenario, StopSpec, TechSpec } from "./scenarios";
 import * as M from "./metrics";
@@ -51,6 +53,26 @@ const RECORD = process.env.ROUTING_TRIALS_RECORD === "1";
 
 /** The production limit every planner call has to finish inside. */
 export const STATEMENT_TIMEOUT_MS = 8000;
+
+/** Which planner a trial runs: the plpgsql one (#294) or the TypeScript one
+ *  the app ships since 2026-10. */
+export type Planner = "sql" | "ts";
+
+/** The solver as the server function runs it: route-plan.server.ts passes a
+ *  time limit and leaves the round budget to the solver's own default. */
+export const TRIAL_SOLVER: SolverOptions = {
+  timeLimitMs: Number(process.env.ROUTING_TRIALS_SOLVER_MS ?? 2500),
+};
+
+export type TsMiss = {
+  visit_id: string;
+  staff_id: string;
+  client: string | null;
+  kind: "late" | "early";
+  eta_start: string;
+  earliest: string | null;
+  latest: string | null;
+};
 /** drive_minutes adds this to every leg; organizations.park_walk_min default. */
 const PARK_WALK_MIN = 2;
 
@@ -139,6 +161,13 @@ export function fakeAdmin(sc: Scenario, written: Array<Record<string, unknown>>)
               return { error: null };
             },
           };
+        // The fallback counter (20261002090600): accepted and dropped. The
+        // trials measure the plan, not the counter, which has its own tests.
+        case "road_leg_runs": {
+          const done = { error: null };
+          const chain = { eq: () => chain, lt: async () => done };
+          return { insert: async () => done, delete: () => chain };
+        }
         default:
           throw new Error(
             `refreshRoadLegs asked for ${table}; the trial harness does not answer it`,
@@ -227,6 +256,12 @@ export const REQUIRED_MIGRATIONS: string[] = [
   "20261002090100_a-stop-with-no-location-hid-the-drive-around-it.sql",
   "20261002090200_one-bad-coordinate-refused-the-whole-day.sql",
   "20261002090300_a-part-timer-was-given-a-full-timers-day.sql",
+  // The TypeScript planner's two ends, the window policy it reads, and the
+  // drive model without a typed speed. Applied in the trial's transaction
+  // like the four above when the database has not run them yet.
+  "20261002090400_arrival-windows-can-be-set-aside.sql",
+  "20261002090500_drive-times-are-not-a-typed-speed.sql",
+  "20261002090700_the-route-is-solved-outside-the-database.sql",
 ].map((f) => join(ROOT, "supabase/migrations", f));
 
 let pendingCache: string[] | null = null;
@@ -256,7 +291,26 @@ function pendingMigrations(): string[] {
   return pendingCache;
 }
 
-export function buildSql(sc: Scenario, legs: Array<Record<string, unknown>>): string {
+/** Which planner a trial runs, and which half of it this SQL is.
+ *
+ *  "sql"     the plpgsql planner (#294's): preview_optimize, then the road,
+ *            then plan_day_across_staff -- applyOptimize's order until 2026-10.
+ *  "inputs"  the TypeScript planner's read: the road, then route_day_inputs.
+ *  "apply"   its write: the road, then apply_route_plan with the solver's
+ *            routes, then everything the checks read.
+ *
+ *  The TypeScript planner needs a round trip through this process between
+ *  its read and its write, and psql runs one script. So the day is built
+ *  twice from the same deterministic ids -- once to read, once to write --
+ *  each inside its own BEGIN ... ROLLBACK. */
+export type SqlMode =
+  { kind: "sql" } | { kind: "inputs" } | { kind: "apply"; routes: unknown; honourWindows: boolean };
+
+export function buildSql(
+  sc: Scenario,
+  legs: Array<Record<string, unknown>>,
+  mode: SqlMode = { kind: "sql" },
+): string {
   const id = ids(sc);
   const out: string[] = [];
   const emit = (tag: string, sql: string) =>
@@ -282,6 +336,11 @@ export function buildSql(sc: Scenario, legs: Array<Record<string, unknown>>): st
      VALUES (${q(id.org)}, ${q(`Routing trial: ${sc.id}`)}, ${q(sc.org.tz)}, ${q(sc.org.areaType)},
        ${q(sc.org.workdayStart ?? "08:00")}, ${q(sc.org.workdayEnd ?? "17:00")},
        ${n(sc.org.business?.[0])}, ${n(sc.org.business?.[1])}, true, 'active');`,
+    // The arrival-window setting, only when a scenario sets it aside, so a
+    // database without 20261002090400 still builds every other day.
+    ...(sc.org.windows === "ignore"
+      ? [`UPDATE public.organizations SET route_windows = 'ignore' WHERE id = ${q(id.org)};`]
+      : []),
     `INSERT INTO public.user_roles (user_id, organization_id, role) VALUES (${q(id.owner)}, ${q(id.org)}, 'owner');`,
   );
   for (const t of sc.techs) {
@@ -360,9 +419,13 @@ export function buildSql(sc: Scenario, legs: Array<Record<string, unknown>>): st
     "GRANT ALL ON _trial TO authenticated;",
     `SELECT set_config('request.jwt.claims', ${q(JSON.stringify({ sub: id.owner, role: "authenticated" }))}, true);`,
   );
-  const call = (step: string, sql: string) =>
+  // The app's planner runs as `authenticated`, the role the API gives a
+  // signed-in owner. The old SQL planner no longer has that grant (nothing
+  // in the app calls it since 20261002090700), so the benchmark calls it as
+  // the database owner, with the same JWT: it still checks can_write_org.
+  const call = (step: string, sql: string, asApp = true) =>
     out.push(
-      "SET LOCAL ROLE authenticated;",
+      asApp ? "SET LOCAL ROLE authenticated;" : "SELECT 1;",
       `DO $trial$ DECLARE t0 timestamptz := clock_timestamp(); r json; BEGIN
          SELECT json_agg(x) INTO r FROM (${sql}) x;
          INSERT INTO _trial VALUES (${q(step)}, true, NULL,
@@ -374,11 +437,14 @@ export function buildSql(sc: Scenario, legs: Array<Record<string, unknown>>): st
       "RESET ROLE;",
     );
 
-  // 1. The forecast, BEFORE the road is measured -- applyOptimize's order.
-  call(
-    "forecast",
-    `SELECT * FROM public.preview_optimize(${q(id.org)}, ${staffArr}, ${q(sc.day)}, ${q(sc.day)}, 'thorough', true)`,
-  );
+  // 1. The forecast, BEFORE the road is measured -- the SQL planner's order.
+  if (mode.kind === "sql") {
+    call(
+      "forecast",
+      `SELECT * FROM public.preview_optimize(${q(id.org)}, ${staffArr}, ${q(sc.day)}, ${q(sc.day)}, 'thorough', true)`,
+      false,
+    );
+  }
 
   // 2. What refreshRoadLegs decided to write.
   if (legs.length) {
@@ -395,11 +461,31 @@ export function buildSql(sc: Scenario, legs: Array<Record<string, unknown>>): st
     );
   }
 
-  // 3. The write.
-  call(
-    "apply",
-    `SELECT * FROM public.plan_day_across_staff(${q(id.org)}, ${staffArr}, ${q(sc.day)}, true, 'thorough')`,
-  );
+  // 3. The read the TypeScript planner plans from; nothing else to emit.
+  if (mode.kind === "inputs") {
+    call(
+      "inputs",
+      `SELECT public.route_day_inputs(${q(id.org)}, ${staffArr}, ${q(sc.day)}, true) AS j`,
+    );
+    emit("steps", "SELECT json_agg(t) FROM _trial t");
+    out.push("ROLLBACK;");
+    return out.join("\n");
+  }
+
+  // 4. The write.
+  if (mode.kind === "apply") {
+    call(
+      "apply",
+      `SELECT public.apply_route_plan(${q(id.org)}, ${staffArr}, ${q(sc.day)}, true,
+         ${q(JSON.stringify(mode.routes))}::jsonb, ${mode.honourWindows}) AS j`,
+    );
+  } else {
+    call(
+      "apply",
+      `SELECT * FROM public.plan_day_across_staff(${q(id.org)}, ${staffArr}, ${q(sc.day)}, true, 'thorough')`,
+      false,
+    );
+  }
 
   emit("steps", "SELECT json_agg(t) FROM _trial t");
   emit(
@@ -561,10 +647,32 @@ export type TechOut = {
   /** The planner's order re-scored on the recorded OSRM road times. */
   roadCost: number | null;
   goodRoadCost: number | null;
+  /** For a referee with its own drive times (the Google comparison): where the
+   *  truck starts, its stops in the planner's order, and the same stops in the
+   *  best order found on the recorded OSRM times. Located stops only. */
+  route?: {
+    start: [number, number] | null;
+    planner: Array<[number, number]>;
+    osrmBest: Array<[number, number]> | null;
+  };
 };
 
 export type TrialResult = {
   sc: Scenario;
+  planner: Planner;
+  /** The TypeScript planner's own timings and answer; null for the SQL one. */
+  ts: {
+    inputsMs: number;
+    solveMs: number;
+    applyMs: number;
+    solver: { rounds: number; stoppedBy: string; objective: number } | null;
+    honourWindows: boolean;
+    misses: TsMiss[];
+    inputs: RouteDayInputs | null;
+  } | null;
+  /** Largest difference, in minutes, between the TypeScript drive model and
+   *  drive_minutes itself over every pair of this day's points. */
+  modelMismatch: number | null;
   legResult: RoadLegResult;
   legsWritten: number;
   osrmRequests: number;
@@ -647,6 +755,7 @@ export async function runTrial(
   sc: Scenario,
   refreshRoadLegs: (orgId: string, day: string) => Promise<RoadLegResult>,
   setAdmin: (a: unknown) => void,
+  planner: Planner = "ts",
 ): Promise<TrialResult> {
   const id = ids(sc);
 
@@ -656,11 +765,8 @@ export async function runTrial(
   const net = await withRouter(sc, () => refreshRoadLegs(id.org, sc.day));
   setAdmin(null);
 
-  // ── The planner ──
-  const { tags, stderr } = runSql(buildSql(sc, written));
-  const steps = tags.steps ?? [];
-  const step = (name: string) => {
-    const s = steps.find((x) => x.step === name);
+  const stepOf = (tags: Tags, name: string) => {
+    const s = (tags.steps ?? []).find((x) => x.step === name);
     return {
       ok: Boolean(s?.ok),
       err: s?.err ?? (s ? null : "step did not run"),
@@ -668,8 +774,60 @@ export async function runTrial(
       rows: s?.payload ?? [],
     };
   };
-  const forecast = step("forecast");
-  const apply = step("apply");
+
+  // ── The planner ──
+  let tags: Tags;
+  let stderr: string;
+  let forecast: ReturnType<typeof stepOf>;
+  let apply: ReturnType<typeof stepOf>;
+  let ts: TrialResult["ts"] = null;
+  if (planner === "sql") {
+    ({ tags, stderr } = runSql(buildSql(sc, written, { kind: "sql" })));
+    forecast = stepOf(tags, "forecast");
+    apply = stepOf(tags, "apply");
+  } else {
+    // Read, solve here, write: route_day_inputs, planDay, apply_route_plan.
+    const read = runSql(buildSql(sc, written, { kind: "inputs" }));
+    const inputsStep = stepOf(read.tags, "inputs");
+    const inputs = (inputsStep.rows[0] as { j?: RouteDayInputs } | undefined)?.j;
+    let plan: DayPlan | null = null;
+    let solveMs = 0;
+    let honourWindows = true;
+    if (inputs) {
+      honourWindows = inputs.org.route_windows !== "ignore";
+      const t0 = performance.now();
+      plan = planDay(inputs, { day: sc.day, honourWindows, solver: TRIAL_SOLVER });
+      solveMs = performance.now() - t0;
+    }
+    ({ tags, stderr } = plan
+      ? runSql(buildSql(sc, written, { kind: "apply", routes: plan.routes, honourWindows }))
+      : { tags: {} as Tags, stderr: read.stderr });
+    stderr = `${read.stderr}${stderr}`;
+    apply = stepOf(tags, "apply");
+    const out = (apply.rows[0] as { j?: { staff?: StepPayloadRow[]; misses?: unknown[] } })?.j;
+    // The forecast IS the write now: what apply_route_plan reports, after the
+    // road was measured. The SQL planner's forecast ran before it.
+    forecast = {
+      ...inputsStep,
+      rows: (out?.staff ?? []).map((r) => ({ ...r, violations: Number(r.late ?? 0) })),
+    };
+    if (!plan && inputsStep.ok) forecast = { ...forecast, ok: false, err: "no inputs came back" };
+    ts = {
+      inputsMs: inputsStep.ms,
+      solveMs,
+      applyMs: apply.ms,
+      solver: plan
+        ? {
+            rounds: plan.solution.rounds,
+            stoppedBy: plan.solution.stoppedBy,
+            objective: plan.solution.objective,
+          }
+        : null,
+      honourWindows,
+      misses: (out?.misses ?? []) as TsMiss[],
+      inputs: inputs ?? null,
+    };
+  }
 
   const stopById = new Map(sc.stops.map((st) => [id.visit(st), st]));
   const techById = new Map(sc.techs.map((t) => [id.staff(t), t]));
@@ -717,6 +875,26 @@ export async function runTrial(
   const roadCost = (from: number, order: number[]) =>
     roadComplete(from, order) ? M.pathCost(roadM as M.Matrix, from, order) : null;
 
+  // The TypeScript drive model against drive_minutes, every pair. The solver
+  // orders the day on the first and Postgres times it with the second.
+  let modelMismatch: number | null = null;
+  if (ts?.inputs) {
+    const model = driveModel(ts.inputs);
+    modelMismatch = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = 0; j < nodes.length; j++) {
+        if (i === j) continue;
+        const sqlV = rawMatrix[i]?.[j];
+        const tsV = model(coordOf(i), coordOf(j));
+        if (sqlV == null || tsV == null) {
+          if ((sqlV == null) !== (tsV == null)) modelMismatch = Infinity;
+          continue;
+        }
+        modelMismatch = Math.max(modelMismatch, Math.abs(Number(sqlV) - tsV));
+      }
+    }
+  }
+
   // ── Per technician ──
   const workStart = toMin(sc.org.workdayStart ?? "08:00");
   const workEnd = toMin(sc.org.workdayEnd ?? "17:00");
@@ -757,10 +935,12 @@ export async function runTrial(
       ...routed.map((v) => [v.stop.lat!, v.stop.lon!] as [number, number]),
     ];
     const sides = routed.map((v) => v.stop.side).filter(Boolean) as string[];
-    const goodRoad = (() => {
-      if (!usable || !roadComplete(from, idx)) return null;
-      return M.pathCost(roadM as M.Matrix, from, M.goodOrder(roadM as M.Matrix, from, idx));
-    })();
+    const goodRoadOrder =
+      usable && roadComplete(from, idx) ? M.goodOrder(roadM as M.Matrix, from, idx) : null;
+    const goodRoad = goodRoadOrder ? M.pathCost(roadM as M.Matrix, from, goodRoadOrder) : null;
+    const coordOfNode = new Map(
+      located.map((v, i) => [idx[i], [v.stop.lat!, v.stop.lon!] as [number, number]]),
+    );
     return {
       key: t.key,
       name: t.name,
@@ -780,6 +960,11 @@ export async function runTrial(
       goodCost: good ? M.pathCost(plannerM, from, good) : null,
       roadCost: usable ? roadCost(from, idx) : null,
       goodRoadCost: goodRoad,
+      route: {
+        start: sp?.lat != null && sp?.lon != null ? [Number(sp.lat), Number(sp.lon)] : null,
+        planner: located.map((v) => [v.stop.lat!, v.stop.lon!] as [number, number]),
+        osrmBest: goodRoadOrder ? goodRoadOrder.map((n) => coordOfNode.get(n)!) : null,
+      },
     };
   });
 
@@ -894,6 +1079,9 @@ export async function runTrial(
 
   return {
     sc,
+    planner,
+    ts,
+    modelMismatch,
     legResult: net.value,
     legsWritten: written.length,
     osrmRequests: net.requests,

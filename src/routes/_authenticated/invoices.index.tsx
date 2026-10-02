@@ -42,6 +42,7 @@ import { lineTotalCents, parseQuantity } from "@/lib/invoice-lines";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
+import { FieldCollectionsCard } from "@/components/FieldCollectionsCard";
 import { EmptyState, SectionLabel } from "@/components/client-detail/primitives";
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
@@ -780,6 +781,10 @@ function InvoicesPage() {
           <NewInvoiceDialog />
         </div>
       </div>
+
+      {/* Cash and checks a tech recorded at a stop, waiting to be confirmed
+          and applied. Nothing at all when there are none. */}
+      <FieldCollectionsCard />
 
       {/* Summary stats — click one to filter by that status */}
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">

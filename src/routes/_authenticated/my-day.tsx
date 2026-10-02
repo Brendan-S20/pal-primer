@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
-import { orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
+import { daysBetweenOrgDays, orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useOrgFieldRules } from "@/hooks/useOrgFieldRules";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -53,6 +53,7 @@ import { startAutoSync, type SyncTrigger } from "@/lib/offline/auto-sync";
 import {
   countPendingForVisit,
   countQueuedCompletionPhotos,
+  queuedCollectionCents,
   enqueueAction,
   listPending,
 } from "@/lib/offline/queue";
@@ -79,7 +80,6 @@ import {
   ArrowDown,
   Clock,
   CircleParking,
-  Dog,
   Fence,
   KeyRound,
   LockKeyhole,
@@ -110,6 +110,16 @@ import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { TimeClockCard } from "@/components/TimeClockCard";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
+import { recordFieldCollection } from "@/lib/field-collections.functions";
+import { dueCents, newClientKey, type StopFacts } from "@/lib/stop-facts";
+import {
+  CollectForm,
+  DogsLine,
+  PaymentLine,
+  StationsSummary,
+  YardOutline,
+  type CollectAnswer,
+} from "@/components/my-day/StopFacts";
 import { createExpense } from "@/lib/expenses.functions";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
@@ -337,6 +347,8 @@ function MyDay() {
   // The time clock's taps ride the same queue, so the same replay sends them.
   const clockInFn = useServerFn(clockIn);
   const clockOutFn = useServerFn(clockOut);
+  // Cash or a check taken at a stop rides the same queue.
+  const collectionFn = useServerFn(recordFieldCollection);
   // And an expense logged from the field, with its receipt.
   const expenseFn = useServerFn(createExpense);
   const callers = useMemo(
@@ -348,9 +360,20 @@ function MyDay() {
       logStationService: stationFn,
       clockIn: clockInFn,
       clockOut: clockOutFn,
+      recordFieldCollection: collectionFn,
       createExpense: expenseFn,
     }),
-    [startFn, completeFn, skipFn, photoFn, stationFn, clockInFn, clockOutFn, expenseFn],
+    [
+      startFn,
+      completeFn,
+      skipFn,
+      photoFn,
+      stationFn,
+      clockInFn,
+      clockOutFn,
+      collectionFn,
+      expenseFn,
+    ],
   );
 
   // Client names for the two messages that ask a tech to go back and redo
@@ -1398,50 +1421,6 @@ function visitWindowLabel(visit: any, tz: string, t: TFunction, locale?: string)
   return null;
 }
 
-/** Temperaments the app writes, worded by `dog.<temperament>`. Anything else
- *  is shown as stored. */
-const DOG_TEMPERAMENTS = new Set(["friendly", "nervous", "aggressive", "unknown"]);
-
-function DogsRow({ dogs }: { dogs: any }) {
-  const { t } = useTranslation();
-  const list: any[] = Array.isArray(dogs) ? dogs : dogs ? [dogs] : [];
-  if (list.length === 0) return null;
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {list.map((d: any, i: number) => {
-        const aggressive = d?.temperament === "aggressive";
-        return (
-          <span
-            key={d?.id ?? d?.name ?? i}
-            // text-sm, not text-xs: this is the line that tells somebody what
-            // is behind the gate before they open it, and it was set two steps
-            // smaller than the client's name.
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm ${
-              aggressive
-                ? "border-destructive/60 bg-destructive/10 font-semibold text-destructive"
-                : "border-border bg-muted/50 text-foreground/80"
-            }`}
-          >
-            {/* A lucide glyph rather than 🐕: an emoji renders in the system
-                font at a size this app does not control, ignores currentColor
-                so it stays brown inside a red warning chip, and is a different
-                picture on every platform. Same reason the clock, parking and
-                phone emoji went. */}
-            <Dog className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="sr-only">{t("dog.onSite")}</span>
-            {d?.name ?? t("dog.fallbackName")}
-            {d?.temperament && (
-              <span className="font-normal opacity-80">
-                · {DOG_TEMPERAMENTS.has(d.temperament) ? t(`dog.${d.temperament}`) : d.temperament}
-              </span>
-            )}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 /** One access fact — gate code, lock box, key, yard size.
  *
  *  These were a two-column grid of `text-xs` label/value pairs, which is the
@@ -1575,6 +1554,9 @@ function VisitCard({
     setPhotoUrls((m) => (m[id] === url ? m : { ...m, [id]: url }));
   }, []);
   const [pendingLocal, setPendingLocal] = useState(0);
+  // Cash or checks this tech has queued here and the server has not seen, so
+  // the card stops offering money that is already on its way to the office.
+  const [queuedCollected, setQueuedCollected] = useState(0);
   // Counted SEPARATELY from pendingLocal. The Complete button is unlocked
   // offline on the strength of a completion photo waiting to sync; it used to
   // be gated on the count of ALL pending actions, so queueing a Start unlocked
@@ -1597,18 +1579,21 @@ function VisitCard({
           Promise.all([
             countPendingForVisit(visit.id, uid),
             countQueuedCompletionPhotos(visit.id, uid),
+            queuedCollectionCents(visit.id, uid),
           ]),
         )
-        .then(([pending, photos]) => {
+        .then(([pending, photos, collected]) => {
           if (cancelled) return;
           setPendingLocal(pending);
           setQueuedCompletionPhotos(photos);
+          setQueuedCollected(collected);
         })
         .catch(() => {
           // No identity means no queue of our own to report.
           if (cancelled) return;
           setPendingLocal(0);
           setQueuedCompletionPhotos(0);
+          setQueuedCollected(0);
         });
     };
     refresh();
@@ -1620,6 +1605,56 @@ function VisitCard({
   }, [visit.id]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["my-day", day] });
+
+  // ── The money, for the tech ───────────────────────────────────────────────
+  // How the customer pays and what they owe come from my_day_stop_facts (a
+  // tech cannot read invoices). What this tech has queued here counts as
+  // already waiting, so a second tap in a dead zone is offered only what is
+  // left.
+  const facts = (visit.stop_facts ?? null) as StopFacts | null;
+  const effectiveFacts = facts
+    ? { ...facts, awaitingCents: facts.awaitingCents + queuedCollected }
+    : null;
+  const orgToday = useOrgToday();
+  // The window record_field_collection allows: this visit's day is today or
+  // one of the three before it, on the org's calendar. Outside it the button
+  // would only queue a refusal.
+  const inCollectWindow =
+    day <= orgToday && daysBetweenOrgDays(day, orgToday) <= 3 && visit.status !== "canceled";
+  const mayCollect = canPerformVisit && inCollectWindow;
+  const [showCollect, setShowCollect] = useState(false);
+  const collectFn = useServerFn(recordFieldCollection);
+  const collect = useMutation({
+    mutationFn: async (a: CollectAnswer) => {
+      // Minted once, before the first attempt: the replay of a request that
+      // landed after its deadline carries the same key and finds its row.
+      const clientKey = newClientKey();
+      return runOrQueue({
+        online: !isDefinitelyOffline(),
+        label: "Record collection",
+        send: () => collectFn({ data: { visitId: visit.id, ...a, clientKey } }),
+        queue: async () => {
+          await enqueueAction({
+            kind: "collection",
+            visitId: visit.id,
+            ...a,
+            clientKey,
+            userId: await resolveOfflineUserId(),
+          });
+        },
+      });
+    },
+    onSuccess: (r) => {
+      haptic("success");
+      toast.success(r.queued ? t("pay.queuedToast") : t("pay.savedToast"));
+      setShowCollect(false);
+      if (!r.queued) invalidate();
+    },
+    onError: (e: Error) => {
+      haptic("error");
+      toast.error(e.message);
+    },
+  });
 
   const start = useMutation({
     mutationFn: () => actions.start(),
@@ -1958,8 +1993,10 @@ function VisitCard({
               )}
               {/* Dogs on site (H1 safety gap): name + temperament belongs next
                   to hazards, on residential cards too, so the tech knows what
-                  they're walking into. */}
-              <DogsRow dogs={p?.dogs} />
+                  they're walking into. Never silent: the priced count when
+                  there are no dog records, "No dogs on file" when there is
+                  neither -- see DogsLine. */}
+              <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
 
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
@@ -1991,6 +2028,46 @@ function VisitCard({
               )}
               {p?.access_notes && (
                 <div className="mt-1.5 text-sm text-muted-foreground">{p.access_notes}</div>
+              )}
+              {/* The yard's sketched outline, as a drawing; the map loads only
+                  when it is opened. "No yard outline yet" when nobody has
+                  sketched one, rather than nothing. */}
+              <YardOutline
+                boundary={p?.boundary}
+                areaSqm={p?.boundary_area_sqm}
+                title={p?.street ?? visit.clients?.display_name ?? t("visit.fallbackTitle")}
+                locale={locale}
+              />
+              {/* What the office sees on the client's stations panel: how many,
+                  which, and when each was last serviced. */}
+              {hasStations && <StationsSummary stations={p?.waste_stations} locale={locale} />}
+              {/* How this customer pays and what they owe. Absent only when the
+                  day was fetched without the facts (an older saved copy). */}
+              {effectiveFacts && (
+                <PaymentLine
+                  facts={effectiveFacts}
+                  locale={locale}
+                  // On a stop not yet started the button waits under More
+                  // options with the other occasional actions; once the visit
+                  // is under way or done, it is here beside what is owed.
+                  onCollect={
+                    mayCollect && !showCollect && !scheduled
+                      ? () => setShowCollect(true)
+                      : undefined
+                  }
+                />
+              )}
+              {effectiveFacts && mayCollect && showCollect && (
+                <div className="mt-2">
+                  <CollectForm
+                    idPrefix={`collect-${visit.id}`}
+                    dueCents={dueCents(effectiveFacts)}
+                    locale={locale}
+                    pending={collect.isPending}
+                    onSubmit={(a) => collect.mutate(a)}
+                    onCancel={() => setShowCollect(false)}
+                  />
+                </div>
               )}
               {skipped && (
                 <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
@@ -2357,6 +2434,23 @@ function VisitCard({
                 >
                   + {t("visit.addOn")}
                 </Button>
+                {/* Cash or a check handed over before the visit started.
+                    Opens the same form, beside what is owed, up the card. */}
+                {scheduled &&
+                  mayCollect &&
+                  effectiveFacts &&
+                  dueCents(effectiveFacts) > 0 &&
+                  !showCollect && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      // 44px at every width: a crew iPad is a finger too.
+                      className="h-11 px-4"
+                      onClick={() => setShowCollect(true)}
+                    >
+                      {t("pay.collect")}
+                    </Button>
+                  )}
                 {scheduled && dnaEnrolled && canPerformVisit && (
                   <Button
                     size="sm"

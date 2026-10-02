@@ -29,10 +29,14 @@
 // When no database is reachable (CI's unit job, a laptop without Docker) it
 // says so loudly and skips. A skip that looks like a pass is the failure
 // CLAUDE.md describes for migrations.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+
+// A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts),
+// so on a loaded runner one can take minutes without being hung.
+vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
 const DB_URL =
