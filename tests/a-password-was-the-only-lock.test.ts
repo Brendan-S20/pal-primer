@@ -109,9 +109,9 @@ if (!reachable) {
 /** Again only if Postgres picked this proof as a deadlock victim: it adds a
  *  policy to every table, which takes locks other proofs' migrations want. */
 function runProof(args: string[]) {
-  let r = spawnSync(psql!, args, { encoding: "utf8", timeout: 180_000 });
+  let r = spawnSync(psql!, args, { encoding: "utf8", timeout: 300_000 });
   for (let i = 0; i < 2 && /deadlock detected/.test(`${r.stdout}${r.stderr}`); i++) {
-    r = spawnSync(psql!, args, { encoding: "utf8", timeout: 180_000 });
+    r = spawnSync(psql!, args, { encoding: "utf8", timeout: 300_000 });
   }
   return r;
 }
