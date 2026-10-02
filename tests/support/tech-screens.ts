@@ -40,4 +40,5 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/components/NotificationPrefs.tsx" },
   { file: "src/components/HelpTip.tsx" },
   { file: "src/components/AddressAutocomplete.tsx" },
+  { file: "src/components/LogExpenseSheet.tsx" },
 ];

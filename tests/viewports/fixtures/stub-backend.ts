@@ -1143,6 +1143,10 @@ const BASE_STUBS: Record<string, Stub> = {
   // overtime, a shift across midnight, somebody on the clock now, and a tech
   // with visits and no hours.
   listTimesheet: fx.TIMESHEET,
+  // /expenses: a month with every category, a 72-character vendor and a
+  // seven-figure amount. And the field sheet's rate, for its mileage preview.
+  listExpenses: fx.EXPENSE_LIST,
+  getExpenseSettings: fx.EXPENSE_SETTINGS,
 
   getPlanCatalogMirror: { rows: [], mismatches: [] },
 
@@ -1167,6 +1171,11 @@ const BASE_STUBS: Record<string, Stub> = {
   markNotificationRead: ok,
   dismissAnnouncement: ok,
   dismissOnboarding: ok,
+
+  // No Google key: every map draws with the Leaflet fallback, the only
+  // basemap that can render behind the fence. a-map-is-paid-for-once.spec.ts
+  // overrides this to drive the Google path against a fake.
+  getMapsBrowserKey: { key: null },
 };
 
 /** 1x1 transparent PNG. Stands in for map tiles and any other remote image, so

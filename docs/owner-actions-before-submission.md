@@ -829,6 +829,56 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
       swap; a second HOST is a different proposal and belongs with the decision
       immediately above, not here.
 
+## 13. Google draws the maps — the key's settings in Google Cloud — NEW
+
+Every map now draws through the Google Maps JavaScript API (src/lib/maps/).
+With no key, or a key Google refuses, each map falls back to the old
+Leaflet + OpenStreetMap drawing, so nothing goes blank — but that fallback is
+the thing you moved off, so the browser console line to look for is
+`[maps] Google ...`: it says which of the three fallbacks happened.
+
+On the BROWSER key (the one restricted to the Maps JavaScript API — not the
+Places/server key):
+
+- [ ] **API restriction:** Maps JavaScript API only. Nothing else is called
+      from the browser. Maps Embed, Maps Static and Map Tiles are NOT needed
+      (no surface is a single pin with no overlay, so nothing qualifies for the
+      free Embed API).
+- [ ] **Application restriction → Websites**, these entries exactly:
+      - `https://app.houndstack.com/*` (the only web host; `www.app` has
+        not resolved since 2026-08-10, see src/lib/app-origin.ts)
+      - `https://localhost/*` — the Android app (Capacitor serves the bundle
+        from `https://localhost`)
+      - `capacitor://localhost/*` — the iOS app
+      - optional, only if you want real maps in Lovable's preview:
+        `https://id-preview--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app/*`.
+        Do NOT add `https://*.lovable.app/*`: that lets every Lovable app on
+        the internet spend your quota.
+- [ ] **No Map ID is needed.** Pins are HTML overlays, not Advanced Markers.
+- [ ] **A budget alert** on the billing account (say $10/month). Not a quota
+      that would stop maps for your users — an email if something is wrong.
+- [ ] **Where the key comes from.** Either is enough, and the app tries both:
+      the Lovable Google Maps connector's
+      `VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY` (inlined at build), or a
+      runtime secret named `GOOGLE_MAPS_BROWSER_KEY` (read by
+      `getMapsBrowserKey` on the server). The runtime secret also covers the
+      native apps without adding anything to Xcode Cloud.
+
+**The iOS caveat, plainly.** Google documents website restrictions as
+guaranteed only for `http`/`https` referrers, and the iOS app's origin is
+`capacitor://localhost`. Ionic/Capacitor users report that adding
+`capacitor://localhost/*` works for the Maps JavaScript API; it has not been
+verified on a device here, because that needs the real key. Check it once on
+the iOS build: a Google-styled map is the pass; an OpenStreetMap-styled map
+with `[maps] Google refused the Maps JavaScript API key` in the Safari Web
+Inspector console is the fail. If it fails, the choices are a SECOND browser
+key with no application restriction, restricted to the Maps JavaScript API
+and given a daily quota, used only by the native build (set it as
+`VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY` in the Xcode Cloud workflow's
+environment; a key inlined at build wins over the server's) — or the native Maps
+SDK for the technician's route map, which you have already planned for after
+launch. Android needs no second key: `https://localhost` is an https referrer.
+
 ## Things you do NOT need to do
 
 Listed so they stop taking up room.

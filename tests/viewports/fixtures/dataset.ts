@@ -1313,6 +1313,100 @@ export function quoteDetail(id: string) {
   };
 }
 
+// ── /expenses and My Day's "Log an expense" ─────────────────────────────────
+
+/** 72 characters with no helpful break until the end: the vendor a disposal
+ *  fee is paid to, as it is printed on the ticket. It sits in the phone card's
+ *  title beside the amount, and in a table cell that must truncate. */
+export const LONG_VENDOR =
+  "Northshore Regional Solid Waste Transfer & Recycling Facility No. 4471-B";
+
+/**
+ * A month of expenses that makes the page work: every category, a 7-digit
+ * amount (an equipment purchase of $1,234,567.89, absurd for a one-truck
+ * business and exactly the width a month's total reaches once it is summed),
+ * mileage with its rate, a receipt, a note, an expense that is nobody's, and
+ * the 46-character name. `listExpenses` returns the whole ExpenseList shape,
+ * so the page draws the office branch with the mileage-rate card.
+ */
+export const EXPENSE_LIST = (() => {
+  const month = TODAY.slice(0, 7);
+  const lastDay = Number(TODAY.slice(8, 10));
+  const on = (d: number) => `${month}-${String(Math.min(d, lastDay)).padStart(2, "0")}`;
+  let n = 0;
+  const row = (over: Record<string, unknown>) => {
+    n += 1;
+    return {
+      id: `88888888-0000-4000-8000-${String(100000000000 + n).slice(0, 12)}`,
+      organization_id: ORG_ID,
+      staff_id: STAFF[0].id,
+      spent_on: on(n),
+      category: "fuel",
+      amount_cents: 6843,
+      miles: null,
+      mileage_rate_cents: null,
+      vendor: null,
+      note: null,
+      receipt_path: null,
+      created_by: null,
+      created_at: iso(new Date(Date.now() - n * 3600e3)),
+      updated_at: iso(new Date(Date.now() - n * 3600e3)),
+      ...over,
+    };
+  };
+  const expenses = [
+    row({
+      category: "disposal",
+      amount_cents: 4250,
+      vendor: LONG_VENDOR,
+      receipt_path: `${ORG_ID}/${STAFF[0].id}/88888888-0000-4000-8000-100000000001.jpg`,
+      note: "Two loads; the scale house was closed so the attendant wrote the ticket by hand.",
+    }),
+    row({
+      category: "equipment",
+      amount_cents: 123_456_789,
+      vendor: "Commercial Turf & Waste Equipment Supply of Greater Chicagoland",
+      staff_id: null,
+    }),
+    row({
+      category: "mileage",
+      amount_cents: 1697,
+      miles: "23.4",
+      mileage_rate_cents: "72.50",
+      vendor: "Yard to the Ravenswood Manor / Lincoln Square North route and back",
+      staff_id: LONG_STAFF_ID,
+    }),
+    row({ category: "fuel", amount_cents: 8911, vendor: "Shell", staff_id: STAFF[1].id }),
+    row({ category: "supplies", amount_cents: 18999, vendor: "Bag supplier (case of 2,000)" }),
+    row({ category: "vehicle_maintenance", amount_cents: 64_500, vendor: "Brake pads and rotors" }),
+    row({ category: "other", amount_cents: 2500, note: "Parking at the county office" }),
+  ];
+  return {
+    orgId: ORG_ID,
+    role: "owner",
+    isOffice: true,
+    canSetRate: true,
+    myStaff: { id: STAFF[0].id, display_name: STAFF[0].display_name },
+    timezone: ORGANIZATION.timezone,
+    today: TODAY,
+    mileageRateCents: 72.5,
+    month,
+    staff: [
+      ...STAFF.map((s) => ({ id: s.id, display_name: s.display_name, active: true })),
+      { id: LONG_STAFF_ID, display_name: LONG_STAFF_NAME, active: true },
+    ],
+    expenses,
+  };
+})();
+
+/** What the field sheet reads to preview a mileage amount. */
+export const EXPENSE_SETTINGS = {
+  mileageRateCents: 72.5,
+  timezone: ORGANIZATION.timezone,
+  today: TODAY,
+  myStaffId: STAFF[0].id,
+};
+
 /**
  * /campaigns and /campaigns/:id, added 2026-09-29 with the pages.
  *

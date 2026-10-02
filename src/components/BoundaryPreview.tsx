@@ -1,50 +1,56 @@
-import { useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { addBaseTiles } from "@/lib/map-tiles";
 import type { PolygonGeoJSON } from "@/components/BoundarySketch";
 import { formatArea } from "@/components/BoundarySketch";
+import { useMapRenderer } from "@/lib/maps/use-map-renderer";
+import { US_VIEW, type GestureMode, type LatLng } from "@/lib/maps/types";
 
-/** Renders the boundary polygon into a Leaflet map. Shared by the inline
- * preview and the full-screen dialog. */
+/** Draws the boundary polygon on a satellite map. Shared by the inline
+ * preview and the full-screen dialog.
+ *
+ * The map is made once per mount and the polygon is redrawn on it when the
+ * boundary's GEOMETRY changes — keyed on the coordinates, not the object, so
+ * a refetch that returns the same yard neither rebuilds anything nor flings
+ * the view back to the fit. It used to rebuild the whole map on every new
+ * `boundary` object, which on Google would be a billed load per refetch. */
 function BoundaryMap({
   boundary,
   className,
   style,
-  scrollWheelZoom = false,
+  gestures = "page",
 }: {
   boundary: PolygonGeoJSON;
   className: string;
   style?: React.CSSProperties;
-  scrollWheelZoom?: boolean;
+  gestures?: GestureMode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const ringKey = JSON.stringify(boundary.coordinates?.[0] ?? []);
+  const ring = useMemo<LatLng[]>(
+    () => (JSON.parse(ringKey) as number[][]).map(([lng, lat]) => ({ lat, lng })),
+    [ringKey],
+  );
+  const renderer = useMapRenderer(containerRef, {
+    initialView: ring[0] ? { center: ring[0], zoom: 19 } : US_VIEW,
+    style: "satellite",
+    gestures,
+    maxZoom: 22,
+  });
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const ring = boundary.coordinates?.[0] ?? [];
-    const pts = ring.map(([lng, lat]) => L.latLng(lat, lng));
-    if (pts.length < 3) return;
-
-    const map = L.map(containerRef.current, {
-      zoomControl: true,
-      attributionControl: false,
-      scrollWheelZoom,
+    if (!renderer || ring.length < 3) return;
+    const poly = renderer.addPolygon(ring, {
+      color: "#16a34a",
+      weight: 2,
+      fillOpacity: 0.15,
+      interactive: false,
     });
-    addBaseTiles(map, "satellite");
-    const poly = L.polygon(pts, { color: "#16a34a", weight: 2, fillOpacity: 0.15 });
-    poly.addTo(map);
-    map.fitBounds(poly.getBounds(), { padding: [24, 24], maxZoom: 20 });
-    requestAnimationFrame(() => map.invalidateSize());
+    renderer.fitBounds(ring, { padding: 24, maxZoom: 20 });
+    return () => poly.remove();
+  }, [renderer, ring]);
 
-    return () => {
-      map.remove();
-    };
-  }, [boundary, scrollWheelZoom]);
-
-  // isolate: Leaflet panes use z-index 400+; without a contained stacking
+  // isolate: map panes use z-index 400+; without a contained stacking
   // context they paint over dropdowns and popovers.
   return <div ref={containerRef} style={style} className={className} />;
 }
@@ -76,7 +82,8 @@ export function BoundaryPreview({
           style={{ height }}
           className="isolate z-0 w-full overflow-hidden rounded-md border"
         />
-        {/* Sits just below Leaflet's zoom control, mirroring its look. */}
+        {/* Top-left, below the fallback's zoom buttons (Google's sit at the
+            bottom right, so this is clear of both). */}
         <button
           type="button"
           aria-label="Expand map"
@@ -106,7 +113,7 @@ export function BoundaryPreview({
           {expanded && (
             <BoundaryMap
               boundary={boundary}
-              scrollWheelZoom
+              gestures="map"
               className="isolate z-0 min-h-0 flex-1 overflow-hidden rounded-md border"
             />
           )}
