@@ -33,9 +33,9 @@
  * level to pick any more; see the note on LEVEL below.
  *
  * What the result box used to say is now said afterwards, by the toast, out of
- * `r.forecast` — the same numbers, from the same read-only planner, measured
- * by applyOptimize immediately before it writes. Nothing about the dry-run
- * machinery changed; a UI step did.
+ * `r.forecast` — the same numbers. Since 2026-10 they are read off the write
+ * itself (apply_route_plan), after the road was measured, rather than off a
+ * dry run taken before it; see route-plan.server.ts.
  *
  * Everything the previous panel could express, it still expresses, and the
  * three things it must never swallow still reach the screen:
@@ -52,15 +52,15 @@
  * what that line now says outright.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarDays, Check, ChevronDown, Users, Wand2, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Clock, Users, Wand2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { applyOptimize } from "@/lib/visits.functions";
+import { applyOptimize, getDispatchSettings } from "@/lib/visits.functions";
 import type { RoadLegProblem } from "@/lib/road-legs.server";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
@@ -130,7 +130,11 @@ const shortDay = (iso: string) => {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
 
-type Section = "dates" | "techs" | null;
+type Section = "dates" | "techs" | "windows" | null;
+
+/** Arrival windows for this run: the organization's setting, or one of the
+ *  two overridden once. Settings -> Scheduling holds the default. */
+type WindowsChoice = "org" | "honour" | "ignore";
 
 /**
  * Why a day could not be measured, in words for whoever has to act on it.
@@ -141,6 +145,7 @@ type Section = "dates" | "techs" | null;
 const ROAD_LEG_REASON: Record<RoadLegProblem, string> = {
   router_unreachable: "The routing service could not be reached.",
   router_error: "The routing service returned an error.",
+  router_busy: "The free routing service was too busy to answer. Try again in a minute.",
   wrong_region: "The routing service has no map for these addresses.",
   too_many_points: "The day has more stops than the router will measure at once.",
   nothing_usable: "The routing service returned nothing usable.",
@@ -202,6 +207,22 @@ export function AutoRoutingPanel({
   const [to, setTo] = useState(day);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [section, setSection] = useState<Section>(null);
+  const [windows, setWindows] = useState<WindowsChoice>("org");
+
+  // The organization's own choice, so the pill can say what "as set" means.
+  // Same query key as Settings -> Scheduling and the board, so it is usually
+  // already in the cache.
+  const settingsFn = useServerFn(getDispatchSettings);
+  const { data: dispatch } = useQuery({
+    queryKey: ["dispatch-settings"],
+    queryFn: () => settingsFn(),
+  });
+  const orgWindows: "honour" | "ignore" =
+    (dispatch?.settings as { route_windows?: string } | null | undefined)?.route_windows ===
+    "ignore"
+      ? "ignore"
+      : "honour";
+  const effectiveWindows = windows === "org" ? orgWindows : windows;
 
   const chosen = picked.size ? [...picked] : techs.map((s: any) => s.id);
 
@@ -235,7 +256,8 @@ export function AutoRoutingPanel({
   const rangeValid = Boolean(from && to && to >= from);
 
   const applyMut = useMutation({
-    mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level: LEVEL, reassign: true } }),
+    mutationFn: () =>
+      applyFn({ data: { staffIds: chosen, from, to, level: LEVEL, reassign: true, windows } }),
     onSuccess: (r) => {
       // The split is the point, so it is what the toast says. "Re-ordered 20
       // stops" was true both before and after the fix for the bug where all
@@ -257,16 +279,12 @@ export function AutoRoutingPanel({
           duration: 8000,
         });
       } else if (!r.forecast) {
-        // The gap the branch above cannot cover. `daysPlanned === 0` is the
-        // only thing that distinguishes "nothing to route" from real work,
-        // and it comes from the forecast — so when the forecast could not be
-        // taken, r.stops is each technician's CURRENT LOAD and "Routed 20
-        // stops" is what a run that touched nothing says. That is the sentence
-        // an owner reported as "it put all the appointments on one tech".
-        // Claim only what is known: the run happened, the number is a load.
-        toast.success("Routing applied." + (share ? ` — ${share}` : ""), {
-          description:
-            "Those counts are each tech's current load, not what this run moved. The measurement could not be taken for this batch.",
+        // Since 2026-10 the numbers come from the write itself, so there is
+        // no separate measurement left to fail: no forecast means every day
+        // in the range was refused, and each refusal follows as its own toast.
+        // Claim nothing was routed, because nothing was.
+        toast.warning("Nothing was routed.", {
+          description: "Every day in that range was refused. The reasons follow.",
           duration: 8000,
         });
       } else {
@@ -278,23 +296,40 @@ export function AutoRoutingPanel({
       // The one fact that used to be worth a preview: a stop that will still
       // miss its window after the best order anybody can give it. It is a
       // separate toast rather than a line in the one above because it is the
-      // only thing here a dispatcher may have to act on.
-      const v = r.forecast?.violations ?? 0;
-      if (v > 0) {
-        toast.warning(
-          v === 1
-            ? "1 stop still misses its arrival window."
-            : `${v} stops still miss their arrival windows.`,
-          { duration: 8000 },
+      // only thing here a dispatcher may have to act on -- and it NAMES them,
+      // because "2 stops" sends somebody hunting through the board.
+      //
+      // With windows set aside it is not a leftover but the price of the
+      // shorter drive, early arrivals included, and says so: set aside, not
+      // silently dropped.
+      const misses = r.windowMisses ?? [];
+      const missCount = r.windowMissCount ?? 0;
+      const named = misses
+        .slice(0, 4)
+        .map(
+          (m) =>
+            `${m.client ?? "A customer"}: ${m.kind === "late" ? "arrives" : "arrives early,"} ${orgLocalTime(m.etaStart, tz)}` +
+            `${from !== to ? ` on ${shortDay(m.day)}` : ""}` +
+            ` (window ${m.earliest ? orgLocalTime(m.earliest, tz) : "…"}–${m.latest ? orgLocalTime(m.latest, tz) : "…"}).`,
         );
-      }
-      // "The check did not run" and "the check found nothing" must not look
-      // the same. The route was still planned — the measurement is the only
-      // thing that failed — so this says so instead of pretending to a zero.
-      if (!r.forecast) {
-        toast.warning("Routed, but the arrival-window check could not run for this batch.", {
-          duration: 8000,
-        });
+      if (missCount > 4) named.push(`${missCount - 4} more.`);
+      if (r.windowsHonoured === false && missCount > 0) {
+        toast.warning(
+          missCount === 1
+            ? "Shortest driving: 1 arrival window is missed."
+            : `Shortest driving: ${missCount} arrival windows are missed.`,
+          { description: named.join(" "), duration: 15000 },
+        );
+      } else {
+        const v = r.forecast?.violations ?? 0;
+        if (v > 0) {
+          toast.warning(
+            v === 1
+              ? "1 stop still misses its arrival window."
+              : `${v} stops still miss their arrival windows.`,
+            { description: named.join(" ") || undefined, duration: 12000 },
+          );
+        }
       }
       // A day planned from straight-line estimates is not the same day as one
       // planned against the road network, and until now they produced
@@ -453,6 +488,12 @@ export function AutoRoutingPanel({
             open={section === "techs"}
             onClick={() => setSection(section === "techs" ? null : "techs")}
           />
+          <Pill
+            icon={Clock}
+            value={effectiveWindows === "ignore" ? "Shortest drive" : "Keep windows"}
+            open={section === "windows"}
+            onClick={() => setSection(section === "windows" ? null : "windows")}
+          />
         </div>
 
         {section === "dates" && (
@@ -482,6 +523,41 @@ export function AutoRoutingPanel({
                 className="h-8 text-xs"
               />
             </div>
+          </div>
+        )}
+
+        {section === "windows" && (
+          <div className="space-y-1.5 rounded-md border p-2">
+            <Label className="text-2xs text-muted-foreground">Arrival windows, this run only</Label>
+            <div role="radiogroup" aria-label="Arrival windows this run" className="grid gap-1">
+              {(
+                [
+                  ["honour", "Honour arrival windows"],
+                  ["ignore", "Shortest driving (ignore windows)"],
+                ] as const
+              ).map(([value, label]) => {
+                const on = effectiveWindows === value;
+                return (
+                  <button
+                    key={value}
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setWindows(value === orgWindows ? "org" : value)}
+                    className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-left text-2xs touch:min-h-11 ${on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
+                  >
+                    <Check className={`h-3 w-3 shrink-0 ${on ? "" : "invisible"}`} />
+                    <span className="min-w-0">
+                      {label}
+                      {value === orgWindows ? " · your setting" : ""}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-2xs text-muted-foreground">
+              The default is in Settings → Scheduling. Missed windows are listed after the run
+              either way.
+            </p>
           </div>
         )}
 

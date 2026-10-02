@@ -68,14 +68,15 @@ describe("a sentinel that collided with a real answer", () => {
     );
   });
 
-  it("prefers the roads, then the owner, then the table", () => {
+  it("prefers the roads, then the table -- and no longer a typed speed", () => {
     // Order matters and is the whole design: a workspace that has planned a day
-    // knows more about its own roads than any dropdown, and an owner who typed
-    // a number knows more than a default.
+    // knows more about its own roads than any dropdown. The owner's typed
+    // speed sat between the two until 20261002090500 ("it shouldn't be based
+    // on that"); the field is gone from Settings and from this chain.
     const d = code("drive_minutes");
-    const chain =
-      /_speed\s*:=\s*COALESCE\(\s*_o\.measured_speed_kmh,\s*_o\.avg_speed_kmh,\s*public\.effective_speed_kmh\(/;
+    const chain = /_speed\s*:=\s*COALESCE\(\s*_o\.measured_speed_kmh,\s*public\.effective_speed_kmh\(/;
     expect(d).toMatch(chain);
+    expect(d).not.toMatch(/_o\.avg_speed_kmh/);
   });
 
   it("keeps the kilometres and the minutes describing one journey", () => {

@@ -396,15 +396,20 @@ export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!rows || rows.length === 0) return { updated: 0, remaining: 0 };
 
-    const { geocodeAddress } = await import("./geocode.server");
-    let updated = 0;
-    for (const r of rows) {
-      const geo = await geocodeAddress({
+    // One call for the whole page: a single Geocodio batch request when a key
+    // is configured, the old 1/s Nominatim loop when it is not.
+    const { geocodeAddresses } = await import("./geocode.server");
+    const geos = await geocodeAddresses(
+      rows.map((r) => ({
         street: r.street,
         city: r.city,
         region: r.region,
         postal_code: r.postal_code,
-      });
+      })),
+    );
+    let updated = 0;
+    for (const [i, r] of rows.entries()) {
+      const geo = geos[i];
       if (!geo) continue;
       const { error: uErr } = await supabase
         .from("properties")

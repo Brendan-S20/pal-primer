@@ -1,11 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { getPlatformOverview, type PlatformOverviewKpis } from "@/lib/platform-overview.functions";
+import {
+  getPlatformOverview,
+  getRoutingHealth,
+  type PlatformOverviewKpis,
+  type RoutingHealth,
+} from "@/lib/platform-overview.functions";
+import type { RoadLegProblem } from "@/lib/road-legs.server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Building2, TrendingUp, AlertTriangle, PauseCircle, Sparkles, ArrowRightCircle,
-  CalendarPlus, DollarSign,
+  CalendarPlus, DollarSign, Route as RouteIcon, Database, MapPinOff,
 } from "lucide-react";
 
 export const Route = createFileRoute("/platform/overview")({
@@ -42,11 +48,112 @@ function Kpi({
         <div className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}
         </div>
-        <Icon className={`h-4 w-4 ${toneClass}`} />
+        <Icon className={`h-4 w-4 shrink-0 ${toneClass}`} />
       </div>
       <div className={`mt-2 text-2xl font-semibold tabular-nums ${toneClass}`}>{value}</div>
       {hint ? <div className="mt-1 text-xs text-muted-foreground">{hint}</div> : null}
     </div>
+  );
+}
+
+/**
+ * Why a day was planned on estimates, for whoever runs the platform.
+ *
+ * Shorter and more technical than the dispatcher's sentences in
+ * AutoRoutingPanel: this reader is the one who can act on a cause. Keyed on
+ * RoadLegProblem so a new cause fails to compile here until it has a label --
+ * and a reason this build has never heard of (written by a newer deploy) is
+ * shown as its raw code rather than dropped.
+ */
+const ROUTING_REASON: Record<RoadLegProblem, string> = {
+  router_busy: "Free router busy (429, then 429 again)",
+  router_unreachable: "Router could not be reached",
+  router_error: "Router returned an error",
+  wrong_region: "Router has no map for those addresses",
+  too_many_points: "Day too big for one router request",
+  nothing_usable: "Router answer had nothing usable",
+  save_failed: "Measured legs could not be saved",
+};
+const reasonLabel = (code: string) =>
+  (ROUTING_REASON as Record<string, string | undefined>)[code] ?? code;
+
+function RoutingHealthSection() {
+  const fn = useServerFn(getRoutingHealth);
+  const q = useQuery<RoutingHealth>({
+    queryKey: ["platform", "routing-health"],
+    queryFn: () => fn(),
+  });
+  const h = q.data;
+  const n = (v: number | undefined) => (v == null ? "-" : v.toLocaleString());
+
+  return (
+    <section>
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Routing health (last {h?.days ?? 7} days)
+      </h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Kpi
+          icon={RouteIcon}
+          label="Measured"
+          value={n(h?.measured)}
+          tone="good"
+          hint={
+            h && h.partlyMeasured > 0
+              ? `${h.partlyMeasured.toLocaleString()} partly estimated: stops outside the map`
+              : "Days the router measured"
+          }
+        />
+        <Kpi
+          icon={Database}
+          label="Cached"
+          value={n(h?.cached)}
+          hint="Every leg already measured; router not asked"
+        />
+        <Kpi
+          icon={MapPinOff}
+          label="Estimated"
+          value={n(h?.estimated)}
+          tone={h && h.estimated > 0 ? "warn" : "default"}
+          hint="Planned on straight lines"
+        />
+      </div>
+
+      {h && h.estimatedByReason.length > 0 ? (
+        <Card className="mt-3">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <span className="min-w-0">Why days were estimated</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {h.estimatedByReason.map((r) => (
+                <li key={r.reason} className="flex items-start justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-sm [overflow-wrap:anywhere]">{reasonLabel(r.reason)}</div>
+                    <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                      <span className="font-mono">{r.reason}</span>
+                      {" · "}
+                      {r.workspaces === 1
+                        ? "1 workspace"
+                        : `${r.workspaces.toLocaleString()} workspaces`}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-sm font-semibold tabular-nums">
+                    {r.runs.toLocaleString()}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {q.error ? (
+        <div className="mt-2 text-sm text-destructive">{(q.error as Error).message}</div>
+      ) : null}
+    </section>
   );
 }
 
@@ -176,6 +283,8 @@ function OverviewPage() {
           />
         </div>
       </section>
+
+      <RoutingHealthSection />
 
       {q.error ? (
         <div className="text-sm text-destructive">{(q.error as Error).message}</div>

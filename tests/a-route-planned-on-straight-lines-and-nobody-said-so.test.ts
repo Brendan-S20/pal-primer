@@ -51,7 +51,11 @@ describe("the six ways to measure nothing are no longer one number", () => {
     // a problem would put a warning on the screen of every workspace with a
     // single stop, which is the mirror of the fault being fixed.
     expect(legsCode).toMatch(/if \(points\.length < 2\) return nothingToMeasure;/);
-    expect(legsCode).toMatch(/const nothingToMeasure: RoadLegResult = \{ measured: 0, problem: null/);
+    // Whitespace-tolerant since 2026-10-02: RoadLegResult gained `cached`, and
+    // the literal no longer fits on one line. The assertion is unchanged.
+    expect(legsCode).toMatch(
+      /const nothingToMeasure: RoadLegResult = \{\s*measured: 0,\s*problem: null/,
+    );
   });
 
   it("keeps the partial case separate from the total one", () => {
@@ -76,8 +80,10 @@ describe("the planner collects it instead of discarding it", () => {
   it("returns both lists to the caller", () => {
     // CHANGED 2026-10-02: a seventh member, `fit` (who finishes after the
     // workday ends), added by the routing trials. Both lists still named.
+    // CHANGED 2026-10-02 again: one member per line, and three more after
+    // `fit` (the windows the plan misses). Both lists still named.
     expect(VISITS).toMatch(
-      /return \{ stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays, fit \}/,
+      /return \{\s*stops,\s*skipped,\s*balance,\s*forecast,\s*estimatedDays,\s*partlyEstimatedDays,\s*fit,/,
     );
   });
 
@@ -85,7 +91,7 @@ describe("the planner collects it instead of discarding it", () => {
     // refreshRoadLegs returns its own failures, so a throw here is something
     // below it. The day is on estimates either way.
     const block = VISITS.slice(VISITS.indexOf("const legs = await refreshRoadLegs"));
-    const cat = block.slice(block.indexOf("} catch"), block.indexOf("plan_day_across_staff"));
+    const cat = block.slice(block.indexOf("} catch"), block.indexOf("planAndApplyDay(supabase"));
     expect(cat).toMatch(/estimatedDays\.push/);
   });
 

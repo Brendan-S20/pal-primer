@@ -938,6 +938,40 @@ export const commitImport = createServerFn({ method: "POST" })
 
     let created = 0, updated = 0, failed = 0;
 
+    // Every new client's service address, geocoded up front in ONE call. With
+    // a Geocodio key that is one batch request for the whole import instead
+    // of one throttled Nominatim request per row (a 500-row import was 500
+    // seconds); without one it is the same 1/s loop as before, just earlier.
+    // A row missing from this map -- the batch threw -- is geocoded on its own
+    // in the loop below, which is what every row used to do.
+    const geoByRow = new Map<string, import("./geocode.server").GeocodeResult>();
+    if (entity === "clients") {
+      type Where = { street?: string; city?: string; region?: string; postal_code?: string };
+      const toGeocode = (rows ?? []).flatMap((r) => {
+        const m = (r.mapped ?? {}) as Where;
+        return r.action === "create" && m.street && m.city ? [{ id: r.id, m }] : [];
+      });
+      if (toGeocode.length > 0) {
+        try {
+          const { geocodeAddresses } = await import("./geocode.server");
+          const geos = await geocodeAddresses(
+            toGeocode.map(({ m }) => ({
+              street: m.street,
+              city: m.city,
+              region: m.region,
+              postal_code: m.postal_code,
+            })),
+          );
+          toGeocode.forEach(({ id }, i) => geoByRow.set(id, geos[i]));
+        } catch (ge) {
+          console.error(
+            "import: batch geocode failed; geocoding row by row",
+            (ge as Error).message,
+          );
+        }
+      }
+    }
+
     for (const row of rows ?? []) {
       const m = row.mapped as any;
       try {
@@ -971,12 +1005,14 @@ export const commitImport = createServerFn({ method: "POST" })
             if (m.street && m.city) {
               try {
                 const { geocodeAddress } = await import("./geocode.server");
-                const geo = await geocodeAddress({
-                  street: m.street,
-                  city: m.city,
-                  region: m.region,
-                  postal_code: m.postal_code,
-                });
+                const geo = geoByRow.has(row.id)
+                  ? (geoByRow.get(row.id) ?? null)
+                  : await geocodeAddress({
+                      street: m.street,
+                      city: m.city,
+                      region: m.region,
+                      postal_code: m.postal_code,
+                    });
                 const { detectZoneId } = await import("@/lib/properties.functions");
                 // Type-appropriate zone matching (B3): the imported property
                 // inherits the client's account type, so a commercial client

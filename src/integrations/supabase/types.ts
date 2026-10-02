@@ -3144,6 +3144,7 @@ export type Database = {
           review_ask_enabled: boolean
           review_ask_template: string | null
           road_factor: number
+          route_windows: string
           schedule_horizon_notified_on: string | null
           seasonal_deepclean_charge_cents: number
           seasonal_deepclean_enabled: boolean
@@ -3285,6 +3286,7 @@ export type Database = {
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           road_factor?: number
+          route_windows?: string
           schedule_horizon_notified_on?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
@@ -3426,6 +3428,7 @@ export type Database = {
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           road_factor?: number
+          route_windows?: string
           schedule_horizon_notified_on?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
@@ -5104,6 +5107,44 @@ export type Database = {
           },
         ]
       }
+      road_leg_runs: {
+        Row: {
+          at: string
+          day: string
+          id: string
+          organization_id: string
+          outcome: string
+          points: number
+          reason: string | null
+        }
+        Insert: {
+          at?: string
+          day: string
+          id?: string
+          organization_id: string
+          outcome: string
+          points: number
+          reason?: string | null
+        }
+        Update: {
+          at?: string
+          day?: string
+          id?: string
+          organization_id?: string
+          outcome?: string
+          points?: number
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "road_leg_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       road_legs: {
         Row: {
           fetched_at: string
@@ -6570,6 +6611,17 @@ export type Database = {
         }[]
       }
       apply_credit_to_invoice: { Args: { _invoice_id: string }; Returns: Json }
+      apply_route_plan: {
+        Args: {
+          _day: string
+          _honour_windows?: boolean
+          _org_id: string
+          _reassign: boolean
+          _routes: Json
+          _staff_ids: string[]
+        }
+        Returns: Json
+      }
       apply_referral_code: {
         Args: { _code: string; _new_client_id: string }
         Returns: Json
@@ -6725,6 +6777,10 @@ export type Database = {
           _visit_id: string
         }
         Returns: string
+      }
+      count_fresh_road_legs: {
+        Args: { _lats: number[]; _lons: number[]; _org_id: string }
+        Returns: number
       }
       create_addon_charge: {
         Args: {
@@ -7599,6 +7655,15 @@ export type Database = {
         }
         Returns: number
       }
+      road_leg_run_summary: {
+        Args: { _since: string }
+        Returns: {
+          outcome: string
+          reason: string
+          runs: number
+          workspaces: number
+        }[]
+      }
       roadmap_vote_counts: {
         Args: never
         Returns: {
@@ -7617,6 +7682,15 @@ export type Database = {
           sequenced: boolean
           stops: number
         }[]
+      }
+      route_day_inputs: {
+        Args: {
+          _day: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_ids: string[]
+        }
+        Returns: Json
       }
       route_segment_km: {
         Args: { _ids: string[]; _start_lat: number; _start_lon: number }
@@ -7644,6 +7718,10 @@ export type Database = {
       set_org_commercial_accounts: {
         Args: { _enabled: boolean }
         Returns: Json
+      }
+      set_route_windows: {
+        Args: { _org_id: string; _policy: string }
+        Returns: undefined
       }
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }

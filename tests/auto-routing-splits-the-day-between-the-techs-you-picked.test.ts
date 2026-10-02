@@ -59,11 +59,17 @@ describe("applying auto-routing hands the whole team to one planner", () => {
   const fn = codeOnly(read("src/lib/visits.functions.ts"));
   const apply = fn.slice(fn.indexOf("export const applyOptimize"));
 
-  it("calls plan_day_across_staff with the selected technicians", () => {
-    expect(apply).toMatch(/rpc\("plan_day_across_staff"/);
-    // The plural parameter is the entire fix. `_staff_ids: data.staffIds`
-    // passed whole is what makes a split possible at all.
-    expect(apply).toMatch(/_staff_ids:\s*data\.staffIds/);
+  it("plans each day for the selected technicians together", () => {
+    // CHANGED 2026-10-02: the planner moved out of plan_day_across_staff into
+    // route-plan.server.ts (read, solve, write), and the whole selected team
+    // still goes to it at once. The plural is the entire fix: the selected
+    // technicians passed whole is what makes a split possible at all.
+    expect(apply).toMatch(/planAndApplyDay\(supabase, \{/);
+    expect(apply).toMatch(/staffIds:\s*data\.staffIds/);
+    const plan = codeOnly(read("src/lib/route-plan.server.ts"));
+    expect(plan).toMatch(/rpc\("route_day_inputs"/);
+    expect(plan).toMatch(/rpc\("apply_route_plan"/);
+    expect(plan.match(/_staff_ids:\s*args\.staffIds/g)).toHaveLength(2);
   });
 
   it("no longer calls the single-technician planner once per technician", () => {
@@ -111,8 +117,14 @@ describe("applying auto-routing hands the whole team to one planner", () => {
     // location -- because the routing trials planned a day to 02:51 the next
     // morning and the toast said only "Routed 40 stops". Named individually,
     // for the same reason as the others.
+    //
+    // CHANGED 2026-10-02 again, with the TypeScript solver: three more --
+    // whether arrival windows were honoured, and the windows the plan misses
+    // (named, and counted past the fifty it names) -- so a run that set
+    // windows aside cannot drop them silently. The return is now one member
+    // per line; the order is still pinned.
     expect(apply).toMatch(
-      /return \{ stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays, fit \}/,
+      /return \{\s*stops,\s*skipped,\s*balance,\s*forecast,\s*estimatedDays,\s*partlyEstimatedDays,\s*fit,\s*windowsHonoured,[\s\S]{0,200}windowMisses:[\s\S]{0,80}windowMissCount:/,
     );
 
     const panel = codeOnly(read("src/components/routes/AutoRoutingPanel.tsx"));

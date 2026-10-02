@@ -122,49 +122,58 @@ describe("the dispatcher presses one button", () => {
 });
 
 describe("the measurement survived the step", () => {
-  it("applyOptimize measures before it writes", () => {
-    const apply = applyBlock();
-    const measured = apply.indexOf("forecastPlan(");
-    const wrote = apply.indexOf('rpc("plan_day_across_staff"');
-    expect(measured, "applyOptimize no longer measures at all").toBeGreaterThan(-1);
-    expect(wrote).toBeGreaterThan(-1);
-    // Order is the whole of it. Run afterwards, the same measurement finds an
-    // empty day — the visits it would have planned are assigned and sequenced
-    // by then — and reports a confident zero violations for every run.
-    expect(measured, "the measurement runs after the write").toBeLessThan(wrote);
+  // CHANGED 2026-10-02. The planner moved out of Postgres (route-solver.ts):
+  // each day is read (route_day_inputs), solved here, and written
+  // (apply_route_plan). The write itself now returns what only the dry run
+  // used to know -- late stops per technician, and every window missed, by
+  // name -- so there is no second planner run to take before the write, and
+  // nothing for it to disagree with. These pin that the facts still arrive.
+  const plan = () => codeOnly(read("src/lib/route-plan.server.ts"));
+
+  it("applyOptimize reads, solves and writes each day, in that order", () => {
+    const p = plan();
+    const readAt = p.indexOf('rpc("route_day_inputs"');
+    const solvedAt = p.indexOf("planDay(");
+    const wroteAt = p.indexOf('rpc("apply_route_plan"');
+    expect(readAt).toBeGreaterThan(-1);
+    expect(readAt).toBeLessThan(solvedAt);
+    expect(solvedAt).toBeLessThan(wroteAt);
+    expect(applyBlock()).toMatch(/await planAndApplyDay\(/);
   });
 
-  it("it measures with the read-only twin, not with the writer", () => {
-    const src = fns();
-    const at = src.indexOf("async function forecastPlan");
-    expect(at, "forecastPlan is gone").toBeGreaterThan(-1);
-    const body = src.slice(at, src.indexOf("export const applyOptimize"));
-    expect(body).toMatch(/rpc\("preview_optimize"/);
-    // `plan_day_across_staff` and `plan_day_across_staff_dryrun` differ by a
-    // suffix; `preview_optimize` reaches the second. Either writing name here
-    // means Apply plans the day twice, the second time over the first.
-    expect(body, "the measurement reaches a function that writes").not.toMatch(
-      /rpc\("plan_day_across_staff/,
+  it("the read writes nothing that outlives the call", () => {
+    // The trap the old file named -- a "measurement" one identifier away from
+    // a writer -- now has this shape: the read must not write. Its only
+    // statements that change anything touch its own temp table.
+    const sql = read(
+      "supabase/migrations/20261002090700_the-route-is-solved-outside-the-database.sql",
     );
-    expect(body, "the measurement reaches a function that writes").not.toMatch(
-      /rpc\("optimize_route_v3"/,
+    const body = sql.slice(
+      sql.indexOf("CREATE OR REPLACE FUNCTION public.route_day_inputs"),
+      sql.indexOf("CREATE OR REPLACE FUNCTION public.apply_route_plan"),
     );
+    const writes = [...body.matchAll(/\b(?:INSERT INTO|UPDATE|DELETE FROM)\s+([\w.]+)/gi)].map(
+      (m) => m[1],
+    );
+    expect(writes.length).toBeGreaterThan(0);
+    for (const w of writes) expect(w).toBe("_rdi_pts");
   });
 
-  it("a failed measurement does not cost the dispatcher their Apply", () => {
-    // They asked for the day to be routed, not for a report.
+  it("the late count comes back from the write, per technician", () => {
+    expect(applyBlock()).toMatch(/violations \+= r\.late;/);
+    expect(plan()).toMatch(/late: Number\(r\.late \?\? 0\)/);
+  });
+
+  it("a day that cannot be planned is reported, and the other days still run", () => {
     const apply = applyBlock();
-    expect(apply).toMatch(/try \{\s*\n\s*forecast = await forecastPlan\(/);
-    expect(apply).toMatch(/catch \{\s*\n\s*forecast = null;/);
+    expect(apply).toMatch(/skipped\.push\(\{ staffId: "", day, reason:/);
+    expect(apply).toMatch(/continue;/);
   });
 
-  it("and the panel says so rather than printing a zero", () => {
-    // "The check found nothing" and "the check did not run" must not be the
-    // same sentence on screen. `?? 0` on a null forecast is the second
-    // wearing the first's clothes, which is why the null is warned about.
+  it("and the panel says when nothing at all was routed rather than printing a zero", () => {
     const ui = panel();
-    expect(ui).toMatch(/if \(!r\.forecast\) \{/);
-    expect(ui).toMatch(/arrival-window check could not run/);
+    expect(ui).toMatch(/\} else if \(!r\.forecast\) \{/);
+    expect(ui).toMatch(/Nothing was routed\./);
   });
 });
 
@@ -194,12 +203,20 @@ describe("nothing was left lying around, and nothing was silenced", () => {
     expect(fns(), "previewOptimize is exported again").not.toMatch(/export const previewOptimize/);
   });
 
-  it("but preview_optimize the SQL function still has a real caller", () => {
-    // This is what check-dead-machinery's rule 1 asks. It is asserted here as
-    // well because the answer is the entire justification for the shape above:
-    // the dry-run machinery stays in SQL, called, rather than being kept alive
-    // by a note in a file.
-    expect(fns()).toMatch(/rpc\("preview_optimize"/);
+  it("and preview_optimize the SQL function is no longer an endpoint", () => {
+    // CHANGED 2026-10-02: the app stopped calling it (the write reports what
+    // it measured). It stays defined because the routing trials hold the new
+    // planner to the old one, but it is no longer granted to `authenticated`:
+    // an RPC with no caller is still an endpoint anybody signed in can post
+    // to. Its caller is the benchmark, and that is asserted, not noted.
+    expect(fns()).not.toMatch(/rpc\("preview_optimize"/);
+    const sql = read(
+      "supabase/migrations/20261002090700_the-route-is-solved-outside-the-database.sql",
+    );
+    expect(sql).toMatch(
+      /REVOKE EXECUTE ON FUNCTION public\.preview_optimize\(uuid, uuid\[\], date, date, text, boolean\) FROM authenticated;/,
+    );
+    expect(read("scripts/routing-trials/harness.ts")).toMatch(/public\.preview_optimize\(/);
   });
 
   it("and it was not written into the baseline instead", () => {
