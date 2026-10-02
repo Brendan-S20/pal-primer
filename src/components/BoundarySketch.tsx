@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Undo2, Trash2, Save, MousePointer2, Pencil } from "lucide-react";
-import { addBaseTiles } from "@/lib/map-tiles";
+import { useMapRenderer } from "@/lib/maps/use-map-renderer";
+import { OverlayGroup, US_VIEW, type LatLng } from "@/lib/maps/types";
 
 export type PolygonGeoJSON = {
   type: "Polygon";
   coordinates: number[][][]; // [ [ [lng, lat], ... , [lng, lat] ] ]
 };
 
-function toRing(latlngs: L.LatLng[]): number[][] {
+function toRing(latlngs: LatLng[]): number[][] {
   const ring = latlngs.map((p) => [p.lng, p.lat]);
   if (ring.length > 0) {
     const first = ring[0];
@@ -20,11 +19,11 @@ function toRing(latlngs: L.LatLng[]): number[][] {
   return ring;
 }
 
-function fromPolygon(poly: PolygonGeoJSON | null): L.LatLng[] {
+function fromPolygon(poly: PolygonGeoJSON | null): LatLng[] {
   if (!poly) return [];
   const ring = poly.coordinates?.[0] ?? [];
   const pts = ring.slice(0, Math.max(0, ring.length - 1)); // strip closing dup
-  return pts.map(([lng, lat]) => L.latLng(lat, lng));
+  return pts.map(([lng, lat]) => ({ lat, lng }));
 }
 
 export function BoundarySketch({
@@ -54,10 +53,16 @@ export function BoundarySketch({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
-  const pointsRef = useRef<L.LatLng[]>(fromPolygon(initial));
+  const pointsRef = useRef<LatLng[]>(fromPolygon(initial));
   const [mode, setMode] = useState<"draw" | "view">(initial ? "view" : "draw");
+  // The click handler is bound once per map; it reads the mode from here.
+  // Closing over `mode` instead (as this did under Leaflet) froze it at its
+  // first value, so a sketch that opened in View never added a point after
+  // switching to Draw.
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
   const [tick, setTick] = useState(0);
   const [liveArea, setLiveArea] = useState<number | null>(areaSqm ?? null);
 
@@ -77,96 +82,88 @@ export function BoundarySketch({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
-  // Init map
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const start: [number, number] = center ? [center.lat, center.lng] : [39.5, -98.35];
-    const map = L.map(containerRef.current, {
-      center: start,
-      zoom: center ? 19 : 4,
-      maxZoom: 22,
-      scrollWheelZoom: true,
-    });
-    // Yard sketching genuinely benefits from photographic imagery — use the
-    // satellite variant of the shared tile helper (labels overlay included).
-    addBaseTiles(map, "satellite");
-    mapRef.current = map;
-    layerRef.current = L.layerGroup().addTo(map);
-    // Hosts include animated modals and scroll containers; re-measure once
-    // layout settles so the map never initializes into a stale size.
-    requestAnimationFrame(() => map.invalidateSize());
+  // Yard sketching genuinely benefits from photographic imagery, so this is
+  // the satellite style. One map per mount: every point added, dragged or
+  // removed redraws overlays on it.
+  const map = useMapRenderer(containerRef, {
+    initialView: center ? { center, zoom: 19 } : US_VIEW,
+    style: "satellite",
+    gestures: "map",
+    maxZoom: 22,
+  });
 
-    map.on("click", (e: L.LeafletMouseEvent) => {
-      if (mode !== "draw") return;
-      pointsRef.current = [...pointsRef.current, e.latlng];
+  useEffect(() => {
+    if (!map) return;
+    return map.onMapClick((p) => {
+      if (modeRef.current !== "draw") return;
+      pointsRef.current = [...pointsRef.current, p];
       setTick((t) => t + 1);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [map]);
 
   // Redraw layer
   useEffect(() => {
-    const map = mapRef.current;
-    const layer = layerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
+    if (!map) return;
+    const layer = new OverlayGroup();
     const pts = pointsRef.current;
     if (pts.length >= 3) {
-      const poly = L.polygon(pts, {
-        color: "#2563eb",
-        weight: 2,
-        fillColor: "#3b82f6",
-        fillOpacity: 0.25,
-      });
-      poly.addTo(layer);
+      // Not interactive: a click inside the yard adds a point, it does not
+      // land on the polygon.
+      layer.add(
+        map.addPolygon(pts, {
+          color: "#2563eb",
+          weight: 2,
+          fillColor: "#3b82f6",
+          fillOpacity: 0.25,
+          interactive: false,
+        }),
+      );
       // rough area for live display
       const g: PolygonGeoJSON = { type: "Polygon", coordinates: [toRing(pts)] };
       setLiveArea(quickArea(g));
     } else if (pts.length >= 2) {
-      L.polyline(pts, { color: "#2563eb", weight: 2, dashArray: "4 4" }).addTo(layer);
+      layer.add(
+        map.addPolyline({ path: pts, color: "#2563eb", weight: 2, opacity: 1, dashed: true }),
+      );
       setLiveArea(null);
     } else {
       setLiveArea(null);
     }
     pts.forEach((p, i) => {
-      const icon = L.divIcon({
-        className: "boundary-vertex",
-        html: `<div style="background:${i === 0 ? "#f59e0b" : "#2563eb"};color:white;border:2px solid white;border-radius:9999px;width:14px;height:14px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-      });
-      const m = L.marker(p, { icon, draggable: mode === "draw" }).addTo(layer);
-      m.on("drag", (ev: any) => {
-        const ll: L.LatLng = ev.target.getLatLng();
-        pointsRef.current = pointsRef.current.map((q, idx) => (idx === i ? ll : q));
-      });
-      m.on("dragend", () => setTick((t) => t + 1));
-      m.on("click", (ev) => {
-        if (mode !== "draw") return;
-        L.DomEvent.stopPropagation(ev);
-        pointsRef.current = pointsRef.current.filter((_, idx) => idx !== i);
-        setTick((t) => t + 1);
-      });
+      layer.add(
+        map.addMarker({
+          position: p,
+          className: "boundary-vertex",
+          html: `<div style="background:${i === 0 ? "#f59e0b" : "#2563eb"};color:white;border:2px solid white;border-radius:9999px;width:14px;height:14px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+          size: [14, 14],
+          anchor: [7, 7],
+          title: `Boundary point ${i + 1}`,
+          draggable: mode === "draw",
+          onDrag: (ll) => {
+            pointsRef.current = pointsRef.current.map((q, idx) => (idx === i ? ll : q));
+          },
+          onDragEnd: () => setTick((t) => t + 1),
+          onClick: () => {
+            if (mode !== "draw") return;
+            pointsRef.current = pointsRef.current.filter((_, idx) => idx !== i);
+            setTick((t) => t + 1);
+          },
+        }),
+      );
     });
 
     if (pts.length >= 3) {
-      map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 20 });
+      map.fitBounds(pts, { padding: 30, maxZoom: 20 });
     }
-  }, [tick, mode]);
+    return () => layer.clear();
+  }, [map, tick, mode]);
 
   // Recenter on new center prop
   useEffect(() => {
-    if (!mapRef.current || !center) return;
-    if (pointsRef.current.length === 0) mapRef.current.setView([center.lat, center.lng], 20);
-  }, [center]);
-
-  useEffect(() => {
-    return () => {
-      mapRef.current?.remove();
-      mapRef.current = null;
-      layerRef.current = null;
-    };
-  }, []);
+    if (!map || !center) return;
+    if (pointsRef.current.length === 0) map.setView(center, 20);
+    // By value: hosts pass a fresh `{ lat, lng }` object on every render.
+  }, [map, center?.lat, center?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const undo = () => {
     pointsRef.current = pointsRef.current.slice(0, -1);
