@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build && node scripts/check-pwa-output.mjs",
     "build:dev": "vite build --mode development",
-    "build:native": "NATIVE_BUILD=1 vite build",
+    "build:native": "node scripts/build-native.mjs",
     "cap:sync": "npm run build:native && npx cap sync ios",
     "check:native-bundle": "node scripts/check-native-bundle.mjs",
     "cap:ios": "npm run cap:sync && npx cap open ios",
