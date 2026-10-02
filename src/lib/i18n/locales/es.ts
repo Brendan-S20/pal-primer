@@ -518,6 +518,7 @@ const es: Translations = {
     receptionist_escalation: "Casos que la recepcionista IA pasó al equipo",
     inbound_sms: "Mensajes que esperan respuesta",
     teammate_joined: "Se unió un compañero",
+    webhook_disabled: "Un webhook se desactivó tras fallar",
   },
   help: {
     learnMore: "Más información: {{title}}",

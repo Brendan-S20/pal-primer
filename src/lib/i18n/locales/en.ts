@@ -518,6 +518,7 @@ const en = {
     receptionist_escalation: "AI receptionist escalations",
     inbound_sms: "Texts needing a reply",
     teammate_joined: "Teammate joined",
+    webhook_disabled: "A webhook switched off after failing",
   },
   help: {
     learnMore: "Learn more: {{title}}",
