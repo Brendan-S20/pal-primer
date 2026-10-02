@@ -168,7 +168,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // off-the-globe coordinate as NULL -- "no location" -- instead of a point
     // in the Gulf of Guinea that refused a whole day's routing. It carries its
     // own REVOKE from PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(51);
+    //
+    // 51 -> 52 on 2026-09-29 (20260929090000, expenses): expenses_before_write,
+    // which keeps an expense's staff inside its tenant and prices a mileage row
+    // at the rate stored on it. REVOKEd from PUBLIC, anon and authenticated in
+    // the same file.
+    expect(triggerFunctions().size).toBe(52);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

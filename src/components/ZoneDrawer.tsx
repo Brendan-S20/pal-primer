@@ -12,6 +12,8 @@ import { Plus, X } from "lucide-react";
 import {
   createZone,
   updateZone,
+  listZones,
+  zipsInZoneShape,
   geocodePostal,
   splitZipInput,
   parseUsZips,
@@ -27,6 +29,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCommercialAccounts } from "@/components/CommercialOnly";
+import {
+  addTyped,
+  applyShapeFill,
+  baselineFill,
+  claimedElsewhere,
+  initialZipState,
+  removeZips,
+  shapeKey,
+  fillStatusText,
+  IDLE_FILL,
+  type FillView,
+  type ZipListState,
+} from "@/lib/zone-zip-fill";
 
 // Zone saves re-run zone detection across the org's properties (QA round 8:
 // "I updated a zone and none of the properties adjusted to it").
@@ -49,48 +64,82 @@ const reassignedToastMsg = (verb: string, n: number | undefined) =>
 //     not rewritten on open — that would edit the zone behind the owner's
 //     back — and they block saving, because the server refuses them too and a
 //     red toast at the end of a long form is a worse place to learn it.
+//
+// What the drawer adds (2026-10-01, "a zone you drew named no ZIPs"): chips
+// can be many -- a fill from a 20-mile circle is a few hundred -- so past
+// COLLAPSE_AFTER they fold behind "N ZIPs · show all"; a chip another zone
+// already lists is drawn amber and named below the box; and every remove
+// button is a 44px target on touch, because a fill is exactly when somebody
+// prunes a list with a thumb.
+const COLLAPSE_AFTER = 16;
+
 function ZipChips({
   value,
-  onChange,
+  onAdd,
+  onRemove,
+  claimed,
   placeholder,
   describedBy,
 }: {
   value: string[];
-  onChange: (v: string[]) => void;
+  onAdd: (zips: string[]) => void;
+  onRemove: (zips: string[]) => void;
+  /** ZIP -> the other zone that already lists it. */
+  claimed?: Map<string, string>;
   placeholder?: string;
   describedBy?: string;
 }) {
   const [buf, setBuf] = useState("");
   const [rejected, setRejected] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState(false);
 
   const commit = (raw: string) => {
     const { zips, rejected: bad } = parseUsZips(splitZipInput(raw));
     setRejected(bad);
-    if (zips.length) onChange(Array.from(new Set([...value, ...zips])));
+    const fresh = zips.filter((z) => !value.includes(z));
+    if (fresh.length) onAdd(fresh);
     // Whatever could not be read goes back in the box; everything else clears.
     setBuf(bad.join(" "));
   };
 
   // Legacy chips: anything that is not already its own normalized form.
   const stale = value.filter((z) => normalizeUsZip(z) !== z);
+  const collapsed = !expanded && value.length > COLLAPSE_AFTER;
+  // A chip that blocks saving is never folded away out of sight.
+  const shown = collapsed
+    ? Array.from(new Set([...value.slice(0, COLLAPSE_AFTER), ...stale]))
+    : value;
 
   return (
     <div className="space-y-1">
       <div className="flex min-h-[44px] flex-wrap items-center gap-1.5 rounded-md border bg-background p-2">
-        {value.map((z) => {
+        {shown.map((z) => {
           const bad = normalizeUsZip(z) !== z;
+          const other = claimed?.get(z);
           return (
             <Badge
               key={z}
               variant={bad ? "destructive" : "secondary"}
-              className="gap-1 pr-1"
-              title={bad ? "Not a US 5-digit ZIP, so this matches no address" : undefined}
+              className={
+                "gap-1 pr-0.5" +
+                (other && !bad
+                  ? " border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-500/60 dark:bg-amber-950/40 dark:text-amber-200"
+                  : "")
+              }
+              title={
+                bad
+                  ? "Not a US 5-digit ZIP, so this matches no address"
+                  : other
+                    ? `Also listed on ${other}`
+                    : undefined
+              }
+              data-zip-chip={z}
             >
               {z}
               <button
                 type="button"
-                className="rounded-full p-0.5 hover:bg-muted-foreground/20"
-                onClick={() => onChange(value.filter((x) => x !== z))}
+                className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-muted-foreground/20 touch:min-h-11 touch:min-w-11"
+                onClick={() => onRemove([z])}
                 aria-label={`Remove ${z}`}
               >
                 <X className="h-3 w-3 shrink-0" />
@@ -98,6 +147,18 @@ function ZipChips({
             </Badge>
           );
         })}
+        {value.length > COLLAPSE_AFTER && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2"
+            aria-expanded={!collapsed}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {collapsed ? `${value.length} ZIPs · show all` : "Show fewer"}
+          </Button>
+        )}
         <input
           value={buf}
           inputMode="numeric"
@@ -121,7 +182,7 @@ function ZipChips({
                 commit(buf);
               }
             } else if (e.key === "Backspace" && !buf && value.length) {
-              onChange(value.slice(0, -1));
+              onRemove([value[value.length - 1]]);
             }
           }}
           onBlur={() => buf.trim() && commit(buf)}
@@ -188,11 +249,16 @@ export function ZoneDrawer({
   open,
   onClose,
   zone,
+  fillOnOpen = false,
 }: {
   open: boolean;
   onClose: () => void;
   /** Null/undefined = create a new zone. */
   zone?: any | null;
+  /** Opened from a zone card's "Fill ZIPs from the area": run that fill as
+   *  soon as the zone's area is looked up. The owner asked for it; the save
+   *  is still theirs. */
+  fillOnOpen?: boolean;
 }) {
   const isNew = !zone;
   const qc = useQueryClient();
@@ -222,7 +288,8 @@ export function ZoneDrawer({
     (zone?.account_type as ZoneType) ?? (commercialEnabled ? "all" : "residential"),
   );
   const [priority, setPriority] = useState<string>(String(zone?.priority ?? 0));
-  const [zips, setZips] = useState<string[]>(zone?.zip_codes ?? []);
+  const [zipState, setZipState] = useState<ZipListState>(() => initialZipState(zone?.zip_codes));
+  const zips = zipState.zips;
 
   // Residential pricing. A NEW zone starts from the org's standard price
   // (Settings > Preferences) when one is set -- the owner already told the
@@ -354,10 +421,10 @@ export function ZoneDrawer({
       }
     },
   });
-  const handleZips = (next: string[]) => {
+  const handleAddZips = (added: string[]) => {
     setDirty(true);
-    setZips(next);
-    const first = next[0];
+    setZipState((st) => addTyped(st, added));
+    const first = zips[0] ?? added[0];
     const hasPlacement =
       coverage.mode === "polygon"
         ? !!coverage.polygon
@@ -366,6 +433,134 @@ export function ZoneDrawer({
       geocodeMut.mutate(first);
     }
   };
+  const handleRemoveZips = (gone: string[]) => {
+    setDirty(true);
+    setZipState((st) => removeZips(st, gone));
+  };
+
+  // ── Filling the ZIP list from the drawn area ──────────────────────────
+  //
+  // Owner, 2026-10-01: drawing a radius, drive time or polygon "does not auto
+  // insert all the zip codes that are within that". Now it does: every change
+  // to the shape looks up the ZIPs whose centers are inside it (the matcher's
+  // own geometry, see src/lib/zone-zip-fill.ts) and merges them in -- adding
+  // the new ones, dropping ZIPs only the OLD shape held, never touching one
+  // the owner typed or a chip they removed.
+  //
+  // An EXISTING zone is not filled on open. Its area is looked up so the
+  // drawer can say what is missing and offer "Fill ZIPs from the area", but
+  // the list only changes when the owner moves the shape or clicks.
+  const zipsFn = useServerFn(zipsInZoneShape);
+  const listZonesFn = useServerFn(listZones);
+  // Same key as the Zones page, so this is the page's own cached list.
+  const zonesQ = useQuery({ queryKey: ["zones"], queryFn: () => listZonesFn() });
+  const claimed = useMemo(
+    () => claimedElsewhere(zips, (zonesQ.data as any)?.zones ?? [], zone?.id ?? null),
+    [zips, zonesQ.data, zone?.id],
+  );
+
+  // The fill reads the list as it stands when its answer arrives, not as it
+  // stood when the lookup started -- the owner may have typed in between.
+  const zipStateRef = useRef(zipState);
+  zipStateRef.current = zipState;
+  const [fill, setFill] = useState<FillView>(IDLE_FILL);
+  const initialKey = useMemo(() => shapeKey(initialCoverage), [initialCoverage]);
+  const baselinePending = useRef(!isNew && initialKey != null);
+  const fillOnOpenPending = useRef(fillOnOpen);
+  const lastKey = useRef<string | null>(null);
+  const seq = useRef(0);
+  const key = shapeKey(coverage);
+
+  useEffect(() => {
+    if (!key || key === lastKey.current) return;
+    lastKey.current = key;
+    const mine = ++seq.current;
+    const isBaseline = baselinePending.current && key === initialKey;
+    setFill((f) => ({ ...f, status: "loading" }));
+    // The radius slider reports every step; wait for the hand to stop.
+    const t = setTimeout(async () => {
+      try {
+        const res: any = await zipsFn({
+          data: {
+            mode: coverage.mode,
+            polygon: coverage.polygon,
+            centerLat: coverage.centerLat,
+            centerLng: coverage.centerLng,
+            radiusMeters: coverage.radiusMeters,
+            driveTimeMinutes: coverage.driveTimeMinutes,
+          } as any,
+        });
+        if (mine !== seq.current) return;
+        const inside: string[] = res?.inside ?? [];
+        // Computed from the state as it stands, then set, so the counts shown
+        // are the counts applied.
+        let next = zipStateRef.current;
+        let added = 0;
+        let removed = 0;
+        baselinePending.current = false;
+        if (isBaseline) {
+          next = baselineFill(next, inside).state;
+          if (fillOnOpenPending.current) {
+            fillOnOpenPending.current = false;
+            const r = applyShapeFill(next, inside, { explicit: true });
+            next = r.state;
+            added = r.added.length;
+          }
+        } else {
+          const r = applyShapeFill(next, inside);
+          next = r.state;
+          added = r.added.length;
+          removed = r.removed.length;
+        }
+        setZipState(next);
+        if (added || removed) setDirty(true);
+        setFill({
+          status: "done",
+          inside,
+          insideTotal: res?.insideTotal ?? inside.length,
+          edge: res?.edge ?? [],
+          added,
+          removed,
+          candidatesCapped: !!res?.candidatesCapped,
+          tooLarge: !!res?.tooLarge,
+          baseline: isBaseline && !added,
+        });
+      } catch {
+        if (mine !== seq.current) return;
+        setFill((f) => ({ ...f, status: "error" }));
+      }
+    }, 450);
+    return () => {
+      clearTimeout(t);
+      // A lookup cancelled before it started must be able to run again for
+      // this same shape.
+      if (mine === seq.current && lastKey.current === key) lastKey.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const missingFromArea = fill.inside.filter((z) => !zips.includes(z));
+  const edgeOffered = fill.edge.filter((z) => !zips.includes(z));
+  const fillFromArea = () => {
+    const r = applyShapeFill(zipState, fill.inside, { explicit: true });
+    setZipState(r.state);
+    setDirty(true);
+    setFill((f) => ({ ...f, added: r.added.length, removed: r.removed.length, baseline: false }));
+  };
+  const areaWord =
+    coverage.mode === "polygon"
+      ? "the area you drew"
+      : coverage.mode === "drive_time"
+        ? "the drive-time circle"
+        : "the circle";
+  const claimedList = Array.from(claimed.entries());
+  // Grouped by the zone that already lists them: one long zone name, said once.
+  const claimedByZone = Array.from(
+    claimedList.reduce((m, [zip, zoneName]) => {
+      m.set(zoneName, [...(m.get(zoneName) ?? []), zip]);
+      return m;
+    }, new Map<string, string[]>()),
+  );
 
   const trimmedName = name.trim();
   const nameOk = trimmedName.length >= 2 && /[A-Za-z]/.test(trimmedName);
@@ -386,7 +581,7 @@ export function ZoneDrawer({
     mutationFn: () => {
       const payload: any = {
         name: trimmedName,
-        zipCodes: zips,
+        zipCodes: zipState.zips,
         postalPrefix: zone?.postal_prefix ?? undefined,
         accountType: zoneType === "all" ? null : zoneType,
         priceNote: priceNote || null,
@@ -527,21 +722,10 @@ export function ZoneDrawer({
         )}
 
         <div className="space-y-2">
-          <Label>ZIP codes served (US)</Label>
-          <ZipChips value={zips} onChange={handleZips} describedBy="zone-zips-help" />
-          <p id="zone-zips-help" className="text-xs text-muted-foreground">
-            US 5-digit ZIPs only. Type one and press Enter, comma, or space, or paste a list to bulk
-            add. A ZIP+4 keeps its first five digits, and four digits are read as a ZIP whose
-            leading zero was lost (1810 becomes 01810). An address in a listed ZIP always beats
-            another zone's radius.
-          </p>
-        </div>
-
-        <div className="space-y-2">
           <SectionLabel>Map coverage (required)</SectionLabel>
           <p className="text-xs text-muted-foreground">
-            Draw a polygon or set a center with a radius or drive time. Typing a ZIP above centers
-            the map for you.
+            Draw a polygon or set a center with a radius or drive time. The ZIPs inside it fill in
+            below.
           </p>
           <ZoneCoverageMap
             initial={initialCoverage}
@@ -554,6 +738,82 @@ export function ZoneDrawer({
               Map coverage is required. Click the map to place the center or draw a polygon.
             </p>
           )}
+        </div>
+
+        <div className="space-y-2" data-testid="zone-zips">
+          <Label>ZIP codes served (US)</Label>
+          <ZipChips
+            value={zips}
+            onAdd={handleAddZips}
+            onRemove={handleRemoveZips}
+            claimed={claimed}
+            describedBy="zone-zips-help"
+          />
+          <p
+            className="text-xs text-muted-foreground"
+            aria-live="polite"
+            data-testid="zone-zip-fill-status"
+          >
+            {fillStatusText(fill, areaWord)}
+          </p>
+          {fill.status === "done" && missingFromArea.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 text-xs">
+              <span className="min-w-0 flex-1 text-muted-foreground">
+                {missingFromArea.length} {missingFromArea.length === 1 ? "ZIP" : "ZIPs"} inside{" "}
+                {areaWord} {missingFromArea.length === 1 ? "is" : "are"} not on the list.
+              </span>
+              <Button type="button" size="sm" variant="outline" onClick={fillFromArea}>
+                Fill ZIPs from the area
+              </Button>
+            </div>
+          )}
+          {claimedList.length > 0 && (
+            <div
+              className="space-y-1 text-xs text-amber-700 dark:text-amber-300"
+              data-testid="zone-zip-overlap"
+            >
+              {claimedByZone.map(([zoneName, list]) => (
+                <p key={zoneName} className="break-words">
+                  {list.length === 1 ? "1 ZIP is" : `${list.length} ZIPs are`} also listed on{" "}
+                  <span className="font-medium">{zoneName}</span>: {list.slice(0, 12).join(", ")}
+                  {list.length > 12 ? `, and ${list.length - 12} more` : ""}.
+                </p>
+              ))}
+              <p>
+                An address in a ZIP two zones list goes to the one with the higher priority. Remove
+                the chip here to leave it to the other zone.
+              </p>
+            </div>
+          )}
+          {fill.status === "done" && edgeOffered.length > 0 && (
+            <div className="space-y-1.5 rounded-md bg-muted/40 p-2" data-testid="zone-zip-edge">
+              <p className="text-xs font-medium">Nearby ZIPs that only partly overlap</p>
+              <p className="text-xs text-muted-foreground">
+                Not added for you, because a listed ZIP claims every address in it, including the
+                part outside {areaWord}. Tap one to add it anyway.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {edgeOffered.slice(0, 40).map((z) => (
+                  <Button
+                    key={z}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 tabular-nums"
+                    aria-label={`Add ${z}`}
+                    onClick={() => handleAddZips([z])}
+                  >
+                    + {z}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+          <p id="zone-zips-help" className="text-xs text-muted-foreground">
+            US 5-digit ZIPs only. Type one and press Enter, or paste a list. A ZIP+4 keeps its first
+            five digits, and four digits are read as a ZIP whose leading zero was lost (1810 becomes
+            01810). An address in a listed ZIP always beats another zone's radius.
+          </p>
         </div>
 
         {showResidential && (
