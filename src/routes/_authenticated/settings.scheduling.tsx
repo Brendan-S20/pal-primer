@@ -176,7 +176,7 @@ function SchedulingSettings() {
         <div className="mt-4">
           <Label className="text-xs">Work days</Label>
           <WorkDaysPicker
-            value={(settings.work_days as number[] | null) ?? [0, 1, 2, 3, 4, 5, 6]}
+            value={(settings.work_days as number[] | null) ?? [1, 2, 3, 4, 5]}
             onChange={(days) => mut.mutate({ work_days: days })}
             disabled={mut.isPending}
           />
