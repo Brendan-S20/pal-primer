@@ -45,4 +45,27 @@ describe("the proofs take turns", () => {
     const before = lines.slice(0, at).filter((l) => !MAY_PRECEDE.test(l));
     expect(before, `${file} runs this before taking the proof lock`).toEqual([]);
   });
+
+  // Waiting its turn is time vitest counts. psql was given 300 s, but the
+  // test around it kept vitest's 30 s default, so on 2026-10-02 (swap 96%
+  // full, load 38) nothing-could-listen-for-a-completed-visit "timed out in
+  // 30000ms" while the proof itself was fine. Every file that runs a proof
+  // gives its tests the same 300 s.
+  const TESTS_DIR = join(import.meta.dirname);
+  const wrappers = readdirSync(TESTS_DIR).filter((f) => {
+    if (!f.endsWith(".test.ts") || f === "the-proofs-take-turns.test.ts") return false;
+    const src = readFileSync(join(TESTS_DIR, f), "utf8");
+    return src.includes(".proof.sql") && src.includes("spawnSync");
+  });
+
+  it("has proof wrappers to check", () => {
+    expect(wrappers.length).toBeGreaterThan(0);
+  });
+
+  it.each(wrappers)("%s gives a proof waiting its turn 300 s, not vitest's 30", (file) => {
+    const src = readFileSync(join(TESTS_DIR, file), "utf8");
+    expect(src, `${file}: add vi.setConfig({ testTimeout: 300_000 }) after the imports`).toMatch(
+      /vi\.setConfig\(\{ testTimeout: 300_000 \}\);/,
+    );
+  });
 });

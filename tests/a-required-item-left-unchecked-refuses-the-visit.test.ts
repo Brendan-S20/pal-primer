@@ -21,11 +21,15 @@
 // When no database answers, the proof says so loudly and skips: "no
 // experiment was run" must not read like "the experiment passed".
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { missingRequired, type ChecklistItem } from "@/lib/visit-checklist";
+
+// A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts),
+// so on a loaded runner one can take minutes without being hung.
+vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
 const MIGRATION_REL = "supabase/migrations/20260929040000_a-visit-had-no-checklist.sql";
