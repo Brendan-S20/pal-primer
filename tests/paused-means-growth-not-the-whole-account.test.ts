@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { GROWTH_PAUSED_NOTE, TRIAL_COPY, growthPausedFor, type TrialState } from "@/lib/trial";
+import { TRIAL_COPY, growthPausedFor, type TrialState } from "@/lib/trial";
 
 const MIGRATIONS = join(__dirname, "..", "supabase", "migrations");
 
@@ -72,8 +72,14 @@ describe("paused means growth, not the whole account", () => {
       expect(body, `${phase} does not say what keeps running`).toMatch(/keeps running/i);
       expect(body, `${phase} dropped the "nothing deleted" promise`).toMatch(/nothing has been deleted/i);
     }
-    expect(GROWTH_PAUSED_NOTE).toMatch(/new customers only/i);
-    expect(GROWTH_PAUSED_NOTE).toMatch(/portal/i);
+    // The banner used to add a second line (GROWTH_PAUSED_NOTE) repeating
+    // this body nearly word for word. The body is now the only statement, so
+    // it carries the part the note was there to guarantee: the portal.
+    for (const phase of ["expired", "lapsed"] as const) {
+      expect(TRIAL_COPY[phase].body, `${phase} does not say the portal keeps working`).toMatch(
+        /portal/i,
+      );
+    }
   });
 
   it("trial state still has exactly two consumers, so a new gate cannot arrive quietly", () => {

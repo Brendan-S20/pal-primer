@@ -189,7 +189,7 @@ describe("the same page on a laptop is the page it was", () => {
     // 36px heading, which is the fix showing up where it was not needed.
     const sized = classTokens(codeOnly(read(DASHBOARD))).filter((t) => /(?:^|:)min-h-11/.test(t));
     // SIX. Four were the two header buttons, the alert chip and the phone-only
-    // Show map toggle. Two more were added on 2026-08-23: the "Open routes →"
+    // Show map toggle. Two more were added on 2026-08-23: the "Open schedule →"
     // and "All →" links, measured at 84x16pt and 29x16pt on an iPad.
     //
     // The Show map toggle is the instructive one and it is why the other two
