@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SHARING_WINDOW_MS, POST_INTERVAL_MS, sharingWindow } from "@/lib/live-tracking";
+import en from "@/lib/i18n/locales/en";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -166,7 +167,9 @@ describe("the phone stops when the window does", () => {
 
   it("tells the tech, with a Stop button a thumb can hit", () => {
     const chip = read("src/components/EnRouteLocationChip.tsx");
-    expect(chip).toMatch(/Sharing your location with \{s\.customerName\} until you arrive/);
+    // In the tech's language (lib/i18n enRoute.sharing), with the name passed in.
+    expect(chip).toMatch(/t\("enRoute\.sharing", \{ name: s\.customerName \}\)/);
+    expect(en.enRoute.sharing).toBe("Sharing your location with {{name}} until you arrive");
     expect(chip).toMatch(/onClick=\{s\.stop\}/);
     expect(chip).toMatch(/touch:min-h-11 touch:min-w-11/);
   });

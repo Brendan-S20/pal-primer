@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Loader2, MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import {
   addressSearchStatus,
@@ -94,6 +95,7 @@ export function AddressAutocomplete({
   className?: string;
   ariaInvalid?: boolean;
 }) {
+  const { t } = useTranslation();
   const listId = useId();
   const statusFn = useServerFn(addressSearchStatus);
   const autocompleteFn = useServerFn(autocompleteAddress);
@@ -251,7 +253,7 @@ export function AddressAutocomplete({
             // starts a fresh token instead of riding an expired one.
             if (!resolving) sessionToken.current = "";
           }}
-          placeholder={placeholder ?? (enabled ? "Start typing an address…" : undefined)}
+          placeholder={placeholder ?? (enabled ? t("address.placeholder") : undefined)}
           required={required}
           autoComplete="off"
           role={ui.role}

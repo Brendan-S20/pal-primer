@@ -29,17 +29,37 @@ test("the income CSV downloads, and its Total row matches Postgres", async ({ pa
   const orgId = await e2eOrgId(db);
   const year = new Date().getFullYear();
 
-  // The same population the report reads: succeeded + refunded payments,
-  // bucketed year-to-date. (Mark-paid specs add succeeded payments; that is
-  // fine — this count is taken NOW, after any earlier spec's writes.)
-  const { data: payments, error } = await db
+  // The same population the report reads: succeeded + refunded payments
+  // whose PAID day, in the business's time zone, falls in the year so far
+  // (cpa-reports loadReceipts: orgLocalDay(paid_at ?? created_at)). This used
+  // to filter on created_at alone, which is not the report's rule: a payment
+  // created this year but paid on a day outside the year so far -- back-dated,
+  // or stamped ahead of the business's today -- was counted here and not
+  // there. On 2026-10-02 the spec expected 27 where the report showed 26.
+  // Counting the report's own population makes a disagreement mean the
+  // REPORT is wrong, which is the only thing this spec is for. (Mark-paid specs add
+  // succeeded payments; that is fine — this count is taken NOW, after any
+  // earlier spec's writes.)
+  const { data: org, error: orgErr } = await db
+    .from("organizations")
+    .select("timezone")
+    .eq("id", orgId)
+    .single();
+  if (orgErr) throw new Error(`reading the org's time zone: ${orgErr.message}`);
+  const timeZone = org.timezone ?? "America/Chicago";
+  const orgDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone });
+  const today = orgDay(new Date().toISOString());
+  const { data: rows, error } = await db
     .from("payments")
     .select("amount_cents, paid_at, created_at")
     .eq("organization_id", orgId)
-    .in("status", ["succeeded", "refunded"])
-    .gte("created_at", `${year}-01-01`);
+    .in("status", ["succeeded", "refunded"]);
   if (error) throw new Error(`payments for the cross-check: ${error.message}`);
-  expect(payments!.length, "seeded payments exist to sum").toBeGreaterThan(0);
+  const payments = (rows ?? []).filter((p) => {
+    const day = orgDay(p.paid_at ?? p.created_at);
+    return day >= `${year}-01-01` && day <= today;
+  });
+  expect(payments.length, "seeded payments exist to sum").toBeGreaterThan(0);
 
   await signIn(page);
   await page.goto("/tax-reports");
@@ -78,11 +98,10 @@ test("the income CSV downloads, and its Total row matches Postgres", async ({ pa
     Math.round(Number(gross) * 100) - Math.round(Number(refunds) * 100),
   );
 
-  // Figures right: the payment COUNT is the cheapest exact cross-check (the
-  // gross involves org-timezone day bucketing this spec should not re-derive;
-  // the count is bucket-independent inside a YTD window in September).
-  expect(Number(count)).toBe(payments!.length);
+  // Figures right: the payment count and the gross, over the same population
+  // the report reads -- paid this year, in the business's own days.
+  expect(Number(count)).toBe(payments.length);
   const grossCents = Math.round(Number(gross) * 100);
-  const dbCents = payments!.reduce((n, p) => n + (p.amount_cents ?? 0), 0);
+  const dbCents = payments.reduce((n, p) => n + (p.amount_cents ?? 0), 0);
   expect(grossCents).toBe(dbCents);
 });

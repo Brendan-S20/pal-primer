@@ -97,7 +97,9 @@ describe("Settings sub-pages agree on what a heading is", () => {
 
   it("the shell still owns the h1", () => {
     const shell = readFileSync(join(root, "src/routes/_authenticated/settings.tsx"), "utf8");
-    expect(shell).toMatch(/<h1 className="text-2xl font-semibold">Settings<\/h1>/);
+    expect(shell).toMatch(
+      /<h1 className="text-2xl font-semibold">\{t\("settings\.title"\)\}<\/h1>/,
+    );
   });
 
   it("every sub-page with a heading uses the same one", () => {
