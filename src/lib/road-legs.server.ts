@@ -182,10 +182,30 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<RoadL
     .eq("organization_id", orgId)
     .eq("active", true);
 
+  // Where a technician with no start address STARTS. staff_start_point's
+  // second tier is the business location, so for every such technician the
+  // first leg of the day runs from here -- and nothing measured it, because
+  // only staff and dump coordinates were collected. The routing trials found
+  // the first leg of a Plano technician with no address always on the
+  // straight-line estimate while the rest of the day was measured.
+  const { data: business } = await admin
+    .from("organizations")
+    .select("latitude, longitude")
+    .eq("id", orgId)
+    .maybeSingle();
+
   const seen = new Set<string>();
   const points: Point[] = [];
   const add = (lat: unknown, lon: unknown) => {
     if (typeof lat !== "number" || typeof lon !== "number") return;
+    // One impossible coordinate must not cost the whole day. OSRM rejects the
+    // ENTIRE table request when any point is out of range (a latitude of
+    // -96.7 is a longitude typed into the wrong box), so every other stop
+    // fell back to estimates with it. 0,0 is not out of range, but it is
+    // nobody's house: it is what a missing value becomes on its way through
+    // a spreadsheet. Both are left to the planner's estimate, alone.
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180 || (lat === 0 && lon === 0)) return;
     const p = { lat: r5(lat), lon: r5(lon) };
     const k = `${p.lat},${p.lon}`;
     if (seen.has(k)) return;
@@ -213,6 +233,7 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<RoadL
     add(s.end_latitude, s.end_longitude);
   }
   for (const d of (dumps ?? []) as Coord[]) add(d.latitude, d.longitude);
+  add((business as Coord | null)?.latitude, (business as Coord | null)?.longitude);
 
   // One point is a matrix of itself; nothing to measure.
   if (points.length < 2) return nothingToMeasure;

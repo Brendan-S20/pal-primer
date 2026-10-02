@@ -17,6 +17,7 @@ import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadQuotePdf } from "@/lib/document-pdf.functions";
 import { appUrl } from "@/lib/app-origin";
 import {
+  createQuoteDepositInvoice,
   deleteQuoteDraft,
   duplicateQuote,
   getQuote,
@@ -24,6 +25,7 @@ import {
   sendQuote,
   withdrawQuote,
 } from "@/lib/quotes.functions";
+import { sendInvoiceEmail } from "@/lib/notifications.functions";
 import {
   convertTarget,
   formatQuoteDay,
@@ -49,6 +51,8 @@ function QuoteDetailPage() {
   const deleteFn = useServerFn(deleteQuoteDraft);
   const duplicateFn = useServerFn(duplicateQuote);
   const invoiceFn = useServerFn(invoiceQuoteOneTimeCharges);
+  const depositFn = useServerFn(createQuoteDepositInvoice);
+  const sendInvoiceFn = useServerFn(sendInvoiceEmail);
   const pdfFn = useServerFn(downloadQuotePdf);
 
   const q = useQuery({
@@ -81,6 +85,24 @@ function QuoteDetailPage() {
       refresh();
       if (r.invoiceId) navigate({ to: "/invoices/$invoiceId", params: { invoiceId: r.invoiceId } });
     },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  // A prospect's deposit is invoiced at conversion, a client's at acceptance.
+  // This is for when neither could: the same once-only database function.
+  const depositM = useMutation({
+    mutationFn: () => depositFn({ data: { id: quoteId } }),
+    onSuccess: () => {
+      toast.success("Deposit invoice made");
+      refresh();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const sendDepositM = useMutation({
+    mutationFn: (invoiceId: string) => sendInvoiceFn({ data: { invoiceId } }),
+    onSuccess: (r) =>
+      toast.success(
+        r.recipient ? `Deposit invoice emailed to ${r.recipient}` : "Deposit invoice emailed",
+      ),
     onError: (e) => toast.error((e as Error).message),
   });
   const withdrawM = useMutation({
@@ -137,7 +159,9 @@ function QuoteDetailPage() {
     withdrawM.isPending ||
     deleteM.isPending ||
     duplicateM.isPending ||
-    invoiceM.isPending;
+    invoiceM.isPending ||
+    depositM.isPending ||
+    sendDepositM.isPending;
   const oneTimeCents = quoteTotals(lines).oneTimeCents;
   const billTo = quote.clientId ?? quote.convertedClientId;
 
@@ -152,6 +176,7 @@ function QuoteDetailPage() {
       title: quote.title ?? "",
       message: quote.message ?? "",
       validUntil: quote.validUntil ?? "",
+      deposit: quote.depositCents != null ? (quote.depositCents / 100).toFixed(2) : "",
       lines: lines.map((l) => ({
         key: l.id,
         description: l.description,
@@ -290,6 +315,26 @@ function QuoteDetailPage() {
           ) : null}
           {!quote.clientId && " · not a client yet"}
         </p>
+        {quote.depositCents != null && (
+          <p className="text-sm text-muted-foreground">
+            Deposit{" "}
+            <span className="font-medium tabular-nums text-foreground">
+              {formatQuoteMoney(quote.depositCents)}
+            </span>
+            {" · "}
+            {quote.depositInvoice
+              ? quote.depositInvoice.status === "paid"
+                ? "paid, on their account as credit"
+                : quote.depositInvoice.status === "void"
+                  ? "invoice voided"
+                  : "invoiced, not paid yet"
+              : quote.status !== "accepted"
+                ? "asked for when they accept"
+                : billTo
+                  ? "not invoiced yet"
+                  : "invoiced when you convert them to a client"}
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {target.kind !== "not-ready" && (
@@ -316,7 +361,7 @@ function QuoteDetailPage() {
                   if (
                     await confirm({
                       title: `Invoice ${formatQuoteMoney(oneTimeCents)} of one-time charges?`,
-                      description: `An open invoice to ${quote.recipientName} for the lines on ${quote.label} that are not per visit. If they pay by autopay, it will be charged. Do this once the work is done.`,
+                      description: `An open invoice to ${quote.recipientName} for the lines on ${quote.label} that are not per visit. If they pay by autopay, it will be charged. Do this once the work is done.${quote.depositCents != null ? " A paid deposit comes off it as account credit." : ""}`,
                       confirmLabel: "Create invoice",
                     })
                   )
@@ -328,6 +373,39 @@ function QuoteDetailPage() {
                   : `Invoice one-time charges · ${formatQuoteMoney(oneTimeCents)}`}
               </Button>
             ))}
+          {quote.status === "accepted" &&
+            quote.depositCents != null &&
+            (quote.depositInvoice ? (
+              <>
+                <Button asChild variant="outline">
+                  <Link to="/invoices/$invoiceId" params={{ invoiceId: quote.depositInvoice.id }}>
+                    Open deposit invoice
+                  </Link>
+                </Button>
+                {quote.depositInvoice.status === "open" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => sendDepositM.mutate(quote.depositInvoice!.id)}
+                  >
+                    <Send className="mr-1 h-4 w-4 shrink-0" />
+                    {sendDepositM.isPending ? "Sending…" : "Email deposit invoice"}
+                  </Button>
+                )}
+              </>
+            ) : billTo ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => depositM.mutate()}
+              >
+                {depositM.isPending
+                  ? "Making…"
+                  : `Make deposit invoice · ${formatQuoteMoney(quote.depositCents)}`}
+              </Button>
+            ) : null)}
           {quote.convertedClientId && (
             <Button asChild variant="outline">
               <Link to="/clients/$clientId" params={{ clientId: quote.convertedClientId }}>

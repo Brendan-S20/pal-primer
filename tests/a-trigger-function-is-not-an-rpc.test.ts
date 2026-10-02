@@ -162,7 +162,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // visit_live_locations_forget_org, which deletes an org's positions when
     // tracking is turned off. All three carry their own REVOKE from PUBLIC,
     // anon and authenticated.
-    expect(triggerFunctions().size).toBe(50);
+    //
+    // 50 -> 51 on 2026-10-02 (20261002090200, the routing trials):
+    // tg_properties_coordinates_are_a_place, which stores 0,0 and an
+    // off-the-globe coordinate as NULL -- "no location" -- instead of a point
+    // in the Gulf of Guinea that refused a whole day's routing. It carries its
+    // own REVOKE from PUBLIC, anon and authenticated.
+    expect(triggerFunctions().size).toBe(51);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

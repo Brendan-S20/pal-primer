@@ -52,6 +52,8 @@ export type QuoteEditorValues = {
   title: string;
   message: string;
   validUntil: string;
+  /** Asked for on accepting, as typed ("150" or "150.00"). Empty is none. */
+  deposit: string;
   lines: EditorLine[];
 };
 
@@ -163,7 +165,13 @@ export function QuoteEditor({
     v.mode === "client" || !v.prospectEmail.trim() || /^\S+@\S+\.\S+$/.test(v.prospectEmail.trim());
   const dateOk = !v.validUntil || v.validUntil >= today;
   const linesOk = parsed.length > 0 && parsed.every((p) => p.ok);
-  const valid = recipientOk && emailOk && dateOk && linesOk;
+  const depositCents = v.deposit.trim() ? parseMoneyToCents(v.deposit) : null;
+  const depositOk =
+    !v.deposit.trim() ||
+    (depositCents != null &&
+      depositCents >= QUOTE_LIMITS.minDepositCents &&
+      depositCents <= QUOTE_LIMITS.maxDepositCents);
+  const valid = recipientOk && emailOk && dateOk && linesOk && depositOk;
 
   const payload = () => ({
     id: quoteId,
@@ -180,6 +188,7 @@ export function QuoteEditor({
     title: v.title.trim(),
     message: v.message,
     validUntil: v.validUntil || null,
+    depositCents: v.deposit.trim() ? depositCents : null,
     lines: parsed.map((p) => ({
       description: p.description,
       quantity: p.quantity as number,
@@ -534,6 +543,28 @@ export function QuoteEditor({
             </dd>
           </div>
         </dl>
+      </Card>
+
+      <Card className="space-y-2 p-4 sm:p-6">
+        <Label htmlFor="quote-deposit">Deposit when they accept (optional)</Label>
+        <Input
+          id="quote-deposit"
+          inputMode="decimal"
+          className="sm:max-w-48"
+          value={v.deposit}
+          onChange={(e) => set("deposit", e.target.value)}
+          placeholder="0.00"
+          aria-invalid={attempted && !depositOk ? true : undefined}
+          aria-describedby="quote-deposit-help"
+        />
+        <p id="quote-deposit-help" className="text-sm text-muted-foreground">
+          The customer is asked to pay it right after accepting. It goes on their account as credit
+          and comes off their first invoices. A quote to a prospect gets its deposit invoice when
+          you convert it to a client.
+        </p>
+        {attempted && !depositOk && (
+          <p className="text-xs text-destructive">A deposit is between $1.00 and $10,000.</p>
+        )}
       </Card>
 
       <Card className="space-y-2 p-4 sm:p-6">

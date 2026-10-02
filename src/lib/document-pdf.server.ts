@@ -282,7 +282,7 @@ export async function staffQuotePdf(
   const { data: q, error } = await supabase
     .from("quotes")
     .select(
-      "id, number, status, title, message, valid_until, public_token, sent_at, accepted_at, declined_at, accepted_name, client_id, prospect_name, prospect_email, clients!quotes_client_id_fkey(display_name, primary_email)",
+      "id, number, status, title, message, valid_until, public_token, sent_at, accepted_at, declined_at, accepted_name, client_id, prospect_name, prospect_email, deposit_cents, clients!quotes_client_id_fkey(display_name, primary_email)",
     )
     .eq("id", quoteId)
     .eq("organization_id", orgId)
@@ -343,6 +343,7 @@ export async function staffQuotePdf(
     })),
     // A draft has no link: public_quote_document answers nothing for it.
     acceptUrl: q.status === "draft" || !q.public_token ? null : appUrl(`/q/${q.public_token}`),
+    depositCents: (q.deposit_cents as number | null) ?? null,
   };
   const { bytes } = await renderQuotePdf(model);
   return { filename: pdfFileName("Quote", label, businessName), bytes };
@@ -366,6 +367,7 @@ type PublicQuoteDoc = {
   org_phone: string | null;
   org_timezone: string | null;
   currency: string | null;
+  deposit_cents?: number | null;
   lines: Array<{
     description: string;
     quantity: number | string;
@@ -411,6 +413,7 @@ export async function publicQuotePdf(admin: Db, token: string): Promise<PdfFile 
       recurring: !!l.recurring,
     })),
     acceptUrl: appUrl(`/q/${token}`),
+    depositCents: d.deposit_cents ?? null,
   };
   const { bytes } = await renderQuotePdf(model);
   return { filename: pdfFileName("Quote", label, businessName), bytes };

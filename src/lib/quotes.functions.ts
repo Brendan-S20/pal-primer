@@ -21,7 +21,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import { appOrigin } from "@/lib/app-origin";
+import { appOrigin, appUrl } from "@/lib/app-origin";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import {
   QUOTE_LIMITS,
@@ -42,7 +42,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** Two FKs from quotes to clients (the recipient and the client it became),
  *  so PostgREST needs to be told which one to embed. */
 const QUOTE_SELECT =
-  "id, number, status, title, message, valid_until, public_token, sent_at, accepted_at, declined_at, accepted_name, decline_reason, converted_at, converted_client_id, one_time_invoice_id, client_id, lead_id, prospect_name, prospect_email, prospect_phone, created_at, updated_at, clients!quotes_client_id_fkey(id, display_name, primary_email, primary_phone)";
+  "id, number, status, title, message, valid_until, public_token, sent_at, accepted_at, declined_at, accepted_name, decline_reason, converted_at, converted_client_id, one_time_invoice_id, deposit_cents, deposit_invoice_id, client_id, lead_id, prospect_name, prospect_email, prospect_phone, created_at, updated_at, clients!quotes_client_id_fkey(id, display_name, primary_email, primary_phone)";
 
 type Sb = any;
 
@@ -139,6 +139,22 @@ export const getQuote = createServerFn({ method: "GET" })
         .maybeSingle();
       leadName = lead?.name ?? null;
     }
+    let depositInvoice: { id: string; number: number | null; status: string } | null = null;
+    if (q.deposit_invoice_id) {
+      const { data: di } = await supabase
+        .from("invoices")
+        .select("id, number, status")
+        .eq("id", q.deposit_invoice_id)
+        .eq("organization_id", orgId)
+        .maybeSingle();
+      if (di) {
+        depositInvoice = {
+          id: di.id as string,
+          number: (di.number as number | null) ?? null,
+          status: di.status as string,
+        };
+      }
+    }
     const clock = await orgClock(supabase, orgId);
     const client = one(q.clients as any) as {
       id: string;
@@ -172,6 +188,8 @@ export const getQuote = createServerFn({ method: "GET" })
         convertedAt: (q.converted_at as string | null) ?? null,
         convertedClientId: (q.converted_client_id as string | null) ?? null,
         oneTimeInvoiceId: (q.one_time_invoice_id as string | null) ?? null,
+        depositCents: (q.deposit_cents as number | null) ?? null,
+        depositInvoice,
         createdAt: q.created_at as string,
         clientId: (q.client_id as string | null) ?? null,
         clientName: client?.display_name ?? null,
@@ -231,6 +249,15 @@ const draftSchema = z
     title: z.string().trim().max(QUOTE_LIMITS.title).optional(),
     message: z.string().max(QUOTE_LIMITS.message).optional(),
     validUntil: z.string().regex(DAY).nullable().optional(),
+    /** Asked for on accepting; null is no deposit. The same range as the
+     *  quotes_deposit_cents_range CHECK. */
+    depositCents: z
+      .number()
+      .int()
+      .min(QUOTE_LIMITS.minDepositCents, "A deposit is at least $1.00")
+      .max(QUOTE_LIMITS.maxDepositCents, "A deposit is at most $10,000")
+      .nullable()
+      .optional(),
     lines: z.array(lineSchema).min(1).max(QUOTE_LIMITS.maxLines),
   })
   .refine((d) => !!d.clientId !== !!d.prospect, {
@@ -276,6 +303,7 @@ export const saveQuoteDraft = createServerFn({ method: "POST" })
       title: data.title?.trim() || null,
       message: data.message?.trim() || null,
       valid_until: data.validUntil ?? null,
+      deposit_cents: data.depositCents ?? null,
     };
 
     let quoteId: string;
@@ -379,7 +407,9 @@ export const duplicateQuote = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(supabase, userId, "manage_client_billing");
     const { data: q, error } = await supabase
       .from("quotes")
-      .select("client_id, lead_id, prospect_name, prospect_email, prospect_phone, title, message")
+      .select(
+        "client_id, lead_id, prospect_name, prospect_email, prospect_phone, title, message, deposit_cents",
+      )
       .eq("id", data.id)
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -586,7 +616,11 @@ export const markQuoteConverted = createServerFn({ method: "POST" })
         meta: { quoteId: q.id },
       });
     }
-    return { converted: !!q };
+    // A prospect's deposit had nobody to bill until now. Made (once) with the
+    // service role after the permission check above; a quote with no deposit
+    // gets nothing. The office sends it from the quote page.
+    const depositInvoiceId = await makeDepositInvoice(data.id);
+    return { converted: !!q, depositInvoiceId };
   });
 
 /** Bill an accepted quote's one-time lines (the initial cleanup, usually) on
@@ -662,6 +696,56 @@ export const invoiceQuoteOneTimeCharges = createServerFn({ method: "POST" })
     return { invoiceId: inv.invoiceId, created: true, totalCents: inv.totalCents };
   });
 
+/** The quote's deposit invoice: made the first time there is an accepted quote
+ *  with a deposit and somebody to bill, and returned as it is every time
+ *  after. Null when there is no deposit or nobody to bill yet. Never throws:
+ *  an acceptance or a conversion that has happened must not be reported as
+ *  failed because its deposit invoice could not be made; the office sees
+ *  "no deposit invoice yet" and the quote page offers to make it. */
+async function makeDepositInvoice(quoteId: string): Promise<string | null> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await (supabaseAdmin as any).rpc("quote_deposit_invoice", {
+      _quote_id: quoteId,
+    });
+    if (error) {
+      console.error("quote_deposit_invoice failed", quoteId, error.message);
+      return null;
+    }
+    return (data as string | null) ?? null;
+  } catch (e) {
+    console.error("quote_deposit_invoice failed", quoteId, (e as Error).message);
+    return null;
+  }
+}
+
+/** The office's "Make deposit invoice", for the case makeDepositInvoice could
+ *  not do at acceptance or conversion. The same once-only function. */
+export const createQuoteDepositInvoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "manage_client_billing");
+    const { data: q, error } = await supabase
+      .from("quotes")
+      .select("id, status, deposit_cents, client_id, converted_client_id")
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!q) throw new Error("Quote not found");
+    if (q.status !== "accepted")
+      throw new Error("Only an accepted quote's deposit can be invoiced.");
+    if (!q.deposit_cents) throw new Error("This quote has no deposit.");
+    if (!q.client_id && !q.converted_client_id) {
+      throw new Error("Convert the quote to a client first, so there is somebody to bill.");
+    }
+    const invoiceId = await makeDepositInvoice(q.id as string);
+    if (!invoiceId) throw new Error("The deposit invoice could not be made. Try again.");
+    return { invoiceId };
+  });
+
 // ── The customer's link: /q/{token} ────────────────────────────────────────
 //
 // NO auth middleware on these two, and that is the design, not an omission:
@@ -689,6 +773,9 @@ type PublicQuoteDoc = {
   org_phone: string | null;
   org_timezone: string | null;
   currency: string | null;
+  deposit_cents: number | null;
+  deposit_pay_token: string | null;
+  deposit_paid: boolean | null;
   lines: Array<{
     description: string;
     quantity: number | string;
@@ -733,6 +820,11 @@ export const getPublicQuote = createServerFn({ method: "GET" })
         declineReason: d.decline_reason,
         recipientName: d.recipient_name,
         currency: d.currency ?? "usd",
+        depositCents: d.deposit_cents ?? null,
+        /** The deposit invoice's pay link while it is open; null before it
+         *  exists and once it is paid. */
+        depositPayUrl: d.deposit_pay_token ? appUrl(`/pay/i/${d.deposit_pay_token}`) : null,
+        depositPaid: !!d.deposit_paid,
       },
       org: {
         name: d.org_name ?? "Your service provider",
@@ -783,6 +875,25 @@ export const respondToPublicQuote = createServerFn({ method: "POST" })
     if (error) throw new Error(quoteRespondErrorMessage(error.message));
     const r = out as unknown as RespondResult;
 
+    // The deposit, when the quote asks for one and there is a client to bill.
+    // Made on every accepted call, not only the first: it is once-only in the
+    // database, and a customer who accepted and closed the tab before paying
+    // gets the same invoice back on their next visit.
+    let depositPayUrl: string | null = null;
+    if (r.status === "accepted") {
+      const depositInvoiceId = await makeDepositInvoice(r.quote_id);
+      if (depositInvoiceId) {
+        const { data: di } = await supabaseAdmin
+          .from("invoices")
+          .select("public_token, status")
+          .eq("id", depositInvoiceId)
+          .maybeSingle();
+        if (di?.status === "open" && di.public_token) {
+          depositPayUrl = appUrl(`/pay/i/${di.public_token}`);
+        }
+      }
+    }
+
     // Tell the office, once: only when this call recorded the answer. A second
     // tap returns the first answer with changed=false and notifies nobody.
     if (r.changed) {
@@ -827,5 +938,6 @@ export const respondToPublicQuote = createServerFn({ method: "POST" })
       declinedAt: r.declined_at,
       declineReason: r.decline_reason,
       changed: r.changed,
+      depositPayUrl,
     };
   });

@@ -60,7 +60,16 @@ export async function geocodeAddress(parts: {
 
   // addressdetails=1, so the reply says WHICH part it matched. It used to be
   // 0, which made a house and a city centre arrive looking the same.
-  const url = `${NOMINATIM_URL}?format=json&limit=1&addressdetails=1&q=${encodeURIComponent(address)}`;
+  //
+  // countrycodes, because nothing else told Nominatim which country to search,
+  // and plenty of US towns share a name with somewhere abroad (Paris, Athens,
+  // Dublin, Rome, Victoria). A sparse or misspelt address could resolve to the
+  // wrong continent -- and the routing trials showed what one such point did:
+  // a single leg past what visits.travel_km can hold, and auto-routing refused
+  // the WHOLE day for every technician with "numeric field overflow"
+  // (20261002090200 now survives it; this stops producing it). The product
+  // serves the US, and Canada is the only other market in view.
+  const url = `${NOMINATIM_URL}?format=json&limit=1&addressdetails=1&countrycodes=us,ca&q=${encodeURIComponent(address)}`;
 
   let res: Response;
   try {
