@@ -58,6 +58,7 @@ export type ReportColumn = {
 export type ReportId =
   | "income_cash"
   | "tips_received"
+  | "sales_tax_collected"
   | "income_accrual"
   | "cash_accrual_bridge"
   | "revenue_by_client"
@@ -124,6 +125,22 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
       num("tippedPaymentCount", "Tipped payments"),
     ],
     note: "Dated by when each payment settled, in the organization's own timezone, the same as the cash income report. A refund returns its share of the tip in proportion to the charge (a $115 payment of $100 plus a $15 tip, refunded $57.50, returns $7.50 of tip) and that share is deducted here, in the month of the refund. A chargeback is deducted whole, tip included, from income in the cash income report, so it is not deducted here a second time.",
+  },
+  sales_tax_collected: {
+    id: "sales_tax_collected",
+    title: "Sales tax collected, by month",
+    purpose:
+      "Sales tax billed on invoices and collected with payments, less tax given back in refunds and chargebacks. Tax collected is owed to the state: it is kept out of every income figure in this pack and belongs on the sales-tax return.",
+    basis: "cash",
+    columns: [
+      text("month", "Month"),
+      money("taxBilledCents", "Tax billed"),
+      money("taxCollectedCents", "Tax collected"),
+      money("taxRefundedCents", "Tax refunded"),
+      money("netTaxCollectedCents", "Net tax collected"),
+      num("taxedPaymentCount", "Taxed payments"),
+    ],
+    note: "Tax billed is dated by invoice issue date (accrual). Tax collected is each payment's share of its invoice's tax, in proportion to the payment (a $54.13 payment on a $108.25 invoice carrying $8.25 of tax collected $4.13), dated by when the payment settled, in the organization's own timezone. A refund or chargeback returns its share the same way, in the month it happened; a dispute that is later won is added back. Tax on an invoice settled from account credit is billed but not collected here, because no money arrived with it. Every invoice carries the rate it was made at; a rate changed later does not restate an earlier month.",
   },
   income_accrual: {
     id: "income_accrual",
@@ -285,6 +302,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
 export const REPORT_ORDER: ReportId[] = [
   "income_cash",
   "tips_received",
+  "sales_tax_collected",
   "income_accrual",
   "cash_accrual_bridge",
   "revenue_by_client",
@@ -358,6 +376,78 @@ export function tipsByMonth(
       tipsRefundedCents: b.refunded,
       netTipsCents: b.tips - b.refunded,
       tippedPaymentCount: b.count,
+    }));
+}
+
+// ── Sales tax ──────────────────────────────────────────────────────────────
+
+/** Tax on an invoice billed on `day` (its issue day, org calendar). */
+export type TaxBilled = { day: string; taxCents: number };
+/** A received payment's tax share, dated when the money arrived. */
+export type TaxReceipt = { day: string; taxCents: number };
+/** The tax share of a reversal, dated when it happened. Positive takes tax
+ *  collected down (a refund, a chargeback); negative puts it back (a won
+ *  dispute). */
+export type TaxReversal = { day: string; taxCents: number };
+
+/**
+ * Sales tax by month: billed, collected, refunded, net, and how many payments
+ * carried some.
+ *
+ * Pure, so the report and its test share one implementation, and shaped like
+ * `tipsByMonth` beside it: every month in the range gets a row, zero or not.
+ * For a business that never set a rate every row is zero, which is the honest
+ * answer rather than a missing sheet.
+ */
+export function salesTaxByMonth(
+  months: string[],
+  billed: readonly TaxBilled[],
+  receipts: readonly TaxReceipt[],
+  reversals: readonly TaxReversal[],
+): Array<{
+  month: string;
+  taxBilledCents: number;
+  taxCollectedCents: number;
+  taxRefundedCents: number;
+  netTaxCollectedCents: number;
+  taxedPaymentCount: number;
+}> {
+  const by = new Map<string, { billed: number; collected: number; refunded: number; count: number }>();
+  for (const m of months) by.set(m, { billed: 0, collected: 0, refunded: 0, count: 0 });
+  const at = (m: string) => {
+    let b = by.get(m);
+    if (!b) {
+      b = { billed: 0, collected: 0, refunded: 0, count: 0 };
+      by.set(m, b);
+    }
+    return b;
+  };
+  for (const r of billed) {
+    const cents = Math.max(0, Math.round(r.taxCents));
+    if (cents <= 0) continue;
+    at(monthKey(r.day)).billed += cents;
+  }
+  for (const r of receipts) {
+    const cents = Math.max(0, Math.round(r.taxCents));
+    if (cents <= 0) continue;
+    const b = at(monthKey(r.day));
+    b.collected += cents;
+    b.count += 1;
+  }
+  for (const r of reversals) {
+    const cents = Math.round(r.taxCents);
+    if (cents === 0) continue;
+    at(monthKey(r.day)).refunded += cents;
+  }
+  return [...by.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([m, b]) => ({
+      month: m,
+      taxBilledCents: b.billed,
+      taxCollectedCents: b.collected,
+      taxRefundedCents: b.refunded,
+      netTaxCollectedCents: b.collected - b.refunded,
+      taxedPaymentCount: b.count,
     }));
 }
 

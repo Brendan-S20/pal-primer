@@ -185,7 +185,7 @@ function Dashboard() {
         <div className="flex gap-2">
           <Link to="/routes">
             <Button variant="outline" size="sm" className="touch:min-h-11">
-              Today's routes
+              Today's schedule
             </Button>
           </Link>
           <Link to="/clients">
@@ -308,7 +308,7 @@ function Dashboard() {
                 {mapOpen ? "Hide map" : "Show map"}
               </button>
               <Link to="/routes" className="inline-flex items-center text-xs text-primary hover:underline touch:min-h-11">
-                Open routes →
+                Open schedule →
               </Link>
             </div>
           </div>

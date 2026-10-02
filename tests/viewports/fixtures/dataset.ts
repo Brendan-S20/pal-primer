@@ -37,6 +37,34 @@ export const ORG_NAME = "Whitfield-Ramirez Yard & Waste Services LLC";
 export const SIGNUP_URL =
   "https://app.houndstack.com/signup/whitfield-ramirez-yard-and-waste-services-llc";
 
+/** An owner's own wording for the last first-cleanup answer: a sentence, not
+ *  "3+ months". It is what the Zones page's summary row, its editor's label
+ *  input, and the wizard's and quote editor's pickers all have to hold. */
+export const FIRST_CLEANUP_LONG_TIER_LABEL =
+  "Three months or more, or honestly never since we moved in";
+
+/** `getFirstCleanupPricing`: tiered, with an extra-dog add-on, and the zone
+ *  list in the shape the server returns (camelCase). */
+export const FIRST_CLEANUP_PRICING = {
+  pricing: {
+    mode: "by_last_cleaned",
+    perExtraDogCents: 1000,
+    tiers: [
+      { id: "within_a_week", label: "Within a week", priceCents: 4500 },
+      { id: "one_to_four_weeks", label: "1–4 weeks", priceCents: 7500 },
+      { id: "one_to_three_months", label: "1–3 months", priceCents: 11000 },
+      { id: "three_months_or_never", label: FIRST_CLEANUP_LONG_TIER_LABEL, priceCents: 15000 },
+    ],
+  },
+  zones: [
+    {
+      id: "zzzz1111-0000-4000-8000-000000000001",
+      name: "Ravenswood Manor / Lincoln Square North",
+      initialCleanupCents: 7500,
+    },
+  ],
+};
+
 const iso = (d: Date) => d.toISOString();
 /** A date `offset` days from today, org-local, as YYYY-MM-DD. Exported since
  *  2026-09-14 so a fixture can place a day AFTER today without recomputing the
@@ -299,7 +327,11 @@ export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
   issued_at: iso(new Date(Date.now() - (i + 4) * 864e5)),
   client_id: c.id,
   clients: { display_name: c.display_name },
-  number: `INV-2026-${String(1041 + i)}`,
+  // There was a second `number` here, a string ("INV-2026-1041"), which
+  // silently overrode the integer above. invoices.number is an integer column
+  // and invoiceNumberLabel prefixes it, so every invoice list in the sweep
+  // read "INV-INV-2026-1041" -- three lines tall in a phone card -- for a
+  // label production draws as "INV-10420".
 }));
 
 /**
@@ -325,7 +357,16 @@ const REFUND_INVOICE_ROW = {
   status: "paid",
   kind: "service",
   currency: "usd",
-  subtotal_cents: 24_000,
+  // TAXED, so the page draws its sales-tax line between Subtotal and Total —
+  // the one row a business that never set a rate never sees, and so the one
+  // no untaxed fixture could measure. A 39-character label, one short of the
+  // most the settings accept, at a rate with two decimals, so the label has to wrap
+  // beside its amount on a 360px phone. 22,171 x 8.25% = 1,829.1 -> 1,829,
+  // and the total stays 24,000 so the payments below still settle it.
+  subtotal_cents: 22_171,
+  tax_rate_bps: 825,
+  tax_cents: 1_829,
+  tax_label: "County and Special District Service Tax",
   total_cents: 24_000,
   credit_applied_cents: 0,
   period_start: day(-30),
@@ -394,7 +435,8 @@ export const REFUND_INVOICE = {
     {
       id: "66666666-0000-4000-8000-0000000066a1",
       description: "Weekly yard service, 4 visits (commons, dog run and both retention ponds)",
-      amount_cents: 24_000,
+      // The taxed subtotal: 22,171 + 1,829 of tax = the 24,000 total.
+      amount_cents: 22_171,
       visit_id: null,
       subscription_id: null,
     },

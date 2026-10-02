@@ -195,7 +195,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt",
       )
       .eq("id", data.clientId)
       .single();
@@ -230,6 +230,9 @@ export const updateClient = createServerFn({ method: "POST" })
         billingFrequency: z
           .enum(["after_each_visit", "weekly", "monthly", "quarterly", "yearly"])
           .optional(),
+        // No sales tax on this client's invoices. A billing decision, so it
+        // takes the billing permission below.
+        taxExempt: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -242,7 +245,9 @@ export const updateClient = createServerFn({ method: "POST" })
     await requirePermission(
       supabase,
       userId,
-      data.active !== undefined ? "manage_client_billing" : "view_client_directory",
+      data.active !== undefined || data.taxExempt !== undefined
+        ? "manage_client_billing"
+        : "view_client_directory",
     );
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -305,13 +310,17 @@ export const updateClient = createServerFn({ method: "POST" })
       patch.billing_frequency = data.billingFrequency;
       changed.push("billing cadence");
     }
+    if (data.taxExempt !== undefined) {
+      patch.tax_exempt = data.taxExempt;
+      changed.push("sales tax exemption");
+    }
     if (changed.length === 0) return { ok: true };
 
     // Before-image so the timeline can show before -> after (spec Stage 5).
     const { data: beforeRow } = await supabase
       .from("clients")
       .select(
-        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused",
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt",
       )
       .eq("id", data.clientId)
       .single();
@@ -511,6 +520,56 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
   });
 
 /**
+ * Open a client's portal as a read-only preview, on the caller's own
+ * browser. "Open portal" used to drop the owner on a sign-in screen that
+ * sends a code to the CUSTOMER'S phone; the only way past was to reveal an
+ * office-read code and sign in as the customer with every button live.
+ *
+ * Gated like the rest of the client's money (the portal shows invoices and
+ * the card on file): owner and office manager. The session it mints is an
+ * hour long and read-only in the server (requirePortalSession), and each
+ * preview is written to the client's Activity with the name of whoever
+ * opened it, before the session exists.
+ */
+export const previewClientPortal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_client_billing",
+    );
+    const { data: client } = await context.supabase
+      .from("clients")
+      .select("id, display_name")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (!client) throw new Error("Client not found");
+
+    const { data: staffRow } = await context.supabase
+      .from("staff")
+      .select("display_name")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    const { error: auditErr } = await context.supabase.from("activity_log").insert({
+      organization_id: orgId,
+      client_id: data.clientId,
+      actor_user_id: context.userId,
+      actor_label: (staffRow as { display_name?: string } | null)?.display_name ?? null,
+      kind: "portal.previewed",
+      summary: `Previewed ${(client as { display_name?: string }).display_name ?? "the client"}'s portal`,
+      meta: {},
+    });
+    if (auditErr) throw new Error("Couldn't record the preview in the activity log. Try again.");
+
+    const { startPortalPreview } = await import("@/lib/portal-auth.server");
+    await startPortalPreview(data.clientId, context.userId);
+    return { ok: true };
+  });
+
+/**
  * The portal sign-in channels we can actually deliver a code to for this
  * client, so staff copy ("code texted to …") matches what the portal really
  * offers (G2 channel mismatch: SMS is only offered when Twilio is configured).
@@ -675,6 +734,16 @@ const onboardSchema = z.object({
   // Set when the wizard was opened from a lead. The lead is checked before
   // anything is created and marked converted, linked to this client, after.
   fromLeadId: z.string().uuid().optional(),
+  // The first cleanup, when the office charged one: billed as its own open
+  // invoice once the client exists. The price is the office's — prefilled
+  // from the owner's first-cleanup pricing and editable in the wizard — and
+  // taken only from someone who may bill clients (checked below).
+  firstCleanup: z
+    .object({
+      priceCents: z.number().int().min(1).max(1_000_000),
+      description: z.string().trim().min(1).max(300),
+    })
+    .optional(),
   // subscription (optional — user may skip)
   subscription: z
     .object({
@@ -703,6 +772,13 @@ export const onboardClient = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
+
+    // Billing a first cleanup is billing. Refused before anything is written,
+    // so a person who may add clients but not bill them is told now rather
+    // than after a client exists with half of what they asked for.
+    if (data.firstCleanup) {
+      await requirePermission(supabase, userId, "manage_client_billing");
+    }
 
     // 0) the lead this client is converted from, if any. Checked BEFORE the
     // client exists: a lead that is already a client is refused here, not
@@ -907,6 +983,36 @@ export const onboardClient = createServerFn({ method: "POST" })
         ? await leadConversion.markLeadConverted(supabase, fromLead.id, clientId)
         : null;
 
+    // 7) the first cleanup, as a one-time line on its own invoice. Same shape
+    // as a quote's one-time charges (invoiceQuoteOneTimeCharges), through the
+    // same helper, and reported rather than thrown for the same reason as the
+    // note: the client exists, and a thrown error invites a duplicate.
+    let firstCleanupInvoiced: boolean | null = null;
+    if (data.firstCleanup) {
+      try {
+        const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
+        await insertManualInvoice(supabase, {
+          orgId,
+          userId,
+          clientId,
+          items: [
+            {
+              description: data.firstCleanup.description,
+              amountCents: data.firstCleanup.priceCents,
+              quantity: 1,
+              unitAmountCents: data.firstCleanup.priceCents,
+            },
+          ],
+          notes: "First cleanup",
+          activityLabel: "first-cleanup invoice",
+        });
+        firstCleanupInvoiced = true;
+      } catch (e) {
+        console.error("first-cleanup invoice on new client failed", e);
+        firstCleanupInvoiced = false;
+      }
+    }
+
     {
       const { logActivity } = await import("@/lib/activity.server");
       await logActivity(supabase, {
@@ -943,7 +1049,14 @@ export const onboardClient = createServerFn({ method: "POST" })
       }
     }
 
-    return { id: clientId, firstVisitOn, welcomeEmailed, officeNoteSaved, leadLinked };
+    return {
+      id: clientId,
+      firstVisitOn,
+      welcomeEmailed,
+      officeNoteSaved,
+      leadLinked,
+      firstCleanupInvoiced,
+    };
   });
 
 

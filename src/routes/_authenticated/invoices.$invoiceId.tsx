@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { LineQuantity } from "@/components/LineQuantity";
 import { useState } from "react";
 import { bulkMarkInvoicesPaid, getInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { showsTaxLine, taxLineLabel } from "@/lib/sales-tax";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
 import { describeManualPayment } from "@/lib/manual-payments";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
@@ -290,6 +291,17 @@ function InvoiceDetail() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Subtotal</span>
                   <span className="tabular-nums">{fmtCents(subtotalCents, invoice.currency)}</span>
+                </div>
+              )}
+              {/* Sales tax, its own line and only when there is some. */}
+              {showsTaxLine(invoice) && (
+                <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                  <span className="min-w-0">
+                    {taxLineLabel(invoice.tax_label, invoice.tax_rate_bps)}
+                  </span>
+                  <span className="shrink-0 tabular-nums">
+                    {fmtCents(invoice.tax_cents, invoice.currency)}
+                  </span>
                 </div>
               )}
               <div className="flex items-center justify-between">

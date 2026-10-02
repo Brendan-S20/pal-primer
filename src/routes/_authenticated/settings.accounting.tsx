@@ -58,6 +58,7 @@ function AccountingSettings() {
   const [accessToken, setAccessToken] = useState("");
   const [refreshToken, setRefreshToken] = useState("");
   const [income, setIncome] = useState("");
+  const [taxAccount, setTaxAccount] = useState("");
   const [autoSync, setAutoSync] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -74,6 +75,9 @@ function AccountingSettings() {
           access_token: accessToken || null,
           refresh_token: refreshToken || null,
           default_income_account: income || null,
+          // Sent only when filled in, so saving the form without touching it
+          // does not clear an account set earlier.
+          ...(taxAccount ? { default_sales_tax_account: taxAccount } : {}),
           auto_sync: autoSync,
         },
       });
@@ -266,6 +270,16 @@ function AccountingSettings() {
             Default income {provider === "quickbooks" ? "account (QBO Account Id)" : "account code"}
           </span>
           <input className="w-full rounded border bg-background px-2 py-1" value={income} onChange={(e) => setIncome(e.target.value)} placeholder={provider === "quickbooks" ? "e.g. 79" : "e.g. 200"} />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-muted-foreground">
+            Sales tax {provider === "quickbooks" ? "account (QBO Account Id)" : "account code"}, only if you charge sales tax
+          </span>
+          <input className="w-full rounded border bg-background px-2 py-1" value={taxAccount} onChange={(e) => setTaxAccount(e.target.value)} placeholder={provider === "quickbooks" ? "e.g. 33" : "e.g. 820"} />
+          <span className="mt-1 block text-xs text-muted-foreground">
+            An invoice's sales tax goes across as its own line on this account, a liability, never
+            on your income account. An invoice with tax will not sync until this is set.
+          </span>
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />

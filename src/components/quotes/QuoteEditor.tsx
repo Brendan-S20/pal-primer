@@ -21,6 +21,8 @@ import { RadioGroup, RadioGroupSegment } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { listClients } from "@/lib/clients.functions";
 import { saveQuoteDraft, sendQuote } from "@/lib/quotes.functions";
+import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
+import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanup";
 import {
   QUOTE_LIMITS,
   RECURRING_LABEL,
@@ -85,6 +87,43 @@ export function QuoteEditor({
     setV((s) => ({ ...s, [k]: val }));
   const setLine = (key: string, patch: Partial<EditorLine>) =>
     setV((s) => ({ ...s, lines: s.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }));
+
+  // "Add first cleanup": one one-time line, priced from the owner's
+  // first-cleanup settings, which the person writing the quote can still
+  // edit like any other line. Hidden when the owner has pricing off.
+  const firstCleanupFn = useServerFn(getFirstCleanupPricing);
+  const firstCleanupQ = useQuery({
+    queryKey: ["first-cleanup-pricing"],
+    queryFn: () => firstCleanupFn(),
+    staleTime: 60_000,
+  });
+  const fcPricing = firstCleanupQ.data?.pricing ?? null;
+  const fcZones = (firstCleanupQ.data?.zones ?? []).filter((z) => z.initialCleanupCents > 0);
+  const [fcOpen, setFcOpen] = useState(false);
+  // A tier id in tiered mode; a zone id in flat mode.
+  const [fcChoice, setFcChoice] = useState("");
+  const [fcDogs, setFcDogs] = useState("1");
+  const fcLine =
+    fcPricing && fcChoice
+      ? firstCleanupQuoteLine(fcPricing, {
+          tierId: fcPricing.mode === "by_last_cleaned" ? fcChoice : null,
+          zoneFlatCents: fcZones.find((z) => z.id === fcChoice)?.initialCleanupCents ?? null,
+          dogCount: Math.max(1, Math.min(20, parseInt(fcDogs, 10) || 1)),
+        })
+      : null;
+  const addFirstCleanup = () => {
+    if (!fcLine) return;
+    setV((s) => {
+      const line = { ...blankEditorLine(false), ...fcLine };
+      // The editor opens on one blank line; fill that rather than leaving it
+      // above the new one as a line that fails validation.
+      const onlyBlank =
+        s.lines.length === 1 && !s.lines[0].description.trim() && !s.lines[0].price.trim();
+      return { ...s, lines: onlyBlank ? [line] : [...s.lines, line] };
+    });
+    setFcOpen(false);
+    setFcChoice("");
+  };
 
   const clientsQ = useQuery({
     queryKey: ["clients", "picker"],
@@ -408,7 +447,79 @@ export function QuoteEditor({
           >
             <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Per-visit line
           </Button>
+          {fcPricing && fcPricing.mode !== "off" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-expanded={fcOpen}
+              disabled={v.lines.length >= QUOTE_LIMITS.maxLines}
+              onClick={() => setFcOpen((o) => !o)}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add first cleanup
+            </Button>
+          )}
         </div>
+        {fcOpen && fcPricing && fcPricing.mode !== "off" && (
+          <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+            {fcPricing.mode === "flat" && fcZones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Every zone&apos;s first-cleanup fee is $0. Set one on the Zones page, or add a
+                one-time line by hand.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_6rem]">
+                <div className="min-w-0 space-y-1">
+                  <Label htmlFor="quote-fc-choice" className="text-xs">
+                    {fcPricing.mode === "by_last_cleaned"
+                      ? LAST_CLEANED_QUESTION.replace("your yard", "the yard")
+                      : "Zone"}
+                  </Label>
+                  <select
+                    id="quote-fc-choice"
+                    value={fcChoice}
+                    onChange={(e) => setFcChoice(e.target.value)}
+                    className="h-9 w-full min-w-0 rounded-md border bg-background px-3 text-sm touch:min-h-11"
+                  >
+                    <option value="">Pick one</option>
+                    {fcPricing.mode === "by_last_cleaned"
+                      ? fcPricing.tiers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.label}
+                          </option>
+                        ))
+                      : fcZones.map((z) => (
+                          <option key={z.id} value={z.id}>
+                            {z.name}
+                          </option>
+                        ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="quote-fc-dogs" className="text-xs">
+                    Dogs
+                  </Label>
+                  <Input
+                    id="quote-fc-dogs"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={fcDogs}
+                    onChange={(e) => setFcDogs(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" disabled={!fcLine} onClick={addFirstCleanup}>
+                {fcLine ? `Add first cleanup, $${fcLine.price}` : "Add first cleanup"}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setFcOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
         <dl className="space-y-1 border-t pt-3 text-sm">
           <div className="flex items-baseline justify-between gap-3">
             <dt className="min-w-0 text-muted-foreground">One-time total</dt>

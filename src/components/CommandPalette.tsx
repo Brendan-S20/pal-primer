@@ -26,7 +26,7 @@ const NAV: NavEntry[] = [
   { label: "Schedule", to: "/routes", group: "Operations" },
   { label: "My day", to: "/my-day", group: "Field" },
   { label: "Waste log", to: "/waste-log", group: "Field" },
-  { label: "Messages", to: "/messages", group: "Field" },
+  { label: "Messages", to: "/messages", group: "Operations" },
   // "Operations", as in the sidebar. These were a separate "Ops" group there
   // and here, the same word twice.
   { label: "Inventory", to: "/inventory", group: "Operations" },
@@ -34,7 +34,7 @@ const NAV: NavEntry[] = [
   { label: "Invoices", to: "/invoices", group: "Billing" },
   { label: "Quotes", to: "/quotes", group: "Billing" },
   { label: "Payments", to: "/payments", group: "Billing" },
-  { label: "Billing", to: "/settings/billing", group: "Settings" },
+  { label: "Plan & billing", to: "/settings/billing", group: "Settings" },
   { label: "Reports", to: "/reports", group: "Insights" },
   { label: "Analytics", to: "/analytics", group: "Insights" },
   // AI tools no longer have a standalone destination — surface the two
@@ -55,9 +55,10 @@ const NAV: NavEntry[] = [
   { label: "AI receptionist", to: "/settings/ai-receptionist", group: "Settings" },
   { label: "Automation", to: "/settings/automation", group: "Settings" },
   { label: "Emails", to: "/settings/emails", group: "Settings" },
-  { label: "Reviews", to: "/settings/reviews", group: "Settings" },
+  { label: "Reviews & referrals", to: "/settings/reviews", group: "Settings" },
   { label: "Add-ons", to: "/settings/addons", group: "Settings" },
   { label: "Accounting", to: "/settings/accounting", group: "Settings" },
+  { label: "Zapier & webhooks", to: "/settings/webhooks", group: "Settings" },
   // Yours, not the company's — hence its own group rather than sitting among
   // the org settings a technician cannot open.
   { label: "Your account", to: "/profile", group: "Account" },

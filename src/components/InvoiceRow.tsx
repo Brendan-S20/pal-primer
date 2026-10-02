@@ -252,9 +252,15 @@ export function InvoiceCard({
               {fmtCents(invoice.total_cents ?? 0, invoice.currency ?? "usd")}
             </div>
           </div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {invoicePeriodLabel(invoice.period_start, invoice.period_end)}
-          </div>
+          {/* Only when there is a period. A one-off or deposit invoice has
+              none, and the card used to print a lone "-" on its own line —
+              in a table column a dash means "empty", on a phone card it reads
+              as a stray character. */}
+          {(invoice.period_start || invoice.period_end) && (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {invoicePeriodLabel(invoice.period_start, invoice.period_end)}
+            </div>
+          )}
           {invoice.due_on && invoice.status !== "paid" && invoice.status !== "void" && (
             <div
               className={`mt-0.5 text-xs ${

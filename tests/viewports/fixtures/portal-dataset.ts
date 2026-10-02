@@ -139,6 +139,12 @@ const INVOICE_ROWS = [
     due_on: day(-2),
     credit_applied_cents: 0,
     amount_due_cents: 10400,
+    // Taxed, so the row draws "includes $7.93 Sales tax (8.25%)" beside the
+    // amount and the status chips, and has to wrap on a phone. 9,607 x 8.25%
+    // = 792.58 -> 793; total 10,400.
+    tax_cents: 793,
+    tax_rate_bps: 825,
+    tax_label: "Sales tax",
     overdue: true,
   },
   {
@@ -387,7 +393,13 @@ export const PUBLIC_INVOICE = {
     label: "INV-10427",
     status: "open",
     currency: "usd",
-    subtotalCents: 12900,
+    // Taxed, so the pay link draws its sales-tax line: 11,917 x 8.25% =
+    // 983.15 -> 983. The total, the credit and the amount due are unchanged,
+    // so the tip arithmetic the spec checks (104.00 + 7.50) still holds.
+    subtotalCents: 11917,
+    taxCents: 983,
+    taxRateBps: 825,
+    taxLabel: "Sales tax",
     totalCents: 12900,
     // Credit applied, so the "you owe less than the total" layout is the one
     // measured -- it is two lines where the simple case is one.
@@ -405,7 +417,9 @@ export const PUBLIC_INVOICE = {
     {
       id: "88888888-0000-4000-8000-000000008001",
       description: "Weekly yard service — 4 visits",
-      amountCents: 9600,
+      // 8,617 + 3,600 - 300 = 11,917, the taxed subtotal, so the lines, the
+      // tax and the total on the page all add up.
+      amountCents: 8617,
       quantity: 1,
       unitAmountCents: null,
     },
@@ -600,3 +614,62 @@ export const PUBLIC_TRACKING: Record<string, ReturnType<typeof publicTracking>> 
     publicTracking(s),
   ]),
 );
+
+// ── /signup/:slug, the public signup, with first-cleanup tiers ─────────────
+//
+// The business prices the first cleanup by "when was your yard last
+// cleaned?", so the page draws a fourth question in the service card and a
+// first-cleanup line in the quote panel beside the per-visit price. The last
+// answer is long on purpose: it is the label a Select trigger and the quote
+// panel's "Last cleaned:" line both have to hold at 320px. Wording like this
+// is the owner's to choose, and an owner will choose a sentence.
+
+export const SIGNUP_LONG_TIER_LABEL = "Three months or more, or honestly never since we moved in";
+
+const SIGNUP_TIERS = [
+  { id: "within_a_week", label: "Within a week", price_cents: 4500 },
+  { id: "one_to_four_weeks", label: "1–4 weeks", price_cents: 7500 },
+  { id: "one_to_three_months", label: "1–3 months", price_cents: 11000 },
+  { id: "three_months_or_never", label: SIGNUP_LONG_TIER_LABEL, price_cents: 15000 },
+];
+
+/** `getSignupOrg`: the RPC's row plus `firstCleanup`, which the server adds. */
+export const SIGNUP_ORG = {
+  id: PORTAL_ORG_ID,
+  name: PORTAL_ORG_NAME,
+  currency: "usd",
+  public_signup_enabled: true,
+  resolved_slug: PORTAL_SLUG,
+  logo_url: null,
+  brand_color: null,
+  firstCleanup: {
+    mode: "by_last_cleaned",
+    tiers: SIGNUP_TIERS.map(({ id, label }) => ({ id, label })),
+  },
+};
+
+/** `getSignupQuote` for one dog: every answer priced for this yard, and the
+ *  answer the sweep picks priced into `initial_cleanup_cents`. */
+export function signupQuote(lastCleaned: string | undefined) {
+  const picked = SIGNUP_TIERS.find((t) => t.id === lastCleaned) ?? null;
+  return {
+    available: true as const,
+    quote: {
+      organization_id: PORTAL_ORG_ID,
+      zone_id: "dddddddd-0000-4000-8000-00000000d0f1",
+      zone_name: "Ravenswood Manor / Lincoln Square North",
+      base_price_cents: 2500,
+      per_dog_addl_cents: 500,
+      recurring_price_cents: 2500,
+      initial_cleanup_cents: picked ? picked.price_cents : null,
+      currency: "usd",
+      first_cleanup_mode: "by_last_cleaned",
+      first_cleanup_label: picked?.label ?? null,
+      first_cleanup_options: SIGNUP_TIERS.map((t) => ({
+        id: t.id,
+        label: t.label,
+        priceCents: t.price_cents,
+      })),
+    },
+  };
+}

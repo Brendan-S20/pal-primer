@@ -49,8 +49,10 @@
 import { test, expect } from "@playwright/test";
 import { installStubBackend } from "./fixtures/stub-backend";
 import {
+  PORTAL_ORG_NAME,
   PORTAL_SLUG,
   PORTAL_TOKEN,
+  SIGNUP_LONG_TIER_LABEL,
   PORTAL_CLIENT_NAME,
   PORTAL_PAY_INVOICE_ID,
   PUBLIC_INVOICE,
@@ -198,6 +200,10 @@ test.describe("the payment link, which is not the portal and arrives the same wa
       // exists because credit was applied to it.
       const due = (PUBLIC_INVOICE.invoice.amountDueCents / 100).toFixed(2);
       await expect(page.getByText(`$${due}`).first()).toBeVisible();
+      // The sales-tax line, which only a taxed invoice draws: measured here
+      // because it is the one row an untaxed fixture would never put on the
+      // page.
+      await expect(page.getByText("Sales tax (8.25%)").first()).toBeVisible();
       // The tip choices, in their widest state: Custom picked, so the amount
       // box is drawn under the five buttons, and an amount typed into it so
       // the totals below show a tip. The total proves the intent fixture
@@ -372,4 +378,54 @@ test.describe("the live map, which a customer opens from the on-my-way text", ()
     const { scrollW, innerW } = await measurePageOverflow(page);
     expect(scrollW).toBeLessThanOrEqual(innerW + 1);
   });
+});
+
+test.describe("the signup page, which prices the first cleanup by the customer's answer", () => {
+  /**
+   * `/signup/:slug`, with a business that prices the first cleanup by "when
+   * was your yard last cleaned?". Not in every-public-page-at-every-width:
+   * that sweep has no backend stub, and this page's lookup is a server
+   * function that would otherwise reach the live project. Here it is
+   * answered by `getSignupOrg` / `getSignupQuote` in the portal stubs.
+   *
+   * Measured in its widest state: the question answered with the owner's
+   * longest answer, and the quote panel drawn, so the first-cleanup line
+   * holds that answer under its label beside the price. Two proofs, as
+   * everywhere in this file: the business's name proves the lookup reached
+   * the page (without it the page says "Signup unavailable"), and $150.00 --
+   * the long answer's price -- proves the quote came back priced for the
+   * answer picked rather than drawing the no-answer state.
+   */
+  for (const width of [320, ...WIDTHS]) {
+    test(`holds together at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await installStubBackend(page, { portal: true });
+      await page.goto(`/signup/${PORTAL_SLUG}`, { waitUntil: "domcontentloaded" });
+
+      await expect(page.getByText(PORTAL_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("When was your yard last cleaned?")).toBeVisible({
+        timeout: 15_000,
+      });
+
+      await page.getByLabel("ZIP code").fill("60601");
+      await page.locator("#last_cleaned").click();
+      await page.getByRole("option", { name: SIGNUP_LONG_TIER_LABEL }).click();
+      await page.getByRole("button", { name: "Get instant price" }).click();
+
+      await expect(page.getByText(`Last cleaned: ${SIGNUP_LONG_TIER_LABEL}`)).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByText("$150.00").first()).toBeVisible();
+      await expect(page.getByText("$25.00/visit")).toBeVisible();
+      await page.waitForTimeout(700);
+
+      const { scrollW, innerW } = await measurePageOverflow(page);
+      expect(scrollW, `signup @${width}: scrolls sideways`).toBeLessThanOrEqual(innerW + 1);
+      expect(await findControlsOffTheSide(page), `signup @${width}`).toEqual([]);
+      expect(await findSilentlyClippedText(page), `signup @${width}`).toEqual([]);
+      if (width < 768) {
+        expect(await findControlsUnder44px(page), `signup @${width}`).toEqual([]);
+      }
+    });
+  }
 });

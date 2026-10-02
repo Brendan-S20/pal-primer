@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { invoiceEmailTaxData, taxShareCents } from "@/lib/sales-tax";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
@@ -535,7 +536,7 @@ async function autoSendScheduledInvoices(
       supabaseAdmin
         .from("invoices")
         .select(
-          "id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at",
+          "id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, period_start, period_end, public_token, send_after, sent_at",
         )
         .eq("organization_id", orgId)
         .eq("status", "open")
@@ -581,6 +582,7 @@ async function autoSendScheduledInvoices(
           invoiceUrl,
           periodLabel: period,
           reminder: false,
+          ...invoiceEmailTaxData(inv),
         },
         attachments: pdfAttachment,
       });
@@ -832,7 +834,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
     .select(
-      "id, client_id, total_cents, credit_applied_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)",
+      "id, client_id, total_cents, tax_cents, credit_applied_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)",
     )
     .eq("organization_id", orgId)
     // Only open invoices: drafts are unfinalized staff WIP and must never be
@@ -940,12 +942,14 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         paymentMethodId: c.default_payment_method_id,
         stripeAccount: acct.accountId,
         baseCents: dueCents,
+        // The sales tax inside what is due is not surcharged (processing-fee.ts).
+        taxCents: taxShareCents(dueCents, inv.tax_cents, inv.total_cents),
         config: await orgFeeConfig(supabaseAdmin, inv.organization_id),
       });
       const pi = await stripe.paymentIntents.create(
         {
           amount: quote.totalCents,
-          application_fee_amount: platformFeeCents(dueCents),
+          application_fee_amount: platformFeeCents(dueCents, inv),
           currency: inv.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,

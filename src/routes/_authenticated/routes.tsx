@@ -1536,7 +1536,15 @@ function RoutesPage() {
               <MobileDayList visits={visits} staff={staff} onOpen={setDetailVisitId} />
             </div>
 
-            <div className="max-md:hidden">
+            {/* `@container`, and the lane count below keys on IT rather than
+                on the viewport. Beside the map at 1280 the board gets about
+                3/5 of the content width (~570px), and `xl:grid-cols-4` — which
+                asked the WINDOW how wide it was — cut that into four 130px
+                lanes: names reduced to "U…" and "M…", the zone pill printed
+                over the visit window, status badges over the zone. A lane
+                needs roughly 220px to hold a card, so the count is chosen
+                from the width the board actually has (launch pass, 2026-10). */}
+            <div className="@container max-md:hidden">
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -1547,7 +1555,7 @@ function RoutesPage() {
                   className={
                     boardLayout === "rows"
                       ? "grid gap-4 grid-cols-1"
-                      : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                      : "grid gap-4 @md:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4"
                   }
                 >
                   <Column
@@ -2028,7 +2036,7 @@ function Column({
               {notRoutableHint ?? (
                 <>
                   Still holding work. Drag it to a tech, or turn on “Runs routes” for them in
-                  Settings → Team.
+                  Settings → Users &amp; roles.
                 </>
               )}
             </div>
@@ -2266,8 +2274,16 @@ function VisitCardView({
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {visit.zones?.name && (
-              <Badge variant="outline" className="h-4 px-1 text-3xs">
-                {visit.zones.name}
+              // `h-4` is a fixed 16px, so a zone name longer than the lane
+              // wrapped to three lines inside a one-line pill and printed
+              // over the status chip beside it. One line, ellipsis, full
+              // name on hover.
+              <Badge
+                variant="outline"
+                className="h-4 min-w-0 max-w-full px-1 text-3xs"
+                title={visit.zones.name}
+              >
+                <span className="truncate">{visit.zones.name}</span>
               </Badge>
             )}
             <StatusChip status={visit.status} className="h-4 px-1 text-3xs" />

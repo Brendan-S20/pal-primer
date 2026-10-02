@@ -39,6 +39,7 @@
     "src/routes/api/public/hooks/stripe.ts": "Stripe Connect webhook endpoint. Called by Stripe on tenant payment events.",
     "src/routes/api/public/hooks/twilio-voice.ts": "Twilio inbound-voice webhook.",
     "src/routes/api/public/hooks/twilio.ts": "Twilio inbound-SMS webhook.",
+    "src/routes/api/public/hooks/webhook-deliveries.ts": "pg_cron job 'deliver-webhooks', * * * * * \u2014 created by 20260929080000, and it only POSTs when the outbox has a delivery due.",
     "src/routes/api/public/hooks/weekly-digest.ts": "pg_cron job 'weekly-digest', 0 13 * * 1 \u2014 created by 20260731130000, verified in cron.job.",
     "src/routes/api/public/hooks/xero-callback.ts": "Xero OAuth redirect target.",
     "src/routes/api/public/invoice-pdf.ts": "A browser, from the 'Download PDF' link on the public pay page (src/routes/pay.i.$token.tsx), and from the office's Download PDF button in the native app, which opens it in the system browser sheet because a WKWebView cannot save a blob. The capability is invoices.public_token, the same as the pay page.",

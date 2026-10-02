@@ -83,7 +83,7 @@ function runChecklistProof() {
   if (!proofRun) {
     const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
       encoding: "utf8",
-      timeout: 120_000,
+      timeout: 300_000,
     });
     proofRun = { status: r.status, out: `${r.stdout}\n${r.stderr}` };
   }

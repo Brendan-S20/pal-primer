@@ -18,6 +18,7 @@ import { getPublicInvoice, createPublicInvoicePaymentIntent } from "@/lib/invoic
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { formatDay } from "@/lib/format";
 import { formatLineItemDescription } from "@/lib/invoice-labels";
+import { taxLineLabel } from "@/lib/sales-tax";
 import { isInvoiceOverdue, todayISO } from "@/lib/overdue";
 import { TipPicker, TipTotals, useTipSync } from "@/components/TipPicker";
 
@@ -272,6 +273,17 @@ function PublicPayPage() {
                   <span>Subtotal</span>
                   <span className="tabular-nums">
                     {fmtCents(invoice.subtotalCents, invoice.currency)}
+                  </span>
+                </div>
+              )}
+              {/* Sales tax, its own line and only when there is some. */}
+              {(invoice.taxCents ?? 0) > 0 && (
+                <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                  <span className="min-w-0">
+                    {taxLineLabel(invoice.taxLabel, invoice.taxRateBps)}
+                  </span>
+                  <span className="shrink-0 tabular-nums">
+                    {fmtCents(invoice.taxCents ?? 0, invoice.currency)}
                   </span>
                 </div>
               )}
