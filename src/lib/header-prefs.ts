@@ -78,6 +78,32 @@ export const DEFAULT_HEADER_PREFS: HeaderPrefs = {
   phoneNav: "bottom",
 };
 
+/**
+ * Which of the two optional header controls a role has AT ALL, before
+ * anybody's preference is consulted.
+ *
+ * A technician has neither. The owner, using the app as a tech on
+ * 2026-10-02: "it doesn't make sense to have the optional buttons for
+ * Knowledge Center and Weather; those should be hidden and not present in the
+ * settings." The Knowledge Center is written for whoever runs the business --
+ * pricing, billing, the Stripe account -- and the weather the dispatch board
+ * acts on is the office's to read; a tech's day already says when it rains by
+ * moving. So for a tech the buttons are not drawn, and Settings -> Preferences
+ * does not offer a switch for them: a toggle that changes nothing is worse
+ * than no toggle.
+ *
+ * While the role is still loading (`null`) both are off, so a tech's header
+ * never flashes them in and back out. Office roles get them a frame later,
+ * which the header's own preference load already does.
+ */
+export function headerControlsForRole(role: string | null | undefined): {
+  help: boolean;
+  weather: boolean;
+} {
+  const office = role === "owner" || role === "office_manager" || role === "dispatcher";
+  return { help: office, weather: office };
+}
+
 /** Fired when prefs change, so every header on the page re-reads them.
  *  Storage events do not fire in the tab that wrote the value. */
 export const HEADER_PREFS_EVENT = "hs:header-prefs-changed";

@@ -510,6 +510,55 @@ const en = {
   /** By `app_notifications.type`. The English is NOTIFICATION_TYPES' label in
    *  notifications-center.functions.ts, which the page also passes as the
    *  fallback; tests/en-and-es-have-the-same-keys.test.ts keeps them equal. */
+  dogs: {
+    named_one: "1 dog",
+    named_other: "{{count}} dogs",
+    countOnly_one: "1 dog · name not on file",
+    countOnly_other: "{{count}} dogs · names not on file",
+    none: "No dogs on file",
+  },
+  outline: {
+    heading: "Yard outline",
+    area_sqft: "{{value}} sq ft",
+    area_acres: "{{value}} acres",
+    open: "Open the yard outline on a map",
+    tapToOpen: "Tap to see it on the map",
+    none: "No yard outline yet",
+    loading: "Loading the map…",
+  },
+  stationsSummary: {
+    count_one: "1 waste station",
+    count_other: "{{count}} waste stations",
+    numbered: "Station {{number}}",
+    numberedLabel: "Station {{number}} · {{label}}",
+    unnamed: "Station",
+    lastServiced: "Last serviced {{day}}",
+    notYet: "Not serviced yet",
+    showAll: "Show all {{count}}",
+    showFewer: "Show fewer",
+  },
+  pay: {
+    autopay: "Autopay · card on file",
+    cashCheck: "Pays cash/check",
+    invoiced: "Invoiced",
+    due: "{{amount}} due",
+    waiting: "{{amount}} collected · waiting for the office",
+    collect: "Collected cash/check",
+    heading: "Record cash or a check",
+    method: "How they paid",
+    amount: "Amount",
+    cash: "Cash",
+    check: "Check",
+    checkNumber: "Check number (optional)",
+    save: "Save",
+    saving: "Saving…",
+    savedToast: "Recorded. The office will confirm it.",
+    queuedToast: "Saved on this phone. It reaches the office when you have signal.",
+    enterAmount: "Enter the amount you collected.",
+    moreThanDue: "That's more than the {{amount}} this customer owes.",
+    officeConfirms:
+      "The office confirms it and applies it to the customer's invoices. Invoices can't be marked paid from here.",
+  },
   notificationType: {
     concern: "Client concerns",
     payment_failed: "Failed client payments",
@@ -518,6 +567,7 @@ const en = {
     receptionist_escalation: "AI receptionist escalations",
     inbound_sms: "Texts needing a reply",
     teammate_joined: "Teammate joined",
+    field_collection: "Cash or checks collected in the field",
     webhook_disabled: "A webhook switched off after failing",
   },
   expense: {

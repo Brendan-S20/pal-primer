@@ -10,6 +10,14 @@ import {
 } from "@/lib/visit-checklist";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
+import {
+  lastServicedByStation,
+  stopFactsFromRow,
+  type StopFacts,
+  type StopFactsRow,
+} from "@/lib/stop-facts";
 
 export const getMyDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -72,15 +80,87 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, dogs(name, temperament)), zones(name), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(name, temperament), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
       .order("sequence", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);
 
-    return { staff: targetStaff, visits: visits ?? [], previewing };
+    return {
+      staff: targetStaff,
+      visits: await withStopFacts(supabase, visits ?? []),
+      previewing,
+    };
   });
+
+/**
+ * What the card needs that the visit's own row does not carry: the dog count
+ * the subscription is priced on, how the customer pays and what they owe
+ * (my_day_stop_facts -- a tech cannot read subscriptions, invoices or
+ * payments, and should not be able to), and when each waste station was last
+ * serviced, by the rule the office's stations panel uses.
+ *
+ * Neither is allowed to cost the tech their day. A failure here -- the
+ * function not yet on a database, a slow log query -- leaves `stop_facts`
+ * null and the stations without a date, and the card says less rather than
+ * the page saying nothing.
+ */
+async function withStopFacts<V extends { id: string; properties?: unknown }>(
+  supabase: SupabaseClient<Database>,
+  visits: V[],
+): Promise<(V & { stop_facts: StopFacts | null })[]> {
+  type Props = { waste_stations?: { id: string }[] | null } | null;
+  const propsOf = (v: V) => (v.properties ?? null) as Props;
+  const facts = new Map<string, StopFacts>();
+  if (visits.length) {
+    try {
+      const { data: rows, error } = await supabase.rpc("my_day_stop_facts", {
+        _visit_ids: visits.map((v) => v.id),
+      });
+      if (error) throw error;
+      for (const r of (rows ?? []) as StopFactsRow[]) facts.set(r.visit_id, stopFactsFromRow(r));
+    } catch (e) {
+      console.warn("my_day_stop_facts failed; the cards will omit dog counts and payment", e);
+    }
+  }
+
+  const stationIds = visits.flatMap((v) => (propsOf(v)?.waste_stations ?? []).map((s) => s.id));
+  let lastServiced: Record<string, string> = {};
+  if (stationIds.length) {
+    try {
+      const { data: logs, error } = await supabase
+        .from("station_service_logs")
+        .select("waste_station_id, serviced_at, visits(scheduled_on)")
+        .in("waste_station_id", stationIds)
+        .order("serviced_at", { ascending: false })
+        .limit(5000);
+      if (error) throw error;
+      lastServiced = lastServicedByStation(
+        (logs ?? []) as Parameters<typeof lastServicedByStation>[0],
+      );
+    } catch (e) {
+      console.warn("station last-serviced lookup failed", e);
+    }
+  }
+
+  return visits.map((v) => {
+    const p = propsOf(v);
+    return {
+      ...v,
+      stop_facts: facts.get(v.id) ?? null,
+      properties: p
+        ? {
+            ...p,
+            waste_stations: (p.waste_stations ?? []).map((s) => ({
+              ...s,
+              last_serviced_on: lastServiced[s.id] ?? null,
+            })),
+          }
+        : v.properties,
+    };
+  });
+}
 
 export const listMyDayFieldStaff = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

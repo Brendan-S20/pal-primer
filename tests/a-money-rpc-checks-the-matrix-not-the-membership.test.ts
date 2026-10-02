@@ -62,6 +62,11 @@ const MONEY_RPCS: Array<{ fn: string; permission: string; note?: string }> = [
   { fn: "void_invoice", permission: "manage_client_billing" },
   { fn: "void_addon_charge", permission: "manage_client_billing" },
   { fn: "set_addon_subscription_status", permission: "manage_client_billing" },
+  // A tech's cash, claimed against invoices. record_field_collection is NOT
+  // on this list on purpose: it is the tech's, it moves no money onto an
+  // invoice, and its gate is the visit being assigned to the caller.
+  { fn: "confirm_field_collection", permission: "manage_client_billing" },
+  { fn: "reject_field_collection", permission: "manage_client_billing" },
 ];
 
 /** is_org_member admits every role; can_write_org admits dispatchers. */

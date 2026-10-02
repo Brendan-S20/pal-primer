@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
+import { headerControlsForRole } from "@/lib/header-prefs";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
 import { isDemoOrganization } from "@/lib/demo-org";
@@ -288,6 +289,10 @@ function PricingBaselineCard() {
 function AppearanceCard() {
   const { prefs, setPref } = useHeaderPrefs();
   const { t } = useTranslation();
+  // A technician's header has no Help or Weather button at all, so there is
+  // nothing for these switches to switch -- see headerControlsForRole.
+  const { role } = useMyRole();
+  const roleControls = headerControlsForRole(role);
   return (
     <Card>
       <CardHeader>
@@ -319,31 +324,37 @@ function AppearanceCard() {
           <p className="pt-1.5 text-xs text-muted-foreground">{t("preferences.phoneMenuNote")}</p>
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-xs">{t("preferences.optionalButtons")}</Label>
-          <p className="pb-1 text-xs text-muted-foreground">
-            {t("preferences.optionalButtonsNote")}
-          </p>
-          {/* The label wraps the switch so the whole row is the hit area, and
+        {(roleControls.help || roleControls.weather) && (
+          <div className="space-y-1">
+            <Label className="text-xs">{t("preferences.optionalButtons")}</Label>
+            <p className="pb-1 text-xs text-muted-foreground">
+              {t("preferences.optionalButtonsNote")}
+            </p>
+            {/* The label wraps the switch so the whole row is the hit area, and
               min-h-11 makes that row legal at every width. A bare switch is a
               ~36px target with an unclickable label beside it. */}
-          <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
-            <span className="min-w-0 flex-1 text-sm">{t("preferences.knowledgeCenter")}</span>
-            <Switch
-              checked={prefs.showHelp}
-              onCheckedChange={(v) => setPref("showHelp", v)}
-              aria-label={t("preferences.knowledgeCenterAria")}
-            />
-          </label>
-          <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
-            <span className="min-w-0 flex-1 text-sm">{t("preferences.weather")}</span>
-            <Switch
-              checked={prefs.showWeather}
-              onCheckedChange={(v) => setPref("showWeather", v)}
-              aria-label={t("preferences.weatherAria")}
-            />
-          </label>
-        </div>
+            {roleControls.help && (
+              <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
+                <span className="min-w-0 flex-1 text-sm">{t("preferences.knowledgeCenter")}</span>
+                <Switch
+                  checked={prefs.showHelp}
+                  onCheckedChange={(v) => setPref("showHelp", v)}
+                  aria-label={t("preferences.knowledgeCenterAria")}
+                />
+              </label>
+            )}
+            {roleControls.weather && (
+              <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
+                <span className="min-w-0 flex-1 text-sm">{t("preferences.weather")}</span>
+                <Switch
+                  checked={prefs.showWeather}
+                  onCheckedChange={(v) => setPref("showWeather", v)}
+                  aria-label={t("preferences.weatherAria")}
+                />
+              </label>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

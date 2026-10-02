@@ -1731,6 +1731,95 @@ export type Database = {
           },
         ]
       }
+      field_collections: {
+        Row: {
+          amount_cents: number
+          applied_cents: number
+          applied_invoice_ids: string[]
+          client_id: string
+          client_key: string | null
+          collected_at: string
+          collected_by_staff_id: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by_user_id: string | null
+          decision_note: string | null
+          id: string
+          method: string
+          organization_id: string
+          reference: string | null
+          status: string
+          visit_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          applied_cents?: number
+          applied_invoice_ids?: string[]
+          client_id: string
+          client_key?: string | null
+          collected_at?: string
+          collected_by_staff_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          method: string
+          organization_id: string
+          reference?: string | null
+          status?: string
+          visit_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          applied_cents?: number
+          applied_invoice_ids?: string[]
+          client_id?: string
+          client_key?: string | null
+          collected_at?: string
+          collected_by_staff_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          method?: string
+          organization_id?: string
+          reference?: string | null
+          status?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_collections_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_collections_collected_by_staff_id_fkey"
+            columns: ["collected_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_collections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_collections_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       franchise_adjustments: {
         Row: {
           amount_cents: number
@@ -6769,6 +6858,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      confirm_field_collection: {
+        Args: { _collection_id: string; _invoice_ids?: string[] }
+        Returns: Json
+      }
       confirm_open_visit: {
         Args: {
           _completed: boolean
@@ -7080,6 +7173,18 @@ export type Database = {
           source_queue: string
         }
         Returns: number
+      }
+      my_day_stop_facts: {
+        Args: { _visit_ids: string[] }
+        Returns: {
+          autopay: boolean
+          awaiting_cents: number
+          card_on_file: boolean
+          dog_count: number
+          open_balance_cents: number
+          pays_cash_check: boolean
+          visit_id: string
+        }[]
       }
       next_station_number: { Args: { _property_id: string }; Returns: number }
       next_visit_date: {
@@ -7566,6 +7671,17 @@ export type Database = {
         Args: { _client_id: string; _source: string; _text: string }
         Returns: undefined
       }
+      record_field_collection: {
+        Args: {
+          _amount_cents: number
+          _client_key?: string
+          _collected_at?: string
+          _method: string
+          _reference?: string
+          _visit_id: string
+        }
+        Returns: string
+      }
       record_franchise_adjustment: {
         Args: {
           _amount_cents: number
@@ -7620,6 +7736,10 @@ export type Database = {
         }[]
       }
       regenerate_portal_token: { Args: { _client_id: string }; Returns: string }
+      reject_field_collection: {
+        Args: { _collection_id: string; _note?: string }
+        Returns: undefined
+      }
       renumber_property_stations: {
         Args: { _property_id: string }
         Returns: number

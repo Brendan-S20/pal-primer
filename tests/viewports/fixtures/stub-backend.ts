@@ -814,6 +814,9 @@ const BASE_STUBS: Record<string, Stub> = {
   listClientMessages: { messages: [], rows: [] },
   listAddonServices: { services: [], addons: [], rows: [] },
   listInvoices: fx.INVOICES,
+  // Cash and checks the techs recorded, waiting on /invoices -- see
+  // FIELD_COLLECTIONS for why each is awkward.
+  listFieldCollections: fx.FIELD_COLLECTIONS,
   // The full invoice page and its Refund dialog. See REFUND_INVOICE.
   getInvoice: fx.REFUND_INVOICE,
   getPaymentRefundQuote: fx.REFUND_QUOTE,
@@ -1038,6 +1041,7 @@ const BASE_STUBS: Record<string, Stub> = {
       { type: "receptionist_escalation", label: "AI receptionist escalations" },
       { type: "inbound_sms", label: "Texts needing a reply" },
       { type: "teammate_joined", label: "Teammate joined" },
+      { type: "field_collection", label: "Cash or checks collected in the field" },
     ],
   },
   // Live tracking ON, and the technician's scheduled stop today is the one
@@ -1097,9 +1101,12 @@ const BASE_STUBS: Record<string, Stub> = {
           ]
         : []),
     ]
-      .map((v) => ({
+      .map((v, i) => ({
         ...v,
         organization_id: fx.ORG_ID,
+        // How this customer pays and what they owe, as my_day_stop_facts
+        // would answer -- one stop per shape, see MY_DAY_STOP_EXTRAS.
+        stop_facts: fx.MY_DAY_STOP_EXTRAS[i % fx.MY_DAY_STOP_EXTRAS.length].stop_facts,
         started_at: v.status === "in_progress" ? startedAt : null,
         completed_at: null,
         skip_reason: null,
@@ -1128,7 +1135,8 @@ const BASE_STUBS: Record<string, Stub> = {
           slippery_surfaces: false,
           do_not_enter_if_dog_out: false,
           hazard_notes: "Loose paving slab by the back step",
-          dogs: [{ name: "Bartholomew", temperament: "friendly" }],
+          // Six named dogs and an outline, nine stations, or nothing on file.
+          ...fx.MY_DAY_STOP_EXTRAS[i % fx.MY_DAY_STOP_EXTRAS.length].property,
         },
         zones: { name: "Ravenswood Manor / Lincoln Square North" },
         visit_photos: [],
@@ -1136,6 +1144,9 @@ const BASE_STUBS: Record<string, Stub> = {
     return { staff: { ...fx.STAFF[0], organization_id: fx.ORG_ID }, visits, previewing: false };
   },
   listVisitsAwaitingCloseOut: { visits: [] },
+  // The commercial stop's Stations panel, prefetched by My Day: the same
+  // nine stations its card lists, none logged on this visit yet.
+  getVisitStations: fx.VISIT_STATIONS,
   // The time clock card at the top of My Day, drawn ON the clock with an
   // earlier shift today, which is the longer of its two second lines.
   getMyClock: fx.MY_CLOCK,
