@@ -43,6 +43,9 @@ export type QuotePdfModel = {
   }>;
   /** The customer's link, /q/{token}. Null for a draft, which has none. */
   acceptUrl: string | null;
+  /** Asked for on accepting; null for none. Optional so older callers and
+   *  tests that never set it draw exactly what they drew before. */
+  depositCents?: number | null;
 };
 
 const STATUS_WORD: Record<string, string> = {
@@ -217,6 +220,7 @@ export async function renderQuotePdf(
   if (totals.oneTimeCount > 0) rows.push(["One-time total", money(totals.oneTimeCents)]);
   if (totals.recurringCount > 0)
     rows.push([`Recurring, ${RECURRING_LABEL}`, money(totals.recurringCents)]);
+  if (m.depositCents != null) rows.push(["Deposit due on accepting", money(m.depositCents)]);
   const totalsWidth = 250;
   const tx = w.right - totalsWidth;
   w.ensure(rows.length * 20 + 20);
@@ -233,6 +237,16 @@ export async function renderQuotePdf(
       "The one-time total is charged once. The recurring price is charged on every visit.",
       { size: 8, color: MUTED, x: tx, width: totalsWidth, align: "right" },
     );
+  }
+  if (m.depositCents != null) {
+    w.y -= 2;
+    w.paragraph("The deposit is credited to your account and comes off your first invoices.", {
+      size: 8,
+      color: MUTED,
+      x: tx,
+      width: totalsWidth,
+      align: "right",
+    });
   }
 
   // ── The answer ─────────────────────────────────────────────────────────

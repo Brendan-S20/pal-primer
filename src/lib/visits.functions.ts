@@ -3,6 +3,7 @@ import type { RoadLegProblem } from "@/lib/road-legs.server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { measureDayFit } from "@/lib/route-day-fit";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -846,10 +847,66 @@ export const applyOptimize = createServerFn({ method: "POST" })
       .map(([staffId, v]) => ({ staffId, stops: v.stops, totalMin: Math.round(v.totalMin) }))
       .sort((a, b) => b.totalMin - a.totalMin);
 
+    // ── DOES WHAT WAS WRITTEN FIT THE DAY? ──────────────────────────────
+    //
+    // The planner never reads workday_end and treats capacity as a share,
+    // not a limit, so a day with more work than hours is planned anyway --
+    // the routing trials planned one technician to 02:51 the next morning
+    // and reported only "Routed 40 stops". Planning it is right; not saying
+    // so is not. Read back after the write, because the ETAs only exist then.
+    //
+    // Best effort, like the forecast: a failed read must never undo or block
+    // the routing the dispatcher asked for, so it degrades to null.
+    let fit: ReturnType<typeof measureDayFit> | null = null;
+    try {
+      const [{ data: org }, { data: crew }, { data: planned, error: plannedError }] =
+        await Promise.all([
+          supabase
+            .from("organizations")
+            .select("timezone, workday_end")
+            .eq("id", orgId)
+            .maybeSingle(),
+          supabase.from("staff").select("id, daily_capacity_minutes").in("id", data.staffIds),
+          supabase
+            .from("visits")
+            .select(
+              "assigned_staff_id, scheduled_on, eta_end, travel_min, properties(latitude, longitude, service_duration_min)",
+            )
+            .eq("organization_id", orgId)
+            .eq("status", "scheduled")
+            .gte("scheduled_on", data.from)
+            .lte("scheduled_on", data.to)
+            .in("assigned_staff_id", data.staffIds),
+        ]);
+      if (plannedError) throw plannedError;
+      fit = measureDayFit(
+        (planned ?? []).map((v) => ({
+          staffId: v.assigned_staff_id,
+          day: v.scheduled_on,
+          etaEnd: v.eta_end,
+          travelMin: v.travel_min == null ? null : Number(v.travel_min),
+          serviceMin: v.properties?.service_duration_min ?? null,
+          latitude: v.properties?.latitude ?? null,
+          longitude: v.properties?.longitude ?? null,
+        })),
+        {
+          timezone: org?.timezone || DEFAULT_ORG_TIMEZONE,
+          workdayEnd: org?.workday_end ?? null,
+          capacityByStaff: Object.fromEntries(
+            (crew ?? []).map((s) => [s.id, s.daily_capacity_minutes]),
+          ),
+        },
+      );
+    } catch (err) {
+      console.error("day-fit check failed", (err as Error).message);
+      fit = null;
+    }
+
     // `forecast` rides along with the three the screen already had. It is what
     // the removed Preview step used to put on the card, and it is the only
-    // route by which a window violation now reaches anybody.
-    return { stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays };
+    // route by which a window violation now reaches anybody. `fit` is the
+    // same kind of fact about hours: who finishes after the workday ends.
+    return { stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays, fit };
   });
 
 // assignRoute / optimizeRoute / optimizeWeek / reoptimizeAll were removed here.

@@ -74,7 +74,11 @@ describe("the planner collects it instead of discarding it", () => {
   });
 
   it("returns both lists to the caller", () => {
-    expect(VISITS).toMatch(/return \{ stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays \}/);
+    // CHANGED 2026-10-02: a seventh member, `fit` (who finishes after the
+    // workday ends), added by the routing trials. Both lists still named.
+    expect(VISITS).toMatch(
+      /return \{ stops, skipped, balance, forecast, estimatedDays, partlyEstimatedDays, fit \}/,
+    );
   });
 
   it("counts a thrown import as an outage rather than leaving it out", () => {

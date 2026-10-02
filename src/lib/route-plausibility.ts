@@ -13,6 +13,9 @@ import { DEFAULT_ORG_TIMEZONE, orgLocalDay, orgLocalMinutes } from "@/lib/org-da
 
 export const DEFAULT_MAX_DRIVE_MINUTES = 240;
 export const DEFAULT_WORKDAY_START_MINUTES = 8 * 60; // 08:00
+/** How far an arrival may sit "early" against its drive before it is a
+ *  fault: the planner rounds each leg to a whole minute. See below. */
+export const ETA_ROUNDING_TOLERANCE_MIN = 1;
 
 export type RouteVisit = {
   id: string;
@@ -109,8 +112,20 @@ export function findRouteWarnings(
       const sameDay = orgLocalDay(v.eta_start, tz) === v.scheduled_on;
       const elapsedSinceWorkdayStart =
         minutesIntoDay == null ? null : minutesIntoDay - workdayStart;
-      // Arrival implies less elapsed time than the drive alone requires.
-      if (sameDay && elapsedSinceWorkdayStart != null && elapsedSinceWorkdayStart < driveMin) {
+      // Arrival implies less elapsed time than the drive alone requires --
+      // by more than the planner's own rounding. The planner advances its
+      // clock by each leg rounded to a whole minute (`make_interval(mins =>
+      // drive::int)`), and stores the leg to one decimal, so a first stop
+      // whose 10.4-minute drive put it at 08:10 is exactly right, and was
+      // flagged "Re-optimize this route" on the board straight after
+      // optimizing: the routing trials found it on the first stop of about
+      // half of all freshly planned routes. A stale or invented ETA -- what
+      // this check is for -- misses by far more than a minute.
+      if (
+        sameDay &&
+        elapsedSinceWorkdayStart != null &&
+        elapsedSinceWorkdayStart < driveMin - ETA_ROUNDING_TOLERANCE_MIN
+      ) {
         warnings.push({
           visitId: v.id,
           clientName: name,
