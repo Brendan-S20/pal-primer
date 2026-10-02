@@ -52,6 +52,41 @@ describe("zonedTimeToUtc (workday anchoring)", () => {
     }
   });
 
+  // Found by the routing trials (scripts/routing-trials): the offset was read
+  // once, at the wall-clock time taken as UTC, which in US zones is hours
+  // before the real instant -- so on the two days a year the clocks change it
+  // read the offset from the wrong side of the 2 AM transition. The planner's
+  // `AT TIME ZONE` was right both days; this TypeScript twin was an hour off.
+  it("is right on the fall-back Sunday, when 08:00 is PST again", () => {
+    const inst = zonedTimeToUtc("2026-11-01", "08:00", "America/Los_Angeles");
+    expect(inst.toISOString()).toBe("2026-11-01T16:00:00.000Z");
+    expect(localHour(inst, "America/Los_Angeles")).toBe(8);
+  });
+
+  it("is right on the spring-forward Sunday, when 07:30 is already PDT", () => {
+    const inst = zonedTimeToUtc("2026-03-08", "07:30", "America/Los_Angeles");
+    expect(inst.toISOString()).toBe("2026-03-08T14:30:00.000Z");
+  });
+
+  it("is right in every US zone on both change days, Arizona and Hawaii included", () => {
+    for (const tz of [
+      "America/New_York",
+      "America/Chicago",
+      "America/Denver",
+      "America/Phoenix",
+      "America/Los_Angeles",
+      "America/Anchorage",
+      "Pacific/Honolulu",
+    ]) {
+      for (const day of ["2026-03-08", "2026-11-01"]) {
+        for (const at of ["06:00", "08:00", "12:00", "17:00"]) {
+          const inst = zonedTimeToUtc(day, at, tz);
+          expect(localHour(inst, tz), `${tz} ${day} ${at}`).toBe(Number(at.slice(0, 2)));
+        }
+      }
+    }
+  });
+
   it("handles the workday end too", () => {
     const inst = zonedTimeToUtc("2026-07-22", "17:00", "America/Chicago");
     expect(inst.toISOString()).toBe("2026-07-22T22:00:00.000Z");

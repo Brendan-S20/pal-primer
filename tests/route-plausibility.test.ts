@@ -156,6 +156,36 @@ describe("findRouteWarnings (finding #10)", () => {
     expect(flagged[0].reason).toBe("eta_inconsistent");
   });
 
+  it("does not flag a first stop the planner rounded to the minute", () => {
+    // What plan_visits writes for a first stop 10.4 minutes from the start:
+    // the clock moves by the leg rounded to a whole minute, so the arrival is
+    // 08:10 and travel_min is 10.4. Found by the routing trials on the first
+    // stop of about half of all freshly optimized routes, each carrying a
+    // "Re-optimize this route" warning that re-optimizing reproduces.
+    // travel_min is also stored to one decimal while the clock used the
+    // unrounded leg, so 13.46 is stored as 13.5 and driven as 13: same case.
+    for (const [drive, eta] of [
+      [10.4, "08:10"],
+      [13.5, "08:13"],
+      [0.6, "08:00"],
+    ] as const) {
+      const w = findRouteWarnings(
+        [
+          {
+            id: "first",
+            clientName: "First Stop",
+            travel_km: 5,
+            travel_min: drive,
+            eta_start: at("2026-07-08", eta),
+            scheduled_on: "2026-07-08",
+          },
+        ],
+        { timezone: TZ },
+      );
+      expect(w, `${drive} min drive, arriving ${eta}`).toHaveLength(0);
+    }
+  });
+
   it("exposes a sane default threshold", () => {
     expect(DEFAULT_MAX_DRIVE_MINUTES).toBe(240);
   });

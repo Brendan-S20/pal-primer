@@ -154,7 +154,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // webhook outbox on a transition -- webhook_emit_client, _visit,
     // _invoice, _payment, _quote and _lead. All seven carry their own REVOKE
     // from PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(47);
+    //
+    // 47 -> 48 on 2026-10-02 (20261002090200, the routing trials):
+    // tg_properties_coordinates_are_a_place, which stores 0,0 and an
+    // off-the-globe coordinate as NULL -- "no location" -- instead of a point
+    // in the Gulf of Guinea that refused a whole day's routing. It carries its
+    // own REVOKE from PUBLIC, anon and authenticated.
+    expect(triggerFunctions().size).toBe(48);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
