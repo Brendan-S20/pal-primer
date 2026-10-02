@@ -1012,8 +1012,8 @@ export interface FileRoutesByFullPath {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
-  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1147,8 +1147,8 @@ export interface FileRoutesByTo {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
-  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1291,8 +1291,8 @@ export interface FileRoutesById {
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
-  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1436,8 +1436,8 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
-    | '/api/public/invoice-pdf'
     | '/settings/webhooks'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1571,8 +1571,8 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
-    | '/api/public/invoice-pdf'
     | '/settings/webhooks'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1714,8 +1714,8 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
-    | '/api/public/invoice-pdf'
     | '/_authenticated/settings/webhooks'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
