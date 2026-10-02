@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
+import { Route as TwoStepRouteImport } from './routes/two-step'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PlatformRouteImport } from './routes/platform'
@@ -155,6 +156,11 @@ import { Route as PortalSlugTokenPayInvoiceIdRouteImport } from './routes/portal
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
   path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TwoStepRoute = TwoStepRouteImport.update({
+  id: '/two-step',
+  path: '/two-step',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignUpRoute = SignUpRouteImport.update({
@@ -921,6 +927,7 @@ export interface FileRoutesByFullPath {
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
+  '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
@@ -1012,8 +1019,8 @@ export interface FileRoutesByFullPath {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
-  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1063,6 +1070,7 @@ export interface FileRoutesByTo {
   '/no-workspace': typeof NoWorkspaceRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
+  '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
@@ -1147,8 +1155,8 @@ export interface FileRoutesByTo {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
-  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1200,6 +1208,7 @@ export interface FileRoutesById {
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
+  '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/ai-tools': typeof AuthenticatedAiToolsRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
@@ -1291,8 +1300,8 @@ export interface FileRoutesById {
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
-  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
@@ -1345,6 +1354,7 @@ export interface FileRouteTypes {
     | '/platform'
     | '/reset-password'
     | '/sign-up'
+    | '/two-step'
     | '/unsubscribe'
     | '/ai-tools'
     | '/analytics'
@@ -1436,8 +1446,8 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
-    | '/api/public/invoice-pdf'
     | '/settings/webhooks'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1487,6 +1497,7 @@ export interface FileRouteTypes {
     | '/no-workspace'
     | '/reset-password'
     | '/sign-up'
+    | '/two-step'
     | '/unsubscribe'
     | '/ai-tools'
     | '/analytics'
@@ -1571,8 +1582,8 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
-    | '/api/public/invoice-pdf'
     | '/settings/webhooks'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1623,6 +1634,7 @@ export interface FileRouteTypes {
     | '/platform'
     | '/reset-password'
     | '/sign-up'
+    | '/two-step'
     | '/unsubscribe'
     | '/_authenticated/ai-tools'
     | '/_authenticated/analytics'
@@ -1714,8 +1726,8 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
-    | '/api/public/invoice-pdf'
     | '/_authenticated/settings/webhooks'
+    | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
@@ -1768,6 +1780,7 @@ export interface RootRouteChildren {
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignUpRoute: typeof SignUpRoute
+  TwoStepRoute: typeof TwoStepRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailSuppressionRoute: typeof EmailSuppressionRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
@@ -1811,6 +1824,13 @@ declare module '@tanstack/react-router' {
       path: '/unsubscribe'
       fullPath: '/unsubscribe'
       preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/two-step': {
+      id: '/two-step'
+      path: '/two-step'
+      fullPath: '/two-step'
+      preLoaderRoute: typeof TwoStepRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sign-up': {
@@ -3117,6 +3137,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SignUpRoute: SignUpRoute,
+  TwoStepRoute: TwoStepRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EmailSuppressionRoute: EmailSuppressionRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
