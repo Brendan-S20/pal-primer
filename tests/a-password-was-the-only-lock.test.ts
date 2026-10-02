@@ -16,11 +16,15 @@
 //     BEFORE it loads the business, and /two-step only ever returns to a path
 //     on this site.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { safeNextPath } from "@/lib/mfa";
+
+// A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts),
+// so on a loaded runner one can take minutes without being hung.
+vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
 const MIG_DIR = join(ROOT, "supabase/migrations");

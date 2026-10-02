@@ -12,10 +12,14 @@
 // The pre-fix functions fail it at any hour (history never went to the
 // owner); the migration passes it.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+// A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts),
+// so on a loaded runner one can take minutes without being hung.
+vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
 const MIGRATION = join(
