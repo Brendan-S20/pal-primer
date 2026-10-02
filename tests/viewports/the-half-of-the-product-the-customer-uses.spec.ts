@@ -320,8 +320,10 @@ test.describe("the live map, which a customer opens from the on-my-way text", ()
    * Two proofs per state, as above: the 85-character business name proves
    * the fixture reached the page (without it the page says "This tracking
    * link isn't valid" and fits anywhere), and a per-state string proves this
-   * is that state. For the map state, the Leaflet container and its two
-   * drawn circles prove the MAP rendered, not the text fallback: tiles are
+   * is that state. For the map state, the map container, the 100 m ring and the
+   * two dots prove the MAP rendered, not the text fallback (the stub has no
+   * browser key, so this is useMapRenderer's keyless fallback: the ring is a
+   * drawn path, the dots are marker icons): tiles are
    * answered by the fence with a transparent PNG, so what is measured is the
    * map's box and its overlay, which is what can widen a page.
    */
@@ -346,18 +348,18 @@ test.describe("the live map, which a customer opens from the on-my-way text", ()
           await expect(page.getByText(s.proof).first()).toBeVisible({ timeout: 15_000 });
           if (s.state === "en_route") {
             await expect(page.locator(".leaflet-container")).toBeVisible({ timeout: 15_000 });
-            // The 100 m ring, the tech's dot and the property's dot.
-            await expect(page.locator(".leaflet-overlay-pane path")).toHaveCount(3, {
+            // The 100 m ring, then the tech's dot and the property's dot.
+            await expect(page.locator(".leaflet-overlay-pane path")).toHaveCount(1, {
               timeout: 15_000,
             });
+            await expect(page.locator(".leaflet-marker-icon")).toHaveCount(2, { timeout: 15_000 });
             await expect(page.getByText(/between 10:15 AM and 10:45 AM/)).toBeVisible();
             await expect(page.getByText(/Updated \d+ min ago|Updated just now/)).toBeVisible();
           }
           if (s.state === "en_route_unshared") {
             // Only the property: one dot, no ring.
-            await expect(page.locator(".leaflet-overlay-pane path")).toHaveCount(1, {
-              timeout: 15_000,
-            });
+            await expect(page.locator(".leaflet-marker-icon")).toHaveCount(1, { timeout: 15_000 });
+            await expect(page.locator(".leaflet-overlay-pane path")).toHaveCount(0);
           }
           if (!s.map) await expect(page.locator(".leaflet-container")).toHaveCount(0);
           await page.waitForTimeout(700);

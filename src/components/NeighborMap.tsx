@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { addBaseTiles } from "@/lib/map-tiles";
+import { useMapRenderer } from "@/lib/maps/use-map-renderer";
+import { OverlayGroup, US_VIEW } from "@/lib/maps/types";
 
 export type NeighborPin = {
   id: string;
@@ -21,8 +20,8 @@ const STATUS_COLOR: Record<NeighborPin["status"], string> = {
   not_interested: "#ef4444", // red
 };
 
-function pinIcon(color: string, seed: boolean) {
-  const html = `
+function pinHtml(color: string, seed: boolean) {
+  return `
     <div style="
       width: ${seed ? 22 : 16}px;
       height: ${seed ? 22 : 16}px;
@@ -33,12 +32,6 @@ function pinIcon(color: string, seed: boolean) {
       display:flex;align-items:center;justify-content:center;
       color:white;font-size:10px;font-weight:700;
     ">${seed ? "★" : ""}</div>`;
-  return L.divIcon({
-    html,
-    className: "neighbor-pin",
-    iconSize: [seed ? 22 : 16, seed ? 22 : 16],
-    iconAnchor: [seed ? 11 : 8, seed ? 11 : 8],
-  });
 }
 
 export function NeighborMap({
@@ -51,47 +44,49 @@ export function NeighborMap({
   onSelect?: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
+  // One map per mount; pins are redrawn on it, never a new map per change.
+  const map = useMapRenderer(containerRef, {
+    initialView: US_VIEW,
+    style: "street",
+    gestures: "map",
+  });
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, { zoomControl: true }).setView([39.5, -98.35], 4);
-    addBaseTiles(map);
-    layerRef.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      layerRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const layer = layerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
-
+    if (!map) return;
+    const layer = new OverlayGroup();
     const geo = pins.filter((p) => p.latitude != null && p.longitude != null);
     if (geo.length === 0) return;
 
     for (const p of geo) {
-      const marker = L.marker([p.latitude!, p.longitude!], {
-        icon: pinIcon(STATUS_COLOR[p.status], !!p.isSeed),
-      });
+      const color = STATUS_COLOR[p.status];
+      const size = p.isSeed ? 22 : 16;
+      // Escaped: an address is typed by whoever filled in the lead form.
       const label =
-        `<div style="font-weight:600">${p.address}</div>` +
-        (p.seedClientName ? `<div style="color:#64748b;font-size:11px">Seed: ${p.seedClientName}</div>` : "") +
-        `<div style="margin-top:4px;text-transform:capitalize;color:${STATUS_COLOR[p.status]};font-weight:600">${p.status.replace("_", " ")}</div>`;
-      marker.bindPopup(label);
-      if (onSelect) marker.on("click", () => onSelect(p.id));
-      marker.addTo(layer);
+        `<div style="font-weight:600">${escapeHtml(p.address)}</div>` +
+        (p.seedClientName
+          ? `<div style="color:#64748b;font-size:11px">Seed: ${escapeHtml(p.seedClientName)}</div>`
+          : "") +
+        `<div style="margin-top:4px;text-transform:capitalize;color:${color};font-weight:600">${p.status.replace("_", " ")}</div>`;
+      layer.add(
+        map.addMarker({
+          position: { lat: p.latitude!, lng: p.longitude! },
+          className: "neighbor-pin",
+          html: pinHtml(color, !!p.isSeed),
+          size: [size, size],
+          anchor: [size / 2, size / 2],
+          title: p.address,
+          popupHtml: label,
+          onClick: onSelect ? () => onSelect(p.id) : undefined,
+        }),
+      );
     }
 
-    const bounds = L.latLngBounds(geo.map((p) => [p.latitude!, p.longitude!] as [number, number]));
-    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
-  }, [pins, onSelect]);
+    map.fitBounds(
+      geo.map((p) => ({ lat: p.latitude!, lng: p.longitude! })),
+      { padding: 30, maxZoom: 17 },
+    );
+    return () => layer.clear();
+  }, [map, pins, onSelect]);
 
   return (
     <div className="isolate z-0 overflow-hidden rounded-lg border">
@@ -114,5 +109,12 @@ function Dot({ color }: { color: string }) {
       className="inline-block h-2.5 w-2.5 rounded-full"
       style={{ background: color, border: "1.5px solid white", boxShadow: "0 0 0 1px rgba(0,0,0,0.15)" }}
     />
+  );
+}
+
+function escapeHtml(s: string) {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
   );
 }

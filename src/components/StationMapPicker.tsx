@@ -1,18 +1,14 @@
 import { useEffect, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { addBaseTiles } from "@/lib/map-tiles";
+import { useMapRenderer } from "@/lib/maps/use-map-renderer";
+import { OverlayGroup, US_VIEW, type MarkerHandle } from "@/lib/maps/types";
 
 export type StationPoint = { lat: number; lng: number };
 
-// Continental US fallback when neither a marker nor a property location is
-// known (mirrors NeighborMap's default view).
-const US_CENTER: [number, number] = [39.5, -98.35];
-const US_ZOOM = 4;
+// With neither a marker nor a property location the maps open on US_VIEW,
+// the continental-US default every map shares.
 const PLACED_ZOOM = 19;
 
-function stationIcon() {
-  const html = `
+const STATION_PIN_HTML = `
     <div style="
       width: 18px;
       height: 18px;
@@ -21,16 +17,9 @@ function stationIcon() {
       border: 2px solid white;
       box-shadow: 0 1px 4px rgba(0,0,0,0.45);
     "></div>`;
-  return L.divIcon({
-    html,
-    className: "station-pin",
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-}
 
-function numberedStationIcon(label: string) {
-  const html = `
+function numberedStationHtml(label: string) {
+  return `
     <div style="
       min-width: 22px;
       height: 22px;
@@ -43,12 +32,6 @@ function numberedStationIcon(label: string) {
       font: 700 11px/18px system-ui, sans-serif;
       text-align: center;
     ">${label}</div>`;
-  return L.divIcon({
-    html,
-    className: "station-pin",
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-  });
 }
 
 export type OverviewStation = {
@@ -79,47 +62,45 @@ export function StationsOverviewMap({
   height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
   const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  });
+  const map = useMapRenderer(containerRef, {
+    initialView: center ? { center, zoom: 18 } : US_VIEW,
+    style: "satellite",
+    gestures: "page",
+    maxZoom: 22,
+  });
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, { zoomControl: true });
-    addBaseTiles(map, "satellite");
-    map.setView(US_CENTER, US_ZOOM);
-    layerRef.current = L.layerGroup().addTo(map);
-    requestAnimationFrame(() => map.invalidateSize());
-    mapRef.current = map;
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      layerRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const layer = layerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
+    if (!map) return;
+    const layer = new OverlayGroup();
     const placed = stations.filter((s) => s.latitude != null && s.longitude != null);
     for (const s of placed) {
       const title = s.station_number != null ? String(s.station_number) : "•";
-      const m = L.marker([Number(s.latitude), Number(s.longitude)], {
-        icon: numberedStationIcon(title),
-        title: s.label ?? `Station ${title}`,
-      }).addTo(layer);
-      m.on("click", () => onSelectRef.current?.(s.id));
+      layer.add(
+        map.addMarker({
+          position: { lat: Number(s.latitude), lng: Number(s.longitude) },
+          className: "station-pin",
+          html: numberedStationHtml(title),
+          size: [22, 22],
+          anchor: [11, 11],
+          title: s.label ?? `Station ${title}`,
+          onClick: () => onSelectRef.current?.(s.id),
+        }),
+      );
     }
     if (placed.length > 0) {
-      const bounds = L.latLngBounds(placed.map((s) => [Number(s.latitude), Number(s.longitude)] as [number, number]));
-      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 19 });
+      map.fitBounds(
+        placed.map((s) => ({ lat: Number(s.latitude), lng: Number(s.longitude) })),
+        { padding: 30, maxZoom: 19 },
+      );
     } else if (center) {
-      map.setView([center.lat, center.lng], 18);
+      map.setView(center, 18);
     }
-  }, [stations, center?.lat, center?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => layer.clear();
+  }, [map, stations, center?.lat, center?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -150,72 +131,75 @@ export function StationMapPicker({
   height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const markerRef = useRef<MarkerHandle | null>(null);
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  // Captured once so a late-arriving center doesn't yank the view around
-  // mid-edit; recentering on property change is handled by the effect below.
-  const initialViewRef = useRef<{ point: StationPoint | null; center: StationPoint | null }>({
-    point: value,
-    center: center ?? null,
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  // Where the map opens. Read when the map is created (which waits for the
+  // container to be on screen), so a property location that arrived in the
+  // meantime is used; later changes are handled by the effects below rather
+  // than by yanking the view mid-edit.
+  const map = useMapRenderer(containerRef, {
+    initialView: value
+      ? { center: value, zoom: PLACED_ZOOM }
+      : center
+        ? { center, zoom: 18 }
+        : US_VIEW,
+    style: "satellite",
+    gestures: "map",
+    maxZoom: 22,
   });
 
+  // Click (or tap) places the marker.
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, { zoomControl: true });
-    addBaseTiles(map, "satellite");
-
-    const { point, center: c } = initialViewRef.current;
-    if (point) map.setView([point.lat, point.lng], PLACED_ZOOM);
-    else if (c) map.setView([c.lat, c.lng], 18);
-    else map.setView(US_CENTER, US_ZOOM);
-
-    map.on("click", (e: L.LeafletMouseEvent) => {
-      onChangeRef.current({ lat: e.latlng.lat, lng: e.latlng.lng });
-    });
-    requestAnimationFrame(() => map.invalidateSize());
-    mapRef.current = map;
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      markerRef.current = null;
-    };
-  }, []);
+    if (!map) return;
+    return map.onMapClick((p) => onChangeRef.current({ lat: p.lat, lng: p.lng }));
+  }, [map]);
 
   // Keep the (single, draggable) marker in sync with value.
   useEffect(() => {
-    const map = mapRef.current;
     if (!map) return;
     if (!value) {
       markerRef.current?.remove();
       markerRef.current = null;
       return;
     }
-    const pos = L.latLng(value.lat, value.lng);
     if (markerRef.current) {
-      markerRef.current.setLatLng(pos);
+      markerRef.current.setPosition(value);
     } else {
-      const m = L.marker(pos, { icon: stationIcon(), draggable: true }).addTo(map);
-      m.on("dragend", () => {
-        const p = m.getLatLng();
-        onChangeRef.current({ lat: p.lat, lng: p.lng });
+      markerRef.current = map.addMarker({
+        position: value,
+        className: "station-pin",
+        html: STATION_PIN_HTML,
+        size: [18, 18],
+        anchor: [9, 9],
+        title: "Station location (drag to adjust)",
+        draggable: true,
+        onDragEnd: (p) => onChangeRef.current({ lat: p.lat, lng: p.lng }),
       });
-      markerRef.current = m;
     }
     // Editing a station elsewhere (or a far first placement): bring it in view.
-    if (!map.getBounds().contains(pos)) map.setView(pos, Math.max(map.getZoom(), 17));
-  }, [value]);
+    if (!map.isInView(value)) map.setView(value, Math.max(map.getZoom(), 17));
+  }, [map, value]);
+
+  // The marker belongs to this map; drop the handle with it.
+  useEffect(() => {
+    if (!map) return;
+    return () => {
+      markerRef.current?.remove();
+      markerRef.current = null;
+    };
+  }, [map]);
 
   // Recenter when the caller's suggested center changes (e.g. a different
   // property is selected) and no marker has been placed yet.
   useEffect(() => {
-    const map = mapRef.current;
     if (!map || value || !center) return;
-    map.setView([center.lat, center.lng], 18);
-  }, [center?.lat, center?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+    map.setView(center, 18);
+  }, [map, center?.lat, center?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // isolate: Leaflet panes use z-index 400+; without a contained stacking
+  // isolate: map panes use z-index 400+; without a contained stacking
   // context they paint over dropdowns and popovers.
   return (
     <div
