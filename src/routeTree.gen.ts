@@ -21,6 +21,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
+import { Route as TrackTokenRouteImport } from './routes/track.$token'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as QTokenRouteImport } from './routes/q.$token'
@@ -209,6 +210,11 @@ const PlatformIndexRoute = PlatformIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => PlatformRoute,
+} as any)
+const TrackTokenRoute = TrackTokenRouteImport.update({
+  id: '/track/$token',
+  path: '/track/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const SignupSuccessRoute = SignupSuccessRouteImport.update({
   id: '/signup/success',
@@ -972,6 +978,7 @@ export interface FileRoutesByFullPath {
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
+  '/track/$token': typeof TrackTokenRoute
   '/platform/': typeof PlatformIndexRoute
   '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
@@ -1106,6 +1113,7 @@ export interface FileRoutesByTo {
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
+  '/track/$token': typeof TrackTokenRoute
   '/platform': typeof PlatformIndexRoute
   '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
@@ -1249,6 +1257,7 @@ export interface FileRoutesById {
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
+  '/track/$token': typeof TrackTokenRoute
   '/platform/': typeof PlatformIndexRoute
   '/_authenticated/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
@@ -1393,6 +1402,7 @@ export interface FileRouteTypes {
     | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
+    | '/track/$token'
     | '/platform/'
     | '/campaigns/$campaignId'
     | '/campaigns/new'
@@ -1527,6 +1537,7 @@ export interface FileRouteTypes {
     | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
+    | '/track/$token'
     | '/platform'
     | '/campaigns/$campaignId'
     | '/campaigns/new'
@@ -1669,6 +1680,7 @@ export interface FileRouteTypes {
     | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
+    | '/track/$token'
     | '/platform/'
     | '/_authenticated/campaigns/$campaignId'
     | '/_authenticated/campaigns/new'
@@ -1768,6 +1780,7 @@ export interface RootRouteChildren {
   QTokenRoute: typeof QTokenRoute
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
+  TrackTokenRoute: typeof TrackTokenRoute
   ApiPublicInvoicePdfRoute: typeof ApiPublicInvoicePdfRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
   ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
@@ -1876,6 +1889,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform/'
       preLoaderRoute: typeof PlatformIndexRouteImport
       parentRoute: typeof PlatformRoute
+    }
+    '/track/$token': {
+      id: '/track/$token'
+      path: '/track/$token'
+      fullPath: '/track/$token'
+      preLoaderRoute: typeof TrackTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/signup/success': {
       id: '/signup/success'
@@ -3109,6 +3129,7 @@ const rootRouteChildren: RootRouteChildren = {
   QTokenRoute: QTokenRoute,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
+  TrackTokenRoute: TrackTokenRoute,
   ApiPublicInvoicePdfRoute: ApiPublicInvoicePdfRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
   ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
