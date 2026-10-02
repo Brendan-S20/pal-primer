@@ -687,6 +687,10 @@ const onboardSchema = z.object({
   city: z.string().min(1).max(120),
   region: z.string().max(120).optional(),
   postalCode: z.string().min(1).max(20),
+  // The pin the wizard already has: the address picker's match, or the Yard
+  // step's lookup that the boundary was drawn on. See the handler.
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   gateCode: z.string().max(60).optional(),
   yardSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
   hazardNotes: z.string().max(1000).optional(),
@@ -822,19 +826,33 @@ export const onboardClient = createServerFn({ method: "POST" })
     };
 
     // 2) property (best-effort geocode)
-    let latitude: number | null = null;
-    let longitude: number | null = null;
-    try {
-      const { geocodeAddress } = await import("./geocode.server");
-      const geo = await geocodeAddress({
-        street: data.street,
-        city: data.city,
-        region: data.region,
-        postal_code: data.postalCode,
-      });
-      latitude = geo?.latitude ?? null;
-      longitude = geo?.longitude ?? null;
-    } catch {}
+    //
+    // The wizard's own pin wins. It is the address picker's match -- Google
+    // Places, house-level, when the key is configured -- or the point the
+    // Yard step showed and the boundary was drawn on. This used to throw it
+    // away and ask Nominatim again, which on 2026-08-26 matched a house for
+    // two of six ordinary US addresses and missed two entirely: so the most
+    // common way to add a customer could store a street centroid, or NO
+    // location, for an address the screen had just pinned exactly. The
+    // routing trials showed what a stop with no location costs a route.
+    // createProperty / updateProperty already prefer provider coordinates;
+    // this is the same rule on the path most customers arrive by.
+    const pinned = data.latitude != null && data.longitude != null;
+    let latitude: number | null = pinned ? data.latitude! : null;
+    let longitude: number | null = pinned ? data.longitude! : null;
+    if (!pinned) {
+      try {
+        const { geocodeAddress } = await import("./geocode.server");
+        const geo = await geocodeAddress({
+          street: data.street,
+          city: data.city,
+          region: data.region,
+          postal_code: data.postalCode,
+        });
+        latitude = geo?.latitude ?? null;
+        longitude = geo?.longitude ?? null;
+      } catch {}
+    }
 
     // Zone detection must run on EVERY property creation path, not just the
     // client-detail drawer (QA follow-up 1.1: wizard-created properties had

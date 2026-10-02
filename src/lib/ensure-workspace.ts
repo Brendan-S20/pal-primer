@@ -80,6 +80,14 @@ export async function ensureBootstrapped(
   user: BootstrapUser,
   overrides: BootstrapOverrides = {},
 ): Promise<boolean | typeof NEEDS_ORG_NAME> {
+  // Two-step sign-in first. Until the code is entered the database hides this
+  // person's roles (public.mfa_satisfied), so the lookup below would find
+  // none and go on to build an owner who already has a business a SECOND
+  // one. Nothing here is decided before the second step; the shell sends
+  // them to /two-step, and an existing account needs no bootstrapping.
+  const { needsSecondStep } = await import("@/lib/mfa");
+  if (await needsSecondStep()) return false;
+
   const { data: existing } = await supabase
     .from("user_roles")
     .select("role")

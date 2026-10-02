@@ -859,7 +859,8 @@ BEGIN
   END LOOP;
 
   IF has_table_privilege('authenticated', 'public.webhook_endpoint_secrets', 'SELECT')
-     OR EXISTS (SELECT 1 FROM pg_policy WHERE polrelid = 'public.webhook_endpoint_secrets'::regclass) THEN
+     OR EXISTS (SELECT 1 FROM pg_policy WHERE polrelid = 'public.webhook_endpoint_secrets'::regclass
+                   AND polpermissive) THEN
     RAISE EXCEPTION 'webhook_endpoint_secrets is readable by authenticated or has a policy; it must be deny-all';
   END IF;
   IF has_table_privilege('authenticated', 'public.webhook_endpoints', 'INSERT')

@@ -28,7 +28,7 @@ export function zonedTimeToUtc(dateISO: string, timeHHMM: string, timeZone: stri
   const [y, mo, d] = dateISO.split("-").map(Number);
   const [hh, mm] = timeHHMM.split(":").map(Number);
   const asUtcMs = Date.UTC(y, mo - 1, d, hh, mm, 0);
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
     month: "2-digit",
@@ -37,13 +37,30 @@ export function zonedTimeToUtc(dateISO: string, timeHHMM: string, timeZone: stri
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).formatToParts(new Date(asUtcMs));
-  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
-  let zh = get("hour");
-  if (zh === 24) zh = 0; // some engines emit "24" for midnight
-  const zonedAsUtcMs = Date.UTC(get("year"), get("month") - 1, get("day"), zh, get("minute"), get("second"));
-  const offsetMs = zonedAsUtcMs - asUtcMs;
-  return new Date(asUtcMs - offsetMs);
+  });
+  /** The zone's offset from UTC at an instant, in ms. */
+  const offsetAt = (ms: number) => {
+    const parts = fmt.formatToParts(new Date(ms));
+    const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+    let zh = get("hour");
+    if (zh === 24) zh = 0; // some engines emit "24" for midnight
+    return (
+      Date.UTC(get("year"), get("month") - 1, get("day"), zh, get("minute"), get("second")) - ms
+    );
+  };
+  // ── TWO PASSES, BECAUSE THE FIRST GUESS IS READ AT THE WRONG INSTANT ──
+  //
+  // The offset used to be read once, at the wall-clock time taken AS IF it
+  // were UTC. In US zones that instant is 4-10 hours before the real one, so
+  // on the two days a year the clocks change, a 2 AM transition falls between
+  // them and the offset read is the one from before it. Measured by the
+  // routing trials: 08:00 on the fall-back Sunday in Los Angeles came out as
+  // 15:00Z (08:00 PDT, an hour that no longer exists that morning) instead of
+  // 16:00Z (08:00 PST), and 07:30 on the spring-forward Sunday as 15:30Z
+  // instead of 14:30Z. Postgres' `AT TIME ZONE` -- the contract this mirrors --
+  // gets both right. Re-reading the offset at the corrected instant does too.
+  const first = asUtcMs - offsetAt(asUtcMs);
+  return new Date(asUtcMs - offsetAt(first));
 }
 
 /** The instant at which the workday starts on a given day, in the org tz. */
