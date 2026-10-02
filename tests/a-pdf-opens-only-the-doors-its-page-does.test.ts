@@ -20,6 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 vi.mock("@/lib/impersonation-session.server", () => ({
   assertImpersonationSessionActive: async () => {},
@@ -408,7 +409,9 @@ describe("the entry points", () => {
         const p = join(dir, e.name);
         if (e.isDirectory()) walk(p);
         else if (/\.tsx?$/.test(e.name) && /from\s+["']pdf-lib["']/.test(readFileSync(p, "utf8")))
-          offenders.push(p.slice(root.length + 1));
+          // Forward slashes on every OS: `allowed` is written that way, and on
+          // Windows join() hands back backslashes (windows-probe, 2026-10-02).
+          offenders.push(repoRelative(p, root));
       }
     };
     walk(join(root, "src"));

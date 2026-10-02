@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { repoRelative } from "./support/repo-paths";
 
 // ── requirePortalSession, run for real ──────────────────────────────────────
 
@@ -149,7 +150,7 @@ function portalHandlers() {
     for (const part of parts) {
       const m = /^(\w+) = createServerFn\(\{ method: "(GET|POST)" \}\)/.exec(part);
       if (!m || !part.includes("requirePortalSession(")) continue;
-      out.push({ file: file.slice(ROOT.length + 1), name: m[1], method: m[2], body: part });
+      out.push({ file: repoRelative(file, ROOT), name: m[1], method: m[2], body: part });
     }
   }
   return out;
