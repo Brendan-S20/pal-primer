@@ -2394,14 +2394,9 @@ function VisitCard({
                     already looks for the occasional thing. Always 44px -- this
                     is the phone's button, and an iPad is a phone for a thumb. */}
                 {onLogExpense && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-11 px-4"
-                    onClick={onLogExpense}
-                  >
+                  <Button size="sm" variant="outline" className="h-11 px-4" onClick={onLogExpense}>
                     <ReceiptText className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    Log an expense
+                    {t("expense.logAnExpense")}
                   </Button>
                 )}
               </div>

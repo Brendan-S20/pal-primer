@@ -41,6 +41,7 @@ import {
 } from "@/lib/expenses";
 import { logExpenseOrQueue } from "@/lib/offline/expense-actions";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { useTranslation } from "react-i18next";
 
 export function LogExpenseSheet({
   open,
@@ -55,6 +56,7 @@ export function LogExpenseSheet({
   staffId: string | null | undefined;
 }) {
   const qc = useQueryClient();
+  const { t } = useTranslation();
   const today = useOrgToday();
   const sendFn = useServerFn(createExpense);
   const settingsFn = useServerFn(getExpenseSettings);
@@ -118,18 +120,16 @@ export function LogExpenseSheet({
         },
       });
       if (res.queued) {
-        toast.success("Expense saved on this phone", {
-          description: receipt
-            ? "It and the receipt will sync when you have signal."
-            : "It will sync when you have signal.",
+        toast.success(t("expense.savedOnPhone"), {
+          description: receipt ? t("expense.syncsWithReceipt") : t("expense.syncs"),
         });
       } else {
-        toast.success("Expense logged");
+        toast.success(t("expense.logged"));
         qc.invalidateQueries({ queryKey: ["expenses"] });
       }
       onOpenChange(false);
     } catch (e) {
-      toast.error((e as Error).message || "Could not log the expense");
+      toast.error((e as Error).message || t("expense.couldNotLog"));
     } finally {
       setSaving(false);
     }
@@ -148,17 +148,12 @@ export function LogExpenseSheet({
         aria-describedby="log-expense-desc"
       >
         <SheetHeader className="pr-10 text-left">
-          <SheetTitle>Log an expense</SheetTitle>
-          <SheetDescription id="log-expense-desc">
-            Fuel, a dump fee, bags. Saved on the phone if there is no signal.
-          </SheetDescription>
+          <SheetTitle>{t("expense.logAnExpense")}</SheetTitle>
+          <SheetDescription id="log-expense-desc">{t("expense.sheetDescription")}</SheetDescription>
         </SheetHeader>
 
         {noStaff ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Your account has no team profile yet, so there is nobody to file the expense under. Ask
-            the office to add you on Settings, Users.
-          </p>
+          <p className="mt-4 text-sm text-muted-foreground">{t("expense.noStaff")}</p>
         ) : (
           <form
             className="mt-4 space-y-4"
@@ -168,7 +163,7 @@ export function LogExpenseSheet({
             }}
           >
             <fieldset>
-              <legend className="mb-2 text-sm font-medium">What was it?</legend>
+              <legend className="mb-2 text-sm font-medium">{t("expense.whatWasIt")}</legend>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {EXPENSE_CATEGORIES.map((c) => (
                   <Button
@@ -179,7 +174,7 @@ export function LogExpenseSheet({
                     className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-1 text-sm leading-tight"
                     onClick={() => setCategory(c)}
                   >
-                    {EXPENSE_CATEGORY_LABELS[c]}
+                    {t(`expenseCategory.${c}`, { defaultValue: EXPENSE_CATEGORY_LABELS[c] })}
                   </Button>
                 ))}
               </div>
@@ -188,7 +183,7 @@ export function LogExpenseSheet({
             <div className="grid gap-3 sm:grid-cols-2">
               {mileage ? (
                 <div className="min-w-0">
-                  <Label htmlFor="expense-miles">Miles</Label>
+                  <Label htmlFor="expense-miles">{t("expense.miles")}</Label>
                   <Input
                     id="expense-miles"
                     inputMode="decimal"
@@ -200,14 +195,17 @@ export function LogExpenseSheet({
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
                     {preview != null
-                      ? `${formatExpenseCents(preview)} at ${formatRate(rate)}`
-                      : `Priced at ${formatRate(rate)}`}
-                    {!rateKnown && " (your rate is applied when it syncs)"}
+                      ? t("expense.mileagePreview", {
+                          amount: formatExpenseCents(preview),
+                          rate: formatRate(rate),
+                        })
+                      : t("expense.pricedAt", { rate: formatRate(rate) })}
+                    {!rateKnown && t("expense.rateOnSync")}
                   </p>
                 </div>
               ) : (
                 <div className="min-w-0">
-                  <Label htmlFor="expense-amount">Amount</Label>
+                  <Label htmlFor="expense-amount">{t("expense.amount")}</Label>
                   <Input
                     id="expense-amount"
                     inputMode="decimal"
@@ -220,7 +218,7 @@ export function LogExpenseSheet({
                 </div>
               )}
               <div className="min-w-0">
-                <Label htmlFor="expense-date">Date</Label>
+                <Label htmlFor="expense-date">{t("expense.date")}</Label>
                 <Input
                   id="expense-date"
                   type="date"
@@ -234,15 +232,13 @@ export function LogExpenseSheet({
 
             <div>
               <Label htmlFor="expense-vendor">
-                {mileage ? "Trip" : "Where"}{" "}
-                <span className="font-normal text-muted-foreground">(optional)</span>
+                {mileage ? t("expense.trip") : t("expense.where")}{" "}
+                <span className="font-normal text-muted-foreground">{t("expense.optional")}</span>
               </Label>
               <Input
                 id="expense-vendor"
                 maxLength={120}
-                placeholder={
-                  mileage ? "Yard to the Elm St route" : "Shell, County transfer station"
-                }
+                placeholder={mileage ? t("expense.tripPlaceholder") : t("expense.wherePlaceholder")}
                 value={vendor}
                 onChange={(e) => setVendor(e.target.value)}
                 className="mt-1 h-11"
@@ -251,7 +247,8 @@ export function LogExpenseSheet({
 
             <div>
               <span className="text-sm font-medium">
-                Receipt <span className="font-normal text-muted-foreground">(optional)</span>
+                {t("expense.receipt")}{" "}
+                <span className="font-normal text-muted-foreground">{t("expense.optional")}</span>
               </span>
               <input
                 ref={fileInput}
@@ -276,7 +273,7 @@ export function LogExpenseSheet({
                     variant="ghost"
                     size="icon"
                     className="h-11 w-11 shrink-0"
-                    aria-label="Remove the receipt"
+                    aria-label={t("expense.removeReceipt")}
                     onClick={() => setReceipt(null)}
                   >
                     <X className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -290,14 +287,15 @@ export function LogExpenseSheet({
                   onClick={() => fileInput.current?.click()}
                 >
                   <Camera className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  Take a photo of the receipt
+                  {t("expense.takeReceiptPhoto")}
                 </Button>
               )}
             </div>
 
             <div>
               <Label htmlFor="expense-note">
-                Note <span className="font-normal text-muted-foreground">(optional)</span>
+                {t("expense.note")}{" "}
+                <span className="font-normal text-muted-foreground">{t("expense.optional")}</span>
               </Label>
               <Textarea
                 id="expense-note"
@@ -310,7 +308,7 @@ export function LogExpenseSheet({
             </div>
 
             <Button type="submit" className="h-11 w-full" disabled={!valid || saving}>
-              {saving ? "Saving…" : "Save expense"}
+              {saving ? t("expense.saving") : t("expense.save")}
             </Button>
           </form>
         )}
