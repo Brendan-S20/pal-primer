@@ -91,6 +91,7 @@ import {
   TriangleAlert,
   Ban,
   ShieldCheck,
+  ReceiptText,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
@@ -119,6 +120,8 @@ import {
   YardOutline,
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
+import { createExpense } from "@/lib/expenses.functions";
+import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
@@ -264,8 +267,12 @@ function MyDay() {
   // as a new mount and replays the queue again.
   const tRef = useRef(t);
   tRef.current = t;
-  const { role } = useMyRole();
+  const { role, orgId } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
+  // One "Log an expense" sheet for the page, opened from any card's More
+  // options. Never while previewing somebody else's day: the expense would
+  // be the viewer's own, filed from a screen that says it is not theirs.
+  const [expenseOpen, setExpenseOpen] = useState(false);
 
   // This page has two layers that have to get out of the tab bar's way: the
   // scroll container's bottom padding, and the NEXT UP bar that parks directly
@@ -342,6 +349,8 @@ function MyDay() {
   const clockOutFn = useServerFn(clockOut);
   // Cash or a check taken at a stop rides the same queue.
   const collectionFn = useServerFn(recordFieldCollection);
+  // And an expense logged from the field, with its receipt.
+  const expenseFn = useServerFn(createExpense);
   const callers = useMemo(
     () => ({
       startVisit: startFn,
@@ -352,8 +361,19 @@ function MyDay() {
       clockIn: clockInFn,
       clockOut: clockOutFn,
       recordFieldCollection: collectionFn,
+      createExpense: expenseFn,
     }),
-    [startFn, completeFn, skipFn, photoFn, stationFn, clockInFn, clockOutFn, collectionFn],
+    [
+      startFn,
+      completeFn,
+      skipFn,
+      photoFn,
+      stationFn,
+      clockInFn,
+      clockOutFn,
+      collectionFn,
+      expenseFn,
+    ],
   );
 
   // Client names for the two messages that ask a tech to go back and redo
@@ -921,11 +941,27 @@ function MyDay() {
         ) : (
           <ol className="space-y-3">
             {visits.map((v: any, idx: number) => (
-              <VisitCard key={v.id} visit={v} index={idx + 1} day={day} preview={previewing} />
+              <VisitCard
+                key={v.id}
+                visit={v}
+                index={idx + 1}
+                day={day}
+                preview={previewing}
+                onLogExpense={previewing ? undefined : () => setExpenseOpen(true)}
+              />
             ))}
           </ol>
         )}
       </div>
+
+      {!previewing && (
+        <LogExpenseSheet
+          open={expenseOpen}
+          onOpenChange={setExpenseOpen}
+          organizationId={orgId}
+          staffId={staff?.id ?? null}
+        />
+      )}
 
       {/* Sticky bottom "Next up" action bar. Wherever the MobileTabBar is on
           screen this sits directly on top of it (the bar is 3.5rem + safe-area
@@ -1425,11 +1461,14 @@ function VisitCard({
   index,
   day,
   preview = false,
+  onLogExpense,
 }: {
   visit: any;
   index: number;
   day: string;
   preview?: boolean;
+  /** Opens the page's one "Log an expense" sheet. Absent while previewing. */
+  onLogExpense?: () => void;
 }) {
   const qc = useQueryClient();
   const { t } = useTranslation();
@@ -2444,6 +2483,16 @@ function VisitCard({
                 >
                   {t("visit.sendOnMyWay")}
                 </Button>
+                {/* Not about this stop: the dump fee or the tank of fuel
+                    between stops. Here because More options is where a tech
+                    already looks for the occasional thing. Always 44px -- this
+                    is the phone's button, and an iPad is a phone for a thumb. */}
+                {onLogExpense && (
+                  <Button size="sm" variant="outline" className="h-11 px-4" onClick={onLogExpense}>
+                    <ReceiptText className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    {t("expense.logAnExpense")}
+                  </Button>
+                )}
               </div>
             </div>
           )}

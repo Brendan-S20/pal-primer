@@ -13,7 +13,9 @@ import {
   getPhoto,
   listPending,
   type PendingAction,
+  type QueuedExpenseFields,
 } from "./queue";
+import { receiptPath } from "@/lib/expenses";
 
 export interface SyncCallers {
   startVisit: (args: { data: { visitId: string; startedAt?: string } }) => Promise<unknown>;
@@ -58,6 +60,14 @@ export interface SyncCallers {
    *  it, as complete_visit does with `completedAt`. */
   clockIn: (args: { data: { at?: string } }) => Promise<unknown>;
   clockOut: (args: { data: { at?: string } }) => Promise<unknown>;
+  /** An expense from My Day. Idempotent on `id`: see createExpense. */
+  createExpense: (args: {
+    data: {
+      id: string;
+      mine: true;
+      fields: QueuedExpenseFields & { receiptPath?: string | null };
+    };
+  }) => Promise<unknown>;
 }
 
 async function runOne(action: PendingAction, callers: SyncCallers): Promise<void> {
@@ -148,6 +158,42 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
     case "clock_out":
       await callers.clockOut({ data: { at: new Date(action.ts).toISOString() } });
       return;
+    case "expense": {
+      // The receipt first, then the row that points at it, then -- only then
+      // -- the local blob. The same order as a completion photo, for the same
+      // reason: until the row lands, the blob is the only copy there is.
+      //
+      // The object name is the expense id, and the upload is an upsert, so a
+      // retry after the bytes landed rewrites the same object rather than
+      // leaving a second one behind.
+      let path: string | null = null;
+      if (action.photoId) {
+        const photo = await getPhoto(action.photoId);
+        if (photo) {
+          path = receiptPath(action.organizationId, action.staffId, action.expenseId, photo.ext);
+          const { error } = await supabase.storage
+            .from("expense-receipts")
+            .upload(path, photo.blob, { contentType: photo.contentType, upsert: true });
+          if (error) throw error;
+        } else {
+          // The receipt's bytes are gone from this device. Unlike a
+          // completion photo the photo is not the record: the amount is.
+          // Losing a tank of fuel from the books over a missing picture of the
+          // pump would be the worse loss, so the expense is still logged,
+          // without a receipt, and says so in the log.
+          console.error("offline sync: an expense's receipt is missing from the device", action);
+        }
+      }
+      await callers.createExpense({
+        data: {
+          id: action.expenseId,
+          mine: true,
+          fields: { ...action.fields, ...(path ? { receiptPath: path } : {}) },
+        },
+      });
+      if (action.photoId) await deletePhoto(action.photoId);
+      return;
+    }
     case "photo": {
       const photo = await getPhoto(action.photoId);
       // A missing blob is DATA LOSS, not a no-op. It used to `return`, which the
@@ -331,6 +377,7 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
             // than the blockage this replaces.
             await deleteAction(action.id);
             if (action.kind === "photo") await deletePhoto(action.photoId);
+            if (action.kind === "expense" && action.photoId) await deletePhoto(action.photoId);
             result.deadLettered++;
             deadLetteredVisits.add(action.visitId);
             console.error("offline sync gave up on an action", action, e);
