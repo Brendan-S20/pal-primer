@@ -156,6 +156,14 @@ export default defineConfig({
           SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
           SUPABASE_PROJECT_ID: "localdev",
           SERVICE_ROLE_KEY: "sb_secret_placeholder",
+          // Empty ON PURPOSE, so a developer's own `.env` cannot change what
+          // the sweeps measure. With no build-time key the browser asks the
+          // server (`getMapsBrowserKey`, answered null by the stub) and then
+          // draws with the Leaflet fallback — which is what the map specs
+          // locate, and the only thing that CAN draw behind the network
+          // fence. The Google path is measured on purpose, against a fake, by
+          // a-map-is-paid-for-once.spec.ts.
+          VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY: "",
         },
       },
 });

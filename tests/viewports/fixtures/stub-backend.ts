@@ -1177,6 +1177,11 @@ const BASE_STUBS: Record<string, Stub> = {
   markNotificationRead: ok,
   dismissAnnouncement: ok,
   dismissOnboarding: ok,
+
+  // No Google key: every map draws with the Leaflet fallback, the only
+  // basemap that can render behind the fence. a-map-is-paid-for-once.spec.ts
+  // overrides this to drive the Google path against a fake.
+  getMapsBrowserKey: { key: null },
 };
 
 /** 1x1 transparent PNG. Stands in for map tiles and any other remote image, so
