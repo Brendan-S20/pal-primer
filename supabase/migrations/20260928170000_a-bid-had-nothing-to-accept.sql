@@ -579,7 +579,8 @@ BEGIN
     END IF;
     -- One question per command: no FOR ALL beside a FOR SELECT.
     IF EXISTS (SELECT 1 FROM pg_policies
-                WHERE schemaname = 'public' AND tablename = split_part(_t, '.', 2) AND cmd = 'ALL') THEN
+                WHERE schemaname = 'public' AND tablename = split_part(_t, '.', 2) AND cmd = 'ALL'
+                  AND permissive = 'PERMISSIVE') THEN
       RAISE EXCEPTION '% has a FOR ALL policy', _t;
     END IF;
 
