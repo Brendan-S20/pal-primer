@@ -13,6 +13,10 @@
 \set QUIET on
 SET client_min_messages TO notice;
 
+-- One proof at a time (tests/the-proofs-take-turns.test.ts). A session lock,
+-- held until psql disconnects, so it covers every transaction below.
+DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $turn$;
+
 BEGIN;
 
 \i :migration
