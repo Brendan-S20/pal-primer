@@ -1142,6 +1142,10 @@ const BASE_STUBS: Record<string, Stub> = {
   // overtime, a shift across midnight, somebody on the clock now, and a tech
   // with visits and no hours.
   listTimesheet: fx.TIMESHEET,
+  // /expenses: a month with every category, a 72-character vendor and a
+  // seven-figure amount. And the field sheet's rate, for its mileage preview.
+  listExpenses: fx.EXPENSE_LIST,
+  getExpenseSettings: fx.EXPENSE_SETTINGS,
 
   getPlanCatalogMirror: { rows: [], mismatches: [] },
 

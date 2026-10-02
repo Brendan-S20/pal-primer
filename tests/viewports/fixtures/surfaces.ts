@@ -9,6 +9,7 @@ import {
   LEAD_ID,
   LEAD_NAME,
   LONG_STAFF_NAME,
+  LONG_VENDOR,
   ORG_ID,
   REFUND_CLIENT_NAME,
   REFUND_INVOICE_ID,
@@ -443,6 +444,50 @@ export const SURFACES: Surface[] = [
     },
     opened: (p) => p.getByRole("dialog", { name: "Add time" }),
     openedLabel: "the Add time dialog",
+  },
+  {
+    // Added 2026-09-29 with expenses. A card per expense below lg puts a
+    // 72-character vendor beside a seven-figure amount, and the month's total
+    // above it is wider still; from lg it is a table whose vendor cell has to
+    // truncate. `expectsData` is the vendor, which only arrives with the rows;
+    // the proof is the category breakdown, which only draws once they are
+    // summed.
+    id: "/expenses",
+    path: "/expenses",
+    proof: (p) => p.getByText("By category", { exact: true }).first(),
+    proofLabel: 'the "By category" card',
+    expectsData: LONG_VENDOR,
+  },
+  {
+    // The office's add form: a category, an amount and a date side by side
+    // from sm, a person picker of long names, and a receipt row.
+    id: "/expenses · add expense",
+    path: "/expenses",
+    proof: (p) => p.getByText("By category", { exact: true }).first(),
+    proofLabel: 'the "By category" card',
+    expectsData: LONG_VENDOR,
+    open: async (p) => {
+      await p.getByRole("button", { name: "Add expense", exact: true }).first().click();
+    },
+    opened: (p) => p.getByRole("dialog", { name: "Add expense" }),
+    openedLabel: "the Add expense dialog",
+  },
+  {
+    // The field half: My Day, a card's More options, "Log an expense". A
+    // bottom sheet of seven category buttons, an amount, a date, a receipt
+    // and a note, which has to hold at 320px with every target at 44.
+    id: "/my-day · log an expense",
+    path: "/my-day",
+    proof: (p) => p.getByText("SAFETY WARNINGS", { exact: false }).first(),
+    proofLabel: "a visit card's hazard banner",
+    expectsData: "Anastasia Vandermolen-Whitaker",
+    open: async (p) => {
+      const card = p.locator("ol > li").first();
+      await card.getByRole("button", { name: "More options" }).click();
+      await card.getByRole("button", { name: "Log an expense" }).click();
+    },
+    opened: (p) => p.getByRole("dialog", { name: "Log an expense" }),
+    openedLabel: "the Log an expense sheet",
   },
   {
     // Added 2026-09-28 with customer re-clean requests. Until then the unlisted

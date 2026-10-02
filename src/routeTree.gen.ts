@@ -70,6 +70,7 @@ import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
 import { Route as AuthenticatedHelpRouteImport } from './routes/_authenticated/help'
 import { Route as AuthenticatedFranchiseRouteImport } from './routes/_authenticated/franchise'
+import { Route as AuthenticatedExpensesRouteImport } from './routes/_authenticated/expenses'
 import { Route as AuthenticatedDnaRouteImport } from './routes/_authenticated/dna'
 import { Route as AuthenticatedDisputesRouteImport } from './routes/_authenticated/disputes'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -457,6 +458,11 @@ const AuthenticatedHelpRoute = AuthenticatedHelpRouteImport.update({
 const AuthenticatedFranchiseRoute = AuthenticatedFranchiseRouteImport.update({
   id: '/franchise',
   path: '/franchise',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedExpensesRoute = AuthenticatedExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDnaRoute = AuthenticatedDnaRouteImport.update({
@@ -938,6 +944,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/disputes': typeof AuthenticatedDisputesRoute
   '/dna': typeof AuthenticatedDnaRoute
+  '/expenses': typeof AuthenticatedExpensesRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
   '/help': typeof AuthenticatedHelpRoute
   '/inventory': typeof AuthenticatedInventoryRoute
@@ -1079,6 +1086,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/disputes': typeof AuthenticatedDisputesRoute
   '/dna': typeof AuthenticatedDnaRoute
+  '/expenses': typeof AuthenticatedExpensesRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
   '/help': typeof AuthenticatedHelpRoute
   '/inventory': typeof AuthenticatedInventoryRoute
@@ -1219,6 +1227,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/disputes': typeof AuthenticatedDisputesRoute
   '/_authenticated/dna': typeof AuthenticatedDnaRoute
+  '/_authenticated/expenses': typeof AuthenticatedExpensesRoute
   '/_authenticated/franchise': typeof AuthenticatedFranchiseRoute
   '/_authenticated/help': typeof AuthenticatedHelpRoute
   '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
@@ -1365,6 +1374,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/disputes'
     | '/dna'
+    | '/expenses'
     | '/franchise'
     | '/help'
     | '/inventory'
@@ -1506,6 +1516,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/disputes'
     | '/dna'
+    | '/expenses'
     | '/franchise'
     | '/help'
     | '/inventory'
@@ -1645,6 +1656,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/disputes'
     | '/_authenticated/dna'
+    | '/_authenticated/expenses'
     | '/_authenticated/franchise'
     | '/_authenticated/help'
     | '/_authenticated/inventory'
@@ -2244,6 +2256,13 @@ declare module '@tanstack/react-router' {
       path: '/franchise'
       fullPath: '/franchise'
       preLoaderRoute: typeof AuthenticatedFranchiseRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/expenses': {
+      id: '/_authenticated/expenses'
+      path: '/expenses'
+      fullPath: '/expenses'
+      preLoaderRoute: typeof AuthenticatedExpensesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dna': {
@@ -2976,6 +2995,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDisputesRoute: typeof AuthenticatedDisputesRoute
   AuthenticatedDnaRoute: typeof AuthenticatedDnaRoute
+  AuthenticatedExpensesRoute: typeof AuthenticatedExpensesRoute
   AuthenticatedFranchiseRoute: typeof AuthenticatedFranchiseRoute
   AuthenticatedHelpRoute: typeof AuthenticatedHelpRoute
   AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
@@ -3014,6 +3034,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDisputesRoute: AuthenticatedDisputesRoute,
   AuthenticatedDnaRoute: AuthenticatedDnaRoute,
+  AuthenticatedExpensesRoute: AuthenticatedExpensesRoute,
   AuthenticatedFranchiseRoute: AuthenticatedFranchiseRoute,
   AuthenticatedHelpRoute: AuthenticatedHelpRoute,
   AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,
