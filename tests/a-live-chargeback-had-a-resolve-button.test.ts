@@ -234,13 +234,7 @@ describe("desktop and mobile call the page the same thing", () => {
   // catching anything of ours.
 
   it("the mobile tab bar is the name everything else is being matched to", () => {
-    // Since the launch pass the tab labels go through i18n so a technician
-    // who chose Español reads them in Spanish; the English word lives in
-    // en.ts. Both halves are asserted, so a rename in either place fails.
-    expect(read("src/components/MobileTabBar.tsx")).toMatch(
-      /<span>\{t\("nav\.schedule"\)\}<\/span>/,
-    );
-    expect(read("src/lib/i18n/locales/en.ts")).toMatch(/schedule: "Schedule"/);
+    expect(read("src/components/MobileTabBar.tsx")).toMatch(/<span>Schedule<\/span>/);
   });
 
   it("the keyboard shortcut and the command palette both say Schedule", () => {

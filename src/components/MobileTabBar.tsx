@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listMyNotifications } from "@/lib/notifications-center.functions";
@@ -56,10 +55,6 @@ const tabClass = (active: boolean) =>
  * Rendered ONLY below `md` — the desktop sidebar shell is untouched.
  */
 export function MobileTabBar() {
-  // The labels follow the technician's language choice, like My day does.
-  // Until the launch pass the bar under "Mi día" still read Today / Waste
-  // log / Alerts / More.
-  const { t } = useTranslation();
   const { role } = useMyRole();
   // Q-2's tablet tier. A tech on a crew tablet keeps this bar through
   // 768–1024px; an office user does not, because the dispatch board renders
@@ -159,7 +154,7 @@ export function MobileTabBar() {
       className={tabClass(moreOpen)}
     >
       <Menu className="h-5 w-5 shrink-0" />
-      <span>{t("nav.more")}</span>
+      <span>More</span>
     </button>
   );
 
@@ -202,7 +197,7 @@ export function MobileTabBar() {
                 }}
               >
                 <Sun className="h-5 w-5 shrink-0" />
-                <span>{t("nav.today")}</span>
+                <span>Today</span>
               </Link>
             </li>
             <li>
@@ -213,7 +208,7 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/waste-log"))}
               >
                 <Trash2 className="h-5 w-5 shrink-0" />
-                <span>{t("nav.wasteLog")}</span>
+                <span>Waste log</span>
               </Link>
             </li>
             <li>
@@ -237,7 +232,7 @@ export function MobileTabBar() {
                     </span>
                   )}
                 </span>
-                <span>{t("nav.alerts")}</span>
+                <span>Alerts</span>
                 {unread > 0 && <span className="sr-only">{unread} unread</span>}
               </Link>
             </li>
@@ -253,7 +248,7 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/dashboard"))}
               >
                 <LayoutDashboard className="h-5 w-5 shrink-0" />
-                <span>{t("nav.home")}</span>
+                <span>Home</span>
               </Link>
             </li>
             <li>
@@ -264,13 +259,13 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/routes"))}
               >
                 <CalendarDays className="h-5 w-5 shrink-0" />
-                <span>{t("nav.schedule")}</span>
+                <span>Schedule</span>
               </Link>
             </li>
             <li>
               <button
                 type="button"
-                aria-label={t("nav.create")}
+                aria-label="Create"
                 onClick={() => setCreateOpen(true)}
                 className={tabClass(createOpen)}
               >
@@ -287,7 +282,7 @@ export function MobileTabBar() {
                 className={tabClass(isActive("/clients"))}
               >
                 <Users className="h-5 w-5 shrink-0" />
-                <span>{t("nav.clients")}</span>
+                <span>Clients</span>
               </Link>
             </li>
             <li>{moreButton}</li>
@@ -303,7 +298,7 @@ export function MobileTabBar() {
           className={`max-h-[80dvh] overflow-y-auto rounded-t-xl p-0 pb-[env(safe-area-inset-bottom)] ${barHiddenFrom}`}
         >
           <SheetHeader className="border-b px-4 py-3 text-left">
-            <SheetTitle className="text-base">{t("nav.more")}</SheetTitle>
+            <SheetTitle className="text-base">More</SheetTitle>
           </SheetHeader>
           {/* Your account, at the top rather than buried above Sign out. On a
               phone this sheet is the ONLY place the signed-in identity appears

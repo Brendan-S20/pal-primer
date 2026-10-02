@@ -13,7 +13,6 @@
 // replay sends the tap time, so 7:02 is also what the timesheet will say.
 
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -41,7 +40,6 @@ export function TimeClockCard({
    *  completions still in the queue. Null when it is showing another day. */
   visitsCompletedToday: number | null;
 }) {
-  const { t } = useTranslation();
   const fetchClock = useServerFn(getMyClock);
   const clockInFn = useServerFn(clockIn);
   const clockOutFn = useServerFn(clockOut);
@@ -152,22 +150,20 @@ export function TimeClockCard({
               not "On the clock since 7:42 AM" as one: at 360px beside the
               button that sentence truncated exactly the part being asked
               about, the time. */}
-          {open
-            ? t("clock.onTheClock", { duration: formatDuration(shiftMinutes) })
-            : t("clock.offTheClock")}
+          {open ? `On the clock · ${formatDuration(shiftMinutes)}` : "Off the clock"}
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {open
-            ? `${t("clock.since", { time: orgLocalTime(open.clock_in, tz) })}${earlierToday >= 1 ? ` · ${t("clock.today", { duration: formatDuration(todayMinutes) })}` : ""}`
+            ? `Since ${orgLocalTime(open.clock_in, tz)}${earlierToday >= 1 ? ` · ${formatDuration(todayMinutes)} today` : ""}`
             : todayMinutes >= 1
-              ? t("clock.today", { duration: formatDuration(todayMinutes) })
-              : t("clock.clockInPrompt")}
+              ? `${formatDuration(todayMinutes)} today`
+              : "Clock in when your day starts"}
         </p>
         {shown.queued && (
           <p className="flex min-w-0 items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
             <CloudOff className="h-3 w-3 shrink-0" aria-hidden="true" />
             <span className="truncate">
-              {shown.queued === "clock_in" ? t("clock.clockInWaiting") : t("clock.clockOutWaiting")}
+              {shown.queued === "clock_in" ? "Clock-in" : "Clock-out"} waiting to sync
             </span>
           </p>
         )}
@@ -179,7 +175,7 @@ export function TimeClockCard({
         onClick={() => tap(open ? "clock_out" : "clock_in")}
         className="min-h-11 shrink-0 px-4"
       >
-        {open ? t("clock.clockOut") : t("clock.clockIn")}
+        {open ? "Clock out" : "Clock in"}
       </Button>
     </section>
   );
