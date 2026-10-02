@@ -328,11 +328,10 @@ const BASE_STUBS: Record<string, Stub> = {
       {
         id: "route",
         label: "Assign your first route",
-        description:
-          "Assign visits to a tech from the Today board so the field crew has work loaded.",
+        description: "Assign visits to a tech on the Schedule so the field crew has work loaded.",
         done: false,
         to: "/routes",
-        cta: "Open Today",
+        cta: "Open schedule",
       },
       {
         id: "billing",
@@ -360,7 +359,7 @@ const BASE_STUBS: Record<string, Stub> = {
       {
         id: "aaaa1111-0000-4000-8000-000000000002",
         kind: "invoice_overdue",
-        title: "Invoice INV-2026-1041 is 6 days overdue",
+        title: "Invoice INV-10420 is 6 days overdue",
         body: "Anastasia Vandermolen-Whitaker owes $185.00.",
         link: "/invoices",
         read_at: null,

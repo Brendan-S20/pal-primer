@@ -44,7 +44,7 @@ export const sendWeeklyDigestNow = createServerFn({ method: "POST" })
       (data?.recipientOverride ?? (org as any)?.digest_recipient_email ?? "").trim();
     if (!recipient) {
       throw new Error(
-        "No digest recipient configured. Set one in Settings → Notifications, or pass an email.",
+        "No digest recipient configured. Set one in Analytics → Weekly digest, or pass an email.",
       );
     }
 
