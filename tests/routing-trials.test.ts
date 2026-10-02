@@ -318,10 +318,16 @@ describe.skipIf(!reachable)(
         expect(r.ts!.inputsMs, `${r.sc.id} read`).toBeLessThan(STATEMENT_TIMEOUT_MS / 2);
         expect(r.ts!.applyMs, `${r.sc.id} write`).toBeLessThan(STATEMENT_TIMEOUT_MS / 2);
       }
-      // The old planner could not: this is the reason the solver moved.
+      // The old planner could not, which is the reason the solver moved -- but
+      // how far over it went depends on the machine (9.7 s on a laptop, 6.6 s
+      // on CI's runner on 2026-10-02), so it is reported, not asserted. A test
+      // that requires the REPLACED code to be slow fails on a fast day.
       const old = bench ? baseline.get("large-phoenix") : undefined;
       if (old)
-        expect(Math.max(old.forecast.ms, old.apply.ms)).toBeGreaterThan(STATEMENT_TIMEOUT_MS);
+        console.info(
+          `large-phoenix: old planner's longest statement ${Math.max(old.forecast.ms, old.apply.ms).toFixed(0)} ms ` +
+            `(limit ${STATEMENT_TIMEOUT_MS} ms)`,
+        );
     });
 
     it("never drives further than the old planner on the same day", () => {
