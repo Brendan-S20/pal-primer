@@ -30,6 +30,7 @@ type Endpoint = {
   description: string;
   events: string[];
   enabled: boolean;
+  include_contact: boolean;
   secret_last4: string | null;
   consecutive_failures: number;
   disabled_at: string | null;
@@ -64,6 +65,33 @@ function errorText(e: unknown, fallback: string): string {
 /** The events picker, used by both the add form and the edit panel. One
  *  column on a phone, two from `sm`, three from `lg`, so each label keeps a
  *  whole line and each checkbox its 44px touch box. */
+/** Whether this endpoint's deliveries carry the customer's email and phone.
+ *  Off unless the owner ticks it, because a webhook URL is somebody else's
+ *  system and contact details are the part of a record most worth guarding. */
+function ContactOption({
+  id,
+  checked,
+  onChange,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label htmlFor={id} className="flex min-h-11 items-start gap-3 py-2 text-sm">
+      <Checkbox id={id} checked={checked} onCheckedChange={(c) => onChange(c === true)} />
+      <span className="min-w-0">
+        <span className="block">Include customer email and phone</span>
+        <span className="block text-xs text-muted-foreground">
+          Adds a <code className="font-mono">contact</code> object to events about a client or lead,
+          for things like adding new clients to a mailing list. Only turn this on for a system you
+          trust with your customers&apos; details.
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function EventPicker({
   idPrefix,
   value,
@@ -199,6 +227,7 @@ function EndpointCard({
   const [editing, setEditing] = useState(false);
   const [events, setEvents] = useState<string[]>(ep.events);
   const [description, setDescription] = useState(ep.description);
+  const [includeContact, setIncludeContact] = useState(ep.include_contact);
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(true);
@@ -246,6 +275,11 @@ function EndpointCard({
             {EVENT_LABEL[t] ?? t}
           </span>
         ))}
+        {ep.include_contact && (
+          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+            Includes email and phone
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -287,6 +321,7 @@ function EndpointCard({
           onClick={() => {
             setEvents(ep.events);
             setDescription(ep.description);
+            setIncludeContact(ep.include_contact);
             setEditing((v) => !v);
           }}
           aria-expanded={editing}
@@ -369,7 +404,12 @@ function EndpointCard({
             e.preventDefault();
             void run("Saving", async () => {
               await update({
-                data: { id: ep.id, description, events: events as WebhookEventType[] },
+                data: {
+                  id: ep.id,
+                  description,
+                  events: events as WebhookEventType[],
+                  includeContact,
+                },
               });
               setEditing(false);
               onChanged();
@@ -385,6 +425,11 @@ function EndpointCard({
             />
           </label>
           <EventPicker idPrefix={`edit-${ep.id}`} value={events} onChange={setEvents} />
+          <ContactOption
+            id={`edit-${ep.id}-contact`}
+            checked={includeContact}
+            onChange={setIncludeContact}
+          />
           <Button type="submit" size="sm" disabled={busy || events.length === 0}>
             Save changes
           </Button>
@@ -426,6 +471,7 @@ function WebhookSettings() {
   const [url, setUrl] = useState("");
   const [description, setDescription] = useState("");
   const [events, setEvents] = useState<string[]>(["visit.completed"]);
+  const [includeContact, setIncludeContact] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
@@ -447,12 +493,13 @@ function WebhookSettings() {
     setErr(null);
     try {
       const r = await create({
-        data: { url, description, events: events as WebhookEventType[] },
+        data: { url, description, events: events as WebhookEventType[], includeContact },
       });
       setSecret(r.secret);
       setUrl("");
       setDescription("");
       setEvents(["visit.completed"]);
+      setIncludeContact(false);
       setAdding(false);
       refresh();
     } catch (e2) {
@@ -465,7 +512,7 @@ function WebhookSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Webhooks</h2>
+        <h2 className="text-lg font-semibold">Zapier &amp; webhooks</h2>
         <p className="text-sm text-muted-foreground">
           Send events from HoundStack to Zapier, Make, n8n or your own system as they happen: a
           visit completed, an invoice paid, a new lead. Each one is a signed JSON POST to an HTTPS
@@ -507,6 +554,7 @@ function WebhookSettings() {
               />
             </label>
             <EventPicker idPrefix="new" value={events} onChange={setEvents} />
+            <ContactOption id="new-contact" checked={includeContact} onChange={setIncludeContact} />
             {err && <p className="break-words text-sm text-red-600">{err}</p>}
             <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={busy || !url.trim() || events.length === 0}>
@@ -572,6 +620,15 @@ function WebhookSettings() {
             deliveries in a row fail, the webhook is switched off and the owners are notified. The
             body&apos;s <code>id</code> is the same on every retry, so a receiver can ignore
             repeats.
+          </p>
+          <p>
+            Events carry ids, names, amounts and dates, and no contact details. A webhook with
+            &ldquo;Include customer email and phone&rdquo; ticked also gets{" "}
+            <code className="break-all font-mono">
+              data.contact = {`{ "email": ..., "phone": ... }`}
+            </code>{" "}
+            on events about a client or lead, read when the event is sent, so switching it off stops
+            it for anything not yet delivered.
           </p>
         </div>
       </details>

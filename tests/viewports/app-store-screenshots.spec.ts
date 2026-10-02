@@ -65,7 +65,7 @@ const SHOTS: Array<{
     name: "todays-work",
     path: "/dashboard",
     ready: async (p) => {
-      await expect(p.getByText("Today's routes", { exact: false }).first()).toBeVisible({
+      await expect(p.getByText("Today's schedule", { exact: false }).first()).toBeVisible({
         timeout: FIRST_PAINT_MS,
       });
     },

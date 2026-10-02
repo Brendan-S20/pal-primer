@@ -581,9 +581,14 @@ export function runSql(sql: string): {
 } {
   const psql = findPsql();
   if (!psql) throw new Error("psql not found");
+  // Queue behind the SQL proofs instead of colliding with them: every
+  // tests/sql proof takes this session lock first (the-proofs-take-turns
+  // .test.ts), and a trial that writes its org while a proof re-applies a
+  // migration was still picked as a deadlock victim three retries running on
+  // 2026-10-02. Held until psql disconnects, so the whole scenario is inside it.
   const run = () =>
     spawnSync(psql, [DB_URL, "-X", "-At", "-f", "-"], {
-      input: sql,
+      input: `DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $turn$;\n${sql}`,
       encoding: "utf8",
       timeout: 480_000,
       maxBuffer: 256 * 1024 * 1024,

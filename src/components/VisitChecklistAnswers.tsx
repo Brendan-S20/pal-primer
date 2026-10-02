@@ -1,4 +1,5 @@
 import { CheckCircle2, Circle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { ChecklistAnswer } from "@/lib/visit-checklist";
 
 /**
@@ -14,12 +15,13 @@ import type { ChecklistAnswer } from "@/lib/visit-checklist";
  * inside a 320px card instead of widening it.
  */
 export function VisitChecklistAnswers({ answers }: { answers: readonly ChecklistAnswer[] }) {
+  const { t } = useTranslation();
   if (answers.length === 0) return null;
   const done = answers.filter((a) => a.checked).length;
   return (
     <section>
       <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-        Checklist · {done} of {answers.length}
+        {t("checklist.heading", { done, total: answers.length })}
       </h3>
       <ul className="space-y-1">
         {answers.map((a) => (
@@ -39,7 +41,9 @@ export function VisitChecklistAnswers({ answers }: { answers: readonly Checklist
               className={`min-w-0 flex-1 [overflow-wrap:anywhere] ${a.checked ? "" : "text-muted-foreground"}`}
             >
               {a.label}
-              <span className="sr-only">{a.checked ? ": checked" : ": not checked"}</span>
+              <span className="sr-only">
+                {a.checked ? t("checklist.checked") : t("checklist.notChecked")}
+              </span>
             </span>
           </li>
         ))}

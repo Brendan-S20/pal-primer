@@ -48,6 +48,7 @@ function NewQuotePage() {
     title: "",
     message: "",
     validUntil: defaultQuoteValidUntil(today),
+    deposit: "",
     lines: [blankEditorLine(false), blankEditorLine(true)],
   };
 

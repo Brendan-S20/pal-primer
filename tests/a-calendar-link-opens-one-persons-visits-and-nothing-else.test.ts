@@ -76,7 +76,7 @@ describe.skipIf(!reachable)("a calendar link, in a real database", () => {
   it("opens one person's visits, and nothing else, and leaves nothing behind", () => {
     const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
       encoding: "utf8",
-      timeout: 120_000,
+      timeout: 300_000,
     });
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);

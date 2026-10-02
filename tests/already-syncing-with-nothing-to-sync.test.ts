@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startAutoSync, type SyncTrigger } from "@/lib/offline/auto-sync";
 import { CONNECTIVITY_CHANGE } from "@/lib/offline/connectivity";
+import en from "@/lib/i18n/locales/en";
 
 // Reported 2026-09-27: opening My Day with NOTHING queued toasted "Already
 // syncing…".
@@ -118,7 +119,11 @@ describe("My Day says 'Already syncing…' only to the person who pressed Sync",
   it("gates the toast on a tap", () => {
     const branch = /if \(res\.alreadyRunning\) \{[\s\S]*?return;\s*\}/.exec(page)?.[0] ?? "";
     expect(branch, "alreadyRunning branch not found").not.toBe("");
-    expect(branch).toMatch(/if \(trigger === "tap"\) toast\.info\("Already syncing…"\)/);
+    // The words are lib/i18n's (sync.alreadySyncing); the gate is the point.
+    expect(branch).toMatch(
+      /if \(trigger === "tap"\) toast\.info\(tRef\.current\("sync\.alreadySyncing"\)\)/,
+    );
+    expect(en.sync.alreadySyncing).toBe("Already syncing…");
   });
 
   it("the Sync button is the tap, and it is the only one", () => {

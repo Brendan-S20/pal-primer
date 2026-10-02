@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import {
   getNotificationPrefs,
@@ -27,6 +28,7 @@ import {
  * rest of the app uses, and the whole row is now the hit area.
  */
 export function NotificationPrefs() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const getFn = useServerFn(getNotificationPrefs);
   const setFn = useServerFn(setNotificationPrefs);
@@ -40,32 +42,35 @@ export function NotificationPrefs() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notification-prefs"] }),
   });
 
-  const toggle = (t: string, on: boolean) => {
-    const next = on ? muted.filter((m) => m !== t) : Array.from(new Set([...muted, t]));
+  const toggle = (type: string, on: boolean) => {
+    const next = on ? muted.filter((m) => m !== type) : Array.from(new Set([...muted, type]));
     save.mutate(next);
   };
 
   if (q.isLoading) {
-    return <p className="py-4 text-sm text-muted-foreground">Loading…</p>;
+    return <p className="py-4 text-sm text-muted-foreground">{t("common.loading")}</p>;
   }
 
   return (
     <div>
-      <p className="mb-2 text-xs text-muted-foreground">Choose what shows up here.</p>
+      <p className="mb-2 text-xs text-muted-foreground">{t("alerts.prefsIntro")}</p>
       <ul className="divide-y">
-        {types.map((t) => {
-          const on = !muted.includes(t.type);
+        {types.map((nt) => {
+          const on = !muted.includes(nt.type);
+          // Translated by code; the server's English label is the fallback
+          // for a type added there before it is added to lib/i18n.
+          const label = t(`notificationType.${nt.type}`, { defaultValue: nt.label });
           return (
-            <li key={t.type}>
+            <li key={nt.type}>
               {/* The label wraps the switch, so the whole row toggles it —
                   `min-h-11` makes that row a legal target at every width. */}
               <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3 py-1 text-sm">
-                <span className="min-w-0 flex-1">{t.label}</span>
+                <span className="min-w-0 flex-1">{label}</span>
                 <Switch
                   checked={on}
                   disabled={save.isPending}
-                  onCheckedChange={(v) => toggle(t.type, v)}
-                  aria-label={t.label}
+                  onCheckedChange={(v) => toggle(nt.type, v)}
+                  aria-label={label}
                 />
               </label>
             </li>

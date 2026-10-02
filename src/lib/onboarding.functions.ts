@@ -179,11 +179,10 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
       {
         id: "route",
         label: "Assign your first route",
-        description:
-          "Assign visits to a tech from the Today board so the field crew has work loaded.",
+        description: "Assign visits to a tech on the Schedule so the field crew has work loaded.",
         done: (visits.count ?? 0) > 0,
         to: "/routes",
-        cta: "Open Today",
+        cta: "Open schedule",
       },
       {
         id: "billing",

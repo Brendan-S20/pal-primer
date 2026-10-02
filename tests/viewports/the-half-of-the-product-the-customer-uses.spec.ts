@@ -60,6 +60,9 @@ import {
   QUOTE_ORG_NAME,
   QUOTE_SIGNER,
   QUOTE_TOKENS,
+  TRACKING_ORG_NAME,
+  TRACKING_TECH_NAME,
+  TRACKING_TOKENS,
 } from "./fixtures/portal-dataset";
 import {
   measurePageOverflow,
@@ -242,9 +245,15 @@ test.describe("the quote link, which a customer signs on a phone", () => {
    * both totals prove the lines drew, one-time AND per-visit.
    */
   const STATES = [
-    { state: "sent", proof: /Accept quote/ },
-    { state: "accepted", proof: /You accepted this quote/, also: QUOTE_SIGNER },
-    { state: "declined", proof: /You declined this quote/, also: "holding next year" },
+    // The deposit (added 2026-09-30): due-on-accepting before, the Pay
+    // button after. Both are the longest things on their pages at 320px.
+    { state: "sent", proof: /Accept quote/, also: ["deposit is due when you accept"] },
+    {
+      state: "accepted",
+      proof: /You accepted this quote/,
+      also: [QUOTE_SIGNER, "Pay $1,500.00 deposit"],
+    },
+    { state: "declined", proof: /You declined this quote/, also: ["holding next year"] },
     { state: "expired", proof: /This quote has expired/ },
   ] as const;
 
@@ -259,7 +268,9 @@ test.describe("the quote link, which a customer signs on a phone", () => {
 
           await expect(page.getByText(QUOTE_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
           await expect(page.getByText(s.proof).first()).toBeVisible({ timeout: 15_000 });
-          if ("also" in s) await expect(page.getByText(s.also).first()).toBeVisible();
+          if ("also" in s) {
+            for (const text of s.also) await expect(page.getByText(text).first()).toBeVisible();
+          }
           await expect(page.getByText(QUOTE_LONG_LINE).first()).toBeVisible();
           // Both totals: $51.00 per visit and $165.00 once.
           await expect(page.getByText("$51.00").first()).toBeVisible();
@@ -296,6 +307,85 @@ test.describe("the quote link, which a customer signs on a phone", () => {
       });
     });
   }
+});
+
+test.describe("the live map, which a customer opens from the on-my-way text", () => {
+  /**
+   * `/track/:token`. Arrives in a text, on a phone, while the customer is
+   * deciding whether to put the dogs in: 320px is the width that matters.
+   * Five states, because each draws a different page -- en route with the
+   * map, en route with nothing shared yet, arrived, done, and ended -- and
+   * the map is the one wide thing on any of them.
+   *
+   * Two proofs per state, as above: the 85-character business name proves
+   * the fixture reached the page (without it the page says "This tracking
+   * link isn't valid" and fits anywhere), and a per-state string proves this
+   * is that state. For the map state, the Leaflet container and its two
+   * drawn circles prove the MAP rendered, not the text fallback: tiles are
+   * answered by the fence with a transparent PNG, so what is measured is the
+   * map's box and its overlay, which is what can widen a page.
+   */
+  const STATES = [
+    { state: "en_route", proof: new RegExp(`${TRACKING_TECH_NAME} is on the way`), map: true },
+    { state: "en_route_unshared", proof: /location not shared right now/, map: true },
+    { state: "arrived", proof: /Your tech has arrived/, map: false },
+    { state: "done", proof: /Today's visit is done/, map: false },
+    { state: "ended", proof: /Live tracking for this visit has ended/, map: false },
+  ] as const;
+
+  for (const width of [320, ...WIDTHS]) {
+    test.describe(`at ${width}px`, () => {
+      test.use({ viewport: { width, height: 900 }, isMobile: width < 768, deviceScaleFactor: 2 });
+
+      for (const s of STATES) {
+        test(`${s.state}`, async ({ page }) => {
+          await installStubBackend(page, { portal: true });
+          await page.goto(`/track/${TRACKING_TOKENS[s.state]}`, { waitUntil: "domcontentloaded" });
+
+          await expect(page.getByText(TRACKING_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
+          await expect(page.getByText(s.proof).first()).toBeVisible({ timeout: 15_000 });
+          if (s.state === "en_route") {
+            await expect(page.locator(".leaflet-container")).toBeVisible({ timeout: 15_000 });
+            // The 100 m ring, the tech's dot and the property's dot.
+            await expect(page.locator(".leaflet-overlay-pane path")).toHaveCount(3, {
+              timeout: 15_000,
+            });
+            await expect(page.getByText(/between 10:15 AM and 10:45 AM/)).toBeVisible();
+            await expect(page.getByText(/Updated \d+ min ago|Updated just now/)).toBeVisible();
+          }
+          if (s.state === "en_route_unshared") {
+            // Only the property: one dot, no ring.
+            await expect(page.locator(".leaflet-overlay-pane path")).toHaveCount(1, {
+              timeout: 15_000,
+            });
+          }
+          if (!s.map) await expect(page.locator(".leaflet-container")).toHaveCount(0);
+          await page.waitForTimeout(700);
+
+          const { scrollW, innerW } = await measurePageOverflow(page);
+          expect(scrollW, `track ${s.state} @${width}: scrolls sideways`).toBeLessThanOrEqual(
+            innerW + 1,
+          );
+          expect(await findControlsOffTheSide(page), `track ${s.state} @${width}`).toEqual([]);
+          expect(await findSilentlyClippedText(page), `track ${s.state} @${width}`).toEqual([]);
+          if (width < 768) {
+            expect(await findControlsUnder44px(page), `track ${s.state} @${width}`).toEqual([]);
+          }
+        });
+      }
+    });
+  }
+
+  test("an unknown link says so, and still fits at 320px", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 900 });
+    await installStubBackend(page, { portal: true });
+    await page.goto("/track/eeeeeeee-0000-4000-8000-00000000e999", {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page.getByText(/This tracking link isn.t valid/)).toBeVisible({ timeout: 30_000 });
+    const { scrollW, innerW } = await measurePageOverflow(page);
+    expect(scrollW).toBeLessThanOrEqual(innerW + 1);
+  });
 });
 
 test.describe("the signup page, which prices the first cleanup by the customer's answer", () => {

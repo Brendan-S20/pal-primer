@@ -551,6 +551,14 @@ function publicQuote(status: keyof typeof QUOTE_TOKENS) {
           : null,
       recipientName: "Lakeview Terrace Condominium Association Board of Managers",
       currency: "usd",
+      // A deposit on every state, so the notice before accepting and the Pay
+      // button after it are both on a page the sweep measures.
+      depositCents: 150000,
+      depositPayUrl:
+        status === "accepted"
+          ? "https://app.houndstack.com/pay/i/eeeeeeee-0000-4000-8000-00000000d002"
+          : null,
+      depositPaid: false,
     },
     org: {
       name: QUOTE_ORG_NAME,
@@ -567,6 +575,51 @@ export const PUBLIC_QUOTES: Record<string, ReturnType<typeof publicQuote>> = Obj
   (Object.keys(QUOTE_TOKENS) as Array<keyof typeof QUOTE_TOKENS>).map((s) => [
     QUOTE_TOKENS[s],
     publicQuote(s),
+  ]),
+);
+
+// ── /track/:token, the live map in the "on my way" text ────────────────────
+//
+// The SAME shape getPublicTracking returns (publicTrackingView in
+// src/lib/live-tracking.ts), not the SQL function's snake_case: the stub
+// answers the server function, and a fixture in the database's shape would
+// render "This tracking link isn't valid" and measure that.
+//
+// The long business name is the one the quote link uses, 85 characters, in a
+// heading at 320px. The tech's name is long on purpose too, because it sits in
+// the headline AND in the legend beside a dot. Positions are already rounded
+// to 3 places, as the page is always handed them.
+export const TRACKING_ORG_NAME = QUOTE_ORG_NAME;
+export const TRACKING_TECH_NAME = "Maximiliano";
+
+export const TRACKING_TOKENS = {
+  en_route: "eeeeeeee-0000-4000-8000-00000000e001",
+  en_route_unshared: "eeeeeeee-0000-4000-8000-00000000e002",
+  arrived: "eeeeeeee-0000-4000-8000-00000000e003",
+  done: "eeeeeeee-0000-4000-8000-00000000e004",
+  ended: "eeeeeeee-0000-4000-8000-00000000e005",
+} as const;
+
+function publicTracking(state: keyof typeof TRACKING_TOKENS) {
+  const enRoute = state === "en_route" || state === "en_route_unshared";
+  return {
+    found: true as const,
+    status: (enRoute ? "en_route" : state) as "en_route" | "arrived" | "done" | "ended",
+    businessName: TRACKING_ORG_NAME,
+    techName: TRACKING_TECH_NAME,
+    eta: enRoute ? "between 10:15 AM and 10:45 AM" : null,
+    tech:
+      state === "en_route"
+        ? { lat: 41.91, lng: -87.65, recordedAt: new Date(Date.now() - 90_000).toISOString() }
+        : null,
+    home: enRoute ? { lat: 41.922, lng: -87.648 } : null,
+  };
+}
+
+export const PUBLIC_TRACKING: Record<string, ReturnType<typeof publicTracking>> = Object.fromEntries(
+  (Object.keys(TRACKING_TOKENS) as Array<keyof typeof TRACKING_TOKENS>).map((s) => [
+    TRACKING_TOKENS[s],
+    publicTracking(s),
   ]),
 );
 
