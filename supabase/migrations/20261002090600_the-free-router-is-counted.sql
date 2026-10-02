@@ -80,6 +80,10 @@ CREATE INDEX IF NOT EXISTS road_leg_runs_org_at_idx ON public.road_leg_runs (org
 
 ALTER TABLE public.road_leg_runs ENABLE ROW LEVEL SECURITY;
 
+-- Two-step sign-in, like every RLS table (20261002010000_a-password-was-the-only-lock).
+-- Restrictive, so the deny-all check below (permissive policies only) still holds.
+SELECT public.require_mfa_policy('public.road_leg_runs');
+
 REVOKE ALL ON public.road_leg_runs FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, DELETE ON public.road_leg_runs TO service_role;
 
