@@ -63,6 +63,7 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   { type: "receptionist_escalation", label: "AI receptionist escalations" },
   { type: "inbound_sms", label: "Texts needing a reply" },
   { type: "teammate_joined", label: "Teammate joined" },
+  { type: "field_collection", label: "Cash or checks collected in the field" },
 ];
 
 export const getNotificationPrefs = createServerFn({ method: "GET" })

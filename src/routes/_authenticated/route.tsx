@@ -17,6 +17,7 @@ import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
+import { headerControlsForRole } from "@/lib/header-prefs";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AccountMenu } from "@/components/AccountMenu";
@@ -220,6 +221,9 @@ function AppShell() {
   // complaint was never theirs, and taking it from them to make one rule
   // shorter would be a worse product for a saving nobody asked for.
   const { role } = useMyRole();
+  // Help and Weather are office controls: a tech's header has neither, and
+  // their Preferences offer no switch for them.
+  const roleControls = headerControlsForRole(role);
   // The sidebar docks where the tab bar stops, so 767, 768 and 1023 each get
   // exactly one navigation. See sidebarDocksFrom. The bar renders on the same
   // two conditions MobileTabBar and the JSX below apply: a known role, and
@@ -353,7 +357,8 @@ function AppShell() {
                 Hidden here is still reachable: the Knowledge Center is in the
                 More sheet and the command palette, and the weather is on the
                 dashboard. */}
-            {headerPrefs.showHelp && (
+            {/* And not at all for a technician -- see headerControlsForRole. */}
+            {roleControls.help && headerPrefs.showHelp && (
               <Link
                 to="/help"
                 search={{ article: undefined }}
@@ -371,7 +376,7 @@ function AppShell() {
                 <HelpCircle className="h-4 w-4 max-md:h-5 max-md:w-5 shrink-0" />
               </Link>
             )}
-            {headerPrefs.showWeather && <WeatherPopover />}
+            {roleControls.weather && headerPrefs.showWeather && <WeatherPopover />}
             <NotificationBell />
             {/* Wherever the tab bar reaches, this lives in its More sheet —
                 the most dangerous action doesn't belong in a phone header.

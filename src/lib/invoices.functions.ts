@@ -337,6 +337,11 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         reference: z.string().trim().max(REFERENCE_MAX).optional(),
         /** The org-calendar day the payment arrived (YYYY-MM-DD). */
         receivedOn: z.string().optional(),
+        /** Cash or a check a tech collected in the field (field_collections).
+         *  When present, the collection is CLAIMED first -- once, atomically,
+         *  against exactly these invoices -- and its own method, check number
+         *  and time are what get recorded, whatever else was sent. */
+        fieldCollectionId: z.string().uuid().optional(),
       })
       .parse(d),
   )
@@ -354,12 +359,44 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
       const problem = receivedOnProblem(data.receivedOn, tz, now);
       if (problem) throw new Error(problem);
     }
+    // A FIELD COLLECTION goes through this same loop rather than a copy of
+    // it, so a tech's cash becomes exactly the payment rows, activity lines
+    // and pay-page cancellations an office-recorded check does. The claim
+    // comes first: confirm_field_collection refuses a second confirmation,
+    // an invoice that is not this customer's or not open, and invoices that
+    // add up to more than was collected -- so a double click, a retry or two
+    // people at once apply the money once.
+    type ClaimedCollection = {
+      id: string;
+      method: string;
+      reference: string | null;
+      collected_at: string;
+    };
+    let ids = data.ids;
+    let field: ClaimedCollection | null = null;
+    if (data.fieldCollectionId) {
+      const { data: claimed, error: cErr } = await supabase.rpc("confirm_field_collection", {
+        _collection_id: data.fieldCollectionId,
+        _invoice_ids: data.ids,
+      });
+      if (cErr) throw new Error(cErr.message);
+      field = claimed as unknown as ClaimedCollection;
+      ids = ((claimed as { invoice_ids?: string[] } | null)?.invoice_ids ?? []) as string[];
+    }
+    const method = field ? (field.method as (typeof MANUAL_PAYMENT_METHODS)[number]) : data.method;
     // A check received Friday and entered Monday is Friday's income on the
-    // cash-basis report, which buckets by orgLocalDay(paid_at).
-    const nowIso = data.receivedOn
-      ? receivedAtInstant(data.receivedOn, tz, now)
-      : now.toISOString();
-    const reference = data.method && data.method !== "cash" ? data.reference || null : null;
+    // cash-basis report, which buckets by orgLocalDay(paid_at). A field
+    // collection was received the moment the tech took it.
+    const nowIso = field
+      ? field.collected_at
+      : data.receivedOn
+        ? receivedAtInstant(data.receivedOn, tz, now)
+        : now.toISOString();
+    const reference = field
+      ? field.reference
+      : method && method !== "cash"
+        ? data.reference || null
+        : null;
     let ok = 0,
       failed = 0;
     // Invoices marked paid whose live PaymentIntent we could NOT cancel. These
@@ -368,7 +405,7 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
     // lands nowhere. Counted separately so the office is told, rather than
     // reading a clean "Marked 12 paid" over a live intent. See the block below.
     const intentStillLive: string[] = [];
-    for (const id of data.ids) {
+    for (const id of ids) {
       const { data: inv, error: rErr } = await supabase
         .from("invoices")
         .select(
@@ -426,11 +463,15 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         currency: inv.currency ?? "usd",
         status: "succeeded",
         paid_at: nowIso,
-        method: data.method ?? null,
+        method: method ?? null,
         reference,
-        raw_event: { source: "manual_mark_paid", note: data.note ?? null },
+        raw_event: {
+          source: "manual_mark_paid",
+          note: data.note ?? null,
+          field_collection_id: field?.id ?? null,
+        },
       });
-      const how = describeManualPayment(data.method, reference);
+      const how = describeManualPayment(method, reference);
       const { logActivity } = await import("@/lib/activity.server");
       await logActivity(supabase, {
         orgId: inv.organization_id,

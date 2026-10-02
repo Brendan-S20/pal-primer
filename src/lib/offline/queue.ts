@@ -91,6 +91,19 @@ export type PendingAction =
       /** Cached organization_id so upload works without a network `visits` read */
       organizationId: string;
     } & ActionBase)
+  // Cash or a check the tech took at the stop. `clientKey` is minted before
+  // the first attempt, so the replay of a request that DID land -- runOrQueue
+  // queues after an 8-second deadline it cannot cancel -- is recognised by
+  // record_field_collection instead of becoming a second collection. Replay
+  // passes `ts` as when the money was handed over.
+  | ({
+      kind: "collection";
+      visitId: string;
+      amountCents: number;
+      method: "cash" | "check";
+      reference?: string;
+      clientKey: string;
+    } & ActionBase)
   // The time clock. Not about a visit, so no visitId -- declared `undefined`
   // rather than left off, so every reader that filters the queue by visit
   // (`a.visitId === visitId`) keeps compiling and simply never matches one.
@@ -313,6 +326,22 @@ export async function countPendingForVisit(visitId: string, userId: string): Pro
   const db = await getDb();
   const pending = await db.getAll("actions");
   return pending.filter((a) => a.userId === userId && a.visitId === visitId).length;
+}
+
+/** Cents of cash or checks THIS user has queued against one visit, so the
+ *  card can stop offering an amount that is already on its way to the office.
+ *  Without it a second tap in a dead zone queues a second collection, and the
+ *  one the balance cannot hold is refused on replay and dead-lettered. */
+export async function queuedCollectionCents(visitId: string, userId: string): Promise<number> {
+  const db = await getDb();
+  const all = await db.getAll("actions");
+  return all.reduce(
+    (sum, a) =>
+      a.userId === userId && a.visitId === visitId && a.kind === "collection"
+        ? sum + a.amountCents
+        : sum,
+    0,
+  );
 }
 
 export async function deleteAction(id: string) {

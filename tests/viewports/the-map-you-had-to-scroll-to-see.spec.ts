@@ -115,8 +115,15 @@ test("a scheduled stop asks for one thing, and hides nothing", async ({ page, co
   // fixture has this stop's location being shared (getMyLiveShare). It is
   // deliberately never folded away: a tech must always be one tap from ending
   // what their customer can see of them.
+  //
+  // The yard outline is the other exception, added 2026-10-02 when the owner
+  // asked to see the yard: it is the card's CONTENT, a drawing of the yard,
+  // and a button only because tapping it opens the map. Recording cash is
+  // an action, and on a stop not yet started it waits under More options
+  // like every other occasional one.
   expect(closed, `a scheduled card shows too much: ${closed.join(" | ")}`).toEqual([
     "Stop",
+    "Yard outline · 6,592 sq ftTap to see it on the map",
     "Navigate",
     "Call",
     "Start",
@@ -127,7 +134,7 @@ test("a scheduled stop asks for one thing, and hides nothing", async ({ page, co
   // who cannot get into a yard has to be able to say so.
   await card.getByRole("button", { name: "More options" }).click();
   const opened = await visible();
-  for (const label of ["Skip", "+ Add-on", "Take photo"]) {
+  for (const label of ["Skip", "+ Add-on", "Take photo", "Collected cash/check"]) {
     expect(opened, `${label} is not reachable from the card`).toContain(label);
   }
 });

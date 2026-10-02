@@ -1358,3 +1358,210 @@ export const CAMPAIGN_PREVIEW = {
   subject: CAMPAIGN_DRAFT_SUBJECT,
   html: `<!doctype html><html><body style="font-family:Arial,sans-serif"><div style="max-width:560px;padding:24px 28px"><h1 style="font-size:22px">Holiday hours, and a thank-you</h1><p>We're taking two days off for the holiday so our crew can be with their families.</p><p>https://whitfield-ramirez-yard-and-waste-services.example.com/holiday-schedule-2026-and-what-it-means-for-your-route</p><a href="https://example.com" style="background:#0f172a;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">See the whole holiday schedule</a><p style="font-size:12px;color:#64748b">You are getting this because you are a customer of ${ORG_NAME}. <a href="#">Unsubscribe from these emails</a>.</p></div></body></html>`,
 };
+
+// ── What a tech's stop card says beyond the visit row ──────────────────────
+//
+// Added with "What the tech could not see" (2026-10-02): the dogs line, the
+// yard outline, a commercial stop's stations and how the customer pays. One
+// entry per stop on the tech's day, in order, and awkward on purpose:
+//
+//   1. SIX named dogs, one of them aggressive and one with a name that has no
+//      space to break at; a sketched outline; a customer who pays cash and
+//      owes $42.50 with $15.00 already waiting -- so the due chip, the
+//      waiting line and the Collected button are all drawn.
+//   2. A commercial stop with NINE stations -- a 70-character label, one with
+//      no number, one with no space in it at all, long location notes -- no
+//      dog records but two priced on the subscription, autopay with a card.
+//   3. The stop in progress: nothing on file at all (no dogs, no outline),
+//      invoiced, owing $1,250.00 -- the widest amount the chip will carry.
+//
+// A fixture tidier than this would measure the empty branches and pass.
+
+const NINE_STATIONS = [
+  "Pool gate beside the clubhouse and the long walk around to Building C",
+  "Bldg A",
+  "Bldg B",
+  "BuildingC-NorthCourtyard-DogRun-BinRow7",
+  "Tennis courts",
+  "Mailroom",
+  "Leasing office",
+  "",
+  "Dog park east",
+].map((label, i) => ({
+  id: `5a5a5a5a-0000-4000-8000-00000000000${i + 1}`,
+  label: label || null,
+  // The eighth has no number and no label: it is drawn as "Station".
+  station_number: i === 7 ? null : i + 1,
+  section: i < 4 ? "North courtyard" : null,
+  location_description:
+    i === 0 ? "North fence, past the second gate; the latch sticks in cold weather" : null,
+  sort_order: i,
+  active: true,
+}));
+
+export const MY_DAY_STOP_EXTRAS: Array<{
+  property: Record<string, unknown>;
+  stop_facts: Record<string, unknown>;
+}> = [
+  {
+    property: {
+      account_type: "residential",
+      has_units: false,
+      dogs: [
+        { name: "Bartholomew", temperament: "friendly" },
+        { name: "Sir Reginald Fluffington-Barksworth III", temperament: "nervous" },
+        { name: "Tank", temperament: "aggressive" },
+        { name: "Mo", temperament: "unknown" },
+        { name: "Princess-Buttercup-Of-The-Backyard", temperament: "friendly" },
+        { name: "Lou", temperament: null },
+      ],
+      boundary: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [-87.6483, 41.9217],
+            [-87.64794, 41.9217],
+            [-87.64794, 41.92188],
+            [-87.6481, 41.92196],
+            [-87.6483, 41.92188],
+            [-87.6483, 41.9217],
+          ],
+        ],
+      },
+      boundary_area_sqm: 612.4,
+      waste_stations: [],
+    },
+    stop_facts: {
+      dogCount: 6,
+      autopay: false,
+      cardOnFile: false,
+      paysCashCheck: true,
+      openBalanceCents: 5750,
+      awaitingCents: 1500,
+    },
+  },
+  {
+    property: {
+      account_type: "commercial",
+      has_units: true,
+      dogs: [],
+      boundary: null,
+      boundary_area_sqm: null,
+      waste_stations: NINE_STATIONS.map((s, i) => ({
+        ...s,
+        last_serviced_on: i % 3 === 0 ? null : TODAY,
+      })),
+    },
+    stop_facts: {
+      dogCount: 2,
+      autopay: true,
+      cardOnFile: true,
+      paysCashCheck: false,
+      openBalanceCents: 0,
+      awaitingCents: 0,
+    },
+  },
+  {
+    property: {
+      account_type: "residential",
+      has_units: false,
+      dogs: [],
+      boundary: null,
+      boundary_area_sqm: null,
+      waste_stations: [],
+    },
+    stop_facts: {
+      dogCount: null,
+      autopay: false,
+      cardOnFile: false,
+      paysCashCheck: false,
+      openBalanceCents: 125000,
+      awaitingCents: 0,
+    },
+  },
+];
+
+export const VISIT_STATIONS = { stations: NINE_STATIONS, logs: [] };
+
+/** The office's side: cash and checks the techs recorded, on /invoices. One
+ *  waiting from the 46-character business name, by check with a reference
+ *  that has no space in it, against three open invoices of which the default
+ *  selection takes two and leaves money unapplied; one confirmed with part of
+ *  it unapplied; one rejected with a note. */
+export const FIELD_COLLECTIONS = {
+  collections: [
+    {
+      id: "fc000000-0000-4000-8000-000000000001",
+      client_id: "c0000000-0000-4000-8000-000000000001",
+      visit_id: null,
+      amount_cents: 6000,
+      method: "check",
+      reference: "CHK-000104722-WHITFIELDRAMIREZ",
+      collected_at: new Date(Date.now() - 50 * 60_000).toISOString(),
+      status: "awaiting_confirmation",
+      applied_cents: 0,
+      decided_at: null,
+      decision_note: null,
+      client_name: ORG_NAME,
+      collected_by: "Dana Whitfield-Ramirez",
+      decided_by: null,
+      open_invoices: [
+        {
+          id: "1f000000-0000-4000-8000-000000000001",
+          number: 1041,
+          open_cents: 2500,
+          period_end: day(-40),
+          due_on: day(-25),
+        },
+        {
+          id: "1f000000-0000-4000-8000-000000000002",
+          number: 1077,
+          open_cents: 4000,
+          period_end: day(-10),
+          due_on: day(5),
+        },
+        {
+          id: "1f000000-0000-4000-8000-000000000003",
+          number: 1102,
+          open_cents: 1500,
+          period_end: day(-3),
+          due_on: day(12),
+        },
+      ],
+    },
+    {
+      id: "fc000000-0000-4000-8000-000000000002",
+      client_id: "c0000000-0000-4000-8000-000000000002",
+      visit_id: null,
+      amount_cents: 3000,
+      method: "cash",
+      reference: null,
+      collected_at: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      status: "confirmed",
+      applied_cents: 2500,
+      decided_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+      decision_note: null,
+      client_name: "Anastasia Vandermolen-Whitaker",
+      collected_by: "Dana Whitfield-Ramirez",
+      decided_by: "Maximiliano Okonkwo-Fitzgerald",
+      open_invoices: [],
+    },
+    {
+      id: "fc000000-0000-4000-8000-000000000003",
+      client_id: "c0000000-0000-4000-8000-000000000003",
+      visit_id: null,
+      amount_cents: 1500,
+      method: "cash",
+      reference: null,
+      collected_at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      status: "rejected",
+      applied_cents: 0,
+      decided_at: new Date(Date.now() - 4 * 86_400_000).toISOString(),
+      decision_note: "Recorded on the wrong customer; the neighbour paid",
+      client_name: "Jean-Baptiste Moreau-Lachapelle",
+      collected_by: "Dana Whitfield-Ramirez",
+      decided_by: null,
+      open_invoices: [],
+    },
+  ],
+};
