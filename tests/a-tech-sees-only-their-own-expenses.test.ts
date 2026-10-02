@@ -22,11 +22,15 @@
 // second half says so loudly and skips. "The experiment says the leak is
 // closed" and "no experiment was run" must not read the same.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mileageAmountCents } from "@/lib/expenses";
+
+// A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts),
+// so on a loaded runner one can take minutes without being hung.
+vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
 const DB_URL =

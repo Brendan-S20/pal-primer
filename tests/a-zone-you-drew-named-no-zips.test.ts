@@ -19,7 +19,7 @@
 // geometry is checked against actual ZIP centers and not only against points
 // invented to pass.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,6 +41,10 @@ import {
   type ZipCentroid,
 } from "@/lib/zone-zip-fill";
 import { DRIVE_M_PER_MIN, haversineMeters, matchZone } from "@/lib/zone-match";
+
+// A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts),
+// so on a loaded runner one can take minutes without being hung.
+vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
 const SCHEMA = join(ROOT, "supabase/migrations/20261001120000_a-zone-you-drew-named-no-zips.sql");
