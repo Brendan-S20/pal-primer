@@ -107,6 +107,9 @@ CREATE INDEX IF NOT EXISTS field_collections_collected_by_staff_id
 
 ALTER TABLE public.field_collections ENABLE ROW LEVEL SECURITY;
 
+-- Two-step sign-in, like every RLS table (20261002010000_a-password-was-the-only-lock).
+SELECT public.require_mfa_policy('public.field_collections');
+
 -- Read-only to the API. Every write is one of the functions below, which is
 -- what lets the rules live in one place: no INSERT for a tech to forge a
 -- confirmed row with, no UPDATE for anyone to flip a status by hand.
@@ -511,6 +514,7 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_policies
      WHERE schemaname = 'public' AND tablename = 'field_collections' AND cmd <> 'SELECT'
+       AND permissive = 'PERMISSIVE'  -- the two-step policy is restrictive: it grants nothing
   ) THEN
     RAISE EXCEPTION 'field_collections has a write policy; every write is a function';
   END IF;
