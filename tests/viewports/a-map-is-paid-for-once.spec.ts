@@ -121,11 +121,10 @@ async function officeDay(page: Page, mapIsUp: (page: Page) => Promise<void>) {
   await expect(page).toHaveURL(/\/dashboard/);
   // The dashboard's map sits below the setup checklist, off the first
   // screen at 1280x900. Under Leaflet it was built anyway; now it waits to be
-  // scrolled to, so the walk scrolls to it.
-  await page
-    .getByRole("link", { name: /Open schedule/ })
-    .first()
-    .scrollIntoViewIfNeeded();
+  // scrolled to, so the walk scrolls to it -- by the map card's own heading,
+  // not a link label: the launch pass renamed "Open routes" to "Open
+  // schedule", and the checklist above has a link of that name too.
+  await page.getByRole("heading", { name: "Today's map" }).scrollIntoViewIfNeeded();
   await page.mouse.wheel(0, 300);
   await mapIsUp(page);
 
