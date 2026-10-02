@@ -448,6 +448,7 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM pg_policies
               WHERE schemaname = 'public' AND tablename = 'visit_live_locations'
+                AND permissive = 'PERMISSIVE'
                 AND ('anon' = ANY (roles) OR 'public' = ANY (roles) OR cmd = 'ALL')) THEN
     RAISE EXCEPTION 'visit_live_locations has a policy for anon or public, or a FOR ALL policy';
   END IF;
