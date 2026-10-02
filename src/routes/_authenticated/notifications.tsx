@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { Settings, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   listMyNotifications,
   markNotificationRead,
@@ -11,20 +13,25 @@ import {
 } from "@/lib/notifications-center.functions";
 import { Button } from "@/components/ui/button";
 import { NotificationPrefs } from "@/components/NotificationPrefs";
+import { cacheAgeParts } from "@/lib/offline/read-cache-policy";
 
 export const Route = createFileRoute("/_authenticated/notifications")({
   component: NotificationsPage,
 });
 
-function timeAgo(iso: string): string {
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+/** "12 min ago" / "hace 12 min": the same buckets and words My Day uses for
+ *  its saved copy (cacheAgeParts). Clamped at zero first, so a notification
+ *  stamped a moment ahead of a phone's clock reads "just now" — as it always
+ *  did here — rather than cacheAgeParts' "at an unknown time", which is the
+ *  right answer for a cache and the wrong one for something that just arrived. */
+function timeAgo(iso: string, t: TFunction): string {
+  const age = cacheAgeParts(Math.max(0, Date.now() - new Date(iso).getTime()));
+  if (age.unit === "unknown" || age.unit === "now") return t(`cacheAge.${age.unit}`);
+  return t(`cacheAge.${age.unit}`, { count: age.count });
 }
 
 function NotificationsPage() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"all" | "unread">("all");
   // The gear used to live in the header bell's dropdown. The bell is a link
@@ -58,16 +65,20 @@ function NotificationsPage() {
               page. The tech tab bar has room for one short word and "Alerts"
               is it, so the page adopts the tab's name rather than greeting the
               person with a different one than the button they just pressed. */}
-          <h1 className="text-2xl font-bold tracking-tight md:text-xl md:font-semibold">Alerts</h1>
-          <p className="text-sm text-muted-foreground">
-            Recent activity. Alerts are automatically deleted after 30 days.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
+            {t("nav.alerts")}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t("alerts.subtitle")}</p>
         </div>
         {/* `flex-wrap`, because at 320px this row is a filter pair, a Mark
             all read and a Settings — 349px of controls in a 320px viewport,
             measured. Without it the last button runs off the side. */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border p-0.5 text-sm" role="group" aria-label="Show">
+          <div
+            className="inline-flex rounded-lg border p-0.5 text-sm"
+            role="group"
+            aria-label={t("alerts.show")}
+          >
             <button
               type="button"
               onClick={() => setFilter("all")}
@@ -75,7 +86,7 @@ function NotificationsPage() {
               aria-pressed={filter === "all"}
               className={`rounded-md px-3 py-1.5 font-medium touch:min-h-11 ${filter === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             >
-              All
+              {t("alerts.all")}
             </button>
             <button
               type="button"
@@ -83,12 +94,13 @@ function NotificationsPage() {
               aria-pressed={filter === "unread"}
               className={`rounded-md px-3 py-1.5 font-medium touch:min-h-11 ${filter === "unread" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             >
-              Unread {unread > 0 && <span className="ml-1 text-xs opacity-80">({unread})</span>}
+              {t("alerts.unread")}{" "}
+              {unread > 0 && <span className="ml-1 text-xs opacity-80">({unread})</span>}
             </button>
           </div>
           {unread > 0 && (
             <Button size="sm" variant="outline" onClick={() => markAll.mutate()} disabled={markAll.isPending}>
-              Mark all read
+              {t("alerts.markAllRead")}
             </Button>
           )}
           <Button
@@ -96,7 +108,7 @@ function NotificationsPage() {
             variant={showPrefs ? "default" : "outline"}
             onClick={() => setShowPrefs((v) => !v)}
             aria-expanded={showPrefs}
-            aria-label="Notification settings"
+            aria-label={t("alerts.settings")}
             // `touch:min-h-11` for the same reason as the filter pair beside
             // it: `size="sm"` is a 32px box, which is legal with a mouse and
             // not with a thumb.
@@ -107,14 +119,14 @@ function NotificationsPage() {
                 less than an icon that is on it; `aria-label` keeps it named
                 for anyone not reading pixels. */}
             <Settings className="h-4 w-4 sm:mr-1 shrink-0" />
-            <span className="max-sm:sr-only">Settings</span>
+            <span className="max-sm:sr-only">{t("alerts.settingsShort")}</span>
           </Button>
         </div>
       </div>
 
       {showPrefs && (
         <div className="rounded-md border bg-card p-4">
-          <h2 className="text-sm font-medium">Notification settings</h2>
+          <h2 className="text-sm font-medium">{t("alerts.settings")}</h2>
           <div className="mt-2">
             <NotificationPrefs />
           </div>
@@ -123,10 +135,10 @@ function NotificationsPage() {
 
       <div className="rounded-md border bg-card">
         {q.isLoading ? (
-          <p className="p-6 text-center text-sm text-muted-foreground">Loading…</p>
+          <p className="p-6 text-center text-sm text-muted-foreground">{t("common.loading")}</p>
         ) : shown.length === 0 ? (
           <p className="p-8 text-center text-sm text-muted-foreground">
-            {filter === "unread" ? "No unread notifications." : "You're all caught up."}
+            {filter === "unread" ? t("alerts.noUnread") : t("alerts.caughtUp")}
           </p>
         ) : (
           <ul className="divide-y">
@@ -137,10 +149,15 @@ function NotificationsPage() {
                   {/* Room for the delete button, which is always visible on
                       touch rather than revealed on hover — see below. Without
                       the reserved gutter it lands on top of the title. */}
+                  {/* The title and body are written by the server, in
+                      English, when the event happens; they are stored text,
+                      not chrome, and stay as they were written. */}
                   <div className="min-w-0 flex-1 touch:pr-11">
                     <div className="text-sm font-medium">{n.title}</div>
                     {n.body && <div className="text-sm text-muted-foreground">{n.body}</div>}
-                    <div className="mt-1 text-xs text-muted-foreground">{timeAgo(n.created_at)}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {timeAgo(n.created_at, t)}
+                    </div>
                   </div>
                 </div>
               );
@@ -187,13 +204,13 @@ function NotificationsPage() {
                         disabled={markOne.isPending}
                         className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground touch:hidden"
                       >
-                        Mark read
+                        {t("alerts.markRead")}
                       </button>
                     )}
                     <button
                       type="button"
-                      aria-label="Delete notification"
-                      title="Delete"
+                      aria-label={t("alerts.delete")}
+                      title={t("common.delete")}
                       onClick={(e) => { e.stopPropagation(); deleteOne.mutate(n.id); }}
                       disabled={deleteOne.isPending}
                       // `p-1` is a 24px target around a 16px glyph. The `touch:p-3.5` pair

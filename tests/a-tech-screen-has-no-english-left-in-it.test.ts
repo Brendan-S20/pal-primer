@@ -305,4 +305,33 @@ describe("the rule fires on what it is for, and not on what it is not", () => {
     const toasted = real.replace(toastNeedle, `toast.success("SMS sent")`);
     expect(findEnglish(file, toasted).findings.map((f) => f.text)).toEqual(["SMS sent"]);
   });
+
+  it("fails on the real waste log and alerts page when their English goes back in", () => {
+    // The two other tabs on a tech's bar, added to the list after My Day. The
+    // same mutation, against the files as they ship: the waste log's
+    // " · No facility recorded" fallback was a string in a ternary, and the
+    // alerts page's delete button was a literal aria-label.
+    const waste = "src/routes/_authenticated/waste-log.tsx";
+    const realWaste = read(waste);
+    const needle = `{m.waste_disposal_facilities?.name || t("wasteLog.noFacility")}`;
+    expect(realWaste).toContain(needle);
+    const mutated = realWaste.replace(
+      needle,
+      `{m.waste_disposal_facilities?.name || "No facility recorded"}`,
+    );
+    const line = mutated.slice(0, mutated.indexOf(`"No facility recorded"`)).split("\n").length;
+    expect(findEnglish(waste, realWaste).findings).toEqual([]);
+    expect(findEnglish(waste, mutated).findings.map(describeFinding)).toEqual([
+      `${waste}:${line} (rendered string) "No facility recorded"`,
+    ]);
+
+    const alerts = "src/routes/_authenticated/notifications.tsx";
+    const realAlerts = read(alerts);
+    const label = `aria-label={t("alerts.delete")}`;
+    expect(realAlerts).toContain(label);
+    const unlabelled = realAlerts.replace(label, `aria-label="Delete notification"`);
+    expect(findEnglish(alerts, unlabelled).findings.map((f) => `${f.kind}: ${f.text}`)).toEqual([
+      "aria-label: Delete notification",
+    ]);
+  });
 });
