@@ -898,7 +898,7 @@ export const respondToPublicQuote = createServerFn({ method: "POST" })
     // tap returns the first answer with changed=false and notifies nobody.
     if (r.changed) {
       const label = quoteNumberLabel(r.number);
-      const who = r.recipient_name ?? "The customer";
+      const who = r.recipient_name ?? "The client";
       const accepted = r.status === "accepted";
       try {
         const { notifyRoles } = await import("@/lib/notify-center.server");
@@ -919,7 +919,7 @@ export const respondToPublicQuote = createServerFn({ method: "POST" })
         await logActivity(supabaseAdmin, {
           orgId: r.organization_id,
           clientId: r.client_id,
-          actorLabel: accepted ? (r.accepted_name ?? "Customer") : "Customer",
+          actorLabel: accepted ? (r.accepted_name ?? "Client") : "Client",
           kind: accepted ? "quote.accepted" : "quote.declined",
           summary: accepted
             ? `${who} accepted quote ${label}`

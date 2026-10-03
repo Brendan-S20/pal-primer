@@ -25,6 +25,7 @@ import {
   parseTaxRatePercent,
   taxLineLabel,
 } from "@/lib/sales-tax";
+import { pageTitle } from "@/lib/page-title";
 
 const key = ["automation"] as const;
 const taxKey = ["sales-tax-settings"] as const;
@@ -36,7 +37,7 @@ const taxKey = ["sales-tax-settings"] as const;
 // read/write the same org columns through the one owning server fn
 // (updateAutomationSettings), which patches only the fields each page sends.
 export const Route = createFileRoute("/_authenticated/settings/invoicing")({
-  head: () => ({ meta: [{ title: "Invoicing · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Invoicing", "Settings") }] }),
   component: InvoicingPage,
 });
 
@@ -73,7 +74,7 @@ function InvoicingPage() {
   });
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Invoicing</h2>
         <p className="text-sm text-muted-foreground">

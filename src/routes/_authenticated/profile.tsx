@@ -45,8 +45,10 @@ import {
   setMyAvatar,
   updateMyProfile,
 } from "@/lib/profile.functions";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/profile")({
+  head: () => titleHead("Your account"),
   component: ProfilePage,
 });
 
@@ -176,7 +178,7 @@ function ProfilePage() {
     name.trim() !== (staff.display_name ?? "") || phone.trim() !== (staff.phone ?? "");
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 pb-10">
+    <>
       {dialog}
 
       <div>
@@ -373,6 +375,6 @@ function ProfilePage() {
       <TwoStepCard />
       <SignInMethodsCard />
       <DeleteAccountCard />
-    </div>
+    </>
   );
 }

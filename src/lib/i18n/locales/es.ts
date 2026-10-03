@@ -628,8 +628,13 @@ const es: Translations = {
   },
   preferences: {
     title: "Preferencias",
-    subtitleManager: "Idioma, marca y los valores predeterminados de este espacio de trabajo.",
-    subtitle: "Idioma y cómo se comporta la app en tu ruta.",
+    subtitleDevice:
+      "Cómo se ve y se comporta la app en este dispositivo. Nada de esto cambia para nadie más.",
+    themeTitle: "Apariencia",
+    themeDescription: "Claro, oscuro o igual que este dispositivo. Solo cambia este dispositivo.",
+    themeSystem: "Sistema",
+    themeLight: "Claro",
+    themeDark: "Oscuro",
     languageDescription: "Cambia el idioma solo en este dispositivo. Cada persona elige el suyo.",
     interfaceLanguage: "Idioma de la app",
     languageUpdated: "Idioma actualizado",

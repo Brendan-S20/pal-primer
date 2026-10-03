@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase, isImpersonationTab } from "@/integrations/supabase/client";
 import { consumeImpersonation } from "@/lib/platform.functions";
 import { Loader2, ShieldAlert } from "lucide-react";
+import { pageTitle } from "@/lib/page-title";
 
 // Landing page for the NEW tab a platform admin opens to impersonate a tenant
 // user (QA finding #5). This route lives OUTSIDE both the /_authenticated and
@@ -14,7 +15,7 @@ export const Route = createFileRoute("/impersonate")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Starting impersonation…" },
+      { title: pageTitle("Starting impersonation…") },
       { name: "robots", content: "noindex" },
     ],
   }),

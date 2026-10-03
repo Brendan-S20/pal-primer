@@ -63,8 +63,10 @@ import { formatDay } from "@/lib/format";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { downloadCsv } from "@/lib/csv";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/timesheets")({
+  head: () => titleHead("Timesheets"),
   validateSearch: (search: Record<string, unknown>): { week?: string } => {
     const w = typeof search.week === "string" ? search.week : undefined;
     return w && /^\d{4}-\d{2}-\d{2}$/.test(w) && !Number.isNaN(Date.parse(w)) ? { week: w } : {};
@@ -153,7 +155,7 @@ function TimesheetsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Timesheets</h1>
@@ -421,7 +423,7 @@ function TimesheetsPage() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 

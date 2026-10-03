@@ -769,6 +769,14 @@ const BASE_STUBS: Record<string, Stub> = {
     notify_email_quote_sent: true,
     quote_followup_days: 3,
   },
+  // The weekly digest card, on /settings/emails since 2026-10-02. A recipient
+  // with no space in it and longer than a phone is wide, because an email
+  // address is exactly the value CLAUDE.md says a parser cannot see overflow.
+  getDigestSettings: {
+    enabled: true,
+    recipientEmail: "dana.whitfield-ramirez@whitfield-ramirez-yard-and-waste-services.example.com",
+    lastSentAt: "2026-09-28T13:00:00.000Z",
+  },
 
   // ── Clients ─────────────────────────────────────────────────────────────
   listClients: { clients: fx.CLIENTS },

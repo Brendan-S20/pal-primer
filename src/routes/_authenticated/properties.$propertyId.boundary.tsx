@@ -10,8 +10,12 @@ import { getPropertyBoundary, updatePropertyBoundary } from "@/lib/properties.fu
 import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { humanizeEnum } from "@/lib/humanize";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/properties/$propertyId/boundary")({
+  head: () => titleHead("Property boundary"),
+  // Wide — see src/components/PageShell.tsx. A map you draw a yard boundary on.
+  staticData: { pageWidth: "wide" },
   component: BoundaryPage,
 });
 
@@ -57,7 +61,7 @@ function BoundaryPage() {
     : { to: "/clients" as const };
 
   return (
-    <div className="space-y-4">
+    <>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           {clientId ? (
@@ -122,6 +126,6 @@ function BoundaryPage() {
           />
         </Card>
       )}
-    </div>
+    </>
   );
 }

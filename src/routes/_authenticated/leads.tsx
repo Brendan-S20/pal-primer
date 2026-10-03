@@ -21,8 +21,10 @@ import { toast } from "sonner";
 import { useMemo, useState } from "react";
 import { humanizeEnum } from "@/lib/humanize";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/leads")({
+  head: () => titleHead("Leads"),
   component: LeadsPage,
 });
 
@@ -88,7 +90,7 @@ function LeadsPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <>
       {dialog}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -349,6 +351,6 @@ function LeadsPage() {
           })}
         </div>
       )}
-    </div>
+    </>
   );
 }

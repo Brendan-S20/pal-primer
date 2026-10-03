@@ -18,6 +18,7 @@ import {
 } from "@/lib/franchise-membership.functions";
 import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
 import { FranchiseSettlementStatements } from "@/components/FranchiseSettlementStatements";
+import { pageTitle } from "@/lib/page-title";
 
 // BUILD-6 — the CHILD's side, and deliberately in Settings rather than on
 // /franchise.
@@ -36,7 +37,7 @@ import { FranchiseSettlementStatements } from "@/components/FranchiseSettlementS
 // franchise itself has gone quiet.
 
 export const Route = createFileRoute("/_authenticated/settings/franchise")({
-  head: () => ({ meta: [{ title: "Franchise · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Franchise", "Settings") }] }),
   component: FranchiseSettings,
 });
 
@@ -69,7 +70,7 @@ function FranchiseSettings() {
   const showLedgers = !!m && (m.isChild || m.hasFranchiseHistory);
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Franchise</h2>
         <p className="mt-1 text-sm text-muted-foreground">

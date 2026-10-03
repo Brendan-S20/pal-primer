@@ -308,7 +308,7 @@ export function AutoRoutingPanel({
         .slice(0, 4)
         .map(
           (m) =>
-            `${m.client ?? "A customer"}: ${m.kind === "late" ? "arrives" : "arrives early,"} ${orgLocalTime(m.etaStart, tz)}` +
+            `${m.client ?? "A client"}: ${m.kind === "late" ? "arrives" : "arrives early,"} ${orgLocalTime(m.etaStart, tz)}` +
             `${from !== to ? ` on ${shortDay(m.day)}` : ""}` +
             ` (window ${m.earliest ? orgLocalTime(m.earliest, tz) : "…"}–${m.latest ? orgLocalTime(m.latest, tz) : "…"}).`,
         );
@@ -398,7 +398,7 @@ export function AutoRoutingPanel({
             ? "1 stop has no map location, so it was put at the end of the day."
             : `${unlocated} stops have no map location, so they were put at the end of the day.`,
           {
-            description: "Fix the address on the customer's property so it can be routed.",
+            description: "Fix the address on the client's property so it can be routed.",
             duration: 12000,
           },
         );

@@ -11,11 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { pageTitle } from "@/lib/page-title";
 
 const key = ["automation"] as const;
 
 export const Route = createFileRoute("/_authenticated/settings/automation")({
-  head: () => ({ meta: [{ title: "Automation · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Automation", "Settings") }] }),
   component: AutomationPage,
 });
 
@@ -240,7 +241,7 @@ function AutomationPage() {
         <CardContent className="space-y-2">
           <label className="flex min-h-11 items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
             <span className="min-w-0">
-              Tell the customer when a tech taps Navigate
+              Tell the client when a tech taps Navigate
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 Once per visit, for today&apos;s stops, with the tech&apos;s first name and the
                 arrival window. By text when the client can be texted, otherwise by email.
@@ -258,7 +259,7 @@ function AutomationPage() {
               Include a live map of the tech on the way
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 The on-my-way text and email get a link. From the moment that message goes until
-                the tech starts the visit (two hours at most), the customer sees the tech&apos;s
+                the tech starts the visit (two hours at most), the client sees the tech&apos;s
                 approximate position, rounded to about 100 m, and only while the tech has the app
                 open. Nothing is shared before the message or after the visit starts, and no
                 trail is kept: only the latest position, deleted when the visit starts. Techs see

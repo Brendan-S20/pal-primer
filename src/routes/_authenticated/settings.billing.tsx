@@ -38,11 +38,13 @@ import { saasPurchaseAllowed, BILLING_MANAGED_OUTSIDE_APP } from "@/lib/app-stor
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { appUrl } from "@/lib/app-origin";
+import { titleHead } from "@/lib/page-title";
 
 // Moved into Settings (punch list #9): this is HoundStack's own subscription
 // (the CRM plan), which is configuration - the tenant-facing Stripe money view
 // now lives at /payments in the main sidebar.
 export const Route = createFileRoute("/_authenticated/settings/billing")({
+  head: () => titleHead("Plan & billing", "Settings"),
   component: BillingPage,
 });
 
@@ -228,7 +230,7 @@ function BillingPage() {
       : null;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
+    <div className="space-y-6">
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -305,7 +307,7 @@ function BillingPage() {
             {!canBuySaas || data.isPaidTier ? "Plans" : "Choose a plan"}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per
+            Unlimited clients, dogs, jobs, routes, and zones on every tier. You're billed per
             employee, plus any AI actions past your plan's monthly allowance. Both are metered, and
             both are shown before they are charged.
             {canBuySaas &&
@@ -945,7 +947,7 @@ function InvoiceHistory() {
                   {formatUsd(inv.amount_due_cents)}
                   {/* A refund is stated on its own line rather than folded into
                       the amount. Netting it silently would show a smaller
-                      number than the invoice the customer can open from the
+                      number than the invoice the client can open from the
                       link two columns across, which reads as a mistake in the
                       invoice rather than as money returned. */}
                   {(inv.refunded_cents ?? 0) > 0 && (

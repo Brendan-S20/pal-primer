@@ -3,13 +3,14 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { getPublicLeadForm } from "@/lib/leads.functions";
+import { customerTitle } from "@/lib/page-title";
 
 // Public, embeddable lead-capture form for a tenant (finding #25). Hosted at
 // /lead/{slug}; also embeddable via an <iframe> (see Settings → Lead form).
 // Branding + which optional fields to collect are configured per tenant.
 export const Route = createFileRoute("/lead/$slug")({
   ssr: false,
-  head: () => ({ meta: [{ title: "Request a quote" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: customerTitle("Request a quote") }, { name: "robots", content: "noindex" }] }),
   component: LeadForm,
 });
 

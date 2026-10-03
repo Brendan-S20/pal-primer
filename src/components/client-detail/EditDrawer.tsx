@@ -181,7 +181,13 @@ export function DrawerFooter({
       <button
         type="button"
         onClick={onCancel ?? requestClose}
-        className="inline-flex items-center rounded-md border px-4 py-2 text-sm hover:bg-muted"
+        // 36px from `py-2` around a 20px line — measured at 360px in the
+        // new-zone drawer, and every other drawer built on this footer had the
+        // same button. The Save beside it is a ui/button, which already carries
+        // the touch floor; this was the one hand-rolled control left in the
+        // row. `touch:min-h-11` rather than more padding, so the desktop row
+        // is unchanged and an iPad gets the floor too.
+        className="inline-flex items-center rounded-md border px-4 py-2 text-sm hover:bg-muted touch:min-h-11"
       >
         <X className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Cancel
       </button>

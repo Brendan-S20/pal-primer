@@ -28,8 +28,10 @@ import {
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/tenants/")({
+  head: () => titleHead("Tenants", "Platform admin"),
   component: TenantsPage,
 });
 

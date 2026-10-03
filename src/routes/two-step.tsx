@@ -15,7 +15,6 @@ import { PublicShell } from "@/components/PublicShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { APP_NAME } from "@/lib/scoop";
 import {
   needsSecondStep,
   safeNextPath,
@@ -23,13 +22,14 @@ import {
   verifiedFactors,
   type SecondStepFactor,
 } from "@/lib/mfa";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/two-step")({
   ssr: false,
   validateSearch: (s: Record<string, unknown>) => ({
     next: typeof s.next === "string" ? s.next : undefined,
   }),
-  head: () => ({ meta: [{ title: `Enter your code - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: pageTitle("Enter your code") }] }),
   component: TwoStepPage,
 });
 

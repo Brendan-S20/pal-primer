@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { HelpTip } from "@/components/HelpTip";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/skip-rules")({
+  head: () => titleHead("Skip rules", "Settings"),
   component: SkipRulesPage,
 });
 
@@ -34,7 +36,7 @@ function SkipRulesPage() {
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           Skip billing rules <HelpTip article="skip-rules" />

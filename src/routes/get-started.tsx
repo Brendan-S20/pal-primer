@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { PublicShell } from "@/components/PublicShell";
 import { APP_NAME } from "@/lib/scoop";
 import { isValidOrgName } from "@/lib/dna-linkage";
+import { pageTitle } from "@/lib/page-title";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
 // guided path, not a tab on the sign-in card. Steps: account → business →
@@ -35,7 +36,7 @@ export const Route = createFileRoute("/get-started")({
   }),
   head: () => ({
     meta: [
-      { title: `Get started - ${APP_NAME}` },
+      { title: pageTitle("Get started") },
       { name: "description", content: `Create your ${APP_NAME} workspace.` },
     ],
   }),

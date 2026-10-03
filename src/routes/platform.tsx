@@ -43,9 +43,10 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform")({
-  head: () => ({ meta: [{ title: "Platform admin" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Platform admin") }, { name: "robots", content: "noindex" }] }),
   component: PlatformLayout,
 });
 

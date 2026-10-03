@@ -32,8 +32,10 @@ import { Card } from "@/components/ui/card";
 import { AlertTriangle, Download, MessageSquareOff, Search, Tag, Users } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
+  head: () => titleHead("Clients"),
   component: ClientsList,
 });
 
@@ -230,7 +232,7 @@ function ClientsList() {
   });
 
   return (
-    <div className="space-y-6">
+    <>
       {dialog}
       <Dialog open={tagAction != null} onOpenChange={(o) => !o && setTagAction(null)}>
         <DialogContent className="sm:max-w-sm">
@@ -716,7 +718,7 @@ function ClientsList() {
           <ChurnPanel />
         </AiSection>
       </div>
-    </div>
+    </>
   );
 }
 

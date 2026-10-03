@@ -6,8 +6,8 @@ import { useTranslation } from "react-i18next";
 import { getMyUpcomingDays, type UpcomingDay } from "@/lib/my-day.functions";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
-import { APP_NAME } from "@/lib/scoop";
 import { useIntlLocale } from "@/lib/i18n";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 
 /**
  * A technician's own next two weeks.
@@ -36,7 +36,7 @@ import { useIntlLocale } from "@/lib/i18n";
  * work" from the only data that knows it.
  */
 export const Route = createFileRoute("/_authenticated/my-schedule")({
-  head: () => ({ meta: [{ title: `My schedule - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: pageTitle("My schedule") }] }),
   component: MySchedulePage,
 });
 
@@ -51,6 +51,9 @@ const fmtDay = (iso: string, locale: string | undefined) =>
 
 function MySchedulePage() {
   const { t } = useTranslation();
+  // In the language this device reads. The route's head is English because
+  // it runs before i18n has read the device's choice.
+  useDocumentTitle(pageTitle(t("nav.item.my-schedule")));
   const locale = useIntlLocale();
   const tz = useOrgTimezone();
   const fn = useServerFn(getMyUpcomingDays);
@@ -66,7 +69,7 @@ function MySchedulePage() {
   const todayISO = useOrgToday();
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4">
+    <>
       <div className="min-w-0">
         <h1 className="truncate text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
           {t("nav.item.my-schedule")}
@@ -145,6 +148,6 @@ function MySchedulePage() {
           );
         })}
       </ul>
-    </div>
+    </>
   );
 }

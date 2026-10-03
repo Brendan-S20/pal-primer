@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalShell } from "@/components/LegalShell";
 import { APP_NAME } from "@/lib/scoop";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/legal/terms")({
   head: () => ({
     meta: [
-      { title: `Terms of Service - ${APP_NAME}` },
+      { title: pageTitle("Terms of Service") },
       { name: "description", content: `The terms that govern your use of ${APP_NAME}.` },
     ],
   }),

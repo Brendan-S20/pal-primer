@@ -34,9 +34,10 @@ import {
   sendResultMessage,
 } from "@/lib/quotes";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/quotes/$quoteId")({
-  head: () => ({ meta: [{ title: "Quote · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Quote") }] }),
   component: QuoteDetailPage,
 });
 
@@ -141,6 +142,9 @@ function QuoteDetailPage() {
     </Link>
   );
 
+  // "Q-1042 · Quotes", from the label the heading prints.
+  useDocumentTitle(q.data?.quote.label ? pageTitle(q.data.quote.label, "Quotes") : null);
+
   if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (q.isError || !q.data) {
     return (
@@ -186,7 +190,7 @@ function QuoteDetailPage() {
       })),
     };
     return (
-      <div className="mx-auto max-w-3xl space-y-5">
+      <>
         {dialog}
         {back}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -223,7 +227,7 @@ function QuoteDetailPage() {
           leadName={quote.leadName}
           onSaved={() => refresh()}
         />
-      </div>
+      </>
     );
   }
 
@@ -289,7 +293,7 @@ function QuoteDetailPage() {
     events.push({ key: "converted", label: "Turned into work", when: at(quote.convertedAt) });
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <>
       {dialog}
       {back}
       <div className="space-y-3">
@@ -445,7 +449,7 @@ function QuoteDetailPage() {
                   await confirm({
                     title: `Withdraw ${quote.label}?`,
                     description:
-                      "The customer's link will show the quote as expired, and it can no longer be accepted.",
+                      "The client's link will show the quote as expired, and it can no longer be accepted.",
                     destructive: true,
                     confirmLabel: "Withdraw",
                   })
@@ -490,7 +494,7 @@ function QuoteDetailPage() {
       </Card>
 
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        What the customer sees
+        What the client sees
       </p>
       <QuoteDocument
         orgName={q.data.orgName}
@@ -508,6 +512,6 @@ function QuoteDetailPage() {
           recurring: l.recurring,
         }))}
       />
-    </div>
+    </>
   );
 }

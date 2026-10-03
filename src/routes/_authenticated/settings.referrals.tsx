@@ -10,8 +10,10 @@ import { Check, Copy, Gift, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { APP_NAME } from "@/lib/scoop";
 import { formatDay } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/referrals")({
+  head: () => titleHead("Refer a business", "Settings"),
   component: ReferBusinessPage,
 });
 
@@ -77,7 +79,7 @@ function ReferBusinessPage() {
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Refer a business</h2>
         <p className="text-sm text-muted-foreground">

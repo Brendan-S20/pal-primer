@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { pageTitle } from "@/lib/page-title";
 
 function fmtMoney(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -25,7 +26,7 @@ function defaultRange() {
 const reportsKey = (from: string, to: string) => ["reports", from, to] as const;
 
 export const Route = createFileRoute("/_authenticated/reports")({
-  head: () => ({ meta: [{ title: "Reports · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Reports") }] }),
   component: ReportsPage,
 });
 
@@ -44,7 +45,7 @@ function ReportsPage() {
   const { data } = useSuspenseQuery(opts);
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Reports</h1>
@@ -231,7 +232,7 @@ function ReportsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Why customers left</CardTitle>
+            <CardTitle>Why clients left</CardTitle>
           </CardHeader>
           <CardContent>
             {(data.churnReasons ?? []).length === 0 ? (
@@ -322,7 +323,7 @@ function ReportsPage() {
         <CardHeader>
           <CardTitle>Top clients by money collected</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Cash basis: what each customer actually paid in this range. Adds up to the Collected
+            Cash basis: what each client actually paid in this range. Adds up to the Collected
             tile above, less anything paid without an invoice.
           </p>
         </CardHeader>
@@ -375,7 +376,7 @@ function ReportsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </>
   );
 }
 

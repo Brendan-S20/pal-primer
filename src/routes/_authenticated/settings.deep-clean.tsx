@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/deep-clean")({
+  head: () => titleHead("Deep clean", "Settings"),
   component: DeepCleanSettings,
 });
 
@@ -55,7 +57,7 @@ function DeepCleanSettings() {
     setMonths((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Every other Settings sub-page opens with a heading and a line saying
           what the page is for. Two of them dropped the reader straight into a
           card, so navigating the sidebar made the page start in a different

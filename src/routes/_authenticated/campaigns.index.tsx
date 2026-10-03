@@ -13,9 +13,10 @@ import {
 } from "@/components/campaigns/CampaignParts";
 import { listCampaigns } from "@/lib/campaigns.functions";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/campaigns/")({
-  head: () => ({ meta: [{ title: "Campaigns · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Campaigns") }] }),
   component: CampaignsPage,
 });
 
@@ -32,7 +33,7 @@ function CampaignsPage() {
   const tz = q.data?.timezone ?? undefined;
 
   return (
-    <div className="space-y-5">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Campaigns</h1>
@@ -92,6 +93,6 @@ function CampaignsPage() {
           ))}
         </ul>
       )}
-    </div>
+    </>
   );
 }

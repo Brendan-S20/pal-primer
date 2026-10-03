@@ -16,6 +16,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import "../lib/i18n";
 import { appOrigin, appUrl } from "@/lib/app-origin";
+import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
 
 function NotFoundComponent() {
   return (
@@ -180,8 +181,14 @@ function RootShell({ children }: { children: ReactNode }) {
     // language this device picked (localStorage). lib/i18n sets `lang` and
     // `dir` on this element before hydration; suppressHydrationWarning covers
     // this element's own attributes and nothing below it.
+    //
+    // suppressHydrationWarning: the boot script below may add `dark` to this
+    // element's class before React hydrates it, which is the point of it.
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Before anything paints, so a dark-mode device never flashes white.
+            See src/lib/theme.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
@@ -194,6 +201,14 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // The device's light/dark choice (Settings → Preferences). The boot script
+  // in <head> already applied it before paint; this keeps "System" following
+  // the phone when it flips at sunset.
+  useEffect(() => {
+    applyTheme(readThemePref());
+    return followSystemTheme();
+  }, []);
 
   // Register the guarded service worker on real hosts only (see src/pwa/register.ts).
   useEffect(() => {

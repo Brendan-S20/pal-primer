@@ -12,9 +12,10 @@ import {
 import { startAccountingOAuth } from "@/lib/accounting-oauth.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/accounting")({
-  head: () => ({ meta: [{ title: "Accounting sync · Settings" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Accounting", "Settings") }] }),
   component: AccountingSettings,
 });
 
@@ -106,7 +107,7 @@ function AccountingSettings() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {dialog}
       <div>
         <h2 className="text-lg font-semibold">

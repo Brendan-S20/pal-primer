@@ -7,8 +7,10 @@ import { getImportBatch, commitImport, cancelImport } from "@/lib/imports.functi
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
+  head: () => titleHead("Import"),
   component: BatchDetail,
 });
 
@@ -72,7 +74,7 @@ function BatchDetail() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex items-center justify-between">
         <div>
           <Link to="/imports" className="text-sm text-muted-foreground hover:underline">
@@ -238,7 +240,7 @@ function BatchDetail() {
           )}
         </div>
       </section>
-    </div>
+    </>
   );
 }
 

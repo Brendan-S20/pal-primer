@@ -15,8 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/pricing-drift")({
+  head: () => titleHead("Rate card drift"),
   component: PricingDriftPage,
 });
 
@@ -104,7 +106,7 @@ function PricingDriftPage() {
   const s = data?.summary;
 
   return (
-    <div className="space-y-6">
+    <>
       <div>
         <h1 className="text-2xl font-semibold">Who is off the rate card</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
@@ -285,7 +287,7 @@ function PricingDriftPage() {
           ) : null}
         </>
       ) : null}
-    </div>
+    </>
   );
 }
 

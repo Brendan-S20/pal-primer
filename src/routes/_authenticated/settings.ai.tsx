@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AI_FEATURES } from "@/lib/ai-usage";
+import { titleHead } from "@/lib/page-title";
 
 // IMP-9: this page used to ask the customer for an Anthropic or OpenAI API key
 // and tell them "You're billed by them directly." BYOK is retired — AI runs on
@@ -28,6 +29,7 @@ import { AI_FEATURES } from "@/lib/ai-usage";
 // call.
 
 export const Route = createFileRoute("/_authenticated/settings/ai")({
+  head: () => titleHead("AI usage", "Settings"),
   component: AiSettings,
 });
 
@@ -47,7 +49,7 @@ function AiSettings() {
   });
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">AI usage</h2>
         <p className="text-sm text-muted-foreground">

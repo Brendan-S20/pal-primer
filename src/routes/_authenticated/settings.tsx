@@ -4,8 +4,10 @@ import { ChevronDown } from "lucide-react";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings")({
+  head: () => titleHead("Settings"),
   component: SettingsLayout,
 });
 
@@ -17,7 +19,13 @@ const TAB_GROUPS: TabGroup[] = [
   {
     title: "Business setup",
     tabs: [
+      // Preferences is THIS DEVICE (language, light or dark, haptics, the
+      // phone menu) and is the one section a technician sees. Business
+      // defaults is what the whole business uses and was on the same page
+      // until 2026-10-02, which is why an owner could not tell the two kinds
+      // of switch apart.
       { label: "Preferences", to: "/settings/preferences", techVisible: true },
+      { label: "Business defaults", to: "/settings/business" },
       { label: "Scheduling", to: "/settings/scheduling" },
       // Prices live on zones, and a first-time owner looking for "how much do
       // I charge" opened Settings and did not find them (persona review,
@@ -30,7 +38,7 @@ const TAB_GROUPS: TabGroup[] = [
     ],
   },
   {
-    title: "Customer-facing",
+    title: "Client-facing",
     tabs: [
       // The portal is the first thing a customer meets, so it sits at the top
       // of the group that is about them. It was under Preferences until
@@ -151,7 +159,7 @@ function SettingsLayout() {
   }, [pathname]);
 
   return (
-    <div className="space-y-6">
+    <>
       <div>
         <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
         <p className="text-sm text-muted-foreground">
@@ -276,6 +284,6 @@ function SettingsLayout() {
       <div>
         <Outlet />
       </div>
-    </div>
+    </>
   );
 }

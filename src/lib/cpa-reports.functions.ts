@@ -333,7 +333,7 @@ async function buildQuickbooksInvoices(supabase: any, ctx: OrgContext, from: str
   const { taxLineLabel } = await import("@/lib/sales-tax");
   const invoices: QboInvoice[] = billed.map(({ inv, day }) => ({
     invoiceNo: invoiceNumberLabel(inv),
-    customer: names.get(inv.client_id) ?? "Unknown customer",
+    customer: names.get(inv.client_id) ?? "Unknown client",
     issuedDay: day,
     dueOn: inv.due_on,
     totalCents: inv.total_cents ?? 0,
@@ -438,7 +438,7 @@ async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to:
     caveats: [
       "Stripe's processing fees are deducted before payout and are not recorded in HoundStack, so they do not appear here. They are a deductible expense and come from your Stripe payout statements.",
       "Cash paid directly to you and recorded manually is included, and is not part of any 1099-K.",
-      "Tips customers added when paying are not in these figures: they are not payment for the service. They are in the Tips received report, and they are still income to the business (or wages, if you pass them to your team through payroll). A chargeback is deducted here whole, tip included.",
+      "Tips clients added when paying are not in these figures: they are not payment for the service. They are in the Tips received report, and they are still income to the business (or wages, if you pass them to your team through payroll). A chargeback is deducted here whole, tip included.",
       "Refunds & chargebacks is net of disputes you won: the deduction stands in the month the funds were withdrawn and the recovery is added back in the month they returned. A month can therefore show a negative figure in that column, and a dispute opened in one period and won in the next moves income between the two rather than restating either.",
       // Only said when there is some, so a business with no tax rate gets the
       // sheet it always got.
@@ -686,7 +686,7 @@ async function buildIncomeAccrual(supabase: any, ctx: OrgContext, from: string, 
       "A prepaid top-up is billed when it is sold, not when the service is delivered. If you file accrual basis, unused prepaid balances are a liability and your accountant may need to defer part of this figure.",
       ...(anyTax
         ? [
-            "Invoiced excludes the sales tax on those invoices, which is owed to the state; it is the Tax billed column of the Sales tax collected report. Credit applied reduces what the customer owed, not the tax, so it is shown here whole.",
+            "Invoiced excludes the sales tax on those invoices, which is owed to the state; it is the Tax billed column of the Sales tax collected report. Credit applied reduces what the client owed, not the tax, so it is shown here whole.",
           ]
         : []),
     ],
@@ -836,8 +836,8 @@ async function buildRevenueByClient(supabase: any, ctx: OrgContext, from: string
     rows,
     totals,
     caveats: [
-      '"Unattributed" covers refunds against payments taken before this period, where the original customer is outside the window being reported.',
-      "Refunds is net of any dispute won in this period, so a customer whose chargeback you successfully defended can show a negative figure in that column.",
+      '"Unattributed" covers refunds against payments taken before this period, where the original client is outside the window being reported.',
+      "Refunds is net of any dispute won in this period, so a client whose chargeback you successfully defended can show a negative figure in that column.",
     ],
   };
 }

@@ -79,8 +79,13 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/routes")({
+  head: () => titleHead("Schedule"),
+  // Wide — see src/components/PageShell.tsx. The dispatch board: a column per
+  // technician, and a week view seven days across.
+  staticData: { pageWidth: "wide" },
   component: RoutesPage,
 });
 
@@ -906,29 +911,30 @@ function RoutesPage() {
   const activeVisit = activeId ? visits.find((v) => v.id === activeId) : null;
 
   return (
-    <div className="space-y-4">
+    <>
       {moveDialog}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        {/* The title IS the date picker.
-            "I like clicking on the month and it opens the date picker instead
-            of it being separate." It was separate: a `<input type="date">`
-            wedged between the two arrows, which is a second control saying the
-            same thing the heading already says, in a different format, in a
-            widget whose look and keyboard behaviour the browser decides. The
-            heading is the thing on this page a dispatcher already looks at to
-            find out which day the board is showing — so it is the thing to
-            press to change it.
+        {/* ── THE PAGE IS CALLED SCHEDULE, AND NOW SAYS SO ─────────────────
+            The sidebar, the tab bar, the command palette and the dashboard all
+            call this page Schedule. Its own heading said "Today ▾", because the
+            heading was also the date picker, so pressing Schedule landed on a
+            page that called itself something else (launch pass, 2026-10,
+            recommendation 3).
 
-            The chevron is not decoration. An `<h1>` that happens to be
-            clickable is a control nobody discovers; the chevron is the only
+            So the heading is the page's name and the date is the control
+            beside it, keeping everything it did as the heading:
+
+            "I like clicking on the month and it opens the date picker instead
+            of it being separate." The label is built from the same window the
+            board fetches, so it cannot drift from the data, and pressing it
+            opens the calendar. The chevron is not decoration: it is the only
             thing on screen that says this text does something.
 
-            `<button>` inside the `<h1>`, not the other way round: a heading is
-            flow content and is not allowed inside a button. The popover's
-            calendar renders in a portal, so nothing lands inside the heading
-            either. */}
-        <div>
-          <h1 className="text-2xl font-semibold">
+            One wrapping row, so at 360px the date drops under the heading
+            instead of pushing the toolbar off the side. */}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <h1 className="text-2xl font-semibold">Schedule</h1>
             <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
               <PopoverTrigger asChild>
                 {/* No aria-label. The button's own text IS its name — "August
@@ -939,7 +945,8 @@ function RoutesPage() {
                 <button
                   type="button"
                   title="Pick a date"
-                  className="-mx-2 flex min-h-[2.75rem] items-center gap-1.5 rounded-md px-2 text-left hover:bg-muted md:mouse:min-h-0 md:py-1"
+                  data-testid="schedule-date"
+                  className="-mx-2 flex min-h-[2.75rem] items-center gap-1.5 rounded-md px-2 text-left text-lg font-medium hover:bg-muted md:mouse:min-h-0 md:py-1"
                 >
                   {heading}
                   <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground" />
@@ -965,7 +972,7 @@ function RoutesPage() {
                 />
               </PopoverContent>
             </Popover>
-          </h1>
+          </div>
           <p className="text-sm text-muted-foreground">
             Dispatch, route, map, and mark visits complete, all in one view.
           </p>
@@ -1822,7 +1829,7 @@ function RoutesPage() {
         visitId={detailVisitId}
         onOpenChange={(o) => !o && setDetailVisitId(null)}
       />
-    </div>
+    </>
   );
 }
 

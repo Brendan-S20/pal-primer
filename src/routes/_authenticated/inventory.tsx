@@ -22,8 +22,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { AlertTriangle, Package, Plus } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/inventory")({
+  head: () => titleHead("Inventory"),
   component: InventoryPage,
 });
 
@@ -142,7 +144,7 @@ function InventoryPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <>
       {bulkDialog}
       <div className="flex items-end justify-between gap-4">
         <div>
@@ -357,7 +359,7 @@ function InventoryPage() {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </>
   );
 }
 

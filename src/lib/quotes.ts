@@ -222,7 +222,7 @@ export function sendResultMessage(r: {
   reason: string | null;
   recipient: string | null;
 }): { ok: boolean; text: string } {
-  if (r.emailed) return { ok: true, text: `Quote emailed to ${r.recipient ?? "the customer"}.` };
+  if (r.emailed) return { ok: true, text: `Quote emailed to ${r.recipient ?? "the client"}.` };
   const copy = "Copy the link to share it yourself.";
   switch (r.reason) {
     case "no_email":

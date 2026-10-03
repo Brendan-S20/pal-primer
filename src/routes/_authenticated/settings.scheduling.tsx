@@ -27,8 +27,10 @@ import { WorkDaysPicker } from "@/components/schedule/WorkDaysPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CalendarFeedCard } from "@/components/CalendarFeedCard";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/scheduling")({
+  head: () => titleHead("Scheduling", "Settings"),
   component: SchedulingSettings,
 });
 
@@ -116,13 +118,13 @@ function SchedulingSettings() {
   // because an early return between hooks breaks React's rules of hooks.)
   if (error) {
     return (
-      <p className="p-4 text-sm text-destructive">
+      <p className="text-sm text-destructive">
         Scheduling settings could not be loaded: {(error as Error).message}
       </p>
     );
   }
   if (!data) {
-    return <p className="p-4 text-sm text-muted-foreground">Loading scheduling settings…</p>;
+    return <p className="text-sm text-muted-foreground">Loading scheduling settings…</p>;
   }
 
   return (
@@ -238,7 +240,7 @@ function SchedulingSettings() {
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">When optimizing routes</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          What auto-routing puts first when a customer has an arrival window. You can still choose
+          What auto-routing puts first when a client has an arrival window. You can still choose
           the other way for a single run in the Auto-routing panel.
         </p>
         {/* Two choices, one of them the default, so a radio pair rather than a
@@ -249,13 +251,13 @@ function SchedulingSettings() {
             [
               [
                 "honour",
-                "Honour customers' arrival windows",
+                "Honour clients' arrival windows",
                 "A truck drives further, or waits, rather than arrive outside a window. A window that cannot be met is still planned and flagged.",
               ],
               [
                 "ignore",
                 "Shortest driving (ignore arrival windows)",
-                "Windows play no part in the order. After each run the panel lists every window the plan misses, so you can tell the customer or move the stop.",
+                "Windows play no part in the order. After each run the panel lists every window the plan misses, so you can tell the client or move the stop.",
               ],
             ] as const
           ).map(([value, title, hint]) => (
@@ -359,10 +361,10 @@ function SchedulingSettings() {
         </p>
         <p className="mt-1 text-2xs text-muted-foreground">
           Arrival windows are anchored to the workday start in this time zone. It also decides what
-          counts as &ldquo;today&rdquo; for the customer portal and the end-of-day close-out, so it
+          counts as &ldquo;today&rdquo; for the client portal and the end-of-day close-out, so it
           is set once in{" "}
-          <Link to="/settings/preferences" className="underline underline-offset-2">
-            Settings → Preferences
+          <Link to="/settings/business" className="underline underline-offset-2">
+            Settings → Business defaults
           </Link>
           .
         </p>

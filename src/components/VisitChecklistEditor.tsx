@@ -306,7 +306,7 @@ export function VisitChecklistEditor({
             Show the checklist in the completion email
           </Label>
           <div className="mt-0.5 text-xs text-muted-foreground">
-            The customer sees the items the tech checked. Off: the checklist stays between you and
+            The client sees the items the tech checked. Off: the checklist stays between you and
             your techs.
           </div>
         </div>

@@ -65,7 +65,9 @@ describe("the trial notice", () => {
     const text = renderTrialNoticeText(args);
     for (const body of [html, text]) {
       // What stops.
-      expect(body).toMatch(/new customer/i);
+      // CHANGED 2026-10-02: staff copy says "client" for the person who pays
+      // (tests/one-word-for-the-person-who-pays.test.ts).
+      expect(body).toMatch(/new client/i);
       // What does not — the half that makes it a pause rather than a lockout.
       expect(body).toMatch(/invoic/i);
       expect(body).toMatch(/portal/i);
@@ -235,7 +237,7 @@ describe("the notice describes only what actually changes", () => {
     it(`${which} names exactly one thing that stops`, () => {
       const stops = /What stops:?([\s\S]{0,240}?)(What keeps running|Nothing is deleted)/.exec(body);
       expect(stops, `${which} has no "What stops" section to check`).not.toBeNull();
-      expect(stops![1], `${which} lists more than adding a customer`).toMatch(/new customer/);
+      expect(stops![1], `${which} lists more than adding a client`).toMatch(/new client/);
       // Two ways to list a second item, and the text body can only use one of
       // them -- without the conjunction check this assertion is vacuous there.
       expect(stops![1].match(/<li>/g)?.length ?? 0, `${which} still uses a multi-item list`).toBe(0);

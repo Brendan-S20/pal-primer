@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Building2, CreditCard, Link2, MapPin, Radar } from "lucide-react";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/signals")({
+  head: () => titleHead("Franchise signals", "Platform admin"),
   component: SignalsPage,
 });
 

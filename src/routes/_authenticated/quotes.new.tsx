@@ -14,11 +14,12 @@ import { getLeadForConversion } from "@/lib/leads.functions";
 import { isSyntheticLeadEmail } from "@/lib/lead-conversion";
 import { defaultQuoteValidUntil } from "@/lib/quotes";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { pageTitle } from "@/lib/page-title";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const Route = createFileRoute("/_authenticated/quotes/new")({
-  head: () => ({ meta: [{ title: "New quote · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("New quote") }] }),
   validateSearch: (s: Record<string, unknown>): { fromLead?: string } => ({
     fromLead: typeof s.fromLead === "string" && UUID.test(s.fromLead) ? s.fromLead : undefined,
   }),
@@ -108,9 +109,9 @@ function NewQuotePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <>
       {header}
       {body}
-    </div>
+    </>
   );
 }

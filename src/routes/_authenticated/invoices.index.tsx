@@ -50,8 +50,10 @@ import type { RowAction } from "@/components/RowActions";
 import { invoiceOutstandingCents } from "@/lib/ar";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
+  head: () => titleHead("Invoices"),
   // `?new` opens the manual-invoice dialog on arrival, so the phone's ➕ sheet
   // can offer "New invoice" as something that CREATES rather than as one more
   // row that lands you on a list and leaves you to find the button. See the
@@ -691,7 +693,7 @@ function InvoicesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       {dialog}
       {paymentDialog}
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -1084,6 +1086,6 @@ function InvoicesPage() {
         onClose={() => setDrawerInvoiceId(null)}
         onChanged={() => qc.invalidateQueries({ queryKey: ["invoices"] })}
       />
-    </div>
+    </>
   );
 }

@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { DISPUTE_COPY } from "@/lib/disputes";
 import { getDisputeQueue, setDisputesInAnalytics } from "@/lib/disputes.functions";
+import { pageTitle } from "@/lib/page-title";
 
 // BUILD-12 — the dispute queue.
 //
@@ -29,7 +30,7 @@ import { getDisputeQueue, setDisputesInAnalytics } from "@/lib/disputes.function
 // open disputes are counted in their own analytics.
 
 export const Route = createFileRoute("/_authenticated/disputes")({
-  head: () => ({ meta: [{ title: "Disputes · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Disputes") }] }),
   component: DisputesPage,
 });
 
@@ -65,13 +66,13 @@ function DisputesPage() {
   const t = data?.totals;
 
   return (
-    <div className="space-y-6">
+    <>
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
           <ShieldAlert className="h-6 w-6 shrink-0" /> Disputes
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          When a customer&apos;s bank queries or reverses a payment, it lands here. An
+          When a client&apos;s bank queries or reverses a payment, it lands here. An
           INQUIRY is a question and takes nothing; a CHARGEBACK has already left the
           account. This is where you see which is which, what is still contestable, and
           what is settled.
@@ -219,7 +220,7 @@ function DisputesPage() {
           </Card>
         </>
       )}
-    </div>
+    </>
   );
 }
 

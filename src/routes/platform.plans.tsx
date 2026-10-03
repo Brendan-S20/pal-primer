@@ -42,8 +42,10 @@ import {
 } from "@/components/ui/table";
 import { CloudUpload, Eye, EyeOff, Pencil, Plus } from "lucide-react";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/plans")({
+  head: () => titleHead("Plans", "Platform admin"),
   component: PlansPage,
 });
 

@@ -14,8 +14,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { NotificationPrefs } from "@/components/NotificationPrefs";
 import { cacheAgeParts } from "@/lib/offline/read-cache-policy";
+import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/notifications")({
+  head: () => titleHead("Alerts"),
   component: NotificationsPage,
 });
 
@@ -32,6 +34,9 @@ function timeAgo(iso: string, t: TFunction): string {
 
 function NotificationsPage() {
   const { t } = useTranslation();
+  // In the language this device reads. The route's head is English because
+  // it runs before i18n has read the device's choice.
+  useDocumentTitle(pageTitle(t("nav.alerts")));
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"all" | "unread">("all");
   // The gear used to live in the header bell's dropdown. The bell is a link
@@ -58,7 +63,7 @@ function NotificationsPage() {
   const deleteOne = useMutation({ mutationFn: (id: string) => deleteFn({ data: { id } }), onSuccess: invalidate });
 
   return (
-    <div className="space-y-4">
+    <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           {/* "Alerts", because that is the word on the tab that opens this
@@ -236,6 +241,6 @@ function NotificationsPage() {
           </ul>
         )}
       </div>
-    </div>
+    </>
   );
 }

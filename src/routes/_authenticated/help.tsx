@@ -8,12 +8,14 @@ import { HELP_ARTICLES, HELP_SECTIONS, getArticle } from "@/lib/help-content";
 import { helpMatchScore } from "@/lib/help-search";
 import { restartTour } from "@/components/OnboardingTour";
 import { APP_NAME } from "@/lib/scoop";
+import { titleHead } from "@/lib/page-title";
 
 // The Knowledge Center. Sections mirror the Settings groupings so the
 // taxonomy is one users already recognize. Articles cross-link each other
 // ([label](article:slug)) and deep-link into the app ([label](/path)), so
 // help lands you on the page it's describing.
 export const Route = createFileRoute("/_authenticated/help")({
+  head: () => titleHead("Knowledge Center"),
   validateSearch: (s: Record<string, unknown>) => ({
     article: typeof s.article === "string" ? s.article : undefined,
   }),
@@ -88,7 +90,7 @@ function HelpPage() {
   const related = (active?.related ?? []).map((slug) => getArticle(slug)).filter(Boolean);
 
   return (
-    <div className="space-y-6">
+    <>
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
           <BookOpen className="h-6 w-6 shrink-0" /> Knowledge Center
@@ -256,6 +258,6 @@ function HelpPage() {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }

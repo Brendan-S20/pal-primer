@@ -21,8 +21,10 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
 import { toast } from "sonner";
+import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
+  head: () => titleHead("Invoice"),
   component: InvoiceDetail,
 });
 
@@ -89,6 +91,9 @@ function InvoiceDetail() {
     queryFn: () => get({ data: { id: invoiceId } }),
   });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  // "INV-10420 · Invoices", from the same label the page's heading prints.
+  const loadedInvoice = q.data?.invoice as { id: string; number?: number | null } | undefined;
+  useDocumentTitle(loadedInvoice ? pageTitle(invoiceNumberLabel(loadedInvoice), "Invoices") : null);
 
   // In-app payment (B2/I8): the shared three-part payment panel — saved card
   // with exact instrument + amount, account credit, or new card entry via the
@@ -197,7 +202,7 @@ function InvoiceDetail() {
         : null;
 
   return (
-    <div className="space-y-6">
+    <>
       <style>{PRINT_STYLES}</style>
       {paymentDialog}
       <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">
@@ -550,7 +555,7 @@ function InvoiceDetail() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

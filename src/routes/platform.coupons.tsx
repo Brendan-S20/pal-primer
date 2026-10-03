@@ -27,8 +27,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TicketPercent } from "lucide-react";
 import { formatDay } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/coupons")({
+  head: () => titleHead("Coupons", "Platform admin"),
   component: CouponsPage,
 });
 
