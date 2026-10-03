@@ -115,3 +115,48 @@ describe("scoreChurnSignals", () => {
     expect(a.score).toBeLessThanOrEqual(100);
   });
 });
+
+describe("one churn score, whichever button is pressed", () => {
+  // Analytics and the Clients page each had a scorer, with different weights,
+  // writing the same churn_score column: the number depended on which ran
+  // last. The Analytics one counted complaints and failed autopay; the merged
+  // score keeps both.
+  // A client with no other factor and no regular-visit credit, so the added
+  // points are not swallowed by the floor at 0.
+  const plain = (o: Partial<ChurnSignals>) => sig({ completed_last_30: 1, ...o });
+
+  it("counts complaints, 8 each up to 20", () => {
+    const one = scoreChurnSignals(plain({ complaints_last_90: 1 }));
+    const four = scoreChurnSignals(plain({ complaints_last_90: 4 }));
+    const none = scoreChurnSignals(plain({}));
+    expect(one.score - none.score).toBe(8);
+    expect(four.score - none.score).toBe(20);
+    expect(four.reason).toMatch(/4 complaints in 90 days/);
+  });
+
+  it("counts failed autopay charges, 5 each up to 15", () => {
+    const two = scoreChurnSignals(plain({ autopay_failures: 2 }));
+    const many = scoreChurnSignals(plain({ autopay_failures: 9 }));
+    const none = scoreChurnSignals(plain({}));
+    expect(two.score - none.score).toBe(10);
+    expect(many.score - none.score).toBe(15);
+  });
+
+  it("scores as before when a caller does not supply the new signals", () => {
+    const { complaints_last_90: _c, autopay_failures: _a, ...old } = sig({});
+    expect(scoreChurnSignals(old as ChurnSignals)).toEqual(scoreChurnSignals(sig({})));
+  });
+
+  it("both buttons run the same code", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const read = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
+    for (const f of ["src/lib/ai-tools.functions.ts", "src/lib/churn.functions.ts"]) {
+      const src = read(f);
+      expect(src, `${f} scores churn its own way again`).toMatch(/runChurnScoring\(/);
+      expect(src, `${f} writes churn_score itself again`).not.toMatch(
+        /update\(\{\s*churn_score/,
+      );
+    }
+  });
+});
