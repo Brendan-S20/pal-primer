@@ -79,6 +79,14 @@ for (const { w, h, label, phone } of [
     // Proves the component RENDERED, before anything measures it. Every
     // assertion below is of the form "nothing is off the edge", and all of
     // those pass on a page where the checklist is absent.
+    //
+    // CHANGED 2026-10-02: on a phone the checklist now draws only the NEXT
+    // step until "Show all 7 steps" is pressed (launch pass recommendation 8),
+    // and in this fixture the next step is not the clients one. So the list
+    // is opened first; what this measures, the row at full width, is unchanged.
+    await expect(page.getByText("Get started").first()).toBeVisible({ timeout: FIRST_PAINT_MS });
+    const showAll = page.getByRole("button", { name: /Show all \d+ steps/ });
+    if (phone) await showAll.click();
     await expect(page.getByText("Add or import clients")).toBeVisible({ timeout: FIRST_PAINT_MS });
 
     const row = await readRow(page);

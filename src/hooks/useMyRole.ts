@@ -52,6 +52,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/my-schedule": ["owner", "office_manager", "dispatcher", "tech"],
   "/waste-log": ["owner", "office_manager", "dispatcher", "tech"],
   "/messages": ["owner", "office_manager", "dispatcher"],
+  // The office's worklist across Messages, Concerns, Needs review, Disputes
+  // and alerts. The roles that can open at least two of those; each section
+  // inside is drawn only for a role that can open its own page.
+  "/inbox": ["owner", "office_manager", "dispatcher"],
   "/notifications": ["owner", "office_manager", "dispatcher", "tech"],
   "/concerns": ["owner", "office_manager", "dispatcher"],
   "/inventory": ["owner", "office_manager"],

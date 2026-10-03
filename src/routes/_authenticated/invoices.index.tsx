@@ -51,6 +51,8 @@ import { invoiceOutstandingCents } from "@/lib/ar";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
 import { titleHead } from "@/lib/page-title";
+import { byWhatNeedsDoing } from "@/lib/invoice-order";
+import { useOrgToday } from "@/hooks/useOrgToday";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
   head: () => titleHead("Invoices"),
@@ -479,6 +481,15 @@ function InvoicesPage() {
     });
   }, [invQ.data, status, search, from, to]);
 
+  // The phone's cards, most actionable first: see src/lib/invoice-order.ts.
+  // The table keeps newest first, where columns and the status filter do the
+  // sorting a phone cannot.
+  const orgTodayIso = useOrgToday();
+  const phoneOrder = useMemo(
+    () => byWhatNeedsDoing(filtered, orgTodayIso),
+    [filtered, orgTodayIso],
+  );
+
   const filtersActive = Boolean(search || from || to || status !== "all");
   const resetFilters = () => {
     setSearch("");
@@ -780,7 +791,12 @@ function InvoicesPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <NewInvoiceDialog />
+          {/* The primary action first on a phone, where this row wraps and
+              Export CSV used to lead it. At a desk it stays at the right-hand
+              end, where a primary button is looked for. */}
+          <div className="max-md:order-first">
+            <NewInvoiceDialog />
+          </div>
         </div>
       </div>
 
@@ -1028,7 +1044,7 @@ function InvoicesPage() {
               />
               Select all
             </label>
-            {filtered.map((inv) => (
+            {phoneOrder.map((inv) => (
               <InvoiceCard
                 key={inv.id}
                 invoice={inv}

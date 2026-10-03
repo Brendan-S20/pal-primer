@@ -26,6 +26,7 @@ const NAV: NavEntry[] = [
   { label: "Schedule", to: "/routes", group: "Operations" },
   { label: "My day", to: "/my-day", group: "Field" },
   { label: "Waste log", to: "/waste-log", group: "Field" },
+  { label: "Inbox", to: "/inbox", group: "Overview" },
   { label: "Messages", to: "/messages", group: "Operations" },
   // "Operations", as in the sidebar. These were a separate "Ops" group there
   // and here, the same word twice.
@@ -36,7 +37,10 @@ const NAV: NavEntry[] = [
   { label: "Payments", to: "/payments", group: "Billing" },
   { label: "Plan & billing", to: "/settings/billing", group: "Settings" },
   { label: "Reports", to: "/reports", group: "Insights" },
+  // Reports' other two tabs keep their own entries here: the palette is
+  // searched by name, and "tax" or "analytics" should still find them.
   { label: "Analytics", to: "/analytics", group: "Insights" },
+  { label: "Tax & accountant", to: "/tax-reports", group: "Insights" },
   // AI tools no longer have a standalone destination — surface the two
   // owner-facing ones (marketing + weekly digest) here as quick actions that
   // deep-link to the dashboard where they render, and point the workflow-bound
@@ -55,6 +59,7 @@ const NAV: NavEntry[] = [
   { label: "AI receptionist", to: "/settings/ai-receptionist", group: "Settings" },
   { label: "Automation", to: "/settings/automation", group: "Settings" },
   { label: "Emails", to: "/settings/emails", group: "Settings" },
+  { label: "Business defaults", to: "/settings/business", group: "Settings" },
   { label: "Reviews & referrals", to: "/settings/reviews", group: "Settings" },
   { label: "Add-ons", to: "/settings/addons", group: "Settings" },
   { label: "Accounting", to: "/settings/accounting", group: "Settings" },

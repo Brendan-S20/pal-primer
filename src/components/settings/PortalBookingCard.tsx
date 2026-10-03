@@ -52,8 +52,8 @@ export function PortalBookingCard() {
       <CardHeader>
         <CardTitle>Extra cleanups from the portal</CardTitle>
         <CardDescription>
-          Clients can ask for a one-off cleanup on one of your working days, from tomorrow up to
-          30 days out. It lands in Concerns for you to book or decline.
+          Clients can ask for a one-off cleanup on one of your working days, from tomorrow up to 30
+          days out. It lands in Concerns for you to book or decline.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
