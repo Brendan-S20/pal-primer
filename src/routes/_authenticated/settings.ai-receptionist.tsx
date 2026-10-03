@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")({
@@ -67,10 +68,19 @@ function Page() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">AI SMS Receptionist</h2>
+        <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+          AI Receptionist
+          {!RECEPTIONIST_LAUNCHED && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              Coming soon
+            </span>
+          )}
+        </h2>
         <p className="text-sm text-muted-foreground">
-          When enabled, inbound texts that aren't STOP/START/HELP are answered by an AI trained
-          on your FAQ. It can quote prices, capture leads, and hand off to a human.
+          Answers texts and calls to your business number using your FAQ and your own prices. It
+          can quote, take down a new client&apos;s details, and hand off to a person.
+          {!RECEPTIONIST_LAUNCHED &&
+            " It is not switched on for anyone yet. You can write its FAQ and persona now, ready for launch."}
         </p>
       </div>
 
@@ -79,6 +89,7 @@ function Page() {
           <input
             type="checkbox"
             checked={enabled}
+            disabled={!RECEPTIONIST_LAUNCHED}
             onChange={(e) => setEnabled(e.target.checked)}
             className="h-4 w-4"
           />
@@ -121,6 +132,7 @@ function Page() {
             <input
               type="checkbox"
               checked={voiceEnabled}
+              disabled={!RECEPTIONIST_LAUNCHED}
               onChange={(e) => setVoiceEnabled(e.target.checked)}
               className="h-4 w-4"
             />

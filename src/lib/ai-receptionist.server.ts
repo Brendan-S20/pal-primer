@@ -1,10 +1,15 @@
 // AI SMS Receptionist — server only.
 // Called from the Twilio inbound webhook when an org has ai_receptionist_enabled.
 import { generateText, tool, stepCountIs } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { createLovableAiGatewayProvider, GATEWAY_MODEL_ID } from "./ai-gateway.server";
 
-const MODEL_ID = GATEWAY_MODEL_ID;
+// Claude Haiku 4.5, on Anthropic directly. It was Gemini 3 Flash through the
+// Lovable gateway: a PREVIEW model that can be retired without notice, on a
+// third party's pricing. Haiku is the smallest model that reliably follows
+// the tool rules below, and the business's knowledge (FAQ, prices) is handed
+// to it on every turn, so nothing has to be "held" by a bigger model.
+const MODEL_ID = "claude-haiku-4-5-20251001";
 const MAX_REPLY_LEN_SMS = 320; // ~2 SMS segments
 const MAX_REPLY_LEN_VOICE = 500; // ~2 sentences read aloud
 
@@ -32,7 +37,7 @@ export type AiReceptionistResult = {
 };
 
 export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiReceptionistResult> {
-  const key = process.env.LOVABLE_API_KEY;
+  const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     return {
       reply: null,
@@ -40,7 +45,7 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
       escalated: true,
       latencyMs: 0,
       model: MODEL_ID,
-      error: "LOVABLE_API_KEY not configured",
+      error: "ANTHROPIC_API_KEY not configured",
     };
   }
 
@@ -61,7 +66,7 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
   }
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const gateway = createLovableAiGatewayProvider(key);
+  const anthropic = createAnthropic({ apiKey: key });
 
   const tools = {
     get_pricing_quote: tool({
@@ -189,7 +194,7 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
   const started = Date.now();
   try {
     const result = await generateText({
-      model: gateway(MODEL_ID),
+      model: anthropic(MODEL_ID),
       system,
       messages,
       tools,
@@ -238,7 +243,7 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
       await recordAiUsage({
         orgId: input.organizationId,
         feature: "ai_receptionist",
-        provider: "lovable-gateway",
+        provider: "anthropic",
         model: MODEL_ID,
         ...tokensFromAiSdkResult(result),
       });
