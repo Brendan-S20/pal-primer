@@ -622,8 +622,13 @@ const en = {
   },
   preferences: {
     title: "Preferences",
-    subtitleManager: "Language, branding and the defaults this workspace uses.",
-    subtitle: "Language and how the app behaves on your route.",
+    subtitleDevice:
+      "How the app looks and behaves on this device. Nothing here changes it for anyone else.",
+    themeTitle: "Appearance",
+    themeDescription: "Light, dark, or match this device's setting. Only this device changes.",
+    themeSystem: "System",
+    themeLight: "Light",
+    themeDark: "Dark",
     languageDescription: "Changes the language on this device only. Each person picks their own.",
     interfaceLanguage: "Interface language",
     languageUpdated: "Language updated",

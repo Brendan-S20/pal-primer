@@ -138,8 +138,8 @@ function ZonesPage() {
           {canEdit && (
             <p className="mt-1 text-xs text-muted-foreground">
               Standard pricing now lives in{" "}
-              <Link to="/settings/preferences" className="underline underline-offset-2">
-                Settings &gt; Preferences
+              <Link to="/settings/business" className="underline underline-offset-2">
+                Settings &gt; Business defaults
               </Link>
               .
             </p>

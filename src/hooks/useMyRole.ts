@@ -102,6 +102,11 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/settings/franchise": ["owner"],
   // /ai-tools is now a redirect to /dashboard — no ACL entry needed.
   "/imports": ["owner", "office_manager"],
+  // The business half of what was Preferences (time zone, standard pricing,
+  // commercial accounts, completion rules, re-clean guarantee). Office only:
+  // a technician reaches Preferences, which is their own device. Must precede
+  // the "/settings" prefix entry.
+  "/settings/business": ["owner", "office_manager"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   // H1: the DNA compliance workspace (cross-client registry, fines, violation

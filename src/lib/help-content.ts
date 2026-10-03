@@ -230,7 +230,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "Every client gets a private portal link where they can see upcoming visits, pay invoices, save a card, put service on hold, and refer neighbors.",
       "Clients sign in with a one-time code sent by email (or text, when texting is configured). If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
-      "The portal carries your branding: set your logo and brand color in [Preferences](/settings/preferences).",
+      "The portal carries your branding: set your logo and brand color in [Client portal](/settings/client-portal).",
     ],
     related: ["lead-form", "getting-paid", "credit-balance", "reclean-requests"],
   },
@@ -242,7 +242,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "If you promise clients a free re-clean when a spot gets missed, they can ask for it themselves. For a set number of hours after a visit is completed, that visit shows a **Request a re-clean** button in the client's [portal](article:client-portal), with an optional note about what to look at.",
       "The request lands in [Concerns](/concerns) labelled **Re-clean request**, and you get the same email and notification a concern sends. Asking twice for the same visit gives you one request, not two.",
-      "Set the window in [Preferences](/settings/preferences) under **Re-clean guarantee**. It starts at 48 hours and can be anything up to a week (168). Set it to 0 to turn the guarantee off: the button disappears from every client's portal.",
+      "Set the window in [Business defaults](/settings/business) under **Re-clean guarantee**. It starts at 48 hours and can be anything up to a week (168). Set it to 0 to turn the guarantee off: the button disappears from every client's portal.",
       "The window is measured from when the visit was finished, not the day it was scheduled. A visit completed at 6 PM Monday with a 48-hour guarantee can be asked about until 6 PM Wednesday.",
     ],
     steps: [

@@ -118,6 +118,7 @@ import { Route as AuthenticatedSettingsFranchiseRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsClientPortalRouteImport } from './routes/_authenticated/settings.client-portal'
+import { Route as AuthenticatedSettingsBusinessRouteImport } from './routes/_authenticated/settings.business'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated/settings.billing'
 import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
@@ -725,6 +726,12 @@ const AuthenticatedSettingsClientPortalRoute =
     path: '/client-portal',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsBusinessRoute =
+  AuthenticatedSettingsBusinessRouteImport.update({
+    id: '/business',
+    path: '/business',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsBlackoutsRoute =
   AuthenticatedSettingsBlackoutsRouteImport.update({
     id: '/blackouts',
@@ -1010,6 +1017,7 @@ export interface FileRoutesByFullPath {
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/settings/business': typeof AuthenticatedSettingsBusinessRoute
   '/settings/client-portal': typeof AuthenticatedSettingsClientPortalRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -1147,6 +1155,7 @@ export interface FileRoutesByTo {
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/settings/business': typeof AuthenticatedSettingsBusinessRoute
   '/settings/client-portal': typeof AuthenticatedSettingsClientPortalRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -1293,6 +1302,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/_authenticated/settings/business': typeof AuthenticatedSettingsBusinessRoute
   '/_authenticated/settings/client-portal': typeof AuthenticatedSettingsClientPortalRoute
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -1440,6 +1450,7 @@ export interface FileRouteTypes {
     | '/settings/automation'
     | '/settings/billing'
     | '/settings/blackouts'
+    | '/settings/business'
     | '/settings/client-portal'
     | '/settings/deep-clean'
     | '/settings/emails'
@@ -1577,6 +1588,7 @@ export interface FileRouteTypes {
     | '/settings/automation'
     | '/settings/billing'
     | '/settings/blackouts'
+    | '/settings/business'
     | '/settings/client-portal'
     | '/settings/deep-clean'
     | '/settings/emails'
@@ -1722,6 +1734,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/automation'
     | '/_authenticated/settings/billing'
     | '/_authenticated/settings/blackouts'
+    | '/_authenticated/settings/business'
     | '/_authenticated/settings/client-portal'
     | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
@@ -2594,6 +2607,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsClientPortalRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/business': {
+      id: '/_authenticated/settings/business'
+      path: '/business'
+      fullPath: '/settings/business'
+      preLoaderRoute: typeof AuthenticatedSettingsBusinessRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/blackouts': {
       id: '/_authenticated/settings/blackouts'
       path: '/blackouts'
@@ -2929,6 +2949,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
+  AuthenticatedSettingsBusinessRoute: typeof AuthenticatedSettingsBusinessRoute
   AuthenticatedSettingsClientPortalRoute: typeof AuthenticatedSettingsClientPortalRoute
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
@@ -2958,6 +2979,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
+  AuthenticatedSettingsBusinessRoute: AuthenticatedSettingsBusinessRoute,
   AuthenticatedSettingsClientPortalRoute:
     AuthenticatedSettingsClientPortalRoute,
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
