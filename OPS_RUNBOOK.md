@@ -41,7 +41,7 @@ and exits 2, and the gate is protecting nothing.
 | `TWILIO_AUTH_TOKEN` | **Set this.** Platform Twilio Auth Token. Verifies the signature Twilio puts on every inbound webhook, which is the mechanism built for this job. While it is unset, inbound SMS and voice authenticate on `TWILIO_INBOUND_SECRET` alone. |
 | `TWILIO_INBOUND_SECRET` | Fallback inbound-webhook secret, in the query string. Platform-wide: one value authenticates every tenant, and after it passes the org is taken from the attacker-supplied `To` field. It appears in every access, proxy and Twilio log it passes through. Kept only so inbound SMS does not go dark before `TWILIO_AUTH_TOKEN` is set; it logs a warning naming itself whenever it is what let a request through. |
 | `RESEND_API_KEY` | All transactional email (OTP email, invoices, review-ask fallback, notifications) |
-| `ANTHROPIC_API_KEY` | Optional platform-managed AI fallback (unset ⇒ AI is pure BYOK) |
+| `ANTHROPIC_API_KEY` | Required for the AI tools. All AI runs on HoundStack's own key; there is no customer key any more (IMP-9). Unset, the tools say AI is unavailable. The receptionist, digest and Business Advisor use `LOVABLE_API_KEY` instead. |
 | `CRON_SECRET` | Authorizes the nightly cron (**required** for autopay — see §5) |
 | `PUBLIC_APP_ORIGIN` | Canonical public URL used to validate BYOK inbound Twilio signatures behind a proxy |
 

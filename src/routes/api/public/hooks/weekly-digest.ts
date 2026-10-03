@@ -14,11 +14,9 @@ export const Route = createFileRoute("/api/public/hooks/weekly-digest")({
         // the three cron endpoints, and the one that spends AI allowance and
         // emails every opted-in owner on each call. See cron-auth.server.ts.
         //
-        // Safe to tighten: no pg_cron job targets this endpoint and
-        // `organizations.last_digest_sent_at` is null for all 7 opted-in orgs,
-        // so nothing is calling it today and nothing can break. That the digest
-        // has never once run despite those opt-ins is a separate problem —
-        // logged, not papered over here.
+        // When this was tightened no pg_cron job targeted it. One does now:
+        // Mondays 13:00 UTC, scheduled in 20260731130000 and re-pointed at the
+        // canonical host in 20260804160000.
         const { authorizeCronRequest, cronUnauthorized } = await import("@/lib/cron-auth.server");
         const auth = authorizeCronRequest(request);
         if (!auth.ok) return cronUnauthorized("weekly-digest", auth);
