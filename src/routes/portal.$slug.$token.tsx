@@ -13,17 +13,13 @@ import { PushToggle } from "@/components/PushToggle";
 import {
   PortalProvider,
   usePortalCtx,
-  usePortalTimezone,
   PortalVerifyGate,
   PortalDeadEnd,
   money,
-  fmtDayShort,
   friendlyFrequency,
   isHex,
-  relativeFromToday,
 } from "@/lib/portal-ui";
-import { orgLocalTime } from "@/lib/org-day";
-import { customerTitle } from "@/lib/page-title";
+import { customerTitle, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/portal/$slug/$token")({
   head: () => ({
@@ -76,8 +72,19 @@ function PortalLayout() {
 
 function PortalShell() {
   const { token, slug, clientQ, contextQ, verified } = usePortalCtx();
-  // The header's ETA window is an instant pair; it reads on the ORG's clock.
-  const tz = usePortalTimezone();
+  const pathname = useRouterState({ select: (r) => r.location.pathname });
+  // Which of the six tabs is open, by the same matching the tab bar uses.
+  const base = `/portal/${slug}/${token}`;
+  const section = TABS.find((t) => {
+    const target = t.to.replace("$slug", slug).replace("$token", token);
+    return t.end ? pathname === target : pathname === target || pathname.startsWith(target + "/");
+  });
+  const onHome = pathname === base || pathname === base + "/";
+  // The tab names the BUSINESS, never HoundStack: "Visits · Whitfield & Ramirez
+  // Yard and Waste Services". The client signed up with them, and a tab with a
+  // vendor's name on it is one they cannot place among their others.
+  const orgName = (clientQ.data as { org_name?: string } | undefined)?.org_name;
+  useDocumentTitle(orgName ? customerTitle(section?.label ?? null, orgName) : null);
 
   // Auth gate (finding #4): resolve the session before anything else.
   if (contextQ.isLoading) {
@@ -141,10 +148,6 @@ function PortalShell() {
     color: "white",
   };
 
-  const nextVisitDate = c.next_visit_on as string | null;
-  const nextVisitEtaStart = c.next_visit_eta_start as string | null;
-  const nextVisitEtaEnd = c.next_visit_eta_end as string | null;
-
   // primary_unit_count is the subscription's billable UNITS, not waste
   // stations (G4 mislabel: "24 stations" for a 24-unit service).
   const planChip = isCommercial
@@ -166,77 +169,53 @@ function PortalShell() {
             changed from a preview, and it ends after an hour.
           </div>
         )}
-        {/* Header — always visible across tabs */}
-        <header className="overflow-hidden rounded-2xl p-6 shadow-lg" style={headerStyle}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                {c.logo_url ? (
-                  <img
-                    src={c.logo_url}
-                    alt={c.org_name}
-                    className="h-8 w-8 rounded bg-white/20 object-contain p-0.5"
-                  />
-                ) : null}
-                <div className="text-xs uppercase tracking-wider opacity-80">{c.org_name}</div>
-              </div>
-              <h1 className="mt-1 truncate text-2xl font-semibold sm:text-3xl">
-                Hello, {c.display_name} 👋
-              </h1>
+        {/* ── WHO THIS IS FROM, AND WHAT YOU CAN DO HERE ───────────────────
+            The header was a 280px green hero on all six tabs: the business's
+            name in 12px uppercase above "Hello, {name}", then chips for the
+            next visit, the plan and the balance. On a phone that was a third
+            of the screen before any tab's own content, on every tab, and Home
+            then repeated "Next visit" in a card right under it (launch pass,
+            2026-10, recommendation 7).
 
-              <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                {nextVisitDate ? (
-                  <Link
-                    to="/portal/$slug/$token/visits"
-                    params={{ slug, token }}
-                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25"
-                  >
-                    <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      Next: <strong>{fmtDayShort(nextVisitDate)}</strong>
-                      {nextVisitEtaStart && (
-                        <>
-                          {" "}
-                          · {orgLocalTime(nextVisitEtaStart, tz)}–
-                          {orgLocalTime(nextVisitEtaEnd, tz)}
-                        </>
-                      )}
-                      {relativeFromToday(nextVisitDate) && (
-                        <span className="opacity-80"> · {relativeFromToday(nextVisitDate)}</span>
-                      )}
-                    </span>
-                  </Link>
-                ) : (
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1">
-                    <CalendarDays className="h-3.5 w-3.5 shrink-0" /> No visit scheduled
-                  </div>
-                )}
-                {c.primary_frequency && (
-                  <Link
-                    to="/portal/$slug/$token/visits"
-                    params={{ slug, token }}
-                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25"
-                  >
-                    {planChip}
-                  </Link>
-                )}
-                {/* Only show this chip when there's something to show — a
-                    zero "Balance" beside an "Open invoice" reads as a
-                    contradiction (do I owe money or not?). Relabel the
-                    positive side to "Account credit" so it can't be
-                    misread as "you owe $0". */}
-                {c.credit_balance_cents !== 0 && (
-                  <Link
-                    to="/portal/$slug/$token/billing"
-                    params={{ slug, token }}
-                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25"
-                  >
-                    <span className="opacity-80">
-                      {c.credit_balance_cents > 0 ? "Account credit" : "Amount due"}
-                    </span>
-                    <span className="font-semibold">{money(Math.abs(c.credit_balance_cents))}</span>
-                  </Link>
-                )}
+            So, on every tab: the business's logo and NAME, large, because it
+            is the one thing a client opening a link from a text needs to
+            recognise; and who is signed in, small. On Home only: the greeting,
+            one sentence of what this portal is for, and the plan and balance
+            chips. The next-visit chip is gone because Home's first card is the
+            next visit, with more in it. */}
+        <header
+          className="overflow-hidden rounded-2xl p-4 shadow-lg sm:p-5"
+          style={headerStyle}
+          data-testid="portal-header"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {c.logo_url ? (
+                <img
+                  src={c.logo_url}
+                  alt=""
+                  className="h-11 w-11 shrink-0 rounded-lg bg-white/90 object-contain p-1"
+                />
+              ) : (
+                // No logo: the initial, so the name never sits beside an
+                // empty square.
+                <span
+                  aria-hidden="true"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/20 text-lg font-semibold"
+                >
+                  {String(c.org_name ?? "?")
+                    .trim()
+                    .charAt(0)
+                    .toUpperCase()}
+                </span>
+              )}
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold leading-tight sm:text-xl">
+                  {c.org_name}
+                </h1>
+                <p className="truncate text-sm opacity-90">
+                  {onHome ? `Hello, ${c.display_name}` : c.display_name}
+                </p>
               </div>
             </div>
 
@@ -245,6 +224,46 @@ function PortalShell() {
               className="bg-white/15 text-white border-white/30 hover:bg-white/25 hover:text-white"
             />
           </div>
+
+          {onHome && (
+            <>
+              <p className="mt-3 text-sm opacity-95">
+                Your account with us: check your next visit, pay invoices, update your property and
+                dogs, or send us a request.
+              </p>
+              {(c.primary_frequency || c.credit_balance_cents !== 0) && (
+                <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                  {c.primary_frequency && (
+                    <Link
+                      to="/portal/$slug/$token/visits"
+                      params={{ slug, token }}
+                      className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25 touch:min-h-11"
+                    >
+                      <span className="truncate">{planChip}</span>
+                    </Link>
+                  )}
+                  {/* Only when there is something to show: a zero "Balance"
+                      beside an "Open invoice" reads as a contradiction. The
+                      positive side says "Account credit" so it cannot be
+                      misread as "you owe $0". */}
+                  {c.credit_balance_cents !== 0 && (
+                    <Link
+                      to="/portal/$slug/$token/billing"
+                      params={{ slug, token }}
+                      className="inline-flex min-h-9 items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25 touch:min-h-11"
+                    >
+                      <span className="opacity-80">
+                        {c.credit_balance_cents > 0 ? "Account credit" : "Amount due"}
+                      </span>
+                      <span className="font-semibold">
+                        {money(Math.abs(c.credit_balance_cents))}
+                      </span>
+                    </Link>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </header>
 
         {/* Section content */}

@@ -37,6 +37,7 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // field on its Facilities form. A notification's own title and body are
   // stored server-written text and stay as written; the Knowledge Center
   // article behind the "?" is English-only.
+  { file: "src/components/settings/ThemeCard.tsx" },
   { file: "src/routes/_authenticated/my-schedule.tsx" },
   { file: "src/routes/_authenticated/waste-log.tsx" },
   { file: "src/routes/_authenticated/notifications.tsx" },

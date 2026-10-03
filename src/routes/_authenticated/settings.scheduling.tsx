@@ -363,8 +363,8 @@ function SchedulingSettings() {
           Arrival windows are anchored to the workday start in this time zone. It also decides what
           counts as &ldquo;today&rdquo; for the client portal and the end-of-day close-out, so it
           is set once in{" "}
-          <Link to="/settings/preferences" className="underline underline-offset-2">
-            Settings → Preferences
+          <Link to="/settings/business" className="underline underline-offset-2">
+            Settings → Business defaults
           </Link>
           .
         </p>

@@ -710,8 +710,8 @@ export function QuoteEditor({
             </div>
             {svcChoices.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No prices are set yet. Set a standard price in Settings &gt; Preferences, or give a
-                zone a base price on the Zones page, and they will be offered here.
+                No prices are set yet. Set a standard price in Settings &gt; Business defaults, or
+                give a zone a base price on the Zones page, and they will be offered here.
               </p>
             ) : (
               <ul className="space-y-2">

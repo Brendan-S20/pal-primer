@@ -19,7 +19,13 @@ const TAB_GROUPS: TabGroup[] = [
   {
     title: "Business setup",
     tabs: [
+      // Preferences is THIS DEVICE (language, light or dark, haptics, the
+      // phone menu) and is the one section a technician sees. Business
+      // defaults is what the whole business uses and was on the same page
+      // until 2026-10-02, which is why an owner could not tell the two kinds
+      // of switch apart.
       { label: "Preferences", to: "/settings/preferences", techVisible: true },
+      { label: "Business defaults", to: "/settings/business" },
       { label: "Scheduling", to: "/settings/scheduling" },
       // Prices live on zones, and a first-time owner looking for "how much do
       // I charge" opened Settings and did not find them (persona review,
