@@ -60,7 +60,10 @@ function headBlock(src: string): string {
   return end < 0 ? oneLine : rest.slice(0, end);
 }
 
-const ROUTE_FILES = walk(routesDir).map((abs) => ({ file: rel(abs), src: readFileSync(abs, "utf8") }));
+const ROUTE_FILES = walk(routesDir).map((abs) => ({
+  file: rel(abs),
+  src: readFileSync(abs, "utf8"),
+}));
 
 /** Routes that need no title of their own, each with the reason. */
 const NO_TITLE_NEEDED: Record<string, string> = {
@@ -70,7 +73,8 @@ const NO_TITLE_NEEDED: Record<string, string> = {
   "src/routes/_authenticated/clients.tsx": "an <Outlet /> layout",
   "src/routes/_authenticated/invoices.tsx": "an <Outlet /> layout",
   "src/routes/_authenticated/quotes.tsx": "an <Outlet /> layout",
-  "src/routes/_authenticated/messages.index.tsx": "the empty pane inside Messages, which titles itself",
+  "src/routes/_authenticated/messages.index.tsx":
+    "the empty pane inside Messages, which titles itself",
   "src/routes/_authenticated/billing.tsx": "redirects to /settings/billing before painting",
   "src/routes/_authenticated/ai-tools.tsx": "redirects to /dashboard before painting",
   "src/routes/_authenticated/settings.index.tsx": "redirects to /settings/preferences",

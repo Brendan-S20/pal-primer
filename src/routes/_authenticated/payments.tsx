@@ -360,8 +360,8 @@ function TipsCard() {
         <label htmlFor="tips-enabled" className="min-w-0 text-sm">
           <span className="block font-medium">Let clients add a tip</span>
           <span className="block text-muted-foreground">
-            On the payment link and the client portal, clients can choose No tip, 10%, 15%, 20%
-            or their own amount. No tip is selected until they pick one.
+            On the payment link and the client portal, clients can choose No tip, 10%, 15%, 20% or
+            their own amount. No tip is selected until they pick one.
           </span>
         </label>
         <Switch

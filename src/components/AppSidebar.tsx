@@ -18,7 +18,6 @@ import {
   MessageCircleWarning,
   Receipt,
   BarChart3,
-  LineChart,
   Scale,
   CreditCard,
   Upload,
@@ -31,11 +30,12 @@ import {
   Shield,
   Dna,
   ClipboardCheck,
-  FileSpreadsheet,
+  Inbox as InboxIcon,
   ShieldAlert,
   FileSignature,
 } from "lucide-react";
 import { Megaphone } from "lucide-react";
+import { REPORT_PATHS } from "@/components/ReportsNav";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { dirFor } from "@/lib/i18n";
@@ -71,6 +71,9 @@ export type NavItem = {
    *  is a page about locations they do not have. Unlike `commercialOnly` this
    *  fails CLOSED while the answer is unknown: see `useNavVisibility`. */
   franchiseParentOnly?: boolean;
+  /** Other pages this entry stands for, so it stays highlighted there. Reports
+   *  is one entry for three pages (see components/ReportsNav). */
+  alsoActiveOn?: readonly string[];
 };
 
 // Single source of nav truth — also consumed by MobileTabBar's "More" sheet so
@@ -80,6 +83,11 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "Overview",
     items: [
       { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+      // Everything waiting on the office in one list: texts to answer,
+      // concerns, needs-review records, disputes and unread alerts, each
+      // linking to the page where it is done (launch pass, 2026-10). Second,
+      // because it is the evening round's first stop.
+      { title: "Inbox", url: "/inbox", icon: InboxIcon },
       { title: "Leads", url: "/leads", icon: UserPlus },
     ],
   },
@@ -126,7 +134,9 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // BUILD-13: the accountant's pack. In the nav rather than URL-only
       // because the whole point is that an owner finds it in January without
       // having to be told it exists.
-      { title: "Tax & accountant", url: "/tax-reports", icon: FileSpreadsheet },
+      // Tax & accountant was here. It is a tab of Reports now (launch pass,
+      // 2026-10): one place to look back at the business, and the sidebar
+      // one entry shorter. /tax-reports still works.
       // BUILD-12: disputes get their own entry rather than living inside the
       // review queue. A chargeback has a deadline attached, and one buried
       // under visit-timestamp warnings is one nobody answers in time.
@@ -162,8 +172,9 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Insights",
     items: [
-      { title: "Reports", url: "/reports", icon: BarChart3 },
-      { title: "Analytics", url: "/analytics", icon: LineChart },
+      // One entry for Reports, Analytics and Tax & accountant, which are its
+      // three tabs (components/ReportsNav). Highlighted on all three.
+      { title: "Reports", url: "/reports", icon: BarChart3, alsoActiveOn: REPORT_PATHS },
       // BUILD-10: guardrail 10.5's review queue. In the nav rather than
       // URL-only on purpose — a queue of things we refused to guess about
       // is worthless if nobody knows it exists.
@@ -371,7 +382,9 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.url}>
                     <SidebarMenuButton
                       asChild
-                      isActive={isActive(item.url)}
+                      isActive={
+                        isActive(item.url) || !!item.alsoActiveOn?.some((u) => isActive(u))
+                      }
                       tooltip={
                         item.url === "/review" && openReviews > 0
                           ? `${navItemTitle(t, item)} (${openReviews})`

@@ -1550,7 +1550,15 @@ function RoutesPage() {
                 lanes: names reduced to "U…" and "M…", the zone pill printed
                 over the visit window, status badges over the zone. A lane
                 needs roughly 220px to hold a card, so the count is chosen
-                from the width the board actually has (launch pass, 2026-10). */}
+                from the width the board actually has (launch pass, 2026-10).
+
+                Two lanes start at 32rem (512px), not at `@md` (448px). At 768,
+                a tablet in portrait with the sidebar docked, the board is
+                about 470px, and `@md` split it into two 225px lanes whose
+                header cut the tech's name to "Alejandr…" (launch pass,
+                recommendation 10). Below 512px the lanes stack, one per row,
+                full width: reflowed rather than shrunk. Beside the map at 1280
+                (~570px) it is still two. */}
             <div className="@container max-md:hidden">
               <DndContext
                 sensors={sensors}
@@ -1562,7 +1570,7 @@ function RoutesPage() {
                   className={
                     boardLayout === "rows"
                       ? "grid gap-4 grid-cols-1"
-                      : "grid gap-4 @md:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4"
+                      : "grid gap-4 @min-[32rem]:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4"
                   }
                 >
                   <Column
@@ -2010,14 +2018,25 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
+      className={`min-w-0 rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
         isOver ? "ring-2 ring-primary" : ""
       }`}
     >
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-sm font-medium">
-            <span className="truncate">{title}</span>
+      {/* The header WRAPS rather than squeezing. The name block asks for at
+          least 9rem and grows; when the lane cannot hold that beside the
+          lane's controls (Cover, All, the count and the day's value), the
+          controls drop to a line of their own under the name, instead of
+          truncating the name to its first few letters. On a wide lane the
+          two still share one row, as before. */}
+      <div
+        data-lane-header
+        className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b px-3 py-2"
+      >
+        <div className="min-w-0 flex-[1_1_9rem]">
+          <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+            <span className="truncate" data-lane-title>
+              {title}
+            </span>
             {offToday && (
               <Badge variant="outline" className="border-amber-400 text-amber-700 text-3xs">
                 Away
@@ -2051,7 +2070,7 @@ function Column({
             subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>
           )}
         </div>
-        <div className="flex items-center gap-1.5 text-right">
+        <div className="flex shrink-0 items-center gap-1.5 text-right">
           {laneAction}
           {onSelectLane && items.length > 0 && (
             <button

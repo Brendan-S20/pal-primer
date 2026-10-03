@@ -863,6 +863,41 @@ const BASE_STUBS: Record<string, Stub> = {
   listClientNotes: { notes: [], rows: [] },
   listClientHolds: { holds: [], rows: [] },
   listClientMessages: { messages: [], rows: [] },
+  // The conversation list, newest message per client. One thread ends on the
+  // client's text (inbound), so the Inbox has a reply waiting to show; one
+  // ends on ours, so it has one it must NOT show. The inbound body is long
+  // and the name is the 46-character one, because a row that truncates is
+  // what the inbox draws.
+  listMessageThreads: {
+    threads: [
+      {
+        id: "abab0000-0000-4000-8000-00000000ab01",
+        client_id: fx.CLIENTS[4].id,
+        direction: "inbound",
+        body: "Hi, the side gate code changed to 4471# this morning, and the dogs will be out in the back yard until noon, can you come after lunch instead?",
+        created_at: new Date(Date.now() - 40 * 60e3).toISOString(),
+        status: "received",
+        clients: {
+          display_name: fx.CLIENTS[4].display_name,
+          primary_phone: fx.CLIENTS[4].primary_phone,
+          sms_opt_out: false,
+        },
+      },
+      {
+        id: "abab0000-0000-4000-8000-00000000ab02",
+        client_id: fx.CLIENTS[2].id,
+        direction: "outbound",
+        body: "On my way, arriving between 10:15 and 10:45.",
+        created_at: new Date(Date.now() - 3 * 3600e3).toISOString(),
+        status: "delivered",
+        clients: {
+          display_name: fx.CLIENTS[2].display_name,
+          primary_phone: fx.CLIENTS[2].primary_phone,
+          sms_opt_out: false,
+        },
+      },
+    ],
+  },
   listAddonServices: { services: [], addons: [], rows: [] },
   listInvoices: fx.INVOICES,
   // Cash and checks the techs recorded, waiting on /invoices -- see

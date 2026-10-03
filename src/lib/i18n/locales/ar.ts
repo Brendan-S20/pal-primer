@@ -461,6 +461,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     },
     item: {
       dashboard: "لوحة التحكم",
+      inbox: "صندوق الوارد",
       leads: "العملاء المحتملون",
       clients: "العملاء",
       campaigns: "الحملات",

@@ -20,6 +20,7 @@ import { PlanGate } from "@/components/PlanGate";
 import { BusinessAdvisor } from "@/components/BusinessAdvisor";
 import { formatDay } from "@/lib/format";
 import { pageTitle } from "@/lib/page-title";
+import { ReportsNav } from "@/components/ReportsNav";
 
 function fmt(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -40,6 +41,7 @@ export const Route = createFileRoute("/_authenticated/analytics")({
 function AnalyticsPage() {
   return (
     <>
+      <ReportsNav />
       <div>
         <h1 className="text-2xl font-semibold">Advanced analytics</h1>
         <p className="text-sm text-muted-foreground">
@@ -500,8 +502,8 @@ function WinBackTab() {
               Prefer the AI churn scorer in AI Tools when you want reason-with-context.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Sending a win-back emails a single-use code worth the credit below. The client
-              enters it in their portal and it lands on their account as credit.
+              Sending a win-back emails a single-use code worth the credit below. The client enters
+              it in their portal and it lands on their account as credit.
             </p>
           </div>
           <div className="flex items-end gap-2">

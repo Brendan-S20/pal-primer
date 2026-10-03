@@ -402,6 +402,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     },
     item: {
       dashboard: "仪表盘",
+      inbox: "收件箱",
       leads: "潜在客户",
       clients: "客户",
       campaigns: "营销活动",

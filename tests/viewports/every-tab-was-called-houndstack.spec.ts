@@ -73,7 +73,9 @@ test.describe("the tab says which page it is", () => {
   test("an invoice's page is named after its number", async ({ page }) => {
     await signIn(page);
     await page.goto(`/invoices/${REFUND_INVOICE_ID}`, { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveTitle(/^INV-\S+ · Invoices · HoundStack$/, { timeout: FIRST_PAINT_MS });
+    await expect(page).toHaveTitle(/^INV-\S+ · Invoices · HoundStack$/, {
+      timeout: FIRST_PAINT_MS,
+    });
   });
 
   test("a technician who reads Spanish reads Spanish in the tab too", async ({ page }) => {
@@ -91,7 +93,10 @@ test.describe("the tab says which page it is", () => {
     await signIn(page);
     await page.goto(`/clients/${CLIENT_ID}`, { waitUntil: "domcontentloaded" });
     await expect(page).toHaveTitle(/Anastasia/, { timeout: FIRST_PAINT_MS });
-    await page.getByRole("link", { name: /Clients/ }).first().click();
+    await page
+      .getByRole("link", { name: /Clients/ })
+      .first()
+      .click();
     await expect(page).toHaveTitle("Clients · HoundStack");
   });
 });
@@ -99,7 +104,9 @@ test.describe("the tab says which page it is", () => {
 /** Where the heading row is, and whether anything in it left the screen. */
 async function headingRow(page: Page) {
   return page.evaluate(() => {
-    const h1 = [...document.querySelectorAll("h1")].find((h) => h.textContent?.trim() === "Schedule");
+    const h1 = [...document.querySelectorAll("h1")].find(
+      (h) => h.textContent?.trim() === "Schedule",
+    );
     const btn = document.querySelector<HTMLElement>('[data-testid="schedule-date"]');
     if (!h1 || !btn) return null;
     const vw = document.documentElement.clientWidth;
@@ -147,7 +154,10 @@ async function checkHeading(page: Page, touch: boolean, label: string) {
   expect(row!.buttonText, label).toMatch(/Today|\d/);
   expect(row!.offSide, `${label}: the heading row runs off the side`).toBe(false);
   if (touch) {
-    expect(row!.buttonHeight, `${label}: the date button is under 44px on a touchscreen`).toBeGreaterThanOrEqual(44);
+    expect(
+      row!.buttonHeight,
+      `${label}: the date button is under 44px on a touchscreen`,
+    ).toBeGreaterThanOrEqual(44);
   }
   const { scrollW, innerW } = await measurePageOverflow(page);
   expect(scrollW, `${label}: the page scrolls sideways`).toBeLessThanOrEqual(innerW + 1);

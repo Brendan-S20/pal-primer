@@ -836,9 +836,9 @@ export function QuoteEditor({
             aria-describedby="quote-deposit-help"
           />
           <p id="quote-deposit-help" className="text-sm text-muted-foreground">
-            The client is asked to pay it right after accepting. It goes on their account as
-            credit and comes off their first invoices. A quote to a prospect gets its deposit
-            invoice when you convert it to a client.
+            The client is asked to pay it right after accepting. It goes on their account as credit
+            and comes off their first invoices. A quote to a prospect gets its deposit invoice when
+            you convert it to a client.
           </p>
           {attempted && !depositOk && (
             <p className="text-xs text-destructive">A deposit is between $1.00 and $10,000.</p>
