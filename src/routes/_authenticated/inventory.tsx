@@ -144,7 +144,7 @@ function InventoryPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <>
       {bulkDialog}
       <div className="flex items-end justify-between gap-4">
         <div>
@@ -359,7 +359,7 @@ function InventoryPage() {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </>
   );
 }
 

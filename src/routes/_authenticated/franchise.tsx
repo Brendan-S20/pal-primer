@@ -189,7 +189,7 @@ function FranchisePage() {
   if (ctx.isLoading) return <div className="text-muted-foreground">Loading…</div>;
   if (!ctx.data?.isParent) {
     return (
-      <div className="p-6">
+      <>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -238,7 +238,7 @@ function FranchisePage() {
         <div className="mt-6">
           <ProvisionLocation />
         </div>
-      </div>
+      </>
     );
   }
 
@@ -260,7 +260,7 @@ function FranchisePage() {
     : null;
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex items-center gap-3">
         <Building2 className="h-6 w-6 shrink-0" />
         <div>
@@ -525,7 +525,7 @@ function FranchisePage() {
         onReopenAsDraft={(invoiceId) => drillStatus.mutate({ invoiceId, status: "draft" })}
         isUpdating={drillStatus.isPending}
       />
-    </div>
+    </>
   );
 }
 

@@ -146,7 +146,7 @@ function PaymentsSettings() {
     // Wider than the old max-w-3xl: the Payments tab is a transaction table
     // inside an iframe, and 768px forced it to scroll horizontally at every
     // window size.
-    <div className="max-w-5xl space-y-6">
+    <>
       {dialog}
       {/* The three-sentence explanation that used to live here is onboarding
           copy: true, and re-read by a returning owner on every single visit.
@@ -324,7 +324,7 @@ function PaymentsSettings() {
           )}
         </>
       )}
-    </div>
+    </>
   );
 }
 

@@ -36,7 +36,7 @@ function SkipRulesPage() {
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           Skip billing rules <HelpTip article="skip-rules" />

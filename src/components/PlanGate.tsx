@@ -60,38 +60,40 @@ export function UpgradeRequired({
 }) {
   const needed = lowestTierWith(entitlement);
   const feature = ENTITLEMENT_LABELS[entitlement];
+  // No wrapper of its own: it renders in place of a page, so it sits in
+  // PageShell's column like one (see src/components/PageShell.tsx). This
+  // was `mx-auto max-w-2xl p-6`, which put a gated page's heading 24px
+  // further in than every page around it.
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <Card>
-        <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-          <div className="rounded-full bg-muted p-3">
-            <Lock className="h-5 w-5 text-muted-foreground shrink-0" />
-          </div>
-          <h1 className="text-xl font-semibold">{feature} isn&apos;t on your plan</h1>
-          <p className="max-w-md text-sm text-muted-foreground">
-            {needed ? (
-              <>
-                {feature} is included on{" "}
-                <strong className="text-foreground">{TIER_NAMES[needed]}</strong> and above. This
-                organization is currently on{" "}
-                <strong className="text-foreground">
-                  {TIER_NAMES[currentTier as keyof typeof TIER_NAMES] ?? currentTier}
-                </strong>
-                .
-              </>
-            ) : (
-              <>{feature} is not available on any plan yet.</>
-            )}
-          </p>
-          {needed && (
-            <Button asChild className="mt-1">
-              {/* Straight to the plan picker, not a generic "contact us" — the
-                  upgrade is self-serve and the customer is one click from it. */}
-              <Link to="/settings/billing">See plans</Link>
-            </Button>
+    <Card>
+      <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+        <div className="rounded-full bg-muted p-3">
+          <Lock className="h-5 w-5 text-muted-foreground shrink-0" />
+        </div>
+        <h1 className="text-xl font-semibold">{feature} isn&apos;t on your plan</h1>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {needed ? (
+            <>
+              {feature} is included on{" "}
+              <strong className="text-foreground">{TIER_NAMES[needed]}</strong> and above. This
+              organization is currently on{" "}
+              <strong className="text-foreground">
+                {TIER_NAMES[currentTier as keyof typeof TIER_NAMES] ?? currentTier}
+              </strong>
+              .
+            </>
+          ) : (
+            <>{feature} is not available on any plan yet.</>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </p>
+        {needed && (
+          <Button asChild className="mt-1">
+            {/* Straight to the plan picker, not a generic "contact us" — the
+                  upgrade is self-serve and the customer is one click from it. */}
+            <Link to="/settings/billing">See plans</Link>
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }

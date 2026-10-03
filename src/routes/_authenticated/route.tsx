@@ -3,6 +3,7 @@ import {
   Link,
   Outlet,
   redirect,
+  useMatches,
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
@@ -36,6 +37,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { HelpCircle, Search } from "lucide-react";
 import { useBrandAccent } from "@/hooks/useBrandAccent";
+import { PageShell } from "@/components/PageShell";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -199,6 +201,17 @@ function AppShell() {
   // page — both of the things the tablet tier was built to stop, on the one
   // route it was built for.
   const pathname = useRouterState({ select: (r) => r.location.pathname });
+  // Which column the matched page asked for — see PageShell. The deepest
+  // match that says anything wins, so a layout route cannot widen its
+  // children by accident and a child can still ask for itself.
+  const pageWidth =
+    useMatches({
+      select: (ms) =>
+        ms
+          .map((m) => m.staticData?.pageWidth)
+          .filter(Boolean)
+          .pop(),
+    }) ?? "standard";
   const isMyDay = pathname === "/my-day" || pathname.startsWith("/my-day/");
 
   const brand = useBrandAccent();
@@ -238,10 +251,7 @@ function AppShell() {
   // exactly one navigation. See sidebarDocksFrom. The bar renders on the same
   // two conditions MobileTabBar and the JSX below apply: a known role, and
   // bottom navigation chosen.
-  const docksFrom = sidebarDocksFrom(
-    tier,
-    !!role && headerPrefs.phoneNav === "bottom",
-  );
+  const docksFrom = sidebarDocksFrom(tier, !!role && headerPrefs.phoneNav === "bottom");
   const shellHeaderHidden = role === "tech" ? myDayHeaderHidden : isMyDay ? myDayHeaderHidden : "";
 
   // The header was also doing a second job nobody asked it to: on a native
@@ -261,12 +271,16 @@ function AppShell() {
   // inset, ~57pt measured on an iPhone 17 Pro, lower than every other tab's.
   // A tech flicking between Today and Waste log watched the page jump. On
   // the web the inset is 0, so this changes nothing there.
+  //
+  // The inset ALONE since 2026-10-02: the 1rem it used to add is PageShell's
+  // own top padding now, which every page gets whether or not the header is
+  // hidden.
   const mainTopInset =
     shellHeaderHidden === "" || isMyDay
       ? ""
       : barThroughTablet
-        ? "max-lg:pt-[calc(1rem+env(safe-area-inset-top))]"
-        : "max-md:pt-[calc(1rem+env(safe-area-inset-top))]";
+        ? "max-lg:pt-[env(safe-area-inset-top)]"
+        : "max-md:pt-[env(safe-area-inset-top)]";
   // Sign out lives in the tab bar's More sheet wherever the tab bar reaches, so
   // the header avatar hides over exactly the same range. This was hardcoded
   // `max-md:hidden` while the bar itself was already following the hook, which
@@ -409,16 +423,6 @@ function AppShell() {
               as the bar is on screen — which now depends on the role, not only
               the width (Q-2). Both read useTabletTier so they cannot disagree:
               a mismatch puts the bar on top of My Day's Complete button. */}
-          {/* Content width and rhythm for EVERY authenticated page.
-              1200px was a reading measure applied to an operations tool. On a
-              1920px display it left ~700px of empty gutter beside a dispatch
-              board and a map that were both fighting for room, and the same
-              waste showed on every table in the app.
-              1600 rather than none: past that, a table row makes the eye track
-              so far from the row label to the last column that it loses its
-              place. Wide, with a limit. Top padding tightens too — a page that
-              starts an inch down the screen wastes the most valuable band on
-              it. */}
           {/* A status-bar backdrop wherever the shell hides its header.
               Without the header nothing paints behind the clock, so on Waste
               log, Alerts and Settings a scrolled page slid under the time and
@@ -438,15 +442,12 @@ function AppShell() {
             />
           )}
           <main
-            // The horizontal padding carries the safe-area inset as well as
-            // its own spacing. env() is 0 on the web and in portrait, so this
-            // is byte-identical to px-4/sm:px-6 everywhere except a rotated
-            // phone with a cutout, where it is the difference between the
-            // dashboard starting at x=9 and starting clear of the Island.
-            // Measured on an iPhone 17 Pro: 39 controls inside a 54pt cutout
-            // without it. Same env()-in-a-class pattern MobileTabBar and
-            // InstallBanner already use.
-            className={`min-w-0 flex-1 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] pt-4 sm:pl-[calc(1.5rem+env(safe-area-inset-left))] sm:pr-[calc(1.5rem+env(safe-area-inset-right))] sm:pt-5 ${mainTopInset} ${
+            // Horizontal padding, top padding and the content column are
+            // PageShell's — see src/components/PageShell.tsx, which says why
+            // they are decided in one place. What stays here is chrome:
+            // the native status-bar inset where the shell header is hidden,
+            // and the reservation for the tab bar at the bottom.
+            className={`min-w-0 flex-1 ${mainTopInset} ${
               // mainBottomPadding reserves the height of the tab bar. With the
               // bar switched off that reservation is just dead space at the
               // bottom of every page, so this falls back to the home-indicator
@@ -456,9 +457,9 @@ function AppShell() {
                 : "pb-[calc(2rem+env(safe-area-inset-bottom))]"
             }`}
           >
-            <div className="mx-auto w-full max-w-[1600px]">
+            <PageShell width={pageWidth}>
               <Outlet />
-            </div>
+            </PageShell>
           </main>
         </div>
         {headerPrefs.phoneNav === "bottom" && <MobileTabBar />}

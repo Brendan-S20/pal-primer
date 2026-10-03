@@ -172,7 +172,7 @@ function Dashboard() {
   // No query, no branch and no formatting changes with width; this is purely
   // where the boxes sit.
   return (
-    <div className="flex flex-col gap-6">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">{org.name}</h1>
@@ -432,7 +432,7 @@ function Dashboard() {
         visitId={detailVisitId}
         onOpenChange={(o) => !o && setDetailVisitId(null)}
       />
-    </div>
+    </>
   );
 }
 

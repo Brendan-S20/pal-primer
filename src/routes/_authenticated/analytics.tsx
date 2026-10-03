@@ -39,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/analytics")({
 
 function AnalyticsPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-6 overflow-x-hidden max-w-full">
+    <>
       <div>
         <h1 className="text-2xl font-semibold">Advanced analytics</h1>
         <p className="text-sm text-muted-foreground">
@@ -47,7 +47,14 @@ function AnalyticsPage() {
         </p>
       </div>
       <Tabs defaultValue="advisor" className="space-y-4">
-        <TabsList>
+        {/* Wraps from `md` up, the way the client page's nine tabs do.
+            Below `md` the shared TabsList scrolls; above it, this bar was one
+            inline row 718px wide in a 464px column at 768, and the page root
+            hid the overflow with `overflow-x-hidden` — so on a tablet the
+            last tabs were not off-screen, they were clipped away with no way
+            to reach them. The root lost that wrapper when the page moved onto
+            PageShell's column, which is how the margins spec found this. */}
+        <TabsList className="h-auto flex-wrap justify-start max-md:flex-nowrap">
           <TabsTrigger value="advisor">Advisor</TabsTrigger>
           <TabsTrigger value="retention">Cohort retention</TabsTrigger>
           <TabsTrigger value="ltv">LTV</TabsTrigger>
@@ -96,7 +103,7 @@ function AnalyticsPage() {
           <WinBackTab />
         </TabsContent>
       </Tabs>
-    </div>
+    </>
   );
 }
 

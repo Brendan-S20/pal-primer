@@ -156,7 +156,7 @@ function DnaLanding() {
   const notEnabled = complianceQ.data?.notEnabled ?? [];
 
   return (
-    <div className="space-y-6">
+    <>
       <div>
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <Dna className="h-6 w-6 shrink-0" /> DNA compliance <HelpTip article="dna" />
@@ -287,7 +287,7 @@ function DnaLanding() {
           )}
         </Card>
       )}
-    </div>
+    </>
   );
 }
 

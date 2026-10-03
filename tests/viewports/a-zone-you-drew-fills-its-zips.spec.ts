@@ -214,3 +214,61 @@ test("an old drawn zone with no ZIPs offers the fill, and the click fills it", a
   );
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
 });
+
+// ── THREE TARGETS IN THE SAME DRAWER, MEASURED WITH A FINGER ─────────────
+//
+// Measured at 360px on 2026-10-02, in the drawer "New zone" opens: the
+// radius slider was 16px tall (a range input's hit area is its own box, and
+// with no height that box is the thumb), Leaflet's +/- were 30px, and the
+// drawer's Cancel was 36px. All three are sized with `touch:` now, so this
+// runs with touch ON — Chromium then reports `pointer: coarse`, Leaflet adds
+// its own `leaflet-touch` class (the rule that made the buttons 30px), and
+// the iPad width proves the sizing is about the finger rather than the
+// width. At 820px `max-md:` would have switched itself off; `touch:` does not.
+test.describe("the new-zone drawer with a finger", () => {
+  test.use({ hasTouch: true });
+  for (const w of [360, 820]) {
+    test(`slider, zoom buttons and Cancel are 44px targets at ${w}px`, async ({
+      page,
+      context,
+    }) => {
+      await installSignedInSession(context);
+      await installStubBackend(context);
+      await installZipFill(page);
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.goto("/zones");
+      await page.waitForLoadState("networkidle").catch(() => {});
+      await page.getByRole("button", { name: "New zone" }).click({ timeout: 30000 });
+
+      const dialog = page.getByRole("dialog");
+      // A new zone opens in radius mode — the slider is the proof it did.
+      const slider = dialog.getByRole("slider", { name: "Radius" });
+      await expect(slider).toBeVisible({ timeout: 15000 });
+      const zoomIn = dialog.locator(".leaflet-control-zoom-in");
+      const zoomOut = dialog.locator(".leaflet-control-zoom-out");
+      await expect(zoomIn).toBeVisible({ timeout: 15000 });
+      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+
+      for (const [label, loc] of [
+        ["radius slider", slider],
+        ["zoom in", zoomIn],
+        ["zoom out", zoomOut],
+        ["Cancel", cancel],
+      ] as const) {
+        await loc.scrollIntoViewIfNeeded();
+        const bb = await loc.boundingBox();
+        expect(bb, `${label} has no box at ${w}px`).not.toBeNull();
+        expect(bb!.height, `${label} is ${bb!.height}px tall at ${w}px`).toBeGreaterThanOrEqual(44);
+        if (label !== "radius slider") {
+          // The slider is as wide as its row; the buttons have to be 44 across.
+          expect(bb!.width, `${label} is ${bb!.width}px wide at ${w}px`).toBeGreaterThanOrEqual(44);
+        } else {
+          expect(
+            bb!.width,
+            `the slider was squeezed to ${bb!.width}px at ${w}px`,
+          ).toBeGreaterThanOrEqual(128);
+        }
+      }
+    });
+  }
+});

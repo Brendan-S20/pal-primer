@@ -77,7 +77,7 @@ function ReviewsSettings() {
     .replace(/\{link\}/g, url.trim() || "https://g.page/r/…/review");
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Reviews & referrals</h2>
         <p className="text-sm text-muted-foreground">
