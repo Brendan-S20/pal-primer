@@ -48,8 +48,12 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
     // active add-on subscription (QA finding: the old free toggle let any
     // owner switch on the $49/mo feature). Turning it OFF, and editing the
     // FAQ/persona, stay unrestricted.
+    //
+    // Voice is part of the same add-on and was not gated at all: switching on
+    // `voice_enabled` alone answered calls with the model on our bill, and a
+    // cancelled add-on left it on (2026-10-03).
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    if (data.enabled) {
+    if (data.enabled || data.voice_enabled) {
       const { data: sub } = await (supabaseAdmin as any)
         .from("org_platform_addons")
         .select("status, platform_addons!inner(slug)")

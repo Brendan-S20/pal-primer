@@ -42,12 +42,14 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
         const { data: org } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, slug, sms_from_number, ai_receptionist_faq, ai_receptionist_persona, ai_voice_enabled, ai_voice_greeting",
+            "id, slug, sms_from_number, ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona, ai_voice_enabled, ai_voice_greeting",
           )
           .eq("sms_from_number", to)
           .maybeSingle();
 
-        if (!org || !(org as any).ai_voice_enabled) {
+        // Voice answers only while the receptionist itself is on: that flag is
+        // the one the add-on gates and the one cancelling turns off.
+        if (!org || !(org as any).ai_voice_enabled || !(org as any).ai_receptionist_enabled) {
           return xml(
             `<Response><Say>Sorry, this number is not accepting calls right now. Goodbye.</Say><Hangup/></Response>`,
             200,
