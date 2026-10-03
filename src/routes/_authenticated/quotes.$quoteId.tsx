@@ -34,9 +34,10 @@ import {
   sendResultMessage,
 } from "@/lib/quotes";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/quotes/$quoteId")({
-  head: () => ({ meta: [{ title: "Quote · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Quote") }] }),
   component: QuoteDetailPage,
 });
 
@@ -140,6 +141,9 @@ function QuoteDetailPage() {
       ← Quotes
     </Link>
   );
+
+  // "Q-1042 · Quotes", from the label the heading prints.
+  useDocumentTitle(q.data?.quote.label ? pageTitle(q.data.quote.label, "Quotes") : null);
 
   if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (q.isError || !q.data) {
@@ -445,7 +449,7 @@ function QuoteDetailPage() {
                   await confirm({
                     title: `Withdraw ${quote.label}?`,
                     description:
-                      "The customer's link will show the quote as expired, and it can no longer be accepted.",
+                      "The client's link will show the quote as expired, and it can no longer be accepted.",
                     destructive: true,
                     confirmLabel: "Withdraw",
                   })
@@ -490,7 +494,7 @@ function QuoteDetailPage() {
       </Card>
 
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        What the customer sees
+        What the client sees
       </p>
       <QuoteDocument
         orgName={q.data.orgName}

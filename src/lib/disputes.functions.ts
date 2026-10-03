@@ -135,10 +135,10 @@ export const getDisputeQueue = createServerFn({ method: "GET" })
         return {
           ...d,
           invoiceId,
-          // "Unknown customer" rather than dropping the row: a dispute we
+          // "Unknown client" rather than dropping the row: a dispute we
           // cannot attribute is still money that left, and hiding it would
           // make the queue's total disagree with the bank.
-          clientName: (cid && clientName.get(cid)) || "Unknown customer",
+          clientName: (cid && clientName.get(cid)) || "Unknown client",
           reason: openingReason.get(disputeKey(d.paymentId, d.disputeId)) ?? "",
         };
       }),

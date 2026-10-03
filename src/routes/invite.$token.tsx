@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/invite/$token")({
   head: () => ({ meta: [
-    { title: "Accept invite · HoundStack" },
+    { title: pageTitle("Accept invite") },
     { name: "robots", content: "noindex" },
   ] }),
   component: InvitePage,

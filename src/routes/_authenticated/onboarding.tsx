@@ -15,13 +15,14 @@ import {
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { APP_NAME } from "@/lib/scoop";
 import { appUrl } from "@/lib/app-origin";
+import { pageTitle } from "@/lib/page-title";
 
 // Post-signup onboarding path (Brendan's re-review): "Create account" lands
 // here instead of dropping new owners straight onto an empty dashboard —
 // welcome them, pitch the plans, and take payment in-app (embedded checkout).
 // Everything chosen here stays manageable later in Settings → Plan & billing.
 export const Route = createFileRoute("/_authenticated/onboarding")({
-  head: () => ({ meta: [{ title: `Welcome - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: pageTitle("Welcome") }] }),
   component: OnboardingPage,
 });
 
@@ -109,7 +110,7 @@ function OnboardingPage() {
           </h1>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
             Your workspace is ready. Two minutes of setup gets you running: pick the plan that fits
-            your crew (every tier has unlimited customers, jobs, routes and zones; you're billed per
+            your crew (every tier has unlimited clients, jobs, routes and zones; you're billed per
             employee, plus any AI actions past your plan's monthly allowance), then explore your
             dashboard. You can change or cancel the plan anytime in Settings → Plan &amp; billing.
           </p>

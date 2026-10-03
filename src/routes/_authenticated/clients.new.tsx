@@ -36,10 +36,12 @@ import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const Route = createFileRoute("/_authenticated/clients/new")({
+  head: () => titleHead("New client"),
   // `fromLead` is the lead's id and nothing else. The wizard fetches the lead
   // server-side; its name, email, phone and address never go in the URL.
   validateSearch: (s: Record<string, unknown>): { fromLead?: string; fromQuote?: string } => ({

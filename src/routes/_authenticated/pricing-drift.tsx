@@ -15,8 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/pricing-drift")({
+  head: () => titleHead("Rate card drift"),
   component: PricingDriftPage,
 });
 

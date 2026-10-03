@@ -16,8 +16,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Receipt } from "lucide-react";
 import { formatDay } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/invoices")({
+  head: () => titleHead("SaaS invoices", "Platform admin"),
   component: InvoicesPage,
 });
 

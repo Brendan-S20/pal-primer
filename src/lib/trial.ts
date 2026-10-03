@@ -282,7 +282,7 @@ export const TRIAL_COPY: Record<
     // being told "your free trial has ended" would reasonably conclude the
     // product has lost track of what they paid for.
     headline: () => "Your plan has ended",
-    body: "Adding new customers and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the customer portal. Nothing has been deleted.",
+    body: "Adding new clients and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
     tone: "warn",
   },
   trialing: {
@@ -293,7 +293,7 @@ export const TRIAL_COPY: Record<
     // "Except the AI features" was the whole story while the trial is running,
     // and stops being it the day it ends: adding a customer goes too. Said here
     // so the change is not a surprise on day 15.
-    body: "Everything is unlocked except the AI features, which need a paid plan. When the trial ends you keep everything you have, but adding new customers will need a plan too. Nothing is charged automatically and no card is on file.",
+    body: "Everything is unlocked except the AI features, which need a paid plan. When the trial ends you keep everything you have, but adding new clients will need a plan too. Nothing is charged automatically and no card is on file.",
     tone: "info",
   },
   expired: {
@@ -306,7 +306,7 @@ export const TRIAL_COPY: Record<
     // them with. A banner that promises a warning it cannot send, about a
     // change that already happened, is worse than one that simply says what is
     // true now.
-    body: "Adding new customers and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the customer portal. Nothing has been deleted.",
+    body: "Adding new clients and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
     tone: "warn",
   },
 };
@@ -355,7 +355,7 @@ export function aiUnavailableReason(state: TrialState): string | null {
     return "AI features need a paid plan. They're the one thing the free trial doesn't include, because every request costs us real money to run.";
   }
   if (state.phase === "lapsed") {
-    return "AI features need an active plan. Yours has ended, so AI and adding new customers are paused. Everything you already have still works.";
+    return "AI features need an active plan. Yours has ended, so AI and adding new clients are paused. Everything you already have still works.";
   }
   return "AI features need a paid plan.";
 }

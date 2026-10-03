@@ -4,8 +4,10 @@ import { ChevronDown } from "lucide-react";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings")({
+  head: () => titleHead("Settings"),
   component: SettingsLayout,
 });
 
@@ -30,7 +32,7 @@ const TAB_GROUPS: TabGroup[] = [
     ],
   },
   {
-    title: "Customer-facing",
+    title: "Client-facing",
     tabs: [
       // The portal is the first thing a customer meets, so it sits at the top
       // of the group that is about them. It was under Preferences until

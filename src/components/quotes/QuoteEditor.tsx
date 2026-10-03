@@ -836,7 +836,7 @@ export function QuoteEditor({
             aria-describedby="quote-deposit-help"
           />
           <p id="quote-deposit-help" className="text-sm text-muted-foreground">
-            The customer is asked to pay it right after accepting. It goes on their account as
+            The client is asked to pay it right after accepting. It goes on their account as
             credit and comes off their first invoices. A quote to a prospect gets its deposit
             invoice when you convert it to a client.
           </p>
@@ -847,7 +847,7 @@ export function QuoteEditor({
       ) : null}
       {showMessage ? (
         <Card className="space-y-2 p-4 sm:p-6">
-          <Label htmlFor="quote-message">Note to the customer (optional)</Label>
+          <Label htmlFor="quote-message">Note to the client (optional)</Label>
           <Textarea
             id="quote-message"
             rows={4}
@@ -867,7 +867,7 @@ export function QuoteEditor({
           )}
           {!showMessage && (
             <Button type="button" variant="outline" size="sm" onClick={() => setMessageOpen(true)}>
-              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add a note to the customer
+              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add a note to the client
             </Button>
           )}
         </div>

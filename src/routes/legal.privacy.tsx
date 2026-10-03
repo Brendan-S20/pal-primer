@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalShell } from "@/components/LegalShell";
 import { APP_NAME } from "@/lib/scoop";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/legal/privacy")({
   head: () => ({
     meta: [
-      { title: `Privacy Policy - ${APP_NAME}` },
+      { title: pageTitle("Privacy Policy") },
       { name: "description", content: `How ${APP_NAME} collects, uses, and protects your data.` },
     ],
   }),

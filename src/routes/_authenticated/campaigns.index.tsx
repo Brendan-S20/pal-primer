@@ -13,9 +13,10 @@ import {
 } from "@/components/campaigns/CampaignParts";
 import { listCampaigns } from "@/lib/campaigns.functions";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/campaigns/")({
-  head: () => ({ meta: [{ title: "Campaigns · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Campaigns") }] }),
   component: CampaignsPage,
 });
 

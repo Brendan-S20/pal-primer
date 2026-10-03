@@ -29,13 +29,14 @@ import {
   updatedAgo,
   type PublicTracking,
 } from "@/lib/live-tracking";
+import { customerTitle } from "@/lib/page-title";
 
 const TrackingMap = lazy(() => import("@/components/TrackingMap"));
 
 export const Route = createFileRoute("/track/$token")({
   head: () => ({
     meta: [
-      { title: "Your tech is on the way" },
+      { title: customerTitle("Your tech is on the way") },
       // A capability URL: never indexed, never sent onward as a referrer.
       { name: "robots", content: "noindex, nofollow" },
       { name: "referrer", content: "no-referrer" },

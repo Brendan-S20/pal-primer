@@ -83,7 +83,7 @@ export const getMyLiveShare = createServerFn({ method: "GET" })
         const customerName =
           (prop?.visit_contact_phone ? prop?.visit_contact_name : null) ??
           client?.display_name ??
-          "the customer";
+          "the client";
         active = { visitId: v.id, customerName, until: w.until.toISOString() };
       }
     }

@@ -108,7 +108,7 @@ export function PaymentRouting() {
       description: next ? (
         <>
           <p>
-            From the next payment onward, this location&apos;s customers pay into{" "}
+            From the next payment onward, this location&apos;s clients pay into{" "}
             <strong>your</strong> Stripe account. You then settle with them each period: their
             revenue less royalty, less their share of any refunds.
           </p>
@@ -124,12 +124,12 @@ export function PaymentRouting() {
       ) : (
         <>
           <p>
-            From the next payment onward, this location&apos;s customers pay into{" "}
+            From the next payment onward, this location&apos;s clients pay into{" "}
             <strong>their own</strong> Stripe account, and they will receive their own 1099-K.
           </p>
           {!loc.hasOwnAccount && (
             <p className="font-medium text-destructive">
-              They have not connected a Stripe account yet, so their customers will be unable to pay
+              They have not connected a Stripe account yet, so their clients will be unable to pay
               by card until they do. Talk to them before you switch this off.
             </p>
           )}
@@ -159,7 +159,7 @@ export function PaymentRouting() {
             <CreditCard className="h-4 w-4 shrink-0" /> How payments come through
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            For each location, decide whether their customers pay into your account or their own,
+            For each location, decide whether their clients pay into your account or their own,
             and who absorbs a refund or chargeback.
           </p>
         </CardHeader>

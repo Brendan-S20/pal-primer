@@ -18,9 +18,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/webhooks")({
-  head: () => ({ meta: [{ title: "Webhooks · Settings" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Zapier & webhooks", "Settings") }] }),
   component: WebhookSettings,
 });
 
@@ -81,11 +82,11 @@ function ContactOption({
     <label htmlFor={id} className="flex min-h-11 items-start gap-3 py-2 text-sm">
       <Checkbox id={id} checked={checked} onCheckedChange={(c) => onChange(c === true)} />
       <span className="min-w-0">
-        <span className="block">Include customer email and phone</span>
+        <span className="block">Include client email and phone</span>
         <span className="block text-xs text-muted-foreground">
           Adds a <code className="font-mono">contact</code> object to events about a client or lead,
           for things like adding new clients to a mailing list. Only turn this on for a system you
-          trust with your customers&apos; details.
+          trust with your clients&apos; details.
         </span>
       </span>
     </label>
@@ -623,7 +624,7 @@ function WebhookSettings() {
           </p>
           <p>
             Events carry ids, names, amounts and dates, and no contact details. A webhook with
-            &ldquo;Include customer email and phone&rdquo; ticked also gets{" "}
+            &ldquo;Include client email and phone&rdquo; ticked also gets{" "}
             <code className="break-all font-mono">
               data.contact = {`{ "email": ..., "phone": ... }`}
             </code>{" "}

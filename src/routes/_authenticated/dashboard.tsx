@@ -24,8 +24,10 @@ import {
   CloudRain,
   UserX,
 } from "lucide-react";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
+  head: () => titleHead("Dashboard"),
   component: Dashboard,
 });
 

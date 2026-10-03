@@ -13,8 +13,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BrandingCard, PortalAddressCard } from "@/components/settings/ClientPortalCards";
 import { PortalBookingCard } from "@/components/settings/PortalBookingCard";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/client-portal")({
+  head: () => titleHead("Client portal", "Settings"),
   component: ClientPortalSettings,
 });
 

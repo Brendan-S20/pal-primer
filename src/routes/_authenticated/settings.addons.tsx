@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/addons")({
+  head: () => titleHead("Add-ons", "Settings"),
   component: AddonsCatalog,
 });
 

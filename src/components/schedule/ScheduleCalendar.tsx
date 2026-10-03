@@ -235,7 +235,7 @@ function VisitChip({
   hiddenOnPhone?: boolean;
 }) {
   const tz = useOrgTimezone();
-  const name = visit.clients?.display_name ?? "Unnamed customer";
+  const name = visit.clients?.display_name ?? "Unnamed client";
   const who = visit.staff?.display_name ?? null;
   const street = visit.properties?.street ?? null;
   const city = visit.properties?.city ?? null;

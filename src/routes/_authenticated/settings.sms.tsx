@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, Clock } from "lucide-react";
 import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
+import { titleHead } from "@/lib/page-title";
 
 // IMP-9: this page used to be a "Bring your own Twilio" form — Account SID, Auth
 // Token, Messaging Service SID, plus instructions for wiring an inbound webhook
@@ -21,6 +22,7 @@ import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
 // overwritten.
 
 export const Route = createFileRoute("/_authenticated/settings/sms")({
+  head: () => titleHead("SMS", "Settings"),
   component: SmsSettings,
 });
 

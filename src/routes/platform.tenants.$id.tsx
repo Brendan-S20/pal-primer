@@ -40,9 +40,10 @@ import { toast } from "sonner";
 import { ArrowLeft, ExternalLink, FileDown, MoreHorizontal, Trash2, Undo2, UserCog } from "lucide-react";
 import { TenantStatusBadge } from "@/components/TenantStatusBadge";
 import { auditActorLabel } from "@/lib/platform-audit";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/tenants/$id")({
-  head: () => ({ meta: [{ title: "Tenant · Platform admin" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Tenant", "Platform admin") }, { name: "robots", content: "noindex" }] }),
   component: TenantDetailPage,
 });
 
@@ -64,6 +65,9 @@ function TenantDetailPage() {
     queryKey: ["platform", "tenant", id],
     queryFn: () => detailFn({ data: { organization_id: id } }),
   });
+  useDocumentTitle(
+    detail.data?.name ? pageTitle(detail.data.name, "Tenants", "Platform admin") : null,
+  );
 
   if (detail.isLoading) return <div className="text-sm text-muted-foreground">Loading tenant…</div>;
   if (detail.isError) return <div className="text-sm text-destructive">{(detail.error as Error).message}</div>;

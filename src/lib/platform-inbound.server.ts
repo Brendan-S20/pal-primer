@@ -184,8 +184,8 @@ async function recordGateReply(p: {
       await notifyRoles(["owner", "office_manager", "dispatcher", "tech"], {
         orgId: visit.organization_id,
         type: "gate_do_not_enter",
-        title: "Customer says do not enter",
-        body: `${who ?? "A customer"} replied DNE to today's "on my way" text.`,
+        title: "Client says do not enter",
+        body: `${who ?? "A client"} replied DNE to today's "on my way" text.`,
         link: "/my-day",
       });
     } catch (e) {

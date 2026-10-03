@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
 import { getSignupOrg } from "@/lib/signup.functions";
 import { SignupFlow } from "@/components/signup/SignupFlow";
+import { customerTitle } from "@/lib/page-title";
 
 // The quote / details / payment machine itself lives in
 // components/signup/SignupFlow.tsx, because canvassing walk mode runs the same
@@ -13,7 +14,7 @@ import { SignupFlow } from "@/components/signup/SignupFlow";
 export const Route = createFileRoute("/signup/$slug")({
   head: () => ({
     meta: [
-      { title: "Get an instant quote" },
+      { title: customerTitle("Get an instant quote") },
       {
         name: "description",
         content:

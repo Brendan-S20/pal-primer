@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/messages/$clientId")({
+  head: () => titleHead("Conversation", "Messages"),
   component: Thread,
 });
 
@@ -30,6 +32,9 @@ function Thread() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [data?.messages?.length]);
+  useDocumentTitle(
+    data?.client?.display_name ? pageTitle(data.client.display_name, "Messages") : null,
+  );
 
   const send = useMutation({
     mutationFn: () => sendFn({ data: { clientId, body } }),

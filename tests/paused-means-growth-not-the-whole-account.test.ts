@@ -68,7 +68,9 @@ describe("paused means growth, not the whole account", () => {
     // thing this decision explicitly is not.
     for (const phase of ["expired", "lapsed"] as const) {
       const body = TRIAL_COPY[phase].body;
-      expect(body, `${phase} does not say new customers are what stopped`).toMatch(/new customers/i);
+      // CHANGED 2026-10-02: staff copy says "client" for the person who pays
+      // (tests/one-word-for-the-person-who-pays.test.ts).
+      expect(body, `${phase} does not say new clients are what stopped`).toMatch(/new clients/i);
       expect(body, `${phase} does not say what keeps running`).toMatch(/keeps running/i);
       expect(body, `${phase} dropped the "nothing deleted" promise`).toMatch(/nothing has been deleted/i);
     }

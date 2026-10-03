@@ -176,7 +176,7 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
 
       {c.open_invoices.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          This customer has no open invoices now. Confirm it as received, or reject it.
+          This client has no open invoices now. Confirm it as received, or reject it.
         </p>
       ) : (
         <fieldset className="mt-2">
@@ -232,7 +232,7 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
               !(await confirm({
                 title: "Confirm without applying it?",
                 description:
-                  "It is recorded as received from the customer, and no invoice is marked paid. Use this when it does not cover a whole invoice.",
+                  "It is recorded as received from the client, and no invoice is marked paid. Use this when it does not cover a whole invoice.",
                 confirmLabel: "Confirm as received",
               }))
             )
@@ -251,7 +251,7 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
               await confirm({
                 title: `Reject ${money(c.amount_cents)} from ${c.client_name}?`,
                 description:
-                  "Nothing is recorded against the customer. Use this when the tech recorded it by mistake.",
+                  "Nothing is recorded against the client. Use this when the tech recorded it by mistake.",
                 confirmLabel: "Reject",
                 destructive: true,
               })

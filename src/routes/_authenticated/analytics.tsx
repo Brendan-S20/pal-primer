@@ -26,6 +26,7 @@ import { AlertTriangle } from "lucide-react";
 import { PlanGate } from "@/components/PlanGate";
 import { BusinessAdvisor } from "@/components/BusinessAdvisor";
 import { formatDateTime, formatDay } from "@/lib/format";
+import { pageTitle } from "@/lib/page-title";
 
 function fmt(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -39,7 +40,7 @@ function pct(n: number, d: number) {
 }
 
 export const Route = createFileRoute("/_authenticated/analytics")({
-  head: () => ({ meta: [{ title: "Advanced analytics · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Analytics") }] }),
   component: AnalyticsPage,
 });
 
@@ -501,7 +502,7 @@ function WinBackTab() {
               Prefer the AI churn scorer in AI Tools when you want reason-with-context.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Sending a win-back emails a single-use code worth the credit below. The customer
+              Sending a win-back emails a single-use code worth the credit below. The client
               enters it in their portal and it lands on their account as credit.
             </p>
           </div>

@@ -45,8 +45,10 @@ import {
   setMyAvatar,
   updateMyProfile,
 } from "@/lib/profile.functions";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/profile")({
+  head: () => titleHead("Your account"),
   component: ProfilePage,
 });
 

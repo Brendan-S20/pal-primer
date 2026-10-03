@@ -102,7 +102,7 @@ export function FirstCleanupPricingCard({ canEdit }: { canEdit: boolean }) {
       <div className="space-y-1">
         <h2 className="text-base font-semibold">First cleanup</h2>
         <p className="text-sm text-muted-foreground">
-          What a new customer pays, once, for the first visit to a yard. Online signup charges it,
+          What a new client pays, once, for the first visit to a yard. Online signup charges it,
           and the new-client wizard and quotes offer it with the price filled in.
         </p>
       </div>
@@ -111,12 +111,12 @@ export function FirstCleanupPricingCard({ canEdit }: { canEdit: boolean }) {
         <div className="space-y-3">
           <p className="text-sm">
             <span className="font-medium">{FIRST_CLEANUP_MODE_LABEL[pricing.mode]}.</span>{" "}
-            {pricing.mode === "off" && "New customers are not charged for a first cleanup."}
+            {pricing.mode === "off" && "New clients are not charged for a first cleanup."}
             {pricing.mode === "flat" &&
               (pricedZones.length
                 ? "Each zone's Initial cleanup fee, set on the zone."
                 : "Each zone's Initial cleanup fee, and every zone's is $0, so nothing is charged yet.")}
-            {pricing.mode === "by_last_cleaned" && `Customers answer "${LAST_CLEANED_QUESTION}"`}
+            {pricing.mode === "by_last_cleaned" && `Clients answer "${LAST_CLEANED_QUESTION}"`}
           </p>
           {pricing.mode === "flat" && pricedZones.length > 0 && (
             <ul className="space-y-1 text-sm">
@@ -191,7 +191,7 @@ export function FirstCleanupPricingCard({ canEdit }: { canEdit: boolean }) {
           {draft.mode === "by_last_cleaned" && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Customers answer "{LAST_CLEANED_QUESTION}" and pay the price beside their answer, in
+                Clients answer "{LAST_CLEANED_QUESTION}" and pay the price beside their answer, in
                 every zone. Word the answers however you like.
               </p>
               {draft.tiers.map((t, i) => {
