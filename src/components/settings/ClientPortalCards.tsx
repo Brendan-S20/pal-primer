@@ -263,8 +263,8 @@ export function BrandingCard() {
               </p>
             ) : (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                Add one. Invoices and reminders are sent from a no-reply address, so any client
-                who hits Reply today is writing to nobody.
+                Add one. Invoices and reminders are sent from a no-reply address, so any client who
+                hits Reply today is writing to nobody.
               </p>
             )}
           </div>

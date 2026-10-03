@@ -68,6 +68,7 @@ import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
 import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
+import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated/inbox'
 import { Route as AuthenticatedHelpRouteImport } from './routes/_authenticated/help'
 import { Route as AuthenticatedFranchiseRouteImport } from './routes/_authenticated/franchise'
 import { Route as AuthenticatedExpensesRouteImport } from './routes/_authenticated/expenses'
@@ -449,6 +450,11 @@ const AuthenticatedInvoicesRoute = AuthenticatedInvoicesRouteImport.update({
 const AuthenticatedInventoryRoute = AuthenticatedInventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedInboxRoute = AuthenticatedInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedHelpRoute = AuthenticatedHelpRouteImport.update({
@@ -954,6 +960,7 @@ export interface FileRoutesByFullPath {
   '/expenses': typeof AuthenticatedExpensesRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
   '/help': typeof AuthenticatedHelpRoute
+  '/inbox': typeof AuthenticatedInboxRoute
   '/inventory': typeof AuthenticatedInventoryRoute
   '/invoices': typeof AuthenticatedInvoicesRouteWithChildren
   '/leads': typeof AuthenticatedLeadsRoute
@@ -1097,6 +1104,7 @@ export interface FileRoutesByTo {
   '/expenses': typeof AuthenticatedExpensesRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
   '/help': typeof AuthenticatedHelpRoute
+  '/inbox': typeof AuthenticatedInboxRoute
   '/inventory': typeof AuthenticatedInventoryRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/my-day': typeof AuthenticatedMyDayRoute
@@ -1239,6 +1247,7 @@ export interface FileRoutesById {
   '/_authenticated/expenses': typeof AuthenticatedExpensesRoute
   '/_authenticated/franchise': typeof AuthenticatedFranchiseRoute
   '/_authenticated/help': typeof AuthenticatedHelpRoute
+  '/_authenticated/inbox': typeof AuthenticatedInboxRoute
   '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRouteWithChildren
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
@@ -1387,6 +1396,7 @@ export interface FileRouteTypes {
     | '/expenses'
     | '/franchise'
     | '/help'
+    | '/inbox'
     | '/inventory'
     | '/invoices'
     | '/leads'
@@ -1530,6 +1540,7 @@ export interface FileRouteTypes {
     | '/expenses'
     | '/franchise'
     | '/help'
+    | '/inbox'
     | '/inventory'
     | '/leads'
     | '/my-day'
@@ -1671,6 +1682,7 @@ export interface FileRouteTypes {
     | '/_authenticated/expenses'
     | '/_authenticated/franchise'
     | '/_authenticated/help'
+    | '/_authenticated/inbox'
     | '/_authenticated/inventory'
     | '/_authenticated/invoices'
     | '/_authenticated/leads'
@@ -2255,6 +2267,13 @@ declare module '@tanstack/react-router' {
       path: '/inventory'
       fullPath: '/inventory'
       preLoaderRoute: typeof AuthenticatedInventoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/inbox': {
+      id: '/_authenticated/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof AuthenticatedInboxRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/help': {
@@ -3020,6 +3039,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedExpensesRoute: typeof AuthenticatedExpensesRoute
   AuthenticatedFranchiseRoute: typeof AuthenticatedFranchiseRoute
   AuthenticatedHelpRoute: typeof AuthenticatedHelpRoute
+  AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
   AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
   AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRouteWithChildren
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
@@ -3059,6 +3079,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedExpensesRoute: AuthenticatedExpensesRoute,
   AuthenticatedFranchiseRoute: AuthenticatedFranchiseRoute,
   AuthenticatedHelpRoute: AuthenticatedHelpRoute,
+  AuthenticatedInboxRoute: AuthenticatedInboxRoute,
   AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,
   AuthenticatedInvoicesRoute: AuthenticatedInvoicesRouteWithChildren,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,

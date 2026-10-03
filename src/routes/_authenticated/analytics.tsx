@@ -20,6 +20,7 @@ import { PlanGate } from "@/components/PlanGate";
 import { BusinessAdvisor } from "@/components/BusinessAdvisor";
 import { formatDay } from "@/lib/format";
 import { pageTitle } from "@/lib/page-title";
+import { ReportsNav } from "@/components/ReportsNav";
 
 function fmt(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -40,6 +41,7 @@ export const Route = createFileRoute("/_authenticated/analytics")({
 function AnalyticsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 overflow-x-hidden max-w-full">
+      <ReportsNav />
       <div>
         <h1 className="text-2xl font-semibold">Advanced analytics</h1>
         <p className="text-sm text-muted-foreground">
@@ -47,7 +49,13 @@ function AnalyticsPage() {
         </p>
       </div>
       <Tabs defaultValue="advisor" className="space-y-4">
-        <TabsList>
+        {/* The primitive scrolls only below `md`. From 768 to about 900, a
+            tablet with the sidebar docked, six tabs ran past the right edge
+            with nothing to scroll them by: "Churn drivers" and "Win-back" at
+            x=677..878 in a 768px window, measured when this page became a
+            tab of Reports (2026-10). So here it scrolls at every width,
+            inside its own box. */}
+        <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="advisor">Advisor</TabsTrigger>
           <TabsTrigger value="retention">Cohort retention</TabsTrigger>
           <TabsTrigger value="ltv">LTV</TabsTrigger>
@@ -493,8 +501,8 @@ function WinBackTab() {
               Prefer the AI churn scorer in AI Tools when you want reason-with-context.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Sending a win-back emails a single-use code worth the credit below. The client
-              enters it in their portal and it lands on their account as credit.
+              Sending a win-back emails a single-use code worth the credit below. The client enters
+              it in their portal and it lands on their account as credit.
             </p>
           </div>
           <div className="flex items-end gap-2">

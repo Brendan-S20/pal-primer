@@ -415,6 +415,7 @@ const en = {
     },
     item: {
       dashboard: "Dashboard",
+      inbox: "Inbox",
       leads: "Leads",
       clients: "Clients",
       campaigns: "Campaigns",

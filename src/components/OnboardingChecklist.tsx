@@ -1,17 +1,59 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { CheckCircle2, Circle, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Circle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { canAccess, useMyRole } from "@/hooks/useMyRole";
 import { getOnboardingStatus, dismissOnboarding } from "@/lib/onboarding.functions";
+
+type Step = {
+  id: string;
+  done: boolean;
+};
+
+/**
+ * Which steps the card draws before anybody asks for more.
+ *
+ * ── WHY IT FOLDS ──────────────────────────────────────────────────────────
+ *
+ * The card listed all seven steps at full height, finished ones included, at
+ * the top of the dashboard. On a phone that was two screens of "Get started"
+ * before the day's alerts, the techs out today and the overdue invoices (launch
+ * pass, 2026-10, recommendation 8). A finished step is something you have
+ * already done; it does not need a row.
+ *
+ * So, folded: finished steps are hidden at every width (the count and the bar
+ * still say how far along you are), and on a phone only the NEXT step is
+ * drawn, because one thing to do is what fits above the day. "Show all steps"
+ * opens the whole list, finished ones included, at any width.
+ *
+ * Returned as a reason per step rather than a filtered list, so the phone and
+ * desktop cases are one render with a breakpoint class, not two lists that
+ * can drift apart.
+ */
+export function stepVisibility(
+  steps: Step[],
+  expanded: boolean,
+): Record<string, "shown" | "desktop-only" | "hidden"> {
+  const next = steps.find((s) => !s.done)?.id;
+  const out: Record<string, "shown" | "desktop-only" | "hidden"> = {};
+  for (const s of steps) {
+    if (expanded) out[s.id] = "shown";
+    else if (s.done) out[s.id] = "hidden";
+    else if (s.id === next) out[s.id] = "shown";
+    else out[s.id] = "desktop-only";
+  }
+  return out;
+}
 
 export function OnboardingChecklist() {
   const qc = useQueryClient();
   const { role } = useMyRole();
   const statusFn = useServerFn(getOnboardingStatus);
   const dismissFn = useServerFn(dismissOnboarding);
+  const [expanded, setExpanded] = useState(false);
 
   const { data } = useQuery({
     queryKey: ["onboarding-status"],
@@ -24,6 +66,8 @@ export function OnboardingChecklist() {
 
   const pct = Math.round((data.completed / data.total) * 100);
   const allDone = data.completed === data.total;
+  const visibility = stepVisibility(data.steps, expanded);
+  const foldedAway = data.steps.filter((s) => visibility[s.id] !== "shown").length;
 
   const handleDismiss = async () => {
     await dismissFn();
@@ -31,38 +75,56 @@ export function OnboardingChecklist() {
   };
 
   return (
-    <div className="rounded-lg border bg-card p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">
-            {allDone ? "You're all set" : "Get started"}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <div className="rounded-lg border bg-card p-4 md:p-5" data-testid="onboarding-checklist">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">{allDone ? "You're all set" : "Get started"}</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {allDone
               ? "Every setup step is complete. Dismiss this card to hide it."
               : `${data.completed} of ${data.total} steps complete`}
           </p>
         </div>
-        <Button variant="ghost" size="icon" onClick={handleDismiss} aria-label="Dismiss">
+        {/* Dismissing is for good (the server records it), so it says so in
+            its name rather than being an anonymous ×. 44px on touch: the glyph
+            stays 16px, the box around it is what a thumb hits. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleDismiss}
+          aria-label="Dismiss the setup checklist"
+          title="Dismiss the setup checklist"
+          className="shrink-0 touch:h-11 touch:w-11"
+        >
           <X className="h-4 w-4 shrink-0" />
         </Button>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3">
         <Progress value={pct} />
       </div>
 
-      <ul className="mt-5 space-y-3">
+      <ul className="mt-4 space-y-3">
         {data.steps.map((step) => (
           <li
             key={step.id}
+            data-step={step.id}
             // flex-wrap so the controls drop to their own line when the row
             // cannot hold both columns. Without it the row never wraps at all:
             // the controls block below is shrink-0, so it always claims its
             // max-content width and the INNER flex-wrap can never engage --
             // the two are in tension, and shrink-0 wins. Found at 320px, where
             // "Import CSV" ran to x=326 in a 320px viewport.
-            className="flex flex-wrap items-start justify-between gap-4 rounded-md border p-3"
+            //
+            // `max-md:hidden` is show-or-hide keyed on width, which is what
+            // width is for (CLAUDE.md: "show-or-hide may key on width").
+            className={`flex flex-wrap items-start justify-between gap-4 rounded-md border p-3 ${
+              visibility[step.id] === "hidden"
+                ? "hidden"
+                : visibility[step.id] === "desktop-only"
+                  ? "max-md:hidden"
+                  : ""
+            }`}
           >
             <div className="flex items-start gap-3">
               {/* shrink-0: a flex item without it gives up width to long text,
@@ -77,8 +139,7 @@ export function OnboardingChecklist() {
               <div>
                 <div
                   className={
-                    "text-sm font-medium " +
-                    (step.done ? "text-muted-foreground line-through" : "")
+                    "text-sm font-medium " + (step.done ? "text-muted-foreground line-through" : "")
                   }
                 >
                   {step.label}
@@ -113,6 +174,26 @@ export function OnboardingChecklist() {
           </li>
         ))}
       </ul>
+
+      {(foldedAway > 0 || expanded) && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-2 inline-flex min-h-9 items-center gap-1 text-sm font-medium text-primary hover:underline touch:min-h-11"
+        >
+          {expanded ? (
+            <>
+              Show less <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
+            </>
+          ) : (
+            <>
+              Show all {data.total} steps{" "}
+              <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }

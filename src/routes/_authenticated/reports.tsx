@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { pageTitle } from "@/lib/page-title";
+import { ReportsNav } from "@/components/ReportsNav";
 
 function fmtMoney(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -46,6 +47,7 @@ function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      <ReportsNav />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Reports</h1>
@@ -323,8 +325,8 @@ function ReportsPage() {
         <CardHeader>
           <CardTitle>Top clients by money collected</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Cash basis: what each client actually paid in this range. Adds up to the Collected
-            tile above, less anything paid without an invoice.
+            Cash basis: what each client actually paid in this range. Adds up to the Collected tile
+            above, less anything paid without an invoice.
           </p>
         </CardHeader>
         <CardContent className="overflow-x-auto">

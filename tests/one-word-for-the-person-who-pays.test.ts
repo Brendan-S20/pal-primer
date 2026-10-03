@@ -62,7 +62,11 @@ function walk(dir: string, keep: (p: string) => boolean): string[] {
 }
 
 /** Directories of pages a CLIENT reads, and the marketing site. */
-const CLIENT_FACING_DIRS = ["src/components/portal/", "src/components/marketing/", "src/components/signup/"];
+const CLIENT_FACING_DIRS = [
+  "src/components/portal/",
+  "src/components/marketing/",
+  "src/components/signup/",
+];
 
 /** Server modules whose strings reach a staff screen: notifications, toasts,
  *  report descriptions, the trial banner and the emails sent to the owner. */

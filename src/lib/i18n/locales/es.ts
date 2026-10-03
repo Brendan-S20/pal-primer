@@ -418,6 +418,7 @@ const es: Translations = {
     },
     item: {
       dashboard: "Panel",
+      inbox: "Bandeja de entrada",
       leads: "Prospectos",
       clients: "Clientes",
       campaigns: "Campañas",

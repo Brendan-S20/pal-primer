@@ -41,7 +41,10 @@ import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/invites")({
   head: () => ({
-    meta: [{ title: pageTitle("Invites", "Platform admin") }, { name: "robots", content: "noindex" }],
+    meta: [
+      { title: pageTitle("Invites", "Platform admin") },
+      { name: "robots", content: "noindex" },
+    ],
   }),
   component: InvitesPage,
 });

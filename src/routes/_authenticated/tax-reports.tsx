@@ -19,6 +19,7 @@ import {
   type ReportRow,
 } from "@/lib/cpa-reports.functions";
 import { pageTitle } from "@/lib/page-title";
+import { ReportsNav } from "@/components/ReportsNav";
 
 // BUILD-13 — one screen an owner can send to their accountant.
 //
@@ -157,6 +158,7 @@ function TaxReportsPage() {
 
   return (
     <div className="space-y-6">
+      <ReportsNav />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Tax &amp; accountant reports</h1>
