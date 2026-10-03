@@ -70,6 +70,27 @@ describe("the reply cannot promise what the business did not", () => {
   });
 });
 
+describe("voice is part of the receptionist add-on", () => {
+  // Voice had no gate of its own: `voice_enabled` could be switched on with no
+  // add-on, the webhook checked only that flag, and cancelling the add-on
+  // turned the receptionist off and left the phone line answered.
+  it("needs the add-on to switch on", () => {
+    expect(read("src/lib/ai-receptionist.functions.ts")).toMatch(
+      /if \(data\.enabled \|\| data\.voice_enabled\) \{/,
+    );
+  });
+
+  it("goes off when the add-on is cancelled", () => {
+    expect(read("src/lib/platform-addons.server.ts")).toMatch(
+      /ai_receptionist: \["ai_receptionist_enabled", "ai_voice_enabled"\]/,
+    );
+  });
+
+  it("answers a call only while the receptionist is on", () => {
+    expect(voice).toMatch(/!\(org as any\)\.ai_receptionist_enabled/);
+  });
+});
+
 describe("the receptionist is coming soon, and nothing reaches the model until it launches", () => {
   // Owner decision, 2026-10-03. One switch, read by every way in: the SMS
   // webhook, the voice webhook, and switching it on in Settings.

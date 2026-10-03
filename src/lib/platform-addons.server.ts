@@ -31,12 +31,17 @@ export async function deactivateOrgPlatformAddons(orgId: string) {
     .eq("status", "active")
     .in("addon_id", recurring.map((r: any) => r.addon_id));
 
-  const FLAG_COLUMNS: Record<string, string> = { ai_receptionist: "ai_receptionist_enabled" };
+  // Voice rides on the receptionist add-on, so it goes off with it. Leaving
+  // it on kept a cancelled business's phone line answered by the model.
+  const FLAG_COLUMNS: Record<string, string[]> = {
+    ai_receptionist: ["ai_receptionist_enabled", "ai_voice_enabled"],
+  };
   const patch: Record<string, boolean> = {};
   for (const r of recurring) {
     const a = Array.isArray(r.platform_addons) ? r.platform_addons[0] : r.platform_addons;
-    const col = a?.feature_flag ? FLAG_COLUMNS[a.feature_flag] : undefined;
-    if (col) patch[col] = false;
+    for (const col of a?.feature_flag ? (FLAG_COLUMNS[a.feature_flag] ?? []) : []) {
+      patch[col] = false;
+    }
   }
   if (Object.keys(patch).length) {
     await admin.from("organizations").update(patch).eq("id", orgId);

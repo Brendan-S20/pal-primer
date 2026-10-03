@@ -48,7 +48,9 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
           .eq("sms_from_number", to)
           .maybeSingle();
 
-        // Not launched: nothing reaches the model, whatever the flags say.
+        // Voice answers only while the receptionist itself is on: that flag is
+        // the one the add-on gates and the one cancelling turns off. And not
+        // before launch: nothing reaches the model, whatever the flags say.
         if (
           !RECEPTIONIST_LAUNCHED ||
           !org ||
