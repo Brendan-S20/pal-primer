@@ -124,7 +124,14 @@ async function officeDay(page: Page, mapIsUp: (page: Page) => Promise<void>) {
   // scrolled to, so the walk scrolls to it -- by the map card's own heading,
   // not a link label: the launch pass renamed "Open routes" to "Open
   // schedule", and the checklist above has a link of that name too.
-  await page.getByRole("heading", { name: "Today's map" }).scrollIntoViewIfNeeded();
+  // The wheel goes where the pointer is, and the pointer is still on the
+  // sidebar link that was just clicked. The sidebar is its own scroller --
+  // taller than 900px once the Inbox joined it -- so a wheel there moves the
+  // nav and leaves the page at scrollY 0, with the map one pixel short of
+  // the fold. Hovering the heading puts the wheel over the page.
+  const mapHeading = page.getByRole("heading", { name: "Today's map" });
+  await mapHeading.scrollIntoViewIfNeeded();
+  await mapHeading.hover();
   await page.mouse.wheel(0, 300);
   await mapIsUp(page);
 

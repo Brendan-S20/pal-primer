@@ -2018,7 +2018,7 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
+      className={`min-w-0 rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
         isOver ? "ring-2 ring-primary" : ""
       }`}
     >

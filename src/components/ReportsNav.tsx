@@ -32,7 +32,10 @@ export function ReportsNav() {
   const tabs = REPORT_TABS.filter((t) => canAccess(role, t.to));
   if (tabs.length < 2) return null;
   return (
-    <nav aria-label="Reports" className="-mx-1 overflow-x-auto px-1" data-testid="reports-nav">
+    // Scrolls inside its own box, starting at the column's edge like every
+    // other section in PageShell: a -mx-1/px-1 bleed for the focus ring put
+    // it 4px outside the column, which every-page-has-the-same-margins names.
+    <nav aria-label="Reports" className="overflow-x-auto" data-testid="reports-nav">
       <div className="inline-flex min-w-max items-center gap-1 rounded-lg border bg-muted/40 p-1">
         {tabs.map((t) => {
           const active = pathname === t.to || pathname.startsWith(t.to + "/");
