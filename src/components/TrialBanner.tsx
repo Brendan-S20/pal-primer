@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { getTrialState } from "@/lib/trial.functions";
 import { TRIAL_COPY } from "@/lib/trial";
+import { useMyRole } from "@/hooks/useMyRole";
 
 // BUILD-7 — the trial, said out loud.
 //
@@ -38,16 +39,30 @@ import { TRIAL_COPY } from "@/lib/trial";
 // every time, with no way to make it stop. What folds is the part you read
 // once.
 
+//
+// ── NOT SHOWN TO A TECHNICIAN ─────────────────────────────────────────────
+//
+// It was, as "Your free trial has ended / Ask an owner to set up billing",
+// about 85px above My Day on a phone (launch pass, 2026-10, recommendation 6).
+// A tech can do nothing about it, and nothing about it changes their day: a
+// lapsed plan pauses ADDING CLIENTS and the AI features, never the route
+// (tests/paused-means-growth-not-the-whole-account.test.ts). The owner, office
+// manager and dispatcher still see it; they are the people who can act or
+// pass it on. Hidden while the role is still loading too, so a tech's phone
+// never flashes it on the way in.
 export function TrialBanner() {
   const [showWhy, setShowWhy] = useState(false);
+  const { role } = useMyRole();
   const fn = useServerFn(getTrialState);
   const { data } = useQuery({
     queryKey: ["trial", "state"],
     queryFn: () => fn(),
     staleTime: 5 * 60_000,
     retry: false,
+    enabled: role !== null && role !== "tech",
   });
 
+  if (role === null || role === "tech") return null;
   if (!data) return null;
   if (data.phase === "paid" || data.phase === "none") return null;
 

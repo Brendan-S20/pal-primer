@@ -34,8 +34,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Gift } from "lucide-react";
 import { SignupAttribution } from "@/components/SignupAttribution";
 import { formatDay } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/referrals")({
+  head: () => titleHead("Referrals", "Platform admin"),
   component: ReferralsPage,
 });
 

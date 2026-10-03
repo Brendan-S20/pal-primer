@@ -8,12 +8,14 @@ import { HELP_ARTICLES, HELP_SECTIONS, getArticle } from "@/lib/help-content";
 import { helpMatchScore } from "@/lib/help-search";
 import { restartTour } from "@/components/OnboardingTour";
 import { APP_NAME } from "@/lib/scoop";
+import { titleHead } from "@/lib/page-title";
 
 // The Knowledge Center. Sections mirror the Settings groupings so the
 // taxonomy is one users already recognize. Articles cross-link each other
 // ([label](article:slug)) and deep-link into the app ([label](/path)), so
 // help lands you on the page it's describing.
 export const Route = createFileRoute("/_authenticated/help")({
+  head: () => titleHead("Knowledge Center"),
   validateSearch: (s: Record<string, unknown>) => ({
     article: typeof s.article === "string" ? s.article : undefined,
   }),

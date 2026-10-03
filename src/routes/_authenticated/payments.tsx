@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { formatDay } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 function ResendVerification() {
   const sendFn = useServerFn(sendEmailVerification);
@@ -56,6 +57,7 @@ function ResendVerification() {
 // is the tenant-facing money view (balances, payments, payouts), not app
 // configuration.
 export const Route = createFileRoute("/_authenticated/payments")({
+  head: () => titleHead("Payments"),
   component: PaymentsSettings,
 });
 
@@ -344,7 +346,7 @@ function TipsCard() {
     mutationFn: (enabled: boolean) => setFn({ data: { enabled } }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["tip-settings"] });
-      toast.success(r.tipsEnabled ? "Customers can now add a tip" : "Tips turned off");
+      toast.success(r.tipsEnabled ? "Clients can now add a tip" : "Tips turned off");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -356,9 +358,9 @@ function TipsCard() {
     <div className="space-y-3 rounded-lg border bg-card p-4">
       <div className="flex items-start justify-between gap-4">
         <label htmlFor="tips-enabled" className="min-w-0 text-sm">
-          <span className="block font-medium">Let customers add a tip</span>
+          <span className="block font-medium">Let clients add a tip</span>
           <span className="block text-muted-foreground">
-            On the payment link and the customer portal, customers can choose No tip, 10%, 15%, 20%
+            On the payment link and the client portal, clients can choose No tip, 10%, 15%, 20%
             or their own amount. No tip is selected until they pick one.
           </span>
         </label>
@@ -607,7 +609,7 @@ function NotOnAPhone({ what, refunds }: { what: string; refunds?: boolean }) {
           invoice (refundInvoicePayment). */}
       {refunds && (
         <p className="mt-2">
-          To refund a customer, open their invoice and press{" "}
+          To refund a client, open their invoice and press{" "}
           <span className="font-medium text-foreground">Refund</span> on the payment.
         </p>
       )}

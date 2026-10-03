@@ -154,7 +154,7 @@ export function WeatherStrip({ day }: { day: string }) {
       // on: a customer who was not told is a locked gate on a day nobody comes.
       if (r.notifyFailed) {
         toast.warning(
-          `${r.notifyFailed} customer${r.notifyFailed === 1 ? " was" : "s were"} not emailed about the change. Call ${r.notifyFailed === 1 ? "them" : "those"} before the day.`,
+          `${r.notifyFailed} client${r.notifyFailed === 1 ? " was" : "s were"} not emailed about the change. Call ${r.notifyFailed === 1 ? "them" : "those"} before the day.`,
           { duration: 15000 },
         );
       }

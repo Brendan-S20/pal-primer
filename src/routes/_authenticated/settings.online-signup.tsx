@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { appOrigin } from "@/lib/app-origin";
+import { titleHead } from "@/lib/page-title";
 
 // Online signup: the settings surface the feature never had.
 //
@@ -38,6 +39,7 @@ import { appOrigin } from "@/lib/app-origin";
 // (send a stranger to a hosted page that belongs to you) and an owner should
 // not have to learn two layouts to do them.
 export const Route = createFileRoute("/_authenticated/settings/online-signup")({
+  head: () => titleHead("Online signup", "Settings"),
   component: OnlineSignupSettings,
 });
 
@@ -85,7 +87,7 @@ function OnlineSignupSettings() {
         <h2 className="text-lg font-semibold">Online signup</h2>
         <p className="text-sm text-muted-foreground">
           Let homeowners price their yard, enter their details and pay their first invoice without
-          calling you. New customers arrive already scheduled.
+          calling you. New clients arrive already scheduled.
         </p>
       </div>
 

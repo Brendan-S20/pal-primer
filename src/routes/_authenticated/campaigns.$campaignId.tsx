@@ -9,9 +9,10 @@ import { CampaignStatsGrid, CampaignStatusBadge } from "@/components/campaigns/C
 import { getCampaign, previewCampaignEmail } from "@/lib/campaigns.functions";
 import { SKIP_REASON_TEXT } from "@/lib/campaigns";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/campaigns/$campaignId")({
-  head: () => ({ meta: [{ title: "Campaign · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Campaign") }] }),
   component: CampaignPage,
 });
 
@@ -24,6 +25,7 @@ function CampaignPage() {
     refetchInterval: (query) => (query.state.data?.campaign.status === "sending" ? 30_000 : false),
   });
   const c = q.data?.campaign;
+  useDocumentTitle(c ? pageTitle(c.subject || "Untitled campaign", "Campaigns") : null);
 
   return (
     <>

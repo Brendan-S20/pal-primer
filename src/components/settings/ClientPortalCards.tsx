@@ -10,7 +10,7 @@
 // belongs under Preferences. The inverse is the same rule, and these two are
 // the clearest case of it. A portal sign-in address and a customer-facing
 // brand colour are not preferences; they are what a CUSTOMER sees, which is
-// what the Customer-facing group in the settings nav is for.
+// what the Client-facing group in the settings nav is for.
 //
 // Moved rather than duplicated: there is one place to change a brand colour.
 import { useEffect, useState } from "react";
@@ -263,7 +263,7 @@ export function BrandingCard() {
               </p>
             ) : (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                Add one. Invoices and reminders are sent from a no-reply address, so any customer
+                Add one. Invoices and reminders are sent from a no-reply address, so any client
                 who hits Reply today is writing to nobody.
               </p>
             )}
@@ -294,8 +294,8 @@ export function BrandingCard() {
             />
             <p className="mt-1 text-xs text-muted-foreground">
               {contactAddress.trim()
-                ? "Shown in the footer of emails to your customers."
-                : "Optional, but it goes in the footer of your customer emails, and a service company with an address on it reads as a real local business."}
+                ? "Shown in the footer of emails to your clients."
+                : "Optional, but it goes in the footer of your client emails, and a service company with an address on it reads as a real local business."}
             </p>
           </div>
           <div>

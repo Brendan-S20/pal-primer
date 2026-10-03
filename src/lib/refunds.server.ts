@@ -394,7 +394,7 @@ export async function issueRefund(
         clientId: (inv?.client_id as string | null) ?? null,
         actorUserId: caller.userId,
         kind: "invoice.refunded",
-        summary: `Refunded ${formatUsd(amount, quote.currency)} to the customer${why}`,
+        summary: `Refunded ${formatUsd(amount, quote.currency)} to the client${why}`,
         meta: {
           invoice_id: quote.invoiceId,
           payment_id: quote.paymentId,

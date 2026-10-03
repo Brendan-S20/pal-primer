@@ -32,8 +32,10 @@ import { Card } from "@/components/ui/card";
 import { AlertTriangle, Download, MessageSquareOff, Search, Tag, Users } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
+  head: () => titleHead("Clients"),
   component: ClientsList,
 });
 

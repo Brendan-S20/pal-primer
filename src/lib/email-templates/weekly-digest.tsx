@@ -135,8 +135,8 @@ const Digest = ({
 
         <Hr style={{ margin: "24px 0" }} />
         <Text style={styles.small}>
-          Generated automatically each week. You can turn this off in HoundStack under Analytics →
-          Weekly digest.
+          Generated automatically each week. You can turn this off in HoundStack under Settings →
+          Emails.
         </Text>
       </Container>
     </Body>

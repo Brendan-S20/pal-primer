@@ -38,8 +38,10 @@ import {
 } from "lucide-react";
 import { humanizeEnum } from "@/lib/humanize";
 import { formatDateTime, formatDay } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/users")({
+  head: () => titleHead("Users", "Platform admin"),
   component: UsersPage,
 });
 

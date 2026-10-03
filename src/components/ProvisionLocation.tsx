@@ -92,7 +92,7 @@ export function ProvisionLocation() {
           </p>
           <p>
             It starts a 14-day free trial like any other new account. Its clients, visits and
-            payments are its own. You see its totals on this page, not its customers.
+            payments are its own. You see its totals on this page, not its clients.
           </p>
           <p>
             There is no way to remove a location from inside the product yet, so check the name and

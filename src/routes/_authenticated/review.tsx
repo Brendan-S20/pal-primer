@@ -14,6 +14,7 @@ import {
   type ReviewItemRow,
 } from "@/lib/review-queue.functions";
 import { REVIEW_KIND_COPY } from "@/lib/review-queue";
+import { pageTitle } from "@/lib/page-title";
 
 // BUILD-10 — guardrail 10.5's review queue, made real.
 //
@@ -29,7 +30,7 @@ import { REVIEW_KIND_COPY } from "@/lib/review-queue";
 // exactly as uninformed as the silent guess would have.
 
 export const Route = createFileRoute("/_authenticated/review")({
-  head: () => ({ meta: [{ title: "Needs review · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Needs review") }] }),
   component: ReviewPage,
 });
 

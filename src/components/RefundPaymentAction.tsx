@@ -156,7 +156,7 @@ function RefundDialog({
   }, [quote]);
 
   const amountCents = parseRefundAmount(amountText);
-  const who = customerName || "the customer";
+  const who = customerName || "the client";
 
   const refundM = useMutation({
     mutationFn: () =>

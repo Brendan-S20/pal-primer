@@ -184,7 +184,9 @@ describe("a new quote opens priced", () => {
     const html = render(null);
     expect(html.match(/id="line-\d+-desc"/g)).toHaveLength(1);
     expect(html).toContain("Ask for a deposit");
-    expect(html).toContain("Add a note to the customer");
+    // CHANGED 2026-10-02: staff copy says "client" for the person who pays
+    // (tests/one-word-for-the-person-who-pays.test.ts).
+    expect(html).toContain("Add a note to the client");
     expect(html).not.toContain('id="quote-deposit"');
     expect(html).not.toContain('id="quote-message"');
   });

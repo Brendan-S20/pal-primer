@@ -127,8 +127,10 @@ import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
+import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
+  head: () => titleHead("My day"),
   // Wide — see src/components/PageShell.tsx. Its sticky bar and its map run edge
   // to edge (PAGE_BLEED_X), so the column under them has to reach the same
   // edges.
@@ -265,6 +267,9 @@ function MyDay() {
   }, []);
   const pending = usePendingCount();
   const { t } = useTranslation();
+  // In the language this device reads. The route's head is English because
+  // it runs before i18n has read the device's choice.
+  useDocumentTitle(pageTitle(t("nav.item.my-day")));
   const locale = useIntlLocale();
   // The sync driver's toasts read the CURRENT language through a ref rather
   // than closing over `t`: `t` in runSync's dependencies would rebuild the

@@ -13,8 +13,10 @@ import {
   Building2, TrendingUp, AlertTriangle, PauseCircle, Sparkles, ArrowRightCircle,
   CalendarPlus, DollarSign, Route as RouteIcon, Database, MapPinOff,
 } from "lucide-react";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/overview")({
+  head: () => titleHead("Overview", "Platform admin"),
   component: OverviewPage,
 });
 

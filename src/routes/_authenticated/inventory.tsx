@@ -22,8 +22,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { AlertTriangle, Package, Plus } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/inventory")({
+  head: () => titleHead("Inventory"),
   component: InventoryPage,
 });
 

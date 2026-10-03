@@ -6,11 +6,14 @@ import { getEmailSettings, updateEmailSettings } from "@/lib/email-settings.func
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { pageTitle } from "@/lib/page-title";
+import { WeeklyDigestCard } from "@/components/settings/WeeklyDigestCard";
+import { usePermissions } from "@/hooks/useMyRole";
 
 const key = ["email-settings"] as const;
 
 export const Route = createFileRoute("/_authenticated/settings/emails")({
-  head: () => ({ meta: [{ title: "Email notifications · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Emails", "Settings") }] }),
   component: EmailSettingsPage,
 });
 
@@ -20,7 +23,7 @@ type SwitchKey = Exclude<keyof Settings, "quote_followup_days">;
 const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
   { key: "notify_email_invoice_sent", label: "Invoice sent", help: "Sent when you email a new invoice from the invoice page." },
-  { key: "notify_email_quote_sent", label: "Quote sent", help: "Sent when you press Send on a quote, with a link the customer accepts or declines from. Off means Send only marks the quote sent, and you share the link yourself." },
+  { key: "notify_email_quote_sent", label: "Quote sent", help: "Sent when you press Send on a quote, with a link the client accepts or declines from. Off means Send only marks the quote sent, and you share the link yourself." },
   { key: "notify_email_payment_received", label: "Payment received (receipt)", help: "Sent automatically when a payment is confirmed." },
   { key: "notify_email_overdue", label: "Overdue reminder", help: "Sent by the nightly worker when an invoice is past due." },
   { key: "notify_email_visit_completed", label: "Visit completed", help: "Sent after a tech marks a visit complete. Off by default (can be chatty)." },
@@ -32,6 +35,11 @@ const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
 type Settings = Awaited<ReturnType<typeof getEmailSettings>>;
 
 function EmailSettingsPage() {
+  // The digest carries revenue, so its server functions ask for
+  // view_financials. Drawn for the same people, so nobody gets a card that
+  // answers with an error.
+  const { can } = usePermissions();
+  const canSeeDigest = can("view_financials");
   const load = useServerFn(getEmailSettings);
   const save = useServerFn(updateEmailSettings);
   const { data, refetch } = useSuspenseQuery(queryOptions({ queryKey: key, queryFn: () => load() }));
@@ -97,6 +105,21 @@ function EmailSettingsPage() {
       <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
         {mut.isPending ? "Saving…" : "Save"}
       </Button>
+
+      {/* Emails the business SENDS are above; the one email HoundStack sends
+          the business is here, with its own Save, because it is stored on a
+          different row and a single Save for both would hide which saved. */}
+      {canSeeDigest && (
+        <section className="space-y-3 border-t pt-6">
+          <div>
+            <h2 className="text-lg font-semibold">Emails to you</h2>
+            <p className="text-sm text-muted-foreground">
+              What HoundStack sends you about your own business.
+            </p>
+          </div>
+          <WeeklyDigestCard />
+        </section>
+      )}
     </div>
   );
 }

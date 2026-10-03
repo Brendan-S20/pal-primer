@@ -29,8 +29,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { formatDateTime, formatDay, formatPhone } from "@/lib/format";
 import { toast } from "sonner";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/concerns")({
+  head: () => titleHead("Concerns"),
   component: ConcernsPage,
 });
 
@@ -153,7 +155,7 @@ function OneOffRow({
         <div className="ml-auto flex flex-wrap gap-2">
           <ConfirmButton
             title="Decline this request?"
-            description={`The customer sees it as not booked, with this reply: "${ONE_OFF_DECLINE_NOTE}" Write your own in the resolution note first if you'd rather.`}
+            description={`The client sees it as not booked, with this reply: "${ONE_OFF_DECLINE_NOTE}" Write your own in the resolution note first if you'd rather.`}
             confirmLabel="Decline"
             onConfirm={onDecline}
             trigger={

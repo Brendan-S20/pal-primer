@@ -37,8 +37,10 @@ import {
 import { HelpTip } from "@/components/HelpTip";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/zones")({
+  head: () => titleHead("Zones"),
   // Wide — see src/components/PageShell.tsx. A map beside the zone list; the map
   // is the thing being edited.
   staticData: { pageWidth: "wide" },
@@ -139,8 +141,8 @@ function ZonesPage() {
           {canEdit && (
             <p className="mt-1 text-xs text-muted-foreground">
               Standard pricing now lives in{" "}
-              <Link to="/settings/preferences" className="underline underline-offset-2">
-                Settings &gt; Preferences
+              <Link to="/settings/business" className="underline underline-offset-2">
+                Settings &gt; Business defaults
               </Link>
               .
             </p>

@@ -27,9 +27,10 @@ import { DownloadPdfLink } from "@/components/DownloadPdfButton";
 import { getPublicQuote, respondToPublicQuote } from "@/lib/quotes.functions";
 import { QUOTE_LIMITS, formatQuoteDay, formatQuoteMoney, isUsableSignature } from "@/lib/quotes";
 import { orgLocalDay } from "@/lib/org-day";
+import { customerTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/q/$token")({
-  head: () => ({ meta: [{ title: "Your quote" }] }),
+  head: () => ({ meta: [{ title: customerTitle("Your quote") }] }),
   component: PublicQuotePage,
 });
 

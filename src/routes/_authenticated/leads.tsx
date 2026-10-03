@@ -21,8 +21,10 @@ import { toast } from "sonner";
 import { useMemo, useState } from "react";
 import { humanizeEnum } from "@/lib/humanize";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/leads")({
+  head: () => titleHead("Leads"),
   component: LeadsPage,
 });
 

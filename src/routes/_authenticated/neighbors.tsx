@@ -37,6 +37,7 @@ import {
 import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
 import { orderForWalk, splitCanvassAddress } from "@/lib/canvass-order";
 import { usePermissions } from "@/hooks/useMyRole";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
   // Wide — see src/components/PageShell.tsx. A canvassing map and the prospect
@@ -44,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/neighbors")({
   staticData: { pageWidth: "wide" },
   head: () => ({
     meta: [
-      { title: "Neighbor canvassing · HoundStack" },
+      { title: pageTitle("Neighbor canvassing") },
       {
         name: "description",
         content: "Turn happy clients into whole-street routes with door-to-door canvassing.",
@@ -383,7 +384,7 @@ function NeighborsPage() {
         <p className="text-xs text-muted-foreground">
           Works out the house numbers either side of this client, checks each one against address
           search, and adds the ones that turned out to be real. Doors already on your list, and your
-          own customers, are left out.
+          own clients, are left out.
         </p>
       </CardContent>
     </Card>

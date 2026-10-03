@@ -83,6 +83,7 @@ import { compressImage } from "@/lib/offline/compressImage";
 import { formatDay } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { downloadCsv } from "@/lib/csv";
+import { pageTitle } from "@/lib/page-title";
 
 type Search = { month?: string; category?: ExpenseCategory; staff?: string };
 
@@ -94,7 +95,7 @@ export const Route = createFileRoute("/_authenticated/expenses")({
     if (typeof s.staff === "string" && /^([0-9a-f-]{36}|none)$/i.test(s.staff)) out.staff = s.staff;
     return out;
   },
-  head: () => ({ meta: [{ title: "Expenses" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Expenses") }] }),
   component: ExpensesPage,
 });
 

@@ -19,9 +19,10 @@ import {
 } from "@/lib/quotes";
 import { orgLocalDay } from "@/lib/org-day";
 import { cn } from "@/lib/utils";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/quotes/")({
-  head: () => ({ meta: [{ title: "Quotes · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Quotes") }] }),
   component: QuotesPage,
 });
 
@@ -49,7 +50,7 @@ function QuotesPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Quotes</h1>
           <p className="text-sm text-muted-foreground">
-            A price in writing. The customer accepts or declines it from a link, no password needed.
+            A price in writing. The client accepts or declines it from a link, no password needed.
           </p>
         </div>
         <Button asChild>

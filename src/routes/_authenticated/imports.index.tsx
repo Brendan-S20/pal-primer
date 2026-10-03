@@ -17,8 +17,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/imports/")({
+  head: () => titleHead("Import data"),
   component: ImportsPage,
 });
 

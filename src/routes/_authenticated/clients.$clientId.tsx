@@ -27,6 +27,7 @@ import { BillingTab } from "@/components/client-detail/BillingTab";
 import { StationsPanel } from "@/components/client-detail/stations-panel";
 import { CommunicationTab } from "@/components/client-detail/CommunicationTab";
 import { ReviewsReferralsTab } from "@/components/client-detail/ReviewsReferralsTab";
+import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 const TABS = [
   "summary",
@@ -54,6 +55,7 @@ type ClientDetailSearch = {
 };
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
+  head: () => titleHead("Client"),
   component: ClientDetail,
   // QA follow-up 2.2: tabs are URL-addressable so refresh, back/forward, and
   // deep links land on the right tab instead of resetting to Summary.
@@ -98,6 +100,11 @@ function ClientDetail() {
     queryKey: ["client", clientId],
     queryFn: () => getClientFn({ data: { clientId } }),
   });
+  // The tab names the client, so five clients open in five tabs are five
+  // different tabs. The route's head says "Client" until this loads.
+  const clientName = (clientData?.client as { display_name?: string | null } | undefined)
+    ?.display_name;
+  useDocumentTitle(clientName ? pageTitle(clientName, "Clients") : null);
   const { data: propsData } = useQuery({
     queryKey: ["properties", clientId],
     queryFn: () => listPropsFn({ data: { clientId } }),

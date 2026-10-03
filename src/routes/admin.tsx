@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, AlertCircle } from "lucide-react";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/admin")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Platform operator sign-in" },
+      { title: pageTitle("Platform operator sign-in") },
       { name: "robots", content: "noindex" },
     ],
   }),

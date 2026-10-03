@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { stashSignupAttribution } from "@/lib/signup-attribution";
 import { PublicShell } from "@/components/PublicShell";
 import { APP_NAME } from "@/lib/scoop";
+import { pageTitle } from "@/lib/page-title";
 
 // Feature 1: the stable, linkable signup URL for marketing links, ads, and
 // tenant referral links (houndstack /sign-up?ref=CODE). It captures referral +
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/sign-up")({
   }),
   head: () => ({
     meta: [
-      { title: `Sign up - ${APP_NAME}` },
+      { title: pageTitle("Sign up") },
       { name: "description", content: `Create your ${APP_NAME} account.` },
     ],
   }),

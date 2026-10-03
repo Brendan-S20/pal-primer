@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquarePlus } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/messages")({
+  head: () => titleHead("Messages"),
   component: MessagesLayout,
 });
 

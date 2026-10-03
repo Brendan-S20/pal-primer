@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HelpTip } from "@/components/HelpTip";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/blackouts")({
+  head: () => titleHead("Blackouts", "Settings"),
   component: BlackoutsPage,
 });
 

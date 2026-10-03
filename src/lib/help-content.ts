@@ -26,7 +26,7 @@ export type HelpArticle = {
 export const HELP_SECTIONS = [
   "Getting started",
   "Business setup",
-  "Customer-facing",
+  "Client-facing",
   "Communications",
   "Financial",
   "Team",
@@ -205,11 +205,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLink: { to: "/settings/deep-clean", label: "Open Deep-clean" },
     related: ["add-ons", "generate-invoices"],
   },
-  // ── Customer-facing ────────────────────────────────────────────────────────
+  // ── Client-facing ──────────────────────────────────────────────────────────
   {
     slug: "lead-form",
     title: "The lead form: your embeddable quote page",
-    section: "Customer-facing",
+    section: "Client-facing",
     body: [
       "The lead form is a public page (and embeddable widget) where prospects request service. It collects their address, dog count, and frequency, and drops them into your [Leads](/leads) list.",
       "Customize the fields and branding in [Lead form](/settings/lead-form), then link it from your website or ads. You can preview the live form from the Leads page at any time.",
@@ -226,23 +226,23 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: "client-portal",
     title: "The client portal",
-    section: "Customer-facing",
+    section: "Client-facing",
     body: [
       "Every client gets a private portal link where they can see upcoming visits, pay invoices, save a card, put service on hold, and refer neighbors.",
       "Clients sign in with a one-time code sent by email (or text, when texting is configured). If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
-      "The portal carries your branding: set your logo and brand color in [Preferences](/settings/preferences).",
+      "The portal carries your branding: set your logo and brand color in [Client portal](/settings/client-portal).",
     ],
     related: ["lead-form", "getting-paid", "credit-balance", "reclean-requests"],
   },
   {
     slug: "reclean-requests",
     title: "Re-clean requests",
-    section: "Customer-facing",
+    section: "Client-facing",
     audience: "Owners and office managers",
     body: [
-      "If you promise customers a free re-clean when a spot gets missed, they can ask for it themselves. For a set number of hours after a visit is completed, that visit shows a **Request a re-clean** button in the customer's [portal](article:client-portal), with an optional note about what to look at.",
+      "If you promise clients a free re-clean when a spot gets missed, they can ask for it themselves. For a set number of hours after a visit is completed, that visit shows a **Request a re-clean** button in the client's [portal](article:client-portal), with an optional note about what to look at.",
       "The request lands in [Concerns](/concerns) labelled **Re-clean request**, and you get the same email and notification a concern sends. Asking twice for the same visit gives you one request, not two.",
-      "Set the window in [Preferences](/settings/preferences) under **Re-clean guarantee**. It starts at 48 hours and can be anything up to a week (168). Set it to 0 to turn the guarantee off: the button disappears from every customer's portal.",
+      "Set the window in [Business defaults](/settings/business) under **Re-clean guarantee**. It starts at 48 hours and can be anything up to a week (168). Set it to 0 to turn the guarantee off: the button disappears from every client's portal.",
       "The window is measured from when the visit was finished, not the day it was scheduled. A visit completed at 6 PM Monday with a 48-hour guarantee can be asked about until 6 PM Wednesday.",
     ],
     steps: [
@@ -257,7 +257,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: "refer-a-business",
     title: "Refer a business: earn cash for referrals",
-    section: "Customer-facing",
+    section: "Client-facing",
     body: [
       "Know another pet-service business that could use HoundStack? Share your referral link from [Refer a business](/settings/referrals).",
       "When a business signs up through your link and becomes a paying customer, you earn a percentage of their first payment, paid out in cash after they've stayed active through a short holding period. Progress shows on the same page.",

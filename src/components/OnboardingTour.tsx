@@ -57,7 +57,7 @@ const ALL_STEPS: Array<Step & { requiresAccess?: string }> = [
     route: "/clients",
     requiresAccess: "/clients",
     title: "Clients",
-    body: "Every customer lives here: their properties, dogs, subscriptions, invoices, and portal link.",
+    body: "Every client lives here: their properties, dogs, subscriptions, invoices, and portal link.",
   },
   {
     anchor: "/zones",
