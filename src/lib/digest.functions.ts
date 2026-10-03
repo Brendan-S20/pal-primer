@@ -7,17 +7,16 @@ async function requireOwnerOrManager(supabase: any, userId: string): Promise<str
   return (await requirePermission(supabase, userId, "view_financials")).orgId;
 }
 
-/** Preview the current week's digest metrics + AI insights without sending. */
+/** Preview the current week's digest metrics and commentary without sending. */
 export const previewWeeklyDigest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await requireOwnerOrManager(context.supabase, context.userId);
-    const { computeDigestMetrics, generateDigestInsights } = await import(
-      "@/lib/digest.server"
-    );
+    const { computeDigestMetrics } = await import("@/lib/digest.server");
+    const { buildDigestInsights } = await import("@/lib/digest-insights");
     const metrics = await computeDigestMetrics(orgId);
     if (!metrics) throw new Error("Organization not found");
-    const insights = await generateDigestInsights(metrics);
+    const insights = buildDigestInsights(metrics);
     return { metrics, insights };
   });
 
@@ -48,12 +47,11 @@ export const sendWeeklyDigestNow = createServerFn({ method: "POST" })
       );
     }
 
-    const { computeDigestMetrics, generateDigestInsights, sendDigestEmail } = await import(
-      "@/lib/digest.server"
-    );
+    const { computeDigestMetrics, sendDigestEmail } = await import("@/lib/digest.server");
+    const { buildDigestInsights } = await import("@/lib/digest-insights");
     const metrics = await computeDigestMetrics(orgId);
     if (!metrics) throw new Error("Organization not found");
-    const insights = await generateDigestInsights(metrics);
+    const insights = buildDigestInsights(metrics);
     const res = await sendDigestEmail({ orgId, recipient, metrics, insights });
     if (!res.ok) throw new Error(`Send failed: ${res.reason ?? "unknown"}`);
     return { ok: true, recipient, messageId: res.messageId };

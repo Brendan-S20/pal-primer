@@ -41,17 +41,16 @@ const NAV: NavEntry[] = [
   // searched by name, and "tax" or "analytics" should still find them.
   { label: "Analytics", to: "/analytics", group: "Insights" },
   { label: "Tax & accountant", to: "/tax-reports", group: "Insights" },
-  // AI tools no longer have a standalone destination — surface the two
-  // owner-facing ones (marketing + weekly digest) here as quick actions that
-  // deep-link to the dashboard where they render, and point the workflow-bound
-  // ones (review replies, churn, dispatch) at their in-context page so people
-  // can jump straight to the work. AI zone pricing is intentionally hidden
-  // (QA round 3 C5) — no entry for it here.
-  { label: "AI: marketing content", to: "/dashboard", group: "AI" },
-  { label: "AI: weekly digest", to: "/dashboard", group: "AI" },
-  { label: "AI: review replies", to: "/settings/reviews", group: "AI" },
-  { label: "AI: churn risk", to: "/clients", group: "AI" },
-  { label: "AI: dispatch", to: "/routes", group: "AI" },
+  // The office tools have no standalone destination. Surface the
+  // owner-facing one (weekly digest) as a quick action that deep-links to the
+  // dashboard where it renders, and point the workflow-bound ones (review
+  // replies, churn) at their in-context page. Zone pricing is intentionally
+  // hidden (QA round 3 C5). These sat in an "AI" group until 2026-10-03, when
+  // they stopped using AI; "AI: dispatch" went with the dispatch panel, and
+  // marketing posts get an entry back when they launch (ai-launch.ts).
+  { label: "Weekly digest", to: "/dashboard", group: "Insights" },
+  { label: "Review replies", to: "/settings/reviews", group: "Operations" },
+  { label: "Churn risk", to: "/clients", group: "Insights" },
   { label: "Import", to: "/imports", group: "Setup" },
   { label: "Skip rules", to: "/settings/skip-rules", group: "Settings" },
   { label: "Blackouts", to: "/settings/blackouts", group: "Settings" },

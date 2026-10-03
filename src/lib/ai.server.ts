@@ -48,8 +48,12 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
+// Haiku 4.5 since 2026-10-03, from Sonnet 5. What is left on this path is
+// short writing (marketing posts), and that does not need the larger model at
+// twice the price per token ($1/$5 per million against $2/$10). It still
+// supports the forced tool_choice generateStructured relies on.
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
-  anthropic: "claude-sonnet-5",
+  anthropic: "claude-haiku-4-5-20251001",
   openai: "gpt-4o",
 };
 
@@ -149,9 +153,10 @@ async function callProvider(
         method: "POST",
         headers,
         body: JSON.stringify({ model: config.model, ...body }),
-        // There was no limit at all. Two minutes covers the largest call here
-        // (churn scoring, up to 16k output tokens); past that the request is
-        // hung, and a hung request must not be retried twice more.
+        // There was no limit at all. Two minutes covers the largest call this
+        // path has made (churn scoring, up to 16k output tokens, before it
+        // became arithmetic); past that the request is hung, and a hung
+        // request must not be retried twice more.
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (err) {

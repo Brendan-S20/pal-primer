@@ -2608,8 +2608,14 @@ that had not happened yet** were inside the window. Now org-local, using the sam
 
 | Path | Key | Powers |
 |---|---|---|
-| Anthropic (`ai.server.ts`) | `ANTHROPIC_API_KEY` | marketing content, review replies, churn scoring, AI dispatch, zone pricing |
-| Lovable gateway (`ai-gateway.server.ts`) | `LOVABLE_API_KEY` | AI receptionist, business advisor / weekly digest |
+| Anthropic (`ai.server.ts`) | `ANTHROPIC_API_KEY` | marketing content (coming soon at launch); Haiku 4.5 since 2026-10-03 |
+| Lovable gateway (`ai-gateway.server.ts`) | `LOVABLE_API_KEY` | AI receptionist |
+
+*2026-10-03:* churn scoring, zone pricing, review replies, the weekly digests and
+the business advisor stopped calling a model; each is a pure function now
+(`churn-score.ts`, `zone-price-suggestion.ts`, `review-reply-template.ts`,
+`digest-insights.ts`). AI dispatch was removed in favour of the Schedule's
+route planner.
 
 The Settings → AI Tools page shipped in IMP-9 checked only the first, so it would
 have reported "AI is enabled" while the receptionist and advisor were dead. Fixed

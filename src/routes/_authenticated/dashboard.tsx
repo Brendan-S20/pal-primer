@@ -412,18 +412,12 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Owner-facing AI summaries live on the dashboard (punch list #11). */}
+      {/* Owner-facing summaries live on the dashboard (punch list #11). */}
       <div className="flex flex-col gap-6 max-md:order-3">
-        <AiSection
-          title="AI: weekly digest"
-          description="Owner-focused summary of the last 7 days."
-        >
+        <AiSection title="Weekly digest" description="Your last 7 days, in numbers.">
           <DigestPanel />
         </AiSection>
-        <AiSection
-          title="AI: marketing content"
-          description="Draft posts, captions, and email blasts."
-        >
+        <AiSection ai title="Marketing posts" description="Coming soon.">
           <MarketingPanel />
         </AiSection>
       </div>

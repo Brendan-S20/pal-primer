@@ -150,7 +150,7 @@ function ReviewsSettings() {
       </Button>
 
       {/* Review-reply drafting lives with review settings (punch list #11). */}
-      <AiSection title="AI: draft a review reply" description="Paste a public review, get a suggested reply.">
+      <AiSection title="Draft a review reply" description="Paste a public review, get a reply to start from.">
         <ReviewPanel />
       </AiSection>
 

@@ -401,7 +401,7 @@ function ChurnTab() {
       <CardHeader>
         <CardTitle>Churn drivers</CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
-          Grouped by AI-scored churn reason. Revenue at risk = paid revenue from these clients in
+          Grouped by churn reason. Revenue at risk = paid revenue from these clients in
           the last 180 days, <span className="font-medium">before refunds</span>. This is an
           estimate for prioritising outreach, not a reported figure. Score churn from the{" "}
           <Link to="/clients" className="font-medium underline underline-offset-2">
@@ -497,9 +497,6 @@ function WinBackTab() {
             <p className="text-sm">
               Heuristic score based on recent visit gaps, skips, complaints, and payment failures.
               Score ≥ 60 shows here.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Prefer the AI churn scorer in AI Tools when you want reason-with-context.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Sending a win-back emails a single-use code worth the credit below. The client enters

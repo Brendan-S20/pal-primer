@@ -214,25 +214,19 @@ export function PlanPicker({
                   {moneyExact(Math.round(p.annual_price_cents / 12))}/mo billed annually
                 </p>
               )}
-              {/* The AI allowance sits beside the employee allowance because it
-                  is the same kind of fact and the same kind of surprise: a
-                  metered charge that lands on a later invoice. It is also a real
-                  reason to buy up — 200 / 750 / 2,500 by tier — which this card
-                  was not saying. Null (Enterprise, negotiated) renders nothing.
-                  Note the plan `features` column is {} on every active plan, so
-                  this cannot be expressed as a feature bullet. */}
+              {/* The AI allowance used to sit here too, beside the employee one,
+                  as a reason to buy up. Removed 2026-10-03: churn, pricing, the
+                  digests and review replies stopped using AI, marketing posts
+                  are not live, and the receptionist is its own add-on, so the
+                  card was selling an allowance a new plan had almost nothing to
+                  spend on. The charge itself is still disclosed where the money
+                  is decided, in the paragraph above the card field below. */}
               <p className="mt-1 text-xs text-muted-foreground">
                 Includes {p.included_seats} employee{p.included_seats === 1 ? "" : "s"}
                 {p.price_per_seat_cents
                   ? isAnnualCard
                     ? ` · ${money(p.price_per_seat_cents * 10)}/yr per extra`
                     : ` · ${money(p.price_per_seat_cents)}/extra`
-                  : ""}
-                {p.ai_actions_included != null
-                  ? ` · ${p.ai_actions_included.toLocaleString()} AI actions`
-                  : ""}
-                {p.ai_actions_included != null && p.ai_overage_cents_per_action != null
-                  ? ` · ${money(p.ai_overage_cents_per_action)}/extra action`
                   : ""}
               </p>
               {p.description && (
@@ -442,8 +436,9 @@ export function EmbeddedPlanCheckout({
           {session.aiActionsIncluded != null && session.aiOverageCentsPerAction != null ? (
             <>
               {" "}
-              This plan includes {session.aiActionsIncluded.toLocaleString()} AI actions a month;
-              actions past that are {money(session.aiOverageCentsPerAction)} each.
+              Once the AI receptionist launches, its use is metered: this plan includes{" "}
+              {session.aiActionsIncluded.toLocaleString()} actions a month, and actions past that
+              are {money(session.aiOverageCentsPerAction)} each.
             </>
           ) : null}
           {session.includedSeats != null && session.seatOverageCents ? (

@@ -12,12 +12,17 @@
 //
 // ── WHY THIS IS ITS OWN MODULE ─────────────────────────────────────────────
 //
-// There are THREE ways into the model, and only one of them goes through
+// There were THREE ways into the model, and only one of them went through
 // `resolveOrgAiConfig`:
 //
 //   ai-tools.functions.ts / ai-settings  → resolveOrgAiConfig()
-//   digest.server.ts                     → createLovableAiGatewayProvider() direct
-//   ai-receptionist.server.ts            → createLovableAiGatewayProvider() direct
+//   digest.server.ts                     → the Lovable AI gateway, direct
+//   ai-receptionist.server.ts            → the Lovable AI gateway, direct
+//
+// (2026-10-03: the digest no longer calls a model, and the receptionist moved
+// to Anthropic via @ai-sdk/anthropic, so the gateway module is gone and two
+// doors remain. The rule below is unchanged, and still applies to whichever
+// door is added next.)
 //
 // Gating only the resolver would leave two doors open, and the two it leaves
 // open are the unattended ones — the weekly digest fires from cron and the

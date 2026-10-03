@@ -709,7 +709,7 @@ function ClientsList() {
       {/* Churn scoring lives with the client roster it scores (punch list #11). */}
       <div className="relative">
         <AiSection
-          title="AI: churn risk"
+          title="Churn risk"
           description="Score active clients on skip rate, unpaid invoices, and recency."
         >
           <div className="mb-1 text-right">

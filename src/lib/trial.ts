@@ -282,7 +282,7 @@ export const TRIAL_COPY: Record<
     // being told "your free trial has ended" would reasonably conclude the
     // product has lost track of what they paid for.
     headline: () => "Your plan has ended",
-    body: "Adding new clients and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
+    body: "Adding new clients needs an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
     tone: "warn",
   },
   trialing: {
@@ -290,10 +290,11 @@ export const TRIAL_COPY: Record<
       s.daysRemaining === 1
         ? "Last day of your free trial"
         : `${s.daysRemaining} days left in your free trial`,
-    // "Except the AI features" was the whole story while the trial is running,
-    // and stops being it the day it ends: adding a customer goes too. Said here
-    // so the change is not a surprise on day 15.
-    body: "Everything is unlocked except the AI features, which need a paid plan. When the trial ends you keep everything you have, but adding new clients will need a plan too. Nothing is charged automatically and no card is on file.",
+    // Adding a customer stops the day the trial ends. Said here so the change
+    // is not a surprise on day 15. (It also said "except the AI features"
+    // until 2026-10-03, when everything a trial can reach stopped using AI:
+    // the receptionist is an add-on and marketing posts are not live.)
+    body: "Everything is unlocked. When the trial ends you keep everything you have, but adding new clients will need a plan. Nothing is charged automatically and no card is on file.",
     tone: "info",
   },
   expired: {
@@ -306,7 +307,7 @@ export const TRIAL_COPY: Record<
     // them with. A banner that promises a warning it cannot send, about a
     // change that already happened, is worse than one that simply says what is
     // true now.
-    body: "Adding new clients and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
+    body: "Adding new clients needs an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
     tone: "warn",
   },
 };

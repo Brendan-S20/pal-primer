@@ -375,7 +375,9 @@ export const SURFACES: Surface[] = [
     path: "/settings/billing",
     proof: (p) => p.getByRole("heading", { name: "Manage subscription" }).first(),
     proofLabel: 'the "Manage subscription" heading',
-    expectsData: "750 AI actions",
+    // Was "750 AI actions". The card stopped selling the AI allowance on
+    // 2026-10-03; the employee allowance is the fixture fact it still draws.
+    expectsData: "Includes 10 employees",
   },
   {
     // The pager shipped today, and it only exists past row 150.

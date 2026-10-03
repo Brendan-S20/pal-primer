@@ -65,14 +65,17 @@ describe("the metered charges are named at the point of purchase", () => {
     // allowance is by contract must not be given a number this code invented.
     const src = read(PICKER);
     expect(src).toMatch(/aiActionsIncluded != null/);
-    expect(src).toMatch(/ai_actions_included != null/);
   });
 
-  it("the plan cards carry it too, since that is the comparison screen", () => {
+  it("the plan cards no longer sell the AI allowance", () => {
+    // Inverted 2026-10-03. Churn, pricing, the digests and review replies
+    // stopped using AI and marketing posts are not live, so the comparison
+    // card was selling an allowance a new plan had little to spend on. The
+    // charge is still named at checkout (the test above), which is where the
+    // money is decided.
     const src = read(PICKER);
-    expect(src, "plan cards do not show the AI allowance").toMatch(/AI actions`/);
-    // Not expressible as a feature bullet: `features` is {} on every active plan.
-    expect(src).toMatch(/ai_overage_cents_per_action != null/);
+    expect(src, "plan cards still sell the AI allowance").not.toMatch(/AI actions`/);
+    expect(src).not.toMatch(/ai_actions_included != null/);
   });
 
   it("the terms name the metered charge, not only per-seat billing", () => {
@@ -84,14 +87,18 @@ describe("the metered charges are named at the point of purchase", () => {
     expect(terms).not.toMatch(/priced per\s*\n?\s*active staff seat/);
   });
 
-  it("the two blurbs no longer say employees are the whole of it", () => {
+  it("the two blurbs describe billing without selling an AI allowance", () => {
+    // Inverted 2026-10-03, for the same reason as the plan cards: the blurbs
+    // were naming an AI allowance as part of every plan when nothing on a
+    // plan spends it but the receptionist add-on and, later, marketing posts.
     for (const f of [
       "src/routes/_authenticated/settings.billing.tsx",
       "src/routes/_authenticated/onboarding.tsx",
     ]) {
-      expect(read(f), `${f} still describes billing as employees only`).toMatch(
+      expect(read(f), `${f} still sells the AI allowance`).not.toMatch(
         /AI actions past your plan's monthly allowance/,
       );
+      expect(read(f)).toMatch(/billed per\s+employee/);
     }
   });
 });

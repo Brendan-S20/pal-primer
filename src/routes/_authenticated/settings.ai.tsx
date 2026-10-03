@@ -52,11 +52,16 @@ function AiSettings() {
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">AI usage</h2>
+        {/* Names only what is actually AI. Until 2026-10-03 this listed churn
+            scoring, AI dispatch and zone pricing too; those are rules over
+            your own data now (and dispatch is the route planner), and a
+            settings page that still calls them AI is the kind of claim this
+            repo keeps finding outliving the code. */}
         <p className="text-sm text-muted-foreground">
-          The AI features (marketing content, review replies, churn scoring, AI dispatch, and zone
-          pricing) run on HoundStack&apos;s own models. There is no key to set up and no separate
-          provider bill; your plan includes an AI allowance, and any usage beyond it appears on your
-          HoundStack invoice.
+          The AI receptionist runs on HoundStack&apos;s own models, so there is no key to set up
+          and no separate provider bill. Marketing posts are coming soon. Churn scores, zone price
+          suggestions, review reply drafts and the digests are worked out from your own data and
+          do not use AI.
         </p>
       </div>
 
@@ -117,8 +122,8 @@ function AiSettings() {
                     {!q.data?.toolsAvailable && !q.data?.assistantAvailable
                       ? "No AI features will run until this is resolved."
                       : !q.data?.toolsAvailable
-                        ? "Marketing content, review replies, churn scoring, AI dispatch, and zone pricing are unavailable. The receptionist and business advisor are unaffected."
-                        : "The AI receptionist and the business advisor are unavailable. The AI tools are unaffected."}{" "}
+                        ? "Marketing posts are unavailable. The AI receptionist is unaffected."
+                        : "The AI receptionist is unavailable. Marketing posts are unaffected."}{" "}
                     This is a HoundStack configuration issue, not something in your account. Please
                     contact support.
                   </div>
@@ -136,16 +141,21 @@ function AiSettings() {
 
 /** Human labels for the feature slugs stored on every usage row. A raw
  *  `dispatch_suggestion` on a billing screen is the kind of detail that makes
- *  an owner call support to ask what it is. */
+ *  an owner call support to ask what it is.
+ *
+ *  Every slug keeps a label, because the database still accepts them all and
+ *  this month's breakdown can hold rows from before 2026-10-03. The ones that
+ *  stopped using a model say so, so an old row does not read as a feature
+ *  that is still spending allowance. */
 const FEATURE_LABELS: Record<(typeof AI_FEATURES)[number], string> = {
-  marketing_content: "Marketing content",
-  review_reply: "Review replies",
-  churn_scoring: "Churn scoring",
-  weekly_digest: "Weekly digest (dashboard)",
-  weekly_digest_email: "Weekly digest email",
-  business_advisor: "Business advisor",
-  dispatch_suggestion: "AI dispatch",
-  zone_pricing: "Zone pricing",
+  marketing_content: "Marketing posts",
+  review_reply: "Review replies (before templates)",
+  churn_scoring: "Churn scoring (before it was rules)",
+  weekly_digest: "Weekly digest, dashboard (before it was rules)",
+  weekly_digest_email: "Weekly digest email (before it was rules)",
+  business_advisor: "Business advisor (before it was rules)",
+  dispatch_suggestion: "Dispatch suggestions (retired)",
+  zone_pricing: "Zone pricing (before it was rules)",
   ai_receptionist: "AI receptionist",
   connection_test: "Connection tests (not charged)",
 };
