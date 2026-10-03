@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error - plain ESM script, no types
-import { expectedObjects, sqlCode } from "../scripts/check-baseline-objects.mjs";
+import { CATALOG_SQL, expectedObjects, sqlCode } from "../scripts/check-baseline-objects.mjs";
 
 // IMP-2b. `check-baseline-objects.mjs` asks the live database whether every
 // object the migrations create still exists. It found nothing wrong on its
@@ -172,6 +172,18 @@ describe("names are normalized the way migrations actually write them", () => {
 
   it("strips quoting", () => {
     expect(replay('CREATE TABLE public."Odd_Name" (id int);').tables.has("odd_name")).toBe(true);
+  });
+
+  // The two halves of the check have to spell a name the same way. The replay
+  // keeps any schema but public (`reference.zip_centroids`); until 2026-10-03
+  // the catalog read public only, so a table in `reference` -- present on
+  // production with 33,791 rows -- failed main's "Migrations applied to the
+  // live database" as missing. Pinned on both sides.
+  it("keeps another schema's prefix, and the catalog reads that schema too", () => {
+    const e = replay("CREATE TABLE IF NOT EXISTS reference.zip_centroids (zip text);");
+    expect(e.tables.has("reference.zip_centroids")).toBe(true);
+    expect(CATALOG_SQL).not.toMatch(/nspname\s*=\s*'public'\s*(and|\))/i);
+    expect(CATALOG_SQL).toMatch(/nspname\s*\|\|\s*'\.'/);
   });
 });
 
