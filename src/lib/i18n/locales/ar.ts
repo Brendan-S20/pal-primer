@@ -262,8 +262,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     notAuthorizedStartTitle: "لا يبدأ الزيارة إلا فريق الميدان (المالك أو مدير المكتب أو الفني)",
     notAuthorizedComplete:
       "ليست لديك صلاحية إنهاء الزيارات. يجدول المنسّقون الزيارات، لكن فريق الميدان هو من ينهيها.",
-    notAuthorizedCompleteTitle:
-      "لا ينهي الزيارة إلا فريق الميدان (المالك أو مدير المكتب أو الفني)",
+    notAuthorizedCompleteTitle: "لا ينهي الزيارة إلا فريق الميدان (المالك أو مدير المكتب أو الفني)",
     needCompletionPhotoTitle: "أضف صورة الإنجاز أولًا",
     needChecklistTitle: "حدّد بنود قائمة التحقق الإلزامية أولًا",
     checklist: "قائمة التحقق",
@@ -374,8 +373,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     description:
       "بدأت <where/> الساعة {{time}} يوم {{day}} ولم تُغلق أبدًا. لن نخمّن، فأخبرنا بما حدث.",
     finishedLabel: "إذا أنهيتها، متى انتهيت؟",
-    enteredNote:
-      "سيُسجَّل كوقت أدخلته لاحقًا وليس كوقت مقيس، لذا لن يُحتسب ضمن مدة الخدمة.",
+    enteredNote: "سيُسجَّل كوقت أدخلته لاحقًا وليس كوقت مقيس، لذا لن يُحتسب ضمن مدة الخدمة.",
     yesCompleted: "نعم، أنهيتها",
     notCompleted: "لا، لم تكتمل",
     stillWorking: "ما زلت أعمل عليها",
@@ -692,8 +690,12 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
   },
   preferences: {
     title: "التفضيلات",
-    subtitleManager: "اللغة والعلامة التجارية والإعدادات الافتراضية لمساحة العمل هذه.",
-    subtitle: "اللغة وطريقة عمل التطبيق في مسارك.",
+    subtitleDevice: "شكل التطبيق وطريقة عمله على هذا الجهاز. لا يتغيّر شيء هنا لأي شخص آخر.",
+    themeTitle: "المظهر",
+    themeDescription: "فاتح أو داكن أو مطابق لإعداد هذا الجهاز. يتغيّر هذا الجهاز فقط.",
+    themeSystem: "النظام",
+    themeLight: "فاتح",
+    themeDark: "داكن",
     languageDescription: "يغيّر اللغة على هذا الجهاز فقط. كل شخص يختار لغته.",
     interfaceLanguage: "لغة الواجهة",
     languageUpdated: "تم تحديث اللغة",

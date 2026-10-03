@@ -192,8 +192,7 @@ async function render(lng: string) {
   await i18n.changeLanguage(lng);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(["my-day", DAY, ""], myDay());
-  const MyDay = (Route as unknown as { options: { component: () => ReactNode } }).options
-    .component;
+  const MyDay = (Route as unknown as { options: { component: () => ReactNode } }).options.component;
   const html = renderToStaticMarkup(
     createElement(QueryClientProvider, { client: qc }, createElement(MyDay)),
   );
@@ -298,6 +297,13 @@ describe("My Day in Arabic", () => {
       const utility = variants.pop() ?? "";
       if (variants.includes("rtl") || variants.includes("ltr")) return false;
       if (/^-?left-1\/2$/.test(utility)) return false;
+      // A side that pads by THAT side's safe-area inset is physical on
+      // purpose: a notch is on the device's left or right whatever the
+      // reading direction, so PageShell's gutter (and PAGE_BLEED_X, its exact
+      // inverse) pairs pl- with safe-area-inset-left and pr- with -right.
+      // Logical ps-/pe- would put the left inset on the right edge in Arabic.
+      if (/^-?(p|m)l-\[.*safe-area-inset-left/.test(utility)) return false;
+      if (/^-?(p|m)r-\[.*safe-area-inset-right/.test(utility)) return false;
       return PHYSICAL.test(utility);
     });
     expect([...new Set(physical)]).toEqual([]);

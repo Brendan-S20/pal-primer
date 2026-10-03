@@ -100,8 +100,7 @@ const zh: TranslationsWithPlurals<"other"> = {
   sync: {
     alreadySyncing: "正在同步…",
     synced_other: "已同步 {{count}} 个排队的操作",
-    photosLost_other:
-      "有 {{count}} 张排队的照片无法从此设备恢复。如果这次服务还需要照片，请重拍",
+    photosLost_other: "有 {{count}} 张排队的照片无法从此设备恢复。如果这次服务还需要照片，请重拍",
     deadLettered_other:
       "有 {{count}} 个排队的操作被服务器多次拒绝，已丢弃，以便其余操作完成同步。如果那项工作还需要做，请回去重做",
     stalled: "同步卡在 1 个操作上，稍后会重试",
@@ -318,7 +317,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     afterStart: "完成时间必须晚于开始时间。",
     notInFuture: "完成时间不能是将来的时间。",
     title: "这次服务你完成了吗？",
-    description: "你在{{day}} {{time}}开始了<where/>，但一直没有结束。我们不会乱猜，请告诉我们发生了什么。",
+    description:
+      "你在{{day}} {{time}}开始了<where/>，但一直没有结束。我们不会乱猜，请告诉我们发生了什么。",
     finishedLabel: "如果完成了，你是几点完成的？",
     enteredNote: "会记为事后填写的时间，而不是实际测量的时间，所以不会计入服务时长。",
     yesCompleted: "是，我完成了",
@@ -551,7 +551,8 @@ const zh: TranslationsWithPlurals<"other"> = {
   expense: {
     logAnExpense: "记一笔开支",
     sheetDescription: "油费、倾倒费、袋子。没有信号时会保存在手机上。",
-    noStaff: "你的账号还没有员工档案，所以开支无法记在任何人名下。请让办公室在 设置 → 用户 中添加你。",
+    noStaff:
+      "你的账号还没有员工档案，所以开支无法记在任何人名下。请让办公室在 设置 → 用户 中添加你。",
     whatWasIt: "是什么开支？",
     miles: "英里数",
     amount: "金额",
@@ -599,8 +600,12 @@ const zh: TranslationsWithPlurals<"other"> = {
   },
   preferences: {
     title: "偏好设置",
-    subtitleManager: "语言、品牌以及此工作区使用的默认设置。",
-    subtitle: "语言，以及应用在跑路线时的表现。",
+    subtitleDevice: "应用在此设备上的外观和行为。这里的设置不会影响其他人。",
+    themeTitle: "外观",
+    themeDescription: "浅色、深色，或跟随此设备的设置。只更改此设备。",
+    themeSystem: "跟随系统",
+    themeLight: "浅色",
+    themeDark: "深色",
     languageDescription: "只更改此设备上的语言。每个人各自选择。",
     interfaceLanguage: "界面语言",
     languageUpdated: "语言已更新",
@@ -612,13 +617,15 @@ const zh: TranslationsWithPlurals<"other"> = {
     keepAwakeDescription: "打开“我的一天”时不自动锁屏。",
     mapApp: "默认导航地图应用",
     menusTitle: "菜单和顶部栏",
-    menusDescription: "这个应用在此设备上对你的显示方式。你的其他设备保留各自的设置，也不会影响其他人。",
+    menusDescription:
+      "这个应用在此设备上对你的显示方式。你的其他设备保留各自的设置，也不会影响其他人。",
     phoneMenu: "手机上的菜单",
     phoneMenuBottom: "底部栏加“更多”",
     phoneMenuSide: "侧边菜单",
     phoneMenuNote: "两种菜单都能到达所有页面，区别只是按钮的位置。平板和电脑始终使用侧边菜单。",
     optionalButtons: "搜索框旁的可选按钮",
-    optionalButtonsNote: "关闭某个按钮只是隐藏快捷方式。知识中心仍在菜单和命令面板中，天气仍在仪表盘上。",
+    optionalButtonsNote:
+      "关闭某个按钮只是隐藏快捷方式。知识中心仍在菜单和命令面板中，天气仍在仪表盘上。",
     knowledgeCenter: "知识中心（?）",
     knowledgeCenterAria: "在顶部栏显示知识中心按钮",
     weather: "天气",
