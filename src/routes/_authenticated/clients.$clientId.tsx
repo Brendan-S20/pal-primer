@@ -215,7 +215,7 @@ function ClientDetail() {
       : tab;
 
   return (
-    <div className="space-y-5">
+    <>
       <Link to="/clients" className="inline-flex items-center text-sm text-muted-foreground hover:underline touch:min-h-11">
         ← Clients
       </Link>
@@ -401,6 +401,6 @@ function ClientDetail() {
         client={client}
         clientId={clientId}
       />
-    </div>
+    </>
   );
 }

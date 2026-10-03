@@ -90,7 +90,7 @@ function HelpPage() {
   const related = (active?.related ?? []).map((slug) => getArticle(slug)).filter(Boolean);
 
   return (
-    <div className="space-y-6">
+    <>
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
           <BookOpen className="h-6 w-6 shrink-0" /> Knowledge Center
@@ -258,6 +258,6 @@ function HelpPage() {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }

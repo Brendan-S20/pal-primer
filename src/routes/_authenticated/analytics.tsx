@@ -40,7 +40,7 @@ export const Route = createFileRoute("/_authenticated/analytics")({
 
 function AnalyticsPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-6 overflow-x-hidden max-w-full">
+    <>
       <ReportsNav />
       <div>
         <h1 className="text-2xl font-semibold">Advanced analytics</h1>
@@ -49,13 +49,14 @@ function AnalyticsPage() {
         </p>
       </div>
       <Tabs defaultValue="advisor" className="space-y-4">
-        {/* The primitive scrolls only below `md`. From 768 to about 900, a
-            tablet with the sidebar docked, six tabs ran past the right edge
-            with nothing to scroll them by: "Churn drivers" and "Win-back" at
-            x=677..878 in a 768px window, measured when this page became a
-            tab of Reports (2026-10). So here it scrolls at every width,
-            inside its own box. */}
-        <TabsList className="max-w-full justify-start overflow-x-auto">
+        {/* Wraps from `md` up, the way the client page's nine tabs do.
+            Below `md` the shared TabsList scrolls; above it, this bar was one
+            inline row 718px wide in a 464px column at 768, and the page root
+            hid the overflow with `overflow-x-hidden` — so on a tablet the
+            last tabs were not off-screen, they were clipped away with no way
+            to reach them. The root lost that wrapper when the page moved onto
+            PageShell's column, which is how the margins spec found this. */}
+        <TabsList className="h-auto flex-wrap justify-start max-md:flex-nowrap">
           <TabsTrigger value="advisor">Advisor</TabsTrigger>
           <TabsTrigger value="retention">Cohort retention</TabsTrigger>
           <TabsTrigger value="ltv">LTV</TabsTrigger>
@@ -104,7 +105,7 @@ function AnalyticsPage() {
           <WinBackTab />
         </TabsContent>
       </Tabs>
-    </div>
+    </>
   );
 }
 

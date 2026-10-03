@@ -188,7 +188,7 @@ function ExpensesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Expenses</h1>
@@ -308,7 +308,12 @@ function ExpensesPage() {
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 By category
               </div>
-              <ul className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+              {/* One column wherever this card is half the row. At 768 the
+                  summary grid goes two-up, the card is ~226px, and two
+                  columns of category + amount left each 85px — the amount
+                  ran 10px past the page's right edge. Two columns again from
+                  lg, where the card spans two of three. */}
+              <ul className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                 {EXPENSE_CATEGORIES.map((c) => (
                   <li key={c} className="flex min-w-0 items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-muted-foreground">
@@ -436,7 +441,7 @@ function ExpensesPage() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 

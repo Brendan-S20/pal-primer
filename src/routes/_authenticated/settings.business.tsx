@@ -60,7 +60,7 @@ function BusinessDefaultsPage() {
   const { can } = usePermissions();
   const canManageSettings = can("manage_settings");
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Business defaults</h2>
         <p className="text-sm text-muted-foreground">

@@ -704,7 +704,7 @@ function InvoicesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       {dialog}
       {paymentDialog}
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -1102,6 +1102,6 @@ function InvoicesPage() {
         onClose={() => setDrawerInvoiceId(null)}
         onChanged={() => qc.invalidateQueries({ queryKey: ["invoices"] })}
       />
-    </div>
+    </>
   );
 }

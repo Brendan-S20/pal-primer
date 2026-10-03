@@ -51,7 +51,7 @@ function ReviewPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <>
       <div>
         <div className="flex items-center gap-2">
           <ClipboardCheck className="h-5 w-5 text-primary shrink-0" />
@@ -110,7 +110,7 @@ function ReviewPage() {
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }
 

@@ -155,7 +155,7 @@ function TimesheetsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Timesheets</h1>
@@ -423,7 +423,7 @@ function TimesheetsPage() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 

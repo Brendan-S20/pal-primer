@@ -74,7 +74,7 @@ function BatchDetail() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex items-center justify-between">
         <div>
           <Link to="/imports" className="text-sm text-muted-foreground hover:underline">
@@ -240,7 +240,7 @@ function BatchDetail() {
           )}
         </div>
       </section>
-    </div>
+    </>
   );
 }
 

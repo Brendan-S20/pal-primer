@@ -68,7 +68,7 @@ function PreferencesPage() {
   }, []);
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       {/* See the note in settings.deep-clean: this page also opened straight
           into a card while the other eighteen led with a heading. */}
       <div>

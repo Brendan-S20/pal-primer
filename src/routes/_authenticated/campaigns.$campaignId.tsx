@@ -28,7 +28,7 @@ function CampaignPage() {
   useDocumentTitle(c ? pageTitle(c.subject || "Untitled campaign", "Campaigns") : null);
 
   return (
-    <div className="space-y-5">
+    <>
       <div className="min-w-0 space-y-1">
         <Link
           to="/campaigns"
@@ -55,7 +55,7 @@ function CampaignPage() {
       ) : (
         <SentCampaign data={q.data!} />
       )}
-    </div>
+    </>
   );
 }
 

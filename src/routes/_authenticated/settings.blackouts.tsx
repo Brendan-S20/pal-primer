@@ -49,7 +49,10 @@ function BlackoutsPage() {
       </div>
 
       <form
-        className="grid gap-3 rounded-lg border bg-card p-5 sm:grid-cols-4"
+        // Four columns from lg, two below it. At 768 four columns of a
+        // 424px form were 97px each, and "Add blackout" is 118 — it ran past
+        // the page's right edge.
+        className="grid gap-3 rounded-lg border bg-card p-5 sm:grid-cols-2 lg:grid-cols-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (blackoutOn) addMut.mutate();
@@ -65,7 +68,7 @@ function BlackoutsPage() {
             required
           />
         </div>
-        <div className="sm:col-span-2">
+        <div className="lg:col-span-2">
           <Label htmlFor="r">Reason</Label>
           <Input
             id="r"
