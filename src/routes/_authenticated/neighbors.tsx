@@ -39,6 +39,9 @@ import { orderForWalk, splitCanvassAddress } from "@/lib/canvass-order";
 import { usePermissions } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
+  // Wide — see src/components/PageShell.tsx. A canvassing map and the prospect
+  // table under it.
+  staticData: { pageWidth: "wide" },
   head: () => ({
     meta: [
       { title: "Neighbor canvassing · HoundStack" },
@@ -436,7 +439,7 @@ function NeighborsPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <>
       {/* `flex-col` below sm, a row above. The description used to share one
           row with the Walk mode button at every width, and at 375px that
           wrapped it into a column about half the screen wide next to a button
@@ -665,7 +668,7 @@ function NeighborsPage() {
           </Card>
         </>
       )}
-    </div>
+    </>
   );
 }
 

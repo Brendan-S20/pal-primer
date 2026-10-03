@@ -45,7 +45,7 @@ and do not quietly narrow the scope to the widths that happened to work.
 
 ### Some of this is enforced, so you find out before review
 
-Six of the rules above are checked by tests that scan the whole of `src/`
+Seven of the rules above are checked by tests that scan the whole of `src/`
 and name the offending file and line rather than counting violations:
 
 - `tests/hover-does-not-exist-on-a-touchscreen.test.ts` — a `group-hover:`
@@ -88,6 +88,22 @@ and name the offending file and line rather than counting violations:
   request; `shrink-0` is the floor, and on an icon it is never wrong. Also a
   ratchet from zero: 429 icons in 124 files were fixed in the change that
   added it.
+- `tests/a-page-does-not-draw-its-own-column.test.ts` — a signed-in page's
+  column (max width, horizontal gutter, top padding, the gap between its
+  sections) is decided ONCE, by `src/components/PageShell.tsx`, which the
+  `_authenticated` layout wraps around every page. A route component's root
+  element may not carry `mx-auto`, `container`, a `max-w-*`, horizontal
+  padding or a negative horizontal margin. A page that genuinely needs every
+  pixel (the dispatch board, the maps, My Day) declares
+  `staticData: { pageWidth: "wide" }` on its route, which lifts the 1600px cap
+  and nothing else — same gutter, same left edge. A band that has to run edge
+  to edge uses `PAGE_BLEED_X` and `data-page-bleed`. Ratchet from zero: 21
+  page roots carried a column of their own when it landed (2026-10-02), and
+  the owner's words were "the page widths should be identically the same
+  when viewing it on the same size screen." The browser half,
+  `tests/viewports/every-page-has-the-same-margins.spec.ts`, measures every
+  signed-in page at the four widths and fails one whose column, heading or
+  top-level sections start or end anywhere else.
 
 What is NOT enforced, and still has to be looked at: whether a thing is
 centred, and whether a layout is merely cramped rather than broken.

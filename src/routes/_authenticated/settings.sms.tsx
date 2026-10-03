@@ -29,7 +29,7 @@ function SmsSettings() {
   const q = useQuery({ queryKey: ["org-twilio-settings"], queryFn: () => getFn() });
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">SMS settings</h2>
         <p className="text-sm text-muted-foreground">

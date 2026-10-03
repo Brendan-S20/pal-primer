@@ -16,7 +16,7 @@ function NewCampaignPage() {
   const list = useServerFn(listCampaigns);
   const q = useQuery({ queryKey: ["campaigns"], queryFn: () => list() });
   return (
-    <div className="space-y-5">
+    <>
       <div className="min-w-0 space-y-1">
         <Link
           to="/campaigns"
@@ -35,6 +35,6 @@ function NewCampaignPage() {
       ) : (
         <CampaignEditor campaign={null} contactAddress={q.data?.contactAddress ?? null} />
       )}
-    </div>
+    </>
   );
 }

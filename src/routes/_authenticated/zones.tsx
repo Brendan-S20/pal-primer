@@ -39,6 +39,9 @@ import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 
 export const Route = createFileRoute("/_authenticated/zones")({
+  // Wide — see src/components/PageShell.tsx. A map beside the zone list; the map
+  // is the thing being edited.
+  staticData: { pageWidth: "wide" },
   component: ZonesPage,
 });
 
@@ -122,7 +125,7 @@ function ZonesPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
@@ -309,7 +312,7 @@ function ZonesPage() {
           fillOnOpen={drawer !== "new" && fillOnOpen}
         />
       )}
-    </div>
+    </>
   );
 }
 

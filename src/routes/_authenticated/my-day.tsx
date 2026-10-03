@@ -102,6 +102,7 @@ import { useIntlLocale } from "@/lib/i18n";
 import { formatClock, formatDay } from "@/lib/format";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
+import { PAGE_BLEED_TOP, PAGE_BLEED_X } from "@/components/PageShell";
 import { useTabletTier } from "@/hooks/useTabletTier";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
@@ -128,6 +129,10 @@ import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
+  // Wide — see src/components/PageShell.tsx. Its sticky bar and its map run edge
+  // to edge (PAGE_BLEED_X), so the column under them has to reach the same
+  // edges.
+  staticData: { pageWidth: "wide" },
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
   // silently showing today (P1.8). ?staff=<uuid> lets office roles preview a
   // technician's day read-only.
@@ -583,7 +588,13 @@ function MyDay() {
     // ends where it should — which is precisely the "I have to scroll to see
     // the whole map" the view was reported for. Measured at 360x800: the page
     // was 1002px tall inside an 800px viewport, and 168 of the 202 was this.
-    <div className={`-mx-4 -my-6 ${view === "map" ? "pb-0" : belowTabBarPadding}`}>
+    //
+    // No negative margins on this root any more. It was `-mx-4 -my-6`, which
+    // undid a 16px gutter that has been 24px from `sm` up, so from 640px My
+    // Day sat 8px left of every other page. The one thing here that really
+    // runs edge to edge is the sticky bar below, and it now says so with
+    // PAGE_BLEED_X, which is the gutter's exact inverse.
+    <div className={view === "map" ? "" : belowTabBarPadding}>
       {/* BUILD-11: a visit started on an earlier day (or before today's workday
           ended) that was never closed. Asks the tech what happened rather than
           guessing — nothing here completes anything on its own. */}
@@ -593,11 +604,12 @@ function MyDay() {
           no banner: both are sticky to the same edge and the banner wins on
           z-index, so a fixed top-0 here vanished under it. */}
       <div
-        className="sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+        data-page-bleed=""
+        className={`sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${PAGE_BLEED_X} ${PAGE_BLEED_TOP}`}
         // Sizes to its content, so no height override — see nativeTopBarStyle.
         style={nativeTopBarStyle()}
       >
-        <div className="space-y-3 px-4 py-3">
+        <div className="space-y-3 py-3">
           {(!online || pending > 0) && (
             <div
               className={`flex items-center justify-between gap-3 rounded-lg border p-2.5 text-sm animate-fade-in ${
@@ -880,7 +892,7 @@ function MyDay() {
         </div>
       </div>
 
-      <div className="space-y-3 px-4 pt-4">
+      <div className="space-y-3 pt-4">
         {/* The time clock is about NOW, whichever day the list is showing, so
             it is drawn on every day -- but never while previewing somebody
             else's day, because the taps would be the viewer's own. It draws

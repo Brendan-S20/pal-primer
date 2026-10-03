@@ -189,7 +189,7 @@ function ImportsPage() {
   });
 
   return (
-    <div className="space-y-8">
+    <>
       <div>
         <h1 className="text-2xl font-semibold">Import data</h1>
         <p className="text-sm text-muted-foreground">
@@ -247,7 +247,7 @@ function ImportsPage() {
           </div>
         )}
       </section>
-    </div>
+    </>
   );
 }
 

@@ -197,7 +197,7 @@ function InvoiceDetail() {
         : null;
 
   return (
-    <div className="space-y-6">
+    <>
       <style>{PRINT_STYLES}</style>
       {paymentDialog}
       <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">
@@ -550,7 +550,7 @@ function InvoiceDetail() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

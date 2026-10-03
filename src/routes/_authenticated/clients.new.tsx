@@ -287,7 +287,7 @@ function WizardShell({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <>
       <div>
         {backTo === "quotes" ? (
           <Link to="/quotes" className="text-sm text-muted-foreground hover:underline">
@@ -305,7 +305,7 @@ function WizardShell({
         <h1 className="mt-2 text-2xl font-semibold">New client</h1>
       </div>
       {children}
-    </div>
+    </>
   );
 }
 

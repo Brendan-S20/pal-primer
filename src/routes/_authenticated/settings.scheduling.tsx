@@ -116,13 +116,13 @@ function SchedulingSettings() {
   // because an early return between hooks breaks React's rules of hooks.)
   if (error) {
     return (
-      <p className="p-4 text-sm text-destructive">
+      <p className="text-sm text-destructive">
         Scheduling settings could not be loaded: {(error as Error).message}
       </p>
     );
   }
   if (!data) {
-    return <p className="p-4 text-sm text-muted-foreground">Loading scheduling settings…</p>;
+    return <p className="text-sm text-muted-foreground">Loading scheduling settings…</p>;
   }
 
   return (

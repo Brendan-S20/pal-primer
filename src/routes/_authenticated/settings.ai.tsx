@@ -47,7 +47,7 @@ function AiSettings() {
   });
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">AI usage</h2>
         <p className="text-sm text-muted-foreground">

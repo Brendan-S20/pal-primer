@@ -58,7 +58,7 @@ function NotificationsPage() {
   const deleteOne = useMutation({ mutationFn: (id: string) => deleteFn({ data: { id } }), onSuccess: invalidate });
 
   return (
-    <div className="space-y-4">
+    <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           {/* "Alerts", because that is the word on the tab that opens this
@@ -228,6 +228,6 @@ function NotificationsPage() {
           </ul>
         )}
       </div>
-    </div>
+    </>
   );
 }

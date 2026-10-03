@@ -253,23 +253,45 @@ export function ZoneCoverageMap({
         )}
       </div>
 
+      {/* ── THE SLIDER WAS A 16px TARGET ──────────────────────────────────
+          A range input's hit area is its own box, and with no height set
+          that box is the thumb: measured 16px tall at 360px in the new-zone
+          drawer, the one control on it you have to DRAG. `touch:min-h-11`
+          makes the box 44px wherever a finger is the input (every iPad
+          included, which is why it is `touch:` and not `max-md:`); the
+          track still draws as a thin line centred in it.
+
+          And it wraps. The instruction beside it is 50-odd characters, and
+          on one unwrapped row at 360px it left the slider whatever was over
+          — `min-w-32` is the floor, and below it the slider takes its own
+          line instead of shrinking to a sliver. */}
       {mode === "radius" && (
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <MousePointer2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground">Click the map to place the center, then set radius:</span>
-          <input type="range" min={500} max={40000} step={500} value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="flex-1" />
+          <span className="min-w-0 text-muted-foreground">Click the map to place the center, then set radius:</span>
+          <input type="range" aria-label="Radius" min={500} max={40000} step={500} value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="min-w-32 flex-1 touch:min-h-11" />
           <span className="w-24 text-right tabular-nums">{(radius / 1609).toFixed(1)} mi</span>
         </div>
       )}
       {mode === "drive_time" && (
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <MousePointer2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground">Click the map to place the shop/depot, then set minutes:</span>
-          <input type="range" min={5} max={60} step={5} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="flex-1" />
+          <span className="min-w-0 text-muted-foreground">Click the map to place the shop/depot, then set minutes:</span>
+          <input type="range" aria-label="Drive time in minutes" min={5} max={60} step={5} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="min-w-32 flex-1 touch:min-h-11" />
           <span className="w-24 text-right tabular-nums">{minutes} min</span>
         </div>
       )}
-      <div ref={containerRef} style={{ height, width: "100%" }} className="isolate rounded-lg border overflow-hidden z-0" />
+      {/* Leaflet's +/- are 30px on a touch device (`.leaflet-touch .leaflet-bar
+          a`), measured at 360px in the new-zone drawer. Same override, same
+          spelling and the same `!` as RouteMap.tsx, whose note explains why
+          the `!` is load bearing: Leaflet's rule has the same specificity and
+          its stylesheet lands later. Google's controls are already 44px
+          (`controlSize` in src/lib/maps/google-renderer.ts). */}
+      <div
+        ref={containerRef}
+        style={{ height, width: "100%" }}
+        className="isolate rounded-lg border overflow-hidden z-0 touch:[&_.leaflet-control-zoom_a]:!h-11 touch:[&_.leaflet-control-zoom_a]:!w-11 touch:[&_.leaflet-control-zoom_a]:!leading-[2.75rem]"
+      />
       <p className="text-xs text-muted-foreground">
         {mode === "polygon" && "Click to add vertices around the coverage area. Drag or click a point to adjust."}
         {mode === "radius" && "New addresses within this radius from the center are considered in-zone."}

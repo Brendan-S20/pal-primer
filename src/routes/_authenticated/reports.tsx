@@ -44,7 +44,7 @@ function ReportsPage() {
   const { data } = useSuspenseQuery(opts);
 
   return (
-    <div className="space-y-6">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Reports</h1>
@@ -375,7 +375,7 @@ function ReportsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </>
   );
 }
 

@@ -176,7 +176,7 @@ function ProfilePage() {
     name.trim() !== (staff.display_name ?? "") || phone.trim() !== (staff.phone ?? "");
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 pb-10">
+    <>
       {dialog}
 
       <div>
@@ -373,6 +373,6 @@ function ProfilePage() {
       <TwoStepCard />
       <SignInMethodsCard />
       <DeleteAccountCard />
-    </div>
+    </>
   );
 }

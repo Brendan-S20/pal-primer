@@ -81,6 +81,9 @@ import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/routes")({
+  // Wide — see src/components/PageShell.tsx. The dispatch board: a column per
+  // technician, and a week view seven days across.
+  staticData: { pageWidth: "wide" },
   component: RoutesPage,
 });
 
@@ -906,7 +909,7 @@ function RoutesPage() {
   const activeVisit = activeId ? visits.find((v) => v.id === activeId) : null;
 
   return (
-    <div className="space-y-4">
+    <>
       {moveDialog}
       <div className="flex flex-wrap items-end justify-between gap-3">
         {/* The title IS the date picker.
@@ -1822,7 +1825,7 @@ function RoutesPage() {
         visitId={detailVisitId}
         onOpenChange={(o) => !o && setDetailVisitId(null)}
       />
-    </div>
+    </>
   );
 }
 

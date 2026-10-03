@@ -186,7 +186,7 @@ function QuoteDetailPage() {
       })),
     };
     return (
-      <div className="mx-auto max-w-3xl space-y-5">
+      <>
         {dialog}
         {back}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -223,7 +223,7 @@ function QuoteDetailPage() {
           leadName={quote.leadName}
           onSaved={() => refresh()}
         />
-      </div>
+      </>
     );
   }
 
@@ -289,7 +289,7 @@ function QuoteDetailPage() {
     events.push({ key: "converted", label: "Turned into work", when: at(quote.convertedAt) });
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <>
       {dialog}
       {back}
       <div className="space-y-3">
@@ -508,6 +508,6 @@ function QuoteDetailPage() {
           recurring: l.recurring,
         }))}
       />
-    </div>
+    </>
   );
 }

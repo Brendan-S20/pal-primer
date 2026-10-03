@@ -66,7 +66,7 @@ function MySchedulePage() {
   const todayISO = useOrgToday();
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4">
+    <>
       <div className="min-w-0">
         <h1 className="truncate text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
           {t("nav.item.my-schedule")}
@@ -145,6 +145,6 @@ function MySchedulePage() {
           );
         })}
       </ul>
-    </div>
+    </>
   );
 }

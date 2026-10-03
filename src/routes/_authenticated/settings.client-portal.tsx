@@ -20,7 +20,7 @@ export const Route = createFileRoute("/_authenticated/settings/client-portal")({
 
 function ClientPortalSettings() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PortalAddressCard />
       <BrandingCard />
       <PortalBookingCard />

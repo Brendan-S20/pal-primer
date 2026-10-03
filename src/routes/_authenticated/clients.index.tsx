@@ -230,7 +230,7 @@ function ClientsList() {
   });
 
   return (
-    <div className="space-y-6">
+    <>
       {dialog}
       <Dialog open={tagAction != null} onOpenChange={(o) => !o && setTagAction(null)}>
         <DialogContent className="sm:max-w-sm">
@@ -716,7 +716,7 @@ function ClientsList() {
           <ChurnPanel />
         </AiSection>
       </div>
-    </div>
+    </>
   );
 }
 

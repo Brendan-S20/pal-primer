@@ -108,9 +108,9 @@ function NewQuotePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <>
       {header}
       {body}
-    </div>
+    </>
   );
 }

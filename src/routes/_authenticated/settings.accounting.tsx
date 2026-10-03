@@ -106,7 +106,7 @@ function AccountingSettings() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {dialog}
       <div>
         <h2 className="text-lg font-semibold">

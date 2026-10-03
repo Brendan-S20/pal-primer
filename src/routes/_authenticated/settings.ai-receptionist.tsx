@@ -63,7 +63,7 @@ function Page() {
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">AI SMS Receptionist</h2>
         <p className="text-sm text-muted-foreground">

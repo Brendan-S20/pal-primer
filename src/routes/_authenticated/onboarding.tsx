@@ -77,7 +77,7 @@ function OnboardingPage() {
   const stepIndex = steps.findIndex((s) => s.key === (step === "done" ? "checkout" : step));
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <>
       {dialog}
       <div className="flex items-center gap-2">
         {steps.map((s, i) => (
@@ -184,6 +184,6 @@ function OnboardingPage() {
           </Link>
         </div>
       )}
-    </div>
+    </>
   );
 }

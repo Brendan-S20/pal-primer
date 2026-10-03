@@ -44,7 +44,7 @@ function QuotesPage() {
   const shown = filter === "all" ? quotes : quotes.filter((x) => x.status === filter);
 
   return (
-    <div className="space-y-5">
+    <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Quotes</h1>
@@ -152,6 +152,6 @@ function QuotesPage() {
           ))}
         </ul>
       )}
-    </div>
+    </>
   );
 }
