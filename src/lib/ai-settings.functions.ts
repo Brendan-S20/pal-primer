@@ -23,11 +23,12 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
     // the weekly digest were dead:
     //
     //   tools    — Anthropic, via ANTHROPIC_API_KEY (ai.server.ts). Powers
-    //              marketing content, review replies, churn scoring, AI
-    //              dispatch, zone pricing.
+    //              marketing posts (coming soon at launch). Churn scoring,
+    //              zone pricing, review replies and the digests were moved
+    //              off it on 2026-10-03; they are rules now, and AI dispatch
+    //              was removed for the route planner.
     //   assistant— Lovable AI gateway, via LOVABLE_API_KEY
-    //              (ai-gateway.server.ts). Powers the AI receptionist and the
-    //              business advisor / weekly digest.
+    //              (ai-gateway.server.ts). Powers the AI receptionist.
     //
     // Consolidating them is worth doing and belongs with BUILD-2's metering,
     // which has to capture usage on BOTH or it will undercount.
@@ -52,7 +53,10 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
       planReason,
       toolsAvailable: !!process.env.ANTHROPIC_API_KEY,
       assistantAvailable: !!process.env.LOVABLE_API_KEY,
-      model: DEFAULT_MODELS.anthropic,
+      // The model the tools will actually call: resolveAiConfigFromEnv lets
+      // ANTHROPIC_MODEL override the default, so naming only the default
+      // could show one model while another ran.
+      model: process.env.ANTHROPIC_MODEL || DEFAULT_MODELS.anthropic,
       /** BUILD-2 shipped. The numbers come from getAiUsage(), which reads the
        *  same ai_usage_state the request path enforces against. */
       meteringAvailable: true,

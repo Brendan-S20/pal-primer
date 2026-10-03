@@ -137,7 +137,8 @@ describe("the office surfaces ask the org what day it is", () => {
     "src/components/client-detail/ClientHeader.tsx",
     "src/components/client-detail/VacationHoldDrawer.tsx",
     "src/components/client-detail/billing-panels.tsx",
-    "src/components/ai/AiPanels.tsx",
+    // AiPanels.tsx left this list on 2026-10-03: its only day picker was the
+    // dispatch panel's, which was removed for the Schedule's route planner.
   ]) {
     it(`${f} reads the org's today, not the UTC day`, () => {
       const s = src(f);

@@ -30,8 +30,9 @@ export async function resolveOrgAiConfig(_orgId: string): Promise<AiConfig | nul
   // BUILD-7: the per-org hook this signature was reserved for, used first for
   // access rather than metering.
   //
-  // NOT the only gate: digest.server.ts and ai-receptionist.server.ts reach the
-  // gateway directly and check ai-access.server.ts themselves.
+  // NOT the only gate: ai-receptionist.server.ts reaches the gateway directly
+  // and checks ai-access.server.ts itself. (digest.server.ts did too, until
+  // 2026-10-03, when the digest stopped calling a model at all.)
   //
   // THROWS rather than returning null when the plan is the reason, because the
   // two causes need different words and null erased the difference. Returning

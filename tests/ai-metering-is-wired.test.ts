@@ -131,12 +131,13 @@ describe("every door into the model is metered", () => {
     expect(forwarded, "a callProvider call does not forward the meter").toBe(callSites);
   });
 
-  it("the Lovable gateway paths record their own usage", () => {
-    // These do NOT go through ai.server.ts — they call the Vercel AI SDK
+  it("the Lovable gateway path records its own usage", () => {
+    // It does NOT go through ai.server.ts: it calls the Vercel AI SDK
     // directly. The whole reason ai-access.server.ts exists is that gating
-    // only the resolver left these two doors open, and they are the unattended
-    // ones: cron and an inbound text.
-    for (const f of ["src/lib/digest.server.ts", "src/lib/ai-receptionist.server.ts"]) {
+    // only the resolver left the gateway doors open, and they are the
+    // unattended ones. The digest was the other door until 2026-10-03; the
+    // receptionist (an inbound text) is the one left.
+    for (const f of ["src/lib/ai-receptionist.server.ts"]) {
       const src = code(read(f));
       expect(src, `${f} calls the model without recording usage`).toMatch(/recordAiUsage\(/);
       expect(src, `${f} does not sum usage across steps`).toMatch(/tokensFromAiSdkResult\(/);
@@ -160,7 +161,12 @@ describe("every door into the model is metered", () => {
     // an overage line nobody can reconcile to the calls behind it.
     const src = code(read("src/lib/ai-tools.functions.ts"));
     const calls = src.match(/resolveOrgAiCall\(staff\.organization_id, "([a-z_]+)"\)/g) ?? [];
-    expect(calls.length, "an AI tool resolved its config without a meter").toBe(6);
+    // One, not six, since 2026-10-03: marketing posts are the only tool here
+    // that is still a model call. A second one appearing means a feature went
+    // back to a model, which is a decision to make on purpose.
+    expect(calls, "an AI tool resolved its config without a meter").toEqual([
+      'resolveOrgAiCall(staff.organization_id, "marketing_content")',
+    ]);
     expect(src, "the unmetered resolver is still in use here").not.toMatch(/resolveOrgAiConfig\(/);
   });
 
@@ -179,8 +185,6 @@ describe("every door into the model is metered", () => {
       for (const m of code(read(f)).matchAll(/feature(?::| =) "([a-z_]+)"/g)) named.add(m[1]);
       for (const m of code(read(f)).matchAll(/resolveOrgAiCall\([^,]+, "([a-z_]+)"\)/g))
         named.add(m[1]);
-      for (const m of code(read(f)).matchAll(/generateDigestInsights\([^,)]+, "([a-z_]+)"\)/g))
-        named.add(m[1]);
     }
     expect(named.size).toBeGreaterThan(0);
     for (const n of named) {
@@ -188,20 +192,52 @@ describe("every door into the model is metered", () => {
     }
   });
 
-  it("the digest and the advisor are told apart", () => {
-    // One analysis engine, two callers, and only one of them was asked for:
-    // the weekly digest fires from cron. An owner reading "what used my
-    // allowance" needs those separated or the answer is useless.
-    expect(code(read("src/lib/advisor.functions.ts"))).toMatch(
-      /generateDigestInsights\(metrics, "business_advisor"\)/,
-    );
-    // The cron email carries its OWN label since 2026-09-20: the dashboard's
-    // digest panel (ai-tools.functions.ts) also logged "weekly_digest", so the
-    // breakdown could not say which of the TWO digests spent what. Three
-    // callers, three labels — this pin holds the email one.
-    expect(code(read("src/lib/digest.server.ts"))).toMatch(
-      /AiFeature = "weekly_digest_email"/,
-    );
+  it("the converted features no longer reach a model at all", () => {
+    // Replaces "the digest and the advisor are told apart". Telling their
+    // usage apart stopped mattering on 2026-10-03, when churn, zone pricing,
+    // review replies, both digests and the advisor became rules over data we
+    // already hold: there is no usage left to label. What matters now is that
+    // none of them quietly goes back to spending allowance.
+    const tools = code(read("src/lib/ai-tools.functions.ts"));
+    for (const fn of ["scoreChurn", "generateWeeklyDigest", "suggestZonePricing", "draftReviewReply"]) {
+      const at = tools.indexOf(`export const ${fn} = `);
+      expect(at, `${fn} not found`).toBeGreaterThan(-1);
+      const next = tools.indexOf("export const ", at + 1);
+      const decl = tools.slice(at, next < 0 ? undefined : next);
+      expect(decl, `${fn} calls a model again`).not.toMatch(
+        /generateStructured\(|generateAiText\(|resolveOrgAiCall\(/,
+      );
+    }
+    for (const f of ["src/lib/digest.server.ts", "src/lib/advisor.functions.ts"]) {
+      const src = code(read(f));
+      expect(src, `${f} calls a model again`).not.toMatch(
+        /generateText\(|createLovableAiGatewayProvider|generateStructured\(|recordAiUsage\(/,
+      );
+    }
+  });
+
+  it("AI dispatch is gone, not merely hidden", () => {
+    // Removed 2026-10-03 in favour of the Schedule's auto-routing: the route
+    // planner assigns with real road distances, where the model guessed from
+    // postal prefixes. The feature slug stays in AI_FEATURES only because a
+    // database check constraint mirrors it and old usage rows carry it.
+    const tools = code(read("src/lib/ai-tools.functions.ts"));
+    expect(tools).not.toMatch(/suggestDispatch|applyDispatchSuggestions|dispatch_suggestion/);
+    expect(code(read("src/components/ai/AiPanels.tsx"))).not.toMatch(/DispatchPanel/);
+    expect(code(read("src/routes/_authenticated/routes.tsx"))).not.toMatch(/DispatchPanel/);
+  });
+
+  it("marketing posts are refused on the server while they are coming soon", () => {
+    // Hiding the button is not a gate: a server function that still answers is
+    // a model call anyone with devtools can make. The refusal must come before
+    // the model is reached.
+    const tools = code(read("src/lib/ai-tools.functions.ts"));
+    const at = tools.indexOf("export const generateMarketingContent");
+    const decl = tools.slice(at, tools.indexOf("export const ", at + 1));
+    const gate = decl.indexOf("if (!MARKETING_AI_LAUNCHED)");
+    expect(gate, "generateMarketingContent has no launch gate").toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(decl.indexOf("generateStructured("));
+    expect(code(read("src/components/ai/AiPanels.tsx"))).toMatch(/if \(!MARKETING_AI_LAUNCHED\)/);
   });
 });
 
@@ -272,11 +308,9 @@ describe("the meter cannot break the feature it meters", () => {
     // cap counts and what the overage invoice bills. A dropped row is free AI
     // and a cap that does not hold. One insert after seconds of model time is
     // the cheaper side of that trade.
-    for (const f of [
-      "src/lib/ai.server.ts",
-      "src/lib/digest.server.ts",
-      "src/lib/ai-receptionist.server.ts",
-    ]) {
+    // digest.server.ts left this list on 2026-10-03: it no longer calls a
+    // model, so it has nothing to meter.
+    for (const f of ["src/lib/ai.server.ts", "src/lib/ai-receptionist.server.ts"]) {
       const src = code(read(f));
       expect(src, `${f} meters fire-and-forget again`).not.toMatch(/void \(async \(\)/);
       expect(src, `${f} no longer meters at all`).toMatch(/await \(async \(\)/);
@@ -299,11 +333,12 @@ describe("the page tells the truth about itself", () => {
     expect(page).toMatch(/AiUsageMeter/);
   });
 
-  it("the advisor's allowance claim is now true", () => {
-    // BusinessAdvisor.tsx has said "Uses part of your plan's AI allowance"
-    // since before an allowance existed. It stays only because BUILD-2 made it
-    // accurate — and it is asserted here so it cannot outlive the meter.
-    expect(read("src/components/BusinessAdvisor.tsx")).toMatch(/AI allowance/);
-    expect(read("src/lib/advisor.functions.ts")).toMatch(/business_advisor/);
+  it("the advisor no longer claims to use the AI allowance", () => {
+    // Inverted 2026-10-03. The claim was made true by BUILD-2 and asserted so
+    // it could not outlive the meter; now the advisor is rules over the same
+    // numbers and spends nothing, so the claim would be the one outliving it.
+    const ui = code(read("src/components/BusinessAdvisor.tsx"));
+    expect(ui).not.toMatch(/AI allowance|AI analysis|aiGenerated/);
+    expect(code(read("src/lib/advisor.functions.ts"))).not.toMatch(/business_advisor/);
   });
 });

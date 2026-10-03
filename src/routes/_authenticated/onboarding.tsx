@@ -111,7 +111,7 @@ function OnboardingPage() {
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
             Your workspace is ready. Two minutes of setup gets you running: pick the plan that fits
             your crew (every tier has unlimited clients, jobs, routes and zones; you're billed per
-            employee, plus any AI actions past your plan's monthly allowance), then explore your
+            employee), then explore your
             dashboard. You can change or cancel the plan anytime in Settings → Plan &amp; billing.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">

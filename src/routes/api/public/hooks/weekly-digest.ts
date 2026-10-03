@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 
 // POST /api/public/hooks/weekly-digest
 // Iterates orgs with notify_email_weekly_digest=true and digest_recipient_email set,
-// computes the past week's metrics, asks Lovable AI for insights, and enqueues the
-// digest email. Idempotency is per-org-per-week via last_digest_sent_at (skips if
+// computes the past week's metrics, builds the commentary from them (no model;
+// see digest-insights.ts), and enqueues the digest email. Idempotency is per-org-per-week via last_digest_sent_at (skips if
 // a digest was already sent in the past 6 days).
 
 export const Route = createFileRoute("/api/public/hooks/weekly-digest")({
@@ -11,8 +11,8 @@ export const Route = createFileRoute("/api/public/hooks/weekly-digest")({
     handlers: {
       POST: async ({ request }) => {
         // The anon key used to be the ONLY thing guarding this — the weakest of
-        // the three cron endpoints, and the one that spends AI allowance and
-        // emails every opted-in owner on each call. See cron-auth.server.ts.
+        // the three cron endpoints, and the one that emails every opted-in
+        // owner on each call. See cron-auth.server.ts.
         //
         // When this was tightened no pg_cron job targeted it. One does now:
         // Mondays 13:00 UTC, scheduled in 20260731130000 and re-pointed at the
@@ -22,8 +22,8 @@ export const Route = createFileRoute("/api/public/hooks/weekly-digest")({
         if (!auth.ok) return cronUnauthorized("weekly-digest", auth);
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { computeDigestMetrics, generateDigestInsights, sendDigestEmail } =
-          await import("@/lib/digest.server");
+        const { computeDigestMetrics, sendDigestEmail } = await import("@/lib/digest.server");
+        const { buildDigestInsights } = await import("@/lib/digest-insights");
 
         const { data: orgs, error } = await supabaseAdmin
           .from("organizations")
@@ -53,7 +53,7 @@ export const Route = createFileRoute("/api/public/hooks/weekly-digest")({
               results.push(perOrg);
               continue;
             }
-            const insights = await generateDigestInsights(metrics);
+            const insights = buildDigestInsights(metrics);
             const res = await sendDigestEmail({
               orgId: (org as any).id,
               recipient: (org as any).digest_recipient_email,

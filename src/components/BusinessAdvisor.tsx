@@ -1,32 +1,31 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Sparkles, Lightbulb, ListChecks, AlertTriangle, Info } from "lucide-react";
+import { TrendingUp, Lightbulb, ListChecks, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   getAdvisorMetrics,
   getAdvisorInsights,
   type AdvisorInsightsResult,
 } from "@/lib/advisor.functions";
 
-// AI Business Advisor (BUILD-8). The analysis engine already existed but was
-// only reachable as a weekly email — advice on our schedule, over our window,
+// Business Advisor (BUILD-8). The analysis engine already existed but was
+// only reachable as a weekly email: advice on our schedule, over our window,
 // with no way to see what it was based on.
 //
 // Two deliberate choices:
 //
-// 1. The numbers load on their own; the AI commentary is a button. A model call
-//    spends the org's AI allowance, and spending it as a side effect of opening
-//    a tab would be someone else's money quietly leaving. It also reads better:
-//    data first, interpretation on request.
+// 1. The numbers load on their own; the commentary is a button. That began as
+//    a cost decision, when the commentary was a model call against the org's
+//    AI allowance. Since 2026-10-03 it is rules over the same numbers
+//    (digest-insights.ts) and costs nothing, but it still reads better as data
+//    first, interpretation on request.
 //
 // 2. Insights and recommendations sit NEXT TO the metrics they came from, never
-//    behind a toggle. An advisor that emits three confident bullets with nothing
-//    to check them against is a horoscope. Putting "chase your overdue invoices"
-//    beside the actual A/R figure lets an owner tell a real signal from a model
-//    having a bad day.
+//    behind a toggle. Advice with nothing to check it against is a horoscope.
+//    Putting "chase your overdue invoices" beside the actual A/R figure lets an
+//    owner see exactly which number the advice is reading.
 
 const WINDOWS = [
   { days: 7 as const, label: "7 days" },
@@ -62,7 +61,7 @@ export function BusinessAdvisor() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+          <TrendingUp className="h-4 w-4 text-primary shrink-0" />
           <h2 className="text-base font-semibold">Business advisor</h2>
         </div>
         <div className="flex rounded-md border p-0.5">
@@ -122,27 +121,12 @@ export function BusinessAdvisor() {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Uses part of your plan&apos;s AI allowance.
+                    Worked out from the figures beside it, the same way every time.
                   </p>
                 </CardContent>
               </Card>
             ) : (
               <>
-                {/* Stated plainly rather than hidden. When the model is
-                    unreachable the engine falls back to deterministic
-                    arithmetic, which is still useful — but calling that "AI
-                    analysis" would be a lie, and the owner is paying for the
-                    difference. */}
-                {!report.aiGenerated && (
-                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      The AI model wasn&apos;t reachable, so this was computed directly from your
-                      numbers rather than analyzed. The figures are correct; the commentary is basic.
-                    </span>
-                  </div>
-                )}
-
                 <Card>
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between gap-3">
@@ -252,11 +236,6 @@ export function BusinessAdvisor() {
             <p className="text-xs text-muted-foreground">
               Computed from your own data over the selected window, in your organization&apos;s time
               zone.
-              {report && (
-                <Badge variant="outline" className="ml-1.5 align-middle text-3xs">
-                  {report.aiGenerated ? "AI analysis" : "Direct calculation"}
-                </Badge>
-              )}
             </p>
           </div>
         </div>

@@ -83,7 +83,8 @@ export function WeeklyDigestCard() {
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Every Monday morning, we email a plain-language summary of the past week: revenue,
-            visits, new clients, at-risk accounts, and 2-3 AI-generated recommendations.
+            visits, new clients, at-risk accounts, and 2-3 recommendations worked out from those
+            numbers.
           </p>
 
           {/* This panel promised a Monday email from the day it shipped, and for

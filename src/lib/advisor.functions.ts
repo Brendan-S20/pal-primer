@@ -2,9 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import type { DigestInsights, DigestMetrics } from "@/lib/digest.server";
+import type { DigestMetrics } from "@/lib/digest.server";
+import type { DigestInsights } from "@/lib/digest-insights";
 
-// AI Business Advisor (BUILD-8 — owner asked for this to be built out rather
+// Business Advisor (BUILD-8: owner asked for this to be built out rather
 // than retired).
 //
 // The analysis engine already existed, but it was reachable in exactly one way:
@@ -12,13 +13,13 @@ import type { DigestInsights, DigestMetrics } from "@/lib/digest.server";
 // couldn't ask for a longer view, and couldn't see the numbers the advice came
 // from.
 //
-// Split into two calls on purpose. Metrics are a handful of database queries and
-// cost nothing, so they load on their own. Insights are a model call, which under
-// the new billing model spends the org's AI allowance — so it runs when someone
-// ASKS for it, never as a side effect of opening a tab. That split also happens
-// to be the better product: the numbers appear immediately, and the commentary is
-// something you request on top of them rather than something you have to scroll
-// past to reach the data.
+// Split into two calls. Metrics load on their own as soon as the tab opens;
+// the commentary is requested on top of them. That split was first made
+// because the commentary was a model call that spent the org's AI allowance.
+// It no longer is (2026-10-03: every input is a figure we already hold, so the
+// commentary is rules in digest-insights.ts, free and the same every time),
+// but the shape is still the better product: the numbers appear immediately,
+// and the reading of them is something you ask for rather than scroll past.
 
 const windowInput = z.object({
   windowDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(7),
@@ -31,10 +32,6 @@ export type AdvisorMetricsResult = {
 
 export type AdvisorInsightsResult = {
   insights: DigestInsights;
-  /** False when the model was unreachable and the deterministic fallback
-   *  produced this. The UI says so rather than passing arithmetic off as
-   *  analysis. */
-  aiGenerated: boolean;
   windowDays: number;
 };
 
@@ -52,26 +49,19 @@ export const getAdvisorMetrics = createServerFn({ method: "POST" })
     return { metrics, windowDays: data.windowDays };
   });
 
-/** Costs AI allowance. Only ever called from an explicit user action. */
+/** Database plus arithmetic. Called when the owner asks for a reading. */
 export const getAdvisorInsights = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => windowInput.parse(d))
   .handler(async ({ data, context }): Promise<AdvisorInsightsResult | null> => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "view_financials");
-    const { computeDigestMetrics, generateDigestInsights } = await import("@/lib/digest.server");
+    const { computeDigestMetrics } = await import("@/lib/digest.server");
+    const { buildDigestInsights } = await import("@/lib/digest-insights");
 
-    // Recomputed rather than accepted from the client. Metrics are the model's
-    // entire input, and taking them over the wire would let a caller feed
-    // arbitrary numbers into an org-scoped AI call.
+    // Recomputed rather than accepted from the client: the commentary states
+    // these figures back to the owner, and taking them over the wire would let
+    // a caller put arbitrary numbers into an org-scoped report.
     const metrics = await computeDigestMetrics(orgId, data.windowDays);
     if (!metrics) return null;
-
-    // generateDigestInsights falls back to deterministic arithmetic when the
-    // model is unreachable, and it does so silently — right for an email that
-    // must go out regardless, wrong for a screen that would otherwise imply an
-    // AI read the business. It reports which one ran.
-    // BUILD-2: the Advisor is its own line on the usage breakdown — the
-    // owner asked for this one, unlike the weekly digest.
-    const insights = await generateDigestInsights(metrics, "business_advisor");
-    return { insights, aiGenerated: insights.aiGenerated, windowDays: data.windowDays };
+    return { insights: buildDigestInsights(metrics), windowDays: data.windowDays };
   });

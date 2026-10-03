@@ -12,6 +12,7 @@ import {
   WARN_AT_FRACTION,
   type AiUsageState,
 } from "@/lib/ai-usage";
+import { DEFAULT_MODELS } from "@/lib/ai.server";
 
 // BUILD-2. Every AI feature in this product runs on HoundStack's own API keys
 // and nothing counted a single call — the receptionist answers inbound texts
@@ -122,6 +123,17 @@ describe("what a call cost us", () => {
     expect(
       estimateCostMicros({ model: "claude-sonnet-5", inputTokens: 3000, outputTokens: 1000 }),
     ).toBe(1_600_000);
+  });
+
+  it("prices the default model, Haiku 4.5, at its published rate", () => {
+    // The default since 2026-10-03 (ai.server.ts). $1/M in + $5/M out: 3,000
+    // in and 1,000 out is $0.008 = 800,000 micros. Pinned against the default
+    // itself, so a change of model that the rate table does not know about
+    // fails here instead of being recorded as zero cost.
+    expect(rateFamilyFor(DEFAULT_MODELS.anthropic)).toBe("claude-haiku");
+    expect(
+      estimateCostMicros({ model: DEFAULT_MODELS.anthropic, inputTokens: 3000, outputTokens: 1000 }),
+    ).toBe(800_000);
   });
 
   it("matches a model family through its version and date suffixes", () => {

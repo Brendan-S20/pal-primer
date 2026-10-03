@@ -198,12 +198,13 @@ describe("the digest builds its alerts here and nowhere else", () => {
     expect(call, "openArCents is back in the alert").not.toMatch(/openArCents/);
   });
 
-  it("carries both figures through to the AI prompt, separately labelled", () => {
+  it("carries both figures through to the commentary, separately labelled", () => {
     // The prompt said "Open A/R X across N overdue invoices", which told the
-    // model that X was the overdue amount. Its advice was then reasoned from a
-    // relationship that does not hold — and unlike the alert, a wrong premise
-    // here is laundered into confident prose.
-    expect(src).toMatch(/of which \$\{fmt\(m\.raw\.overdueCents\)\} is overdue/);
+    // model that X was the overdue amount. There is no prompt since
+    // 2026-10-03; the commentary is digest-insights.ts, so the rule is pinned
+    // there now (and exercised in tests/digest-without-a-model.test.ts).
+    const insights = code(read("src/lib/digest-insights.ts"));
+    expect(insights).toMatch(/of which \$\{formatCents\(r\.overdueCents\)\} is overdue/);
     expect(src).toMatch(/overdueCents: number|overdueCents,/);
   });
 

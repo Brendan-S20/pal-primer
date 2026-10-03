@@ -1,14 +1,19 @@
-// AI tool panels, extracted from the former standalone /ai-tools page so each
-// tool can live inside the workflow it belongs to (punch list #11): review
-// replies with Reviews settings, churn with Clients, dispatch with Routes,
-// zone pricing with Zones, marketing + digest on the Dashboard. Configuration
-// (API keys) stays in Settings -> AI.
+// Office tool panels, extracted from the former standalone /ai-tools page so
+// each tool can live inside the workflow it belongs to (punch list #11): review
+// replies with Reviews settings, churn with Clients, zone pricing with Zones,
+// marketing + digest on the Dashboard.
+//
+// The file keeps its name, but since 2026-10-03 only the marketing panel is
+// backed by a model, and it is "coming soon" at launch (ai-launch.ts). Churn,
+// the digest, zone pricing and review replies are rules over data we already
+// hold, so none of their labels says AI. The dispatch panel is gone: the
+// Schedule's route planner assigns with real road distances.
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useOrgToday } from "@/hooks/useOrgToday";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { MARKETING_AI_LAUNCHED } from "@/lib/ai-launch";
 import { Button } from "@/components/ui/button";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import {
@@ -17,18 +22,21 @@ import {
   scoreChurn,
   listChurnRisk,
   generateWeeklyDigest,
-  suggestDispatch,
-  applyDispatchSuggestions,
   suggestZonePricing,
   applyZonePricing,
 } from "@/lib/ai-tools.functions";
 import { formatDay } from "@/lib/format";
 
-/** Collapsed-by-default wrapper for embedding an AI tool in a workflow page.
- *  The panel (and its queries) only mounts when opened. */
-export function AiSection({ title, description, children }: {
+/** Collapsed-by-default wrapper for embedding a tool in a workflow page.
+ *  The panel (and its queries) only mounts when opened.
+ *
+ *  The sparkle is the AI mark, so it is opt-in: a churn score worked out by
+ *  rules under a sparkle would be claiming a model that is not there. */
+export function AiSection({ title, description, ai = false, children }: {
   title: string;
   description?: string;
+  /** True only for a panel actually backed by a model. */
+  ai?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -44,7 +52,7 @@ export function AiSection({ title, description, children }: {
         ) : (
           <ChevronRight className="h-4 w-4 shrink-0" />
         )}
-        <Sparkles className="h-4 w-4 text-primary shrink-0" />
+        {ai && <Sparkles className="h-4 w-4 text-primary shrink-0" />}
         {title}
         {description && !open && (
           <span className="ml-1 truncate text-xs font-normal text-muted-foreground">{description}</span>
@@ -56,6 +64,24 @@ export function AiSection({ title, description, children }: {
 }
 
 export function MarketingPanel() {
+  // Coming soon at launch. The generator below stays intact so turning it on
+  // is the one constant in ai-launch.ts; the server function refuses as well,
+  // so hiding the button is not the only thing standing in the way.
+  if (!MARKETING_AI_LAUNCHED) {
+    return (
+      <div className="rounded-lg border bg-card p-4 text-sm">
+        <div className="font-medium">Coming soon</div>
+        <p className="mt-1 text-muted-foreground">
+          Draft Facebook posts, Instagram captions and email blasts for your business. This
+          isn&apos;t available yet.
+        </p>
+      </div>
+    );
+  }
+  return <MarketingGenerator />;
+}
+
+function MarketingGenerator() {
   const fn = useServerFn(generateMarketingContent);
   const [kind, setKind] = useState<"facebook_post" | "instagram_caption" | "email_blast" | "google_business_update" | "flyer_headline">("facebook_post");
   const [tone, setTone] = useState<"friendly" | "professional" | "playful" | "urgent">("friendly");
@@ -167,7 +193,10 @@ export function ReviewPanel() {
       </div>
       <div className="space-y-2 rounded-lg border bg-card p-4 text-sm">
         {!m.data ? (
-          <p className="text-muted-foreground">Draft appears here. Review before posting publicly.</p>
+          <p className="text-muted-foreground">
+            A reply suited to the star rating appears here. Read it and adjust it before posting
+            publicly.
+          </p>
         ) : (
           <>
             <div className="font-medium">Suggested public reply</div>
@@ -262,7 +291,7 @@ export function DigestPanel() {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">Owner-focused summary of the last 7 days.</p>
         <Button onClick={() => m.mutate()} disabled={m.isPending}>
-          {m.isPending ? "Generating…" : "Generate this week's digest"}
+          {m.isPending ? "Working it out…" : "Show this week's digest"}
         </Button>
       </div>
       {m.data && (
@@ -306,119 +335,6 @@ function fmt(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-// ---------------- Dispatch panel ----------------
-
-export function DispatchPanel() {
-  const suggestFn = useServerFn(suggestDispatch);
-  const applyFn = useServerFn(applyDispatchSuggestions);
-  // Suggest dispatch for the ORG's today. The default was the UTC day, so
-  // from early evening on this panel suggested tomorrow while the board
-  // beside it still showed today. Explicit pick, else the org's today,
-  // resolved at render (the my-day pattern).
-  const orgTodayIso = useOrgToday();
-  const [pickedDay, setPickedDay] = useState<string | null>(null);
-  const day = pickedDay ?? orgTodayIso;
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
-
-  const m = useMutation({
-    mutationFn: () => suggestFn({ data: { day } }),
-    onSuccess: (r) => {
-      const next: Record<string, boolean> = {};
-      for (const s of r.suggestions) next[s.visit_id] = s.priority !== "low";
-      setSelected(next);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const apply = useMutation({
-    mutationFn: () => {
-      const changes = (m.data?.suggestions ?? [])
-        .filter((s: any) => selected[s.visit_id])
-        .map((s: any) => ({ visit_id: s.visit_id, staff_id: s.suggested_staff_id }));
-      return applyFn({ data: { changes } });
-    },
-    onSuccess: (r) => toast.success(`Applied ${r.applied} reassignments`),
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const suggestions = m.data?.suggestions ?? [];
-  const chosen = suggestions.filter((s: any) => selected[s.visit_id]).length;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
-        <label className="text-sm">
-          <span className="block font-medium">Day</span>
-          <input type="date" value={day} onChange={(e) => setPickedDay(e.target.value)} className="mt-1 rounded border bg-background px-3 py-2 text-sm touch:min-h-11" />
-        </label>
-        <Button onClick={() => m.mutate()} disabled={m.isPending}>
-          {m.isPending ? "Analyzing…" : "Suggest reassignments"}
-        </Button>
-        <div className="flex-1" />
-        <Button variant="secondary" disabled={!chosen || apply.isPending} onClick={() => apply.mutate()}>
-          {apply.isPending ? "Applying…" : `Apply ${chosen} selected`}
-        </Button>
-      </div>
-
-      {m.data && (
-        <div className="rounded-lg border bg-card p-4 text-sm">
-          <div className="mb-2 font-medium">Dispatcher notes</div>
-          <p className="whitespace-pre-wrap text-muted-foreground">{m.data.notes}</p>
-        </div>
-      )}
-
-      {/* `overflow-hidden` here did not tidy the corners, it CLIPPED the
-          table: these run four, seven and nine columns wide, and on a phone
-          everything past the fold — Confidence, Why, the numbers a decision
-          rests on — was cut off with no scrollbar and no way to reach it.
-          `overflow-x-auto` still establishes the rounding clip, and lets the
-          table scroll inside its own box rather than the page. */}
-      <div className="relative overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full text-sm min-w-[630px]">
-          <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 w-8"></th>
-              <th className="px-3 py-2">Client</th>
-              <th className="px-3 py-2">Zone</th>
-              <th className="px-3 py-2">Value</th>
-              <th className="px-3 py-2">Current → Suggested</th>
-              <th className="px-3 py-2">Priority</th>
-              <th className="px-3 py-2">Why</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!suggestions.length ? (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
-                {m.isPending ? "Analyzing…" : "No suggestions yet. Choose a day and click Suggest."}
-              </td></tr>
-            ) : suggestions.map((s: any) => (
-              <tr key={s.visit_id} className="border-t">
-                <td className="px-3 py-2">
-                  <input type="checkbox" checked={!!selected[s.visit_id]} onChange={(e) => setSelected((p) => ({ ...p, [s.visit_id]: e.target.checked }))} />
-                </td>
-                <td className="px-3 py-2 font-medium">{s.client}</td>
-                <td className="px-3 py-2 text-muted-foreground">{s.zone ?? "-"}</td>
-                <td className="px-3 py-2">{fmt(s.price_cents)}</td>
-                <td className="px-3 py-2 text-xs">
-                  <span className="text-muted-foreground">{s.current_staff ?? "Unassigned"}</span>
-                  {" → "}
-                  <span className="font-medium">{s.suggested_staff ?? "Unassigned"}</span>
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`rounded px-2 py-0.5 text-xs font-medium ${s.priority === "high" ? "bg-red-100 text-red-800" : s.priority === "medium" ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"}`}>
-                    {s.priority}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">{s.reason}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ---------------- Zone pricing panel ----------------
 
 export function PricingPanel() {
@@ -430,7 +346,10 @@ export function PricingPanel() {
     mutationFn: () => suggestFn({ data: {} }),
     onSuccess: (r) => {
       const next: Record<string, boolean> = {};
-      for (const s of r.suggestions) next[s.zone_id] = s.confidence !== "low";
+      // Only the rows that change something. Every zone comes back, holds
+      // included, and pre-ticking a hold would write a price note that says
+      // "no change" over whatever the owner had there.
+      for (const s of r.suggestions) next[s.zone_id] = s.delta_pct !== 0 && s.confidence !== "low";
       setSelected(next);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -442,7 +361,7 @@ export function PricingPanel() {
         .filter((s: any) => selected[s.zone_id])
         .map((s: any) => ({
           zone_id: s.zone_id,
-          price_note: `AI: $${(s.suggested_price_cents / 100).toFixed(2)}/visit (${s.delta_pct >= 0 ? "+" : ""}${s.delta_pct}%), ${s.reason}`,
+          price_note: `Suggested: $${(s.suggested_price_cents / 100).toFixed(2)}/visit (${s.delta_pct >= 0 ? "+" : ""}${s.delta_pct}%), ${s.reason}`,
         }));
       return applyFn({ data: { changes } });
     },
@@ -457,7 +376,7 @@ export function PricingPanel() {
     <div className="space-y-3">
       <div className="flex items-end gap-3 rounded-lg border bg-card p-4">
         <Button onClick={() => m.mutate()} disabled={m.isPending}>
-          {m.isPending ? "Analyzing…" : "Suggest zone prices"}
+          {m.isPending ? "Working it out…" : "Suggest zone prices"}
         </Button>
         <p className="text-xs text-muted-foreground">
           Based on the last 90 days of completed visits, skip rate, and current pricing. Applies to each zone's price note.
@@ -470,7 +389,7 @@ export function PricingPanel() {
 
       {m.data && (
         <div className="rounded-lg border bg-card p-4 text-sm">
-          <div className="mb-2 font-medium">Pricing analyst notes</div>
+          <div className="mb-2 font-medium">How these are worked out</div>
           <p className="whitespace-pre-wrap text-muted-foreground">{m.data.notes}</p>
         </div>
       )}
@@ -499,7 +418,7 @@ export function PricingPanel() {
           <tbody>
             {!suggestions.length ? (
               <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
-                {m.isPending ? "Analyzing…" : "No suggestions yet."}
+                {m.isPending ? "Working it out…" : "No suggestions yet."}
               </td></tr>
             ) : suggestions.map((s: any) => (
               <tr key={s.zone_id} className="border-t">
