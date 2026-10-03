@@ -81,11 +81,11 @@ function ReviewPage() {
 
       {q.isLoading ? (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent>
+          <CardContent className="p-(--card-pad) text-sm text-muted-foreground">Loading…</CardContent>
         </Card>
       ) : q.isError ? (
         <Card>
-          <CardContent className="p-6 text-sm text-destructive">
+          <CardContent className="p-(--card-pad) text-sm text-destructive">
             {(q.error as Error).message}
           </CardContent>
         </Card>

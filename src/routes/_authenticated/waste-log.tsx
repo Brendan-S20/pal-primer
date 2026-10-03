@@ -285,7 +285,10 @@ function WasteLogPage() {
             facMut.mutate(newFacility);
           }}
         >
-          <div className="flex-1 min-w-40">
+          {/* max-sm:basis-full on both: at 160px each the two fields fitted
+              side by side on a 402px iPhone, and an address in 150px shows
+              "Start typing an adc" (measured 2026-10-03). Stacked below sm. */}
+          <div className="flex-1 min-w-40 max-sm:basis-full">
             <Label htmlFor="facility-name">{t("wasteLog.name")}</Label>
             <Input
               id="facility-name"
@@ -306,7 +309,7 @@ function WasteLogPage() {
               matched address is worth more here than on most fields, and a
               name typed by hand still saves exactly as it does today. The
               workspace bias is right too — the dump is near the routes. */}
-          <div className="flex-1 min-w-40">
+          <div className="flex-1 min-w-40 max-sm:basis-full">
             <Label>{t("wasteLog.address")}</Label>
             <AddressAutocomplete
               value={newFacility.address}

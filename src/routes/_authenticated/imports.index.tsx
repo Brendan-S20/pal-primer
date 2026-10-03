@@ -330,7 +330,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   };
 
   return (
-    <section className="space-y-4 rounded-lg border bg-card p-6">
+    <section className="space-y-4 rounded-lg border bg-card p-(--card-pad)">
       <h2 className="text-lg font-medium">New import</h2>
 
       <div className="grid gap-4 sm:grid-cols-3">

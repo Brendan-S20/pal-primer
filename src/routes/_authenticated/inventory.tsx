@@ -208,7 +208,12 @@ function InventoryPage() {
               page — the third table here is narrow enough that its scroller
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
-          <div className="relative overflow-x-auto rounded-lg border bg-card">
+          {/* `@container` so an empty-state cell can be as wide as what is
+              VISIBLE (`w-[100cqw]`) and stick to the scroller's left edge.
+              Otherwise "No items yet" centred itself across the 630px table
+              and a 402px iPhone showed "Add one to g" (2026-10-03). Same
+              pattern on dna, neighbors and the AI panels. */}
+          <div className="@container relative overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm min-w-[630px]">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -229,9 +234,9 @@ function InventoryPage() {
               </thead>
               <tbody>
                 {items.isLoading ? (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                  <tr><td colSpan={7} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-4">Loading…</span></td></tr>
                 ) : (items.data ?? []).length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No items yet. Add one to get started.</td></tr>
+                  <tr><td colSpan={7} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-4">No items yet. Add one to get started.</span></td></tr>
                 ) : (
                   (items.data as Item[]).map((i) => {
                     const low = Number(i.on_hand) <= Number(i.reorder_threshold);
@@ -288,7 +293,7 @@ function InventoryPage() {
               page — the third table here is narrow enough that its scroller
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
-          <div className="relative overflow-x-auto rounded-lg border bg-card">
+          <div className="@container relative overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -299,7 +304,7 @@ function InventoryPage() {
               </thead>
               <tbody>
                 {(assigns.data ?? []).length === 0 ? (
-                  <tr><td colSpan={3} className="px-4 py-6 text-center text-muted-foreground">Nothing assigned yet.</td></tr>
+                  <tr><td colSpan={3} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-4">Nothing assigned yet.</span></td></tr>
                 ) : (
                   (assigns.data ?? []).map((a) => {
                     const item = Array.isArray(a.inventory_items) ? a.inventory_items[0] : a.inventory_items;
@@ -323,7 +328,7 @@ function InventoryPage() {
               page — the third table here is narrow enough that its scroller
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
-          <div className="relative overflow-x-auto rounded-lg border bg-card">
+          <div className="@container relative overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm min-w-[540px]">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -337,7 +342,7 @@ function InventoryPage() {
               </thead>
               <tbody>
                 {(moves.data ?? []).length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No activity yet.</td></tr>
+                  <tr><td colSpan={6} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-4">No activity yet.</span></td></tr>
                 ) : (
                   (moves.data ?? []).map((m) => {
                     const item = Array.isArray(m.inventory_items) ? m.inventory_items[0] : m.inventory_items;

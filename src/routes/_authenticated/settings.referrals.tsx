@@ -116,7 +116,7 @@ function ReferBusinessPage() {
       <div>
         <h3 className="mb-2 text-sm font-semibold">Your referrals</h3>
         {!data.referrals.length ? (
-          <div className="rounded-lg border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed bg-card p-(--card-pad) text-center text-sm text-muted-foreground">
             No referrals yet. Share your link to get started.
           </div>
         ) : (

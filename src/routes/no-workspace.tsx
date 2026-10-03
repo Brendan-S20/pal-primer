@@ -149,7 +149,7 @@ function NoWorkspacePage() {
 
   return (
     <PublicShell tagline="One more step to set up your workspace">
-      <div className="rounded-lg border bg-card p-6 text-center">
+      <div className="rounded-lg border bg-card p-(--card-pad) text-center">
         <Building2 className="mx-auto h-8 w-8 text-muted-foreground shrink-0" />
         <h1 className="mt-3 text-lg font-semibold">No workspace yet</h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -174,7 +174,7 @@ function NoWorkspacePage() {
           them one would be wrong — bootstrap_organization refuses it anyway. */}
       {!isPlatformAdmin && (
         <form
-          className="mt-4 rounded-lg border bg-card p-6 text-left"
+          className="mt-4 rounded-lg border bg-card p-(--card-pad) text-left"
           onSubmit={(e) => {
             e.preventDefault();
             if (canSubmit && !busy) void finishSetup();

@@ -270,7 +270,7 @@ function TenantsPage() {
               </Link>
             ))}
             {!q.isLoading && filtered.length === 0 ? (
-              <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border p-(--card-pad) text-center text-sm text-muted-foreground">
                 No tenants match.
               </div>
             ) : null}

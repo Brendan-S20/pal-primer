@@ -84,19 +84,19 @@ export function BusinessAdvisor() {
 
       {metricsQ.isLoading ? (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
+          <CardContent className="p-(--card-pad) text-sm text-muted-foreground">
             Reading the last {windowDays} days…
           </CardContent>
         </Card>
       ) : metricsQ.isError ? (
         <Card>
-          <CardContent className="p-6 text-sm text-destructive">
+          <CardContent className="p-(--card-pad) text-sm text-destructive">
             {(metricsQ.error as Error).message}
           </CardContent>
         </Card>
       ) : !metricsQ.data ? (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
+          <CardContent className="p-(--card-pad) text-sm text-muted-foreground">
             Nothing to analyze yet.
           </CardContent>
         </Card>
@@ -105,7 +105,7 @@ export function BusinessAdvisor() {
           <div className="space-y-4">
             {!report ? (
               <Card>
-                <CardContent className="space-y-3 p-6">
+                <CardContent className="space-y-3 p-(--card-pad)">
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">
                     {metricsQ.data.metrics.weekLabel}
                   </div>

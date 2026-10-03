@@ -229,13 +229,13 @@ function NeighborsPage() {
         </div>
         {!current ? (
           <Card>
-            <CardContent className="p-6 text-center text-muted-foreground">
+            <CardContent className="p-(--card-pad) text-center text-muted-foreground">
               No more doors in the queue. Great work!
             </CardContent>
           </Card>
         ) : (
           <Card>
-            <CardContent className="space-y-4 p-6">
+            <CardContent className="space-y-4 p-(--card-pad)">
               <div className="text-xs text-muted-foreground">
                 Door {walkIdx + 1} of {walkQueue.length}
               </div>
@@ -494,7 +494,7 @@ function NeighborsPage() {
         // the initial fetch, so refetches after a mutation stay on whichever
         // page is already up instead of bouncing through this card.
         <Card>
-          <CardContent className="p-6 text-center text-muted-foreground">Loading…</CardContent>
+          <CardContent className="p-(--card-pad) text-center text-muted-foreground">Loading…</CardContent>
         </Card>
       ) : firstRun ? (
         // ── First run: the pitch and the two ways in, nothing else. ────────
@@ -594,7 +594,7 @@ function NeighborsPage() {
             </CardHeader>
             {/* Five columns of canvassing results, previously sizing the page
             rather than themselves. */}
-            <CardContent className="overflow-x-auto p-0">
+            <CardContent className="@container overflow-x-auto p-0">
               {view === "map" ? (
                 <CanvassMap rows={rows} />
               ) : (
@@ -611,15 +611,15 @@ function NeighborsPage() {
                   <tbody>
                     {isLoading ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={5} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                           Loading…
-                        </td>
+                        </span></td>
                       </tr>
                     ) : rows.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={5} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                           No leads yet. Seed from a happy client to get going.
-                        </td>
+                        </span></td>
                       </tr>
                     ) : (
                       rows.map((r) => (
