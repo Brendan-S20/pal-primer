@@ -21,8 +21,6 @@ const es: Translations = {
     online: "Conexión restablecida",
     pending: "{{count}} pendientes",
     language: "Idioma",
-    english: "English",
-    spanish: "Español",
     of: "de",
     done: "hechas",
     update: "Actualizar",
@@ -83,6 +81,7 @@ const es: Translations = {
     viewMySchedule: "Ver mi calendario",
     myRoute: "Mi ruta",
     aVisit: "una visita",
+    weekdaySeparator: ", ",
   },
   cacheAge: {
     unknown: "a una hora desconocida",
@@ -372,6 +371,11 @@ const es: Translations = {
     clockIn: "Entrada",
     clockOut: "Salida",
   },
+  duration: {
+    minutes: "{{m}}m",
+    hours: "{{h}}h",
+    hoursMinutes: "{{h}}h {{m}}m",
+  },
   checklist: {
     heading: "Lista · {{done}} de {{total}}",
     checked: ": marcado",
@@ -426,6 +430,7 @@ const es: Translations = {
       routes: "Agenda",
       inventory: "Inventario",
       timesheets: "Horas trabajadas",
+      expenses: "Gastos",
       "my-day": "Mi día",
       "my-schedule": "Mi calendario",
       "waste-log": "Registro de desechos",

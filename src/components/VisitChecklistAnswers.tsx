@@ -40,7 +40,7 @@ export function VisitChecklistAnswers({ answers }: { answers: readonly Checklist
             <span
               className={`min-w-0 flex-1 [overflow-wrap:anywhere] ${a.checked ? "" : "text-muted-foreground"}`}
             >
-              {a.label}
+              <bdi>{a.label}</bdi>
               <span className="sr-only">
                 {a.checked ? t("checklist.checked") : t("checklist.notChecked")}
               </span>

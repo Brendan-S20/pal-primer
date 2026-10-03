@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
-import { setLanguage, currentLanguage } from "@/lib/i18n";
+import { setLanguage, currentLanguage, LANGUAGES, type Language } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -92,8 +92,7 @@ function PreferencesPage() {
             value={lang}
             onValueChange={(v) => {
               setLang(v);
-              setLanguage(v as "en" | "es");
-              i18n.changeLanguage(v);
+              setLanguage(v as Language);
               // Read in the language just chosen, which is the proof it took.
               toast.success(i18n.getFixedT(v)("preferences.languageUpdated"));
             }}
@@ -102,8 +101,15 @@ function PreferencesPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="en">{t("common.english")}</SelectItem>
-              <SelectItem value="es">{t("common.spanish")}</SelectItem>
+              {/* Each language in its own name and script, marked as that
+                  language, so a screen reader reads "العربية" in Arabic and
+                  a tech who cannot read the current language still finds
+                  theirs. */}
+              {LANGUAGES.map((l) => (
+                <SelectItem key={l.code} value={l.code} lang={l.htmlLang} dir={l.dir}>
+                  {l.nativeName}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </CardContent>

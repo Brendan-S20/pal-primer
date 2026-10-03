@@ -147,7 +147,7 @@ export function LogExpenseSheet({
         className="max-h-[92dvh] overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 md:mx-auto md:max-w-lg md:rounded-t-xl"
         aria-describedby="log-expense-desc"
       >
-        <SheetHeader className="pr-10 text-left">
+        <SheetHeader className="pe-10 text-start">
           <SheetTitle>{t("expense.logAnExpense")}</SheetTitle>
           <SheetDescription id="log-expense-desc">{t("expense.sheetDescription")}</SheetDescription>
         </SheetHeader>

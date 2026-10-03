@@ -38,7 +38,7 @@ export function EnRouteLocationChip({ visit }: { visit: { id: string; status: st
   return (
     <div
       role="status"
-      className="mb-3 flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 p-2 pl-3 text-sm text-blue-900 dark:text-blue-200"
+      className="mb-3 flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 p-2 ps-3 text-sm text-blue-900 dark:text-blue-200"
     >
       <Radio className="h-4 w-4 shrink-0 animate-pulse" aria-hidden />
       <div className="min-w-0 flex-1">

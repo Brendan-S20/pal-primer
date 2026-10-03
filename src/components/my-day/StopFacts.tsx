@@ -91,7 +91,7 @@ export function DogsLine({ dogs, dogCount }: { dogs: unknown; dogCount?: number 
             <Dog className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="sr-only">{t("dog.onSite")}</span>
             <span className="min-w-0 [overflow-wrap:anywhere]">
-              {d?.name || t("dog.fallbackName")}
+              <bdi>{d?.name || t("dog.fallbackName")}</bdi>
             </span>
             {d?.temperament && (
               <span className="shrink-0 font-normal opacity-80">
@@ -161,7 +161,7 @@ export function YardOutline({
         type="button"
         onClick={() => setOpen(true)}
         aria-label={t("outline.open")}
-        className="mt-2.5 flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg border bg-background p-1.5 text-left transition-colors hover:bg-accent active:bg-accent"
+        className="mt-2.5 flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg border bg-background p-1.5 text-start transition-colors hover:bg-accent active:bg-accent"
       >
         <svg
           viewBox="0 0 56 56"
@@ -185,10 +185,10 @@ export function YardOutline({
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[92dvh] w-[96vw] max-w-3xl flex-col gap-3 p-4">
-          <DialogTitle className="min-w-0 pr-10 text-base [overflow-wrap:anywhere]">
+          <DialogTitle className="min-w-0 pe-10 text-base [overflow-wrap:anywhere]">
             {title}
             {area ? (
-              <span className="ml-2 text-sm font-normal text-muted-foreground">{area}</span>
+              <span className="ms-2 text-sm font-normal text-muted-foreground">{area}</span>
             ) : null}
           </DialogTitle>
           {open && (
@@ -253,7 +253,8 @@ export function StationsSummary({ stations, locale }: { stations: unknown; local
           <li key={s.id} className="min-w-0 text-sm">
             <div className="font-medium [overflow-wrap:anywhere]">{stationName(t, s)}</div>
             <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-              {s.location_description ? `${s.location_description} · ` : ""}
+              {s.location_description ? <bdi>{s.location_description}</bdi> : null}
+              {s.location_description ? " · " : ""}
               {s.last_serviced_on
                 ? t("stationsSummary.lastServiced", { day: formatDay(s.last_serviced_on, locale) })
                 : t("stationsSummary.notYet")}
@@ -337,7 +338,7 @@ export function PaymentLine({
       </div>
       {onCollect && due > 0 && (
         <Button type="button" variant="outline" className="h-11 w-full" onClick={onCollect}>
-          <Banknote className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <Banknote className="me-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {t("pay.collect")}
         </Button>
       )}

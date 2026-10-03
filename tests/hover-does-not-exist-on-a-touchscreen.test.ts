@@ -162,7 +162,9 @@ describe("there is now ONE notification row, and it agrees that phones exist", (
     const src = read("src/routes/_authenticated/notifications.tsx");
     // Anchored inside the reveal container, because the prose above it also
     // says the words "Mark read" and `indexOf` found the explanation first.
-    const container = src.slice(src.indexOf('className="absolute right-3 top-3'));
+    // `end-3`, not `right-3`: the corner a row's controls sit in follows the
+    // reading direction (it is the left corner in Arabic).
+    const container = src.slice(src.indexOf('className="absolute end-3 top-3'));
     // The button's words are lib/i18n's. Asserted present first: an indexOf
     // of -1 slices the whole container, which contains touch:hidden anyway.
     const label = container.indexOf(`{t("alerts.markRead")}`);

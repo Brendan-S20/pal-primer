@@ -7,12 +7,14 @@
  * portal and PDFs go out in the business's language, not in whatever the
  * tech's phone is set to.
  *
- * `es.ts` has to carry exactly these keys with exactly these `{{placeholders}}`
- * — the type below makes a missing key a compile error, and
- * tests/en-and-es-have-the-same-keys.test.ts catches the rest (an extra key,
- * a renamed placeholder, a plural with only one side).
+ * `es.ts`, `ar.ts` and `zh.ts` have to carry exactly these keys with exactly
+ * these `{{placeholders}}` — the types below make a missing key a compile
+ * error, and tests/en-and-es-have-the-same-keys.test.ts catches the rest (an
+ * extra key, a renamed placeholder, a plural form the language needs and the
+ * file does not have).
  *
  * Plurals are i18next's `_one` / `_other` suffixes, called with `{ count }`.
+ * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
   common: {
@@ -26,8 +28,6 @@ const en = {
     online: "Back online",
     pending: "{{count}} pending",
     language: "Language",
-    english: "English",
-    spanish: "Español",
     of: "of",
     done: "done",
     update: "Update",
@@ -87,6 +87,8 @@ const en = {
     viewMySchedule: "View my schedule",
     myRoute: "My route",
     aVisit: "a visit",
+    /** Between the weekday and the date on the day chip: "Tue, Oct 6". */
+    weekdaySeparator: ", ",
   },
   cacheAge: {
     unknown: "at an unknown time",
@@ -370,6 +372,11 @@ const en = {
     clockIn: "Clock in",
     clockOut: "Clock out",
   },
+  duration: {
+    minutes: "{{m}}m",
+    hours: "{{h}}h",
+    hoursMinutes: "{{h}}h {{m}}m",
+  },
   checklist: {
     heading: "Checklist · {{done}} of {{total}}",
     checked: ": checked",
@@ -423,6 +430,7 @@ const en = {
       routes: "Schedule",
       inventory: "Inventory",
       timesheets: "Timesheets",
+      expenses: "Expenses",
       "my-day": "My day",
       "my-schedule": "My schedule",
       "waste-log": "Waste log",
@@ -664,5 +672,37 @@ const en = {
 type Widen<T> = { [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
 
 export type Translations = Widen<typeof en>;
+
+/** The plural categories CLDR defines. A language uses some of them:
+ *  English and Spanish `one`/`other`, Chinese only `other`, Arabic all six. */
+export type PluralCategory = "zero" | "one" | "two" | "few" | "many" | "other";
+
+type PluralSuffix = "_one" | "_other";
+/** `days` for `days_one` / `days_other`: the stem of each pluralised key. */
+type PluralStems<T> = {
+  [K in keyof T]: K extends `${infer Stem}${PluralSuffix}`
+    ? T[K] extends string
+      ? Stem
+      : never
+    : never;
+}[keyof T];
+
+/**
+ * The English tree, re-shaped for a language whose plurals are not English's.
+ * Every plain key exactly as in English; every pluralised key once per
+ * category the language actually has — so Arabic must write `_zero`, `_two`,
+ * `_few` and `_many` beside `_one` and `_other`, and Chinese writes only
+ * `_other` (a `_one` there would never be read, because Chinese has no
+ * singular form for i18next to choose). A missing form is a compile error,
+ * and so is one the language does not have.
+ */
+export type TranslationsWithPlurals<C extends PluralCategory> = PluralTree<typeof en, C>;
+type PluralTree<T, C extends PluralCategory> = {
+  [K in keyof T as K extends `${string}${PluralSuffix}`
+    ? T[K] extends string
+      ? never
+      : K
+    : K]: T[K] extends string ? string : PluralTree<T[K], C>;
+} & { [K in `${PluralStems<T> & string}_${C}`]: string };
 
 export default en;

@@ -177,6 +177,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
+    // The server renders English, left to right, because it cannot see the
+    // language this device picked (localStorage). lib/i18n sets `lang` and
+    // `dir` on this element before hydration; suppressHydrationWarning covers
+    // this element's own attributes and nothing below it.
+    //
     // suppressHydrationWarning: the boot script below may add `dark` to this
     // element's class before React hydrates it, which is the point of it.
     <html lang="en" suppressHydrationWarning>

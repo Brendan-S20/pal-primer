@@ -228,7 +228,7 @@ export function MobileTabBar() {
                     // happened" are different messages to somebody deciding
                     // whether to stop driving and look.
                     <span
-                      className="absolute -right-2 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-3xs font-bold leading-4 text-destructive-foreground"
+                      className="absolute -end-2 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-3xs font-bold leading-4 text-destructive-foreground"
                       aria-hidden="true"
                     >
                       {unread > 9 ? "9+" : unread}
@@ -302,7 +302,7 @@ export function MobileTabBar() {
           side="bottom"
           className={`max-h-[80dvh] overflow-y-auto rounded-t-xl p-0 pb-[env(safe-area-inset-bottom)] ${barHiddenFrom}`}
         >
-          <SheetHeader className="border-b px-4 py-3 text-left">
+          <SheetHeader className="border-b px-4 py-3 text-start">
             <SheetTitle className="text-base">{t("nav.more")}</SheetTitle>
           </SheetHeader>
           {/* Your account, at the top rather than buried above Sign out. On a
@@ -389,9 +389,9 @@ export function MobileTabBar() {
                   <button
                     type="button"
                     onClick={handleSignOut}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium transition-colors hover:bg-muted active:bg-muted"
+                    className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-start text-sm font-medium transition-colors hover:bg-muted active:bg-muted"
                   >
-                    <LogOut className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <LogOut className="h-4 w-4 shrink-0 text-muted-foreground rtl:-scale-x-100" />
                     {t("nav.signOut")}
                   </button>
                 </li>

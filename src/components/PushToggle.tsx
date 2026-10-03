@@ -237,7 +237,7 @@ export function PushToggle({ portalToken, className, compact }: Props) {
       title={compact ? label : undefined}
       className={(compact ? "min-h-11 w-11 px-0 " : "min-h-[36px] ") + (className ?? "")}
     >
-      <Bell className={compact ? "h-4 w-4" : "h-4 w-4 mr-1"} />
+      <Bell className={compact ? "h-4 w-4" : "h-4 w-4 me-1"} />
       {compact ? <span className="sr-only">{label}</span> : t("push.onShort")}
     </Button>
   ) : (
@@ -250,7 +250,7 @@ export function PushToggle({ portalToken, className, compact }: Props) {
       title={compact ? label : undefined}
       className={(compact ? "min-h-11 w-11 px-0 " : "min-h-[36px] ") + (className ?? "")}
     >
-      <BellOff className={compact ? "h-4 w-4" : "h-4 w-4 mr-1"} />
+      <BellOff className={compact ? "h-4 w-4" : "h-4 w-4 me-1"} />
       {compact ? <span className="sr-only">{label}</span> : t("push.enable")}
     </Button>
   );
