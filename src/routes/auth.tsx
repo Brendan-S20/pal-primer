@@ -16,11 +16,12 @@ import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { withDeadline } from "@/lib/offline/run-or-queue";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: `Sign in - ${APP_NAME}` },
+      { title: pageTitle("Sign in") },
       { name: "description", content: `Sign in to ${APP_NAME}.` },
     ],
   }),

@@ -59,6 +59,7 @@ import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { supabase } from "@/integrations/supabase/client";
 import { HelpTip } from "@/components/HelpTip";
 import { formatDateTime } from "@/lib/format";
+import { pageTitle } from "@/lib/page-title";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -71,7 +72,7 @@ export const Route = createFileRoute("/_authenticated/dna")({
   },
   head: () => ({
     meta: [
-      { title: "DNA compliance · HoundStack" },
+      { title: pageTitle("DNA compliance") },
       {
         name: "description",
         content:

@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { appOrigin } from "@/lib/app-origin";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/lead-form")({
+  head: () => titleHead("Lead form", "Settings"),
   component: LeadFormSettings,
 });
 

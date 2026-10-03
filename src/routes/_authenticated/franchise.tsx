@@ -50,8 +50,10 @@ import { HelpTip } from "@/components/HelpTip";
 import { PlanGate } from "@/components/PlanGate";
 import { FranchiseLinkCodes } from "@/components/FranchiseLinkCodes";
 import { ProvisionLocation } from "@/components/ProvisionLocation";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/franchise")({
+  head: () => titleHead("Royalties"),
   // BUILD-1: the whole surface is Enterprise. The pricing page sells "Parent
   // and child organization structure with full rollup" and "Franchise
   // management, royalty billing, and regional dashboards" there and nowhere
@@ -199,7 +201,7 @@ function FranchisePage() {
             <p>
               This page rolls up active clients, visits, revenue, and open balances from the
               locations in your franchise. Each location runs as its own organization with its own
-              users and client records, so you see their totals, not their customers.
+              users and client records, so you see their totals, not their clients.
             </p>
             {/* BUILD-6: this used to say "any organization whose
                 parent_organization_id points at this one will roll up here",

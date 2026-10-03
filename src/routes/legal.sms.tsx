@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalShell } from "@/components/LegalShell";
 import { APP_NAME } from "@/lib/scoop";
+import { pageTitle } from "@/lib/page-title";
 
 // Public SMS program disclosure for Twilio toll-free verification and TCPA
 // compliance. Describes the app's real behavior: express opt-in at signup
@@ -9,7 +10,7 @@ import { APP_NAME } from "@/lib/scoop";
 export const Route = createFileRoute("/legal/sms")({
   head: () => ({
     meta: [
-      { title: `SMS Consent & Messaging Policy - ${APP_NAME}` },
+      { title: pageTitle("SMS Consent & Messaging Policy") },
       {
         name: "description",
         content: `How ${APP_NAME} collects consent for text messages, what we send, and how to opt out.`,

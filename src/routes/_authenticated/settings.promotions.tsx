@@ -29,8 +29,10 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { formatDay } from "@/lib/format";
 import { getMyOrg } from "@/lib/org.functions";
 import { listClients } from "@/lib/clients.functions";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/promotions")({
+  head: () => titleHead("Promotions", "Settings"),
   component: PromotionsPage,
 });
 
@@ -91,7 +93,7 @@ function PromotionsPage() {
       <div>
         <h2 className="text-lg font-semibold">Promotions & gift cards</h2>
         <p className="text-sm text-muted-foreground">
-          Create discount codes and sell gift cards that customers can redeem toward invoices.
+          Create discount codes and sell gift cards that clients can redeem toward invoices.
         </p>
       </div>
 
@@ -258,7 +260,7 @@ function PromoSection() {
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="first_visit">New customer</SelectItem>
+                  <SelectItem value="first_visit">New client</SelectItem>
                   <SelectItem value="one_time">One-off credit</SelectItem>
                 </SelectContent>
               </Select>
@@ -269,13 +271,13 @@ function PromoSection() {
           <p className="text-xs text-muted-foreground">
             {form.discountType === "percent" ? (
               <>
-                Redeeming takes {form.discountPercent || 0}% off one visit at the customer's own
-                plan price and adds that as account credit, once. A customer with no active plan is
+                Redeeming takes {form.discountPercent || 0}% off one visit at the client's own
+                plan price and adds that as account credit, once. A client with no active plan is
                 told the code needs one, because there is nothing to take a percentage of.
               </>
             ) : (
               <>
-                Redeeming adds this amount to the customer's account credit, once, and it comes off
+                Redeeming adds this amount to the client's account credit, once, and it comes off
                 their next invoice automatically.
               </>
             )}{" "}

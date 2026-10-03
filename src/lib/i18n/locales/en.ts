@@ -206,8 +206,8 @@ const en = {
     queuedCount: "{{count}} queued",
     fallbackTitle: "Visit",
     fallbackClient: "Client",
-    customerSaysDoNotEnter: "Customer says do not enter",
-    customerSaysDogsSecured: "Customer says the dogs are secured",
+    customerSaysDoNotEnter: "Client says do not enter",
+    customerSaysDogsSecured: "Client says the dogs are secured",
     skipped: "Skipped",
     skippedAt: " at {{time}}",
     expand: "Expand",
@@ -258,7 +258,7 @@ const en = {
     billingNote: "The office sets the billing rules for each skip reason.",
   },
   skipReason: {
-    customer_requested: "Customer skipped via portal",
+    customer_requested: "Client skipped via portal",
     client_cancelled_late: "Client cancelled late",
     gate_locked: "Gate locked / no access",
     dog_outside: "Dog was outside",
@@ -343,7 +343,7 @@ const en = {
   },
   enRoute: {
     armed:
-      "Live tracking is on. Once this customer is told you're on the way, they can see your approximate location until you start the visit (2 hours at most), while this app is open.",
+      "Live tracking is on. Once this client is told you're on the way, they can see your approximate location until you start the visit (2 hours at most), while this app is open.",
     sharing: "Sharing your location with {{name}} until you arrive",
     denied: "Location is turned off for this app, so they see the arrival time only.",
     unavailable: "Waiting for a location fix.",
@@ -555,9 +555,9 @@ const en = {
     savedToast: "Recorded. The office will confirm it.",
     queuedToast: "Saved on this phone. It reaches the office when you have signal.",
     enterAmount: "Enter the amount you collected.",
-    moreThanDue: "That's more than the {{amount}} this customer owes.",
+    moreThanDue: "That's more than the {{amount}} this client owes.",
     officeConfirms:
-      "The office confirms it and applies it to the customer's invoices. Invoices can't be marked paid from here.",
+      "The office confirms it and applies it to the client's invoices. Invoices can't be marked paid from here.",
   },
   notificationType: {
     concern: "Client concerns",

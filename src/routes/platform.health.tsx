@@ -4,9 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, MailWarning, CalendarClock, PhoneOff, Activity, DollarSign, Clock } from "lucide-react";
 import { getPlatformHealth } from "@/lib/platform.functions";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/health")({
-  head: () => ({ meta: [{ title: "Health · Platform admin" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Health", "Platform admin") }, { name: "robots", content: "noindex" }] }),
   component: HealthPage,
 });
 

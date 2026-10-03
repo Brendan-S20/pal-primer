@@ -37,10 +37,11 @@ import {
 import { Copy, Send, X, Plus, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDay } from "@/lib/format";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/invites")({
   head: () => ({
-    meta: [{ title: "Invites · Platform admin" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: pageTitle("Invites", "Platform admin") }, { name: "robots", content: "noindex" }],
   }),
   component: InvitesPage,
 });

@@ -12,6 +12,7 @@ import { ensureBootstrapped } from "@/lib/ensure-workspace";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { Building2 } from "lucide-react";
 import { APP_NAME } from "@/lib/scoop";
+import { pageTitle } from "@/lib/page-title";
 
 // 2026-08-26: this screen now has TWO audiences, and the copy had to stop
 // assuming the first. It was written for a stranded account — "there's nothing
@@ -57,7 +58,7 @@ import { APP_NAME } from "@/lib/scoop";
 export const Route = createFileRoute("/no-workspace")({
   ssr: false,
   head: () => ({
-    meta: [{ title: `No workspace - ${APP_NAME}` }, { name: "robots", content: "noindex" }],
+    meta: [{ title: pageTitle("No workspace") }, { name: "robots", content: "noindex" }],
   }),
   component: NoWorkspacePage,
 });

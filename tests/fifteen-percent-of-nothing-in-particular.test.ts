@@ -217,7 +217,9 @@ describe("the product stops calling percent codes broken", () => {
   });
 
   it("tells the office what the percentage is of", () => {
-    expect(ui).toMatch(/off one visit at the customer's own/);
+    // CHANGED 2026-10-02: staff copy says "client" for the person who pays
+    // (tests/one-word-for-the-person-who-pays.test.ts).
+    expect(ui).toMatch(/off one visit at the client's own/);
   });
 
   it("no longer marks percent codes not redeemable", () => {

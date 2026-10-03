@@ -23,11 +23,12 @@ import {
   relativeFromToday,
 } from "@/lib/portal-ui";
 import { orgLocalTime } from "@/lib/org-day";
+import { customerTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/portal/$slug/$token")({
   head: () => ({
     meta: [
-      { title: "Your service portal" },
+      { title: customerTitle("Your service portal") },
       { name: "description", content: "View upcoming visits, invoices, and account details." },
     ],
   }),

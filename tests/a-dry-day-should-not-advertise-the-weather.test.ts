@@ -331,8 +331,15 @@ describe("the period title is the date picker", () => {
     const src = codeOnly(routes());
     // Jobber's shape, and the owner's request: "I also like clicking on the
     // month and it opens the date picker instead of it being separate."
-    const h1 = src.slice(src.indexOf('<h1 className="text-2xl font-semibold">'));
-    const trigger = h1.slice(0, h1.indexOf("</h1>"));
+    //
+    // CHANGED 2026-10-02: the h1 is now the page's name, "Schedule" (launch
+    // pass recommendation 3), and the date control sits beside it rather than
+    // inside it. Everything this pinned about the control still holds, so it
+    // reads the control's block (from the heading to the end of its popover)
+    // instead of the h1's.
+    const h1 = src.slice(src.indexOf('<h1 className="text-2xl font-semibold">Schedule</h1>'));
+    const trigger = h1.slice(0, h1.indexOf("</Popover>"));
+    expect(trigger).toMatch(/data-testid="schedule-date"/);
     expect(trigger).toMatch(/<PopoverTrigger asChild>/);
     expect(trigger).toMatch(/\{heading\}/);
     // The chevron is the only thing on screen that says the title is a
@@ -374,8 +381,8 @@ describe("the period title is the date picker", () => {
 
   it("gives the title and the calendar's days a thumb-sized target", () => {
     const src = codeOnly(routes());
-    const h1 = src.slice(src.indexOf('<h1 className="text-2xl font-semibold">'));
-    const block = h1.slice(0, h1.indexOf("</h1>"));
+    const h1 = src.slice(src.indexOf('<h1 className="text-2xl font-semibold">Schedule</h1>'));
+    const block = h1.slice(0, h1.indexOf("</Popover>"));
     // 2.75rem is 44px, released at md where a pointer is doing the work.
     expect(block).toMatch(/min-h-\[2\.75rem\]/);
     // `md:mouse:min-h-0`, not `md:min-h-0`. The compact desktop row is wanted

@@ -54,7 +54,7 @@ export function SignupAttribution() {
             {/* Conversions, not signups, are the point. A campaign with forty
                 signups and no conversions is one to stop funding, and a
                 signup count on its own cannot say that. */}
-            Counted by paying customers produced, not signups. A campaign that brings people who
+            Counted by paying clients produced, not signups. A campaign that brings people who
             never pay should sort below one that brings fewer who do.
           </p>
         </div>

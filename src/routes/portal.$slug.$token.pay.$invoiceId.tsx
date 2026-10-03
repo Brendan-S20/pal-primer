@@ -11,9 +11,10 @@ import { portalCreateInvoicePaymentIntent } from "@/lib/portal.functions";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { money } from "@/lib/portal-ui";
 import { TipPicker, TipTotals, useTipSync } from "@/components/TipPicker";
+import { customerTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/portal/$slug/$token/pay/$invoiceId")({
-  head: () => ({ meta: [{ title: "Pay invoice" }] }),
+  head: () => ({ meta: [{ title: customerTitle("Pay invoice") }] }),
   component: PayInvoice,
 });
 

@@ -21,9 +21,10 @@ import { formatLineItemDescription } from "@/lib/invoice-labels";
 import { taxLineLabel } from "@/lib/sales-tax";
 import { isInvoiceOverdue, todayISO } from "@/lib/overdue";
 import { TipPicker, TipTotals, useTipSync } from "@/components/TipPicker";
+import { customerTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/pay/i/$token")({
-  head: () => ({ meta: [{ title: "Pay invoice" }] }),
+  head: () => ({ meta: [{ title: customerTitle("Pay invoice") }] }),
   component: PublicPayPage,
 });
 

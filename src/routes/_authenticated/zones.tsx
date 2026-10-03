@@ -37,8 +37,10 @@ import {
 import { HelpTip } from "@/components/HelpTip";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/zones")({
+  head: () => titleHead("Zones"),
   component: ZonesPage,
 });
 

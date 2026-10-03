@@ -4,9 +4,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { ArrowLeft } from "lucide-react";
 import { CampaignEditor } from "@/components/campaigns/CampaignEditor";
 import { listCampaigns } from "@/lib/campaigns.functions";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/campaigns/new")({
-  head: () => ({ meta: [{ title: "New campaign · HoundStack" }] }),
+  head: () => ({ meta: [{ title: pageTitle("New campaign") }] }),
   component: NewCampaignPage,
 });
 

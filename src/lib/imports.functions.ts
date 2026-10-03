@@ -913,7 +913,7 @@ export const commitImport = createServerFn({ method: "POST" })
         const { data: canAdd, error: gateErr } = await supabase.rpc("org_can_add_client", { _org_id: orgId });
         if (!gateErr && canAdd === false) {
           throw new Error(
-            `This import would add ${createCount} new client${createCount === 1 ? "" : "s"}, but your subscription doesn't currently allow adding customers. ` +
+            `This import would add ${createCount} new client${createCount === 1 ? "" : "s"}, but your subscription doesn't currently allow adding clients. ` +
             `Reactivate your plan in Settings → Plan & billing, then commit this import again. Nothing has been imported yet.`,
           );
         }

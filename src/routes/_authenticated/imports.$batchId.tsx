@@ -7,8 +7,10 @@ import { getImportBatch, commitImport, cancelImport } from "@/lib/imports.functi
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
+  head: () => titleHead("Import"),
   component: BatchDetail,
 });
 

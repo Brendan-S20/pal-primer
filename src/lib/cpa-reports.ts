@@ -101,7 +101,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
     id: "income_cash",
     title: "Income: cash basis, by month",
     purpose:
-      "Gross customer payments received, refunds and chargebacks taken out, net income. This is the figure that ties to the bank and to the 1099-K.",
+      "Gross client payments received, refunds and chargebacks taken out, net income. This is the figure that ties to the bank and to the 1099-K.",
     basis: "cash",
     columns: [
       text("month", "Month"),
@@ -116,7 +116,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
     id: "tips_received",
     title: "Tips received, by month",
     purpose:
-      "Tips customers added when paying an invoice, kept out of income above because they are not payment for the service. Tips received plus net income is what the payments brought in.",
+      "Tips clients added when paying an invoice, kept out of income above because they are not payment for the service. Tips received plus net income is what the payments brought in.",
     basis: "cash",
     columns: [
       text("month", "Month"),
@@ -169,12 +169,12 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
   },
   revenue_by_client: {
     id: "revenue_by_client",
-    title: "Income by customer: cash basis",
+    title: "Income by client: cash basis",
     purpose:
-      "What each customer actually paid during the period. Supports customer-level questions and any 1099 obligations running the other way.",
+      "What each client actually paid during the period. Supports client-level questions and any 1099 obligations running the other way.",
     basis: "cash",
     columns: [
-      text("clientName", "Customer"),
+      text("clientName", "Client"),
       money("grossCents", "Gross received"),
       money("refundsCents", "Refunds"),
       money("netCents", "Net"),
@@ -188,7 +188,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
       "Open balances as at the end of the period, bucketed by age. Supports the closing receivables figure on the balance sheet and any bad-debt position.",
     basis: "accrual",
     columns: [
-      text("clientName", "Customer"),
+      text("clientName", "Client"),
       money("currentCents", "Current"),
       money("d30Cents", "1–30 days"),
       money("d60Cents", "31–60 days"),
@@ -207,7 +207,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
     columns: [
       date("occurredAt", "Date"),
       text("kindLabel", "Type"),
-      text("clientName", "Customer"),
+      text("clientName", "Client"),
       money("amountCents", "Amount"),
       text("statusLabel", "Outcome"),
     ],
@@ -221,7 +221,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
     basis: "accrual",
     columns: [
       date("dateOn", "Date"),
-      text("clientName", "Customer"),
+      text("clientName", "Client"),
       text("statusLabel", "Outcome"),
       money("amountCents", "Amount"),
       text("reference", "Invoice"),
@@ -490,7 +490,7 @@ export type ReversalKind = (typeof REVERSAL_KINDS)[number];
 export function reversalLabel(kind: string): { type: string; outcome: string } {
   switch (kind) {
     case "payment_refunded":
-      return { type: "Refund", outcome: "Refunded to customer" };
+      return { type: "Refund", outcome: "Refunded to client" };
     case "payment_chargeback":
       return { type: "Chargeback", outcome: "Disputed, funds withdrawn" };
     case "payment_chargeback_won":

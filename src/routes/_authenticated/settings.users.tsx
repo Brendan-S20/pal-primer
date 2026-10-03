@@ -26,8 +26,10 @@ import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
 import { humanizeRole } from "@/lib/humanize";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
+  head: () => titleHead("Users & roles", "Settings"),
   component: UsersPage,
 });
 

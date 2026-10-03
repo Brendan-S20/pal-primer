@@ -52,7 +52,7 @@ export function PortalBookingCard() {
       <CardHeader>
         <CardTitle>Extra cleanups from the portal</CardTitle>
         <CardDescription>
-          Customers can ask for a one-off cleanup on one of your working days, from tomorrow up to
+          Clients can ask for a one-off cleanup on one of your working days, from tomorrow up to
           30 days out. It lands in Concerns for you to book or decline.
         </CardDescription>
       </CardHeader>
@@ -73,7 +73,7 @@ export function PortalBookingCard() {
             onChange={(e) => setPrice(e.target.value)}
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            Shown to the customer when they ask, and filled in when you book one. Leave it blank to
+            Shown to the client when they ask, and filled in when you book one. Leave it blank to
             price each request yourself.
           </p>
         </div>

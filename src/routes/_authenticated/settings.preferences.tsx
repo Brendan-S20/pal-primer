@@ -46,12 +46,14 @@ import {
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import { VisitChecklistEditor } from "@/components/VisitChecklistEditor";
 import type { ChecklistItem } from "@/lib/visit-checklist";
+import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 /** One empty list, so the editor is not handed a new array on every render
  *  while the org's features load. */
 const NO_CHECKLIST: ChecklistItem[] = [];
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
+  head: () => titleHead("Preferences", "Settings"),
   component: PreferencesPage,
 });
 
@@ -74,6 +76,9 @@ function getStr(key: string, def: string) {
 
 function PreferencesPage() {
   const { i18n, t } = useTranslation();
+  // In the language this device reads. The route's head is English because
+  // it runs before i18n has read the device's choice.
+  useDocumentTitle(pageTitle(t("preferences.title"), t("settings.title")));
   const { can } = usePermissions();
   const canManageSettings = can("manage_settings");
   const [lang, setLang] = useState<string>(currentLanguage());
@@ -523,8 +528,8 @@ function RecleanGuaranteeCard() {
       qc.invalidateQueries({ queryKey: ["my-org-features"] });
       toast.success(
         h === 0
-          ? "Re-clean guarantee is off. Customers won't see the button."
-          : `Customers can ask for a free re-clean within ${h} hours of a visit.`,
+          ? "Re-clean guarantee is off. Clients won't see the button."
+          : `Clients can ask for a free re-clean within ${h} hours of a visit.`,
       );
     },
     onError: (e: Error) => toast.error(e.message),
@@ -535,7 +540,7 @@ function RecleanGuaranteeCard() {
       <CardHeader>
         <CardTitle className="text-base">Re-clean guarantee</CardTitle>
         <CardDescription>
-          Customers can ask for a free re-clean from their portal within this many hours of a visit
+          Clients can ask for a free re-clean from their portal within this many hours of a visit
           (0 turns it off). Requests land in Concerns, where you book the return visit at no charge.
         </CardDescription>
       </CardHeader>

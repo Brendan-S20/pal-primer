@@ -18,8 +18,10 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Puzzle } from "lucide-react";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/addons")({
+  head: () => titleHead("Add-ons", "Platform admin"),
   component: AddonsAdminPage,
 });
 

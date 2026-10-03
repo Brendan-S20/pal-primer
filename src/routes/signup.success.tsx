@@ -4,12 +4,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
 import { getSignupStatus } from "@/lib/signup.functions";
+import { customerTitle } from "@/lib/page-title";
 
 const searchSchema = z.object({ sr: z.string().uuid().optional() });
 
 export const Route = createFileRoute("/signup/success")({
   validateSearch: (s) => searchSchema.parse(s),
-  head: () => ({ meta: [{ title: "You're in, welcome" }] }),
+  head: () => ({ meta: [{ title: customerTitle("You're in, welcome") }] }),
   component: SuccessPage,
 });
 

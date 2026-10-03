@@ -13,9 +13,10 @@ import { humanizeAuditAction } from "@/lib/humanize";
 // for how long" without expanding Details (H2). Pure, so it and the filter can
 // be tested together; they have to agree on what a row contains (BUG-14).
 import { auditActorLabel, auditRowMatches, impersonationDetail } from "@/lib/platform-audit";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/audit")({
-  head: () => ({ meta: [{ title: "Audit · Platform admin" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Audit", "Platform admin") }, { name: "robots", content: "noindex" }] }),
   component: AuditPage,
 });
 

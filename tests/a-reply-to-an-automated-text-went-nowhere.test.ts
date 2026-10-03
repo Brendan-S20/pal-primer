@@ -251,7 +251,9 @@ describe("the wiring", () => {
     );
     // The card's words are in lib/i18n; the card asks for them by key.
     expect(myDay).toMatch(/t\("visit\.customerSaysDoNotEnter"\)/);
-    expect(en.visit.customerSaysDoNotEnter).toBe("Customer says do not enter");
+    // CHANGED 2026-10-02: staff copy says "client" for the person who pays
+    // (tests/one-word-for-the-person-who-pays.test.ts).
+    expect(en.visit.customerSaysDoNotEnter).toBe("Client says do not enter");
     const fn = readFileSync(join(import.meta.dirname, "../src/lib/my-day.functions.ts"), "utf8");
     expect(fn).toMatch(/gate_reply, gate_reply_at/);
   });

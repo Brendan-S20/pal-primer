@@ -23,14 +23,18 @@ import { formatDay } from "@/lib/format";
 import { useIntlLocale } from "@/lib/i18n";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { Camera, Plus, X } from "lucide-react";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/waste-log")({
-  head: () => ({ meta: [{ title: "Waste disposal log" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Waste log") }] }),
   component: WasteLogPage,
 });
 
 function WasteLogPage() {
   const { t } = useTranslation();
+  // In the language this device reads. The route's head is English because
+  // it runs before i18n has read the device's choice.
+  useDocumentTitle(pageTitle(t("nav.item.waste-log")));
   const locale = useIntlLocale();
   const qc = useQueryClient();
   const listMans = useServerFn(listManifests);

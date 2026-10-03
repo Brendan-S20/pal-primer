@@ -10,8 +10,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { formatDateTime, formatPhone } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")({
+  head: () => titleHead("AI receptionist", "Settings"),
   component: Page,
 });
 

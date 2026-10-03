@@ -24,8 +24,10 @@ import { Trash2, Megaphone, Send } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/format";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/announcements")({
+  head: () => titleHead("Announcements", "Platform admin"),
   component: AnnouncementsPage,
 });
 

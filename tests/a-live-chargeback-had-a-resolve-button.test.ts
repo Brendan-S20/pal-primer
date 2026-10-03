@@ -188,8 +188,15 @@ describe("the schedule page's heading follows the range it is showing", () => {
     // regex cannot see it. The property is unchanged — the heading text is
     // still the computed `heading` and not a literal — so this reads the
     // element's contents instead of its exact spelling.
-    const h1 = routes.slice(routes.indexOf('<h1 className="text-2xl font-semibold">'));
-    expect(h1.slice(0, h1.indexOf("</h1>"))).toMatch(/\{heading\}/);
+    //
+    // CHANGED 2026-10-02: the `<h1>` is now the page's name, "Schedule", which
+    // is what every nav surface calls it (launch pass recommendation 3), and
+    // the date label moved out of it into the button beside it. The property
+    // this pins moves with it: the date the page shows is still the computed
+    // `heading`, read from the date button rather than the h1.
+    expect(codeOnly(routes)).toMatch(/<h1 className="text-2xl font-semibold">Schedule<\/h1>/);
+    const dateButton = routes.slice(routes.indexOf('data-testid="schedule-date"'));
+    expect(dateButton.slice(0, dateButton.indexOf("</button>"))).toMatch(/\{heading\}/);
   });
 
   it("derives it from the same window the page fetches and the calendar draws", () => {

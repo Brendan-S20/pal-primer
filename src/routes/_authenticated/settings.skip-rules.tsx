@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { HelpTip } from "@/components/HelpTip";
+import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/skip-rules")({
+  head: () => titleHead("Skip rules", "Settings"),
   component: SkipRulesPage,
 });
 

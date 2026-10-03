@@ -27,7 +27,7 @@ const OTP_MAX_PER_IP_HOUR = 15;
 export class PortalPreviewIsReadOnly extends Error {
   code = "PORTAL_PREVIEW_READ_ONLY" as const;
   constructor() {
-    super("This is a preview of the customer's portal, so nothing here can be changed.");
+    super("This is a preview of the client's portal, so nothing here can be changed.");
   }
 }
 

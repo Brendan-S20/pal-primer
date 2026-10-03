@@ -1,12 +1,13 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { customerTitle } from "@/lib/page-title";
 
 const searchSchema = z.object({ token: z.string().optional() });
 
 export const Route = createFileRoute("/unsubscribe")({
   validateSearch: (s) => searchSchema.parse(s),
-  head: () => ({ meta: [{ title: "Unsubscribe · HoundStack" }] }),
+  head: () => ({ meta: [{ title: customerTitle("Unsubscribe") }] }),
   component: UnsubscribePage,
 });
 

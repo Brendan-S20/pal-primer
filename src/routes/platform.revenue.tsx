@@ -7,9 +7,10 @@ import {
 } from "recharts";
 import { DollarSign, TrendingUp, Building2, AlertCircle } from "lucide-react";
 import { getPlatformRevenueTrend } from "@/lib/platform.functions";
+import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/platform/revenue")({
-  head: () => ({ meta: [{ title: "Revenue · Platform admin" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: pageTitle("Revenue", "Platform admin") }, { name: "robots", content: "noindex" }] }),
   component: RevenuePage,
 });
 
