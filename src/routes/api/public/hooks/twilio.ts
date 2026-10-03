@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { verifyTwilioInbound } from "@/lib/twilio-inbound-auth.server";
 
 // Inbound SMS webhook.
@@ -174,7 +175,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
         // whole allowance (and its overage) from one phone. Past the limit the
         // text still lands in Messages and the office is notified below.
         let senderThrottled = false;
-        if (!reply && org.ai_receptionist_enabled && body) {
+        if (!reply && RECEPTIONIST_LAUNCHED && org.ai_receptionist_enabled && body) {
           const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
           const { count } = await supabaseAdmin
             .from("ai_receptionist_logs")
@@ -189,6 +190,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
         // not past the per-sender limit.
         if (
           !reply &&
+          RECEPTIONIST_LAUNCHED &&
           org.ai_receptionist_enabled &&
           !(client?.sms_opt_out) &&
           !senderThrottled &&

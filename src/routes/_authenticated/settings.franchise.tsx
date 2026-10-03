@@ -174,7 +174,7 @@ function FranchiseSettings() {
           answer. */}
       {q.isLoading || m?.isChild ? null : m?.isParent ? (
         <Card>
-          <CardContent className="p-6 text-sm">
+          <CardContent className="p-(--card-pad) text-sm">
             <p className="font-medium">This organization is a franchise parent.</p>
             <p className="mt-1 text-muted-foreground">
               Manage your locations and royalty rates from the Franchise page. A parent can&apos;t
@@ -187,7 +187,7 @@ function FranchiseSettings() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Join a franchise</CardTitle>
           </CardHeader>
-          <CardContent className="p-6 pt-0 text-sm text-muted-foreground">
+          <CardContent className="p-(--card-pad) pt-0 text-sm text-muted-foreground">
             Joining a franchise changes who can see this organization&apos;s totals and lets them
             bill it a royalty, so only an owner can accept an invitation code. Ask an owner of this
             organization to do it from this page.

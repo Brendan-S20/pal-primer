@@ -182,7 +182,7 @@ function TaxReportsPage() {
       </div>
 
       <Card>
-        <CardContent className="flex flex-wrap items-end gap-3 pt-6">
+        <CardContent className="flex flex-wrap items-end gap-3 pt-(--card-pad)">
           <div>
             <Label htmlFor="tax-from" className="text-xs">
               From

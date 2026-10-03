@@ -250,7 +250,7 @@ function BillingPage() {
       </div>
 
       {/* ── Current plan ─────────────────────────────────────────────────── */}
-      <section className="rounded-xl border bg-card p-6 shadow-sm">
+      <section className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
         <SectionLabel>Current plan</SectionLabel>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0">
@@ -364,7 +364,7 @@ function BillingPage() {
           above still shows the "Cancels at period end" badge and the date, and
           read-only account status is exactly what that file says to keep. */}
       {canBuySaas && data.isPaidTier && (
-        <section className="rounded-xl border bg-card p-6 shadow-sm">
+        <section className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
           <h2 className="text-lg font-semibold">Manage subscription</h2>
           {cancelPending ? (
             <>
@@ -455,7 +455,7 @@ function PaymentMethodsCard() {
   const brandLabel = (b: string) => (b ? b.charAt(0).toUpperCase() + b.slice(1) : "Card");
 
   return (
-    <section className="rounded-xl border bg-card p-6 shadow-sm">
+    <section className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -858,7 +858,7 @@ function NextInvoice({
   };
 
   return (
-    <section className="rounded-xl border bg-card p-6 shadow-sm">
+    <section className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
       <h2 className="text-lg font-semibold">Your next invoice</h2>
       {subInfo?.currentPeriodEnd && (
         <p className="text-sm text-muted-foreground">Bills {formatDay(subInfo.currentPeriodEnd)}</p>
@@ -914,7 +914,7 @@ function InvoiceHistory() {
   return (
     // Five columns of invoice history, with no scroll container of their own —
     // so the table set the width of the settings page instead of its own.
-    <section className="overflow-x-auto rounded-xl border bg-card p-6 shadow-sm">
+    <section className="overflow-x-auto rounded-xl border bg-card p-(--card-pad) shadow-sm">
       <h2 className="text-lg font-semibold">Billing history</h2>
       {isLoading ? (
         <p className="mt-2 text-sm text-muted-foreground">Loading…</p>

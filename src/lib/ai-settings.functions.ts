@@ -27,11 +27,11 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
     //              zone pricing, review replies and the digests were moved
     //              off it on 2026-10-03; they are rules now, and AI dispatch
     //              was removed for the route planner.
-    //   assistant— Lovable AI gateway, via LOVABLE_API_KEY
-    //              (ai-gateway.server.ts). Powers the AI receptionist.
-    //
-    // Consolidating them is worth doing and belongs with BUILD-2's metering,
-    // which has to capture usage on BOTH or it will undercount.
+    //   assistant— the AI receptionist (coming soon at launch). It moved
+    //              from the Lovable AI gateway to Anthropic (Claude Haiku
+    //              4.5, @ai-sdk/anthropic) on 2026-10-03, so both paths now
+    //              need ANTHROPIC_API_KEY. They are still two code paths and
+    //              both are metered.
     // BUILD-7: availability was reported from environment variables ALONE, so
     // an organization whose plan does not include AI saw "AI is enabled for
     // this organization" and, on pressing the check, "AI is not configured on
@@ -52,7 +52,7 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
       planAllowsAi,
       planReason,
       toolsAvailable: !!process.env.ANTHROPIC_API_KEY,
-      assistantAvailable: !!process.env.LOVABLE_API_KEY,
+      assistantAvailable: !!process.env.ANTHROPIC_API_KEY,
       // The model the tools will actually call: resolveAiConfigFromEnv lets
       // ANTHROPIC_MODEL override the default, so naming only the default
       // could show one model while another ran.

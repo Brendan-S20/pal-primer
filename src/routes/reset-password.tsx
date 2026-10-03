@@ -62,7 +62,7 @@ function ResetPasswordPage() {
         </div>
 
         {ready && !ok && (
-          <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border bg-card p-6">
+          <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border bg-card p-(--card-pad)">
             <div className="space-y-2">
               <Label htmlFor="pw">New password</Label>
               <Input id="pw" type="password" required minLength={8} value={password}

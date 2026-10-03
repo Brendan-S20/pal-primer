@@ -88,7 +88,7 @@ function Dashboard() {
       return <p className="text-muted-foreground">Loading…</p>;
     }
     return (
-      <div className="rounded-lg border bg-card p-6">
+      <div className="rounded-lg border bg-card p-(--card-pad)">
         <h1 className="text-xl font-semibold">No organization yet</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Sign out and use the Create account tab to finish onboarding.

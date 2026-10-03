@@ -505,7 +505,7 @@ function OverviewTab({ t }: { t: TenantDetail }) {
     ["Created", fmtDate(t.created_at)],
   ];
   return (
-    <Card><CardContent className="pt-6">
+    <Card><CardContent className="pt-(--card-pad)">
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
         {/* Two of these values are single unbreakable tokens: a 36-character
             organization UUID and a Stripe subscription id. Their min-content
@@ -527,7 +527,7 @@ function OverviewTab({ t }: { t: TenantDetail }) {
 
 function UsersTab({ t }: { t: TenantDetail }) {
   return (
-    <Card><CardContent className="pt-6">
+    <Card><CardContent className="pt-(--card-pad)">
       {t.users.length === 0 ? (
         <div className="text-sm text-muted-foreground">No users in this organization.</div>
       ) : (
@@ -587,7 +587,7 @@ function InvoicesTab({ orgId }: { orgId: string }) {
   });
   const rows: TenantInvoiceRow[] = q.data?.rows ?? [];
   return (
-    <Card><CardContent className="pt-6">
+    <Card><CardContent className="pt-(--card-pad)">
       {q.isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : rows.length === 0 ? (
@@ -692,7 +692,7 @@ function FlagsTab({ orgId, tenantName }: { orgId: string; tenantName: string }) 
   const rows: TenantFlagRow[] = q.data?.rows ?? [];
 
   return (
-    <Card><CardContent className="pt-6">
+    <Card><CardContent className="pt-(--card-pad)">
       {confirmDialog}
       {q.isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
@@ -860,7 +860,7 @@ function NotesTab({ orgId }: { orgId: string }) {
     <div className="space-y-4">
       {confirmDialog}
       <Card>
-        <CardContent className="space-y-3 pt-6">
+        <CardContent className="space-y-3 pt-(--card-pad)">
           <div className="flex items-center gap-2">
             <Label>Kind</Label>
             <select value={kind} onChange={(e) => setKind(e.target.value as any)}
@@ -879,7 +879,7 @@ function NotesTab({ orgId }: { orgId: string }) {
         </CardContent>
       </Card>
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-(--card-pad)">
           {q.isLoading ? (
             <div className="text-sm text-muted-foreground">Loading…</div>
           ) : rows.length === 0 ? (
@@ -949,7 +949,7 @@ function AuditTab({ orgId }: { orgId: string }) {
   });
   const rows: TenantAuditRow[] = q.data?.rows ?? [];
   return (
-    <Card><CardContent className="pt-6">
+    <Card><CardContent className="pt-(--card-pad)">
       {q.isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : rows.length === 0 ? (

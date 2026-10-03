@@ -157,7 +157,7 @@ function HelpPage() {
 
         <div>
           {active ? (
-            <article className="rounded-lg border bg-card p-6">
+            <article className="rounded-lg border bg-card p-(--card-pad)">
               <div className="mb-1 flex items-center gap-2">
                 <Badge variant="secondary">{active.section}</Badge>
                 {active.audience && <Badge variant="outline">{active.audience}</Badge>}
@@ -218,7 +218,7 @@ function HelpPage() {
           ) : (
             <div className="space-y-4">
               {/* Landing state: pitch the walkthroughs instead of a bare box. */}
-              <div className="rounded-lg border bg-card p-6">
+              <div className="rounded-lg border bg-card p-(--card-pad)">
                 <h2 className="text-base font-semibold">Start here</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   The guides most people need first:

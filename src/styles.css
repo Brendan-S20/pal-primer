@@ -256,6 +256,31 @@
     border-color: var(--color-border);
   }
 
+  /*
+   * ── A CARD'S INSIDE, SIZED FOR THE SCREEN IT IS ON ─────────────────────
+   *
+   * One number for the padding inside a card, read as `p-(--card-pad)`.
+   * 24px was the only value and it is right on a laptop; on a 402px iPhone it
+   * sat inside the page's own 16px gutter, so every form field started 41px
+   * from the edge and was about 320px wide: 20% of the screen spent on two
+   * borders' worth of air. Measured on all 71 signed-in routes at 402x874,
+   * 2026-10-03, after the owner reported it from an iPhone 17 Pro.
+   *
+   * A variable rather than `p-4 sm:p-6` in ui/card.tsx, because callers
+   * override the padding (`pt-6`, `p-0`, `pt-0`) through tailwind-merge, which
+   * replaces `p-6` but would leave a `sm:pt-0` standing and quietly take a
+   * card's top padding away on every desktop. One class merges cleanly.
+   * 640px is Tailwind's `sm`, where the layout stops being a single column.
+   */
+  :root {
+    --card-pad: 1rem;
+  }
+  @media (width >= 40rem) {
+    :root {
+      --card-pad: 1.5rem;
+    }
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);

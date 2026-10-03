@@ -229,7 +229,7 @@ function GetStartedPage() {
           ))}
         </div>
 
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
+        <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
           {step === 0 && (
             <form
               className="space-y-4"

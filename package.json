@@ -41,6 +41,7 @@
     "check:hooks": "eslint -c eslint.hooks.config.js src"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.6",
     "@ai-sdk/openai-compatible": "^3.0.2",
     "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor/android": "^8.4.1",

@@ -111,9 +111,8 @@ function PrivacyPage() {
           <li>Google (maps and address suggestions)</li>
           <li>Geocodio (turning addresses into map locations)</li>
           <li>
-            Anthropic, and Google through the Lovable AI gateway (the AI features: drafting
-            marketing text and review replies, route and pricing suggestions, the weekly summary,
-            and the AI receptionist)
+            Anthropic (the AI features, once a business switches them on: the AI receptionist and
+            drafting marketing posts)
           </li>
           <li>Cloud hosting and infrastructure providers</li>
         </ul>

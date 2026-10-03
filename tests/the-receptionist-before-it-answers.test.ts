@@ -90,3 +90,31 @@ describe("voice is part of the receptionist add-on", () => {
     expect(voice).toMatch(/!\(org as any\)\.ai_receptionist_enabled/);
   });
 });
+
+describe("the receptionist is coming soon, and nothing reaches the model until it launches", () => {
+  // Owner decision, 2026-10-03. One switch, read by every way in: the SMS
+  // webhook, the voice webhook, and switching it on in Settings.
+  it("is not launched", async () => {
+    const { RECEPTIONIST_LAUNCHED } = await import("../src/lib/receptionist-launch");
+    expect(RECEPTIONIST_LAUNCHED).toBe(false);
+  });
+
+  it("is read by the SMS webhook before the model call", () => {
+    expect(sms.slice(0, sms.indexOf("runAiReceptionist("))).toMatch(/RECEPTIONIST_LAUNCHED &&/);
+  });
+
+  it("is read by the voice webhook before anything else answers", () => {
+    expect(voice).toMatch(/!RECEPTIONIST_LAUNCHED \|\|/);
+  });
+
+  it("cannot be switched on in Settings", () => {
+    expect(read("src/lib/ai-receptionist.functions.ts")).toMatch(
+      /\(data\.enabled \|\| data\.voice_enabled\) && !RECEPTIONIST_LAUNCHED/,
+    );
+  });
+
+  it("runs on Claude Haiku 4.5 when it does launch", () => {
+    expect(receptionist).toMatch(/const MODEL_ID = "claude-haiku-4-5-20251001";/);
+    expect(receptionist).toMatch(/process\.env\.ANTHROPIC_API_KEY/);
+  });
+});

@@ -144,9 +144,14 @@ function UsersPage() {
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
+            // Below md each row is a block, not a table row: the role picker
+            // and Deactivate were in columns four to six of a 540px table, so
+            // on a 402px iPhone they sat off the right edge behind a sideways
+            // scroll nobody would guess was there (measured 2026-10-03). The
+            // same cells reflow; nothing is rendered twice.
             <div className="relative overflow-x-auto">
-              <table className="w-full text-sm min-w-[540px]">
-                <thead className="text-left text-xs uppercase text-muted-foreground">
+              <table className="w-full text-sm md:min-w-[540px] max-md:block">
+                <thead className="text-left text-xs uppercase text-muted-foreground max-md:hidden">
                   <tr>
                     <th className="pb-2 w-6"></th>
                     <th className="pb-2">Name</th>
@@ -156,7 +161,7 @@ function UsersPage() {
                     <th className="pb-2 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y max-md:block">
                   {(data?.users ?? []).map((u: any) => {
                     const isOpen = u.staff_id && expanded.has(u.staff_id);
                     const staff = u.staff_id ? staffById.get(u.staff_id) : null;
@@ -175,8 +180,8 @@ function UsersPage() {
                     const offToday = runsRoutes && !staff?.routing_available;
                     return (
                       <Fragment key={u.user_id}>
-                        <tr key={u.user_id}>
-                          <td className="py-3">
+                        <tr key={u.user_id} className="max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-2 max-md:gap-y-2 max-md:py-3">
+                          <td className="py-3 max-md:py-0">
                             {u.staff_id ? (
                               <button
                                 onClick={() => toggleExpand(u.staff_id)}
@@ -188,9 +193,9 @@ function UsersPage() {
                               </button>
                             ) : null}
                           </td>
-                          <td className="py-3 font-medium">{u.display_name ?? "-"}</td>
-                          <td className="py-3 text-muted-foreground">{u.email}</td>
-                          <td className="py-3">
+                          <td className="py-3 font-medium max-md:min-w-0 max-md:flex-1 max-md:py-0">{u.display_name ?? "-"}</td>
+                          <td className="py-3 text-muted-foreground max-md:basis-full max-md:break-all max-md:py-0">{u.email}</td>
+                          <td className="py-3 max-md:py-0">
                             {canEdit ? (
                               <Select
                                 value={u.role}
@@ -209,7 +214,7 @@ function UsersPage() {
                               <Badge variant="secondary">{humanizeRole(u.role)}</Badge>
                             )}
                           </td>
-                          <td className="py-3">
+                          <td className="py-3 max-md:py-0">
                             {u.active ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
                             {/* Surface routing eligibility in the row (punch
                                 list #12 / G8) — the controls live in the expander,
@@ -230,7 +235,7 @@ function UsersPage() {
                               )
                             )}
                           </td>
-                          <td className="py-3 text-right">
+                          <td className="py-3 text-right max-md:basis-full max-md:py-0 max-md:text-left">
                             {u.staff_id && (
                               <Button
                                 size="sm"
@@ -253,8 +258,8 @@ function UsersPage() {
                           </td>
                         </tr>
                         {isOpen && staff && (
-                          <tr key={u.user_id + "-addr"} className="bg-muted/20">
-                            <td colSpan={6} className="p-4">
+                          <tr key={u.user_id + "-addr"} className="bg-muted/20 max-md:block">
+                            <td colSpan={6} className="p-4 max-md:block max-md:px-0">
                               <StaffAddressEditor staff={staff} canEdit={canEdit} />
                             </td>
                           </tr>

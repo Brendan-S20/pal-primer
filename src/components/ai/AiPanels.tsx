@@ -244,7 +244,7 @@ export function ChurnPanel() {
           rests on — was cut off with no scrollbar and no way to reach it.
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
-      <div className="relative overflow-x-auto rounded-lg border bg-card">
+      <div className="@container relative overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm min-w-[480px]">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
@@ -256,9 +256,9 @@ export function ChurnPanel() {
           </thead>
           <tbody>
             {isFetching && !data?.length ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+              <tr><td colSpan={4} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">Loading…</span></td></tr>
             ) : !data?.length ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">No scores yet. Click "Re-score" to run.</td></tr>
+              <tr><td colSpan={4} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">No scores yet. Click "Re-score" to run.</span></td></tr>
             ) : (
               data.map((c: any) => (
                 <tr key={c.id} className="border-t">
@@ -400,7 +400,7 @@ export function PricingPanel() {
           rests on — was cut off with no scrollbar and no way to reach it.
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
-      <div className="relative overflow-x-auto rounded-lg border bg-card">
+      <div className="@container relative overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm min-w-[810px]">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
@@ -417,9 +417,9 @@ export function PricingPanel() {
           </thead>
           <tbody>
             {!suggestions.length ? (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
+              <tr><td colSpan={9} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                 {m.isPending ? "Working it out…" : "No suggestions yet."}
-              </td></tr>
+              </span></td></tr>
             ) : suggestions.map((s: any) => (
               <tr key={s.zone_id} className="border-t">
                 <td className="px-3 py-2">

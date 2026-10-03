@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import {
   verifyTwilioInbound,
   continuationToken,
@@ -48,8 +49,14 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
           .maybeSingle();
 
         // Voice answers only while the receptionist itself is on: that flag is
-        // the one the add-on gates and the one cancelling turns off.
-        if (!org || !(org as any).ai_voice_enabled || !(org as any).ai_receptionist_enabled) {
+        // the one the add-on gates and the one cancelling turns off. And not
+        // before launch: nothing reaches the model, whatever the flags say.
+        if (
+          !RECEPTIONIST_LAUNCHED ||
+          !org ||
+          !(org as any).ai_voice_enabled ||
+          !(org as any).ai_receptionist_enabled
+        ) {
           return xml(
             `<Response><Say>Sorry, this number is not accepting calls right now. Goodbye.</Say><Hangup/></Response>`,
             200,

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { z } from "zod";
@@ -53,6 +54,9 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
     // `voice_enabled` alone answered calls with the model on our bill, and a
     // cancelled add-on left it on (2026-10-03).
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if ((data.enabled || data.voice_enabled) && !RECEPTIONIST_LAUNCHED) {
+      throw new Error("The AI Receptionist is coming soon. You can write its FAQ and persona now.");
+    }
     if (data.enabled || data.voice_enabled) {
       const { data: sub } = await (supabaseAdmin as any)
         .from("org_platform_addons")

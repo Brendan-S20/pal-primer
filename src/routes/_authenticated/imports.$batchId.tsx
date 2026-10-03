@@ -90,7 +90,7 @@ function BatchDetail() {
         <ImportStatusBadge status={batch.status} />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
         <StatCard label="Rows" value={stats.total ?? rows.length} />
         <StatCard label="Create" value={stats.create ?? 0} tone="emerald" />
         <StatCard label="Update" value={stats.update ?? 0} tone="blue" />

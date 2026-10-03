@@ -167,7 +167,7 @@ function DnaLanding() {
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5 max-md:[&>*:last-child:nth-child(odd)]:col-span-2">
         <Stat label="Total samples" value={s.total} />
         <Stat label="At lab" value={s.sent_to_lab ?? 0} />
         <Stat label="Matched" value={s.matched ?? 0} tone="good" />
@@ -182,7 +182,7 @@ function DnaLanding() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="relative overflow-x-auto">
+          <div className="@container relative overflow-x-auto">
             <table className="w-full text-sm min-w-[540px]">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -197,16 +197,16 @@ function DnaLanding() {
               <tbody>
                 {complianceQ.isLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                       Loading…
-                    </td>
+                    </span></td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                       No clients enrolled in DNA compliance yet. Enable it for a commercial client
                       below.
-                    </td>
+                    </span></td>
                   </tr>
                 ) : (
                   rows.map((c) => (
@@ -490,7 +490,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5 max-md:[&>*:last-child:nth-child(odd)]:col-span-2">
         <Stat label="Total samples" value={s.total} />
         <Stat label="At lab" value={s.sent_to_lab ?? 0} />
         <Stat label="Matched" value={s.matched ?? 0} tone="good" />
@@ -713,7 +713,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
               </div>
             )}
             <CardContent className="p-0">
-              <div className="relative overflow-x-auto">
+              <div className="@container relative overflow-x-auto">
                 <table className="w-full text-sm min-w-[900px]">
                   <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                     <tr>
@@ -738,15 +738,15 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                   <tbody>
                     {isLoading ? (
                       <tr>
-                        <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={10} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                           Loading…
-                        </td>
+                        </span></td>
                       </tr>
                     ) : rows.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={10} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                           No samples logged for this client. Add your first pile sample above.
-                        </td>
+                        </span></td>
                       </tr>
                     ) : (
                       rows.map((r) => (
@@ -936,7 +936,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
               </p>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="relative overflow-x-auto">
+              <div className="@container relative overflow-x-auto">
                 <table className="w-full text-sm min-w-[540px]">
                   <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                     <tr>
@@ -951,15 +951,15 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                   <tbody>
                     {allDogsQ.isLoading ? (
                       <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={6} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                           Loading…
-                        </td>
+                        </span></td>
                       </tr>
                     ) : (allDogsQ.data ?? []).length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={6} className="py-6 text-center text-muted-foreground"><span className="sticky left-0 block w-[100cqw] px-3">
                           No dogs on file for this client yet.
-                        </td>
+                        </span></td>
                       </tr>
                     ) : (
                       (allDogsQ.data ?? []).map((d: any) => (
