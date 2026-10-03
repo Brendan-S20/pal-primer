@@ -463,3 +463,39 @@ run the job. `supabase db reset` needs Docker and the Supabase CLI, takes a few
 minutes, and is worth it before merging anything that touches
 `supabase/migrations/` — a green `verify` says only that the repo agrees with a
 database that already exists.
+
+## Four rules from 2026-10-02, each enforced by a test
+
+Each landed with the change that needed it; this is where they are written down
+together, and the Lovable project knowledge carries the same four (a change to
+one copy is a change to both).
+
+- **Every RLS table gets two-step sign-in.** A migration that runs
+  `ENABLE ROW LEVEL SECURITY` then calls
+  `SELECT public.require_mfa_policy('public.<table>');`. That policy is
+  RESTRICTIVE: it can only take access away. So a check block that counts
+  policies — "no FOR ALL", "exactly four", "deny-all means none" — counts
+  `permissive = 'PERMISSIVE'` only; five older checks counted everything and
+  broke every SQL proof the day the policy landed (#302).
+  → `tests/a-password-was-the-only-lock.test.ts`
+- **Maps only through `useMapRenderer`** (`src/lib/maps/`). Google bills per map
+  CREATED; the hook makes one per screen, only once it is on screen, and moves
+  overlays on it after that. A component that imports Leaflet or Google directly
+  undoes both. → `tests/google-draws-the-maps.test.ts`
+- **A SQL proof takes turns.** Every `tests/sql/*.proof.sql` takes
+  `pg_advisory_lock(hashtext('houndstack.proof'))` before anything else, and the
+  test file that runs it sets `vi.setConfig({ testTimeout: 300_000 })` —
+  applying a migration locks the tables it alters, so proofs in parallel
+  deadlocked (#300), and waiting for the lock is time vitest counts (#304).
+  → `tests/the-proofs-take-turns.test.ts`
+- **CI runs on Windows too.** The main test job takes whichever runner is free.
+  Compare paths through `repoRelative` / `toPosix` in
+  `tests/support/repo-paths.ts`, never `slice(root.length + 1)`; and an npm
+  script never starts with `VAR=1 cmd`, which PowerShell cannot run — set the
+  variable in a node script, as `scripts/build-native.mjs` does (#303).
+
+And one that is not a test: **the local Supabase stack on 54421-54427 is the
+database CI's test job runs the SQL proofs against** (the runner is this
+machine). A branch's migration applied there for a quick look fails every other
+PR's proofs until it is gone; `supabase db reset` from a main checkout puts it
+back.
