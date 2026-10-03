@@ -25,81 +25,19 @@ export type ChurnScored = {
 };
 
 /**
- * Heuristic churn scoring — no AI required. Weighted signals:
- *  - Days since last completed visit (0-40)
- *  - Skipped visits last 90d (0-20)
- *  - QC complaints last 90d (0-20)
- *  - Autopay failure count (0-15)
- *  - Negative credit balance / overdue (0-5)
+ * Churn scoring for Analytics. It had its own weights and wrote the same
+ * churn_score / churn_reason columns as the Clients page's scorer, so a
+ * client's number depended on which button was pressed last. Both now run
+ * churn-run.server.ts, scored by churn-score.ts, which took this scorer's two
+ * signals the other lacked: complaints and failed autopay charges.
  */
 export const scoreChurnHeuristic = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const now = Date.now();
-    const since = new Date(now - 90 * DAY).toISOString().slice(0, 10);
-
-    const { data: clients } = await supabase
-      .from("clients")
-      .select("id, autopay_failure_count, credit_balance_cents")
-      .eq("organization_id", orgId)
-      .eq("active", true);
-
-    const { data: visits } = await supabase
-      .from("visits")
-      .select("client_id, status, scheduled_on, completed_at")
-      .eq("organization_id", orgId)
-      .gte("scheduled_on", since);
-
-    const { data: tickets } = await supabase
-      .from("qc_tickets")
-      .select("client_id, created_at")
-      .eq("organization_id", orgId)
-      .gte("created_at", new Date(now - 90 * DAY).toISOString());
-
-    const byClient = new Map<string, { skipped: number; complaints: number; lastCompleted: string | null }>();
-    for (const c of clients ?? []) byClient.set(c.id, { skipped: 0, complaints: 0, lastCompleted: null });
-    for (const v of visits ?? []) {
-      const rec = byClient.get(v.client_id);
-      if (!rec) continue;
-      if (v.status === "skipped") rec.skipped++;
-      if (v.status === "completed" && v.completed_at) {
-        if (!rec.lastCompleted || v.completed_at > rec.lastCompleted) rec.lastCompleted = v.completed_at;
-      }
-    }
-    for (const t of tickets ?? []) {
-      const rec = byClient.get(t.client_id);
-      if (rec) rec.complaints++;
-    }
-
-    let updated = 0;
-    for (const c of clients ?? []) {
-      const rec = byClient.get(c.id)!;
-      const daysSince = rec.lastCompleted ? (now - new Date(rec.lastCompleted).getTime()) / DAY : 999;
-      const gapScore = Math.min(40, Math.round((daysSince / 45) * 40));
-      const skipScore = Math.min(20, rec.skipped * 5);
-      const complaintScore = Math.min(20, rec.complaints * 8);
-      const payScore = Math.min(15, (c.autopay_failure_count ?? 0) * 5);
-      const balScore = (c.credit_balance_cents ?? 0) < -1000 ? 5 : 0;
-      const score = Math.min(100, gapScore + skipScore + complaintScore + payScore + balScore);
-
-      const reasons: string[] = [];
-      if (gapScore >= 25) reasons.push(`no visit in ${Math.round(daysSince)}d`);
-      if (skipScore > 0) reasons.push(`${rec.skipped} skip${rec.skipped === 1 ? "" : "s"}`);
-      if (complaintScore > 0) reasons.push(`${rec.complaints} complaint${rec.complaints === 1 ? "" : "s"}`);
-      if (payScore > 0) reasons.push(`${c.autopay_failure_count} payment fail(s)`);
-      if (balScore > 0) reasons.push("past-due balance");
-      const reason = reasons.join(" · ") || "healthy";
-
-      await supabase
-        .from("clients")
-        .update({ churn_score: score, churn_reason: reason, churn_scored_at: new Date().toISOString() })
-        .eq("id", c.id)
-        .eq("organization_id", orgId);
-      updated++;
-    }
-    return { scored: updated };
+    const { runChurnScoring } = await import("@/lib/churn-run.server");
+    return runChurnScoring(supabase, orgId);
   });
 
 export const listAtRiskClients = createServerFn({ method: "GET" })

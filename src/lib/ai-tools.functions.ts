@@ -6,7 +6,6 @@ import { generateStructured } from "@/lib/ai.server";
 import { resolveOrgAiCall } from "@/lib/ai-credentials.server";
 import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
 import { MARKETING_AI_LAUNCHED } from "@/lib/ai-launch";
-import { scoreChurnSignals, type ChurnSignals } from "@/lib/churn-score";
 import { suggestZonePrices, zoneSkipRate } from "@/lib/zone-price-suggestion";
 import { buildWeeklyDigestSummary } from "@/lib/digest-insights";
 import { draftReviewReplyFromTemplate } from "@/lib/review-reply-template";
@@ -135,135 +134,16 @@ export const draftReviewReply = createServerFn({ method: "POST" })
 
 // ---------------- Churn scoring ----------------
 
-async function gatherChurnSignals(
-  supabase: any,
-  organizationId: string,
-  clientId?: string,
-): Promise<ChurnSignals[]> {
-  // NB: clients has no `status` column — active clients are `active = true`.
-  //
-  // Paged, all three. These ran unpaged with a 500-client limit, which was
-  // the model's batch size, not anything about the business: PostgREST stops
-  // at 1000 rows without saying so, and thirty days of visits for a few
-  // hundred weekly clients is past that. A visit cut off by the cap is a
-  // client scored as "no completed visit in the last 30 days", which is the
-  // biggest weight in the score, applied to someone who was visited
-  // yesterday (BUG-23, supabase-paging.server.ts).
-  const { fetchAllPages } = await import("@/lib/supabase-paging.server");
-  const clients = await fetchAllPages<any>((from, to) => {
-    let q = supabase
-      .from("clients")
-      .select("id, display_name, created_at, sms_opt_out, active")
-      .eq("organization_id", organizationId)
-      .eq("active", true);
-    if (clientId) q = q.eq("id", clientId);
-    return q.order("id").range(from, to);
-  });
-  if (!clients.length) return [];
-
-  const ids = new Set<string>(clients.map((c: any) => c.id));
-  const now = Date.now();
-  const cutoff = new Date(now - 30 * 24 * 3600_000).toISOString();
-
-  // Org-scoped rather than `.in("client_id", ids)`: a few thousand ids in a
-  // query string is a URL some proxies refuse, and the org filter selects the
-  // same rows. A single-client run narrows to that client.
-  const [visits, invoices] = await Promise.all([
-    fetchAllPages<any>((from, to) => {
-      let q = supabase
-        .from("visits")
-        .select("id, client_id, status, completed_at, scheduled_on")
-        .eq("organization_id", organizationId)
-        .gte("scheduled_on", cutoff.slice(0, 10));
-      if (clientId) q = q.eq("client_id", clientId);
-      return q.order("id").range(from, to);
-    }),
-    fetchAllPages<any>((from, to) => {
-      let q = supabase
-        .from("invoices")
-        .select("id, client_id, status, total_cents")
-        .eq("organization_id", organizationId)
-        .in("status", ["open", "uncollectible"]);
-      if (clientId) q = q.eq("client_id", clientId);
-      return q.order("id").range(from, to);
-    }),
-  ]);
-
-  const visitsBy = new Map<string, any[]>();
-  for (const v of visits) {
-    if (!ids.has(v.client_id)) continue;
-    const list = visitsBy.get(v.client_id) ?? [];
-    list.push(v);
-    visitsBy.set(v.client_id, list);
-  }
-  const invoicesBy = new Map<string, any[]>();
-  for (const i of invoices) {
-    if (!ids.has(i.client_id)) continue;
-    const list = invoicesBy.get(i.client_id) ?? [];
-    list.push(i);
-    invoicesBy.set(i.client_id, list);
-  }
-
-  return clients.map((c: any) => {
-    const cVisits = visitsBy.get(c.id) ?? [];
-    const completed = cVisits.filter((v: any) => v.status === "completed");
-    const skipped = cVisits.filter((v: any) => v.status === "skipped");
-    const lastCompleted = completed
-      .map((v: any) => (v.completed_at ? new Date(v.completed_at).getTime() : 0))
-      .reduce((a: number, b: number) => Math.max(a, b), 0);
-    const cInvs = invoicesBy.get(c.id) ?? [];
-    return {
-      client_id: c.id,
-      display_name: c.display_name,
-      tenure_days: Math.floor((now - new Date(c.created_at).getTime()) / 86400000),
-      days_since_last_visit: lastCompleted ? Math.floor((now - lastCompleted) / 86400000) : null,
-      completed_last_30: completed.length,
-      skipped_last_30: skipped.length,
-      unpaid_invoice_count: cInvs.length,
-      unpaid_total_cents: cInvs.reduce((s: number, i: any) => s + (i.total_cents ?? 0), 0),
-      sms_opt_out: !!c.sms_opt_out,
-    };
-  });
-}
-
 export const scoreChurn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid().optional() }).parse(d ?? {}))
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
-    const signals = await gatherChurnSignals(
-      context.supabase,
-      staff.organization_id,
-      data.clientId,
-    );
-    if (!signals.length) return { scored: 0 };
-
-    // Weighted rules, not a model (churn-score.ts has the weights and why).
-    // No AI action is spent and no paid plan is needed, so the paid-AI gate
-    // that resolveOrgAiCall imposed is gone with it.
-    const scoredAt = new Date().toISOString();
-    const rows = signals.map((s) => ({ client_id: s.client_id, ...scoreChurnSignals(s) }));
-
-    // In batches rather than one at a time: with no 500-client cap an org can
-    // have thousands, and a round trip each, in series, is minutes.
-    const BATCH = 25;
-    for (let i = 0; i < rows.length; i += BATCH) {
-      await Promise.all(
-        rows.slice(i, i + BATCH).map((r) =>
-          context.supabase
-            .from("clients")
-            .update({
-              churn_score: r.score,
-              churn_reason: r.reason,
-              churn_scored_at: scoredAt,
-            })
-            .eq("id", r.client_id)
-            .eq("organization_id", staff.organization_id),
-        ),
-      );
-    }
-    return { scored: rows.length };
+    // Weighted rules, not a model (churn-score.ts has the weights and why),
+    // and the same run Analytics uses (churn-run.server.ts).
+    const { runChurnScoring } = await import("@/lib/churn-run.server");
+    return runChurnScoring(context.supabase, staff.organization_id, data.clientId);
   });
 
 export const listChurnRisk = createServerFn({ method: "GET" })

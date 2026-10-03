@@ -23,6 +23,13 @@
 //   Unpaid balance   up to 25  Linear from $0 to $200, where it caps. Plus 5
 //                              more for two or more unpaid invoices, because a
 //                              second unpaid bill is a pattern and one is not.
+//   Complaints (90d) up to 20  8 per concern or re-clean request. Taken from
+//                              the second scorer this one replaced (Analytics),
+//                              which counted them; a client who keeps
+//                              complaining is telling you before they cancel.
+//   Failed autopay   up to 15  5 per failed charge, also from that scorer: a
+//                              card that keeps declining is often a client who
+//                              has stopped paying attention to the bill.
 //   Opted out of texts    5    Small: it is as often a preference as a signal.
 //   New (< 60 days)      10    New clients cancel more than settled ones.
 //   3+ visits done      -10    Recent regular service is the best evidence
@@ -42,6 +49,11 @@ export interface ChurnSignals {
   unpaid_invoice_count: number;
   unpaid_total_cents: number;
   sms_opt_out: boolean;
+  /** Concerns and re-clean requests in the last 90 days. Optional so a caller
+   *  that does not read them scores as before. */
+  complaints_last_90?: number;
+  /** `clients.autopay_failure_count`. */
+  autopay_failures?: number;
 }
 
 export interface ChurnScore {
@@ -60,6 +72,10 @@ export const UNPAID_MAX = 25;
 export const UNPAID_FULL_AT_CENTS = 20_000;
 export const MULTIPLE_UNPAID_BONUS = 5;
 export const SMS_OPT_OUT_POINTS = 5;
+export const COMPLAINT_POINTS_EACH = 8;
+export const COMPLAINT_MAX = 20;
+export const AUTOPAY_FAILURE_POINTS_EACH = 5;
+export const AUTOPAY_FAILURE_MAX = 15;
 export const NEW_CLIENT_DAYS = 60;
 export const NEW_CLIENT_POINTS = 10;
 export const REGULAR_VISITS = 3;
@@ -136,6 +152,22 @@ export function scoreChurnSignals(s: ChurnSignals): ChurnScore {
             : `${money(unpaidCents)} unpaid`,
       });
     }
+  }
+
+  const complaints = Math.max(0, Math.floor(s.complaints_last_90 ?? 0));
+  if (complaints > 0) {
+    factors.push({
+      points: Math.min(COMPLAINT_MAX, complaints * COMPLAINT_POINTS_EACH),
+      phrase: `${plural(complaints, "complaint")} in 90 days`,
+    });
+  }
+
+  const autopayFails = Math.max(0, Math.floor(s.autopay_failures ?? 0));
+  if (autopayFails > 0) {
+    factors.push({
+      points: Math.min(AUTOPAY_FAILURE_MAX, autopayFails * AUTOPAY_FAILURE_POINTS_EACH),
+      phrase: `${plural(autopayFails, "failed autopay charge")}`,
+    });
   }
 
   if (s.sms_opt_out) factors.push({ points: SMS_OPT_OUT_POINTS, phrase: "opted out of texts" });
