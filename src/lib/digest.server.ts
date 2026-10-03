@@ -417,14 +417,20 @@ export async function generateDigestInsights(
           recommendations: z.array(z.string().min(3).max(200)).min(1).max(4),
         }),
       }),
+      // No limit before, on a call made for every org by a Monday cron. A
+      // digest is a few hundred words; past a minute it is not coming.
+      abortSignal: AbortSignal.timeout(60_000),
+      maxOutputTokens: 1200,
     } as any)) as any;
     const { experimental_output } = result;
 
     // BUILD-2. After the call, so a provider failure that drops into the
     // deterministic fallback below spends no allowance — the org got
     // arithmetic, not analysis, and billing for that would be charging for the
-    // thing we failed to deliver.
-    void (async () => {
+    // thing we failed to deliver. Awaited: on Cloudflare Workers a promise
+    // still pending when the response returns may be cancelled, and this row
+    // is the count the cap and the overage bill read.
+    await (async () => {
       const [{ tokensFromAiSdkResult }, { recordAiUsage }] = await Promise.all([
         import("@/lib/ai-usage"),
         import("@/lib/ai-usage.server"),

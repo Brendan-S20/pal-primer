@@ -88,6 +88,20 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
           return xml(gatherTwiml(nextUrl, greeting), 200);
         }
 
+        // Every spoken turn is a fresh model call and a metered action, and
+        // nothing ended a call that kept going: a caller (or a robocaller, or
+        // a voicemail system talking back) could hold the line and spend the
+        // tenant's allowance a turn at a time. Past the limit it goes to a
+        // person, the same way an escalation does.
+        if (turn > MAX_AI_TURNS_PER_CALL) {
+          return xml(
+            `<Response><Say voice="Polly.Joanna">${escapeXml(
+              "Let me have someone from the office get back to you.",
+            )} Please leave a short message after the tone.</Say><Record maxLength="90" playBeep="true" trim="trim-silence"/><Hangup/></Response>`,
+            200,
+          );
+        }
+
         // Match client by phone digits (best-effort).
         const fromDigits = from.replace(/\D/g, "");
         const { data: candidates } = await supabaseAdmin
@@ -162,6 +176,8 @@ function gatherTwiml(actionUrl: string, sayText: string) {
   // speechTimeout=auto lets Twilio detect end of utterance.
   return `<Response><Gather input="speech" action="${escapeXml(actionUrl)}" method="POST" speechTimeout="auto" speechModel="phone_call" language="en-US"><Say voice="Polly.Joanna">${escapeXml(sayText)}</Say></Gather><Say>I didn't catch that. Goodbye.</Say><Hangup/></Response>`;
 }
+
+const MAX_AI_TURNS_PER_CALL = 8;
 
 function xml(body: string, status: number) {
   return new Response(body, {

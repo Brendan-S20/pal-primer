@@ -43,6 +43,7 @@ export interface AiMeter {
   overAllowance?: boolean;
 }
 
+const REQUEST_TIMEOUT_MS = 120_000;
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -97,12 +98,15 @@ function requireConfig(label: string, config: AiConfig | null): AiConfig {
  * was rejected or that ran out of retries spent nothing the customer asked for,
  * and billing for a failure we could not deliver is not defensible.
  *
- * `void`, not `await`. The customer's result must not wait on our bookkeeping,
- * and recordAiUsage never throws.
+ * Awaited, and it never throws. It used to be `void`, so the customer's result
+ * would not wait on our bookkeeping. But this runs on Cloudflare Workers, where
+ * work still pending when the response goes out may be cancelled, and this row
+ * is what the hard cap counts and what the overage invoice bills. One insert
+ * after seconds of model time is the cheaper trade (2026-10-03).
  */
-function meter(meterOpts: AiMeter | undefined, config: AiConfig, body: unknown): void {
+async function meter(meterOpts: AiMeter | undefined, config: AiConfig, body: unknown): Promise<void> {
   if (!meterOpts) return;
-  void (async () => {
+  await (async () => {
     const [{ tokensFromResponse }, { recordAiUsage }] = await Promise.all([
       import("@/lib/ai-usage"),
       import("@/lib/ai-usage.server"),
@@ -145,10 +149,15 @@ async function callProvider(
         method: "POST",
         headers,
         body: JSON.stringify({ model: config.model, ...body }),
+        // There was no limit at all. Two minutes covers the largest call here
+        // (churn scoring, up to 16k output tokens); past that the request is
+        // hung, and a hung request must not be retried twice more.
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (err) {
-      lastErr = err; // network hiccup — retry
-      continue;
+      lastErr = err;
+      if ((err as Error)?.name === "TimeoutError") break;
+      continue; // network hiccup — retry
     }
     if (res.status === 429 || res.status >= 500) {
       lastErr = new Error(`${config.provider} API returned ${res.status}`);
@@ -170,7 +179,7 @@ async function callProvider(
       throw new AiGenerationError(label, `The AI request was rejected (${res.status})${hint}.`);
     }
     const json = await res.json();
-    meter(meterOpts, config, json);
+    await meter(meterOpts, config, json);
     return json;
   }
   console.error(`[ai] ${label} unavailable after retries`, config.provider, lastErr);

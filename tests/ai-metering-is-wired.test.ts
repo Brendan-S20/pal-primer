@@ -264,16 +264,24 @@ describe("the meter cannot break the feature it meters", () => {
     expect(fn).toMatch(/if \(!state\) return \{ allowed: true/);
   });
 
-  it("the customer never waits on our bookkeeping", () => {
-    // Fire-and-forget at all three sites. An await here puts a database write
-    // between the model's answer and the customer seeing it.
+  it("the meter finishes before the response does", () => {
+    // This was the opposite rule until 2026-10-03: fire-and-forget at all
+    // three sites, so the customer never waited on a database write. But the
+    // app runs on Cloudflare Workers, where a promise still pending when the
+    // response is returned may be cancelled, and this row is what the hard
+    // cap counts and what the overage invoice bills. A dropped row is free AI
+    // and a cap that does not hold. One insert after seconds of model time is
+    // the cheaper side of that trade.
     for (const f of [
       "src/lib/ai.server.ts",
       "src/lib/digest.server.ts",
       "src/lib/ai-receptionist.server.ts",
     ]) {
-      expect(code(read(f)), `${f} awaits its metering`).toMatch(/void \(async \(\)/);
+      const src = code(read(f));
+      expect(src, `${f} meters fire-and-forget again`).not.toMatch(/void \(async \(\)/);
+      expect(src, `${f} no longer meters at all`).toMatch(/await \(async \(\)/);
     }
+    expect(code(read("src/lib/ai.server.ts"))).toMatch(/await meter\(/);
   });
 });
 

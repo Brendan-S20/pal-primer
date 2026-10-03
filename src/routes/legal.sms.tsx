@@ -168,6 +168,11 @@ function SmsPolicyPage() {
           with any third parties, except with our SMS delivery provider solely to send the messages
           you asked for. See our <a href="/legal/privacy">Privacy Policy</a> for full details.
         </p>
+        <p>
+          If the business you are texting has turned on its automated assistant, your message is
+          sent to an AI provider to write the reply, and the assistant says that it is automated.
+          Replying STOP, START or HELP is always handled directly and never by the assistant.
+        </p>
       </section>
 
       <section>

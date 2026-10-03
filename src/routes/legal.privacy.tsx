@@ -108,8 +108,20 @@ function PrivacyPage() {
           <li>Stripe (payment processing and billing)</li>
           <li>Twilio (SMS delivery)</li>
           <li>Resend (email delivery)</li>
+          <li>Google (maps and address suggestions)</li>
+          <li>Geocodio (turning addresses into map locations)</li>
+          <li>
+            Anthropic, and Google through the Lovable AI gateway (the AI features: drafting
+            marketing text and review replies, route and pricing suggestions, the weekly summary,
+            and the AI receptionist)
+          </li>
           <li>Cloud hosting and infrastructure providers</li>
         </ul>
+        <p>
+          When a business turns on its AI receptionist, the text of messages and calls to its
+          number, with the recent conversation, is sent to the AI provider to write the reply. The
+          receptionist says it is an automated assistant.
+        </p>
         <p>
           A business can also choose to connect other services, such as its accounting software or
           an automation tool through a webhook. When it does, the data it chose to send goes to that

@@ -6,11 +6,11 @@
 // that ever ran — the BYO branch was dead code that nonetheless made the
 // product ASK customers for a key it never needed.
 //
-// Tenants buy an AI allowance and pay overages (Q-7). Metering is BUILD-2 and is
-// not built yet, so inference on the platform key is currently uncapped. That
-// was already true before this change — every org was on the platform key — so
-// nothing got riskier here, it got honest. BUILD-2 is now the only thing between
-// us and unmetered spend, which is worth knowing when prioritizing it.
+// Tenants buy an AI allowance and pay overages (Q-7). Metering (BUILD-2) has
+// since landed: every call is recorded in ai_usage_events, `checkAiBudget`
+// refuses at the hard cap, and closed months are billed by the nightly job
+// (ai-overage-billing.server.ts). Unlimited plans are metered but never
+// refused (tests/ai-usage.test.ts says why).
 
 import { resolveAiConfigFromEnv, type AiConfig } from "@/lib/ai.server";
 

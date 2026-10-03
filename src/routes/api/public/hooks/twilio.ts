@@ -131,13 +131,22 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           (org as any).contact_phone?.trim() ||
           (org as any).contact_email?.trim() ||
           "support@houndstack.com";
-        if (client && isStop) {
-          await supabaseAdmin.from("clients").update({ sms_opt_out: true }).eq("id", client.id);
+        // Keywords are answered for EVERY sender, not only a known client.
+        // A stranger's "STOP" used to fall through to the AI receptionist,
+        // which wrote it a reply. Twilio's own opt-out list still blocks the
+        // number afterwards; the record kept here is the client's flag, so
+        // the office sees it.
+        if (isStop) {
+          if (client) {
+            await supabaseAdmin.from("clients").update({ sms_opt_out: true }).eq("id", client.id);
+          }
           reply =
             `${brand}: You are unsubscribed and will receive no further messages. ` +
             `Reply START to resubscribe or HELP for help.`;
-        } else if (client && isStart) {
-          await supabaseAdmin.from("clients").update({ sms_opt_out: false }).eq("id", client.id);
+        } else if (isStart) {
+          if (client) {
+            await supabaseAdmin.from("clients").update({ sms_opt_out: false }).eq("id", client.id);
+          }
           reply =
             `${brand}: You are resubscribed to service messages. ` +
             `Msg & data rates may apply. Reply STOP to opt out or HELP for help.`;
@@ -158,8 +167,33 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           status: "received",
         }).select("id").single();
 
-        // AI receptionist: only if enabled, not a keyword, and not opted out.
-        if (!reply && org.ai_receptionist_enabled && !(client?.sms_opt_out) && body) {
+        // At most AI_REPLIES_PER_SENDER_PER_HOUR model replies to one number.
+        // The monthly cap is the only other brake, and an inbound text is the
+        // one AI call nobody at the business started: a spammer, or two
+        // automated systems answering each other, would spend the tenant's
+        // whole allowance (and its overage) from one phone. Past the limit the
+        // text still lands in Messages and the office is notified below.
+        let senderThrottled = false;
+        if (!reply && org.ai_receptionist_enabled && body) {
+          const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+          const { count } = await supabaseAdmin
+            .from("ai_receptionist_logs")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", org.id)
+            .eq("from_number", from)
+            .gte("created_at", since);
+          senderThrottled = (count ?? 0) >= AI_REPLIES_PER_SENDER_PER_HOUR;
+        }
+
+        // AI receptionist: only if enabled, not a keyword, not opted out, and
+        // not past the per-sender limit.
+        if (
+          !reply &&
+          org.ai_receptionist_enabled &&
+          !(client?.sms_opt_out) &&
+          !senderThrottled &&
+          body
+        ) {
           const { runAiReceptionist } = await import("@/lib/ai-receptionist.server");
           const { data: hist } = await supabaseAdmin
             .from("messages")
@@ -245,6 +279,8 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
     },
   },
 });
+
+const AI_REPLIES_PER_SENDER_PER_HOUR = 10;
 
 function xml(body: string, status: number) {
   return new Response(body, {
