@@ -65,21 +65,34 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS_DIR = join(ROOT, "supabase", "migrations");
 
 /** The catalog snapshot this check compares against. Kept here rather than in a
- *  separate file so the offline form and the psql form cannot drift apart. */
+ *  separate file so the offline form and the psql form cannot drift apart.
+ *
+ *  Names are spelled the way `bare()` spells the expected set: an object in
+ *  `public` by its bare name, anything else qualified (`reference.zip_centroids`).
+ *  Until 2026-10-03 this read `public` only while the replay kept every other
+ *  schema's prefix, so the first table a migration put elsewhere -- the ZIP
+ *  centroids, deliberately in a schema PostgREST does not expose -- was
+ *  reported missing from a database that had it, with 33,791 rows in it. */
 export const CATALOG_SQL = `
+with ns as (
+  select oid, case when nspname = 'public' then '' else nspname || '.' end as prefix
+    from pg_namespace
+   where nspname not like 'pg\\_%' and nspname <> 'information_schema'
+)
 select json_build_object(
-  'functions', (select coalesce(json_agg(distinct p.proname), '[]'::json)
-                  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                 where n.nspname = 'public'),
-  'tables',    (select coalesce(json_agg(distinct c.relname), '[]'::json)
-                  from pg_class c join pg_namespace n on n.oid = c.relnamespace
-                 where n.nspname = 'public' and c.relkind in ('r','v','m','p')),
-  'columns',   (select coalesce(json_agg(distinct (c.table_name || '.' || c.column_name)), '[]'::json)
-                  from information_schema.columns c
-                 where c.table_schema = 'public'),
-  'types',     (select coalesce(json_agg(distinct t.typname), '[]'::json)
-                  from pg_type t join pg_namespace n on n.oid = t.typnamespace
-                 where n.nspname = 'public' and t.typtype = 'e')
+  'functions', (select coalesce(json_agg(distinct ns.prefix || p.proname), '[]'::json)
+                  from pg_proc p join ns on ns.oid = p.pronamespace),
+  'tables',    (select coalesce(json_agg(distinct ns.prefix || c.relname), '[]'::json)
+                  from pg_class c join ns on ns.oid = c.relnamespace
+                 where c.relkind in ('r','v','m','p')),
+  'columns',   (select coalesce(json_agg(distinct ns.prefix || c.relname || '.' || a.attname), '[]'::json)
+                  from pg_attribute a
+                  join pg_class c on c.oid = a.attrelid
+                  join ns on ns.oid = c.relnamespace
+                 where c.relkind in ('r','v','m','p') and a.attnum > 0 and not a.attisdropped),
+  'types',     (select coalesce(json_agg(distinct ns.prefix || t.typname), '[]'::json)
+                  from pg_type t join ns on ns.oid = t.typnamespace
+                 where t.typtype = 'e')
 ) as catalog;
 `;
 
