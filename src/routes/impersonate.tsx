@@ -85,7 +85,7 @@ function ImpersonateConsume() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-sm rounded-lg border bg-card p-6 text-center">
+      <div className="w-full max-w-sm rounded-lg border bg-card p-(--card-pad) text-center">
         {error ? (
           <>
             <ShieldAlert className="mx-auto h-8 w-8 text-destructive shrink-0" />

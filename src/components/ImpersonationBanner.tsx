@@ -226,7 +226,7 @@ export function ImpersonationBanner() {
         aria-label="Impersonation session ended"
         className="fixed inset-0 z-[200] flex items-center justify-center bg-background/95 p-6 backdrop-blur"
       >
-        <div className="w-full max-w-sm rounded-lg border bg-card p-6 text-center shadow-lg">
+        <div className="w-full max-w-sm rounded-lg border bg-card p-(--card-pad) text-center shadow-lg">
           <Clock className="mx-auto h-8 w-8 text-amber-600 shrink-0" />
           <h1 className="mt-3 text-lg font-semibold">Impersonation session ended</h1>
           <p className="mt-2 text-sm text-muted-foreground">

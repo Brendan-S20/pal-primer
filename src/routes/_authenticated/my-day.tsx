@@ -912,7 +912,7 @@ function MyDay() {
         )}
 
         {!staff && isOfficeRole && (
-          <div className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border bg-card p-(--card-pad) text-center text-sm text-muted-foreground">
             {fieldStaff.length === 0 ? t("myDay.noTechnicians") : t("myDay.pickTechnician")}
           </div>
         )}
@@ -1166,7 +1166,7 @@ function MyDayMap({
   // the map rather than of the data. Say which it is.
   if (mappable.length === 0) {
     return (
-      <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
+      <div className="rounded-xl border bg-card p-(--card-pad) text-center text-sm text-muted-foreground">
         {visits.length === 0 ? t("map.nothingScheduled") : t("map.noCoordinates")}
       </div>
     );

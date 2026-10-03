@@ -74,7 +74,7 @@ function AdminLoginPage() {
 
         <form
           onSubmit={handleSignIn}
-          className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur"
+          className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-(--card-pad) backdrop-blur"
         >
           <div className="space-y-2">
             <Label htmlFor="admin-email" className="text-slate-200">Operator email</Label>

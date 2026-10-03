@@ -539,7 +539,7 @@ function PortalBrandedShell({
         <div className="mt-2 text-lg font-semibold">{branding?.orgName ?? "Client portal"}</div>
       </div>
       <div
-        className="rounded-2xl border bg-card p-6 shadow-sm"
+        className="rounded-2xl border bg-card p-(--card-pad) shadow-sm"
         style={{ borderTopColor: brand, borderTopWidth: 3 }}
       >
         {children}

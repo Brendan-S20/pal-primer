@@ -210,7 +210,7 @@ function InvoiceDetail() {
       </Link>
 
       {/* The invoice document: the only thing that prints. */}
-      <div className="invoice-print-area rounded-xl border bg-card p-6 shadow-sm sm:p-8">
+      <div className="invoice-print-area rounded-xl border bg-card p-(--card-pad) shadow-sm sm:p-8">
         {/* Document header: issuer left, invoice meta right */}
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -455,7 +455,7 @@ function InvoiceDetail() {
       {/* Integrated payment card: the shared saved-card / credit / new-card
           panel (one implementation with the invoice drawer, I3). */}
       {payOpen && invoice.status !== "paid" && (
-        <section className="rounded-xl border bg-card p-6 shadow-sm">
+        <section className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
           <SectionLabel>Take payment</SectionLabel>
           <p className="mt-1 font-mono text-xs text-muted-foreground">Invoice {shortId}</p>
           <div className="mt-4 max-w-lg">

@@ -196,13 +196,18 @@ export function ClientHeader({
     <header className="rounded-xl border bg-card px-5 py-4 shadow-sm">
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-4">
+        {/* Below sm the initials circle goes: it is decoration, and beside a
+            name, five chips, a phone and a wrapped email it took a 64px column
+            down the whole header, so a 46-character name truncated at 25
+            characters while the email under it wrapped onto two lines
+            (402px iPhone, 2026-10-03). The name wraps there instead. */}
         <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-semibold text-primary">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-semibold text-primary max-sm:hidden">
             {initials}
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-xl font-semibold">{client.display_name}</h1>
+              <h1 className="text-xl font-semibold break-words max-sm:min-w-0 sm:truncate">{client.display_name}</h1>
               <StatusChip status={derivedStatus} label={STATUS_LABELS[derivedStatus]} />
               {currentHold && (
                 <StatusChip

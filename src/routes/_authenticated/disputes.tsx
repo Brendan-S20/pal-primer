@@ -112,7 +112,7 @@ function DisputesPage() {
           </div>
 
           <Card>
-            <CardContent className="flex flex-wrap items-start justify-between gap-4 pt-6">
+            <CardContent className="flex flex-wrap items-start justify-between gap-4 pt-(--card-pad)">
               <div className="max-w-xl">
                 <Label htmlFor="disputes-analytics" className="text-sm font-medium">
                   Count open disputes as revenue in analytics
@@ -237,7 +237,7 @@ function Stat({
 }) {
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardContent className="pt-(--card-pad)">
         <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
         <div
           className={`mt-1 text-2xl font-semibold tabular-nums ${

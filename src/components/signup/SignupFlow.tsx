@@ -189,7 +189,7 @@ export function SignupFlow({
     form.street.trim();
 
   const serviceCard = (
-    <div className="rounded-2xl border bg-card p-6">
+    <div className="rounded-2xl border bg-card p-(--card-pad)">
       <h2 className="text-base font-semibold">1. Your service</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div className="space-y-1.5">
@@ -270,7 +270,7 @@ export function SignupFlow({
   );
 
   const detailsCard = (
-    <div className="rounded-2xl border bg-card p-6">
+    <div className="rounded-2xl border bg-card p-(--card-pad)">
       <h2 className="text-base font-semibold">2. Your details</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">

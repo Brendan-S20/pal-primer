@@ -183,7 +183,7 @@ function PublicPayPage() {
       )}
 
       {/* The invoice document */}
-      <div className="rounded-xl border bg-card p-6 shadow-sm sm:p-8">
+      <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-lg font-semibold">{data.orgName}</p>
@@ -343,7 +343,7 @@ function PublicPayPage() {
 
       {/* Payment form */}
       {payable && (
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
+        <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
           <h2 className="text-sm font-medium">Pay this invoice</h2>
           {intentQ.isPending && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">

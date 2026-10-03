@@ -373,7 +373,7 @@ function AuthPage() {
 
   return (
     <PublicShell tagline={APP_DESCRIPTION}>
-      <div className="rounded-xl border bg-card p-6 shadow-sm">
+      <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
         <h1 className="text-lg font-semibold">
           {stage === "email" ? "Sign in or create your account" : "Welcome back"}
         </h1>
