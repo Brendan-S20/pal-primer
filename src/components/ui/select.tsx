@@ -118,7 +118,7 @@ const SelectItem = React.forwardRef<
       // The options themselves are targets too, and `py-1.5` around a 20px
       // line box is a 32px row. Picking the wrong service day off a dropdown
       // in a driveway is the exact failure this floor exists to prevent.
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none touch:min-h-11 focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 ps-2 pe-8 text-sm outline-none touch:min-h-11 focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}

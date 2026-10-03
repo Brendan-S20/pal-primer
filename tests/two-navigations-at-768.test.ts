@@ -148,11 +148,12 @@ describe("the consumers pass it on", () => {
   it("My Day's NEXT UP bar clears the sidebar from where it docks, not from md", () => {
     // It is fixed to the viewport and starts at the sidebar's width. Left at
     // `md:`, it would start 256px in on a crew tablet beside no sidebar.
+    // `start-`, not `left-`: in Arabic the sidebar docks on the right.
     const src = codeOnly(read("src/routes/_authenticated/my-day.tsx"));
     expect(src).toMatch(/const \{ docksFrom \} = useSidebar\(\);/);
     expect(src).toMatch(
-      /docksFrom === "lg" \? "lg:left-\(--sidebar-width\)" : "md:left-\(--sidebar-width\)"/,
+      /docksFrom === "lg" \? "lg:start-\(--sidebar-width\)" : "md:start-\(--sidebar-width\)"/,
     );
-    expect(src).not.toMatch(/animate-fade-in md:left-\(--sidebar-width\)/);
+    expect(src).not.toMatch(/animate-fade-in md:(left|start)-\(--sidebar-width\)/);
   });
 });

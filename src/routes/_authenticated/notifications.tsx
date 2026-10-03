@@ -95,7 +95,7 @@ function NotificationsPage() {
               className={`rounded-md px-3 py-1.5 font-medium touch:min-h-11 ${filter === "unread" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             >
               {t("alerts.unread")}{" "}
-              {unread > 0 && <span className="ml-1 text-xs opacity-80">({unread})</span>}
+              {unread > 0 && <span className="ms-1 text-xs opacity-80">({unread})</span>}
             </button>
           </div>
           {unread > 0 && (
@@ -118,7 +118,7 @@ function NotificationsPage() {
                 A labelled control that is off the side of the page is worth
                 less than an icon that is on it; `aria-label` keeps it named
                 for anyone not reading pixels. */}
-            <Settings className="h-4 w-4 sm:mr-1 shrink-0" />
+            <Settings className="h-4 w-4 sm:me-1 shrink-0" />
             <span className="max-sm:sr-only">{t("alerts.settingsShort")}</span>
           </Button>
         </div>
@@ -152,9 +152,17 @@ function NotificationsPage() {
                   {/* The title and body are written by the server, in
                       English, when the event happens; they are stored text,
                       not chrome, and stay as they were written. */}
-                  <div className="min-w-0 flex-1 touch:pr-11">
-                    <div className="text-sm font-medium">{n.title}</div>
-                    {n.body && <div className="text-sm text-muted-foreground">{n.body}</div>}
+                  <div className="min-w-0 flex-1 touch:pe-11">
+                    {/* dir="auto": server-written English, laid out as English
+                        (full stop at the end) inside the Arabic page. */}
+                    <div dir="auto" className="text-sm font-medium">
+                      {n.title}
+                    </div>
+                    {n.body && (
+                      <div dir="auto" className="text-sm text-muted-foreground">
+                        {n.body}
+                      </div>
+                    )}
                     <div className="mt-1 text-xs text-muted-foreground">
                       {timeAgo(n.created_at, t)}
                     </div>
@@ -167,7 +175,7 @@ function NotificationsPage() {
                   {n.link ? (
                     <a href={n.link} onClick={onClick} className="block hover:bg-muted">{inner}</a>
                   ) : (
-                    <button type="button" onClick={onClick} className="block w-full text-left hover:bg-muted">{inner}</button>
+                    <button type="button" onClick={onClick} className="block w-full text-start hover:bg-muted">{inner}</button>
                   )}
                   {/* `hidden group-hover:flex` alone made deleting a
                       notification impossible on a phone: hover does not exist
@@ -196,7 +204,7 @@ function NotificationsPage() {
                       second button doing the same thing, sitting on top of the
                       title it duplicates. `group-focus-within` covers the
                       keyboard, which had the same problem for the same reason. */}
-                  <div className="absolute right-3 top-3 hidden gap-1 group-hover:flex group-focus-within:flex touch:flex">
+                  <div className="absolute end-3 top-3 hidden gap-1 group-hover:flex group-focus-within:flex touch:flex">
                     {!n.read_at && (
                       <button
                         type="button"
@@ -217,7 +225,7 @@ function NotificationsPage() {
                       // grows it to 44 on a phone; `touch:` does the same
                       // wherever the input is a finger, which is the actual condition —
                       // on an iPad this was a 24px destructive control.
-                      className="rounded p-1 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground touch:-mr-1.5 touch:-mt-1.5 touch:p-3.5 touch:opacity-60 touch:-mr-1.5 touch:-mt-1.5 touch:p-3.5 touch:opacity-60"
+                      className="rounded p-1 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground touch:-me-1.5 touch:-mt-1.5 touch:p-3.5 touch:opacity-60 touch:-me-1.5 touch:-mt-1.5 touch:p-3.5 touch:opacity-60"
                     >
                       <X className="h-4 w-4 shrink-0" />
                     </button>

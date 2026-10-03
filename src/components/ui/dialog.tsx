@@ -93,9 +93,10 @@ const DialogContent = React.forwardRef<
       {/* The button carried no size of its own, so it shrank to the icon: a
           16x16 target, on every dialog in the app, including the phone-only
           ones. The icon stays 16px — the BUTTON is 44, the minimum a thumb
-          can reliably hit. Positioned at right-2/top-2 so the glyph lands
-          within a few pixels of where it always has. */}
-      <DialogPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          can reliably hit. Positioned at end-2/top-2 so the glyph lands
+          within a few pixels of where it always has (the top-left corner in
+          Arabic, which reads right to left). */}
+      <DialogPrimitive.Close className="absolute end-2 top-2 flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
         <X className="h-4 w-4 shrink-0" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
@@ -106,7 +107,7 @@ const DialogContent = React.forwardRef<
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
+  <div className={cn("flex flex-col space-y-1.5 text-center sm:text-start", className)} {...props} />
 );
 DialogHeader.displayName = "DialogHeader";
 

@@ -45,6 +45,11 @@ export function useMapRenderer(
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    // A map is never mirrored. In Arabic the page around it reads right to
+    // left (lib/i18n puts dir="rtl" on <html>), but west is still on the left
+    // and the provider lays out its own controls and attribution for a
+    // left-to-right box, so the container opts out of the page's direction.
+    el.setAttribute("dir", "ltr");
     let disposed = false;
     let creating = false;
     let current: MapRenderer | null = null;

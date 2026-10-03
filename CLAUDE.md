@@ -225,8 +225,9 @@ still the best map of where the weak points are.
 The screens a field technician reads in a working day are listed in
 `tests/support/tech-screens.ts` — My Day and everything it opens, the tab bar,
 the sidebar, Preferences. On those screens every word a person reads comes from
-`t()` in `src/lib/i18n/`, with the same key in `en.ts` and `es.ts`. Many
-scooping techs work in Spanish, and the owner who hires them may not.
+`t()` in `src/lib/i18n/`, with the same key in `en.ts`, `es.ts`, `ar.ts` and
+`zh.ts`. Many scooping techs work in Spanish, and the owner who hires them may
+not; Arabic and Simplified Chinese were added on 2026-10-02 on the same screens.
 
 **Why this is stated as a rule:** until 2026-09-29 the language picker existed
 and translated about a dozen strings on My Day. A tech who chose Español got a
@@ -238,9 +239,24 @@ than none, because it tells the owner the job is done.
   strings, literal `aria-label`/`title`/`placeholder`/`alt`, and `toast.*` /
   `confirm*` arguments. The escape is an `i18n-ignore` comment, used once
   (map app brand names), and the test pins that list.
-- `tests/en-and-es-have-the-same-keys.test.ts`: both locales have the same
-  keys, placeholders and plural pairs, and every key a tech screen asks for
-  exists.
+- `tests/en-and-es-have-the-same-keys.test.ts` (named for the first two,
+  covers all four): every locale has every English key and placeholder, and
+  every plural form its language has — Arabic six (`_zero` `_one` `_two`
+  `_few` `_many` `_other`), Chinese only `_other` — checked against
+  `Intl.PluralRules` so the list cannot be invented; and every key a tech
+  screen asks for exists.
+- **Arabic reads right to left.** lib/i18n puts `dir="rtl"` and `lang` on
+  `<html>`. On a tech screen, and in the `ui/` pieces they use, spell a side
+  logically — `ms-`/`me-`/`ps-`/`pe-`/`start-`/`end-`/`text-start`/
+  `rounded-s`/`border-s` — never `ml-`/`pr-`/`left-`/`text-left`, and flip a
+  chevron that means "next" with `rtl:rotate-180`. A code, a ticket number or
+  a phone number goes in `<span dir="ltr">`; a customer's or the office's own
+  text (an address, a name, a note) in `<bdi>`. Maps are never mirrored
+  (`useMapRenderer` sets `dir="ltr"` on its container).
+  `tests/my-day-in-arabic-reads-right-to-left.test.tsx` renders My Day in
+  Arabic and fails on any physical-direction class in the markup, and on any
+  English; `tests/viewports/a-tech-who-reads-arabic-or-chinese.spec.ts`
+  measures it at phone and iPad sizes with touch on.
 - Fixed codes (skip reasons, photo kinds, statuses) are translated by code,
   with English as the fallback. Dates go through the formatters' locale
   argument, not a second formatter.

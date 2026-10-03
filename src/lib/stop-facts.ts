@@ -97,9 +97,21 @@ export function dueCents(f: Pick<StopFacts, "openBalanceCents" | "awaitingCents"
 /** "$40.00", in the tech's locale. US dollars: every business on the platform
  *  bills in them today, and the invoices this is a balance of say so. */
 export function formatMoney(cents: number, locale?: string): string {
-  return new Intl.NumberFormat(locale ?? "en-US", { style: "currency", currency: "USD" }).format(
-    cents / 100,
-  );
+  // narrowSymbol: "$" rather than Chinese's "US$". It is the only dollar
+  // on the platform, and the invoice the customer holds says "$".
+  const s = new Intl.NumberFormat(locale ?? "en-US", {
+    style: "currency",
+    currency: "USD",
+    currencyDisplay: "narrowSymbol",
+  }).format(cents / 100);
+  // Arabic writes "1,250.00 US$" behind a right-to-left mark, and inside a
+  // right-to-left line the bidi algorithm then moves the $ to the other side
+  // of "US": the screen read "$US 1,250.00". An amount is one left-to-right
+  // unit, so it goes in a left-to-right isolate (U+2066 … U+2069) instead.
+  if (locale?.toLowerCase().startsWith("ar")) {
+    return `\u2066${s.replace(/[\u200e\u200f\u061c]/g, "")}\u2069`;
+  }
+  return s;
 }
 
 /** Dollars as typed ("40", "40.5", "$1,040.00") to cents, or null when it is

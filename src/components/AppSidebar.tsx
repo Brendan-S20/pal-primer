@@ -38,6 +38,7 @@ import {
 import { Megaphone } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
+import { dirFor } from "@/lib/i18n";
 
 import {
   Sidebar,
@@ -278,7 +279,7 @@ export function AppSidebar() {
   }, [pathname]);
   const { role } = useMyRole();
   const { staff: me } = useMyProfile();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const isActive = (url: string) =>
     url === "/dashboard"
@@ -333,7 +334,10 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon">
+    // Docked at the reading start: the left edge in English, the right edge
+    // in Arabic. The NEXT UP bar on My Day clears it with `start-` for the
+    // same reason.
+    <Sidebar collapsible="icon" side={dirFor(i18n.language) === "rtl" ? "right" : "left"}>
       <SidebarHeader>
         {/* When collapsed, the menu icons sit centered in a 2rem button within
             the icon rail; match that geometry exactly (same width, centered,
@@ -385,10 +389,10 @@ export function AppSidebar() {
                           (collapsed ? (
                             <span
                               aria-hidden
-                              className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive"
+                              className="absolute end-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive"
                             />
                           ) : (
-                            <span className="ml-auto shrink-0 rounded-full bg-destructive/15 px-1.5 py-0.5 text-2xs font-medium tabular-nums text-destructive">
+                            <span className="ms-auto shrink-0 rounded-full bg-destructive/15 px-1.5 py-0.5 text-2xs font-medium tabular-nums text-destructive">
                               {openReviews > 99 ? "99+" : openReviews}
                             </span>
                           ))}

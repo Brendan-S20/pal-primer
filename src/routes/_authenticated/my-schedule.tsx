@@ -117,7 +117,7 @@ function MySchedulePage() {
                   {d.zones.length > 0 && (
                     <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                       <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      <span className="truncate">{d.zones.join(", ")}</span>
+                      <bdi className="truncate">{d.zones.join(", ")}</bdi>
                     </div>
                   )}
                   {first && (
@@ -127,7 +127,7 @@ function MySchedulePage() {
                     </div>
                   )}
                 </div>
-                <div className="shrink-0 text-right">
+                <div className="shrink-0 text-end">
                   <div className="text-lg font-semibold leading-none tabular-nums">{d.stops}</div>
                   <div className="text-3xs uppercase tracking-wide text-muted-foreground">
                     {t("schedule.stops", { count: d.stops })}

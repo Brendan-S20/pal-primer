@@ -140,11 +140,11 @@ function WasteLogPage() {
           >
             {showForm ? (
               <>
-                <X className="mr-1.5 h-4 w-4 shrink-0" /> {t("common.close")}
+                <X className="me-1.5 h-4 w-4 shrink-0" /> {t("common.close")}
               </>
             ) : (
               <>
-                <Plus className="mr-1.5 h-4 w-4 shrink-0" /> {t("common.add")}
+                <Plus className="me-1.5 h-4 w-4 shrink-0" /> {t("common.add")}
               </>
             )}
           </Button>
@@ -320,9 +320,9 @@ function WasteLogPage() {
               <li key={f.id} className="flex items-center justify-between py-2">
                 <div>
                   <div className="font-medium">
-                    {f.name}
+                    <bdi>{f.name}</bdi>
                     {!f.active && (
-                      <Badge variant="outline" className="ml-2">
+                      <Badge variant="outline" className="ms-2">
                         {t("wasteLog.inactive")}
                       </Badge>
                     )}
@@ -357,9 +357,11 @@ function WasteLogPage() {
                   <div className="font-medium">
                     {formatDay(m.disposed_on, locale)}
                     {" · "}
-                    {m.waste_disposal_facilities?.name || t("wasteLog.noFacility")}
+                    <bdi>{m.waste_disposal_facilities?.name || t("wasteLog.noFacility")}</bdi>
                     {m.ticket_number && (
-                      <span className="ml-2 text-xs text-muted-foreground">#{m.ticket_number}</span>
+                      <span dir="ltr" className="ms-2 text-xs text-muted-foreground">
+                        #{m.ticket_number}
+                      </span>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground">

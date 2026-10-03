@@ -111,7 +111,7 @@ import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { TimeClockCard } from "@/components/TimeClockCard";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
-import { dueCents, newClientKey, type StopFacts } from "@/lib/stop-facts";
+import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
 import {
   CollectForm,
   DogsLine,
@@ -303,7 +303,7 @@ function MyDay() {
   // a sidebar that is no longer there.
   const { docksFrom } = useSidebar();
   const nextUpClearOfSidebar =
-    docksFrom === "lg" ? "lg:left-(--sidebar-width)" : "md:left-(--sidebar-width)";
+    docksFrom === "lg" ? "lg:start-(--sidebar-width)" : "md:start-(--sidebar-width)";
 
   const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
@@ -570,7 +570,7 @@ function MyDay() {
           {online ? t("myDay.loadFailed") : t("myDay.loadFailedOffline")}
         </p>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5 shrink-0" /> {t("common.retryShort")}
+          <RefreshCw className="me-1.5 h-3.5 w-3.5 shrink-0" /> {t("common.retryShort")}
         </Button>
       </div>
     );
@@ -654,7 +654,7 @@ function MyDay() {
                     })}
                   </span>
                 </div>
-                <div className="pl-6 text-xs opacity-90">
+                <div className="ps-6 text-xs opacity-90">
                   {t("myDay.lastUpdated", {
                     when: new Date(freshness.fetchedAt).toLocaleString(locale, {
                       month: "short",
@@ -709,7 +709,7 @@ function MyDay() {
                   a calendar. `pointer-events-none` on the face so the tap
                   always lands on the input beneath it. */}
               <div ref={stripRef} className="relative shrink-0 md:hidden">
-                <div className="pointer-events-none flex min-h-11 items-center gap-2 rounded-lg border bg-background pl-3 pr-2">
+                <div className="pointer-events-none flex min-h-11 items-center gap-2 rounded-lg border bg-background ps-3 pe-2">
                   <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <span className="whitespace-nowrap text-sm font-medium">
                     {/* The weekday is the first 47px to go, and only below
@@ -721,7 +721,7 @@ function MyDay() {
                       {new Date(`${day}T00:00:00`).toLocaleDateString(locale, {
                         weekday: "short",
                       })}
-                      {", "}
+                      {t("myDay.weekdaySeparator")}
                     </span>
                     {new Date(`${day}T00:00:00`).toLocaleDateString(locale, {
                       month: "short",
@@ -779,7 +779,7 @@ function MyDay() {
                 <div className="min-w-0 shrink-0 truncate text-xs font-medium">
                   {completedCount} {t("common.of")} {total} {t("common.done")}
                   {skippedCount > 0 && (
-                    <span className="ml-1 font-normal text-muted-foreground">
+                    <span className="ms-1 font-normal text-muted-foreground">
                       · {t("myDay.skippedCount", { count: skippedCount })}
                     </span>
                   )}
@@ -1005,7 +1005,10 @@ function MyDay() {
                     nothing after it. No number, no "#". */}
                 {nextUp.sequence != null && ` · #${nextUp.sequence}`}
               </div>
-              <div className="truncate text-sm font-semibold">{nextUp.clients?.display_name}</div>
+              {/* The customer's name in its own direction, as on the card. */}
+              <div dir="auto" className="truncate text-sm font-semibold rtl:text-right">
+                {nextUp.clients?.display_name}
+              </div>
             </div>
             <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md">
               {activeVisit ? t("myDay.resume") : t("myDay.jump")}{" "}
@@ -1284,7 +1287,7 @@ function HazardBanner({ property }: { property: any }) {
       )}
       {notes && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-800 dark:text-amber-300">
-          <span className="font-semibold">{t("hazard.notes")}</span> {notes}
+          <span className="font-semibold">{t("hazard.notes")}</span> <bdi>{notes}</bdi>
         </div>
       )}
     </div>
@@ -1449,7 +1452,11 @@ function AccessFact({
         <div
           className={`leading-tight ${mono ? "font-mono text-base font-semibold tabular-nums" : "text-sm"}`}
         >
-          {value}
+          {/* A code is read left to right in every language: "*1234#" in an
+              Arabic card would otherwise have its * and # moved to the far
+              ends by the bidi algorithm. Free text (where the key is) keeps
+              its own direction instead. */}
+          {mono ? <span dir="ltr">{value}</span> : <bdi>{value}</bdi>}
         </div>
       </div>
     </div>
@@ -1860,7 +1867,7 @@ function VisitCard({
           fileInput.current?.click();
         }}
       >
-        <Camera className="mr-1.5 h-4 w-4 shrink-0" />
+        <Camera className="me-1.5 h-4 w-4 shrink-0" />
         {uploading ? t("photo.uploading") : t("photo.take")}
       </Button>
     </div>
@@ -1921,9 +1928,18 @@ function VisitCard({
               (it is who you greet, and who you are calling) and keeps the line
               below. */}
           <div className="mt-1 text-lg font-bold leading-tight">
-            {p?.street ?? visit.clients?.display_name ?? t("visit.fallbackTitle")}
+            {/* <bdi>: an address or a name is the customer's text, in
+                whatever script they wrote it. Isolated, it keeps its own
+                order ("12 Elm St.", "Smith (rental)") inside an Arabic card
+                instead of borrowing the card's right-to-left. */}
+            <bdi>{p?.street ?? visit.clients?.display_name ?? t("visit.fallbackTitle")}</bdi>
           </div>
-          <div className="truncate text-sm text-muted-foreground">
+          {/* All the customer's own text, so it takes ITS direction, not the
+              page's (dir="auto"): in Arabic a long English name truncates at
+              its own end -- "Chicago 60611 · Chesterfield Prop…" -- instead
+              of losing its first word off the left. Still right-aligned there,
+              under the address. */}
+          <div dir="auto" className="truncate text-sm text-muted-foreground rtl:text-right">
             {[p?.city, p?.postal_code].filter(Boolean).join(" ")}
             {p?.city || p?.postal_code ? " · " : ""}
             {visit.clients?.display_name ?? t("visit.fallbackClient")}
@@ -2081,7 +2097,8 @@ function VisitCard({
                     ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
                   {visit.skip_reason_code ? ` (${skipReasonLabel(t, visit.skip_reason_code)})` : ""}
-                  {visit.skip_reason ? `: ${visit.skip_reason}` : ""}
+                  {visit.skip_reason ? ": " : ""}
+                  {visit.skip_reason ? <bdi>{visit.skip_reason}</bdi> : null}
                 </div>
               )}
             </>
@@ -2146,7 +2163,7 @@ function VisitCard({
                 onOpen={() => setLightboxIndex(i)}
                 onUrl={(u) => setPhotoUrl(ph.id, u)}
               />
-              <span className="pointer-events-none absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
+              <span className="pointer-events-none absolute -bottom-1 -end-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
                 {t(`photoKind.${ph.kind}`, { defaultValue: photoKindLabel(ph.kind) })}
               </span>
             </div>
@@ -2248,7 +2265,7 @@ function VisitCard({
                       }
                     />
                     <span className="min-w-0 flex-1 text-sm leading-snug [overflow-wrap:anywhere]">
-                      {item.label}
+                      <bdi>{item.label}</bdi>
                       {item.required && (
                         <span className="text-xs text-muted-foreground">
                           {" "}
@@ -2271,6 +2288,9 @@ function VisitCard({
                   </Label>
                   <Textarea
                     id={`visit-note-${visit.id}`}
+                    // Typed text takes the direction of its first letter, so
+                    // an English note in the Arabic app reads left to right.
+                    dir="auto"
                     rows={2}
                     maxLength={1000}
                     placeholder={t("visit.notePlaceholder")}
@@ -2489,7 +2509,7 @@ function VisitCard({
                     is the phone's button, and an iPad is a phone for a thumb. */}
                 {onLogExpense && (
                   <Button size="sm" variant="outline" className="h-11 px-4" onClick={onLogExpense}>
-                    <ReceiptText className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <ReceiptText className="me-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     {t("expense.logAnExpense")}
                   </Button>
                 )}
@@ -2579,7 +2599,7 @@ function VisitCard({
                       <option value="">{t("addon.selectService")}</option>
                       {addonServices.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name}: ${(s.unit_price_cents / 100).toFixed(2)}
+                          {s.name}: {formatMoney(s.unit_price_cents, locale)}
                         </option>
                       ))}
                     </select>
@@ -2608,7 +2628,7 @@ function VisitCard({
                         <AlertDialogHeader>
                           <AlertDialogTitle>
                             {t("addon.confirmTitle", {
-                              amount: `$${(totalCents / 100).toFixed(2)}`,
+                              amount: formatMoney(totalCents, locale),
                               client: visit.clients?.display_name ?? t("addon.thisClient"),
                             })}
                           </AlertDialogTitle>
@@ -2646,7 +2666,7 @@ function VisitCard({
                   </div>
                   {svc && (
                     <p className="text-2xs font-medium">
-                      {t("addon.total", { amount: `$${(totalCents / 100).toFixed(2)}` })}
+                      {t("addon.total", { amount: formatMoney(totalCents, locale) })}
                     </p>
                   )}
                   {!cardOnline && (

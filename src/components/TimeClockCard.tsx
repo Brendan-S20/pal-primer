@@ -21,7 +21,8 @@ import { useTranslation } from "react-i18next";
 import { useIntlLocale } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { clockIn, clockOut, getMyClock, type MyClock } from "@/lib/time-clock.functions";
-import { formatDuration, minutesBetween, minutesOnDay } from "@/lib/time-clock";
+import { minutesBetween, minutesOnDay } from "@/lib/time-clock";
+import type { TFunction } from "i18next";
 import { orgLocalTime, orgToday } from "@/lib/org-day";
 import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
@@ -76,7 +77,7 @@ export function TimeClockCard({
   const shiftMinutes = open ? minutesBetween(open.clock_in, now) : 0;
 
   const summarise = (minutes: number, visits: number | null) => {
-    const parts = [t("clock.today", { duration: formatDuration(minutes) })];
+    const parts = [t("clock.today", { duration: durationLabel(t, minutes) })];
     if (visits != null) parts.push(t("clock.visitsCompleted", { count: visits }));
     return parts.join(" · ");
   };
@@ -155,18 +156,18 @@ export function TimeClockCard({
               button that sentence truncated exactly the part being asked
               about, the time. */}
           {open
-            ? t("clock.onTheClock", { duration: formatDuration(shiftMinutes) })
+            ? t("clock.onTheClock", { duration: durationLabel(t, shiftMinutes) })
             : t("clock.offTheClock")}
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {open
             ? `${t("clock.since", { time: orgLocalTime(open.clock_in, tz, locale) })}${
                 earlierToday >= 1
-                  ? ` · ${t("clock.today", { duration: formatDuration(todayMinutes) })}`
+                  ? ` · ${t("clock.today", { duration: durationLabel(t, todayMinutes) })}`
                   : ""
               }`
             : todayMinutes >= 1
-              ? t("clock.today", { duration: formatDuration(todayMinutes) })
+              ? t("clock.today", { duration: durationLabel(t, todayMinutes) })
               : t("clock.prompt")}
         </p>
         {shown.queued && (
@@ -189,4 +190,15 @@ export function TimeClockCard({
       </Button>
     </section>
   );
+}
+
+/** "3h 12m" in the interface language: "3 س 12 د", "3小时12分钟".
+ *  lib/time-clock's formatDuration is the same arithmetic in English, and stays
+ *  English for the office's timesheets, which are not a tech screen. */
+function durationLabel(t: TFunction, minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h === 0) return t("duration.minutes", { m: r });
+  return r === 0 ? t("duration.hours", { h }) : t("duration.hoursMinutes", { h, m: r });
 }

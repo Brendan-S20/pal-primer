@@ -32,7 +32,10 @@ const Switch = React.forwardRef<
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        "pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0",
+        // A logical margin, not translate-x-4: a transform is physical, so in
+        // Arabic (dir=rtl) the thumb starts at the right and `translate-x-4`
+        // pushed it out of the track instead of across it.
+        "pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-[margin] data-[state=checked]:ms-4 data-[state=unchecked]:ms-0",
       )}
     />
   </SwitchPrimitives.Root>

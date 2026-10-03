@@ -93,8 +93,12 @@ export function PhotoLightbox({
   useEffect(() => {
     if (openIndex === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") go(-1);
-      if (e.key === "ArrowRight") go(1);
+      // In Arabic the photos run right to left, so the arrow that points
+      // backwards is the right-hand one.
+      const back = document.documentElement.dir === "rtl" ? "ArrowRight" : "ArrowLeft";
+      const forward = back === "ArrowLeft" ? "ArrowRight" : "ArrowLeft";
+      if (e.key === back) go(-1);
+      if (e.key === forward) go(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -161,17 +165,19 @@ export function PhotoLightbox({
                   type="button"
                   onClick={() => go(-1)}
                   aria-label={t("photo.previous")}
-                  className="absolute left-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
+                  className="absolute start-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
                 >
-                  <ChevronLeft className="h-6 w-6 shrink-0" />
+                  {/* Previous sits at the reading start and points at it: left in
+                        English, right in Arabic. */}
+                    <ChevronLeft className="h-6 w-6 shrink-0 rtl:rotate-180" />
                 </button>
                 <button
                   type="button"
                   onClick={() => go(1)}
                   aria-label={t("photo.next")}
-                  className="absolute right-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
+                  className="absolute end-1 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/90 transition-colors hover:bg-black/60 active:bg-black/70"
                 >
-                  <ChevronRight className="h-6 w-6 shrink-0" />
+                  <ChevronRight className="h-6 w-6 shrink-0 rtl:rotate-180" />
                 </button>
               </>
             )}

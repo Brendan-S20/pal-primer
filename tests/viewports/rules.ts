@@ -306,6 +306,16 @@ export async function findSilentlyClippedText(page: Page): Promise<string[]> {
             `<${el.tagName.toLowerCase()}> "${own.slice(0, 40)}" runs ${Math.round(r.right - edge)}px past the clip`,
           );
         }
+        // Right to left (Arabic), text that does not fit runs out of the
+        // LEFT side of its box, and a right-edge check alone sees nothing.
+        // Asked only of a right-to-left box, so no left-to-right page is
+        // measured any differently than it was.
+        const start = box.getBoundingClientRect().left;
+        if (bcs.direction === "rtl" && r.left < start - 1) {
+          out.push(
+            `<${el.tagName.toLowerCase()}> "${own.slice(0, 40)}" runs ${Math.round(start - r.left)}px past the clip, on the left`,
+          );
+        }
       }
     }
     return out;

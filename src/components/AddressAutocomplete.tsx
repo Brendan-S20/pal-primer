@@ -263,7 +263,7 @@ export function AddressAutocomplete({
           aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
         />
         {ui.spinner && (
-          <Loader2 className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground shrink-0" />
+          <Loader2 className="absolute end-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground shrink-0" />
         )}
       </div>
 
@@ -304,7 +304,7 @@ export function AddressAutocomplete({
               <span className="min-w-0 break-words">
                 <span className="font-medium">{s.mainText}</span>
                 {s.secondaryText && (
-                  <span className="ml-1 text-muted-foreground">{s.secondaryText}</span>
+                  <span className="ms-1 text-muted-foreground">{s.secondaryText}</span>
                 )}
               </span>
             </li>
