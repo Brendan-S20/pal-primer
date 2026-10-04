@@ -657,6 +657,21 @@ const en = {
     subtitleOneSection: "How the app works on this device.",
     subtitle: "Configure how your business runs.",
   },
+  routingRun: {
+    planning: "Planning routes…",
+    stageRoadTimes: "Road times {{done}}/{{total}}",
+    stageOptimizing: "Optimizing {{done}}/{{total}}",
+    stageSaving: "Saving routes",
+    ready: "Routes ready, review",
+    failed: "Routing did not finish",
+    openPlanning: "Auto-routing is running. Open it.",
+    openReview: "Routes are ready. Open the review.",
+    openFailed: "Auto-routing did not finish. See why.",
+    readyToast: "Routes ready",
+    readyToastBody: "Auto-routing finished while you were on another screen.",
+    failedToast: "Auto-routing did not finish",
+    review: "Review",
+  },
   preferences: {
     title: "Preferences",
     subtitleDevice:

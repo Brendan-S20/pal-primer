@@ -656,6 +656,21 @@ const es: Translations = {
     subtitleOneSection: "Cómo funciona la app en este dispositivo.",
     subtitle: "Configura cómo funciona tu negocio.",
   },
+  routingRun: {
+    planning: "Planificando rutas…",
+    stageRoadTimes: "Tiempos de manejo {{done}}/{{total}}",
+    stageOptimizing: "Optimizando {{done}}/{{total}}",
+    stageSaving: "Guardando rutas",
+    ready: "Rutas listas, revisar",
+    failed: "La planificación no terminó",
+    openPlanning: "La planificación automática está en curso. Abrirla.",
+    openReview: "Las rutas están listas. Abrir la revisión.",
+    openFailed: "La planificación automática no terminó. Ver por qué.",
+    readyToast: "Rutas listas",
+    readyToastBody: "La planificación automática terminó mientras estabas en otra pantalla.",
+    failedToast: "La planificación automática no terminó",
+    review: "Revisar",
+  },
   preferences: {
     title: "Preferencias",
     subtitleDevice:

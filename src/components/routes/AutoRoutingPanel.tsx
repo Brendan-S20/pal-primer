@@ -50,18 +50,48 @@
  * job was to explain why a headline covered fewer days than it planned; with
  * the headline reduced to one line, the all-or-nothing case it exists for is
  * what that line now says outright.
+ *
+ * ── AND IT CAN BE SENT TO THE BACKGROUND (2026-10-04) ─────────────────────
+ *
+ * The owner: "When utilizing the auto-routing and it takes a while, allow it
+ * to be dismissed to run in a background." Cancel used to be disabled for the
+ * whole run, and the run was one request that only this card was waiting on.
+ *
+ * Now Apply starts a RUN (routing_runs, see auto-routing.server.ts) under an
+ * id this card chooses, and the card watches the run's row rather than the
+ * request. While it is going, Cancel reads "Run in background" and closing the
+ * card by any route (that button, the X, Escape, Android's back) leaves it
+ * running. The app header carries a pill that says so on every page
+ * (RoutingRunIndicator), and tapping it comes back here.
+ *
+ * The result is still said by the toasts below, in the same words, from the
+ * same object -- which the server now keeps on the run. If the card is open
+ * when the run finishes, they appear then, as before. If it was dismissed,
+ * the header says "Routes ready, review", and opening the card replays them
+ * once and marks the run seen. There is still no preview and no confirm step:
+ * the run writes the routes, all of its days in one transaction, and a run
+ * that is cut off before that write has changed nothing.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarDays, Check, ChevronDown, Clock, Users, Wand2, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Clock, Loader2, Users, Wand2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { applyOptimize, getDispatchSettings } from "@/lib/visits.functions";
+import { getDispatchSettings } from "@/lib/visits.functions";
+import { markRoutingRunSeen, startRoutingRun } from "@/lib/routing-runs.functions";
+import type { AutoRouteResult } from "@/lib/auto-routing.server";
 import type { RoadLegProblem } from "@/lib/road-legs.server";
+import {
+  failureKind,
+  indicatorState,
+  progressFraction,
+  type RoutingRunRow,
+} from "@/lib/routing-run";
+import { ROUTING_RUNS_KEY, routingUi, useRoutingRuns } from "@/hooks/useRoutingRuns";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 
@@ -152,8 +182,29 @@ const ROAD_LEG_REASON: Record<RoadLegProblem, string> = {
   save_failed: "The measurements could not be saved.",
 };
 
-/** applyOptimize's measurement, or null when it could not be taken. */
-type Forecast = Awaited<ReturnType<typeof applyOptimize>>["forecast"];
+/** The run's measurement, or null when it could not be taken. */
+type Forecast = AutoRouteResult["forecast"];
+
+/** What the card says while a run is going, in the order the run goes. */
+const stageLine = (run: RoutingRunRow | null) => {
+  if (!run || !run.stage) return "Starting…";
+  const of = run.days_total > 1 ? ` (day ${Math.min(run.days_done + 1, run.days_total)} of ${run.days_total})` : "";
+  if (run.stage === "road_times") return `Fetching road times${of}`;
+  if (run.stage === "optimizing") return `Optimizing${of}`;
+  return "Saving the routes";
+};
+
+/** Why a run did not finish, in the words a dispatcher can act on. */
+const failureLine = (run: RoutingRunRow) => {
+  const kind = failureKind(run);
+  if (kind === "abandoned") {
+    return "Auto-routing stopped before it finished, so nothing was changed. Run it again.";
+  }
+  if (kind === "abandoned_saved") {
+    return "Auto-routing saved the routes but stopped before it could report on them. Check the board.";
+  }
+  return run.error || "Auto-routing did not finish.";
+};
 
 function Pill({
   icon: Icon,
@@ -191,14 +242,18 @@ export function AutoRoutingPanel({
   staff,
   onApplied,
   onClose,
+  onReviewDay,
 }: {
   day: string;
   staff: any[];
   onApplied: () => void;
   onClose: () => void;
+  /** Show this day on the board: the first day of a run being reviewed. */
+  onReviewDay?: (day: string) => void;
 }) {
   const qc = useQueryClient();
-  const applyFn = useServerFn(applyOptimize);
+  const startFn = useServerFn(startRoutingRun);
+  const seenFn = useServerFn(markRoutingRunSeen);
   const tz = useOrgTimezone();
 
   const techs = useMemo(() => staff.filter((s: any) => s.is_field_tech), [staff]);
@@ -255,10 +310,126 @@ export function AutoRoutingPanel({
 
   const rangeValid = Boolean(from && to && to >= from);
 
+  // ── THE RUN ─────────────────────────────────────────────────────────────
+  //
+  // The run this card is showing: one in progress (this person's, or one
+  // they attached to), else the newest finished one they have not looked at.
+  const { runs, serverNow } = useRoutingRuns();
+  const shown = indicatorState(runs, serverNow);
+  const activeRun = shown.kind === "running" ? shown.run : null;
+  // Runs this card watched while they were going, so a finish it sees is
+  // announced LIVE (and the card closes, as Apply always did) rather than
+  // replayed as a review.
+  const sawRunning = useRef(new Set<string>());
+  if (activeRun) sawRunning.current.add(activeRun.id);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    routingUi.setPanelOpen(true);
+    return () => {
+      mounted.current = false;
+      routingUi.setPanelOpen(false);
+    };
+  }, []);
+
   const applyMut = useMutation({
-    mutationFn: () =>
-      applyFn({ data: { staffIds: chosen, from, to, level: LEVEL, reassign: true, windows } }),
-    onSuccess: (r) => {
+    mutationFn: async () => {
+      // The id is chosen here so the card can watch the run's row before the
+      // request comes back -- which, if the app is closed, it never does.
+      const runId = crypto.randomUUID();
+      routingUi.starting(runId);
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY }), 400);
+      try {
+        return await startFn({
+          data: { runId, staffIds: chosen, from, to, level: LEVEL, reassign: true, windows },
+        });
+      } finally {
+        routingUi.started(runId);
+      }
+    },
+    onSuccess: (out) => {
+      void qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY });
+      if (out.attached) {
+        // One active run per organization. A second press watches the first
+        // rather than starting a planner over the same visits.
+        if (!out.mine) routingUi.attach(out.runId);
+        toast.info(
+          out.fromDay === out.toDay
+            ? `Routes for ${shortDay(out.fromDay)} are already being planned. Showing that run.`
+            : `Routes for ${shortDay(out.fromDay)} to ${shortDay(out.toDay)} are already being planned. Showing that run.`,
+        );
+        return;
+      }
+      // Dismissed while it ran: the header indicator announces it instead.
+      if (!mounted.current) return;
+      if (!routingUi.claim(`finished:${out.runId}`)) return;
+      routingUi.claim(`review:${out.runId}`);
+      if (out.status === "succeeded") finishLive(out.runId, out.result, from, to);
+      else {
+        toast.error(out.error);
+        void seenFn({ data: { runId: out.runId } });
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // A finish this card saw on the poll rather than on its own request (the
+  // request went to another tab, or the card was reopened mid-run), and a
+  // finished run nobody has looked at yet (the review).
+  const shownId = shown.kind === "idle" ? null : shown.run.id;
+  useEffect(() => {
+    if (shown.kind !== "ready" && shown.kind !== "failed") return;
+    const run = shown.run;
+    const live = sawRunning.current.has(run.id);
+    const key = live ? `finished:${run.id}` : `review:${run.id}`;
+    if (!routingUi.claim(key)) return;
+    routingUi.claim(`review:${run.id}`);
+    if (!live) {
+      // Put the card and the board back on what was routed.
+      setFrom(run.from_day);
+      setTo(run.to_day);
+      setWindows(run.windows);
+      setPicked(
+        run.staff_ids.length >= techs.length ? new Set() : new Set(run.staff_ids),
+      );
+      onReviewDay?.(run.from_day);
+    }
+    if (shown.kind === "ready" && run.result) {
+      if (live) finishLive(run.id, run.result as unknown as AutoRouteResult, run.from_day, run.to_day);
+      else {
+        announce(run.result as unknown as AutoRouteResult, run.from_day, run.to_day);
+        void seenFn({ data: { runId: run.id } }).then(() =>
+          qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY }),
+        );
+      }
+    } else {
+      toast.error(failureLine(run), { duration: 12000 });
+      void seenFn({ data: { runId: run.id } }).then(() =>
+        qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY }),
+      );
+    }
+    // Keyed on the run and its state; the setters and callbacks are stable
+    // enough, and re-running on them would only hit the claim and return.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownId, shown.kind]);
+
+  /** A run this card watched has finished: say so, refresh the board, mark
+   *  it seen, and close, which is what Apply has always done. */
+  function finishLive(runId: string, r: AutoRouteResult, runFrom: string, runTo: string) {
+    announce(r, runFrom, runTo);
+    qc.invalidateQueries({ queryKey: ["visits"] });
+    onApplied();
+    void seenFn({ data: { runId } }).then(() =>
+      qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY }),
+    );
+    onClose();
+  }
+
+  /** Everything a finished run has to say, as toasts. Unchanged in wording
+   *  from when it was the mutation's onSuccess; `from` and `to` are the
+   *  run's, which on a review are not necessarily the card's. */
+  function announce(r: AutoRouteResult, from: string, to: string) {
+    {
       // The split is the point, so it is what the toast says. "Re-ordered 20
       // stops" was true both before and after the fix for the bug where all
       // twenty landed on one technician — it could not tell the dispatcher
@@ -409,12 +580,8 @@ export function AutoRoutingPanel({
       if (r.skipped.length > 3) {
         toast.warning(`${r.skipped.length - 3} more day(s) skipped.`, { duration: 8000 });
       }
-      qc.invalidateQueries({ queryKey: ["visits"] });
-      onApplied();
-      onClose();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+    }
+  }
 
   // Escape closes the card. It floats above the board, so the usual instinct
   // for "get this out of my way" has to work.
@@ -428,7 +595,10 @@ export function AutoRoutingPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [section, onClose]);
 
-  const busy = applyMut.isPending;
+  // Busy for as long as a run is going, whoever's tab started it. Apply waits;
+  // closing does not.
+  const busy = applyMut.isPending || activeRun != null;
+  const fraction = activeRun ? progressFraction(activeRun) : null;
 
   const dateLabel = from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`;
   const techLabel =
@@ -630,6 +800,27 @@ export function AutoRoutingPanel({
             them. */}
       </div>
 
+      {busy && (
+        <div role="status" aria-live="polite" className="space-y-1.5 border-t px-3 py-2">
+          <div className="flex items-center gap-1.5 text-2xs font-medium">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+            <span className="min-w-0 truncate">{stageLine(activeRun)}</span>
+          </div>
+          {fraction != null && (
+            <div className="h-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-[width] duration-500"
+                style={{ width: `${Math.round(fraction * 100)}%` }}
+              />
+            </div>
+          )}
+          <p className="text-2xs leading-relaxed text-muted-foreground">
+            You can close this. It keeps going, and the top bar shows when the routes are
+            ready.
+          </p>
+        </div>
+      )}
+
       {noStart.length > 0 && (
         <div className="border-t px-3 py-2">
           <p className="text-2xs leading-relaxed text-muted-foreground">
@@ -646,8 +837,10 @@ export function AutoRoutingPanel({
       )}
 
       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
-        <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
-          Cancel
+        {/* Never disabled now. While a run is going this is how it is sent to
+            the background, and the run carries on without the card. */}
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          {busy ? "Run in background" : "Cancel"}
         </Button>
         {/* One button. The guard that used to live on Apply — "a preview
             exists" — was really a guard on the INPUTS, so that is what it is
@@ -666,7 +859,7 @@ export function AutoRoutingPanel({
                 : undefined
           }
         >
-          {applyMut.isPending ? "Applying…" : "Apply"}
+          {busy ? "Planning…" : "Apply"}
         </Button>
       </div>
     </div>

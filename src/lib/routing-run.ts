@@ -17,6 +17,8 @@
 // "abandoned" -- declared by whoever next looks, because a Worker that died
 // cannot say so itself.
 
+import type { Json } from "@/integrations/supabase/types";
+
 /** How hard the solver searches. The panel always sends "thorough"; see the
  *  note on LEVEL in AutoRoutingPanel.tsx. */
 export const LEVELS = ["fast", "balanced", "thorough"] as const;
@@ -37,7 +39,8 @@ export type RoutingRunRow = {
   stage: RunStage | null;
   days_total: number;
   days_done: number;
-  result: unknown;
+  /** AutoRouteResult, as the run stored it. */
+  result: Json | null;
   error: string | null;
   applied_at: string | null;
   watched_at: string | null;
