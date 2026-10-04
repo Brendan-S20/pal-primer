@@ -170,7 +170,8 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
   // this file has already checked that the client and property are this
   // organization's, which is the check the wrapper adds.
   const { error: gErr } = input.asService
-    ? await (db as any).rpc("generate_visits_core", {
+    ? // rpc-role: service (only on the service-role path; see above)
+      await (db as any).rpc("generate_visits_core", {
         _org_id: input.orgId,
         _through: input.scheduledOn,
         _subscription_id: sub.id,

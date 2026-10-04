@@ -90,8 +90,12 @@ for (const file of walk(join(root, "src"))) {
   // recognised only the name `supabaseAdmin` would call it authenticated and
   // report three false findings.
   const serviceClients = new Set(["supabaseAdmin", "admin"]);
+  // `admin(` and any helper whose name ends in `adminClient(` (campaigns
+  // .functions.ts wraps supabaseAdmin in `adminClient()`). Missing that one
+  // reported two correct lockdowns as findings the first time this check
+  // actually ran (2026-10-03).
   for (const m of text.matchAll(
-    /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:await\s+)?admin\s*\(/g,
+    /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:await\s+)?(?:admin|[A-Za-z_$]*[aA]dminClient)\s*\(/g,
   )) {
     serviceClients.add(m[1]);
   }
@@ -103,6 +107,12 @@ for (const file of walk(join(root, "src"))) {
 
   for (const m of text.matchAll(CALL)) {
     if (serviceClients.has(m[1])) continue;
+    // A call made on a client this file cannot classify by name, but that
+    // only ever runs as the service role, says so in a comment within the
+    // three lines above it: `// rpc-role: service`. one-off-visit.server.ts
+    // calls generate_visits_core on `db` only when `input.asService`.
+    const before = text.slice(0, m.index).split("\n").slice(-4).join("\n");
+    if (/rpc-role:\s*service/.test(before)) continue;
     const line = text.slice(0, m.index).split("\n").length;
     if (!authenticated.has(m[2])) authenticated.set(m[2], []);
     authenticated.get(m[2]).push(`${rel}:${line}`);
@@ -132,7 +142,13 @@ SELECT p.proname,
        has_function_privilege('authenticated', p.oid, 'EXECUTE')
   FROM pg_proc p
  WHERE p.pronamespace = 'public'::regnamespace
-   AND p.proname = ANY($$${names.join(",")}$$::text[]);`;
+   AND p.proname = ANY('{${names.join(",")}}'::text[]);`;
+// The braces are the array literal; the names are matched by
+// `[a-z_][a-z0-9_]*` above, so a single-quoted literal is safe. Until 2026-10-03 this read
+// `$$a,b,c$$::text[]` (no braces), which Postgres rejects as a malformed array literal,
+// and the catch below reported that as "could not reach the database" and
+// exited 0. So from the day it landed (#193) the check never ran once: twelve
+// "malformed array literal" errors a day in the production log, and green.
 
 let rows;
 try {
@@ -148,10 +164,20 @@ try {
       return { proname, args, can: can === "t" };
     });
 } catch (e) {
-  console.log(
-    `? could not reach the database (${e.message.split("\n")[0]}); not treating that as a failure.`,
-  );
-  process.exit(0);
+  // Only a CONNECTION failure is "could not ask". psql exits 2 for that; a
+  // query the database rejected exits 1, and is this script's bug, which
+  // must fail loudly rather than pass for a network blip.
+  const stderr = String(e.stderr ?? "");
+  const unreachable =
+    e.status === 2 || /could not connect|connection to server|could not translate host/i.test(stderr);
+  if (unreachable) {
+    console.log(
+      `? could not reach the database (${e.message.split("\n")[0]}); not treating that as a failure.`,
+    );
+    process.exit(0);
+  }
+  console.error(`✗ the database rejected this check's own query:\n${stderr || e.message}`);
+  process.exit(1);
 }
 
 const problems = [];
