@@ -345,6 +345,11 @@ const BASE_STUBS: Record<string, Stub> = {
   },
   listActiveAnnouncements: { rows: [] },
   getSuspensionState: null,
+  // The header's auto-routing indicator asks on every page for an owner,
+  // office manager or dispatcher. Nothing running is the everyday answer;
+  // auto-routing-runs-in-the-background.spec.ts overrides it with a run.
+  listMyRoutingRuns: { runs: [], serverNow: 0 },
+  markRoutingRunSeen: ok,
   listMyNotifications: {
     notifications: [
       {
