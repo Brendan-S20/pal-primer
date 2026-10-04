@@ -549,6 +549,19 @@ Two more from 2026-10-04, same terms (both are in the Lovable knowledge too):
   (#324). It fails loudly only where iOS is built, so it cannot block a
   Lovable publish. → `tests/a-plugin-still-on-capacitor-7-stopped-every-ios-build.test.ts`
 
+And one from what the owner's iPhone showed (2026-10-04):
+
+- **A width floor is not a shrink floor.** `touch:min-w-11` replaces a flex
+  item's automatic minimum ("no narrower than my content") with 44px, so a
+  small button beside a long description shrank to 44px on touch and its
+  label ran out through its own border ("Add card", "Add item"). Anything
+  with a 44px `min-w-*` and text inside it also carries `shrink-0`; the `sm`
+  and `icon` button sizes do it for every caller. A header with a title and
+  description on one side and an action on the other is
+  `flex flex-wrap … justify-between gap-3`.
+  → `tests/a-width-floor-is-not-a-shrink-floor.test.ts`, and in a browser
+  `findControlsNarrowerThanTheirLabel` in `tests/viewports/rules.ts`.
+
 And one that is not a test: **the local Supabase stack on 54421-54427 is the
 database CI's test job runs the SQL proofs against** (the runner is this
 machine). A branch's migration applied there for a quick look fails every other
