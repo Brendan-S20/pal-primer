@@ -159,16 +159,18 @@ platform is not failed for not having it.
   `#fdfaf1`, so the icon, the boot splash and the first screen are one colour.
   Verified on the emulator, not just in the file sizes.
 
-**Not looked at:**
+**Not looked at** (superseded 2026-10-03, see "The Play track" at the end):
 
-- Deep links. Push taps route from the payload in JS (`initPushDeepLinks`), so
-  they may work with no intent filter, but no `https` App Link filter exists
-  and nothing has been tested.
-- The Android hardware back button has a handler in `src/lib/native.ts` and has
-  never been exercised.
-- Nothing has run at Android viewport sizes. The Apple sweep covers 320-1366,
-  which brackets most Android phones and tablets, but "brackets" is not
-  "measured".
+- ~~Deep links.~~ An `https` App Link filter for staff pages now exists, with
+  `/.well-known/assetlinks.json` served by the web app. Push taps were
+  BROKEN, not merely untested: the server sent a Cordova `click_action` no
+  activity declares. Fixed.
+- ~~The back button has never been exercised.~~ It was exercised on the
+  emulator (below), and has since been rewritten to close an open sheet or
+  dialog before navigating.
+- Nothing has run at Android viewport sizes. Still true for the layout
+  sweeps; the Play screenshot spec renders 360, 603 and 810 wide with touch on,
+  which is a picture, not a measurement.
 
 ---
 
@@ -305,3 +307,61 @@ not until the Firebase config exists.
   minimizes rather than exiting: process alive, pid unchanged, focus to the
   launcher. `src/lib/native.ts` promised "never exit-blast the WebView" and it
   does not. Previously listed as "has a handler and has never been exercised".
+
+---
+
+# The Play track — 2026-10-03
+
+Everything code-side for a Play submission, in one pass. The ordered owner
+checklist, the Data safety and content rating answers, and the billing
+confirmation are in `docs/play-store-submission.md`; this section records
+what changed in the Android project and what was proved.
+
+**Built.** `assembleDebug` and an unsigned `bundleRelease` both succeed on
+this machine (JDK 21 from Homebrew, SDK under `~/Library/Android/sdk`, via
+`android/build-debug.sh`). The unsigned bundle is refused by Play by design;
+`npm run android:bundle` says `Signed: NO` for it. No key was created to test
+the signed path: that key is the owner's to make (step 3 of the checklist).
+
+**Signing and version.** `android/app/build.gradle` reads the upload key from
+a gitignored `android/keystore.properties` or `ANDROID_KEY*` env vars and
+applies `signingConfigs.release` only when all four values are present, so
+debug and CI builds are unchanged. A configured path that does not exist fails
+the build by name rather than producing an unsigned bundle someone believed
+was signed. `versionCode` and `versionName` come from
+`android/version.properties`; `npm run android:bump` adds one.
+
+**Firebase.** The Capacitor template already applied the google-services
+plugin only when `google-services.json` exists; kept, and commented. Two
+things were missing around it and are now there: a monochrome
+`ic_stat_notification` (without it the hound-in-H draws as a white square in
+the status bar) and a named channel (`general`, "HoundStack", created before
+registration) so the user's notification settings do not say
+"Miscellaneous".
+
+**The tap that did nothing.** `fcmMessageFor` set
+`android.notification.click_action = "FCM_PLUGIN_ACTIVITY"` whenever a
+notification carried a link. That is cordova-plugin-fcm's convention, it
+needs an activity declaring that intent action, and this app has never had
+one. So every tap on a linked notification resolved to nothing. Removing it
+puts the tap on Capacitor's own path: launch intent with the data as extras,
+`pushNotificationActionPerformed`, `initPushDeepLinks`. Nothing could have
+caught it but a device, and no device had received a push yet.
+
+**App Links.** One `autoVerify` intent filter, an allowlist of staff paths,
+kept identical to `src/lib/android-app-links.ts` by a test that also fails
+on any new route that is in neither the claim nor the browser list.
+`/auth`, customer links and anything that buys HoundStack stay in the
+browser; the file explains each. `assetlinks.json` answers 404 until a real
+SHA-256 is configured, because a placeholder fails verification anyway and a
+404 is the honest signal.
+
+**Back button.** Closes the topmost open layer (by Escape, which every Radix
+layer honours) before it navigates; backgrounds the app from a start screen
+even when history exists, because the entry behind the dashboard after
+sign-in is `/auth`, which bounced back and made the button look dead.
+
+**Still unverified, and only a phone can settle it:** a real push arriving
+and its tap landing; App Link verification against Play's signing
+certificate; the back button against real sheets; the 7" and 10" tablet
+layouts beyond a screenshot.

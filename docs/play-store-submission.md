@@ -1,200 +1,320 @@
 # Google Play submission: HoundStack for Android
 
-Written 2026-09-15. **Nothing here has been submitted, and no Play Console
-account is known to exist.** Before this file there was no document in `docs/`
-that mentioned Play Store, Google Play or Play Console at all — that track was
-at zero, which is worth stating plainly rather than discovering at submission.
+Rewritten 2026-10-03 as a checklist. **Nothing has been submitted, and no Play
+Console app exists yet.** Every code-side piece is now done and tested; what is
+left needs the owner's accounts, a key only the owner should hold, or a phone.
 
-This is the Android counterpart to `docs/app-store-submission.md`. Where the two
-agree, this file says so and points there rather than restating it; where Play
-differs from the App Store, the difference is the whole point of the section.
+This is the Android counterpart to `docs/app-store-submission.md`. Where the
+two agree this file points there; where Play differs, the difference is the
+section. The build history (what `cap add android` produced, the first emulator
+run, the FCM crash) is in `docs/android-generated.md`.
 
-**Read `docs/android-generated.md` first.** It records what `npx cap add android`
-produced, what had to be fixed, and — under "The first run" — what happened when
-it was finally launched.
-
-This paragraph said "the app has never run" when this file was written on
-2026-09-15, and stopped being true a few hours later on the same day. It has now
-run on an emulator: it does not crash, it renders correctly, and edge-to-edge,
-the tab bar, the back button and the launcher icon were all measured rather than
-assumed. What it has NOT done is run on physical hardware, which is a different
-and smaller claim — see §3.
+Package name (`applicationId`): **`consulting.thenorth.houndstack`**, from
+`appId` in `capacitor.config.ts`. It is permanent on Play the moment the first
+bundle is uploaded.
 
 ---
 
-## 1. The review risk — already handled, and not by accident
+## 1. What is done in code
 
-Google's position on real-world goods and services matches Apple's: a payment
-for a service performed at a physical address is outside Play Billing, and
-digital software sold to the person holding the phone is inside it. HoundStack
-has both, and they are already separated.
+| | where | proof |
+|---|---|---|
+| Release signing read from outside the repo, applied only when present | `android/app/build.gradle` (header comment) | `tests/an-android-release-signed-with-nothing-in-the-repo.test.ts` |
+| `keystore.properties`, `*.jks`, `*.keystore` ignored; template provided | `.gitignore`, `android/keystore.properties.example` | same test, which also checks `git ls-files` |
+| versionCode explicit, one committed number, bump script | `android/version.properties`, `npm run android:bump` | same test |
+| One command to a signed `.aab` | `npm run android:bundle` | prints `Signed: yes` or `Signed: NO` |
+| google-services plugin applied only when `google-services.json` exists | `android/app/build.gradle` (Capacitor template, verified) | builds without it |
+| Push registration skipped when Firebase is absent (it would crash) | `FCM_CONFIGURED`, `src/lib/native-build.ts` | `tests/an-android-notification-drawn-as-a-white-square.test.ts` |
+| Monochrome status-bar icon, accent colour, a named channel | `res/drawable/ic_stat_notification.xml`, manifest meta-data, `ANDROID_PUSH_CHANNEL` | same test |
+| **Notification taps that carried a link did nothing** (fixed) | `fcmMessageFor` in `src/lib/push.server.ts` | `tests/every-android-notification-went-to-a-decommissioned-endpoint.test.ts` |
+| App Links for staff pages, verified by `assetlinks.json` | manifest intent filter, `src/lib/android-app-links.ts`, `initAppLinks` | `tests/an-android-link-opens-the-app-only-where-it-should.test.ts` |
+| `/.well-known/assetlinks.json` served, 404 until a real fingerprint exists | `src/routes/[.]well-known.assetlinks[.]json.ts` | same test |
+| Back button: closes the open sheet or dialog first, then history, then backgrounds from a start screen | `handleBackButton` in `src/lib/native.ts` | `tests/the-android-back-button-closes-before-it-leaves.test.ts` |
+| Play-size screenshots: phone 1080x1920, 7" and 10" tablet | `tests/viewports/play-store-screenshots.spec.ts`, `npm run screenshots:play` | asserts each PNG's pixel size and 9:16 |
+| No HoundStack purchase inside the binary | `STORE_PLATFORMS = {ios, android}`; plan-picker stub swapped by `NATIVE_BUILD`, which Android shares | see §5 |
 
-`src/lib/app-store-billing.ts` gates on **`native`**, not on `ios`:
+### The tap bug, because the first real user would have found it
 
-```ts
-const STORE_PLATFORMS = new Set(["ios", "android"]);
-```
+`fcmMessageFor` sent `click_action: "FCM_PLUGIN_ACTIVITY"` on every
+notification that carried a link. That string is the cordova-plugin-fcm
+convention: it makes a tap fire an intent with that action, and only an
+activity declaring that action can receive it. Nothing in this app declares
+it, so a tap on "your route changed" resolved to no activity and did nothing.
+`click_action` is no longer sent; the tap launches `MainActivity`, Capacitor
+turns it into `pushNotificationActionPerformed`, and `initPushDeepLinks`
+routes the `url` from `data`. The web icon URL (`/pwa-192.png`) is no longer
+passed as an Android drawable name either.
 
-with a comment in the file explaining the choice — gating on `ios` alone would
-have left "a rule that silently stops applying the moment `npx cap add android`
-runs". That is exactly what happened, and the rule held. No HoundStack
-subscription is purchasable inside the Android binary, and a tenant taking their
-own customer's money still can.
+### Which links open the app
 
-So the highest-stakes review item needs **nothing** for Play. The reasoning, the
-distinction between `createAddonSubscription` and `subscribePlatformAddon`, and
-the twelve mutation-checked tests that pin both directions are all documented in
-`docs/app-store-submission.md` §1. Do not re-derive them here.
+Staff pages only, listed in `src/lib/android-app-links.ts` with the reason for
+every exclusion. Kept in the browser: everything a customer is sent (`/pay`,
+`/portal`, `/q`, `/track`, `/lead`, `/signup`, `/unsubscribe`), everything that
+buys HoundStack (`/billing`, `/settings/billing`, `/settings/addons`, which the
+binary hides by store rule), and `/auth`, which is the **web** OAuth redirect
+target: claiming it would hand a web sign-in to the app mid-flow on any phone
+that has it. Android before 15 cannot exclude a path inside a claimed prefix,
+so Settings is claimed page by page. The test fails if a new route is in
+neither list.
+
+### The back button
+
+1. An open dialog, sheet, drawer, popover or menu closes (Escape, which every
+   Radix layer and the two hand-rolled panels honour). A dialog that refuses
+   to close keeps the screen; one that ignores Escape (the guided tour) does
+   not trap the user.
+2. Otherwise, back one history entry, unless on a start screen.
+3. Start screens (`/`, `/auth`, the sign-in steps, `/dashboard`, `/my-day`,
+   `/routes`, `/platform`, a portal home) and an empty history send the app to
+   the background (`minimizeApp`, never `exitApp`).
+
+Start screens are a list because after sign-in the history behind the
+dashboard is `/auth`, which bounces a signed-in user straight back: "back"
+looked dead on the screen people press it most. Accepted cost: an owner who
+opens `/routes` from the dashboard leaves the app on back, because `/routes`
+is a dispatcher's start screen.
 
 ---
 
-## 2. What Play needs that the App Store did not
+## 2. Owner checklist, in order
 
-This is the section that earns this file. Four of these are unstarted.
+Each step says what it unblocks. Steps 1 to 4 can happen today.
 
-### 2a. Play wants an **Android App Bundle**, and this repo builds a debug APK
+1. **Create the Play Console developer account** (one-time USD 25; identity
+   verification can take days). Choose an **organization** account for The
+   North Consulting (needs a D-U-N-S number), not personal: new personal
+   accounts must run a 14-day closed test with at least 12 testers before
+   they can publish to production. *Unblocks everything.*
 
-`android/build-debug.sh` runs `./gradlew assembleDebug`. That is correct for
-what it is for — reproducing the build locally — and it is **not** what Play
-accepts. Play has required `.aab` for new apps since August 2021.
+2. **Create the app** in Play Console: name HoundStack, default language
+   English (United States), App, Free. Accept the declarations.
 
-    ./gradlew bundleRelease        # produces app/build/outputs/bundle/release/
+3. **Generate the upload key**, once, outside the repo directory:
 
-### 2b. There is no release signing config, so a release build is unsigned
-
-`android/app/build.gradle` has a `release` block containing exactly one line,
-`minifyEnabled false`. There is **no `signingConfig`**, and no keystore anywhere
-in the tree — which is correct, a keystore must never be committed, but it means
-`bundleRelease` today produces something Play will reject.
-
-What this needs, in order:
-
-1. **An upload key**, generated once and kept somewhere durable:
-
-       keytool -genkey -v -keystore houndstack-upload.jks \
+       keytool -genkeypair -v -keystore ~/keys/houndstack-upload.jks \
          -keyalg RSA -keysize 2048 -validity 10000 -alias upload
 
-2. A **gitignored** `android/keystore.properties` holding the path and
-   passwords, and a `signingConfigs.release` in `build.gradle` that reads it.
-   `.gitignore` already covers `*.jks`, `*.p12` and `AuthKey_*.p8`; add
-   `keystore.properties` and `*.keystore` when this is wired.
-3. **Play App Signing** enabled in the console, which is the default for new
-   apps. Google then holds the app signing key and your upload key only signs
-   uploads — so losing the upload key is recoverable and losing the app signing
-   key is not. This is the opposite of the Apple `.p8` situation described in
-   `docs/owner-actions-before-submission.md` §2, and worth not confusing.
+   Store the `.jks` and both passwords in your password manager as well. With
+   Play App Signing a lost upload key is recoverable (a reset request), but it
+   costs days. Then `cp android/keystore.properties.example
+   android/keystore.properties` and fill in the four values. Never commit it.
 
-**The same warning as the `.p8`:** whoever holds the upload key can push builds
-to your listing. Keep it out of the repo directory, not merely out of git.
+4. **Firebase, for push.**
+   1. console.firebase.google.com > Add project (or reuse one) > HoundStack.
+   2. Add app > Android > package name `consulting.thenorth.houndstack`,
+      nickname HoundStack Android. The SHA-1 is optional (FCM does not need it).
+   3. Download `google-services.json` and place it at
+      `android/app/google-services.json`. It is not a secret (its API key is
+      restricted to this package), and committing it is the normal choice so
+      every build gets push. `FCM_CONFIGURED` switches push registration on at
+      the next `build:native` with no code change. Place it **before** building:
+      a binary built without it has push registration compiled off.
+   4. Project settings > Service accounts > Generate new private key. Paste the
+      whole JSON into the server environment as **`FCM_SERVICE_ACCOUNT`**
+      (hosting secrets, not the repo). `src/lib/push.server.ts` reads it;
+      until it is set, Android sends are skipped quietly.
 
-### 2c. The Data safety form
+5. **Build the bundle**:
 
-Play's equivalent of the App Privacy questionnaire, and it is **not** a copy of
-it — Play asks separately about collection, sharing, encryption in transit, and
-whether users can request deletion. The answers should follow the same facts the
-App Privacy questionnaire used (`docs/owner-actions-before-submission.md` §4,
-marked DONE), but they must be entered fresh and they are attested.
+       npm run android:bump      # skip for the very first upload (versionCode 1)
+       npm run android:bundle    # build:native, cap sync android, gradle bundleRelease
 
-Permissions the form will ask about, all seven verified present in the manifest:
-`INTERNET`, `CAMERA`, `READ_MEDIA_IMAGES`, `READ_EXTERNAL_STORAGE` (the
-pre-Android-13 form of the same thing, capped by `maxSdkVersion`),
-`ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION` and `POST_NOTIFICATIONS`.
-Location is the one that draws scrutiny: it is used to show a technician
-their position against the day's route, and it is **foreground only** — there is
-no background-location permission declared, which is the request that triggers
-Play's separate review and a demo video requirement. Keep it that way unless
-there is a reason not to.
+   Output `android/app/build/outputs/bundle/release/app-release.aab`, and the
+   script prints `Signed: yes`. Needs JDK 21 and the Android SDK; see the
+   header of `android/build-debug.sh`. Commit the bumped
+   `android/version.properties` with the release, so the number in git is the
+   number on Play. Every upload to any track needs a higher versionCode.
 
-### 2d. Content rating, and the rest of the console checklist
+6. **Internal testing track**: Test and release > Testing > Internal testing >
+   Create release. Accept **Play App Signing** (the default; Google holds the
+   app signing key, your key only signs uploads). Upload the `.aab`. Add
+   yourself and any testers by email, and install from the opt-in link on a
+   **physical** Android phone. This is the Play analogue of TestFlight
+   Internal.
 
-- **IARC content rating questionnaire** — no App Store equivalent. Short, but
-  the listing cannot publish without it.
-- **Privacy policy URL** — required in the listing, not just in-app.
-- **Target API level** — Play requires new apps to target within one year of the
-  latest Android release. `variables.gradle` pins `targetSdkVersion = 36`, which
-  is current. Nothing to do now; it expires on a clock, so it is a recurring
-  item rather than a one-off.
-- **Testing track** — internal testing is the Play analogue of TestFlight
-  Internal, and is the right place for the first install.
+7. **App Links fingerprint**: Play Console > Test and release > App integrity >
+   App signing > *App signing key certificate* > **SHA-256** (not the SHA-1
+   beside it). Either paste it into `ANDROID_CERT_SHA256_FINGERPRINTS` in
+   `src/lib/android-app-links.ts` (and update the one test that expects it
+   empty), or set `ANDROID_CERT_SHA256` in the hosting environment
+   (comma-separated). Add the *upload* key's SHA-256 too if you will install
+   release builds that did not come from Play. Then check that
+   `https://app.houndstack.com/.well-known/assetlinks.json` returns JSON and
+   that Play Console's Deep links page shows the domain verified. Until then
+   links open the browser, which is the safe failure.
 
----
+8. **On the phone from step 6, run the device checks** (none of these can be
+   proved off a device):
+   - Sign in with Google, Apple and email; sign out; sign in again.
+   - Grant notifications. Send yourself a push (assign a visit to yourself):
+     it arrives, the status-bar icon is the white paw (not a white square),
+     and **tapping it opens the right screen**. Settings > Apps > HoundStack >
+     Notifications shows a channel named "HoundStack", not "Miscellaneous".
+   - Back button: open a sheet (a visit on My Day), press back, the sheet
+     closes and the page stays; press back on `/my-day` or `/dashboard`, the
+     app goes to the background.
+   - Tap an `https://app.houndstack.com/my-day` link in Gmail: the app opens
+     on My Day (after step 7). Tap a pay link: the browser opens.
+   - Camera on a visit photo, "locate me" on the route map, offline mode
+     (airplane mode, complete a stop, reconnect, it syncs).
 
-## 3. What is genuinely not ready, ranked
+9. **Store listing** (Grow users > Store presence > Main store listing):
+   - **App name:** HoundStack
+   - **Short description** (80 max): `Routes, stops and photos for pet waste
+     crews. Works offline, syncs later.` (73 characters)
+   - **Full description:** the iOS description in
+     `docs/app-store-submission.md` §2, with "ON iPad" retitled "ON TABLETS"
+     and the last line changed to "The app is free for members of an existing
+     HoundStack organization." Do not name a website to buy plans on: the same
+     no-steering rule as the in-app copy (`BILLING_MANAGED_OUTSIDE_APP`).
+   - **App icon** 512x512 PNG: `public/pwa-512.png`.
+   - **Feature graphic** 1024x500 PNG or JPEG: required, and not generated
+     here. Make one (cream `#fdfaf1`, the hound-in-H, the wordmark).
+   - **Screenshots:** `npm run screenshots:play` writes phone (1080x1920),
+     7-inch and 10-inch tablet sets to `android/screenshots/`. Upload 2 to 8
+     per form factor.
+   - **Category:** Business. **Contact email:** support@houndstack.com.
+     **Website:** https://houndstack.com.
+   - **Privacy policy URL:** `https://app.houndstack.com/legal/privacy` (route
+     exists: `src/routes/legal.privacy.tsx`; `https://houndstack.com/privacy`,
+     the iOS listing's URL, also works). Check it loads before saving.
 
-Everything here is from the audit on 2026-09-15 and is verified, not assumed.
+10. **App content** (Policy > App content). Answers in §3 and §4: privacy
+    policy, ads (**no ads**), app access (the same demo owner account as App
+    Review, with a note that it is a B2B app for existing organizations),
+    content rating, target audience (**18 and over**), data safety, news
+    (no), government (no), financial features (§4), health (no).
 
-| | state | needs |
-|---|---|---|
-| **Edge-to-edge** | **no handling anywhere** | a running app |
-| **Deep links** | only `MAIN`/`LAUNCHER` | a decision + hosted `assetlinks.json` |
-| **Release signing** | absent | an upload key (§2b) |
-| **AAB build** | builds a debug APK | a gradle task (§2a) |
-| **FCM push** | **absent — CRASHED the app until guarded 2026-09-15** | a Firebase app |
-| Launcher icon | ~~stock template~~ **done 2026-09-15** | — |
-| Back button | handler exists, never exercised | a running app |
-| Splash | correct, cream `#fdfaf1` | — |
-| Permissions | 7 declared, test-enforced | — |
-| Billing gate | covers Android already | — |
+11. **Promote to production** once the internal build has passed step 8 and
+    the pre-launch report (Play runs it automatically on testing tracks) shows
+    no crashes. A staged rollout at 20% is a reasonable first release.
 
-### Edge-to-edge is the one to be afraid of
-
-`grep` across `android/app/src/` for `EdgeToEdge`, `fitsSystemWindows`,
-`WindowInsets`, `setDecorFitsSystemWindows` and
-`windowOptOutEdgeToEdgeEnforcement` returns **nothing**. `MainActivity` is a bare
-`BridgeActivity` with an empty body. `styles.xml` sets
-`android:background="@null"` on `AppTheme.NoActionBar` and says nothing about
-insets.
-
-`targetSdkVersion = 36`, and Android **enforces** edge-to-edge from API 35. So
-the WebView draws under the status and navigation bars, with no opt-out and no
-explicit inset propagation. Whether `env(safe-area-inset-*)` resolves in
-Capacitor's Android WebView is the open question.
-
-This is the same shape as iOS F2 — `viewport-fit=cover` missing, every safe-area
-inset resolving to 0, 62pt of dead space and a `fixed` overlay that could not
-reach the top. That one cost a day. The geometry harness in
-`ios/UITests/Geometry.swift` is the shape of the check to copy, and
-`docs/ios-qa-results.md` F2 is the fix to read before starting.
-
-**Do not guess this one from the source.** It needs a running app.
-
-### Deep links are more broken than "not looked at"
-
-`AndroidManifest.xml` has exactly one `intent-filter` and it is `MAIN` /
-`LAUNCHER`. No `https` App Link filter, no custom scheme. So **tapping a link to
-app.houndstack.com opens the browser, not the app** — which matters for a
-product that emails invoice and portal links.
-
-Push taps are unaffected: `initPushDeepLinks` routes from the payload in JS, so
-they work with no intent filter at all. That is why `docs/android-generated.md`
-was right that push "may work" and silent about web links — the two are
-different mechanisms and only one of them is missing.
-
-Adding the filter requires a `assetlinks.json` hosted at
-`https://app.houndstack.com/.well-known/assetlinks.json` carrying the signing
-certificate fingerprint — so it depends on §2b being done first, and it is a
-decision about link behaviour as much as a manifest change.
+12. **Recurring:** the target API level must be within a year of the latest
+    Android release. `targetSdkVersion = 36` in `android/variables.gradle` is
+    current today; Play emails before the deadline.
 
 ---
 
-## 4. Before you press Publish
+## 3. Data safety form answers
 
-- [ ] A Play Console account exists and the app is created.
-- [ ] Upload key generated and stored **outside the repo directory**.
-- [ ] `bundleRelease` produces a signed `.aab`.
-- [x] **Done 2026-09-15.** The app has run on an emulator and edge-to-edge is
-      measured, not assumed: the window is edge-to-edge, Capacitor insets the
-      WebView to 839dp of a 915dp screen, and `MobileTabBar` sits 75.8dp clear
-      of the gesture bar with every control over the 44px floor.
-- [ ] Data safety form completed.
-- [ ] IARC content rating questionnaire completed.
-- [ ] Privacy policy URL in the listing.
-- [x] **Done 2026-09-15.** Launcher icon is the hound-in-H at all five
-      densities, scaled into the 72dp zone adaptive icons actually guarantee and
-      padded with `#fdfaf1`. Verified on a launcher, not just in file sizes.
-- [ ] Internal testing track install verified on a real handset.
+Derived from the app and from the privacy policy at `/legal/privacy`, which is
+the document these answers must agree with. Play's definitions matter:
+"collected" means sent off the device; data used only on the device is not
+collected; a service provider processing data for you (Supabase, Stripe,
+Twilio, Resend, Google Maps, Geocodio) is not "sharing".
 
-Screenshots: Play's requirements differ from Apple's in sizes and counts, and
-`tests/viewports/app-store-screenshots.spec.ts` already produces images under
-`APPLE_SIZES=1`. It has not been extended to Play's sizes, and should be before
-anyone assembles a listing by hand.
+**Overview questions**
+
+- Does your app collect or share any of the required user data types? **Yes.**
+- Is all user data encrypted in transit? **Yes** (HTTPS only; cleartext is off
+  by default at targetSdk 36 and `allowMixedContent` is false).
+- Do you provide a way for users to request that their data is deleted?
+  **Yes**: in the app (Profile > Delete my account, `DeleteAccountCard`) and by
+  email to support@houndstack.com. Account deletion URL for the form:
+  `https://app.houndstack.com/legal/privacy` (section "Data retention and
+  deletion"). Play requires this URL because an account can be created from
+  inside the app (Google or Apple sign-in with a new email bootstraps one).
+
+**Data types.** All: collected, **not shared**, not processed ephemerally,
+purpose **App functionality** unless stated.
+
+| Play category | data type | required or optional | notes |
+|---|---|---|---|
+| Location | **Approximate location** | Optional | Only when a business turns on live tracking: rounded to about 100 m, from "on my way" until the visit starts, at most two hours, app open only; only the latest point is kept and it is deleted at visit start. Precise location is used **on the device only** (the route map), so it is not "collected". Foreground only: no background-location permission is declared. |
+| Personal info | Name | Required | Also Account management |
+| Personal info | Email address | Required | Also Account management |
+| Personal info | Phone number | Optional | SMS sign-in codes and texting consent |
+| Personal info | Address | Required | Client and business addresses the business enters |
+| Personal info | Other info | Optional | Pets, gate codes and notes the business enters |
+| Financial info | Purchase history | Required | Invoices and payments between a business and its clients |
+| Financial info | User payment info | Optional | Card entry goes to **Stripe** (service provider); the app keeps brand and last four only |
+| Messages | Other in-app messages | Optional | Conversations between a business and its clients in the inbox |
+| Photos and videos | Photos | Optional | Visit and DNA-sample photos |
+| App info and performance | Diagnostics | Optional | Server logs for reliability and security; no crash-reporting SDK is in the binary |
+| Device or other IDs | Device or other IDs | Optional | The FCM push token, for notifications only |
+
+Do **not** declare: contacts, calendar, SMS or email on the device, web
+browsing history, audio, health, files and docs, app interactions or search
+history (no analytics SDK), advertising ID (none).
+
+**On "shared":** when a business turns on live tracking, the client who got
+the "on my way" message sees the technician's first name and approximate
+position. Play's user-initiated exception covers this (the technician starts
+it and can stop it), so the answer above is "not shared". To be conservative,
+mark Approximate location as **shared**, purpose App functionality; it costs
+nothing in review.
+
+**Correct the iOS notes while you are here:** `docs/app-store-submission.md`
+§3 tells App Review that location is "not shared with clients, not used for
+tracking". Live tracking (opt-in, per business) has since landed and the
+privacy policy describes it. That sentence should be updated before the next
+iOS submission.
+
+---
+
+## 4. Content rating and the other declarations
+
+**IARC questionnaire.** Category: **All Other App Types** (a business utility;
+not a game, not social, not reference or news). Answers:
+
+- Violence, fear, sexuality, nudity, crude humour, language: **No** to all.
+- Controlled substances (drugs, alcohol, tobacco): **No.**
+- Gambling or simulated gambling: **No.**
+- Does the app let users interact or exchange content? **Yes** (a business
+  messages its clients through the inbox).
+- Does the app share the user's current location with other users? **Yes**
+  (live tracking to the client, when the business turns it on).
+- Does the app allow purchases of digital goods? **No.**
+- Unrestricted web access (an in-app browser to arbitrary sites)? **No.**
+
+Expected result: Everyone / PEGI 3, with the interactive elements "Users
+Interact" and "Shares Location".
+
+**Target audience:** 18 and over only. Not designed for children; the Families
+policy does not apply.
+
+**Ads:** the app contains no ads.
+
+**Financial features declaration:** HoundStack lets a business invoice its own
+clients and take card payment for a physical service through the business's
+Stripe account. It is not a bank, lender, wallet, crypto or money-transfer
+app. Read the options at submission time: the closest honest answer is "my
+app does not provide any of these financial features", with a sentence in App
+access saying payments go through Stripe to the business; if the form insists
+on a category, pick the payment-processing one rather than leave it
+ambiguous. This is the one answer here that is a judgement call.
+
+---
+
+## 5. The billing rule on Android, confirmed
+
+Google Play's Payments policy matches Apple's on the two kinds of money in
+this app: a homeowner paying a pet-waste company for a service at their
+address is outside Play Billing; a business buying HoundStack software inside
+the app would be inside it. HoundStack subscriptions are web-sold, so the
+binary must not offer them. Verified 2026-10-03:
+
+- `src/lib/app-store-billing.ts`: `STORE_PLATFORMS = new Set(["ios", "android"])`.
+  The runtime gate is on the running platform, and `"android"` is in it.
+- The build-time half is the `NATIVE_BUILD` alias in `vite.config.ts` that
+  swaps the plan picker for `PlanPicker.native-stub.tsx`. It keys on the build
+  (`npm run build:native`), not on a platform, and Android bundles the same
+  `dist-native/client` as iOS (`webDir` in `capacitor.config.ts`), so the stub
+  is what ships in the `.aab` too. `npm run check:native-bundle` proves the
+  stub is present and the real picker absent.
+- No Play Billing library and no in-app products. Nothing to configure under
+  Monetize.
+- The App Links allowlist keeps `/billing`, `/settings/billing` and
+  `/settings/addons` in the browser, so a billing email never lands the owner
+  on the "managed outside the app" screen.
+
+---
+
+## 6. iOS universal links, noted and not done
+
+The iOS app has no Associated Domains entitlement and the site serves no
+`apple-app-site-association`, so links open Safari on iOS. The allowlist in
+`src/lib/android-app-links.ts` is the source to generate the AASA
+`components` from when that is wanted; it would need the entitlement in Xcode,
+the Team ID in the file, and a route like the assetlinks one. Out of scope for
+the Android track.
