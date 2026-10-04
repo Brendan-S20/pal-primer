@@ -17,7 +17,9 @@
 # no "visit completed" webhook, no invoice email, no audit row stamped with
 # today's date for a payment taken last month.
 #
-# Then, IN THE SAME TRANSACTION, every restored pg_cron job is switched OFF.
+# Then extension-state.sql (dump.sh says why it exists): the email queues and
+# the pg_cron schedule, which pg_dump does not carry. And then, IN THE SAME
+# TRANSACTION, every restored pg_cron job is switched OFF.
 # cron.job is in the backup because two of its jobs exist in no migration,
 # but each of them POSTs to the production app or calls deliver_webhooks(),
 # which POSTs to customers' own endpoints. A restored database with those
@@ -43,7 +45,7 @@ set -euo pipefail
 
 dir="${1:?usage: restore.sh <opened-dir> <target-db-url>}"
 url="${2:?usage: restore.sh <opened-dir> <target-db-url>}"
-for f in roles.sql schema.sql data.sql; do
+for f in roles.sql schema.sql data.sql extension-state.sql; do
   [ -s "$dir/$f" ] || { echo "::error::$dir/$f is missing or empty"; exit 1; }
 done
 command -v psql >/dev/null || { echo "::error::psql is not on PATH"; exit 1; }
@@ -79,6 +81,7 @@ psql "$url" -X -q \
   --file "$dir/schema.sql" \
   --command 'SET session_replication_role = replica' \
   --file "$dir/data.sql" \
+  --file "$dir/extension-state.sql" \
   --file "$here/disable-restored-cron-jobs.sql" \
   >/dev/null 2>"$err"
 code=$?

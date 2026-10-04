@@ -11,7 +11,8 @@
 #
 # ── THE FORMAT, SO IT CAN BE OPENED WITHOUT THIS SCRIPT ───────────────────
 #
-# A gzip'd tar of roles.sql, schema.sql, data.sql and counts.json, encrypted
+# A gzip'd tar of roles.sql, schema.sql, data.sql, extension-state.sql and
+# counts.json, encrypted
 # with OpenPGP symmetric encryption (AES-256, SHA-512 key derivation at the
 # maximum iteration count). Any GnuPG opens it:
 #
@@ -68,12 +69,12 @@ out="${3:?usage: crypt.sh seal|open <in> <out>}"
 case "$mode" in
   seal)
     need_passphrase
-    for f in roles.sql schema.sql data.sql counts.json; do
+    for f in roles.sql schema.sql data.sql extension-state.sql counts.json; do
       [ -s "$in/$f" ] || { echo "::error::$in/$f is missing or empty; refusing to seal a partial backup"; exit 1; }
     done
     # --passphrase-fd keeps the passphrase out of argv, where any process on
     # the machine could read it from the process table.
-    tar -C "$in" -czf - roles.sql schema.sql data.sql counts.json \
+    tar -C "$in" -czf - roles.sql schema.sql data.sql extension-state.sql counts.json \
       | gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
           --symmetric --cipher-algo AES256 \
           --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 \
@@ -83,7 +84,7 @@ case "$mode" in
     # the plaintext still exists. Finding out at restore time is too late.
     listing="$(gpg --batch --quiet --pinentry-mode loopback --passphrase-fd 3 --decrypt "$out" 3<<<"$BACKUP_PASSPHRASE" \
       | tar -tzf - | sort | tr '\n' ' ')"
-    if [ "$listing" != "counts.json data.sql roles.sql schema.sql " ]; then
+    if [ "$listing" != "counts.json data.sql extension-state.sql roles.sql schema.sql " ]; then
       echo "::error::the sealed archive did not open again with the same passphrase (listing: '$listing')"
       exit 1
     fi
@@ -97,7 +98,7 @@ case "$mode" in
     else
       gpg --decrypt "$in" | tar -C "$out" -xzf -
     fi
-    for f in roles.sql schema.sql data.sql counts.json; do
+    for f in roles.sql schema.sql data.sql extension-state.sql counts.json; do
       [ -s "$out/$f" ] || { echo "::error::$f is missing from the archive"; exit 1; }
     done
     echo "opened into $out"

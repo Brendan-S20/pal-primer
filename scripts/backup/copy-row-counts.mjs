@@ -2,7 +2,11 @@
 // Count the rows a data dump actually holds, table by table, from the dump
 // itself.
 //
-//   node scripts/backup/copy-row-counts.mjs data.sql > counts.json
+//   node scripts/backup/copy-row-counts.mjs data.sql [extension-state.sql] > counts.json
+//
+// extension-state.sql (see dump.sh) recreates the pg_cron schedule and the
+// pgmq queues with one statement each; those are counted as `cron.job` and
+// `pgmq.meta`, so the drill checks they came back too.
 //
 // ── WHY FROM THE FILE AND NOT FROM THE DATABASE ───────────────────────────
 //
@@ -60,16 +64,30 @@ export async function countCopyRows(path) {
   return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+export async function countExtensionState(path) {
+  const counts = { "cron.job": 0, "pgmq.meta": 0 };
+  const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
+  for await (const line of rl) {
+    if (line.startsWith("SELECT cron.schedule(")) counts["cron.job"] += 1;
+    else if (line.startsWith("SELECT pgmq.create(")) counts["pgmq.meta"] += 1;
+  }
+  return counts;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const path = process.argv[2];
   if (!path) {
-    console.error("usage: copy-row-counts.mjs <data.sql>");
+    console.error("usage: copy-row-counts.mjs <data.sql> [extension-state.sql]");
     process.exit(2);
   }
-  const counts = await countCopyRows(path);
+  let counts = await countCopyRows(path);
   if (Object.keys(counts).length === 0) {
     console.error(`${path}: no COPY blocks at all -- this is not a --use-copy data dump`);
     process.exit(1);
+  }
+  if (process.argv[3]) {
+    const ext = await countExtensionState(process.argv[3]);
+    counts = Object.fromEntries(Object.entries({ ...counts, ...ext }).sort(([a], [b]) => a.localeCompare(b)));
   }
   process.stdout.write(JSON.stringify(counts, null, 2) + "\n");
 }
