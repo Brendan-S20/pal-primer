@@ -469,6 +469,14 @@ export function resetApnsTokenCacheForTests() {
   apnsJwtCache = null;
 }
 
+/** Forget the cached provider token after Apple rejected it (403), so the
+ *  next send signs a fresh one. For the Live Activity sender in
+ *  push-liveactivity.server.ts, which shares this token and this cache:
+ *  Apple rate-limits regenerating it, so two senders must not keep two. */
+export function forgetApnsProviderToken() {
+  apnsJwtCache = null;
+}
+
 /** The provider token, reused for fifty minutes. Throws on an unreadable key
  *  — the caller turns that into a log line, never into a failed request. */
 export async function apnsProviderToken(config: ApnsConfig, now = Date.now()): Promise<string> {
