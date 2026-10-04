@@ -165,3 +165,17 @@ will not move money (security fix C2). Schedule it once daily.
   last-4s.
 - In-app notifications are per-recipient (`recipient_user_id = auth.uid()`).
 - A Twilio sender number is unique to one org (no inbound-blackholing by squatting).
+
+## 7. Backups and restore
+
+Supabase Pro keeps 7 daily snapshots (no point-in-time recovery: up to 24 hours
+can be lost), restorable only as a whole-project rollback. A second, encrypted
+copy is made nightly by `.github/workflows/backup.yml` (07:30 UTC, kept 30
+days as a GitHub artifact) and restored into a throwaway database every Sunday
+to prove it works. It needs the `BACKUP_PASSPHRASE` repository secret, which
+must also be kept in a password manager — without it the backups cannot be
+opened.
+
+How to restore the whole project, into a new project, or one tenant's rows
+without touching anyone else's: **`docs/backups-and-restore.md`**. Storage files
+(photos, receipts) are in neither backup.

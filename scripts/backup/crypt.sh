@@ -3,6 +3,7 @@
 #
 #   BACKUP_PASSPHRASE=... scripts/backup/crypt.sh seal <dump-dir> <out.tar.gz.gpg>
 #   BACKUP_PASSPHRASE=... scripts/backup/crypt.sh open <in.tar.gz.gpg> <out-dir>
+#   BACKUP_PASSPHRASE=... scripts/backup/crypt.sh check
 #
 # `open` without BACKUP_PASSPHRASE set asks for it at the terminal, which is
 # the right way to run it by hand: the passphrase then never sits in shell
@@ -52,7 +53,15 @@ need_passphrase() {
   fi
 }
 
-mode="${1:?usage: crypt.sh seal|open <in> <out>}"
+mode="${1:?usage: crypt.sh check | seal|open <in> <out>}"
+if [ "$mode" = "check" ]; then
+  # Run first in the workflow, BEFORE anything is dumped: a backup job that
+  # dumps customer data and then cannot encrypt it has done the risky half
+  # of the work and none of the useful half.
+  need_passphrase
+  echo "BACKUP_PASSPHRASE is set (${#BACKUP_PASSPHRASE} characters)"
+  exit 0
+fi
 in="${2:?usage: crypt.sh seal|open <in> <out>}"
 out="${3:?usage: crypt.sh seal|open <in> <out>}"
 
