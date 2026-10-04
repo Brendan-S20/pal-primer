@@ -503,7 +503,7 @@ async function sendApns(subs: NativeSub[], payload: PushPayload) {
   try {
     jwt = await apnsProviderToken(config);
   } catch (e) {
-    console.error("[push] APNs provider token could not be signed — check APNS_AUTH_KEY", e);
+    console.error("[push] APNs provider token could not be signed: check APNS_AUTH_KEY", e);
     return { sent: 0, failed: subs.length };
   }
 
