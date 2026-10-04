@@ -27,6 +27,7 @@ import {
   Gift,
 } from "lucide-react";
 import { getPlatformContext } from "@/lib/platform.functions";
+import { setMonitoringIdentity } from "@/lib/monitoring/client";
 import { ReimpersonateListener } from "@/components/ReimpersonateListener";
 import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import {
@@ -87,6 +88,15 @@ const NAV = [
 function PlatformLayout() {
   const ctxFn = useServerFn(getPlatformContext);
   const ctx = useQuery({ queryKey: ["platform", "ctx"], queryFn: () => ctxFn() });
+
+  // Error reports from the console name the admin by id, as the tenant shell
+  // does for everyone else. An admin with no org is sent here by the
+  // _authenticated layout before it sets the identity, so without this every
+  // error from the console arrived in Sentry as nobody. Off in dev and test.
+  const adminId = ctx.data?.isPlatformAdmin ? ctx.data.userId : undefined;
+  useEffect(() => {
+    if (adminId) setMonitoringIdentity({ userId: adminId });
+  }, [adminId]);
 
   if (ctx.isLoading) {
     return (
