@@ -1,5 +1,70 @@
 apply plugin: 'com.android.application'
 
+// ── RELEASE SIGNING, WITH NO SECRET IN THE REPO ─────────────────────────────
+//
+// Play takes a SIGNED Android App Bundle. This file reads the upload key's
+// location and passwords from one of two places, and from nowhere else:
+//
+//   1. android/keystore.properties (gitignored; copy keystore.properties.example)
+//        storeFile=/absolute/path/outside/the/repo/houndstack-upload.jks
+//        storePassword=...
+//        keyAlias=upload
+//        keyPassword=...
+//   2. environment variables, which win over the file when both are set:
+//        ANDROID_KEYSTORE_PATH  ANDROID_KEYSTORE_PASSWORD
+//        ANDROID_KEY_ALIAS      ANDROID_KEY_PASSWORD
+//
+// When none of that is present the release build type is left UNSIGNED rather
+// than failing, so `assembleDebug`, a fresh checkout and CI all keep building.
+// An unsigned bundle is still a bundle; Play refuses it at upload. The
+// configure-time warning at the bottom of this file says so first, and
+// android/build-debug.sh prints "Signed: NO" after a bundleRelease.
+//
+// The key this signs with is the UPLOAD key. With Play App Signing (the
+// default for a new app, and the recommendation in docs/play-store-submission.md)
+// Google holds the app signing key, so a lost upload key is a support ticket
+// and not a lost app. Keep the .jks OUTSIDE this directory, not merely out of
+// git: .gitignore covers *.jks and *.keystore, but a file in the tree is one
+// archive or copy-paste away from leaving the machine.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+def signingValue = { String envName, String propName ->
+    def fromEnv = System.getenv(envName)
+    (fromEnv != null && !fromEnv.trim().isEmpty()) ? fromEnv.trim() : keystoreProps.getProperty(propName)?.trim()
+}
+def releaseStoreFile = signingValue('ANDROID_KEYSTORE_PATH', 'storeFile')
+def releaseStorePassword = signingValue('ANDROID_KEYSTORE_PASSWORD', 'storePassword')
+def releaseKeyAlias = signingValue('ANDROID_KEY_ALIAS', 'keyAlias')
+def releaseKeyPassword = signingValue('ANDROID_KEY_PASSWORD', 'keyPassword')
+def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it }
+if (hasReleaseSigning && !file(releaseStoreFile).exists()) {
+    // Named, not silently skipped: a typo in the path would otherwise produce
+    // an unsigned bundle from a machine where somebody believed it was signed.
+    throw new GradleException("Release signing is configured but the keystore does not exist: ${releaseStoreFile}")
+}
+
+// ── VERSION: versionCode MUST GO UP ON EVERY UPLOAD ─────────────────────────
+//
+// Play rejects a bundle whose versionCode is not higher than every one it has
+// already accepted, on any track. So the number is explicit and lives in ONE
+// committed file, android/version.properties, bumped by `npm run android:bump`
+// (which prints the new value). An override for a one-off or CI build:
+// ANDROID_VERSION_CODE / ANDROID_VERSION_NAME.
+//
+// Not derived from a timestamp or a git count, deliberately. Either would go
+// up on its own, and both make "which build is on the internal track" a
+// question about arithmetic instead of a number you can read in a file.
+def versionProps = new Properties()
+def versionPropsFile = rootProject.file('version.properties')
+if (versionPropsFile.exists()) {
+    versionPropsFile.withInputStream { versionProps.load(it) }
+}
+def appVersionCode = (System.getenv('ANDROID_VERSION_CODE') ?: versionProps.getProperty('VERSION_CODE', '1')).trim().toInteger()
+def appVersionName = (System.getenv('ANDROID_VERSION_NAME') ?: versionProps.getProperty('VERSION_NAME', '1.0')).trim()
+
 android {
     namespace = "consulting.thenorth.houndstack"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +72,8 @@ android {
         applicationId "consulting.thenorth.houndstack"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +81,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -44,6 +122,15 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
+// Firebase, for FCM push. Capacitor's template, kept as generated, and it does
+// the right thing: the google-services plugin is applied ONLY when
+// android/app/google-services.json exists (file().text throws when it does
+// not, and the catch logs and moves on), so a checkout without one still
+// builds. The web bundle has its own half of this gate -- FCM_CONFIGURED in
+// src/lib/native-build.ts, set by vite.config.ts from the same file -- because
+// a binary that registers for push with no Firebase app CRASHES rather than
+// failing softly (docs/android-generated.md, "The crash the first run found").
+// So place the file BEFORE `npm run build:native`, not after.
 try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
@@ -51,4 +138,18 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+// Say it at configure time, once, when a release task is about to produce
+// something Play will refuse. Debug builds never see this.
+gradle.taskGraph.whenReady { graph ->
+    def wantsRelease = graph.allTasks.any { it.project == project && it.name ==~ /(bundle|assemble)Release/ }
+    if (wantsRelease && !hasReleaseSigning) {
+        logger.warn("""
+WARNING: building a RELEASE artifact with no signing config. It will be UNSIGNED
+and Google Play will refuse it. Create android/keystore.properties (see
+android/keystore.properties.example) or set ANDROID_KEYSTORE_PATH,
+ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD.
+""")
+    }
 }

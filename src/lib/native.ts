@@ -130,6 +130,18 @@ export async function watchPositionNative(
   };
 }
 
+/** The Android notification channel push arrives on. `id` must equal
+ *  `default_notification_channel_id` in android/app/src/main/res/values/strings.xml.
+ *  Importance 4 (high) shows a heads-up banner, which is what iOS does with
+ *  the `alert` presentation option in capacitor.config.ts. */
+export const ANDROID_PUSH_CHANNEL = {
+  id: "general",
+  name: "HoundStack",
+  description: "Route changes, new jobs and messages",
+  importance: 4 as const,
+  visibility: 1 as const,
+};
+
 /** The APNs/FCM token this device registered in THIS session, so sign-out can
  *  release it. Memory only: registration runs on every launch of the signed-in
  *  shell, so a session that has a token to release always set this first. */
@@ -205,6 +217,19 @@ export async function registerPushNotifications(
     // entitlement (see docs/ios-build.md › Push notifications).
     console.warn("[push] registration failed", e.error);
   });
+  if (platform() === "android") {
+    // Before register(), so the channel exists before the first message can.
+    // AndroidManifest.xml names this id as FCM's default channel; without it
+    // Firebase files everything under one it calls "Miscellaneous", which is
+    // what the user would then see in Settings > Notifications. Idempotent:
+    // Android ignores a create for an id that exists, and keeps the user's
+    // own choices for it.
+    try {
+      await PushNotifications.createChannel(ANDROID_PUSH_CHANNEL);
+    } catch {
+      // A missing channel degrades to the fallback one; never block push on it.
+    }
+  }
   await PushNotifications.register();
   return () => {
     void onRegistration.remove();
@@ -284,20 +309,166 @@ export async function initStatusBar() {
   }
 }
 
+// ── THE ANDROID BACK BUTTON ──────────────────────────────────────────────
+//
+// Android users press back to get rid of whatever is on top, and only then to
+// go back a screen. So, in order:
+//
+//   1. An open dialog, sheet, drawer, popover or menu closes. Every one of
+//      them in this app is Radix (or vaul, which is Radix Dialog), and Radix
+//      closes the topmost layer on Escape, so back sends Escape. That also
+//      reaches the hand-rolled panels that listen for Escape on window
+//      (AutoRoutingPanel, KeyboardShortcuts). A dialog that REFUSES to close
+//      (Radix's onEscapeKeyDown calling preventDefault, the way an
+//      unsaved-changes guard would) keeps the screen too: back does nothing,
+//      which is what that dialog asked for. One that IGNORES Escape entirely
+//      (the guided tour) does not trap the user: back carries on to step 2.
+//   2. Not on a start screen and there is history: go back one entry.
+//   3. Otherwise the app goes to the background. Not exitApp(): that tears
+//      the WebView down and a cold start costs the splash, the bundle and the
+//      session restore. Backgrounding at the root is what Android 12+ does
+//      for every app's launcher activity anyway.
+//
+// Why START screens and not just "is there history": a sign-in pushes the
+// landing page on top of /auth, so from the dashboard "back" would go to
+// /auth, which sees a session and sends you straight back to the dashboard.
+// The button would appear dead on the one screen people press it most. The
+// landing pages are the screens people start from, so they are where back
+// leaves. A list rather than a guess at the user's landing page, because the
+// landing page differs by role (src/routes/auth.tsx lookupLandingPath) and
+// every one of them is here. The cost, accepted: an owner who opens /routes
+// from the dashboard and presses back leaves the app rather than returning,
+// because /routes is also a dispatcher's start screen.
+
+/** Screens back leaves the app from: the sign-in flow, and every role's
+ *  landing page (owner /dashboard, tech /my-day, dispatcher /routes,
+ *  operator /platform). */
+export const BACK_ROOT_PATHS: ReadonlySet<string> = new Set([
+  "/",
+  "/auth",
+  "/sign-up",
+  "/two-step",
+  "/reset-password",
+  "/no-workspace",
+  "/dashboard",
+  "/my-day",
+  "/routes",
+  "/platform",
+]);
+
+/** A customer portal's home: /portal/<slug>/<token>. */
+const PORTAL_HOME = /^\/portal\/[^/]+\/[^/]+\/?$/;
+
+export function isBackRoot(pathname: string): boolean {
+  const p = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return BACK_ROOT_PATHS.has(p) || PORTAL_HOME.test(pathname);
+}
+
+/** Open layers, in document order. Radix portals append to <body>, so the
+ *  last one is the one on top. `data-state="closed"` is a layer mid-exit
+ *  animation or force-mounted while shut; it is not open. */
+const OPEN_LAYER = [
+  '[role="dialog"]:not([data-state="closed"])',
+  '[role="alertdialog"]:not([data-state="closed"])',
+  "[data-radix-popper-content-wrapper]",
+].join(",");
+
+export function topmostOpenLayer(doc: Document): Element | null {
+  const all = doc.querySelectorAll(OPEN_LAYER);
+  return all.length ? all[all.length - 1] : null;
+}
+
+const stillOpen = (el: Element) => el.isConnected && el.getAttribute("data-state") !== "closed";
+
+export type BackOutcome = "closed-layer" | "layer-refused" | "history-back" | "background";
+
+export type BackEnv = {
+  document: Document;
+  pathname: () => string;
+  historyBack: () => void;
+  background: () => void;
+  /** Lets React commit the close before the layer is looked at again. */
+  settle: () => Promise<void>;
+};
+
+/** What one press of the back button does. Exported so it can be tested
+ *  without a device or the plugin. */
+export async function handleBackButton(canGoBack: boolean, env: BackEnv): Promise<BackOutcome> {
+  const layer = topmostOpenLayer(env.document);
+  if (layer) {
+    // From the document's own window, so the event belongs to the realm the
+    // listeners live in (and so a test can hand in a document of its own).
+    const KeyboardEventCtor = env.document.defaultView?.KeyboardEvent ?? KeyboardEvent;
+    const esc = new KeyboardEventCtor("keydown", {
+      key: "Escape",
+      code: "Escape",
+      keyCode: 27,
+      bubbles: true,
+      cancelable: true,
+    });
+    // At the focused element, as a real key press would be: an input inside
+    // a dialog that handles its own Escape (a combobox, cmdk) gets first go.
+    const target = env.document.activeElement ?? env.document.body;
+    target.dispatchEvent(esc);
+    await env.settle();
+    if (!stillOpen(layer)) return "closed-layer";
+    // Radix calls preventDefault when it dismisses AND when the dialog's own
+    // onEscapeKeyDown refuses. Still open with the event claimed is a refusal.
+    if (esc.defaultPrevented) return "layer-refused";
+    // Nobody listened. Fall through rather than leave back dead.
+  }
+  if (canGoBack && !isBackRoot(env.pathname())) {
+    env.historyBack();
+    return "history-back";
+  }
+  env.background();
+  return "background";
+}
+
 /**
- * Android hardware back button: pop in-app history when there is somewhere to
- * go back to, minimize the app at the navigation root (never exit-blast the
- * WebView). Returns a cleanup that removes the listener. Web: no-op.
+ * Wire the Android hardware back button to handleBackButton. Returns a
+ * cleanup that removes the listener. Web: no-op. iOS has no back button and
+ * the plugin never fires the event there.
  */
 export async function initBackButton(): Promise<() => void> {
   if (!isNative()) return () => {};
   const { App } = await import("@capacitor/app");
+  const env: BackEnv = {
+    document,
+    pathname: () => window.location.pathname,
+    historyBack: () => window.history.back(),
+    background: () => void App.minimizeApp(),
+    settle: () => new Promise((r) => setTimeout(r, 60)),
+  };
   const handle = await App.addListener("backButton", ({ canGoBack }) => {
-    if (canGoBack && window.history.length > 1) {
-      window.history.back();
-    } else {
-      void App.minimizeApp();
-    }
+    void handleBackButton(canGoBack, env);
+  });
+  return () => {
+    void handle.remove();
+  };
+}
+
+/**
+ * Android App Links: a tap on https://app.houndstack.com/<staff page> opens
+ * the app (AndroidManifest.xml, verified by /.well-known/assetlinks.json) and
+ * arrives here as `appUrlOpen`. Navigate to the same path inside the bundle.
+ *
+ * Cold start is covered by the same listener: Capacitor's App plugin retains
+ * the launch URL event until a listener attaches, so this must not ALSO read
+ * getLaunchUrl(), or a cold-start link would navigate twice.
+ *
+ * Anything that is not one of our https links is ignored, in particular the
+ * custom-scheme OAuth hand-back, which src/routes/auth.tsx owns.
+ */
+export async function initAppLinks(onNavigate: (path: string) => void): Promise<() => void> {
+  if (!isNative()) return () => {};
+  const [{ App }, { appLinkTarget }] = await Promise.all([
+    import("@capacitor/app"),
+    import("@/lib/android-app-links"),
+  ]);
+  const handle = await App.addListener("appUrlOpen", ({ url }) => {
+    const path = appLinkTarget(url);
+    if (path) onNavigate(path);
   });
   return () => {
     void handle.remove();

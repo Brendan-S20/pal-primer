@@ -27,7 +27,13 @@ from. Each line says where the detail is.
    Owner checklist, steps 3–5.
 3. **Sentry: one test error after the next publish**, from
    /platform/health on the web and in the iOS app, and the two recommended
-   project settings. `OPS_RUNBOOK.md` §8.
+   project settings. `OPS_RUNBOOK.md` §8. **And add it to the App Privacy
+   answers (item 4):** Sentry reports from inside the iOS binary, so App
+   Store Connect needs **Diagnostics › Crash Data** (and Other Diagnostic
+   Data), *linked to the user* (events carry the user id and org id, never a
+   name, email or IP), *not used for tracking*, purpose App Functionality.
+   The answers given before #323 do not include it. Play's equivalent is in
+   `docs/play-store-submission.md` §3.
 4. **Decide where routing and geocoding run** (item 11). Still the public OSRM
    demo server and public Nominatim unless `OSRM_URL` and `GEOCODIO_API_KEY`
    are set in Lovable, which nothing here can read.
@@ -108,7 +114,11 @@ exactly ONE target and it is of type `application`. The UITests are a separate
 project, `ios/UITests/UITests.xcodeproj`, so the App workspace has no test
 bundle to run. If a Test action is ever added back, it will fail the same way.
 
-## 4. App Privacy questionnaire — DONE
+## 4. App Privacy questionnaire — DONE, one addition open
+
+Answered before error monitoring shipped. Since #323 the app sends crash
+reports to Sentry, so **Diagnostics › Crash Data** needs adding; see item 3 in
+the open list above.
 
 ## 5. Category — DECIDED: Productivity
 

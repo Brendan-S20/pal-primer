@@ -4,4 +4,8 @@
     <string name="title_activity_main">HoundStack</string>
     <string name="package_name">consulting.thenorth.houndstack</string>
     <string name="custom_url_scheme">consulting.thenorth.houndstack</string>
+    <!-- Must equal ANDROID_PUSH_CHANNEL.id in src/lib/native.ts, which creates
+         the channel before registering for push. Not translatable: it is an
+         id, not a label. -->
+    <string name="default_notification_channel_id" translatable="false">general</string>
 </resources>

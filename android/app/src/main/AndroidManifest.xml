@@ -24,7 +24,117 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- App Links: https://app.houndstack.com STAFF pages open in the app.
+
+                 The list below is an allowlist, and is tested against
+                 src/lib/android-app-links.ts, which explains every exclusion:
+                 customer links (/pay, /portal, /q, /track), anything that buys
+                 HoundStack (/billing, /settings/billing, /settings/addons) and
+                 /auth, the web OAuth redirect target, all stay in the browser.
+                 Android before 15 cannot exclude a path inside a claimed
+                 prefix, which is why Settings is listed page by page. Change
+                 the TS list and this together;
+                 tests/an-android-link-opens-the-app-only-where-it-should.test.ts
+                 fails when they differ.
+
+                 autoVerify makes Android fetch
+                 https://app.houndstack.com/.well-known/assetlinks.json at
+                 install. Until that file names Play's app signing certificate
+                 (docs/play-store-submission.md, owner step), verification
+                 fails and these links quietly open the browser instead, which
+                 is the safe failure. The tap is handled in JS by
+                 initAppLinks() in src/lib/native.ts. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="app.houndstack.com" />
+                <data android:path="/" />
+                <data android:path="/settings" />
+                <data android:pathPrefix="/ai-tools" />
+                <data android:pathPrefix="/analytics" />
+                <data android:pathPrefix="/campaigns" />
+                <data android:pathPrefix="/clients" />
+                <data android:pathPrefix="/concerns" />
+                <data android:pathPrefix="/dashboard" />
+                <data android:pathPrefix="/disputes" />
+                <data android:pathPrefix="/dna" />
+                <data android:pathPrefix="/expenses" />
+                <data android:pathPrefix="/franchise" />
+                <data android:pathPrefix="/help" />
+                <data android:pathPrefix="/imports" />
+                <data android:pathPrefix="/inbox" />
+                <data android:pathPrefix="/inventory" />
+                <data android:pathPrefix="/invoices" />
+                <data android:pathPrefix="/leads" />
+                <data android:pathPrefix="/messages" />
+                <data android:pathPrefix="/my-day" />
+                <data android:pathPrefix="/my-schedule" />
+                <data android:pathPrefix="/neighbors" />
+                <data android:pathPrefix="/notifications" />
+                <data android:pathPrefix="/onboarding" />
+                <data android:pathPrefix="/payments" />
+                <data android:pathPrefix="/pricing-drift" />
+                <data android:pathPrefix="/profile" />
+                <data android:pathPrefix="/properties" />
+                <data android:pathPrefix="/quotes" />
+                <data android:pathPrefix="/reports" />
+                <data android:pathPrefix="/review" />
+                <data android:pathPrefix="/routes" />
+                <data android:pathPrefix="/tax-reports" />
+                <data android:pathPrefix="/timesheets" />
+                <data android:pathPrefix="/waste-log" />
+                <data android:pathPrefix="/zones" />
+                <data android:pathPrefix="/settings/accounting" />
+                <data android:pathPrefix="/settings/ai" />
+                <data android:pathPrefix="/settings/automation" />
+                <data android:pathPrefix="/settings/blackouts" />
+                <data android:pathPrefix="/settings/business" />
+                <data android:pathPrefix="/settings/client-portal" />
+                <data android:pathPrefix="/settings/deep-clean" />
+                <data android:pathPrefix="/settings/emails" />
+                <data android:pathPrefix="/settings/franchise" />
+                <data android:pathPrefix="/settings/invoicing" />
+                <data android:pathPrefix="/settings/lead-form" />
+                <data android:pathPrefix="/settings/online-signup" />
+                <data android:pathPrefix="/settings/payments" />
+                <data android:pathPrefix="/settings/preferences" />
+                <data android:pathPrefix="/settings/promotions" />
+                <data android:pathPrefix="/settings/referrals" />
+                <data android:pathPrefix="/settings/reviews" />
+                <data android:pathPrefix="/settings/scheduling" />
+                <data android:pathPrefix="/settings/skip-rules" />
+                <data android:pathPrefix="/settings/sms" />
+                <data android:pathPrefix="/settings/users" />
+                <data android:pathPrefix="/settings/webhooks" />
+            </intent-filter>
+
         </activity>
+
+        <!-- Push notifications drawn by Firebase while the app is in the
+             background, and by the Capacitor plugin in the foreground (it
+             reads these same three keys).
+
+             SMALL ICON: without this, Android draws the launcher icon as the
+             status-bar glyph, and since Android 5 that is masked to its alpha
+             channel: the full-colour hound-in-H becomes a solid white square.
+             ic_stat_notification is a white-on-transparent vector, which is
+             the only shape the status bar renders properly.
+
+             CHANNEL: from Android 8 every notification needs one. With none
+             named, Firebase files everything under a channel it calls
+             "Miscellaneous". registerPushNotifications() creates "general"
+             before registering, and this points FCM at it. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notificationAccent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/default_notification_channel_id" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

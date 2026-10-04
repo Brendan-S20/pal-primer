@@ -244,24 +244,34 @@ function RootComponent() {
     };
   }, []);
 
-  // Android hardware back button (native shell only — web no-op): pop in-app
-  // history, minimize the app at the root. Lives on the root route so it also
-  // covers the client portal, not just the authenticated shell.
+  // Android hardware back button (native shell only — web no-op): close the
+  // open dialog or sheet, else pop in-app history, else background the app
+  // from a start screen. See handleBackButton in src/lib/native.ts. Lives on
+  // the root route so it also covers the client portal, not just the
+  // authenticated shell.
+  //
+  // Android App Links in the same effect, for the same reason: a tapped
+  // https://app.houndstack.com/<staff page> link arrives here whether or not
+  // anyone is signed in, and the _authenticated guard takes it from there.
+  const router = useRouter();
   useEffect(() => {
     let removed = false;
-    let remove: (() => void) | undefined;
+    const removers: Array<() => void> = [];
+    const keep = (r: () => void) => {
+      if (removed) r();
+      else removers.push(r);
+    };
     import("../lib/native")
-      .then((m) => m.initBackButton())
-      .then((r) => {
-        if (removed) r();
-        else remove = r;
+      .then(async (m) => {
+        keep(await m.initBackButton());
+        keep(await m.initAppLinks((path) => router.history.push(path)));
       })
       .catch(() => {});
     return () => {
       removed = true;
-      remove?.();
+      for (const r of removers) r();
     };
-  }, []);
+  }, [router]);
 
   return (
     <QueryClientProvider client={queryClient}>

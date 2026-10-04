@@ -1,5 +1,8 @@
 #!/bin/zsh
 # Build the Android debug APK, with the toolchain this repo was built against.
+# Any Gradle task can be passed instead: `npm run android:bundle` runs this
+# with `bundleRelease` to produce the .aab for Play (signing: see the header
+# of android/app/build.gradle). The name is historical.
 #
 # WHY A SCRIPT: neither JAVA_HOME nor ANDROID_HOME is set globally on the
 # machine this was developed on, and Gradle's failure when they are missing
@@ -33,6 +36,19 @@ cd "$HERE"
 ./gradlew "${@:-assembleDebug}"
 
 echo
+AAB="$(find "$HERE/app/build/outputs/bundle" -name '*.aab' 2>/dev/null | head -1)"
+if [ "${1:-}" = "bundleRelease" ] && [ -n "$AAB" ]; then
+  echo "AAB: $AAB"
+  # Signed or not, said plainly: Play refuses an unsigned bundle at upload.
+  # Matched on the text: jarsigner exits 0 for an UNSIGNED jar too ("jar is
+  # unsigned."), so its exit code cannot answer this.
+  if "$JAVA_HOME/bin/jarsigner" -verify "$AAB" 2>/dev/null | grep -q "^jar verified"; then
+    echo "Signed: yes"
+  else
+    echo "Signed: NO -- Play will refuse this. See android/keystore.properties.example."
+  fi
+  exit 0
+fi
 echo "APK: $(find "$HERE/app/build/outputs" -name '*.apk' | head -1)"
 echo "Merged manifest permissions:"
 "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest permissions \

@@ -176,7 +176,25 @@ describe("the message keeps what the device needs", () => {
     // rows in the shade instead of one.
     const m = fcmMessageFor("tok", payload);
     expect(m.message.android.notification.tag).toBe("route-progress");
-    expect(m.message.android.notification.icon).toBe("/pwa-192.png");
+  });
+
+  it("never sends a web icon URL as an Android drawable name", () => {
+    // `icon` is shared with web push, where it is a URL. Android reads it as
+    // a drawable resource name; a URL names nothing and the device logs a
+    // miss. Omitted, the manifest's monochrome default is used.
+    const m = fcmMessageFor("tok", payload);
+    expect(m.message.android.notification.icon).toBeUndefined();
+    const named = fcmMessageFor("tok", { ...payload, icon: "ic_stat_notification" });
+    expect(named.message.android.notification.icon).toBe("ic_stat_notification");
+  });
+
+  it("does not send click_action, which made every linked notification untappable", () => {
+    // "FCM_PLUGIN_ACTIVITY" is a cordova-plugin-fcm intent action no activity
+    // in this app declares, so a tap resolved to nothing. Without it the tap
+    // launches MainActivity and Capacitor routes the url from data.
+    const m = fcmMessageFor("tok", payload);
+    expect(m.message.android.notification).not.toHaveProperty("click_action");
+    expect(JSON.stringify(m)).not.toContain("FCM_PLUGIN_ACTIVITY");
   });
 
   it("carries the url in data, which is what routes the tap", () => {
