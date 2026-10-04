@@ -72,7 +72,11 @@ export const visitThreadId = (visitId: string) => `visit:${visitId}`;
 /** My Day, at a day, optionally another tech's (an office role previews it)
  *  and scrolled to one stop. The route already reads `date` and `staff`;
  *  `visit` is what lands a tap on the stop the push is about. */
-export function myDayLink(p: { day: string; staffId?: string | null; visitId?: string | null }): string {
+export function myDayLink(p: {
+  day: string;
+  staffId?: string | null;
+  visitId?: string | null;
+}): string {
   const q = new URLSearchParams({ date: p.day });
   if (p.staffId) q.set("staff", p.staffId);
   if (p.visitId) q.set("visit", p.visitId);
@@ -124,7 +128,11 @@ function byDay(rows: RouteRow[], days: readonly string[]) {
  *  which were added, which taken off, and whether the ones on it both times
  *  are in a different order. A move between techs is a removal from one day
  *  and an addition to the other; a move to another date, the same. */
-export function diffRoutes(before: RouteRow[], after: RouteRow[], days: readonly string[]): RouteChange[] {
+export function diffRoutes(
+  before: RouteRow[],
+  after: RouteRow[],
+  days: readonly string[],
+): RouteChange[] {
   const b = byDay(before, days);
   const a = byDay(after, days);
   const out: RouteChange[] = [];
@@ -135,8 +143,14 @@ export function diffRoutes(before: RouteRow[], after: RouteRow[], days: readonly
     const nowIds = new Set(now.map((r) => r.id));
     const added = now.filter((r) => !wasIds.has(r.id));
     const removed = was.filter((r) => !nowIds.has(r.id));
-    const keptBefore = was.filter((r) => nowIds.has(r.id)).map((r) => r.id).join();
-    const keptAfter = now.filter((r) => wasIds.has(r.id)).map((r) => r.id).join();
+    const keptBefore = was
+      .filter((r) => nowIds.has(r.id))
+      .map((r) => r.id)
+      .join();
+    const keptAfter = now
+      .filter((r) => wasIds.has(r.id))
+      .map((r) => r.id)
+      .join();
     const reordered = keptBefore !== keptAfter;
     if (!added.length && !removed.length && !reordered) continue;
     const [staffId, day] = key.split("|");
@@ -218,7 +232,10 @@ export function coalescedRouteNotice(
 ): { title: string; body: string; link: string } {
   return {
     title: t(`techPush.routeChanged${when(kind)}`),
-    body: [t("techPush.changedAgain"), totalNow != null ? t("techPush.total", { count: totalNow }) : null]
+    body: [
+      t("techPush.changedAgain"),
+      totalNow != null ? t("techPush.total", { count: totalNow }) : null,
+    ]
       .filter(Boolean)
       .join(" · "),
     link: myDayLink({ day }),
@@ -304,7 +321,13 @@ export const roundLate = (minutes: number) => Math.ceil(minutes / 5) * 5;
 
 // ── A finished route ───────────────────────────────────────────────────────
 
-export type DayTally = { total: number; open: number; completed: number; skipped: number; missed: number };
+export type DayTally = {
+  total: number;
+  open: number;
+  completed: number;
+  skipped: number;
+  missed: number;
+};
 
 /** The day as the office counts it: everything not canceled. */
 export function tallyDay(rows: Array<{ status: string }>): DayTally {

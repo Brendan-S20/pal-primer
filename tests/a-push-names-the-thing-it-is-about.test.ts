@@ -54,16 +54,31 @@ describe("APNs", () => {
     const old = apnsRequestFor("tok", { title: "t", tag: "visit-1" }, APNS_DEFAULT_TOPIC);
     expect(old.headers["apns-collapse-id"]).toBe("visit-1");
     expect((old.body.aps as any)["thread-id"]).toBe("visit-1");
-    const both = apnsRequestFor("tok", { title: "t", tag: "visit-1", collapseId: "c", threadId: "th" }, APNS_DEFAULT_TOPIC);
+    const both = apnsRequestFor(
+      "tok",
+      { title: "t", tag: "visit-1", collapseId: "c", threadId: "th" },
+      APNS_DEFAULT_TOPIC,
+    );
     expect(both.headers["apns-collapse-id"]).toBe("c");
     expect((both.body.aps as any)["thread-id"]).toBe("th");
   });
 
   it("every key field-notify builds fits Apple's 64 bytes", () => {
     const uuid = "5c000000-0000-4000-8000-000000000005";
-    for (const key of [`route:${uuid}:2026-10-04`, `late:${uuid}`, `access:${uuid}`, `finished:${uuid}:2026-10-04`, `collection:${uuid}`, `visit:${uuid}`]) {
+    for (const key of [
+      `route:${uuid}:2026-10-04`,
+      `late:${uuid}`,
+      `access:${uuid}`,
+      `finished:${uuid}:2026-10-04`,
+      `collection:${uuid}`,
+      `visit:${uuid}`,
+    ]) {
       expect(new TextEncoder().encode(key).length, key).toBeLessThanOrEqual(64);
-      expect(apnsRequestFor("tok", { title: "t", collapseId: key }, APNS_DEFAULT_TOPIC).headers["apns-collapse-id"]).toBe(key);
+      expect(
+        apnsRequestFor("tok", { title: "t", collapseId: key }, APNS_DEFAULT_TOPIC).headers[
+          "apns-collapse-id"
+        ],
+      ).toBe(key);
     }
   });
 });
@@ -73,7 +88,11 @@ describe("FCM", () => {
     const m = fcmMessageFor("tok", ITEM);
     expect(m.message.android.notification.tag).toBe(ITEM.collapseId);
     expect(m.message.android.collapse_key).toBe(ITEM.collapseId);
-    expect(m.message.data).toMatchObject({ url: ITEM.url, threadId: ITEM.threadId, type: "visit_late" });
+    expect(m.message.data).toMatchObject({
+      url: ITEM.url,
+      threadId: ITEM.threadId,
+      type: "visit_late",
+    });
   });
 
   it("sends no collapse_key when there is nothing to collapse", () => {

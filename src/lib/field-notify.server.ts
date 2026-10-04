@@ -93,7 +93,8 @@ async function orgOfUser(db: Admin, userId: string | null): Promise<string | nul
   return (data?.organization_id as string | undefined) ?? null;
 }
 
-const one = <T,>(x: T | T[] | null | undefined): T | null => (Array.isArray(x) ? (x[0] ?? null) : (x ?? null));
+const one = <T>(x: T | T[] | null | undefined): T | null =>
+  Array.isArray(x) ? (x[0] ?? null) : (x ?? null);
 
 const addressOf = (p: { street?: string | null; city?: string | null } | null) =>
   p ? [p.street, p.city].filter(Boolean).join(", ") : "";
@@ -112,16 +113,29 @@ async function languageOf(db: Admin, userId: string): Promise<string | null> {
 }
 
 async function staffRows(db: Admin, orgId: string, ids: string[]) {
-  if (!ids.length) return new Map<string, { user_id: string | null; display_name: string; active: boolean }>();
+  if (!ids.length)
+    return new Map<string, { user_id: string | null; display_name: string; active: boolean }>();
   const { data } = await db
     .from("staff")
     .select("id, user_id, display_name, active")
     .eq("organization_id", orgId)
     .in("id", ids);
   return new Map(
-    ((data ?? []) as Array<{ id: string; user_id: string | null; display_name: string | null; active: boolean | null }>).map(
-      (s) => [s.id, { user_id: s.user_id, display_name: (s.display_name ?? "").trim() || "A tech", active: s.active !== false }],
-    ),
+    (
+      (data ?? []) as Array<{
+        id: string;
+        user_id: string | null;
+        display_name: string | null;
+        active: boolean | null;
+      }>
+    ).map((s) => [
+      s.id,
+      {
+        user_id: s.user_id,
+        display_name: (s.display_name ?? "").trim() || "A tech",
+        active: s.active !== false,
+      },
+    ]),
   );
 }
 
@@ -143,7 +157,7 @@ function toRouteRow(v: any): RouteRow {
   };
 }
 
-const chunks = <T,>(xs: T[], n: number) =>
+const chunks = <T>(xs: T[], n: number) =>
   Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 
 /** The open stops these visits are, and every stop on these techs' today and
@@ -179,7 +193,12 @@ async function snapshot(
   return [...out.values()];
 }
 
-async function stopsOnDay(db: Admin, orgId: string, staffId: string, day: string): Promise<number | null> {
+async function stopsOnDay(
+  db: Admin,
+  orgId: string,
+  staffId: string,
+  day: string,
+): Promise<number | null> {
   const { count, error } = await db
     .from("visits")
     .select("id", { count: "exact", head: true })
@@ -218,7 +237,10 @@ async function notifyRouteChanges(
       threadId: routeThreadId(change.staffId, change.day),
       collapseId: notice.collapseId,
       exceptUserId: actorUserId,
-      coalesce: { windowMs: ROUTE_COALESCE_MS, ...coalescedRouteNotice(t, change.day, kind, total) },
+      coalesce: {
+        windowMs: ROUTE_COALESCE_MS,
+        ...coalescedRouteNotice(t, change.day, kind, total),
+      },
     });
   }
 }
@@ -310,7 +332,11 @@ export async function notifyAccessChanged(input: {
       (v) => v.assigned_staff_id,
     );
     if (!list.length) return;
-    const staff = await staffRows(db, clock.orgId, list.map((v) => v.assigned_staff_id!));
+    const staff = await staffRows(
+      db,
+      clock.orgId,
+      list.map((v) => v.assigned_staff_id!),
+    );
     const { notifyUsers } = await import("@/lib/notify-center.server");
     const { techT } = await import("@/lib/tech-push-i18n");
     for (const v of list) {
@@ -319,7 +345,12 @@ export async function notifyAccessChanged(input: {
       const t = techT(await languageOf(db, s.user_id));
       const notice = accessNotice(
         t,
-        { visitId: v.id, day: clock.today, client: one(prop.clients)?.display_name, address: addressOf(prop) },
+        {
+          visitId: v.id,
+          day: clock.today,
+          client: one(prop.clients)?.display_name,
+          address: addressOf(prop),
+        },
         changes,
       );
       await notifyUsers([s.user_id], {
@@ -332,7 +363,12 @@ export async function notifyAccessChanged(input: {
         collapseId: notice.collapseId,
         exceptUserId: input.actorUserId,
         // The office saving the form twice is one notification, updated.
-        coalesce: { windowMs: ROUTE_COALESCE_MS, title: notice.title, body: notice.body, link: notice.link },
+        coalesce: {
+          windowMs: ROUTE_COALESCE_MS,
+          title: notice.title,
+          body: notice.body,
+          link: notice.link,
+        },
       });
     }
   } catch (e) {
@@ -365,13 +401,23 @@ async function loadStop(db: Admin, visitId: string): Promise<Stop | null> {
   return (data as Stop | null) ?? null;
 }
 
-const clientOf = (v: Stop) => (one(v.clients as any) as { display_name?: string | null } | null)?.display_name?.trim() || "a customer";
+const clientOf = (v: Stop) =>
+  (one(v.clients as any) as { display_name?: string | null } | null)?.display_name?.trim() ||
+  "a customer";
 const propOf = (v: Stop) =>
-  one(v.properties as any) as { street?: string | null; city?: string | null; latitude?: number | null; longitude?: number | null } | null;
+  one(v.properties as any) as {
+    street?: string | null;
+    city?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
 
 /** A tech skipped a stop: tell the office, with the reason, and then do what
  *  any resolved stop does (afterStopResolved). */
-export async function notifyVisitSkipped(input: { visitId: string; actorUserId: string | null }): Promise<void> {
+export async function notifyVisitSkipped(input: {
+  visitId: string;
+  actorUserId: string | null;
+}): Promise<void> {
   try {
     const db = await admin();
     const v = await loadStop(db, input.visitId);
@@ -420,7 +466,10 @@ export async function notifyVisitSkipped(input: { visitId: string; actorUserId: 
  *   here), and if that lands past the arrival window the office hears it
  *   before the customer does. This is the check that needs no GPS.
  */
-export async function afterStopResolved(input: { visitId: string; actorUserId: string | null }): Promise<void> {
+export async function afterStopResolved(input: {
+  visitId: string;
+  actorUserId: string | null;
+}): Promise<void> {
   try {
     const db = await admin();
     const v = await loadStop(db, input.visitId);
@@ -477,7 +526,10 @@ export async function afterStopResolved(input: { visitId: string; actorUserId: s
     const drive =
       next.travel_min != null
         ? Number(next.travel_min)
-        : here?.latitude != null && here?.longitude != null && there?.latitude != null && there?.longitude != null
+        : here?.latitude != null &&
+            here?.longitude != null &&
+            there?.latitude != null &&
+            there?.longitude != null
           ? estimateDriveMin(
               { lat: here.latitude, lng: here.longitude },
               { lat: there.latitude, lng: there.longitude },
@@ -594,11 +646,14 @@ export async function notifyFieldCollection(input: {
       .eq("id", input.collectionId)
       .maybeSingle();
     if (!fc) return;
-    const staff = await staffRows(db, fc.organization_id, fc.collected_by_staff_id ? [fc.collected_by_staff_id] : []);
+    const staff = await staffRows(
+      db,
+      fc.organization_id,
+      fc.collected_by_staff_id ? [fc.collected_by_staff_id] : [],
+    );
     const name = staff.get(fc.collected_by_staff_id)?.display_name ?? "A tech";
     const client = (one(fc.clients)?.display_name ?? "").trim() || "a customer";
-    const how =
-      fc.method === "cash" ? "cash" : fc.reference ? `check #${fc.reference}` : "a check";
+    const how = fc.method === "cash" ? "cash" : fc.reference ? `check #${fc.reference}` : "a check";
     const amount = `$${(Number(fc.amount_cents) / 100).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -612,7 +667,9 @@ export async function notifyFieldCollection(input: {
       body: `From ${client}. Confirm it on Invoices to apply it to their open invoices.`,
       link: "/invoices#field-collections",
       threadId:
-        fc.collected_by_staff_id && day ? routeThreadId(fc.collected_by_staff_id, day) : `collection:${fc.id}`,
+        fc.collected_by_staff_id && day
+          ? routeThreadId(fc.collected_by_staff_id, day)
+          : `collection:${fc.id}`,
       collapseId: `collection:${fc.id}`,
       eventKey: `field_collection:${fc.id}`,
       exceptUserId: input.actorUserId,

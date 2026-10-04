@@ -35,15 +35,22 @@ import { join } from "node:path";
 vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
-const MIGRATION = join(ROOT, "supabase/migrations/20261004150000_nothing-in-the-field-told-anyone.sql");
-const CASH = join(ROOT, "supabase/migrations/20261002150000_the-cash-a-tech-took-had-nowhere-to-go.sql");
+const MIGRATION = join(
+  ROOT,
+  "supabase/migrations/20261004150000_nothing-in-the-field-told-anyone.sql",
+);
+const CASH = join(
+  ROOT,
+  "supabase/migrations/20261002150000_the-cash-a-tech-took-had-nowhere-to-go.sql",
+);
 const METHODS = join(
   ROOT,
   "supabase/migrations/20260928030000_a-cash-payment-could-not-say-how-it-was-paid.sql",
 );
 const PROOF = join(ROOT, "tests/sql/nothing-in-the-field-told-anyone.proof.sql");
 const DB_URL =
-  process.env.FIELD_NOTIFY_PROOF_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
+  process.env.FIELD_NOTIFY_PROOF_DB_URL ??
+  "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
 
 describe("the migration, read", () => {
   const sql = readFileSync(MIGRATION, "utf8");
@@ -53,7 +60,9 @@ describe("the migration, read", () => {
     .join("\n");
 
   it("replaces record_field_collection with a body that writes no notification", () => {
-    const fn = code.slice(code.indexOf("CREATE OR REPLACE FUNCTION public.record_field_collection("));
+    const fn = code.slice(
+      code.indexOf("CREATE OR REPLACE FUNCTION public.record_field_collection("),
+    );
     const body = fn.slice(0, fn.indexOf("$function$;"));
     expect(body.length).toBeGreaterThan(1000);
     expect(body).not.toMatch(/app_notifications/);
@@ -73,8 +82,12 @@ describe("the migration, read", () => {
   });
 
   it("revokes it from anon again, and the unique index is not partial", () => {
-    expect(code).toMatch(/REVOKE ALL ON FUNCTION public\.record_field_collection\([^)]*\)\s+FROM PUBLIC, anon;/);
-    const idx = code.slice(code.indexOf("CREATE UNIQUE INDEX IF NOT EXISTS app_notifications_recipient_event_key"));
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION public\.record_field_collection\([^)]*\)\s+FROM PUBLIC, anon;/,
+    );
+    const idx = code.slice(
+      code.indexOf("CREATE UNIQUE INDEX IF NOT EXISTS app_notifications_recipient_event_key"),
+    );
     expect(idx.slice(0, idx.indexOf(";"))).not.toMatch(/WHERE/i);
   });
 
@@ -101,7 +114,10 @@ function findPsql(): string | null {
 const psql = findPsql();
 const reachable =
   !!psql &&
-  spawnSync(psql, [DB_URL, "-XAtc", "select 1"], { encoding: "utf8", timeout: 30_000 }).stdout?.trim() === "1";
+  spawnSync(psql, [DB_URL, "-XAtc", "select 1"], {
+    encoding: "utf8",
+    timeout: 30_000,
+  }).stdout?.trim() === "1";
 
 if (!reachable) {
   console.warn(
@@ -145,7 +161,11 @@ describe.skipIf(!reachable)("the field-notification rules hold in a real databas
     expect(out).toMatch(/ALL FIELD NOTIFICATION PROOFS PASSED/);
     const left = spawnSync(
       psql!,
-      [DB_URL, "-XAtc", "select count(*) from public.organizations where name like 'Field Proof %'"],
+      [
+        DB_URL,
+        "-XAtc",
+        "select count(*) from public.organizations where name like 'Field Proof %'",
+      ],
       { encoding: "utf8" },
     );
     expect(left.stdout.trim()).toBe("0");
