@@ -24,10 +24,50 @@ export interface PushPayload {
   title: string;
   body?: string;
   url?: string;
+  /** The older, single knob: it both groups and replaces. Kept for the
+   *  callers that already send one (the client portal's visit-completed
+   *  push). `threadId` and `collapseId` below override it where set. */
   tag?: string;
+  /** Which ITEM this push is about, so the phone stacks every push about the
+   *  same thing together, the way a ride app stacks one trip's updates:
+   *  `route:<staffId>:<day>` for a tech's day, `visit:<id>` for a stop.
+   *  APNs `thread-id`. Grouping only: nothing is replaced. */
+  threadId?: string;
+  /** The identity of one notification that a newer push REPLACES in place
+   *  rather than adds to: an ETA update for the same visit, the route summary
+   *  for the same day. APNs `apns-collapse-id`, the FCM tray `tag` and
+   *  `collapse_key`, the web Notification `tag`. */
+  collapseId?: string;
   icon?: string;
   requireInteraction?: boolean;
   data?: Record<string, unknown>;
+}
+
+/** The replace-in-place key each channel gets: an explicit collapseId, else
+ *  the legacy tag. */
+export function pushCollapseKey(payload: PushPayload): string | undefined {
+  return payload.collapseId || payload.tag || undefined;
+}
+
+/** The grouping key: an explicit threadId, else the legacy tag. */
+function pushThreadKey(payload: PushPayload): string | undefined {
+  return payload.threadId || payload.tag || undefined;
+}
+
+/** What a browser's service worker receives (public/push-handlers.js):
+ *  `tag` is the Notification API's replace-in-place key, so it carries the
+ *  collapse key, and the thread rides in data for anything that wants it.
+ *  A browser has no notion of a thread, so the thread must NOT become the
+ *  tag: two different things about one tech's day (a skip and a late) would
+ *  then replace each other. */
+export function webPushBody(payload: PushPayload): string {
+  const { threadId, collapseId, ...rest } = payload;
+  const tag = pushCollapseKey(payload);
+  return JSON.stringify({
+    ...rest,
+    ...(tag ? { tag } : {}),
+    ...(threadId ? { data: { ...(payload.data ?? {}), threadId } } : {}),
+  });
 }
 
 interface WebSub {
@@ -59,7 +99,7 @@ async function markError(id: string, err: string, gone = false) {
 
 async function sendWebPush(subs: WebSub[], payload: PushPayload) {
   if (!ensureWebConfigured() || subs.length === 0) return { sent: 0, failed: 0 };
-  const body = JSON.stringify(payload);
+  const body = webPushBody(payload);
   let sent = 0, failed = 0;
   await Promise.all(subs.map(async (s) => {
     try {
@@ -151,7 +191,7 @@ export type FcmMessage = {
   message: {
     token: string;
     notification: { title: string; body: string };
-    android: { notification: Record<string, string> };
+    android: { collapse_key?: string; notification: Record<string, string> };
     data: Record<string, string>;
   };
 };
@@ -165,14 +205,22 @@ export type FcmMessage = {
 const ANDROID_DRAWABLE_NAME = /^[a-z][a-z0-9_]*$/;
 
 export function fcmMessageFor(token: string, payload: PushPayload): FcmMessage {
+  const collapse = pushCollapseKey(payload);
   return {
     message: {
       token,
       notification: { title: payload.title, body: payload.body ?? "" },
       android: {
+        // While the device is offline FCM keeps only the newest message per
+        // collapse_key, so a phone that comes back into signal gets the
+        // latest ETA for a stop rather than every one it missed.
+        ...(collapse ? { collapse_key: collapse } : {}),
         notification: {
-          // Renamed in v1: tag collapses repeats on the device.
-          ...(payload.tag ? { tag: payload.tag } : {}),
+          // Renamed in v1: tag replaces a notification already in the tray.
+          // FCM v1 has no thread field: Android groups an app's
+          // notifications itself, so the thread rides in data (below) for
+          // the app to read, and the collapse key is the tag.
+          ...(collapse ? { tag: collapse } : {}),
           ...(payload.icon && ANDROID_DRAWABLE_NAME.test(payload.icon)
             ? { icon: payload.icon }
             : {}),
@@ -191,7 +239,11 @@ export function fcmMessageFor(token: string, payload: PushPayload): FcmMessage {
       },
       // The URL rides in data: the Capacitor plugin hands `data` to the app
       // on tap, and that is what routes it (initPushDeepLinks).
-      data: { url: payload.url ?? "", ...fcmDataStrings(payload.data) },
+      data: {
+        url: payload.url ?? "",
+        ...(payload.threadId ? { threadId: payload.threadId } : {}),
+        ...fcmDataStrings(payload.data),
+      },
     },
   };
 }
@@ -389,10 +441,14 @@ export function apnsRequestFor(
   };
   // collapse-id is APNs' equivalent of the web-push `tag` (a newer
   // notification replaces the older one). Apple caps it at 64 bytes and
-  // rejects the whole send over it, so an over-long tag only groups.
-  if (payload.tag && new TextEncoder().encode(payload.tag).length <= 64) {
-    headers["apns-collapse-id"] = payload.tag;
+  // rejects the whole send over it, so an over-long one only groups.
+  const collapse = pushCollapseKey(payload);
+  if (collapse && new TextEncoder().encode(collapse).length <= 64) {
+    headers["apns-collapse-id"] = collapse;
   }
+  // thread-id is grouping only: every push about one tech's day stacks under
+  // one heading on the lock screen, each still its own notification.
+  const thread = pushThreadKey(payload);
   return {
     path: `/3/device/${token}`,
     headers,
@@ -400,7 +456,7 @@ export function apnsRequestFor(
       aps: {
         alert: { title: payload.title, body: payload.body ?? "" },
         sound: "default",
-        ...(payload.tag ? { "thread-id": payload.tag } : {}),
+        ...(thread ? { "thread-id": thread } : {}),
       },
       // Top-level custom keys arrive in the tap handler as
       // `notification.data` — initPushDeepLinks in src/lib/native.ts reads
