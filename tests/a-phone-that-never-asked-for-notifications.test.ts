@@ -126,6 +126,19 @@ async function loadNative() {
   return native;
 }
 
+/** The phone's storage, which outlives a launch. Node has no window, so the
+ *  two cross-launch tests give it one. */
+function stubPhoneStorage() {
+  const store = new Map<string, string>();
+  vi.stubGlobal("window", {
+    localStorage: {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    },
+  });
+}
+
 const TOKEN = "f00dfeed".repeat(8);
 
 beforeEach(() => {
@@ -215,6 +228,39 @@ describe("turnOnPushNotifications", () => {
     expect(h.issues).toHaveLength(1);
     expect(h.issues[0].tags).toMatchObject({ push_permission: "denied", push_prompt: "not_asked" });
     expect(h.issues[0].level).toBe("warning");
+  });
+
+  it("already denied on a LATER launch: not reported again from the same phone", async () => {
+    stubPhoneStorage();
+    h.check = "denied";
+    let native = await loadNative();
+    await native.turnOnPushNotifications();
+    expect(h.issues).toHaveLength(1);
+
+    // A new launch is a fresh module; the phone's storage is what survives.
+    vi.resetModules();
+    native = await import("@/lib/native");
+    await native.turnOnPushNotifications();
+    expect(h.issues).toHaveLength(1);
+  });
+
+  it("a phone that grants and later says no again is reported again", async () => {
+    stubPhoneStorage();
+    h.check = "denied";
+    let native = await loadNative();
+    await native.turnOnPushNotifications();
+    expect(h.issues).toHaveLength(1);
+
+    h.check = "granted";
+    vi.resetModules();
+    native = await import("@/lib/native");
+    await native.turnOnPushNotifications();
+
+    h.check = "denied";
+    vi.resetModules();
+    native = await import("@/lib/native");
+    await native.turnOnPushNotifications();
+    expect(h.issues).toHaveLength(2);
   });
 
   it("a registrationError from APNs is reported as an error, with its message", async () => {
