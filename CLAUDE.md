@@ -384,10 +384,18 @@ Postgres, real RLS, real sign-in through the two-stage form.
 ### What it covers, and what it deliberately does not
 
 Thirteen QA-list routes render with real data and log nothing to the console.
-That is the half of the list that was "open it and see". Behaviour — payment
-flips the invoice, a queue empties, a setting survives a refresh — is the next
-piece of work, and the distinction is worth keeping: **rendering with real
-data is not the same as working.**
+That is the half of the list that was "open it and see". The behaviour half
+followed, and is now most of the 21 specs in `tests/e2e/`, each asserting the
+Postgres side as well as the screen: recording a payment flips the invoice
+and writes the `payments` row; the review queue and the concerns queue empty
+and stay empty through a reload; four settings round-trip through a refresh;
+the board completes a visit; pricing drift clears when the price is fixed;
+the accountant's CSV total matches a service-role sum; plus tech-role specs
+(a billable skip, a completion with no photo, the time clock) and the portal
+re-clean request. `docs/owner-qa-checklist.md` maps each checklist item to
+the spec that covers it. The distinction is still worth keeping: **rendering
+with real data is not the same as working**, which is why the list says per
+item which half a machine proves.
 
 Two items stay with a person permanently. One real Stripe charge, because
 test mode proves the integration and not that money moved. And an install on
