@@ -31,8 +31,9 @@ for these paths.
 | `PLATFORM_STRIPE_SECRET_KEY` / `PLATFORM_STRIPE_PUBLISHABLE_KEY` | Honoured by only three of the five subscription modules (`platform-billing`, `seat-sync`, `ai-overage-billing`); `billing.functions.ts` and `platform-addons.functions.ts` read `STRIPE_SECRET_KEY` only. Set it to anything different and subscription billing splits across two accounts with nothing reporting it. |
 | `STRIPE_WEBHOOK_SECRET` | Legacy fallback, removed from `hooks/stripe.ts`. |
 
-**GitHub Actions secrets (a separate store from Lovable):** `SUPABASE_DB_URL`
-and `STRIPE_SECRET_KEY`. The latter arms `check-stripe-catalog.mjs`; a restricted
+**GitHub Actions secrets (a separate store from Lovable):** `SUPABASE_DB_URL`,
+`STRIPE_SECRET_KEY` and `BACKUP_PASSPHRASE` (encrypts the nightly backup; see §7 —
+keep a copy in a password manager, because GitHub will never show it again). The latter arms `check-stripe-catalog.mjs`; a restricted
 key with **read on Prices only** is sufficient — one call, `GET /v1/prices` — and
 `keyIsLive` accepts `rk_live_…`. Until it resolves, the step prints `NOT ARMED`
 and exits 2, and the gate is protecting nothing.
