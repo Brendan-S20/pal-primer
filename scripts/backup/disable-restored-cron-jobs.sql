@@ -6,15 +6,23 @@
 --
 -- Guarded rather than assumed: a backup of a project that never scheduled a
 -- job has no cron schema to update.
+--
+-- Through cron.alter_job, not UPDATE cron.job: on Supabase the `postgres`
+-- role may read cron.job and alter its own jobs through pg_cron's functions,
+-- but has no UPDATE on the table. Found by restoring into a local Supabase
+-- stack, where the UPDATE was refused with "permission denied for table job".
 DO $$
 DECLARE
-  n integer;
+  j record;
+  n integer := 0;
 BEGIN
   IF to_regclass('cron.job') IS NULL THEN
     RETURN;
   END IF;
-  UPDATE cron.job SET active = false WHERE active;
-  GET DIAGNOSTICS n = ROW_COUNT;
+  FOR j IN SELECT jobid FROM cron.job WHERE active LOOP
+    PERFORM cron.alter_job(j.jobid, active := false);
+    n := n + 1;
+  END LOOP;
   RAISE NOTICE 'switched off % restored cron job(s); re-enable deliberately at cutover', n;
 END
 $$;
