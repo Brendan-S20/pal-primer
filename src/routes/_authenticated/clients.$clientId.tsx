@@ -2,6 +2,7 @@
 // eight tabs, read-only by default, editing in right-side drawers. The heavy
 // lifting lives in src/components/client-detail/*.
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ClientDetailSkeleton } from "@/components/PageSkeletons";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -183,7 +184,21 @@ function ClientDetail() {
 
   const todayISO = useOrgToday();
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
+  // Drawn the same way loaded or not, so the one control on the screen while
+  // the client loads does not move when it arrives.
+  const backLink = (
+    <Link to="/clients" className="inline-flex items-center text-sm text-muted-foreground hover:underline touch:min-h-11">
+      ← Clients
+    </Link>
+  );
+
+  if (isLoading)
+    return (
+      <>
+        {backLink}
+        <ClientDetailSkeleton />
+      </>
+    );
   if (error) return <p className="text-destructive">{(error as Error).message}</p>;
 
   const client = clientData!.client as any;
@@ -216,9 +231,7 @@ function ClientDetail() {
 
   return (
     <>
-      <Link to="/clients" className="inline-flex items-center text-sm text-muted-foreground hover:underline touch:min-h-11">
-        ← Clients
-      </Link>
+      {backLink}
 
       <ClientHeader
         client={client}

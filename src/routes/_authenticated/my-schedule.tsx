@@ -8,6 +8,8 @@ import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useIntlLocale } from "@/lib/i18n";
 import { pageTitle, useDocumentTitle } from "@/lib/page-title";
+import { ScheduleDaysSkeleton } from "@/components/PageSkeletons";
+import { PullToRefresh } from "@/components/motion/PullToRefresh";
 
 /**
  * A technician's own next two weeks.
@@ -70,6 +72,7 @@ function MySchedulePage() {
 
   return (
     <>
+      <PullToRefresh />
       <div className="min-w-0">
         <h1 className="truncate text-2xl font-bold tracking-tight md:text-xl md:font-semibold">
           {t("nav.item.my-schedule")}
@@ -77,7 +80,7 @@ function MySchedulePage() {
         <p className="text-xs text-muted-foreground">{t("schedule.subtitle")}</p>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">{t("schedule.loading")}</p>}
+      {isLoading && <ScheduleDaysSkeleton label={t("schedule.loading")} />}
 
       {!isLoading && days.length === 0 && (
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -91,7 +94,7 @@ function MySchedulePage() {
           address these rows without also catching the mobile tab bar's, which
           are also <li><a> and sit in the same document. In Spanish the name
           is Spanish too: "Tus próximos días". */}
-      <ul aria-label={t("schedule.listLabel")} className="space-y-2">
+      <ul aria-label={t("schedule.listLabel")} className="motion-list space-y-2">
         {days.map((d) => {
           const left = d.stops - d.done;
           const first = orgLocalTime(d.firstEta, tz, locale) || null;

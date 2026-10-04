@@ -688,3 +688,59 @@ html[data-nav-dir="none"]::view-transition-new(*) {
     transform var(--motion-duration-base) var(--motion-ease-out),
     opacity var(--motion-duration-slow) var(--motion-ease-in) var(--motion-duration-fast);
 }
+
+/* ── THE COMPLETION CHECK (src/lib/motion/completion-check.ts) ────────── */
+.hs-done {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.hs-done-badge {
+  display: grid;
+  place-items: center;
+  width: 6rem;
+  height: 6rem;
+  border-radius: 1.5rem;
+  background: color-mix(in oklab, var(--color-card) 88%, transparent);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: oklch(0.6 0.15 155);
+  animation: hs-done-pop var(--motion-duration-slow) var(--motion-ease-spring) backwards;
+  transition:
+    opacity var(--motion-duration-slow) var(--motion-ease-in),
+    transform var(--motion-duration-slow) var(--motion-ease-in);
+}
+.hs-done-ring,
+.hs-done-tick {
+  stroke: currentColor;
+}
+.hs-done-ring {
+  stroke-dasharray: 145;
+  animation: hs-done-draw var(--motion-duration-slow) var(--motion-ease-out) backwards;
+  --hs-dash: 145;
+}
+.hs-done-tick {
+  stroke-dasharray: 36;
+  animation: hs-done-draw var(--motion-duration-base) var(--motion-ease-out)
+    var(--motion-duration-fast) backwards;
+  --hs-dash: 36;
+}
+.hs-done-leaving .hs-done-badge {
+  opacity: 0;
+  transform: scale(0.92);
+}
+@keyframes hs-done-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes hs-done-draw {
+  from {
+    stroke-dashoffset: var(--hs-dash);
+  }
+}

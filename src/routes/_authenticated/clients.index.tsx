@@ -1,4 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ListSkeleton } from "@/components/PageSkeletons";
+import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { RowActions } from "@/components/RowActions";
 import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -235,6 +237,7 @@ function ClientsList() {
 
   return (
     <>
+      <PullToRefresh />
       {dialog}
       <Dialog open={tagAction != null} onOpenChange={(o) => !o && setTagAction(null)}>
         <DialogContent className="sm:max-w-sm">
@@ -482,7 +485,7 @@ function ClientsList() {
       )}
 
       {isLoading ? (
-        <p className="text-muted-foreground">Loading…</p>
+        <ListSkeleton breakpoint="sm" columns={7} />
       ) : !filtered.length ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">
           <p className="text-muted-foreground">
@@ -497,7 +500,7 @@ function ClientsList() {
       ) : (
         <>
           {/* Mobile: stacked cards */}
-          <div className="space-y-3 sm:hidden">
+          <div className="motion-list space-y-3 sm:hidden">
             {filtered.map((c: any) => (
               <Link
                 key={c.id}
