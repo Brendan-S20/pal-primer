@@ -142,6 +142,16 @@ describe("the backup is the one Supabase documents, auth included", () => {
     expect(dump).toMatch(/-x "net\.http_request_queue"/);
   });
 
+  it("leaves out the queue tables pgmq does not own, which schema.sql never creates", () => {
+    // Production, 2026-10-04: pgmq.q_* and pgmq.a_* are NOT extension members
+    // there, so the data dump wrote their rows and the first drill was refused
+    // at "pgmq"."a_auth_emails". Excluded by name, read from pg_depend.
+    expect(dump).toMatch(/d\.deptype = 'e'/);
+    expect(dump).toMatch(/n\.nspname = 'pgmq'/);
+    expect(dump).toMatch(/\$\{queue_tables\[@\]\+"\$\{queue_tables\[@\]\}"\}/);
+    expect(dump).toMatch(/grep -q '\^COPY "pgmq"\\\.' "\$out\/data\.sql"/);
+  });
+
   it("carries the cron schedule and email queues, which pg_dump skips", () => {
     // Found by dumping a database built from the migrations: cron.job and the
     // pgmq queue tables belong to extensions and came back empty-handed.
