@@ -373,9 +373,22 @@ export function ServicesTab({
             const showDelete = !started;
             return (
               <li key={s.id} className="rounded-lg border bg-card shadow-sm p-4 text-sm">
+                {/* THREE ITEMS, ONE WRAPPING ROW: the details, the price, the
+                    actions. The details were `flex-1` with no basis, and a
+                    basis of 0 always fits on the first line — so the row never
+                    wrapped, and the details got whatever the price and three
+                    buttons left over. On the owner's iPhone that was about
+                    80px: the title ran into "$33.00", the meta line went one
+                    word per line, and the amber dog-count warning was
+                    narrower than its own words.
+                    Now the details take the full width below sm (the price
+                    moves into the title row, the actions to a row of their
+                    own), and from sm up they ask for 18rem before the actions
+                    will share a line with them, which is what keeps a tablet
+                    from the same squeeze. */}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div
-                    className="min-w-0 flex-1 cursor-pointer"
+                    className="min-w-0 flex-1 basis-full cursor-pointer sm:basis-72"
                     role="button"
                     tabIndex={0}
                     onClick={() => setDetailSub(s)}
@@ -386,20 +399,30 @@ export function ServicesTab({
                       }
                     }}
                   >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">
-                        {s.frequency === "one_time"
-                          ? "One-time pet waste removal"
-                          : "Recurring pet waste removal"}
-                      </span>
-                      {ended ? (
-                        <StatusChip status="ended" />
-                      ) : (
-                        <StatusChip status={paused ? "paused" : s.status} />
-                      )}
-                      <MetaChip>
-                        {s.billing_cadence === "prepaid" ? "Prepaid" : "Postpaid"}
-                      </MetaChip>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="font-semibold">
+                          {s.frequency === "one_time"
+                            ? "One-time pet waste removal"
+                            : "Recurring pet waste removal"}
+                        </span>
+                        {ended ? (
+                          <StatusChip status="ended" />
+                        ) : (
+                          <StatusChip status={paused ? "paused" : s.status} />
+                        )}
+                        <MetaChip>
+                          {s.billing_cadence === "prepaid" ? "Prepaid" : "Postpaid"}
+                        </MetaChip>
+                      </div>
+                      {/* The phone's price: beside the title it belongs to.
+                          The one after this block takes over from sm up;
+                          `hidden` is display:none, so a screen reader hears
+                          one price, not two. */}
+                      <div className="shrink-0 whitespace-nowrap text-right sm:hidden">
+                        <span className="font-semibold">${(s.price_cents / 100).toFixed(2)}</span>
+                        <span className="text-xs text-muted-foreground"> /visit</span>
+                      </div>
                     </div>
                     <div className="mt-1 text-muted-foreground">
                       {formatFrequency(s)}
@@ -493,7 +516,7 @@ export function ServicesTab({
                     )}
                   </div>
 
-                  <div className="shrink-0 whitespace-nowrap text-right">
+                  <div className="shrink-0 whitespace-nowrap text-right max-sm:hidden">
                     <span className="font-semibold">${(s.price_cents / 100).toFixed(2)}</span>
                     <span className="text-xs text-muted-foreground"> /visit</span>
                   </div>
@@ -535,7 +558,14 @@ export function ServicesTab({
                     {canManagePricing && (showEnd || showDelete) && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-10 w-10 p-0" aria-label="More actions">
+                          {/* size="icon": 40px wide was under the 44px touch
+                              floor that size carries in both axes. */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 p-0"
+                            aria-label="More actions"
+                          >
                             <MoreHorizontal className="h-4 w-4 shrink-0" />
                           </Button>
                         </DropdownMenuTrigger>
