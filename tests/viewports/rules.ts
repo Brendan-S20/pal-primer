@@ -479,3 +479,41 @@ export async function findControlsUnder44px(page: Page): Promise<string[]> {
     return out;
   });
 }
+
+/**
+ * A button narrower than its own label.
+ *
+ * Every visible button or button-styled link whose text is wider than its
+ * box while its overflow is visible, so the label is drawn out through the
+ * border. None of the four rules above can see it: the label is on screen
+ * (not "off the side"), and overflow is visible (not "clipped"). It is what
+ * `touch:min-w-11` did to every small button beside a long description until
+ * 2026-10-04: "Add card" on a client's billing tab measured 69px of label in
+ * a 59px button at 402px. See tests/a-width-floor-is-not-a-shrink-floor.
+ *
+ * Truncating controls (overflow hidden, with an ellipsis) are the clipping
+ * rule's business. A checkbox draws its hit area wider than its 14px box on
+ * purpose, and an icon button has no text to spill, so both are skipped.
+ */
+export async function findControlsNarrowerThanTheirLabel(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLElement>('button, a[role="button"], [data-slot="button"]'),
+    )) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      // A label is text. A checkbox draws its hit area wider than its 14px
+      // box on purpose, and an icon button has nothing to spill.
+      if (/^(checkbox|switch|radio)$/.test(el.getAttribute("role") ?? "")) continue;
+      if (!(el.textContent ?? "").trim()) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.overflowX !== "visible") continue;
+      if (el.scrollWidth > el.clientWidth + 1) {
+        const label = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 40);
+        out.push(`"${label}": content ${el.scrollWidth}px in a ${el.clientWidth}px button`);
+      }
+    }
+    return out;
+  });
+}

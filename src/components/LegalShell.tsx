@@ -63,7 +63,13 @@ export function LegalShell({
             </Link>
           )}
 
-          <Link to="/auth" aria-label="HoundStack home" className="text-primary">
+          {/* min-w-0: at 320px "Sign in" (now shrink-0, so its label stays
+              inside its box) and the 233px wordmark do not both fit, and it
+              is the wordmark that gives. Logo is max-w-full, so it scales
+              down inside a narrower link instead of running off the side.
+              Before, the link was the one shrinking, with its label drawn
+              out under the logo. */}
+          <Link to="/auth" aria-label="HoundStack home" className="min-w-0 text-primary">
             <Logo variant="landscape" className="h-7" />
           </Link>
         </div>

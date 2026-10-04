@@ -29,6 +29,7 @@ import { test, expect, type Page, type Route } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
 import * as fx from "./fixtures/dataset";
+import { findControlsNarrowerThanTheirLabel } from "./rules";
 
 const SIZES = [
   { width: 320, height: 568 },
@@ -153,32 +154,6 @@ async function openClientTab(page: Page, tab: string) {
   await t.click();
   await expect(t).toHaveAttribute("aria-selected", "true");
   await page.waitForTimeout(500);
-}
-
-/** Every visible button or button-styled link whose content is wider than its
- *  own box while its overflow is visible: a label drawn out through the
- *  border. Truncating controls (overflow hidden) are another rule's business. */
-async function findControlsNarrowerThanTheirLabel(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const out: string[] = [];
-    for (const el of Array.from(
-      document.querySelectorAll<HTMLElement>('button, a[role="button"], [data-slot="button"]'),
-    )) {
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) continue;
-      // A label is text. A checkbox draws its hit area wider than its 14px
-      // box on purpose, and an icon button has nothing to spill.
-      if (/^(checkbox|switch|radio)$/.test(el.getAttribute("role") ?? "")) continue;
-      if (!(el.textContent ?? "").trim()) continue;
-      const cs = getComputedStyle(el);
-      if (cs.visibility === "hidden" || cs.overflowX !== "visible") continue;
-      if (el.scrollWidth > el.clientWidth + 1) {
-        const label = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 40);
-        out.push(`"${label}": content ${el.scrollWidth}px in a ${el.clientWidth}px button`);
-      }
-    }
-    return out;
-  });
 }
 
 for (const size of SIZES) {
