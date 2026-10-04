@@ -20,6 +20,7 @@ import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
+import { useNotificationLanguageSync } from "@/hooks/useNotificationLanguageSync";
 import { headerControlsForRole } from "@/lib/header-prefs";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -140,6 +141,8 @@ function AppShell() {
   // Which optional header controls this person keeps. Answered from the
   // device, so the bar does not render full and then rearrange itself.
   const { prefs: headerPrefs } = useHeaderPrefs();
+  // The language a push about this person's own route is written in.
+  useNotificationLanguageSync(Route.useRouteContext().userId);
 
   // Native Capacitor bootstrap — theme-coherent status bar; no-ops on web.
   // Also registers APNs/FCM device tokens with our backend and routes push
