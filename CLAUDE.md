@@ -534,6 +534,21 @@ one copy is a change to both).
   script never starts with `VAR=1 cmd`, which PowerShell cannot run — set the
   variable in a node script, as `scripts/build-native.mjs` does (#303).
 
+Two more from 2026-10-04, same terms (both are in the Lovable knowledge too):
+
+- **Every route is placed for Android.** A new path goes in `APP_LINK_*` (a
+  staff page, which opens in the app, mirrored in
+  `android/app/src/main/AndroidManifest.xml`) or `STAYS_IN_BROWSER` with a
+  reason (customer pages, `/auth` as the web OAuth redirect, anything that
+  buys HoundStack) in `src/lib/android-app-links.ts`. Android before 15
+  cannot exclude a path inside a claimed prefix, so settings is listed page
+  by page (#325). → `tests/an-android-link-opens-the-app-only-where-it-should.test.ts`
+- **`postinstall` stays.** `scripts/patch-native-plugins.mjs` moves
+  `@capacitor-community/apple-sign-in`'s `capacitor-swift-pm` range from 7 to
+  8; without it Swift Package Manager cannot resolve and no iOS build starts
+  (#324). It fails loudly only where iOS is built, so it cannot block a
+  Lovable publish. → `tests/a-plugin-still-on-capacitor-7-stopped-every-ios-build.test.ts`
+
 And one that is not a test: **the local Supabase stack on 54421-54427 is the
 database CI's test job runs the SQL proofs against** (the runner is this
 machine). A branch's migration applied there for a quick look fails every other
