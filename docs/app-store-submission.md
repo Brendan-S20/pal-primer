@@ -172,9 +172,16 @@ PERMISSIONS
 - Camera: technicians photograph completed work and DNA sample collections and
   attach them to a visit record.
 - Photo library: attaching an existing picture to a visit or property.
-- Location, when in use only: showing the technician's own position on the
-  route map relative to the next stop. It is not shared with clients, not used
-  for tracking, and not requested in the background.
+- Location, when in use only, never in the background: showing the
+  technician's own position on the route map relative to the next stop. If
+  the business turns on live tracking (off by default), the technician's
+  approximate position, rounded to about 100 meters, is shown to the one
+  customer they are driving to, from the on-my-way message until the visit
+  starts, for at most two hours and only while the app is open. Only the
+  latest position is kept, and it is deleted when the visit starts. The
+  technician can stop it at any time. This matches the Info.plist string and
+  the privacy policy. It is not used for advertising or for tracking in
+  Apple's sense (linking with other companies' data).
 - Notifications: alerts staff to things that need them, such as a customer's
   text that needs a reply or a gate marked do-not-enter. Never marketing.
 
