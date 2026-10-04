@@ -35,6 +35,13 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
           const result = await sendPendingAnnouncementEmails();
           return json({ ok: true, ...result });
         } catch (e) {
+          // See the same call in hooks/stripe.ts.
+          const { reportServerError } = await import("@/lib/monitoring/report.server");
+          await reportServerError(e, {
+            request,
+            force: true,
+            tags: { hook: "announcement-emails" },
+          });
           return json({ error: (e as Error).message }, 500);
         }
       },

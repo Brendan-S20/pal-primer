@@ -90,6 +90,7 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-email/components": "^1.0.12",
+    "@sentry/react": "10.76.0",
     "@stripe/connect-js": "^3.4.6",
     "@stripe/react-connect-js": "^3.4.4",
     "@stripe/react-stripe-js": "^6.7.0",

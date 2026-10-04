@@ -6,6 +6,7 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { loadEnv } from "vite";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
@@ -157,6 +158,36 @@ function theWorkerHasToLandWhereTheClientBuildDoes() {
 const NATIVE_API_ORIGIN = NATIVE_BUILD
   ? process.env.NATIVE_API_ORIGIN || "https://app.houndstack.com"
   : "";
+
+// ── WHICH BUILD AN ERROR CAME FROM ────────────────────────────────────────
+//
+// Error monitoring (src/lib/monitoring) labels every event with this, so an
+// error can be tied to the commit that shipped it and Sentry can say "first
+// seen in this release". An explicit SENTRY_RELEASE wins; otherwise the commit
+// from whichever CI is building (Xcode Cloud sets CI_COMMIT, GitHub Actions
+// GITHUB_SHA), then the local checkout. "" when none of those exist, which
+// is never an error: the event is simply sent without a release.
+//
+// Read at build time and never required. No step here needs a secret, and
+// none does: a commit id is not one.
+function sentryRelease(): string {
+  const explicit = process.env.SENTRY_RELEASE?.trim();
+  if (explicit) return explicit;
+  const sha = (process.env.CI_COMMIT || process.env.GITHUB_SHA || "").trim();
+  if (sha) return `houndstack@${sha.slice(0, 12)}`;
+  try {
+    const head = execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    })
+      .toString()
+      .trim();
+    return head ? `houndstack@${head}` : "";
+  } catch {
+    return "";
+  }
+}
+const SENTRY_RELEASE = sentryRelease();
 
 export default defineConfig({
   tanstackStart: {
@@ -337,9 +368,14 @@ export default defineConfig({
     // define the key is simply absent from import.meta.env, so
     // src/lib/server-fn-origin.ts reads "" and the branch in src/start.ts is
     // dropped from the web bundle entirely.
-    ...(NATIVE_BUILD
-      ? {
-          define: {
+    //
+    // The one key defined for BOTH builds is the monitoring release above. It
+    // is read only by src/lib/monitoring/sentry-browser.ts (a lazy chunk) and
+    // by the server's report.server.ts, so the entry chunk is unchanged by it.
+    define: {
+      "import.meta.env.VITE_SENTRY_RELEASE": JSON.stringify(SENTRY_RELEASE),
+      ...(NATIVE_BUILD
+        ? {
             "import.meta.env.VITE_NATIVE_API_ORIGIN": JSON.stringify(NATIVE_API_ORIGIN),
             // "This bundle is the one inside the app binary."
             //
@@ -360,9 +396,9 @@ export default defineConfig({
             // which makes registerPushNotifications skip register() on Android
             // rather than crash the app.
             "import.meta.env.VITE_FCM_CONFIGURED": JSON.stringify(FCM_CONFIGURED ? "1" : ""),
-          },
-        }
-      : {}),
+          }
+        : {}),
+    },
     resolve: {
       alias: {
         // ── THE SAAS PURCHASE UI IS NOT IN THE STORE BINARY ──────────────

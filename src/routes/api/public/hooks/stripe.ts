@@ -1441,6 +1441,14 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
           // it here would let tenant-account events corrupt org billing state.
         } catch (e) {
           console.error("Webhook handler error", e);
+          // The 500 alone would reach monitoring as "stripe answered 500" (see
+          // src/start.ts); this sends the exception behind it, once.
+          const { reportServerError } = await import("@/lib/monitoring/report.server");
+          await reportServerError(e, {
+            request,
+            force: true,
+            tags: { hook: "stripe", stripe_event: event.type },
+          });
           return new Response("Handler error", { status: 500 });
         }
 
