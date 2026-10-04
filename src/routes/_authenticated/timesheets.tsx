@@ -704,15 +704,28 @@ function EntryDialog({
 
           <fieldset className="space-y-1.5">
             <legend className="text-sm font-medium">Clocked in</legend>
-            <div className="grid grid-cols-2 gap-2">
+            {/* One column below sm. iOS draws a native date or time control
+                at the width of its value and will not go narrower: on the
+                owner's iPhone both were about 195px in 171px columns, so the
+                time ran off the dialog and its left border sat on the date.
+                `grid-cols-2` floors the TRACK at zero; it cannot shrink the
+                control inside it. */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Input
                 type="date"
                 aria-label="Clock-in date"
+                className="min-w-0"
                 value={f.inDay}
                 max={today}
                 onChange={set("inDay")}
               />
-              <Input type="time" aria-label="Clock-in time" value={f.inTime} onChange={set("inTime")} />
+              <Input
+                type="time"
+                aria-label="Clock-in time"
+                className="min-w-0"
+                value={f.inTime}
+                onChange={set("inTime")}
+              />
             </div>
           </fieldset>
 
@@ -729,10 +742,11 @@ function EntryDialog({
               </label>
             )}
             {!stillOn && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Input
                   type="date"
                   aria-label="Clock-out date"
+                  className="min-w-0"
                   value={f.outDay}
                   max={today}
                   onChange={set("outDay")}
@@ -740,6 +754,7 @@ function EntryDialog({
                 <Input
                   type="time"
                   aria-label="Clock-out time"
+                  className="min-w-0"
                   value={f.outTime}
                   onChange={set("outTime")}
                 />

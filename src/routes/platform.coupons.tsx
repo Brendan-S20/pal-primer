@@ -129,7 +129,7 @@ function CouponsPage() {
                   <div><Label>Months</Label><Input type="number" value={form.duration_in_months} onChange={(e) => setForm({ ...form, duration_in_months: e.target.value })} /></div>
                 ) : <div />}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div><Label>Max redemptions (optional)</Label><Input type="number" value={form.max_redemptions} onChange={(e) => setForm({ ...form, max_redemptions: e.target.value })} /></div>
                 <div><Label>Expires (optional)</Label><Input type="date" value={form.expires_at} onChange={(e) => setForm({ ...form, expires_at: e.target.value })} /></div>
               </div>
