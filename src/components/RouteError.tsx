@@ -2,10 +2,12 @@ import { useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
+import { reportBoundaryError } from "@/lib/monitoring/client";
 
 /**
  * Default error boundary used by the router for any route that doesn't set
- * its own errorComponent. Reports to Lovable and offers retry.
+ * its own errorComponent. Reports to Lovable and to error monitoring, and
+ * offers retry.
  */
 export function RouteError({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
@@ -13,6 +15,7 @@ export function RouteError({ error, reset }: { error: Error; reset: () => void }
   useEffect(() => {
     console.error(error);
     reportLovableError(error, { boundary: "router_default_error" });
+    reportBoundaryError(error, "router_default_error");
   }, [error]);
 
   return (

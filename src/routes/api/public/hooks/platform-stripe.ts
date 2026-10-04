@@ -506,6 +506,13 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
         } catch (e) {
           const msg = (e as Error).message;
           console.error("platform-stripe handler failed", event.type, msg);
+          // See the same call in hooks/stripe.ts.
+          const { reportServerError } = await import("@/lib/monitoring/report.server");
+          await reportServerError(e, {
+            request,
+            force: true,
+            tags: { hook: "platform-stripe", stripe_event: event.type },
+          });
           await supabaseAdmin
             .from("platform_stripe_events")
             .update({ error: msg })

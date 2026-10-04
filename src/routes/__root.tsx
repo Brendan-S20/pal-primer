@@ -13,10 +13,16 @@ import { Toaster } from "sonner";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { initClientMonitoring, reportBoundaryError } from "../lib/monitoring/client";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import "../lib/i18n";
 import { appOrigin, appUrl } from "@/lib/app-origin";
 import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
+
+// Error monitoring starts here, at module load on the client, so it is armed
+// before hydration rather than after the first effect. Off (no download, no
+// request) in dev and test; see lib/monitoring/config.ts.
+if (typeof window !== "undefined") initClientMonitoring();
 
 function NotFoundComponent() {
   return (
@@ -45,6 +51,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    reportBoundaryError(error, "tanstack_root_error_component");
   }, [error]);
 
   return (
