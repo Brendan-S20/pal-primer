@@ -7,6 +7,15 @@
 > copy, so the ledger can never disagree with itself.
 > **Next version trigger:** live QA run, or the next completion report.
 
+> **Not maintained since v1.23 (2026-08-15). Read it as history.** It explains
+> why a great deal of the product is the way it is, and that is why it is kept.
+> It is not where current status lives: owner actions are in
+> `docs/owner-actions-before-submission.md` (which opens with the current list),
+> what a person still has to test is in `docs/owner-qa-checklist.md`, App Store
+> readiness in `docs/app-store-submission.md`, and the working rules in
+> `CLAUDE.md`. A few rows below that the 2026-10-03 AI decision made wrong carry
+> a dated note; the rest were not re-audited on 2026-10-04.
+
 This is the status ledger and changelog. §3–§13 of v1.0 (do-not-break list,
 engineering guardrails, definition of done) are unchanged and still authoritative
 — see the v1.0 document. What follows is what MOVED.
@@ -2609,7 +2618,7 @@ that had not happened yet** were inside the window. Now org-local, using the sam
 | Path | Key | Powers |
 |---|---|---|
 | Anthropic (`ai.server.ts`) | `ANTHROPIC_API_KEY` | marketing content (coming soon at launch); Haiku 4.5 since 2026-10-03 |
-| Lovable gateway (`ai-gateway.server.ts`) | `LOVABLE_API_KEY` | AI receptionist |
+| Anthropic (`ai-receptionist.server.ts`) | `ANTHROPIC_API_KEY` | AI receptionist (coming soon at launch); Haiku 4.5. Until #315 (2026-10-03) this row was the Lovable gateway, `ai-gateway.server.ts` on `LOVABLE_API_KEY`; that module was deleted once nothing imported it |
 
 *2026-10-03:* churn scoring, zone pricing, review replies, the weekly digests and
 the business advisor stopped calling a model; each is a pure function now
@@ -3213,13 +3222,13 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
-| BUILD-2 | 🟢 Fixed | 🔴 | **Done.** Usage metering, soft caps, overage and the 80% alert. `ai_usage_events` (one row per invocation, org-local month, tokens + our estimated cost) → `ai_usage_periods` (RECOUNTED, never incremented — the BUG-81 pattern applied before it could happen). `ai_usage_state()` is the one definition of where an org stands, called by both the request path and Settings. All three doors metered, including the two unattended ones. Ceiling at 3× allowance, owner-adjustable, floored at 1×. Overage bills as one invoice item per closed month, claimed before Stripe is called and idempotency-keyed. 57 tests, 34 mutations, four of which passed first time and are written up in the v1.16 changelog. Allowances are provisional and live in `platform_plans` | v1.16 |
+| BUILD-2 | 🟢 Fixed | 🔴 | **Done.** Usage metering, soft caps, overage and the 80% alert. `ai_usage_events` (one row per invocation, org-local month, tokens + our estimated cost) → `ai_usage_periods` (RECOUNTED, never incremented — the BUG-81 pattern applied before it could happen). `ai_usage_state()` is the one definition of where an org stands, called by both the request path and Settings. All three doors metered, including the two unattended ones. Ceiling at 3× allowance, owner-adjustable, floored at 1×. Overage bills as one invoice item per closed month, claimed before Stripe is called and idempotency-keyed. 57 tests, 34 mutations, four of which passed first time and are written up in the v1.16 changelog. Allowances are provisional and live in `platform_plans`. **2026-10-03:** the metering still stands, but the only metered features are now the receptionist and marketing posts, both "coming soon" and switched off in code, so nothing is metered at launch | v1.16 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
-| BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The metering gap this row named is closed: BUILD-2 shipped in v1.16 | v1.3 |
+| BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The metering gap this row named is closed: BUILD-2 shipped in v1.16. **2026-10-03:** one provider now, Anthropic on Claude Haiku 4.5, for the two AI features that remain (receptionist, marketing posts), both launching later | v1.3 |
 | BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. **The two add-ons became one `white-label` at $99/mo on 2026-08-15** (v1.23); the old rows are `disabled`, not deleted | v1.5, repriced v1.23 |
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. **v1.12 attacked the money paths and found six defects** (BUG-70 through BUG-75) — three ways a non-owner could take or rewrite money, a tech reading the ledger and the invite codes, a repayment silently dropped, and three functions live in no migration. All fixed and re-probed; all latent, because no franchise exists yet. What held up under attack: the three routing setters correctly require the parent's owner, every `set_config('app.allow_protected_org_write')` call is transaction-local, `tg_orgs_protect_platform_columns` covers all franchise columns, and a child owner cannot cut its royalty, self-unlink or seize payments (proven live — royalty stayed 8.00). **v1.13 closed the settlement-math pass** (BUG-76 through BUG-79): four more defects, three claims dismissed on evidence, and one of my own fixes caught wrong by the probe of the fix. Remaining: multi-org membership, drill-down, and royalty *delivery* | v1.6 |
-| BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
-| BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
+| BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision; **2026-10-03:** moot at launch, since no AI feature is switched on). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
+| BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below. **2026-10-03:** no longer AI — the advice is a deterministic calculation over the same numbers (#316), on the owner's rule that anything arithmetic is a process | v1.3 |
 | BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. **v1.11 correction:** the offline half was proven and remains true, but the ONLINE half was never exercised by it — every cross-origin server-function reply would have decoded to `undefined` (BUG-62), because the proof blocked all off-origin requests. Fixed. Remaining: **a real device, in a real dead zone AND on real signal.** Q-4 closed in v1.9 (one-off visit built), Q-12 answered reassign-only in v1.8, Q-5 closed in v1.10 (field DNA sample logging) | v1.7 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
@@ -3398,12 +3407,10 @@ rather than the following January.
 
 **Needs your action, not engineering:**
 
-0a. **Should the site say the trial excludes AI?** BUILD-7 makes AI paid-only,
-   which is a material limitation a prospect should know before signing up. No
-   published copy currently claims the trial includes AI, so nothing is false
-   today — but nothing says it doesn't either, and the pricing FAQ is where that
-   belongs. How to frame a limitation that affects conversion is your call, not
-   an engineering one.
+0a. ~~**Should the site say the trial excludes AI?**~~ — **overtaken on
+   2026-10-03.** AI is now only the receptionist and marketing posts, both
+   "coming soon" for every plan, trial or paid, and the Terms say AI is coming
+   soon. The question returns, in a different shape, when either is switched on.
 
 
 0. ~~**Which hostname actually serves the marketing site?**~~ — ✅ **already
