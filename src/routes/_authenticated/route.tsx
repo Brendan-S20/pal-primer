@@ -14,6 +14,7 @@ import { resolveIdentity } from "@/lib/offline/identity";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
+import { setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
@@ -119,6 +120,10 @@ export const Route = createFileRoute("/_authenticated")({
       }
       throw redirect({ to: isPlatformAdmin ? "/platform" : "/no-workspace" });
     }
+
+    // Error reports from here on name the user and org by id, and only by id.
+    // Off in dev and test; see lib/monitoring/config.ts.
+    setMonitoringIdentity({ userId: identity.userId, orgId: org.organization.id });
 
     return { userId: identity.userId, user: identity.user, organization: org.organization };
   },

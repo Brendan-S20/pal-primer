@@ -5,6 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, MailWarning, CalendarClock, PhoneOff, Activity, DollarSign, Clock } from "lucide-react";
 import { getPlatformHealth } from "@/lib/platform.functions";
 import { pageTitle } from "@/lib/page-title";
+import { useState } from "react";
+import { Bug } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { sendClientTestError } from "@/lib/monitoring/client";
+import { sendMonitoringTestError } from "@/lib/monitoring/test-error.functions";
 
 export const Route = createFileRoute("/platform/health")({
   head: () => ({ meta: [{ title: pageTitle("Health", "Platform admin") }, { name: "robots", content: "noindex" }] }),
@@ -136,6 +141,18 @@ function HealthPage() {
           </p>
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle>Error monitoring</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Errors from the web app, the phone apps and the server go to Sentry. This sends one
+            test error from this browser and one from the server, both tagged test_event=yes.
+          </p>
+          <MonitoringTestButton />
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -163,6 +180,48 @@ function HealthTile({
       </div>
       <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}
+
+// Proves error monitoring end to end: a test event from this browser, and one
+// from the Worker via a platform-admin-only server function. Says which were
+// sent, so "off here" (dev, or a DSN set to "off") is not mistaken for broken.
+// See OPS_RUNBOOK.md, "Error monitoring".
+function MonitoringTestButton() {
+  const serverTest = useServerFn(sendMonitoringTestError);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const client = await sendClientTestError();
+      let serverPart: string;
+      try {
+        const { sent } = await serverTest();
+        serverPart = `Server: ${sent ? "sent" : "monitoring is off here"}`;
+      } catch (e) {
+        serverPart = `Server: failed (${e instanceof Error ? e.message : String(e)})`;
+      }
+      setResult(`Browser: ${client ? "sent" : "monitoring is off here"}. ${serverPart}.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button variant="outline" onClick={run} disabled={busy}>
+        <Bug className="h-4 w-4 shrink-0" />
+        {busy ? "Sending..." : "Send a test error"}
+      </Button>
+      {result && (
+        <p className="min-w-0 text-xs text-muted-foreground" role="status">
+          {result}
+        </p>
+      )}
     </div>
   );
 }

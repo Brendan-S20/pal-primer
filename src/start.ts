@@ -93,14 +93,30 @@ const csrfMiddleware = createCsrfMiddleware({
   allowRequestsWithoutOriginCheck: false,
 });
 
+// Error monitoring (src/lib/monitoring/report.server.ts) is wired in here and
+// in the function middleware below, because these are the two places every
+// failure passes through. Both send nothing outside a production build.
 const errorMiddleware = createMiddleware().server(async ({ next, request }) => {
   const url = new URL(request.url);
   if (url.pathname.startsWith("/email/")) {
     return next();
   }
   try {
-    return await next();
+    const result = await next();
+    // Cron and webhook endpoints catch their own failures and answer 500, so
+    // nothing is thrown for the catch below to see. A 5xx from one of them is
+    // the failure; report it unless the handler already reported the
+    // exception behind it.
+    if (url.pathname.startsWith("/api/public/hooks/") && result.response.status >= 500) {
+      const { reportFailedHookResponse } = await import("@/lib/monitoring/report.server");
+      await reportFailedHookResponse(request, result.response);
+    }
+    return result;
   } catch (error) {
+    // Reported before the statusCode check: a thrown 5xx HTTPError is a fault
+    // too, and policy.isExpectedError already drops the 4xx ones.
+    const { reportServerError } = await import("@/lib/monitoring/report.server");
+    await reportServerError(error, { request, tags: { surface: "request" } });
     if (error != null && typeof error === "object" && "statusCode" in error) {
       throw error;
     }
@@ -112,8 +128,34 @@ const errorMiddleware = createMiddleware().server(async ({ next, request }) => {
   }
 });
 
+// Every server function, unexpected exceptions only. A server function's throw
+// never reaches the request middleware above: TanStack serializes it into the
+// RPC response for the caller's toast, so this is the only place it is seen
+// as an exception. Deliberate refusals ("Not authorized", "Invoice already
+// paid", validation failures) are filtered by policy.isExpectedError; see the
+// note there on how it tells them from a database fault. Rethrown unchanged,
+// so what the caller sees is exactly what it saw before.
+const reportServerFnErrors = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  try {
+    return await next();
+  } catch (error) {
+    const [{ reportServerError }, { getRequest }] = await Promise.all([
+      import("@/lib/monitoring/report.server"),
+      import("@tanstack/react-start/server"),
+    ]);
+    let request: Request | null = null;
+    try {
+      request = getRequest() ?? null;
+    } catch {
+      request = null;
+    }
+    await reportServerError(error, { request, tags: { surface: "server_fn" } });
+    throw error;
+  }
+});
+
 export const startInstance = createStart(() => ({
-  functionMiddleware: [attachSupabaseAuth],
+  functionMiddleware: [attachSupabaseAuth, reportServerFnErrors],
   requestMiddleware: [corsMiddleware, csrfMiddleware, errorMiddleware],
   // BUILD-9: only present in a bundled native build, where the baked-in
   // "/_serverFn/..." path would resolve to the app bundle instead of the API.

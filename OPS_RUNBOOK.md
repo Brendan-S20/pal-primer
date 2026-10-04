@@ -180,3 +180,76 @@ opened.
 How to restore the whole project, into a new project, or one tenant's rows
 without touching anyone else's: **`docs/backups-and-restore.md`**. Storage files
 (photos, receipts) are in neither backup.
+
+## 8. Error monitoring (Sentry)
+
+Errors from the web app, the iOS and Android apps, and the server (server
+functions, SSR, and the cron/webhook endpoints under `/api/public/hooks/*`) go
+to the HoundStack project in Sentry (org `o4512195773792256`, project
+`4512195827007488`, platform React, errors only).
+
+**Nothing to configure.** The DSN is the default in
+`src/lib/monitoring/config.ts`. A DSN is not a secret: it only permits sending
+events to that one project and ships in every browser bundle by design. So
+every production build reports with no variable set anywhere: Lovable's hosted
+build, the Worker at runtime, and Xcode Cloud's native build.
+
+**When it sends.** Production builds only. `npm run dev`, the Playwright
+sweeps (which run against the dev server) and vitest send nothing.
+
+| Variable | Read by | Effect |
+|----------|---------|--------|
+| `VITE_SENTRY_DSN` | browser + native bundle, at **build** time | unset: default DSN in production, off in dev. `off` (or `0`/`false`/`none`): off everywhere. Another DSN: that DSN, in production and in dev (how to try it from `npm run dev`). |
+| `SENTRY_DSN` | the Worker, at **runtime** (Lovable project secret) | same rules, for the server half |
+| `SENTRY_ENVIRONMENT` | the Worker | optional label override (e.g. `preview`); default `production` |
+| `SENTRY_RELEASE` | `vite.config.ts`, at build | optional. Default: `houndstack@<commit>` from Xcode Cloud's `CI_COMMIT`, `GITHUB_SHA`, or the checkout |
+
+Under vitest it is off whatever these say, so a DSN left in a shell cannot make
+the suite phone home.
+
+**What is reported.** Unhandled errors and promise rejections in the browser;
+anything the router's error boundaries catch (`RouteError`, the root
+`ErrorComponent`); every server function's **unexpected** exception; anything
+thrown out of SSR or a server route; and any 5xx from `/api/public/hooks/*`
+(the Stripe and announcement-email hooks also send the exception behind it).
+
+**What is not.** Deliberate refusals the user is meant to read: "Not
+authorized", "Client not found", "Invoice already paid", validation failures,
+plan gates, declined cards, redirects, 4xx. Also browser network failures
+("Failed to fetch"), which are a phone in a dead zone. The rule is
+`isExpectedError` in `src/lib/monitoring/policy.ts`: a plain `Error` whose
+message reads like a sentence is a refusal unless it says something failed,
+is missing, timed out or answered 5xx; a lowercase message (Postgres,
+PostgREST) and every `TypeError`-like class is a fault. If a refusal turns up in
+Sentry, add it there rather than ignoring it in Sentry.
+
+**What never leaves.** User: id only, org id as the `org_id` tag; never email,
+name or IP. Requests: no cookies, no headers except User-Agent, no body, no
+query string; token path segments (portal, pay link, quote, tracking, invite,
+calendar feed) become `[token]`. Free text has emails, phone numbers, JWTs,
+bearer tokens and API keys masked. No session replay, no tracing, no DOM or
+console breadcrumbs, no form values. `tests/error-monitoring.test.ts` pins all
+of this against the events actually built.
+
+**Recommended Sentry project settings** (Settings > Security & Privacy):
+turn on *Prevent Storing of IP Addresses* and leave *Data Scrubber* on. Both are
+belt and braces; the app already sends neither.
+
+**Verify after a deploy.** Sign in as a platform admin, open
+**/platform/health**, press **Send a test error**. It reports
+`Browser: sent. Server: sent.` and two issues tagged `test_event=yes` appear in
+Sentry within a minute, one with `platform` web/ios/android and one with
+`platform: server`. "monitoring is off here" means that half was built or run
+in dev, or its DSN is set to `off`. Do it once on the web and once in the iOS
+app.
+
+**Source maps (not uploaded yet).** Stack traces from the browser bundle are
+minified. Uploading source maps needs a Sentry auth token at build time, and no
+build step here may require a secret (Lovable builds with none), so it is not
+wired. To add it later: `npm i -D @sentry/vite-plugin`, add
+`sentryVitePlugin({ org, project, authToken: process.env.SENTRY_AUTH_TOKEN })`
+to `vite.plugins` **only when `SENTRY_AUTH_TOKEN` is set** (so a build without
+it still passes), set `build.sourcemap: "hidden"` in the same condition, and
+put `SENTRY_AUTH_TOKEN` in the build environment that should upload (Xcode
+Cloud, or a CI release job). The release name must match `SENTRY_RELEASE`
+above.
