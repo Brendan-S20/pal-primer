@@ -393,7 +393,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     testNone: "没有送达任何设备。关闭应用，重新打开后再试一次。",
     testTooSoon_other: "请等待 {{count}} 秒后再发送。",
     testFailed: "无法发送测试通知",
-    deniedBodyIos: "iOS 只会询问一次，而这部手机选择了不允许。要打开通知，请前往 设置 › HoundStack › 通知。",
+    deniedBodyIos:
+      "iOS 只会询问一次，而这部手机选择了不允许。要打开通知，请前往 设置 › HoundStack › 通知。",
     deniedBodyAndroid: "这部手机选择了不允许。要打开通知，请前往 设置 › 应用 › HoundStack › 通知。",
     openSettings: "打开设置",
     unavailable: "此版本的应用不支持通知。",

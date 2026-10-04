@@ -18,6 +18,7 @@
 //
 // What it cannot check: that iOS shows the prompt, that Settings opens, or
 // that a push arrives. Those need a signed build on a phone.
+/* eslint-disable @typescript-eslint/no-explicit-any -- fakes of plugin and server-fn shapes */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

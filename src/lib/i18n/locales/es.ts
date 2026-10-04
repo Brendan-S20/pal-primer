@@ -410,7 +410,8 @@ const es: Translations = {
     testBody: "Si puedes leer esto, las notificaciones funcionan en este teléfono.",
     testSent_one: "Enviada a {{count}} dispositivo. Debería llegar en unos segundos.",
     testSent_other: "Enviada a {{count}} dispositivos. Debería llegar en unos segundos.",
-    testNone: "No llegó a ningún dispositivo. Cierra la app, ábrela de nuevo y vuelve a intentarlo.",
+    testNone:
+      "No llegó a ningún dispositivo. Cierra la app, ábrela de nuevo y vuelve a intentarlo.",
     testTooSoon_one: "Espera {{count}} segundo antes de enviar otra.",
     testTooSoon_other: "Espera {{count}} segundos antes de enviar otra.",
     testFailed: "No se pudo enviar la notificación de prueba",

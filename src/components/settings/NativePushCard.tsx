@@ -129,12 +129,7 @@ export function NativePushCard() {
         {state === "granted" && (
           <>
             <Note>{t("nativePush.onBody")}</Note>
-            <Button
-              variant="outline"
-              onClick={test}
-              disabled={busy}
-              className={WRAPPING_BUTTON}
-            >
+            <Button variant="outline" onClick={test} disabled={busy} className={WRAPPING_BUTTON}>
               <BellRing className="h-4 w-4 shrink-0" aria-hidden />
               {t("nativePush.sendTest")}
             </Button>
