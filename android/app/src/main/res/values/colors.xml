@@ -22,4 +22,8 @@
          `windowBackground`, which is white — a flash of white before a cream
          splash, which is exactly the fault the iOS pass fixed on that side. -->
     <color name="splashBackground">#fdfaf1</color>
+    <!-- Tint for the notification small icon and its header text in the
+         shade. The same dark slate as colorAccent: cream would be invisible
+         on a light shade. -->
+    <color name="notificationAccent">#0f172a</color>
 </resources>

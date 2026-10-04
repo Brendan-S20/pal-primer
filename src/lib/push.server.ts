@@ -99,8 +99,8 @@ async function sendWebPush(subs: WebSub[], payload: PushPayload) {
 //   number or an object would now get INVALID_ARGUMENT for the whole send.
 //   Coerced rather than trusted; see `fcmDataStrings`.
 //
-//   `click_action`, `icon` and `tag` moved under `android.notification` and
-//   were renamed. `tag` is what collapses repeated notifications on the device,
+//   `icon` and `tag` moved under `android.notification` and were renamed
+//   (`click_action` too, which this no longer sends; see fcmMessageFor). `tag` is what collapses repeated notifications on the device,
 //   so silently dropping it would give a tech twelve identical rows.
 //
 // Configured with FCM_SERVICE_ACCOUNT: the JSON Firebase hands you at Project
@@ -155,6 +155,14 @@ export type FcmMessage = {
   };
 };
 
+/** An Android drawable resource name, which is the only thing
+ *  `android.notification.icon` accepts. `PushPayload.icon` is shared with web
+ *  push, where it is a URL ("/pwa-192.png"); passed through, Android looks for
+ *  a drawable called that, fails, and logs it. Omitted instead, the device
+ *  uses the default_notification_icon in AndroidManifest.xml, which is the
+ *  monochrome ic_stat_notification and the right icon anyway. */
+const ANDROID_DRAWABLE_NAME = /^[a-z][a-z0-9_]*$/;
+
 export function fcmMessageFor(token: string, payload: PushPayload): FcmMessage {
   return {
     message: {
@@ -162,11 +170,22 @@ export function fcmMessageFor(token: string, payload: PushPayload): FcmMessage {
       notification: { title: payload.title, body: payload.body ?? "" },
       android: {
         notification: {
-          // Renamed in v1: tag collapses repeats on the device, click_action
-          // names the intent filter the tap opens.
+          // Renamed in v1: tag collapses repeats on the device.
           ...(payload.tag ? { tag: payload.tag } : {}),
-          ...(payload.icon ? { icon: payload.icon } : {}),
-          ...(payload.url ? { click_action: "FCM_PLUGIN_ACTIVITY" } : {}),
+          ...(payload.icon && ANDROID_DRAWABLE_NAME.test(payload.icon)
+            ? { icon: payload.icon }
+            : {}),
+          // NO click_action, and that is a fix. This sent
+          // `click_action: "FCM_PLUGIN_ACTIVITY"` whenever there was a url.
+          // That string is the cordova-plugin-fcm convention: it makes the
+          // tap fire an intent with that ACTION, and only an activity that
+          // declares an intent-filter for it can receive one. This app has
+          // never declared it (Capacitor does not use it), so every tap on a
+          // notification that carried a link resolved to no activity and did
+          // nothing at all. With click_action absent the tap launches
+          // MainActivity with the message's data as extras, which is the path
+          // @capacitor/push-notifications reads and turns into
+          // pushNotificationActionPerformed -> initPushDeepLinks.
         },
       },
       // The URL rides in data as well as in click_action: the Capacitor plugin

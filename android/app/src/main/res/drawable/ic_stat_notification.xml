@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The status-bar notification glyph: a paw, white on transparent.
+
+     Android renders a small icon from its ALPHA CHANNEL only, so any colour
+     here is discarded and anything opaque becomes white. That is why this is
+     a separate drawable rather than the launcher icon: the launcher icon is a
+     full-colour square, and as a small icon it draws as a white block.
+     Referenced by the default_notification_icon meta-data in
+     AndroidManifest.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,11.5c-2.9,0 -6,2.9 -6,5.6c0,1.6 1.2,2.4 2.6,2.4c1.3,0 2.2,-0.6 3.4,-0.6s2.1,0.6 3.4,0.6c1.4,0 2.6,-0.8 2.6,-2.4c0,-2.7 -3.1,-5.6 -6,-5.6z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3.5,10a2,2 0,1 0,4 0a2,2 0,1 0,-4 0z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.1,6a2.1,2.1 0,1 0,4.2 0a2.1,2.1 0,1 0,-4.2 0z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.7,6a2.1,2.1 0,1 0,4.2 0a2.1,2.1 0,1 0,-4.2 0z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16.5,10a2,2 0,1 0,4 0a2,2 0,1 0,-4 0z" />
+</vector>
