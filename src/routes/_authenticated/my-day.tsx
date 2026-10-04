@@ -137,15 +137,20 @@ export const Route = createFileRoute("/_authenticated/my-day")({
   staticData: { pageWidth: "wide" },
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
   // silently showing today (P1.8). ?staff=<uuid> lets office roles preview a
-  // technician's day read-only.
-  validateSearch: (search: Record<string, unknown>): { date?: string; staff?: string } => {
-    const out: { date?: string; staff?: string } = {};
+  // technician's day read-only. ?visit=<uuid> is the stop a push was about
+  // (src/lib/field-notify.ts myDayLink): the page opens scrolled to it.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { date?: string; staff?: string; visit?: string } => {
+    const out: { date?: string; staff?: string; visit?: string } = {};
     const raw = typeof search.date === "string" ? search.date : undefined;
     if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())) {
       out.date = raw;
     }
     const s = typeof search.staff === "string" ? search.staff : undefined;
     if (s && /^[0-9a-f-]{36}$/i.test(s)) out.staff = s;
+    const v = typeof search.visit === "string" ? search.visit : undefined;
+    if (v && /^[0-9a-f-]{36}$/i.test(v)) out.visit = v;
     return out;
   },
   component: MyDay,
@@ -181,7 +186,7 @@ const VISIT_STATIONS_CACHE = {
 } as const;
 
 function MyDay() {
-  const { date: dateParam, staff: staffParam } = Route.useSearch();
+  const { date: dateParam, staff: staffParam, visit: visitParam } = Route.useSearch();
   const navigate = Route.useNavigate();
   // "Today" is the ORGANIZATION'S today, not the device's. The times on this
   // page speak the org's wall clock (orgLocalTime below), so the day the page
@@ -567,6 +572,27 @@ function MyDay() {
     });
     return () => cancelAnimationFrame(raf);
   }, [activeVisitId]);
+
+  // A push about one stop opens on that stop. After the scroll above (two
+  // frames, not one), because a tap on "New stop on today's route" is asking
+  // about THAT stop, not about the job already in hand. Once per id, once
+  // the stop is on the page; a later refetch does not move the tech again.
+  const visitOnPage = !!visitParam && visits.some((v: any) => v.id === visitParam);
+  useEffect(() => {
+    if (!visitParam || !visitOnPage) return;
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        document
+          .getElementById(`visit-${visitParam}`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [visitParam, visitOnPage]);
 
   if (isLoading) return <p className="text-muted-foreground">{t("common.loading")}</p>;
 

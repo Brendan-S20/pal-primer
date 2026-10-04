@@ -48,6 +48,12 @@ export const recordFieldCollection = createServerFn({ method: "POST" })
       _collected_at: data.collectedAt ?? undefined,
     });
     if (error) throw new Error(error.message);
+    // The owner and office managers are told, and their phones buzz. This was
+    // an INSERT inside record_field_collection, whose rows never reached a
+    // phone (20261004150000). Keyed on the collection, so the replay the
+    // queue sends after a lost response tells nobody twice. Never throws.
+    const { notifyFieldCollection } = await import("@/lib/field-notify.server");
+    await notifyFieldCollection({ collectionId: id as string, actorUserId: context.userId });
     try {
       const { data: v } = await context.supabase
         .from("visits")

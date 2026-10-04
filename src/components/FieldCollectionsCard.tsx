@@ -46,7 +46,12 @@ export function FieldCollectionsCard() {
   if (rows.length === 0) return null;
 
   return (
-    <section className="rounded-lg border bg-card p-4" aria-labelledby="field-collections-heading">
+    // `id`: the anchor a "collected $40" push opens (/invoices#field-collections).
+    <section
+      id="field-collections"
+      className="rounded-lg border bg-card p-4"
+      aria-labelledby="field-collections-heading"
+    >
       <div className="flex min-w-0 items-start gap-2">
         <Banknote className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
         <div className="min-w-0">
