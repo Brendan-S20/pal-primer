@@ -59,7 +59,9 @@ describe("release signing is wired without a secret", () => {
     for (const rule of ["keystore.properties", "*.jks", "*.keystore"]) {
       expect(ignore).toContain(rule);
     }
-    const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split(/\r?\n/);
+    const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split(
+      /\r?\n/,
+    );
     const leaked = tracked.filter(
       (f) => /\.(jks|keystore)$/.test(f) || /(^|\/)keystore\.properties$/.test(f),
     );

@@ -100,10 +100,15 @@ describe("customer links, purchases and sign-in stay in the browser", () => {
     expect(appLinkClaims(path)).toBe(false);
   });
 
-  it.each(["/", "/my-day", "/routes", "/clients/abc", "/settings", "/settings/users", "/dashboard"])(
-    "%s is claimed",
-    (path) => expect(appLinkClaims(path)).toBe(true),
-  );
+  it.each([
+    "/",
+    "/my-day",
+    "/routes",
+    "/clients/abc",
+    "/settings",
+    "/settings/users",
+    "/dashboard",
+  ])("%s is claimed", (path) => expect(appLinkClaims(path)).toBe(true));
 
   it("does not let a claimed prefix swallow a browser path by spelling", () => {
     // pathPrefix is a raw string prefix on Android. "/lead" would claim

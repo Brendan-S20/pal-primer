@@ -115,7 +115,8 @@ export const APP_LINK_PATH_PREFIXES: readonly string[] = [
  * default.
  */
 export const STAYS_IN_BROWSER: Readonly<Record<string, string>> = {
-  "/auth": "the web OAuth redirect target; claiming it breaks web sign-in on any phone with the app",
+  "/auth":
+    "the web OAuth redirect target; claiming it breaks web sign-in on any phone with the app",
   "/sign-up": "account creation starts on the web",
   "/signup": "a tenant's customer self-signup page",
   "/get-started": "account creation starts on the web",
