@@ -391,5 +391,14 @@ export async function signOutAndClearDevice(): Promise<void> {
     /* no identity resolvable means no queue of ours to clear */
   }
   clearPersistedReadCaches();
+  // Before signOut, while the session can still authenticate the delete: this
+  // device stops receiving the signed-out user's push notifications. Bounded
+  // inside releasePushRegistration, and a no-op on the web.
+  try {
+    const { releasePushRegistration } = await import("@/lib/native");
+    await releasePushRegistration();
+  } catch {
+    /* never let push bookkeeping hold up a sign-out */
+  }
   await supabase.auth.signOut();
 }
