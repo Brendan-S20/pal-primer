@@ -97,8 +97,11 @@ describe("the script, run the way npm runs it", () => {
       mkdirSync(plugin, { recursive: true });
       writeFileSync(join(plugin, "Package.swift"), packageSwift);
     }
-    const run = () =>
-      spawnSync(process.execPath, [join(dir, "scripts/patch-native-plugins.mjs")], { encoding: "utf8" });
+    const run = (strict = "1") =>
+      spawnSync(process.execPath, [join(dir, "scripts/patch-native-plugins.mjs")], {
+        encoding: "utf8",
+        env: { ...process.env, PATCH_NATIVE_PLUGINS_STRICT: strict },
+      });
     const file = () => readFileSync(join(dir, "node_modules", PLUGINS[0].name, "Package.swift"), "utf8");
     return { dir, run, file, done: () => rmSync(dir, { recursive: true, force: true }) };
   }
@@ -137,6 +140,18 @@ describe("the script, run the way npm runs it", () => {
       const r = s.run();
       expect(r.status).toBe(1);
       expect(r.stderr).toMatch(/is not installed/);
+    } finally {
+      s.done();
+    }
+  });
+
+  it("warns and exits 0 on an install that does not build iOS (Lovable's web build)", () => {
+    const s = sandbox(ORIGINAL.replace('from: "7.0.0"', 'exact: "7.2.0"'));
+    try {
+      const r = s.run("0");
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stderr).toMatch(/FAILED: @capacitor-community\/apple-sign-in\/Package\.swift/);
+      expect(r.stderr).toMatch(/does not build iOS/);
     } finally {
       s.done();
     }

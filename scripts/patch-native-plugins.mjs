@@ -131,6 +131,18 @@ if (invokedDirectly()) {
       "Without this patch Swift Package Manager cannot resolve the iOS project and Xcode Cloud " +
         "cannot archive. See docs/ios-build.md › Capacitor 8 and a plugin that is still on 7.\n",
     );
-    process.exit(1);
+    // Loud where an iOS build depends on it: a Mac (local Xcode, Xcode Cloud)
+    // and GitHub Actions. Anywhere else — Lovable's web build runs bun's
+    // postinstall too — the web bundle does not need the patch, and failing
+    // the install there would block a publish over a file it never reads.
+    // PATCH_NATIVE_PLUGINS_STRICT=1|0 overrides, so the tests can pin both.
+    const override = process.env.PATCH_NATIVE_PLUGINS_STRICT;
+    const iosBuildDependsOnIt = override
+      ? override === "1"
+      : process.platform === "darwin" ||
+      process.env.GITHUB_ACTIONS === "true" ||
+      Boolean(process.env.CI_XCODE_CLOUD);
+    if (iosBuildDependsOnIt) process.exit(1);
+    console.error("[patch-native-plugins] continuing: this install does not build iOS.\n");
   }
 }

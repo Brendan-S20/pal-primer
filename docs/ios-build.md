@@ -288,7 +288,10 @@ builds against `:capacitor-android`, and Apple sign-in is iOS-only in
 
 The script is idempotent and **fails the install** if the line it expects is
 gone and the file does not already accept 8.x — so a plugin upgrade cannot undo
-it silently. If that happens: check the new `Package.swift` resolves against
+it silently. It fails only where an iOS build depends on it (a Mac, Xcode Cloud,
+GitHub Actions); on any other install, which includes Lovable's web build, it
+prints the same error and carries on, because the web bundle never reads the
+file. If that happens: check the new `Package.swift` resolves against
 CapApp-SPM, then update or delete the entry in the script. When a Capacitor 8
 release of the plugin ships, the script reports "already accepts Capacitor 8"
 and the entry can go. `tests/a-plugin-still-on-capacitor-7-stopped-every-ios-build.test.ts`
