@@ -219,9 +219,14 @@ describe("registerPushNotifications", () => {
     expect(h.pushCalls).toContain("remove:registration");
   });
 
+  // Through turnOnPushNotifications since 2026-10-04, the one path the shell
+  // and the Preferences card's button share (see
+  // a-phone-that-never-asked-for-notifications.test.ts).
   it("is only ever called from the signed-in shell, never the root", () => {
-    expect(read("src/routes/_authenticated/route.tsx")).toMatch(/registerPushNotifications\(/);
-    expect(read("src/routes/__root.tsx")).not.toMatch(/registerPushNotifications/);
+    expect(read("src/routes/_authenticated/route.tsx")).toMatch(/turnOnPushNotifications\(/);
+    expect(read("src/routes/__root.tsx")).not.toMatch(
+      /registerPushNotifications|turnOnPushNotifications/,
+    );
   });
 
   it("sign-out releases the device token before the session is gone", () => {
