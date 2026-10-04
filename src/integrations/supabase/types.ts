@@ -734,16 +734,19 @@ export type Database = {
       }
       app_notification_prefs: {
         Row: {
+          language: string | null
           muted_types: string[]
           updated_at: string
           user_id: string
         }
         Insert: {
+          language?: string | null
           muted_types?: string[]
           updated_at?: string
           user_id: string
         }
         Update: {
+          language?: string | null
           muted_types?: string[]
           updated_at?: string
           user_id?: string
@@ -754,33 +757,39 @@ export type Database = {
         Row: {
           body: string | null
           created_at: string
+          event_key: string | null
           id: string
           link: string | null
           organization_id: string
           read_at: string | null
           recipient_user_id: string
+          thread_id: string | null
           title: string
           type: string
         }
         Insert: {
           body?: string | null
           created_at?: string
+          event_key?: string | null
           id?: string
           link?: string | null
           organization_id: string
           read_at?: string | null
           recipient_user_id: string
+          thread_id?: string | null
           title: string
           type: string
         }
         Update: {
           body?: string | null
           created_at?: string
+          event_key?: string | null
           id?: string
           link?: string | null
           organization_id?: string
           read_at?: string | null
           recipient_user_id?: string
+          thread_id?: string | null
           title?: string
           type?: string
         }
