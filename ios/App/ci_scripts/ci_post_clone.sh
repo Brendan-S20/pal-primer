@@ -57,6 +57,11 @@ echo "node $(node --version), npm $(npm --version)"
 
 cd "$REPO"
 
+# npm ci also runs package.json's `postinstall`, scripts/patch-native-plugins.mjs,
+# which moves @capacitor-community/apple-sign-in's capacitor-swift-pm range
+# from 7.x to 8.x. Without it package resolution fails ("apple-sign-in depends
+# on capacitor-swift-pm 7.0.0..<8.0.0 and status-bar depends on 8.0.0..<9.0.0")
+# and nothing builds. Never install with lifecycle scripts switched off here.
 echo "--- npm ci (this is what the Swift packages are waiting for)"
 npm ci
 
