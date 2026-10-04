@@ -230,8 +230,9 @@ it does
       Categories were Business / Utilities when this was written on 2026-08-24;
       the owner set them to **Productivity then Business** on 2026-09-15, which
       is what §5 of docs/owner-actions-before-submission.md had been asking for.
-[ ] Push Notifications capability enabled, APNs key created, server env set
-      (see docs/ios-build.md; push is code-complete but not provisioned)
+[ ] Push: APNs key created and APNS_* secrets set (done 2026-10-03);
+      Push Notifications ticked on the App ID and a TestFlight build receiving
+      one is the rest (docs/ios-build.md › Push notifications › Owner checklist)
 [ ] App icon renders correctly at every size in Xcode's asset preview
 [ ] Device QA checklist in docs/ios-build.md worked through on real hardware
 [ ] Billing screen confirmed on a device to show no purchase path

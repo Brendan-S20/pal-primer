@@ -19,7 +19,7 @@ for these paths.
 | `RESEND_WEBHOOK_SECRET` | Resend delivery/bounce callbacks |
 | `SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) | Service-role DB access; also accepted as cron authorization |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web push. Unset ⇒ web push silently unavailable. |
-| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` / `APNS_ENVIRONMENT` | Native iOS push |
+| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` / `APNS_ENVIRONMENT` | Native iOS push, token auth. **Set 2026-10-03.** `APNS_AUTH_KEY` is the whole `.p8` (newlines may be real, literal `\n`, or flattened — normalised before use; a certificate is refused by name). `APNS_TOPIC` = `consulting.thenorth.houndstack` (also the default if unset). `APNS_ENVIRONMENT` = `production` for TestFlight/App Store; `sandbox` only while testing an Xcode cable build. Unset or unreadable ⇒ iOS push is skipped with one log line, never an error. The `.p8` can be downloaded once: if lost, revoke it in Apple Developer › Keys and make another. Setup and test steps: `docs/ios-build.md` › Push notifications. |
 | `FCM_SERVICE_ACCOUNT` | Native Android push — the whole service-account JSON from Firebase → Project settings → Service accounts. Replaces `FCM_SERVER_KEY`, whose legacy endpoint Google decommissioned; setting the old name now does nothing. |
 | `GOOGLE_PLACES_API_KEY` | Address autocomplete on signup and property forms |
 | `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET` / `QBO_ENVIRONMENT` / `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET` | QuickBooks / Xero OAuth |
