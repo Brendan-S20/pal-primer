@@ -305,6 +305,7 @@ describe("a production server", () => {
       url: "https://app.houndstack.com/portal/acme/[token]/billing",
       method: "POST",
     });
+    expect(event.transaction).toBe("POST /portal/acme/[token]/billing");
     expect(event.tags).toMatchObject({ platform: "server", surface: "server_fn" });
     expect(event.environment).toBe("production");
     expect(event.exception.values.at(-1).value).toContain("[email]");

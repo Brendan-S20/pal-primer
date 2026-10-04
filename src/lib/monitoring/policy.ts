@@ -250,7 +250,10 @@ export function scrubEvent<E extends ScrubbableEvent>(event: E): E {
   if (event.tags) event.tags = scrubValue(event.tags, true) as Record<string, unknown>;
   // Strings only: see scrubValue on why `name` survives here.
   if (event.contexts) event.contexts = scrubValue(event.contexts, false) as Record<string, unknown>;
-  if (typeof event.transaction === "string") event.transaction = scrubUrl(event.transaction);
+  // scrubText, not scrubUrl: a server transaction is "POST /portal/acme/<token>",
+  // a method and a path, and scrubUrl only recognises a string that starts
+  // with the path.
+  if (typeof event.transaction === "string") event.transaction = scrubText(event.transaction);
   // The Worker's hostname is meaningless and the browser's is the device's.
   delete event.server_name;
   return event;
