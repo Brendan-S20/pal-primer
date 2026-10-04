@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check, Copy, Plus } from "lucide-react";
 import {
   createWebhookEndpoint,
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDateTime } from "@/lib/format";
 import { pageTitle } from "@/lib/page-title";
+import { focusFirstInvalid } from "@/lib/form-errors";
 
 export const Route = createFileRoute("/_authenticated/settings/webhooks")({
   head: () => ({ meta: [{ title: pageTitle("Zapier & webhooks", "Settings") }] }),
@@ -476,6 +477,12 @@ function WebhookSettings() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
+  // Add webhook used to sit disabled until a URL was typed and an event
+  // ticked, without saying so. Now it says which, on submit.
+  const [showErrors, setShowErrors] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const urlError = !url.trim() ? "Paste the address to send events to." : null;
+  const eventsError = events.length === 0 ? "Tick at least one event to send." : null;
 
   const list = endpoints.data ?? [];
   const byEndpoint = new Map<string, Delivery[]>();
@@ -490,6 +497,12 @@ function WebhookSettings() {
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
+    if (urlError || eventsError) {
+      setShowErrors(true);
+      focusFirstInvalid(formRef.current);
+      return;
+    }
+    setShowErrors(false);
     setBusy(true);
     setErr(null);
     try {
@@ -530,7 +543,7 @@ function WebhookSettings() {
             Add a webhook
           </Button>
         ) : (
-          <form onSubmit={add} className="space-y-4">
+          <form ref={formRef} onSubmit={add} noValidate className="space-y-4">
             <h3 className="font-medium">Add a webhook</h3>
             <label className="block text-sm">
               <span className="mb-1 block text-muted-foreground">URL to send events to</span>
@@ -542,8 +555,15 @@ function WebhookSettings() {
                 placeholder="https://hooks.zapier.com/hooks/catch/..."
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                className="font-mono"
+                aria-invalid={showErrors && !!urlError}
+                aria-describedby={showErrors && urlError ? "new-webhook-url-error" : undefined}
+                className={`font-mono ${showErrors && urlError ? "border-destructive" : ""}`}
               />
+              {showErrors && urlError && (
+                <span id="new-webhook-url-error" className="mt-1 block text-xs text-destructive">
+                  {urlError}
+                </span>
+              )}
             </label>
             <label className="block text-sm">
               <span className="mb-1 block text-muted-foreground">Description (optional)</span>
@@ -555,10 +575,13 @@ function WebhookSettings() {
               />
             </label>
             <EventPicker idPrefix="new" value={events} onChange={setEvents} />
+            {showErrors && eventsError && (
+              <p className="text-xs text-destructive">{eventsError}</p>
+            )}
             <ContactOption id="new-contact" checked={includeContact} onChange={setIncludeContact} />
             {err && <p className="break-words text-sm text-red-600">{err}</p>}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || !url.trim() || events.length === 0}>
+              <Button type="submit" disabled={busy}>
                 {busy ? "Checking the address..." : "Add webhook"}
               </Button>
               <Button

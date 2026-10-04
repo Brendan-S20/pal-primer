@@ -6,7 +6,7 @@
 // and generate_visits_core skips dates inside it. Range validation is
 // server-enforced (createClientHold zod + tg_client_holds_validate) so a
 // 2-year range or end-before-start is rejected regardless of caller (I11).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { useServerFn } from "@tanstack/react-start";
@@ -18,6 +18,7 @@ import { DateField } from "@/components/fields";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { listClientHolds, createClientHold, endClientHold } from "@/lib/clients.functions";
 import { formatDay } from "@/lib/format";
+import { focusFirstInvalid } from "@/lib/form-errors";
 
 // Longest hold the office can place; mirrors tg_client_holds_validate.
 const MAX_HOLD_DAYS = 366;
@@ -59,6 +60,8 @@ export function VacationHoldDrawer({
   const [startsOn, setStartsOn] = useState(initialStartsOn || today);
   const [endsOn, setEndsOn] = useState(initialEndsOn || "");
   const [reason, setReason] = useState(initialReason || "");
+  const [showErrors, setShowErrors] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   // The drawer self-fetches holds so every caller (header, concerns inbox) gets
   // the same list without threading it through props.
@@ -74,6 +77,7 @@ export function VacationHoldDrawer({
       setStartsOn(initialStartsOn || today);
       setEndsOn(initialEndsOn || "");
       setReason(initialReason || "");
+      setShowErrors(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialStartsOn, initialEndsOn, initialReason]);
@@ -118,6 +122,15 @@ export function VacationHoldDrawer({
   const span = startsOn && endsOn ? daysBetween(startsOn, endsOn) : 0;
   const tooLong = !!startsOn && !!endsOn && span > MAX_HOLD_DAYS;
   const valid = !!startsOn && !!endsOn && endsOn >= startsOn && !tooLong;
+  // Place hold used to sit disabled until both days were picked, with nothing
+  // saying which was missing. It is pressable now, and a submit with a gap
+  // marks the field (DateField's own `error`) and focuses it.
+  const startError = !startsOn ? "Pick the first day of the hold." : null;
+  const endError = !endsOn
+    ? "Pick the last day of the hold."
+    : startsOn && endsOn < startsOn
+      ? "The last day cannot be before the first."
+      : null;
 
   return (
     <EditDrawer
@@ -156,20 +169,34 @@ export function VacationHoldDrawer({
         )}
 
         <form
+          ref={formRef}
           className="space-y-4"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            if (valid) createMut.mutate();
+            if (!valid) {
+              setShowErrors(true);
+              focusFirstInvalid(formRef.current);
+              return;
+            }
+            createMut.mutate();
           }}
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <DateField label="First day on hold" value={startsOn} onChange={setStartsOn} minISO={today} />
+            <DateField
+              label="First day on hold"
+              value={startsOn}
+              onChange={setStartsOn}
+              minISO={today}
+              error={showErrors ? startError : null}
+            />
             <DateField
               label="Last day on hold"
               value={endsOn}
               onChange={setEndsOn}
               minISO={startsOn || today}
               hint="Visits resume the day after."
+              error={showErrors ? endError : null}
             />
           </div>
           <div>
@@ -192,7 +219,7 @@ export function VacationHoldDrawer({
             Services tab if a gap needs filling.
           </p>
           <DrawerFooter>
-            <Button type="submit" disabled={createMut.isPending || !valid}>
+            <Button type="submit" disabled={createMut.isPending}>
               {createMut.isPending ? "Placing hold…" : "Place hold"}
             </Button>
           </DrawerFooter>

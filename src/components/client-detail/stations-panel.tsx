@@ -2,7 +2,7 @@
 // station's location is a map marker (picked on a satellite map) instead of a
 // free-text field, liner size is a dropdown, capacity is gone, and the list
 // groups stations by the property's commercial sections.
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label";
 import { EmptyState, MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { StationMapPicker, StationsOverviewMap, type StationPoint } from "@/components/StationMapPicker";
 import { listStations, upsertStation, deleteStation, renumberStations } from "@/lib/stations.functions";
-import { stationDisplayName } from "@/lib/dna-linkage";
+import { isValidLabel, stationDisplayName } from "@/lib/dna-linkage";
+import { focusFirstInvalid } from "@/lib/form-errors";
 import { formatDay } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -48,7 +49,14 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   const { confirm, dialog } = useConfirmDialog();
 
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(properties[0]?.id ?? ""));
-  const [markerMissing, setMarkerMissing] = useState(false);
+  // Set by a submit that found a problem; cleared when the form resets.
+  // This used to be `markerMissing`, the one error this form ever showed, and
+  // only after a toast; the label was checked by an early `return` that did
+  // nothing at all, which is the owner's report in full: "It doesn't say or highlight
+  // which fields are required, so it's hard to tell when marking and clicking
+  // add station." (iPhone, 2026-10-04)
+  const [showErrors, setShowErrors] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   // The add/edit form is collapsed until asked for — the panel's default view
   // is the overview map + list of what already exists, not a blank add form.
   const [formOpen, setFormOpen] = useState(false);
@@ -64,7 +72,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
       toast.success("Station saved");
       qc.invalidateQueries({ queryKey: ["stations", clientId] });
       setDraft((d) => emptyDraft(d.propertyId));
-      setMarkerMissing(false);
+      setShowErrors(false);
       setFormOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -99,6 +107,20 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   };
 
   const stations: any[] = data?.stations ?? [];
+
+  // What a station needs, from the code that stores it: a property
+  // (property_id NOT NULL; the picker always has one), a label (the server
+  // requires one and refuses placeholders, though old rows may be NULL), and
+  // for a NEW station a map marker (this form's own rule: the marker is the
+  // location). Liner size, section and notes are nullable, and say so.
+  const labelError = !draft.label.trim()
+    ? "Give the station a label, like Building A or North lot."
+    : !isValidLabel(draft.label)
+      ? "Use a real label, not a placeholder."
+      : undefined;
+  const needsMarker = !draft.position && !draft.id;
+  const showLabelError = showErrors && !!labelError;
+  const showMarkerError = showErrors && needsMarker;
 
   const selectedProperty = properties.find((p: any) => p.id === draft.propertyId);
   const sections: string[] = selectedProperty?.commercial_sections ?? [];
@@ -135,7 +157,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   if (properties.length === 0) return null;
 
   const startEdit = (s: any) => {
-    setMarkerMissing(false);
+    setShowErrors(false);
     setFormOpen(true);
     setDraft({
       id: s.id,
@@ -222,7 +244,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
               size="sm"
               className="h-7 text-xs"
               onClick={() => {
-                setMarkerMissing(false);
+                setShowErrors(false);
                 setDraft((d) => emptyDraft(d.propertyId));
                 setFormOpen(true);
               }}
@@ -280,16 +302,19 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
 
       {formOpen && (
       <form
+        ref={formRef}
+        noValidate
         className="mt-4 grid gap-3 sm:grid-cols-6"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!draft.label || !draft.propertyId) return;
+          if (!draft.propertyId) return;
           // New stations need a marker; EDITING a legacy marker-less station
           // must still be possible (rename, liner size) or those rows would
           // be permanently locked for anyone not standing on site.
-          if (!draft.position && !draft.id) {
-            setMarkerMissing(true);
-            toast.error("Place the station on the map first");
+          if (labelError || needsMarker) {
+            // Every field with a problem says so, and focus goes to the first.
+            setShowErrors(true);
+            focusFirstInvalid(formRef.current);
             return;
           }
           upsertMut.mutate({
@@ -307,8 +332,9 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
         }}
       >
         <div className="sm:col-span-2">
-          <Label>Property</Label>
+          <Label htmlFor="station-property">Property</Label>
           <select
+            id="station-property"
             className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             value={draft.propertyId}
             // A marker dropped on property A must not silently become the
@@ -325,16 +351,27 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           </select>
         </div>
         <div className="sm:col-span-2">
-          <Label>Label</Label>
+          <Label htmlFor="station-label">Label</Label>
           <Input
+            id="station-label"
             value={draft.label}
             onChange={(e) => setDraft({ ...draft, label: e.target.value })}
             placeholder="Building A, north lot"
+            required
+            aria-invalid={showLabelError}
+            aria-describedby={showLabelError ? "station-label-error" : undefined}
+            className={showLabelError ? "border-destructive" : undefined}
           />
+          {showLabelError && (
+            <p id="station-label-error" className="mt-1 text-xs text-destructive">
+              {labelError}
+            </p>
+          )}
         </div>
         <div className="sm:col-span-2">
-          <Label>Liner size</Label>
+          <Label htmlFor="station-liner">Liner size (optional)</Label>
           <select
+            id="station-liner"
             className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             value={draft.linerSize}
             onChange={(e) => setDraft({ ...draft, linerSize: e.target.value })}
@@ -349,8 +386,9 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
         </div>
         {sections.length > 0 && (
           <div className="sm:col-span-2">
-            <Label>Section</Label>
+            <Label htmlFor="station-section">Section (optional)</Label>
             <select
+              id="station-section"
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               value={draft.section}
               onChange={(e) => setDraft({ ...draft, section: e.target.value })}
@@ -365,29 +403,45 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           </div>
         )}
         <div className={sections.length > 0 ? "sm:col-span-4" : "sm:col-span-6"}>
-          <Label>Notes (optional)</Label>
+          <Label htmlFor="station-notes">Notes (optional)</Label>
           <Input
+            id="station-notes"
             value={draft.notes}
             onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
             placeholder="Near mail kiosk"
           />
         </div>
         <div className="sm:col-span-6">
-          <Label>Station location</Label>
-          <div className="mt-1">
+          <Label id="station-location-label">
+            Station location{draft.id ? " (optional)" : ""}
+          </Label>
+          {/* Focusable only so a failed submit can bring it into view: a map
+              has no field to put a caret in. */}
+          <div
+            className={`mt-1 rounded-md ${showMarkerError ? "ring-2 ring-destructive ring-offset-2 ring-offset-background" : ""}`}
+            tabIndex={-1}
+            role="group"
+            aria-labelledby="station-location-label"
+            aria-invalid={showMarkerError}
+            aria-describedby="station-location-hint"
+          >
             <StationMapPicker
               value={draft.position}
               center={mapCenter}
               onChange={(p) => {
-                setMarkerMissing(false);
                 setDraft((d) => ({ ...d, position: p }));
               }}
             />
           </div>
-          <p className={`mt-1 text-xs ${markerMissing ? "text-destructive" : "text-muted-foreground"}`}>
+          <p
+            id="station-location-hint"
+            className={`mt-1 text-xs ${showMarkerError ? "text-destructive" : "text-muted-foreground"}`}
+          >
             {draft.position
               ? "Drag the marker to fine-tune the station's spot."
-              : "Click the map to drop a marker where the station sits. That marker is the station's location (required)."}
+              : showMarkerError
+                ? "Tap the map where the station sits to drop its marker. A new station needs one."
+                : "Tap the map to drop a marker where the station sits. That marker is the station's location."}
           </p>
         </div>
         <div className="sm:col-span-6 flex items-center gap-2">
@@ -398,7 +452,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
             type="button"
             variant="ghost"
             onClick={() => {
-              setMarkerMissing(false);
+              setShowErrors(false);
               setDraft((d) => emptyDraft(d.propertyId));
               setFormOpen(false);
             }}
