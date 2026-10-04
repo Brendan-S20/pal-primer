@@ -122,3 +122,37 @@ describe("and something now asks the question that was never asked", () => {
     expect(step.slice(0, 300)).toMatch(/SUPABASE_DB_URL/);
   });
 });
+
+describe("and the question it asks is one Postgres can answer", () => {
+  // From the day it landed until 2026-10-03 the check sent
+  // `ANY($$a,b,c$$::text[])`. Postgres rejects that as a malformed array
+  // literal (no braces), the catch called the rejection "could not reach the
+  // database", and the step exited 0: twelve errors a day in the production
+  // log and a green tick on every run. The question was never asked once.
+  it("sends a braced array literal", () => {
+    expect(check).toMatch(/ANY\('\{\$\{names\.join\(","\)\}\}'::text\[\]\)/);
+    expect(check).not.toMatch(/ANY\(\$\$\$\{names/);
+  });
+
+  it("fails when the database rejects the query, and passes only when it cannot connect", () => {
+    expect(check).toMatch(/e\.status === 2/);
+    expect(check).toMatch(/the database rejected this check's own query/);
+    expect(check).toMatch(/process\.exit\(1\);\s*\}\s*$/m);
+  });
+
+  it("knows the campaign code's adminClient() is the service role", () => {
+    // Without this the first real run reported start_email_campaign and
+    // email_campaign_stats, both correctly locked to the service role.
+    expect(check).toMatch(/\[aA\]dminClient/);
+  });
+
+  it("accepts a marked service-role call it cannot classify by name", () => {
+    expect(check).toMatch(/rpc-role:\\s\*service/);
+    const site = readFileSync(
+      join(import.meta.dirname, "../src/lib/one-off-visit.server.ts"),
+      "utf8",
+    );
+    const at = site.indexOf('rpc("generate_visits_core"');
+    expect(site.slice(Math.max(0, at - 200), at)).toMatch(/rpc-role: service/);
+  });
+});
