@@ -1,0 +1,205 @@
+name: Backup
+
+# ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+#
+# Production is Supabase Pro WITHOUT point-in-time recovery. Its only backups
+# are Supabase's own daily snapshots: seven of them, restorable only as a
+# whole-project rollback from the dashboard, with downtime, and never
+# downloadable. That covers "the database is gone". It does not cover the
+# likelier day -- one tenant's rows deleted or mangled by mistake -- without
+# rolling back every OTHER tenant's day too, and it is a copy held by the same
+# company that holds the original.
+#
+# So this makes a second copy, outside Supabase, every night, and -- the part
+# that matters more -- proves every week that the copy RESTORES. A backup that
+# has never been restored is a hope. docs/backups-and-restore.md is the
+# runbook: what is in it, where, for how long, and the exact restore commands.
+#
+# ── WHERE IT RUNS, AND WHY NOT ON OUR OWN MACHINES ────────────────────────
+#
+# `runs-on: ubuntu-latest`, written out, on both jobs. Everything else in this
+# repo follows `vars.UNIX_RUNNER || vars.CI_RUNNER`, which today means the
+# owner's Mac or the Windows box. Not here, deliberately:
+#
+#   * A backup job holds every customer's data in plaintext for a few
+#     minutes. On a GitHub-hosted VM that disk is destroyed when the job ends.
+#     On a self-hosted runner it is a work directory on a laptop that also
+#     keeps everything else, and a crashed step leaves it there.
+#   * The Windows runner has no bash, gpg, Docker or Supabase CLI, and a job
+#     that matched it would fail in a way that reads like a broken backup.
+#
+# KNOWN RISK, stated plainly: GitHub's hosted runners stopped being allocated
+# to this repository on 2026-08-10 (docs/self-hosted-runner.md), and none of
+# the last hundred runs used one. If that is still true, both jobs here fail
+# within seconds with no steps -- loudly, as a failed scheduled run, which
+# GitHub emails to whoever last edited the schedule. That failure means there
+# is NO off-site backup, and the fix is restoring hosted-runner allocation
+# (Settings -> Billing), not pointing this at the Mac. The first manual run
+# after merging is what answers the question.
+#
+# ── WHEN ──────────────────────────────────────────────────────────────────
+#
+# 07:30 UTC: after run-billing-cycles (06:10, pg_cron) has written the day's
+# invoices, and before nightly-automation (09:00) generates the day's visits
+# -- the quietest point in the day's writes, and a backup that includes the
+# billing run it would most hurt to lose.
+#
+# Two cron lines for one time of day, because an expression cannot ask what
+# weekday it is: Monday to Saturday back up; Sunday backs up AND runs the
+# restore drill on what it just made.
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-6"
+    - cron: "30 7 * * 0"
+  workflow_dispatch:
+    inputs:
+      drill:
+        description: "Also restore the backup this run makes into a throwaway database and verify it"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Never two at once, and never cancel one in flight: a cancelled backup is a
+# night with no backup.
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Encrypted backup of the production database
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Before anything is dumped. A job that pulls every customer's data and
+      # then finds it cannot encrypt it has done the risky half of the work
+      # and none of the useful half.
+      - name: The passphrase is set before anything is dumped
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: scripts/backup/crypt.sh check
+
+      - name: Postgres 17 client (production's major version)
+        run: scripts/backup/install-postgres-client.sh 17
+
+      # `supabase db dump` runs pg_dump inside the Supabase Postgres image
+      # (Docker is on hosted runners), so its pg_dump always matches what
+      # Supabase supports. `latest` because the drill's auth and storage
+      # services must be at least as new as production's, which Supabase
+      # upgrades on its own schedule; a pinned old CLI would one day restore
+      # into an auth schema missing a column production has.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dump roles, schema and data
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set -- there is nothing to back up from."
+            exit 1
+          fi
+          scripts/backup/dump.sh "$RUNNER_TEMP/dump"
+
+      - name: Encrypt
+        id: seal
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          name="houndstack-db-$(date -u +%Y%m%dT%H%M%SZ).tar.gz.gpg"
+          mkdir -p sealed
+          scripts/backup/crypt.sh seal "$RUNNER_TEMP/dump" "sealed/$name"
+          echo "archive=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Summary (counts and checksum, no customer data)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          export SUPABASE_CLI_VERSION="$(supabase --version | head -1)"
+          mkdir -p summary
+          node scripts/backup/summarize.mjs "$RUNNER_TEMP/dump" "sealed/${{ steps.seal.outputs.archive }}" summary/summary.json
+          node -e '
+            const s = require("./summary/summary.json");
+            const rows = Object.entries(s.key_tables).map(([t, c]) => `| ${t} | ${c.dumped} | ${c.live ?? "-"} |`);
+            console.log([`### Backup ${s.archive.name}`, "", `${Object.keys(s.tables).length} tables, archive ${s.archive.bytes} bytes, sha256 \`${s.archive.sha256}\``, "", "| table | in the dump | live after |", "|---|---:|---:|", ...rows].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      # The VM is destroyed when the job ends; this is for the minutes before
+      # that, and for the day somebody points this job at a runner that is
+      # not destroyed.
+      - name: Remove the plaintext dump
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/dump"
+
+      # Encrypted, so the artifact is safe to keep where every collaborator on
+      # the repo can download it. 30 days, against Supabase's own 7: the
+      # point of a second copy is to reach further back than the first.
+      # compression-level 0 because the archive is already compressed and
+      # encrypted; zip would spend minutes making it no smaller.
+      - name: Keep the encrypted backup (30 days)
+        if: always() && steps.seal.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup
+          path: sealed/*.tar.gz.gpg
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Keep the summary (90 days)
+        if: always() && steps.seal.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-summary
+          path: summary/summary.json
+          retention-days: 90
+          if-no-files-found: error
+
+  restore-drill:
+    name: Restore that backup into an empty database and check every row came back
+    needs: backup
+    # Sundays, and any manual run that leaves the box ticked.
+    if: github.event.schedule == '30 7 * * 0' || (github.event_name == 'workflow_dispatch' && inputs.drill)
+    # Hosted for the same reason as the backup: the drill decrypts the whole
+    # database onto this machine's disk.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Postgres 17 client
+        run: scripts/backup/install-postgres-client.sh 17
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # From THIS run, by name: the drill restores the backup that was just
+      # made, which is the one it would be most expensive to find broken.
+      - uses: actions/download-artifact@v4
+        with:
+          name: db-backup
+          path: drill/archive
+      - uses: actions/download-artifact@v4
+        with:
+          name: db-backup-summary
+          path: drill/summary
+
+      # drill.sh: sha256 against the summary, decrypt, a fresh Supabase stack
+      # from an empty directory, Supabase's documented restore in one
+      # transaction with every cron job committed INACTIVE (so nothing in the
+      # restored copy ever calls production or a customer's webhook), then
+      # every table's count against the dump's own, organizations and
+      # auth.users non-empty, and every foreign key re-checked.
+      - name: Restore and verify
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          archive="$(ls drill/archive/*.tar.gz.gpg)"
+          scripts/backup/drill.sh "$archive" drill/summary/summary.json
