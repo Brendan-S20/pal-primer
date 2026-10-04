@@ -42,9 +42,19 @@ const read = (page: import("@playwright/test").Page) =>
       height: Math.round(el.getBoundingClientRect().height),
       headline: text.includes("Your free trial has ended"),
       action: /Set up billing|Ask an owner to set up billing/.test(text),
-      explanationVisible: [...el.querySelectorAll("div")].some(
-        (d) => (d as HTMLElement).offsetParent !== null && (d.textContent || "").includes("Nothing has been deleted"),
-      ),
+      // The INNERMOST div holding the explanation, not any div that contains
+      // it: textContent includes hidden descendants, so once the dismiss
+      // button (2026-10-03) put a visible wrapper around the banner's text,
+      // "some visible div contains the words" was true on a folded phone too.
+      explanationVisible: [...el.querySelectorAll("div")]
+        .filter(
+          (d) =>
+            (d.textContent || "").includes("Nothing has been deleted") &&
+            ![...d.querySelectorAll("div")].some((c) =>
+              (c.textContent || "").includes("Nothing has been deleted"),
+            ),
+        )
+        .some((d) => (d as HTMLElement).offsetParent !== null),
     };
   });
 
