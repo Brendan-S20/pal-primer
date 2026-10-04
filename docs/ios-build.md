@@ -196,7 +196,7 @@ that row off. That is expected — to test a cable build, temporarily set
    auth, which this app does not use.) Xcode Cloud's automatic signing
    regenerates the profile with the entitlement on the next build; nothing to
    do in Xcode.
-4. **Merge this branch, let Xcode Cloud build, install that TestFlight build**
+4. **Let Xcode Cloud build from `main` (#322 merged 2026-10-03), install that TestFlight build**
    (the push code is in the binary: an older build has no AppDelegate forward
    and cannot receive anything).
 5. **Test on the phone.** Open the app, sign in, tap **Allow** on the

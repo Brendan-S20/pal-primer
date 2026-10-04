@@ -1,7 +1,10 @@
 # HoundStack Ops Runbook
 
-Operational reference for the BYOK integrations (AI, Twilio, Stripe Connect),
-billing, and the background jobs. Aimed at whoever runs the platform.
+Operational reference for the integrations (AI, Twilio, Stripe Connect, push,
+maps and routing), billing, backups, error monitoring and the background jobs.
+Aimed at whoever runs the platform. Bring-your-own-key AI and Twilio were
+retired in IMP-9; where a line below still says BYOK it is describing that
+history or the per-tenant Twilio subaccounts that replace it.
 
 ## 1. Environment / secrets (where they live)
 
@@ -14,7 +17,7 @@ for these paths.
 |--------|---------|
 | `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `PLATFORM_STRIPE_WEBHOOK_SECRET` | Platform SaaS billing (bucket A — per-employee plans). **All three from `acct_1U0RifQjJFmqXgZD`.** |
 | `STRIPE_CONNECT_SECRET_KEY` / `STRIPE_CONNECT_PUBLISHABLE_KEY` / `STRIPE_CONNECT_WEBHOOK_SECRET` | Connect platform (bucket B — tenant→client charges). **All three from `acct_1U0CVSQUHYdejlaV`.** |
-| `CREDENTIAL_ENCRYPTION_KEY` | AES-256-GCM at rest for QuickBooks/Xero OAuth tokens. `openssl rand -base64 32`. Absent ⇒ storing one hard-fails. **Only the two accounting modules call `encryptSecret()`** — Twilio and BYO-AI keys are not encrypted at rest today, whatever `secret-encryption.server.ts`'s header implies. |
+| `CREDENTIAL_ENCRYPTION_KEY` | AES-256-GCM at rest for stored credentials. `openssl rand -base64 32`. Absent ⇒ storing one hard-fails. **What actually calls `encryptSecret()`** (checked 2026-10-04): the accounting modules (`accounting.functions.ts`, `accounting.server.ts`, QuickBooks/Xero OAuth tokens) and outbound webhook signing secrets (`webhooks.functions.ts`). Twilio auth tokens are read through `decryptSecret` (`twilio-credentials.server.ts`), but **nothing in the app writes `org_twilio_credentials` today**: tenant entry was removed in IMP-9 and subaccount provisioning (BUILD-3) is not built, so whatever provisions a subaccount must call `encryptSecret`. BYO-AI keys no longer exist (`org_ai_credentials` was dropped). Production on 2026-10-04: zero rows in `org_twilio_credentials`, `accounting_connections` and `webhook_endpoints`, so the key has still never been exercised there. |
 | `AUTH_HOOK_SECRET` | Supabase auth hook verification |
 | `RESEND_WEBHOOK_SECRET` | Resend delivery/bounce callbacks |
 | `SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) | Service-role DB access; also accepted as cron authorization |
@@ -23,6 +26,17 @@ for these paths.
 | `FCM_SERVICE_ACCOUNT` | Native Android push — the whole service-account JSON from Firebase → Project settings → Service accounts. Replaces `FCM_SERVER_KEY`, whose legacy endpoint Google decommissioned; setting the old name now does nothing. |
 | `GOOGLE_PLACES_API_KEY` | Address autocomplete on signup and property forms |
 | `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET` / `QBO_ENVIRONMENT` / `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET` | QuickBooks / Xero OAuth |
+| `PLATFORM_SMS_FROM_NUMBER` | Platform Twilio number for OTP + automated notifications |
+| `LOVABLE_API_KEY` / `TWILIO_API_KEY` | Platform Twilio via the connector gateway (`twilio.server.ts`). No longer used for AI: the Lovable AI gateway was removed on 2026-10-03. |
+| `TWILIO_AUTH_TOKEN` | **Set this.** Platform Twilio Auth Token. Verifies the signature Twilio puts on every inbound webhook, which is the mechanism built for this job. While it is unset, inbound SMS and voice authenticate on `TWILIO_INBOUND_SECRET` alone. |
+| `TWILIO_INBOUND_SECRET` | Fallback inbound-webhook secret, in the query string. Platform-wide: one value authenticates every tenant, and after it passes the org is taken from the attacker-supplied `To` field. It appears in every access, proxy and Twilio log it passes through. Kept only so inbound SMS does not go dark before `TWILIO_AUTH_TOKEN` is set; it logs a warning naming itself whenever it is what let a request through. |
+| `RESEND_API_KEY` | All transactional email (OTP email, invoices, review-ask fallback, notifications) |
+| `ANTHROPIC_API_KEY` | The only AI key. Since 2026-10-03 AI is used for exactly two things, both "coming soon" and switched off in code: the receptionist (`RECEPTIONIST_LAUNCHED` in `src/lib/receptionist-launch.ts`) and marketing posts (`MARKETING_AI_LAUNCHED` in `src/lib/ai-launch.ts`), both on Claude Haiku 4.5. Churn scores, zone price suggestions, review replies, the digests and the Business Advisor are plain calculations and need no key. Unset, Settings › AI usage says AI is unavailable. |
+| `GOOGLE_MAPS_BROWSER_KEY` | Maps JavaScript API key read at runtime by `getMapsBrowserKey`; the Lovable connector's `VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY` (inlined at build) works too. Unset or refused ⇒ maps fall back to Leaflet/OpenStreetMap and log `[maps] Google ...`. Restrictions: `docs/owner-actions-before-submission.md` §13. |
+| `GEOCODIO_API_KEY` | Server-side geocoding through Geocodio (batch for imports and backfills). Unset ⇒ public Nominatim, which is not for production use. |
+| `OSRM_URL` / `OSRM_ENDPOINTS` | Road distances for the route planner. Unset ⇒ `https://router.project-osrm.org`, the public demo server (no SLA, rate limited, paced 1.1 s apart). `OSRM_ENDPOINTS` is a JSON map of region to endpoint. |
+| `CRON_SECRET` | Authorizes the nightly cron (**required** for autopay — see §5) |
+| `PUBLIC_APP_ORIGIN` | Canonical public URL used to validate inbound Twilio signatures behind a proxy |
 
 **Deliberately unset — setting these breaks things quietly:**
 
@@ -33,18 +47,11 @@ for these paths.
 
 **GitHub Actions secrets (a separate store from Lovable):** `SUPABASE_DB_URL`,
 `STRIPE_SECRET_KEY` and `BACKUP_PASSPHRASE` (encrypts the nightly backup; see §7 —
-keep a copy in a password manager, because GitHub will never show it again). The latter arms `check-stripe-catalog.mjs`; a restricted
+keep a copy in a password manager, because GitHub will never show it again).
+`STRIPE_SECRET_KEY` arms `check-stripe-catalog.mjs`; a restricted
 key with **read on Prices only** is sufficient — one call, `GET /v1/prices` — and
 `keyIsLive` accepts `rk_live_…`. Until it resolves, the step prints `NOT ARMED`
 and exits 2, and the gate is protecting nothing.
-| `PLATFORM_SMS_FROM_NUMBER` | Platform Twilio number for OTP + automated notifications |
-| `LOVABLE_API_KEY` / `TWILIO_API_KEY` | Platform Twilio via the connector gateway |
-| `TWILIO_AUTH_TOKEN` | **Set this.** Platform Twilio Auth Token. Verifies the signature Twilio puts on every inbound webhook, which is the mechanism built for this job. While it is unset, inbound SMS and voice authenticate on `TWILIO_INBOUND_SECRET` alone. |
-| `TWILIO_INBOUND_SECRET` | Fallback inbound-webhook secret, in the query string. Platform-wide: one value authenticates every tenant, and after it passes the org is taken from the attacker-supplied `To` field. It appears in every access, proxy and Twilio log it passes through. Kept only so inbound SMS does not go dark before `TWILIO_AUTH_TOKEN` is set; it logs a warning naming itself whenever it is what let a request through. |
-| `RESEND_API_KEY` | All transactional email (OTP email, invoices, review-ask fallback, notifications) |
-| `ANTHROPIC_API_KEY` | Required for the AI tools. All AI runs on HoundStack's own key; there is no customer key any more (IMP-9). Unset, the tools say AI is unavailable. The receptionist, digest and Business Advisor use `LOVABLE_API_KEY` instead. |
-| `CRON_SECRET` | Authorizes the nightly cron (**required** for autopay — see §5) |
-| `PUBLIC_APP_ORIGIN` | Canonical public URL used to validate BYOK inbound Twilio signatures behind a proxy |
 
 **CSP:** the embedded Stripe components need the deployment CSP to allow
 `script-src https://js.stripe.com https://connect-js.stripe.com`,
@@ -114,10 +121,10 @@ into the SQL editor; then verify the column/table exists before relying on it.
 
 ## 4. Failure-mode playbook
 
-**AI key revoked / invalid (BYOK).** Symptom: AI Tools error with "check your API
-key." The org owner re-enters a valid key in **Settings → AI Tools** and clicks
-**Test key** (runs a live probe). If no platform `ANTHROPIC_API_KEY` is set, AI is
-unavailable until they add their own — by design.
+**AI unavailable.** There is no tenant key to re-enter any more (IMP-9 removed
+it). Both AI features are off until launched (§1, `ANTHROPIC_API_KEY`); once one
+is on and failing, check `ANTHROPIC_API_KEY` in the Lovable secrets, then
+**Settings → AI usage → Run a check** (a live probe of the platform key).
 
 **Stripe account disconnected / onboarding incomplete.** Symptom: charges error
 with "hasn't connected a Stripe account" or "can't accept charges yet." Owner goes
@@ -126,17 +133,20 @@ Disconnecting (or connecting a *different* account) clears saved client cards �
 clients must re-enter a card next time they pay. Charges never fall back to the
 platform account.
 
-**Twilio deauth / creds changed mid-use (BYOK).** Symptom: conversational SMS fails
-with a Twilio 401/auth error (surfaced on the message). Owner re-enters the SID +
-Auth Token in **Settings → SMS**. Note: OTP + automated notifications keep working
-(they're on the platform number, not the tenant's).
+**Twilio deauth / creds changed mid-use.** Symptom: conversational SMS fails
+with a Twilio 401/auth error (surfaced on the message). There is no longer a
+form for the owner to re-enter a SID and Auth Token: Settings → SMS stopped
+taking them in IMP-9, and per-tenant subaccounts (BUILD-3) are provisioned by
+HoundStack, so the fix is on the platform side. OTP + automated notifications
+keep working (they're on the platform number, not the tenant's).
 
-**Toll-free / A2P 10DLC not registered.** Symptom: a BYOK tenant's outbound SMS is
-filtered by carriers. The tenant registers their own brand/campaign in their Twilio
-account (attach a Messaging Service SID in Settings → SMS). Until then, they can
-leave BYOK Twilio disconnected to use the platform sender.
+**Toll-free / A2P 10DLC not registered.** Symptom: outbound SMS is filtered by
+carriers. Tenants no longer register their own brand or attach a Messaging
+Service SID in Settings → SMS (that form went with BYOK in IMP-9); registration
+is HoundStack's, under Q-8's per-tenant subaccount plan (BUILD-3). See
+`docs/twilio-toll-free-resubmission.md` for the platform number.
 
-**BYOK inbound suddenly 401s after a deploy.** Cause: proxy host/scheme mismatch in
+**Inbound suddenly 401s after a deploy.** Cause: proxy host/scheme mismatch in
 the Twilio signature URL. Ensure `PUBLIC_APP_ORIGIN` matches the exact public URL
 tenants configured in their Twilio console.
 

@@ -1,7 +1,9 @@
 # App Store submission: HoundStack for iPhone and iPad
 
-Last updated 2026-08-20. **Nothing here has been submitted.** This is a draft
-for the owner to review, edit and submit.
+Last updated 2026-10-04. **This repo records no App Review submission.** Builds
+reach TestFlight through Xcode Cloud (internal and external groups; see
+`docs/owner-actions-before-submission.md` §3). This is a draft for the owner to
+review, edit and submit.
 
 Owner decision (2026-08-20): the iOS app is a **free companion app for
 organizations that already exist**. HoundStack's SaaS subscription stays
@@ -104,9 +106,9 @@ pooper scooper,dog waste,pet waste,field service,route,dispatch,scooper,kennel,y
 ```
 (96 characters.)
 
-**Category**
-- Primary: **Business**
-- Secondary: **Productivity**
+**Category** (set in App Store Connect by the owner, 2026-09-15)
+- Primary: **Productivity**
+- Secondary: **Business**
 
 **Age rating:** 4+
 
@@ -170,9 +172,18 @@ PERMISSIONS
 - Camera: technicians photograph completed work and DNA sample collections and
   attach them to a visit record.
 - Photo library: attaching an existing picture to a visit or property.
-- Location, when in use only: showing the technician's own position on the
-  route map relative to the next stop. It is not shared with clients, not used
-  for tracking, and not requested in the background.
+- Location, when in use only, never in the background: showing the
+  technician's own position on the route map relative to the next stop. If
+  the business turns on live tracking (off by default), the technician's
+  approximate position, rounded to about 100 meters, is shown to the one
+  customer they are driving to, from the on-my-way message until the visit
+  starts, for at most two hours and only while the app is open. Only the
+  latest position is kept, and it is deleted when the visit starts. The
+  technician can stop it at any time. This matches the Info.plist string and
+  the privacy policy. It is not used for advertising or for tracking in
+  Apple's sense (linking with other companies' data).
+- Notifications: alerts staff to things that need them, such as a customer's
+  text that needs a reply or a gate marked do-not-enter. Never marketing.
 
 OFFLINE
 
@@ -222,7 +233,9 @@ it does
 ## 5. Before you press Submit
 
 ```
-[ ] Apple Developer account active
+[x] Apple Developer account active — evidence, not assumption: the App Store
+      Connect record below exists and Xcode Cloud distributes builds to two
+      TestFlight groups, neither of which an inactive membership allows.
 [x] Bundle ID consulting.thenorth.houndstack registered — confirmed in App
       Store Connect 2026-08-24. App record exists (Apple ID 6804336787, SKU
       consulting.thenorth.houndstack). The record was created THROUGH Xcode
@@ -230,16 +243,24 @@ it does
       Categories were Business / Utilities when this was written on 2026-08-24;
       the owner set them to **Productivity then Business** on 2026-09-15, which
       is what §5 of docs/owner-actions-before-submission.md had been asking for.
-[ ] Push: APNs key created and APNS_* secrets set (done 2026-10-03);
-      Push Notifications ticked on the App ID and a TestFlight build receiving
-      one is the rest (docs/ios-build.md › Push notifications › Owner checklist)
+[x] App Privacy questionnaire (the privacy "nutrition label") answered in App
+      Store Connect by the owner — docs/owner-actions-before-submission.md §4
+[ ] Push: the code shipped in #322 (entitlement, AppDelegate token forwarding,
+      the APNs sender) and the APNs key and five APNS_* secrets are set
+      (2026-10-03). Left for the owner: tick Push Notifications on App ID
+      consulting.thenorth.houndstack, install the first TestFlight build made
+      after #322, and receive one on a phone (docs/ios-build.md › Push
+      notifications › Owner checklist, steps 3–5). No device had registered in
+      production on 2026-10-04.
 [ ] App icon renders correctly at every size in Xcode's asset preview
 [ ] Device QA checklist in docs/ios-build.md worked through on real hardware
 [ ] Billing screen confirmed on a device to show no purchase path
 [ ] Staff invoice payment confirmed WORKING on a device
 [ ] Demo account created, populated, and tested by signing in fresh
 [ ] Screenshots taken from the demo org only
-[ ] Support, marketing and privacy URLs all resolve
+[x] Support, marketing and privacy URLs all resolve — re-checked 2026-10-04:
+      houndstack.com, /contact and /privacy each answer 200 (via a redirect to
+      www). Worth one more look on submission day, per the note in §2.
 [x] Export compliance answered — `ITSAppUsesNonExemptEncryption = false` is in
       ios/App/App/Info.plist as of 2026-08-25, so App Store Connect stops asking
       per build. Answer if prompted anyway: "None of the algorithms mentioned
