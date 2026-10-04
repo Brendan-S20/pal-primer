@@ -67,6 +67,10 @@ const EXEMPT: Record<string, string> = {
   "app-store-screenshots.spec.ts":
     "produces the App Store Connect images on demand under APPLE_SIZES=1; " +
     "it is a deliverable generator, not an assertion about the app",
+  "play-store-screenshots.spec.ts":
+    "produces the Google Play listing images on demand (npm run screenshots:play); " +
+    "the Android counterpart of the App Store generator above, and like it not an " +
+    "assertion about the app",
 };
 
 const specNames = () =>
