@@ -1280,7 +1280,7 @@ function NewClientWizard({
                                   : [...effectiveServiceDays, d].sort((a, b) => a - b);
                                 setServiceDays(next.length ? next : [weekdayOf(startedOn)]);
                               }}
-                              className={`h-9 min-w-11 rounded-md border px-2 text-sm touch:min-h-11 ${
+                              className={`h-9 min-w-11 shrink-0 rounded-md border px-2 text-sm touch:min-h-11 ${
                                 on
                                   ? "border-primary bg-primary text-primary-foreground"
                                   : "border-input bg-background"

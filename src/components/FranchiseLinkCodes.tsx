@@ -75,7 +75,7 @@ export function FranchiseLinkCodes() {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
             <Building2 className="h-4 w-4 shrink-0" /> Link a location already on HoundStack

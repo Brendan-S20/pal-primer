@@ -48,7 +48,7 @@ export function LegalShell({
               onClick={() => router.history.back()}
               // 44px, per the working agreement. The glyph is 16px; the BUTTON
               // is the touch target.
-              className="-ml-2 inline-flex min-h-11 min-w-11 items-center gap-1 rounded-md px-2 text-sm font-medium text-foreground hover:bg-muted"
+              className="-ml-2 inline-flex min-h-11 min-w-11 shrink-0 items-center gap-1 rounded-md px-2 text-sm font-medium text-foreground hover:bg-muted"
             >
               <ChevronLeft className="h-5 w-5 shrink-0" />
               Back
@@ -56,7 +56,7 @@ export function LegalShell({
           ) : (
             <Link
               to="/auth"
-              className="-ml-2 inline-flex min-h-11 min-w-11 items-center gap-1 rounded-md px-2 text-sm font-medium text-foreground hover:bg-muted"
+              className="-ml-2 inline-flex min-h-11 min-w-11 shrink-0 items-center gap-1 rounded-md px-2 text-sm font-medium text-foreground hover:bg-muted"
             >
               <ChevronLeft className="h-5 w-5 shrink-0" />
               Sign in
