@@ -304,7 +304,11 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
       <form
         ref={formRef}
         noValidate
-        className="mt-4 grid gap-3 sm:grid-cols-6"
+        // `grid-cols-1`, not a bare `grid`: an implicit column is sized to
+        // its widest item's content, and the action row below does not wrap,
+        // so with "Renumber this property's stations" in it the whole form
+        // was as wide as that row and ran out of the card on a phone.
+        className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-6"
         onSubmit={(e) => {
           e.preventDefault();
           if (!draft.propertyId) return;
@@ -444,7 +448,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
                 : "Tap the map to drop a marker where the station sits. That marker is the station's location."}
           </p>
         </div>
-        <div className="sm:col-span-6 flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-6">
           <Button type="submit" disabled={upsertMut.isPending}>
             {draft.id ? "Save station" : "Add station"}
           </Button>
