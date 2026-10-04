@@ -41,7 +41,8 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
 async function keepAliveForThisRequest(): Promise<(job: Promise<unknown>) => void> {
   try {
     const { getRequest } = await import("@tanstack/react-start/server");
-    const request = getRequest() as (Request & { waitUntil?: (p: Promise<unknown>) => void }) | null;
+    const request = getRequest() as
+      (Request & { waitUntil?: (p: Promise<unknown>) => void }) | null;
     const waitUntil = request?.waitUntil;
     if (typeof waitUntil === "function") {
       return (job) => {

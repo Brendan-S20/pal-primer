@@ -41,7 +41,10 @@ import { join } from "node:path";
 vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
-const MIGRATION = join(ROOT, "supabase/migrations/20261004160000_routing-runs-in-the-background.sql");
+const MIGRATION = join(
+  ROOT,
+  "supabase/migrations/20261004160000_routing-runs-in-the-background.sql",
+);
 const PROOF = join(ROOT, "tests/sql/routing-runs-in-the-background.proof.sql");
 const DB_URL =
   process.env.ROUTING_RUNS_PROOF_DB_URL ??

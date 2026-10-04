@@ -53,9 +53,8 @@ vi.mock("@/lib/road-legs.server", () => ({
   refreshRoadLegs: (...a: unknown[]) => refreshRoadLegs(...a),
 }));
 
-const { runAutoRouting, startAndRunAutoRouting, RunStopped, REVIEW_LINK } = await import(
-  "@/lib/auto-routing.server"
-);
+const { runAutoRouting, startAndRunAutoRouting, RunStopped, REVIEW_LINK } =
+  await import("@/lib/auto-routing.server");
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -176,9 +175,9 @@ describe("a run's lifecycle", () => {
 
   it("says why a failed run failed, including when it saved before it died", () => {
     expect(failureKind(row({ status: "failed", error: "abandoned" }))).toBe("abandoned");
-    expect(
-      failureKind(row({ status: "failed", error: "abandoned", applied_at: iso(5_000) })),
-    ).toBe("abandoned_saved");
+    expect(failureKind(row({ status: "failed", error: "abandoned", applied_at: iso(5_000) }))).toBe(
+      "abandoned_saved",
+    );
     expect(failureKind(row({ status: "failed", error: "boom" }))).toBe("error");
     expect(failureKind(row({ status: "succeeded" }))).toBe(null);
   });
@@ -446,7 +445,12 @@ describe("startAndRunAutoRouting", () => {
       start_routing_run: () => ({ run_id: RUN_ID, attached: false }),
       finish_routing_run: () => ({ finished: true, watched_at: iso(1_000), applied_at: iso(500) }),
     });
-    const result = { stops: 3, skipped: [], balance: [{ staffId: "a", stops: 3, totalMin: 9 }], forecast: { stops: 3, daysPlanned: 3, daysMeasured: 0, savedMin: 0, violations: 0 } };
+    const result = {
+      stops: 3,
+      skipped: [],
+      balance: [{ staffId: "a", stops: 3, totalMin: 9 }],
+      forecast: { stops: 3, daysPlanned: 3, daysMeasured: 0, savedMin: 0, violations: 0 },
+    };
     const pending = startAndRunAutoRouting({
       supabase: h.supabase,
       userId: "me",
@@ -498,7 +502,12 @@ describe("startAndRunAutoRouting", () => {
     expect(h.notify).toHaveBeenCalledTimes(1);
     const [ids, n] = h.notify.mock.calls[0] as unknown as [string[], Record<string, string>];
     expect(ids).toEqual(["me"]);
-    expect(n).toMatchObject({ orgId: "org", type: "routing.ready", title: "Routes ready", link: REVIEW_LINK });
+    expect(n).toMatchObject({
+      orgId: "org",
+      type: "routing.ready",
+      title: "Routes ready",
+      link: REVIEW_LINK,
+    });
     expect(n.body).toMatch(/21 stops routed/);
     expect(REVIEW_LINK).toBe("/routes?autoroute=review");
   });
@@ -521,9 +530,15 @@ describe("startAndRunAutoRouting", () => {
         throw new Error("canceling statement due to statement timeout");
       }) as any,
     });
-    expect(out).toMatchObject({ status: "failed", error: "canceling statement due to statement timeout" });
+    expect(out).toMatchObject({
+      status: "failed",
+      error: "canceling statement due to statement timeout",
+    });
     const finish = h.calls.find(([fn]) => fn === "finish_routing_run")!;
-    expect(finish[1]).toMatchObject({ _status: "failed", _error: "canceling statement due to statement timeout" });
+    expect(finish[1]).toMatchObject({
+      _status: "failed",
+      _error: "canceling statement due to statement timeout",
+    });
     const n = (h.notify.mock.calls[0] as unknown as [string[], Record<string, string>])[1];
     expect(n.type).toBe("routing.failed");
     expect(n.body).toMatch(/nothing was changed/);

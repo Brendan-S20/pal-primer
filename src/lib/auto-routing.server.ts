@@ -120,8 +120,7 @@ export async function runAutoRouting(
     MIN_DAY_BUDGET_MS,
     Math.min(DAY_BUDGET_MS[data.level], Math.floor(RUN_BUDGET_MS / days.length)),
   );
-  const honourWindows =
-    data.windows === "honour" ? true : data.windows === "ignore" ? false : null;
+  const honourWindows = data.windows === "honour" ? true : data.windows === "ignore" ? false : null;
 
   let stops = 0;
   const skipped: Array<{ staffId: string; day: string; reason: string }> = [];
@@ -361,7 +360,10 @@ export async function routesChangedByAutoRouting(_change: {
 
 // ── THE RUN, START TO FINISH ──────────────────────────────────────────────
 
-type Rpc = (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+type Rpc = (
+  fn: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: unknown; error: { message: string } | null }>;
 
 export type StartOutcome =
   | { runId: string; attached: true; fromDay: string; toDay: string; mine: boolean }
@@ -426,7 +428,13 @@ export async function startAndRunAutoRouting(deps: {
     _windows: data.windows,
   });
   if (startError) throw new Error(startError.message);
-  const s = started as { run_id: string; attached: boolean; from_day?: string; to_day?: string; mine?: boolean };
+  const s = started as {
+    run_id: string;
+    attached: boolean;
+    from_day?: string;
+    to_day?: string;
+    mine?: boolean;
+  };
   if (s.attached) {
     return {
       runId: s.run_id,

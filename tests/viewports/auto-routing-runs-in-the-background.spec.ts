@@ -62,7 +62,12 @@ function scriptedRun() {
   };
 
   const row = () => {
-    const stage = state.phase !== "running" ? null : (["road_times", "optimizing", "saving"] as const)[Math.min(2, Math.floor(state.polls / 2))];
+    const stage =
+      state.phase !== "running"
+        ? null
+        : (["road_times", "optimizing", "saving"] as const)[
+            Math.min(2, Math.floor(state.polls / 2))
+          ];
     const now = new Date().toISOString();
     return {
       id: state.runId,
@@ -98,7 +103,11 @@ function scriptedRun() {
         /* fall through to the stub */
       }
       const reply = (result: unknown) =>
-        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result }) });
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ result }),
+        });
 
       if (name === "startRoutingRun") {
         state.startCalls++;
@@ -112,9 +121,12 @@ function scriptedRun() {
         await finished;
         // The page may have gone by now; a fulfilled route to a closed page
         // is not this test's concern.
-        return reply({ runId: state.runId, attached: false, status: "succeeded", result: RESULT }).catch(
-          () => {},
-        );
+        return reply({
+          runId: state.runId,
+          attached: false,
+          status: "succeeded",
+          result: RESULT,
+        }).catch(() => {});
       }
       if (name === "listMyRoutingRuns") {
         if (state.phase === "running") state.polls++;
@@ -142,9 +154,10 @@ function scriptedRun() {
 
 async function noSidewaysScroll(page: Page, where: string) {
   const { scrollW, innerW } = await measurePageOverflow(page);
-  expect(scrollW, `${where}: the page is ${scrollW}px wide on a ${innerW}px screen`).toBeLessThanOrEqual(
-    innerW + 1,
-  );
+  expect(
+    scrollW,
+    `${where}: the page is ${scrollW}px wide on a ${innerW}px screen`,
+  ).toBeLessThanOrEqual(innerW + 1);
   expect(await findControlsOffTheSide(page), `${where}: controls off the side`).toEqual([]);
 }
 

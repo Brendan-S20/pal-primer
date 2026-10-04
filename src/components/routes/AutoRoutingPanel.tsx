@@ -188,7 +188,10 @@ type Forecast = AutoRouteResult["forecast"];
 /** What the card says while a run is going, in the order the run goes. */
 const stageLine = (run: RoutingRunRow | null) => {
   if (!run || !run.stage) return "Starting…";
-  const of = run.days_total > 1 ? ` (day ${Math.min(run.days_done + 1, run.days_total)} of ${run.days_total})` : "";
+  const of =
+    run.days_total > 1
+      ? ` (day ${Math.min(run.days_done + 1, run.days_total)} of ${run.days_total})`
+      : "";
   if (run.stage === "road_times") return `Fetching road times${of}`;
   if (run.stage === "optimizing") return `Optimizing${of}`;
   return "Saving the routes";
@@ -389,13 +392,12 @@ export function AutoRoutingPanel({
       setFrom(run.from_day);
       setTo(run.to_day);
       setWindows(run.windows);
-      setPicked(
-        run.staff_ids.length >= techs.length ? new Set() : new Set(run.staff_ids),
-      );
+      setPicked(run.staff_ids.length >= techs.length ? new Set() : new Set(run.staff_ids));
       onReviewDay?.(run.from_day);
     }
     if (shown.kind === "ready" && run.result) {
-      if (live) finishLive(run.id, run.result as unknown as AutoRouteResult, run.from_day, run.to_day);
+      if (live)
+        finishLive(run.id, run.result as unknown as AutoRouteResult, run.from_day, run.to_day);
       else {
         announce(run.result as unknown as AutoRouteResult, run.from_day, run.to_day);
         void seenFn({ data: { runId: run.id } }).then(() =>
@@ -445,8 +447,7 @@ export function AutoRoutingPanel({
           // There is no checkbox to blame any more, so this says the only two
           // things that can now be true. It used to name the reassign control,
           // which was the usual cause and is gone.
-          description:
-            "Those days have no scheduled stops for the people you picked.",
+          description: "Those days have no scheduled stops for the people you picked.",
           duration: 8000,
         });
       } else if (!r.forecast) {
@@ -533,7 +534,8 @@ export function AutoRoutingPanel({
         toast.warning(
           `On ${days === 1 ? "1 day" : `${days} days`}, some stops sit outside the routing map, so those legs were estimated.`,
           {
-            description: "Usually an address whose coordinates are wrong, or a region the router does not cover.",
+            description:
+              "Usually an address whose coordinates are wrong, or a region the router does not cover.",
             duration: 12000,
           },
         );
@@ -776,7 +778,7 @@ export function AutoRoutingPanel({
           </div>
         )}
 
-{/* ── THE CHECKBOX THAT USED TO BE HERE ─────────────────────────────
+        {/* ── THE CHECKBOX THAT USED TO BE HERE ─────────────────────────────
             "Also move work between techs", default off. It was the only
             control that could move a stop from one person to another, so it
             was shown rather than hidden, and it was off so that nobody had
@@ -815,8 +817,7 @@ export function AutoRoutingPanel({
             </div>
           )}
           <p className="text-2xs leading-relaxed text-muted-foreground">
-            You can close this. It keeps going, and the top bar shows when the routes are
-            ready.
+            You can close this. It keeps going, and the top bar shows when the routes are ready.
           </p>
         </div>
       )}
@@ -829,9 +830,9 @@ export function AutoRoutingPanel({
                 ? `${String(noStart[0].display_name ?? "One technician").split(" ")[0]} has no start address.`
                 : `${noStart.length} technicians have no start address.`}
             </span>{" "}
-            Their route is planned from their own first stop, so the drive to it
-            counts as nothing and they tend to be given more of the day than
-            they can really fit. Adding it under Team makes these routes honest.
+            Their route is planned from their own first stop, so the drive to it counts as nothing
+            and they tend to be given more of the day than they can really fit. Adding it under Team
+            makes these routes honest.
           </p>
         </div>
       )}
