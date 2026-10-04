@@ -158,6 +158,22 @@ Separately, a completed visit pushes the CUSTOMER (`sendPushToClient` in
   how a rotated token reaches the server. Sign-out deletes this device's token
   from the signed-out user (`releasePushRegistration`), and the next person to
   sign in on a shared iPad takes the token over.
+- **A way to ask again** — Settings › Preferences › "Notifications on this
+  phone" (`src/components/settings/NativePushCard.tsx`, native only) shows the
+  permission state. Not yet asked: a button that brings up the iOS prompt
+  through `turnOnPushNotifications`, the same path the shell takes. On: "Send
+  me a test notification" (`sendMyselfTestPush`, caller's own devices only,
+  once per 30 seconds) and the number of devices it reached, so 0 says the
+  token never reached the server. Denied: iOS never asks twice, so a button
+  opens `app-settings:`, which Capacitor's WebView hands to
+  `UIApplication.open`, and the text says Settings › HoundStack ›
+  Notifications.
+- **Monitoring** — a start-up step that throws, an APNs `registrationError`, a
+  token the server would not save, and (once per launch, as a warning) a
+  permission that did not end up granted all reach Sentry, tagged
+  `area: native_push` or `native_startup` plus `step`. The permission report
+  says `push_prompt: asked` or `not_asked`, which is what tells "said no" from
+  "iOS already had an answer".
 - **Storage** — `subscribeStaffNativePush` → `savePushSubscription`. It used to
   upsert on `native_token`, a column unique only through a PARTIAL index, which
   Postgres cannot infer from `ON CONFLICT (native_token)` — every registration
