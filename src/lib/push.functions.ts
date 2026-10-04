@@ -26,22 +26,21 @@ export const subscribeStaffPush = createServerFn({ method: "POST" })
       .maybeSingle();
     const orgId = role?.organization_id ?? null;
 
-    const { error } = await supabase
-      .from("push_subscriptions")
-      .upsert(
-        {
-          user_id: userId,
-          organization_id: orgId,
-          endpoint: data.endpoint,
-          p256dh: data.p256dh,
-          auth: data.auth,
-          user_agent: data.userAgent ?? null,
-          disabled: false,
-          last_error: null,
-        },
-        { onConflict: "endpoint" },
-      );
-    if (error) throw new Error(error.message);
+    // Not an upsert — see savePushSubscription for why one cannot work here.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { savePushSubscription } = await import("@/lib/push.server");
+    await savePushSubscription(
+      supabaseAdmin,
+      { column: "endpoint", value: data.endpoint },
+      {
+        user_id: userId,
+        client_id: null,
+        organization_id: orgId,
+        p256dh: data.p256dh,
+        auth: data.auth,
+        user_agent: data.userAgent ?? null,
+      },
+    );
     return { ok: true };
   });
 
@@ -75,22 +74,19 @@ export const subscribeClientPush = createServerFn({ method: "POST" })
     if (cErr) throw new Error(cErr.message);
     if (!client) throw new Error("Invalid portal link");
 
-    const { error } = await supabaseAdmin
-      .from("push_subscriptions")
-      .upsert(
-        {
-          client_id: client.id,
-          organization_id: client.organization_id,
-          endpoint: data.endpoint,
-          p256dh: data.p256dh,
-          auth: data.auth,
-          user_agent: data.userAgent ?? null,
-          disabled: false,
-          last_error: null,
-        },
-        { onConflict: "endpoint" },
-      );
-    if (error) throw new Error(error.message);
+    const { savePushSubscription } = await import("@/lib/push.server");
+    await savePushSubscription(
+      supabaseAdmin,
+      { column: "endpoint", value: data.endpoint },
+      {
+        client_id: client.id,
+        user_id: null,
+        organization_id: client.organization_id,
+        p256dh: data.p256dh,
+        auth: data.auth,
+        user_agent: data.userAgent ?? null,
+      },
+    );
     return { ok: true };
   });
 
@@ -133,18 +129,38 @@ export const subscribeStaffNativePush = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .maybeSingle();
     const orgId = role?.organization_id ?? null;
-    const { error } = await supabase.from("push_subscriptions").upsert(
+    // Not an upsert: `onConflict: "native_token"` named a PARTIAL unique index
+    // and failed on every call, so no device token was ever stored. See
+    // savePushSubscription in push.server.ts.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { savePushSubscription } = await import("@/lib/push.server");
+    await savePushSubscription(
+      supabaseAdmin,
+      { column: "native_token", value: data.token },
       {
         user_id: userId,
+        client_id: null,
         organization_id: orgId,
-        native_token: data.token,
         platform: data.platform,
         user_agent: data.userAgent ?? null,
-        disabled: false,
-        last_error: null,
       },
-      { onConflict: "native_token" },
     );
+    return { ok: true };
+  });
+
+/** Sign-out: this device stops receiving this user's notifications. Scoped to
+ *  the caller's own rows by RLS and by the filter, so it can only ever release
+ *  a token the caller holds. */
+export const unsubscribeStaffNativePush = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ token: z.string().min(10) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("push_subscriptions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("native_token", data.token);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

@@ -35,6 +35,44 @@ export async function notifyUsers(userIds: string[], n: NotifyInput): Promise<vo
   }));
   const { error } = await (supabaseAdmin as any).from("app_notifications").insert(rows);
   if (error) console.error("notifyUsers insert failed", error.message);
+
+  await pushToUsers(ids, n);
+}
+
+/** Types that land in the notification centre but do not buzz a phone: good
+ *  news or a nightly summary, nothing anyone has to act on now. The nightly
+ *  job runs in the small hours, and a push at 3am about the schedule horizon
+ *  is how an owner learns to turn notifications off altogether. */
+export const IN_APP_ONLY_TYPES = new Set(["schedule.horizon", "payout_paid"]);
+
+/**
+ * The same notification, as a push to every device each recipient has
+ * registered — the iOS app, the Android app, and any browser they turned
+ * push on in. Until this existed `sendPushToUser` had no caller at all: the
+ * iOS app registered a token on every launch and nothing was ever sent to it.
+ *
+ * Mutes are already applied (the caller filtered `ids`). Best-effort: a push
+ * failure is logged inside sendPushToUser and never reaches the action that
+ * raised the notification.
+ */
+async function pushToUsers(ids: string[], n: NotifyInput): Promise<void> {
+  if (IN_APP_ONLY_TYPES.has(n.type)) return;
+  try {
+    const { sendPushToUser } = await import("@/lib/push.server");
+    await Promise.all(
+      ids.map((uid) =>
+        sendPushToUser(uid, {
+          title: n.title,
+          body: n.body ?? undefined,
+          // The tap lands where the notification centre row links to.
+          url: n.link ?? "/notifications",
+          data: { type: n.type },
+        }),
+      ),
+    );
+  } catch (e) {
+    console.error("notifyUsers push failed", e);
+  }
 }
 
 /** Notify every user in the org holding one of the given roles. */

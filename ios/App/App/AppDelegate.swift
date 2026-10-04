@@ -46,4 +46,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    // ── Push: hand the APNs token to @capacitor/push-notifications ──────────
+    //
+    // iOS delivers the device token to the APP DELEGATE and nowhere else. The
+    // plugin does not swizzle these methods; it listens on NotificationCenter
+    // for the two names below (PushNotificationsPlugin.load()). Without these
+    // two methods `PushNotifications.register()` resolves, the OS mints a
+    // token, and the token is dropped on the floor here — so the JS
+    // `registration` listener never fires, nothing is stored in
+    // push_subscriptions, and the server has no device to send to. No error
+    // anywhere, which is why this sat unnoticed behind a missing entitlement.
+    //
+    // Exactly the snippet in node_modules/@capacitor/push-notifications/README.md.
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+
 }
