@@ -251,7 +251,9 @@ it does
 [ ] Staff invoice payment confirmed WORKING on a device
 [ ] Demo account created, populated, and tested by signing in fresh
 [ ] Screenshots taken from the demo org only
-[ ] Support, marketing and privacy URLs all resolve
+[x] Support, marketing and privacy URLs all resolve — re-checked 2026-10-04:
+      houndstack.com, /contact and /privacy each answer 200 (via a redirect to
+      www). Worth one more look on submission day, per the note in §2.
 [x] Export compliance answered — `ITSAppUsesNonExemptEncryption = false` is in
       ios/App/App/Info.plist as of 2026-08-25, so App Store Connect stops asking
       per build. Answer if prompted anyway: "None of the algorithms mentioned

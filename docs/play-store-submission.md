@@ -153,7 +153,7 @@ Capacitor's Android WebView is the open question.
 This is the same shape as iOS F2 — `viewport-fit=cover` missing, every safe-area
 inset resolving to 0, 62pt of dead space and a `fixed` overlay that could not
 reach the top. That one cost a day. The geometry harness in
-`ios/UITests/Geometry.swift` is the shape of the check to copy, and
+`ios/UITests/HoundStackUITests/Geometry.swift` is the shape of the check to copy, and
 `docs/ios-qa-results.md` F2 is the fix to read before starting.
 
 **Do not guess this one from the source.** It needs a running app.
