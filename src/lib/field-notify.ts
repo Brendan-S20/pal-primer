@@ -281,7 +281,9 @@ export function minutesLate(etaEnd: string | null | undefined, projected: Date):
  *  on. The event key carries it, so a stop is announced late once per step
  *  and never once per GPS ping. */
 export function lateStep(minutes: number): number {
-  return Math.max(0, Math.floor((minutes - LATE_GRACE_MIN) / LATE_STEP_MIN));
+  // minutesLate is a whole number above the grace: 11..25 is the first step,
+  // 26..40 the second.
+  return Math.max(0, Math.floor((minutes - LATE_GRACE_MIN - 1) / LATE_STEP_MIN));
 }
 
 /** The drive, by the planner's own fallback model: straight line, times the
