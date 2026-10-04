@@ -1,13 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { X, Info, AlertTriangle, AlertOctagon, CheckCircle2 } from "lucide-react";
+import { Info, AlertTriangle, AlertOctagon, CheckCircle2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
   listActiveAnnouncements,
   dismissAnnouncement,
   type ActiveAnnouncement,
 } from "@/lib/announcements-viewer.functions";
-import { Button } from "@/components/ui/button";
+import { DismissButton } from "@/components/DismissButton";
 import { cn } from "@/lib/utils";
 
 const SEV_STYLE: Record<string, { wrap: string; icon: ReactNode }> = {
@@ -85,21 +85,22 @@ export function AnnouncementBanner() {
                 <button
                   type="button"
                   onClick={() => setExpanded((m) => ({ ...m, [r.id]: !open }))}
-                  className="mt-1 text-xs font-medium underline underline-offset-2 opacity-80 hover:opacity-100"
+                  className="mt-1 text-xs font-medium underline underline-offset-2 opacity-80 hover:opacity-100 touch:min-h-11"
                 >
                   {open ? "Show less" : "Show more"}
                 </button>
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0 text-current hover:bg-black/5 dark:hover:bg-white/10"
-              aria-label="Dismiss"
+            {/* Already dismissible, server side and across devices (it is a
+                platform message, so the record lives with the platform). What
+                changed on 2026-10-03 is the size: the X was a 28px box. Now the
+                shared 44px one, pulled into the card's padding so the card is
+                no taller. */}
+            <DismissButton
               onClick={() => dismiss.mutate(r.id)}
-            >
-              <X className="h-4 w-4 shrink-0" />
-            </Button>
+              label={`Dismiss: ${r.title}`}
+              className="-my-2 -me-2 hover:bg-black/5 dark:hover:bg-white/10"
+            />
           </div>
         );
       })}

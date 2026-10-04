@@ -13,7 +13,9 @@ import {
 } from "@/lib/clients.functions";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRowSelection } from "@/hooks/useRowSelection";
-import { usePermissions } from "@/hooks/useMyRole";
+import { useMyRole, usePermissions } from "@/hooks/useMyRole";
+import { useDismissed } from "@/lib/dismissible";
+import { DismissButton } from "@/components/DismissButton";
 import { humanizeEnum } from "@/lib/humanize";
 import { frequencyLabel } from "@/lib/frequency-request";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -733,33 +735,52 @@ function ClientsList() {
  *
  * Shown only when there IS a gap. A banner that says "316 of 316, all good"
  * every day is furniture, and furniture is not read on the day it changes.
+ *
+ * DISMISSIBLE SINCE 2026-10-03, pinned to the two numbers it states. Once the
+ * owner has read "56 of 198" it can go; it comes back when either number
+ * moves (a new client without consent, one who opted in, a phone added), which
+ * is exactly the day it has something new to say. No timed snooze: an
+ * unchanged gap is not news. Rule in src/lib/dismissible.ts.
  */
 function SmsConsentBanner() {
   const fn = useServerFn(getSmsConsentCoverage);
   const q = useQuery({ queryKey: ["sms-consent-coverage"], queryFn: () => fn() });
+  const { orgId } = useMyRole();
   const d = q.data;
+  const missing = d ? d.withPhone - d.consented : 0;
+  const { dismissed, dismiss } = useDismissed(
+    "sms-consent-gap",
+    d && d.withPhone > 0 && missing > 0 ? `${missing}/${d.withPhone}` : null,
+    { orgId },
+  );
   if (!d || d.withPhone === 0) return null;
-
-  const missing = d.withPhone - d.consented;
   if (missing <= 0) return null;
+  if (dismissed) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-      <MessageSquareOff className="h-4 w-4 shrink-0" />
-      <span>
-        <strong>
-          {missing} of {d.withPhone}
-        </strong>{" "}
-        clients with a phone number have no texting consent on file, so reminders and
-        notifications will not reach them.
-      </span>
-      {/* Says what to do, not just what is wrong. Both routes are real: the
-          client opts in from their portal, or you record consent you already
-          hold on their Communication tab. */}
-      <span className="text-amber-800 dark:text-amber-300">
-        Ask them to opt in from their portal, or record consent you already have on a
-        client&apos;s Communication tab.
-      </span>
+    <div className="flex items-start gap-1 rounded-lg border border-amber-300 bg-amber-50 py-3 ps-3 pe-1 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+        <MessageSquareOff className="h-4 w-4 shrink-0" />
+        <span>
+          <strong>
+            {missing} of {d.withPhone}
+          </strong>{" "}
+          clients with a phone number have no texting consent on file, so reminders and
+          notifications will not reach them.
+        </span>
+        {/* Says what to do, not just what is wrong. Both routes are real: the
+            client opts in from their portal, or you record consent you already
+            hold on their Communication tab. */}
+        <span className="text-amber-800 dark:text-amber-300">
+          Ask them to opt in from their portal, or record consent you already have on a
+          client&apos;s Communication tab.
+        </span>
+      </div>
+      <DismissButton
+        onClick={dismiss}
+        label="Hide the texting consent notice"
+        className="-my-3"
+      />
     </div>
   );
 }

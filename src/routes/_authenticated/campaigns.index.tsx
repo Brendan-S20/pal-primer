@@ -48,7 +48,7 @@ function CampaignsPage() {
         </Button>
       </div>
 
-      {q.data && !q.data.contactAddress && <NoAddressWarning />}
+      {q.data && !q.data.contactAddress && <NoAddressWarning dismissible />}
 
       {q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>

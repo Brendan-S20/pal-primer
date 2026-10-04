@@ -325,6 +325,28 @@ describe("the options that keep a map load the only thing billed", () => {
     expect(o.controlSize).toBe(44);
   });
 
+  it("keeps the corner to what the terms require (owner, 2026-10-03)", () => {
+    // "Not a huge fan of the attribution list or the text in the bottom
+    // right." The "Keyboard shortcuts" link and the scale bar are optional
+    // and went; the zoom buttons stay, at 44px.
+    const o = mapOptions(surface());
+    expect(o.keyboardShortcuts).toBe(false);
+    expect(o.scaleControl).toBe(false);
+    expect(o.zoomControl).toBe(true);
+    // The Google logo and "Map data / Terms" are REQUIRED by the Maps Platform
+    // terms. Nothing may hide them: no option that removes the default UI
+    // wholesale, and no CSS aimed at Google's attribution classes in the
+    // renderer or the global stylesheet.
+    const src = codeOnly(read("src/lib/maps/google-renderer.ts"));
+    expect(src).not.toMatch(/gm-style-cc|gmnoprint|disableDefaultUI/);
+    expect(read("src/styles.css")).not.toMatch(/gm-style-cc|gmnoprint/);
+    // The Leaflet fallback drops only its own "Leaflet" prefix; the tile
+    // credit ("© OpenStreetMap contributors", required by the ODbL) stays.
+    const leaflet = codeOnly(read("src/lib/maps/leaflet-renderer.ts"));
+    expect(leaflet).toMatch(/setPrefix\(false\)/);
+    expect(leaflet).not.toMatch(/attributionControl:\s*false/);
+  });
+
   it("never caps panning or zooming", () => {
     // The owner's condition. A restriction or a minZoom here would save money
     // by limiting people, which is the one trade that was ruled out.

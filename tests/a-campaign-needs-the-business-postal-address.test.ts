@@ -86,7 +86,12 @@ describe("without an address, nothing sends", () => {
     expect(read("src/components/campaigns/CampaignEditor.tsx")).toMatch(
       /\{!contactAddress && <NoAddressWarning \/>\}/,
     );
-    expect(read("src/routes/_authenticated/campaigns.index.tsx")).toMatch(/<NoAddressWarning \/>/);
+    // The list's copy can be put away since 2026-10-03 (the owner asked for
+    // notices he has read to be dismissible); the editor's, where Send is,
+    // cannot. Still drawn on both while the address is missing.
+    expect(read("src/routes/_authenticated/campaigns.index.tsx")).toMatch(
+      /<NoAddressWarning dismissible \/>/,
+    );
   });
 });
 

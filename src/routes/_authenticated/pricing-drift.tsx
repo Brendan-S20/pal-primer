@@ -16,6 +16,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { titleHead } from "@/lib/page-title";
+import { useMyRole } from "@/hooks/useMyRole";
+import { useDismissed } from "@/lib/dismissible";
+import { DismissButton } from "@/components/DismissButton";
 
 export const Route = createFileRoute("/_authenticated/pricing-drift")({
   head: () => titleHead("Rate card drift"),
@@ -104,6 +107,16 @@ function PricingDriftPage() {
 
   const currency = data?.currency ?? "usd";
   const s = data?.summary;
+  // The "no zone at all" notice can be put away (2026-10-03), pinned to the
+  // two numbers it states, so it comes back when either moves. The tile above
+  // still carries the count, so nothing is lost by hiding the explanation.
+  // Rule in src/lib/dismissible.ts.
+  const { orgId } = useMyRole();
+  const noZoneNotice = useDismissed(
+    "pricing-drift-no-zone",
+    s && s.noZone > 0 ? `${s.noZone}/${s.total}` : null,
+    { orgId },
+  );
 
   return (
     <>
@@ -162,8 +175,13 @@ function PricingDriftPage() {
             />
           </div>
 
-          {s.noZone > 0 ? (
-            <Card className="border-amber-300/60 bg-amber-50/50 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+          {s.noZone > 0 && !noZoneNotice.dismissed ? (
+            <Card className="relative border-amber-300/60 bg-amber-50/50 p-4 pe-12 text-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+              <DismissButton
+                onClick={noZoneNotice.dismiss}
+                label="Hide the no zone notice"
+                className="absolute end-0 top-0"
+              />
               <p>
                 <strong>
                   {s.noZone} of {s.total} active services sit in no zone at all

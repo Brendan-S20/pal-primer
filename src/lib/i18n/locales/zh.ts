@@ -38,6 +38,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     add: "添加",
     close: "关闭",
     delete: "删除",
+    dismiss: "关闭提示",
   },
   myDay: {
     title: "我的一天",
@@ -373,6 +374,9 @@ const zh: TranslationsWithPlurals<"other"> = {
     disableFailed: "无法关闭",
     enable: "开启通知",
     onShort: "已开启",
+    blockedHide: "通知已被阻止。隐藏此提示",
+    blockedHidden:
+      "已隐藏。如需接收提醒，请在浏览器或手机设置中为此应用开启通知。",
   },
   nav: {
     primary: "主导航",

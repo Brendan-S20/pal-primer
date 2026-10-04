@@ -29,6 +29,7 @@ const es: Translations = {
     add: "Agregar",
     close: "Cerrar",
     delete: "Borrar",
+    dismiss: "Descartar",
   },
   myDay: {
     title: "Mi día",
@@ -392,6 +393,9 @@ const es: Translations = {
     disableFailed: "No se pudieron desactivar",
     enable: "Activar notificaciones",
     onShort: "Activadas",
+    blockedHide: "Las notificaciones están bloqueadas. Ocultar esto",
+    blockedHidden:
+      "Oculto. Para recibir alertas, activa las notificaciones de esta app en la configuración del navegador o del teléfono.",
   },
   nav: {
     primary: "Principal",

@@ -856,10 +856,15 @@ export function RouteMap({
       {hint && (
         // pointer-events-none: it appears while the user is mid-scroll, and a
         // toast that swallows the next click is worse than no toast.
+        //
+        // bottom-9, not bottom-2 (2026-10-03): the bottom ~30px of a Google
+        // map is its logo (left) and the "Map data / Terms" line (right), which
+        // the Maps Platform terms require to stay visible. A centred pill at
+        // bottom-2 covered one or the other on a phone-width map.
         <div
           role="status"
           aria-live="polite"
-          className="pointer-events-none absolute inset-x-2 bottom-2 z-[1100] mx-auto w-fit max-w-[calc(100%-1rem)] rounded-full bg-foreground/85 px-3 py-1.5 text-center text-xs text-background shadow"
+          className="pointer-events-none absolute inset-x-2 bottom-9 z-[1100] mx-auto w-fit max-w-[calc(100%-1rem)] rounded-full bg-foreground/85 px-3 py-1.5 text-center text-xs text-background shadow"
         >
           {hint}
         </div>
