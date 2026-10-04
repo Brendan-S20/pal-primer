@@ -60,6 +60,8 @@ cleanup() {
   if [ "${KEEP_STACK:-}" = "1" ]; then
     echo "KEEP_STACK=1: the restored stack is still running. Stop it with:"
     echo "  (cd '$stackdir' && supabase stop --no-backup)"
+    echo "and delete the decrypted dump, which is every customer's data in plaintext:"
+    echo "  rm -rf '$opened'"
     return
   fi
   (cd "$stackdir" && supabase stop --no-backup >/dev/null 2>&1) || true
