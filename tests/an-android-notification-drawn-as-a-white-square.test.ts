@@ -77,6 +77,7 @@ describe("push arrives on a channel the app named", () => {
     vi.doMock("@/lib/native-build", () => ({ FCM_CONFIGURED: true, IS_NATIVE_BUNDLE: true }));
     vi.doMock("@capacitor/push-notifications", () => ({
       PushNotifications: {
+        checkPermissions: async () => ({ receive: "granted" }),
         requestPermissions: async () => ({ receive: "granted" }),
         createChannel: async (c: { id: string }) => void calls.push(`channel:${c.id}`),
         register: async () => void calls.push("register"),

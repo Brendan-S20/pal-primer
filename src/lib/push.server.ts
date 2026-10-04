@@ -100,8 +100,9 @@ async function sendWebPush(subs: WebSub[], payload: PushPayload) {
 //   Coerced rather than trusted; see `fcmDataStrings`.
 //
 //   `icon` and `tag` moved under `android.notification` and were renamed
-//   (`click_action` too, which this no longer sends; see fcmMessageFor). `tag` is what collapses repeated notifications on the device,
-//   so silently dropping it would give a tech twelve identical rows.
+//   (`click_action` too, which this no longer sends; see fcmMessageFor).
+//   `tag` is what collapses repeated notifications on the device, so
+//   silently dropping it would give a tech twelve identical rows.
 //
 // Configured with FCM_SERVICE_ACCOUNT: the JSON Firebase hands you at Project
 // settings → Service accounts → Generate new private key, pasted whole. One
@@ -188,8 +189,8 @@ export function fcmMessageFor(token: string, payload: PushPayload): FcmMessage {
           // pushNotificationActionPerformed -> initPushDeepLinks.
         },
       },
-      // The URL rides in data as well as in click_action: the Capacitor plugin
-      // hands `data` to the app on tap, and that is what routes it.
+      // The URL rides in data: the Capacitor plugin hands `data` to the app
+      // on tap, and that is what routes it (initPushDeepLinks).
       data: { url: payload.url ?? "", ...fcmDataStrings(payload.data) },
     },
   };
@@ -284,74 +285,271 @@ async function sendFcm(subs: NativeSub[], payload: PushPayload) {
   return { sent, failed };
 }
 
-// ─── APNs (iOS) via HTTP/2 ─────────────────────────────────────────────────
-// Requires:
-//   APNS_TEAM_ID        — 10-char Apple team ID
-//   APNS_KEY_ID         — 10-char key ID
-//   APNS_AUTH_KEY       — raw .p8 file contents (PEM)
-//   APNS_TOPIC          — bundle ID (e.g. consulting.thenorth.houndstack)
-//   APNS_ENVIRONMENT    — "production" or "sandbox" (default production)
-async function apnsToken(): Promise<string | null> {
-  const team = process.env.APNS_TEAM_ID;
-  const kid = process.env.APNS_KEY_ID;
-  const pem = process.env.APNS_AUTH_KEY;
-  if (!team || !kid || !pem) return null;
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "ES256", kid, typ: "JWT" };
-  const claims = { iss: team, iat: now };
-  const b64 = (o: any) =>
-    Buffer.from(JSON.stringify(o)).toString("base64url");
-  const signingInput = `${b64(header)}.${b64(claims)}`;
-  const crypto = await import("crypto");
-  // Node's KeyObject accepts PKCS#8 EC private key PEM.
-  const key = crypto.createPrivateKey({ key: pem, format: "pem" });
-  const sig = crypto.sign("sha256", Buffer.from(signingInput), {
-    key,
-    dsaEncoding: "ieee-p1363",
-  });
-  return `${signingInput}.${sig.toString("base64url")}`;
+// ─── APNs (iOS) ────────────────────────────────────────────────────────────
+//
+// Token-based auth: an ES256 JWT signed with the .p8 key from Apple Developer
+// → Keys, posted to /3/device/<token>. Configured with five variables, read
+// from the app server's runtime secrets (Lovable project secrets — the same
+// store as every other `process.env` read in this file; see OPS_RUNBOOK.md §1):
+//
+//   APNS_TEAM_ID      10-char Apple team ID (Membership details)
+//   APNS_KEY_ID       10-char ID of the key, shown beside it in Keys
+//   APNS_AUTH_KEY     the .p8 file's contents, BEGIN/END lines included
+//   APNS_TOPIC        the bundle id. Optional: defaults to APNS_DEFAULT_TOPIC,
+//                     which a test pins to capacitor.config.ts's appId
+//   APNS_ENVIRONMENT  "production" (default) or "sandbox"/"development"
+//
+// Four things here are easy to get wrong without any error saying so:
+//
+//   * HTTP/2. APNs refuses HTTP/1.1. The production server is a Cloudflare
+//     Worker (Nitro's cloudflare-module preset), whose fetch() reaches Apple
+//     over HTTP/2 through Cloudflare's edge — that is the path this is written
+//     for. Node's built-in fetch (undici) speaks HTTP/1.1 only, so a LOCAL
+//     `npm run dev` cannot deliver to APNs whatever the credentials are; test
+//     a real send on the deployed app.
+//
+//   * The JWT is cached. Apple rejects a provider token regenerated more often
+//     than every 20 minutes (429 TooManyProviderTokenUpdates) and one older
+//     than an hour (403 ExpiredProviderToken). One per send — what this used to
+//     do — trips the first as soon as notifications are frequent. Fifty
+//     minutes sits inside both limits.
+//
+//   * Signing is WebCrypto, not node:crypto. `crypto.subtle` ECDSA already
+//     returns the raw r||s signature JWS wants, and it is the same API on a
+//     Worker and in Node — so the code the tests run is the code that ships.
+//
+//   * The environment is a property of the BUILD, not the server. A TestFlight
+//     or App Store install has a production token; an app run from Xcode on a
+//     cable has a sandbox one. Send either to the other host and Apple answers
+//     400 BadDeviceToken. Production builds come from Xcode Cloud, so the
+//     default is production.
+
+/** The bundle id. capacitor.config.ts's appId — a test keeps them equal. */
+export const APNS_DEFAULT_TOPIC = "consulting.thenorth.houndstack";
+
+export const APNS_HOSTS = {
+  production: "https://api.push.apple.com",
+  sandbox: "https://api.sandbox.push.apple.com",
+} as const;
+
+export type ApnsConfig = {
+  teamId: string;
+  keyId: string;
+  authKey: string;
+  topic: string;
+  host: string;
+};
+
+/** Read the APNs configuration. Never throws: an incomplete one is reported as
+ *  the list of variables that are missing, so the caller can say which. */
+export function apnsConfigFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): { config: ApnsConfig | null; missing: string[] } {
+  const teamId = env.APNS_TEAM_ID?.trim();
+  const keyId = env.APNS_KEY_ID?.trim();
+  const authKey = env.APNS_AUTH_KEY?.trim();
+  const missing = [
+    !teamId && "APNS_TEAM_ID",
+    !keyId && "APNS_KEY_ID",
+    !authKey && "APNS_AUTH_KEY",
+  ].filter((m): m is string => !!m);
+  if (missing.length) return { config: null, missing };
+  return {
+    config: {
+      teamId: teamId!,
+      keyId: keyId!,
+      authKey: authKey!,
+      topic: env.APNS_TOPIC?.trim() || APNS_DEFAULT_TOPIC,
+      host: apnsHost(env.APNS_ENVIRONMENT),
+    },
+    missing: [],
+  };
 }
 
+/** "sandbox" and "development" are the same APNs environment under Apple's
+ *  two names for it (the entitlement says development, the host says
+ *  sandbox). Anything else, including unset, is production. */
+export function apnsHost(environment: string | undefined): string {
+  const e = (environment ?? "").trim().toLowerCase();
+  return e === "sandbox" || e === "development" ? APNS_HOSTS.sandbox : APNS_HOSTS.production;
+}
+
+/** The request for one device, minus the authorization header. Pure, so the
+ *  wire shape is testable without a key or a network. */
+export function apnsRequestFor(
+  token: string,
+  payload: PushPayload,
+  topic: string,
+): { path: string; headers: Record<string, string>; body: Record<string, unknown> } {
+  const headers: Record<string, string> = {
+    "apns-topic": topic,
+    "apns-push-type": "alert",
+    "apns-priority": "10",
+    "content-type": "application/json",
+  };
+  // collapse-id is APNs' equivalent of the web-push `tag` (a newer
+  // notification replaces the older one). Apple caps it at 64 bytes and
+  // rejects the whole send over it, so an over-long tag only groups.
+  if (payload.tag && new TextEncoder().encode(payload.tag).length <= 64) {
+    headers["apns-collapse-id"] = payload.tag;
+  }
+  return {
+    path: `/3/device/${token}`,
+    headers,
+    body: {
+      aps: {
+        alert: { title: payload.title, body: payload.body ?? "" },
+        sound: "default",
+        ...(payload.tag ? { "thread-id": payload.tag } : {}),
+      },
+      // Top-level custom keys arrive in the tap handler as
+      // `notification.data` — initPushDeepLinks in src/lib/native.ts reads
+      // `data.url`, or `data.data.url` for a caller that nests it.
+      ...(payload.url ? { url: payload.url } : {}),
+      data: payload.data ?? {},
+    },
+  };
+}
+
+/** Stop sending to this row? 410 is Apple saying the token is no longer
+ *  active (the app was deleted, or notifications revoked). 400 BadDeviceToken
+ *  is a token from the other environment or a malformed one, and
+ *  DeviceTokenNotForTopic is a token for some other app: neither will ever
+ *  work against this server. Everything else — a bad key (403), a rate limit
+ *  (429), Apple being down (5xx) — is about us, not the device, and must not
+ *  switch a working phone off.
+ *
+ *  "Off" is `disabled = true` with the reason in last_error, the same as the
+ *  web-push and FCM paths above, rather than a DELETE: every sender filters
+ *  on disabled = false, a re-registration of the same token switches it back
+ *  on, and "why did my phone stop buzzing" has an answer in the row. */
+export function apnsErrorIsGone(status: number, reason: string | undefined): boolean {
+  if (status === 410) return true;
+  return reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic" || reason === "Unregistered";
+}
+
+/** The DER body of the .p8, however it was pasted: with real newlines, with
+ *  literal `\n` sequences (secret stores often flatten newlines that way), with
+ *  Windows line endings, or flattened onto one line with spaces.
+ *
+ *  Token auth only. A .cer / .p12 is the OTHER APNs auth scheme
+ *  (certificate-based, a TLS client certificate that expires yearly) and
+ *  cannot sign a JWT; it is named in the error rather than failing later as
+ *  an opaque WebCrypto DataError. */
+export function p8ToDer(authKey: string): ArrayBuffer {
+  if (/BEGIN CERTIFICATE/.test(authKey)) {
+    throw new Error(
+      "APNS_AUTH_KEY holds a certificate. This server uses token auth: paste the contents of the .p8 key file",
+    );
+  }
+  const b64 = authKey
+    .replace(/\\r/g, "")
+    .replace(/\\n/g, "\n")
+    .replace(/-----(BEGIN|END)[^-]*-----/g, "")
+    // Whitespace of any kind, and quotes a paste may have wrapped it in —
+    // neither is a base64 character, so removing them cannot alter the key.
+    .replace(/[\s"']+/g, "");
+  if (!b64 || !/^[A-Za-z0-9+/=]+$/.test(b64)) {
+    throw new Error("APNS_AUTH_KEY is not the contents of a .p8 file");
+  }
+  const bytes = Buffer.from(b64, "base64");
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+const b64url = (bytes: Uint8Array | string) =>
+  Buffer.from(typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes).toString(
+    "base64url",
+  );
+
+let apnsJwtCache: { cacheKey: string; value: string; issuedAt: number } | null = null;
+const APNS_JWT_TTL_MS = 50 * 60 * 1000;
+
+/** Test hook: forget the cached provider token. */
+export function resetApnsTokenCacheForTests() {
+  apnsJwtCache = null;
+}
+
+/** The provider token, reused for fifty minutes. Throws on an unreadable key
+ *  — the caller turns that into a log line, never into a failed request. */
+export async function apnsProviderToken(config: ApnsConfig, now = Date.now()): Promise<string> {
+  const cacheKey = `${config.teamId}:${config.keyId}:${config.authKey.length}`;
+  if (
+    apnsJwtCache &&
+    apnsJwtCache.cacheKey === cacheKey &&
+    now - apnsJwtCache.issuedAt < APNS_JWT_TTL_MS
+  ) {
+    return apnsJwtCache.value;
+  }
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    p8ToDer(config.authKey),
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+  const signingInput =
+    `${b64url(JSON.stringify({ alg: "ES256", kid: config.keyId, typ: "JWT" }))}.` +
+    b64url(JSON.stringify({ iss: config.teamId, iat: Math.floor(now / 1000) }));
+  const sig = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    new TextEncoder().encode(signingInput),
+  );
+  const value = `${signingInput}.${b64url(new Uint8Array(sig))}`;
+  apnsJwtCache = { cacheKey, value, issuedAt: now };
+  return value;
+}
+
+let warnedApnsUnconfigured = false;
+
 async function sendApns(subs: NativeSub[], payload: PushPayload) {
-  const topic = process.env.APNS_TOPIC;
-  const jwt = await apnsToken();
-  if (!topic || !jwt || subs.length === 0) return { sent: 0, failed: 0 };
-  const host = process.env.APNS_ENVIRONMENT === "sandbox"
-    ? "https://api.sandbox.push.apple.com"
-    : "https://api.push.apple.com";
+  if (subs.length === 0) return { sent: 0, failed: 0 };
+  const { config, missing } = apnsConfigFromEnv();
+  if (!config) {
+    // Said once per server instance, not once per send: an unconfigured key
+    // is a setup fact, and a log line per notification would bury everything
+    // else. The rows are left alone — nothing is wrong with the devices.
+    if (!warnedApnsUnconfigured) {
+      warnedApnsUnconfigured = true;
+      console.warn(
+        `[push] ${subs.length} iOS device(s) skipped: APNs is not configured (missing ${missing.join(", ")}). ` +
+          "See docs/ios-build.md › Push notifications.",
+      );
+    }
+    return { sent: 0, failed: 0 };
+  }
+
+  let jwt: string;
+  try {
+    jwt = await apnsProviderToken(config);
+  } catch (e) {
+    console.error("[push] APNs provider token could not be signed: check APNS_AUTH_KEY", e);
+    return { sent: 0, failed: subs.length };
+  }
+
   let sent = 0, failed = 0;
   await Promise.all(subs.map(async (s) => {
     try {
-      const res = await fetch(`${host}/3/device/${s.native_token}`, {
+      const req = apnsRequestFor(s.native_token, payload, config.topic);
+      const res = await fetch(`${config.host}${req.path}`, {
         method: "POST",
-        headers: {
-          "authorization": `bearer ${jwt}`,
-          "apns-topic": topic,
-          "apns-push-type": "alert",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          aps: {
-            alert: { title: payload.title, body: payload.body ?? "" },
-            sound: "default",
-            "thread-id": payload.tag,
-          },
-          url: payload.url,
-          data: payload.data ?? {},
-        }),
+        headers: { authorization: `bearer ${jwt}`, ...req.headers },
+        body: JSON.stringify(req.body),
       });
       if (res.status === 200) {
         sent++;
         await markSent(s.id);
-      } else {
-        const reason = (await res.json().catch(() => ({}))).reason ?? `apns_${res.status}`;
-        const gone = reason === "BadDeviceToken" || reason === "Unregistered";
-        await markError(s.id, reason, gone);
-        failed++;
+        return;
       }
+      const reason: string | undefined = (await res.json().catch(() => ({})))?.reason;
+      // A rejected provider token is ours to fix, and a cached bad one would
+      // keep failing for fifty minutes after the key is corrected.
+      if (res.status === 403) apnsJwtCache = null;
+      await markError(s.id, reason ?? `apns_${res.status}`, apnsErrorIsGone(res.status, reason));
+      failed++;
     } catch (e: any) {
       failed++;
-      await markError(s.id, String(e?.message || e));
+      await markError(s.id, String(e?.message || e)).catch(() => {});
     }
   }));
   return { sent, failed };
@@ -386,32 +584,105 @@ function splitRows(rows: Row[]): { web: WebSub[]; ios: NativeSub[]; android: Nat
 
 async function fanOut(rows: Row[], payload: PushPayload) {
   const { web, ios, android } = splitRows(rows);
-  const [w, i, a] = await Promise.all([
+  // allSettled, not all: one channel throwing must not take the other two
+  // down with it, and must not reach the caller either.
+  const results = await Promise.allSettled([
     sendWebPush(web, payload),
     sendApns(ios, payload),
     sendFcm(android, payload),
   ]);
-  return { sent: w.sent + i.sent + a.sent, failed: w.failed + i.failed + a.failed };
+  let sent = 0, failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      sent += r.value.sent;
+      failed += r.value.failed;
+    } else {
+      console.error("[push] a delivery channel threw", r.reason);
+    }
+  }
+  return { sent, failed };
 }
 
 const SELECT_COLS = "id, endpoint, p256dh, auth, native_token, platform";
 
+/** Every enabled device a staff user has registered: web, iOS and Android.
+ *  Never throws — push is always the best-effort half of something else. */
 export async function sendPushToUser(userId: string, payload: PushPayload) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data } = await supabaseAdmin
-    .from("push_subscriptions")
-    .select(SELECT_COLS)
-    .eq("user_id", userId)
-    .eq("disabled", false);
-  return fanOut((data ?? []) as Row[], payload);
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("push_subscriptions")
+      .select(SELECT_COLS)
+      .eq("user_id", userId)
+      .eq("disabled", false);
+    return await fanOut((data ?? []) as Row[], payload);
+  } catch (e) {
+    console.error("[push] sendPushToUser failed", e);
+    return { sent: 0, failed: 0 };
+  }
 }
 
 export async function sendPushToClient(clientId: string, payload: PushPayload) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data } = await supabaseAdmin
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("push_subscriptions")
+      .select(SELECT_COLS)
+      .eq("client_id", clientId)
+      .eq("disabled", false);
+    return await fanOut((data ?? []) as Row[], payload);
+  } catch (e) {
+    console.error("[push] sendPushToClient failed", e);
+    return { sent: 0, failed: 0 };
+  }
+}
+
+// ─── Saving a subscription ─────────────────────────────────────────────────
+//
+// This replaced `.upsert(row, { onConflict: "native_token" })` (and the same
+// on "endpoint"), which could never succeed. Both columns are unique through
+// PARTIAL indexes — `... WHERE native_token IS NOT NULL`, from migration
+// 20260703040022 — and Postgres will not infer a partial index from a bare
+// `ON CONFLICT (native_token)`; the statement needs the index's WHERE clause,
+// which PostgREST has no way to send. Every call failed with
+//   there is no unique or exclusion constraint matching the ON CONFLICT specification
+// (reproduced against a scratch Postgres 18 with the same index), into a
+// console.warn on the phone. So no iOS token was ever stored.
+//
+// It runs on the service role because a device token, or a browser's push
+// endpoint, belongs to whoever is signed in on that device NOW. On a shared
+// crew iPad the row may still name the previous tech; RLS hides that row from
+// the new one, so an RLS-scoped write cannot move it and the previous tech
+// would go on receiving the new tech's notifications. The caller has already
+// authenticated the user (or the portal token) whose id goes on the row.
+
+type PushKey = { column: "native_token"; value: string } | { column: "endpoint"; value: string };
+
+type AdminLike = { from: (table: string) => any };
+
+export async function savePushSubscription(
+  admin: AdminLike,
+  key: PushKey,
+  row: Record<string, unknown>,
+): Promise<void> {
+  const fields = { ...row, disabled: false, last_error: null };
+  const update = async () => {
+    const { data, error } = await admin
+      .from("push_subscriptions")
+      .update(fields)
+      .eq(key.column, key.value)
+      .select("id");
+    if (error) throw new Error(error.message);
+    return (data ?? []).length > 0;
+  };
+  if (await update()) return;
+  const { error } = await admin
     .from("push_subscriptions")
-    .select(SELECT_COLS)
-    .eq("client_id", clientId)
-    .eq("disabled", false);
-  return fanOut((data ?? []) as Row[], payload);
+    .insert({ ...fields, [key.column]: key.value });
+  if (!error) return;
+  // Two registrations racing for the same token (two tabs, a quick relaunch):
+  // the other one inserted between our update and our insert. Ours is now an
+  // update of the row it made.
+  if (error.code === "23505" && (await update())) return;
+  throw new Error(error.message);
 }

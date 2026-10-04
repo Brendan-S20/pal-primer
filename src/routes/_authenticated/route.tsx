@@ -143,6 +143,7 @@ function AppShell() {
     let cancelled = false;
     let removeDeepLinks: (() => void) | undefined;
     let removeConnectivity: (() => void) | undefined;
+    let removePushRegistration: (() => void) | undefined;
     (async () => {
       try {
         const native = await import("@/lib/native");
@@ -156,7 +157,7 @@ function AppShell() {
           if (!cancelled) router.history.push(path);
         });
         const { subscribeStaffNativePush } = await import("@/lib/push.functions");
-        await native.registerPushNotifications(async (token) => {
+        removePushRegistration = await native.registerPushNotifications(async (token) => {
           if (cancelled) return;
           try {
             await subscribeStaffNativePush({
@@ -170,6 +171,8 @@ function AppShell() {
             console.warn("native push register failed", e);
           }
         });
+        // Unmounted while registering: the cleanup below already ran.
+        if (cancelled) removePushRegistration();
       } catch {
         /* ignore */
       }
@@ -178,6 +181,7 @@ function AppShell() {
       cancelled = true;
       removeConnectivity?.();
       removeDeepLinks?.();
+      removePushRegistration?.();
     };
   }, [router]);
 

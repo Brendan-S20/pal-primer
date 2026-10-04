@@ -65,7 +65,7 @@ Import from `@/lib/native` — every helper no-ops on web, uses the plugin nativ
 
 ## Push notifications
 
-1. iOS: enable Push Notifications capability in Xcode; upload APNs auth key to Firebase or your provider.
+1. iOS: done in the repo (entitlement + AppDelegate forwards); the server sends to APNs directly with the `.p8` key — no Firebase. See `docs/ios-build.md` › Push notifications.
 2. Android: drop `google-services.json` into `android/app/`.
 3. Wire tokens to the existing `push_subscriptions` table via `registerPushNotifications`.
 

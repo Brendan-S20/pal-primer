@@ -19,7 +19,7 @@ for these paths.
 | `RESEND_WEBHOOK_SECRET` | Resend delivery/bounce callbacks |
 | `SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) | Service-role DB access; also accepted as cron authorization |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web push. Unset ⇒ web push silently unavailable. |
-| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` / `APNS_ENVIRONMENT` | Native iOS push |
+| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` / `APNS_ENVIRONMENT` | Native iOS push, token auth. **Set 2026-10-03.** `APNS_AUTH_KEY` is the whole `.p8` (newlines may be real, literal `\n`, or flattened — normalised before use; a certificate is refused by name). `APNS_TOPIC` = `consulting.thenorth.houndstack` (also the default if unset). `APNS_ENVIRONMENT` = `production` for TestFlight/App Store; `sandbox` only while testing an Xcode cable build. Unset or unreadable ⇒ iOS push is skipped with one log line, never an error. The `.p8` can be downloaded once: if lost, revoke it in Apple Developer › Keys and make another. Setup and test steps: `docs/ios-build.md` › Push notifications. |
 | `FCM_SERVICE_ACCOUNT` | Native Android push — the whole service-account JSON from Firebase → Project settings → Service accounts. Replaces `FCM_SERVER_KEY`, whose legacy endpoint Google decommissioned; setting the old name now does nothing. |
 | `GOOGLE_PLACES_API_KEY` | Address autocomplete on signup and property forms |
 | `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET` / `QBO_ENVIRONMENT` / `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET` | QuickBooks / Xero OAuth |
@@ -31,8 +31,9 @@ for these paths.
 | `PLATFORM_STRIPE_SECRET_KEY` / `PLATFORM_STRIPE_PUBLISHABLE_KEY` | Honoured by only three of the five subscription modules (`platform-billing`, `seat-sync`, `ai-overage-billing`); `billing.functions.ts` and `platform-addons.functions.ts` read `STRIPE_SECRET_KEY` only. Set it to anything different and subscription billing splits across two accounts with nothing reporting it. |
 | `STRIPE_WEBHOOK_SECRET` | Legacy fallback, removed from `hooks/stripe.ts`. |
 
-**GitHub Actions secrets (a separate store from Lovable):** `SUPABASE_DB_URL`
-and `STRIPE_SECRET_KEY`. The latter arms `check-stripe-catalog.mjs`; a restricted
+**GitHub Actions secrets (a separate store from Lovable):** `SUPABASE_DB_URL`,
+`STRIPE_SECRET_KEY` and `BACKUP_PASSPHRASE` (encrypts the nightly backup; see §7 —
+keep a copy in a password manager, because GitHub will never show it again). The latter arms `check-stripe-catalog.mjs`; a restricted
 key with **read on Prices only** is sufficient — one call, `GET /v1/prices` — and
 `keyIsLive` accepts `rk_live_…`. Until it resolves, the step prints `NOT ARMED`
 and exits 2, and the gate is protecting nothing.
@@ -165,3 +166,17 @@ will not move money (security fix C2). Schedule it once daily.
   last-4s.
 - In-app notifications are per-recipient (`recipient_user_id = auth.uid()`).
 - A Twilio sender number is unique to one org (no inbound-blackholing by squatting).
+
+## 7. Backups and restore
+
+Supabase Pro keeps 7 daily snapshots (no point-in-time recovery: up to 24 hours
+can be lost), restorable only as a whole-project rollback. A second, encrypted
+copy is made nightly by `.github/workflows/backup.yml` (07:30 UTC, kept 30
+days as a GitHub artifact) and restored into a throwaway database every Sunday
+to prove it works. It needs the `BACKUP_PASSPHRASE` repository secret, which
+must also be kept in a password manager — without it the backups cannot be
+opened.
+
+How to restore the whole project, into a new project, or one tenant's rows
+without touching anyone else's: **`docs/backups-and-restore.md`**. Storage files
+(photos, receipts) are in neither backup.

@@ -142,8 +142,32 @@ export const ANDROID_PUSH_CHANNEL = {
   visibility: 1 as const,
 };
 
-export async function registerPushNotifications(onToken: (token: string) => void) {
-  if (!isNative()) return;
+/** The APNs/FCM token this device registered in THIS session, so sign-out can
+ *  release it. Memory only: registration runs on every launch of the signed-in
+ *  shell, so a session that has a token to release always set this first. */
+let registeredPushToken: string | null = null;
+
+/**
+ * Ask for notification permission and register this device for push.
+ *
+ * WHEN: called from the signed-in shell (src/routes/_authenticated/route.tsx),
+ * never from the root — so the system prompt appears after sign-in, when the
+ * token has a user to belong to, and never on the sign-in screen of a fresh
+ * install. After the first answer iOS never shows the prompt again; later
+ * launches only re-register, which is how a rotated token reaches the server.
+ *
+ * TOKEN REFRESH: APNs can hand out a new token (restore from backup, reinstall,
+ * OS update). `register()` runs on every launch and the `registration` event
+ * delivers whatever the token is NOW, so a changed one is saved within one
+ * launch; the stale row is switched off by the server the first time APNs
+ * answers 410 for it.
+ *
+ * Returns a cleanup that removes the listeners.
+ */
+export async function registerPushNotifications(
+  onToken: (token: string) => void,
+): Promise<() => void> {
+  if (!isNative()) return () => {};
 
   // ── ANDROID WITHOUT A FIREBASE CONFIG CRASHES, IT DOES NOT DEGRADE ──────
   //
@@ -168,12 +192,31 @@ export async function registerPushNotifications(onToken: (token: string) => void
       "[push] android/app/google-services.json is absent, so FCM cannot initialise. " +
         "Skipping push registration: calling it would crash the app, not fail softly.",
     );
-    return;
+    return () => {};
   }
 
   const { PushNotifications } = await import("@capacitor/push-notifications");
-  const perm = await PushNotifications.requestPermissions();
-  if (perm.receive !== "granted") return;
+  // Check first and only ASK while asking is still possible. After a denial
+  // requestPermissions() is a silent no-op on iOS; the way back is Settings.
+  let perm = await PushNotifications.checkPermissions();
+  if (perm.receive === "prompt" || perm.receive === "prompt-with-rationale") {
+    perm = await PushNotifications.requestPermissions();
+  }
+  if (perm.receive !== "granted") return () => {};
+
+  // Listeners BEFORE register(), not after. On iOS register() resolves at
+  // once and the token arrives later through AppDelegate, and the plugin does
+  // not retain a `registration` event for a listener that is not there yet —
+  // a fast token on a warm launch was a token nobody heard.
+  const onRegistration = await PushNotifications.addListener("registration", (t) => {
+    registeredPushToken = t.value;
+    onToken(t.value);
+  });
+  const onError = await PushNotifications.addListener("registrationError", (e) => {
+    // Most often: the build is not signed with the aps-environment
+    // entitlement (see docs/ios-build.md › Push notifications).
+    console.warn("[push] registration failed", e.error);
+  });
   if (platform() === "android") {
     // Before register(), so the channel exists before the first message can.
     // AndroidManifest.xml names this id as FCM's default channel; without it
@@ -188,7 +231,33 @@ export async function registerPushNotifications(onToken: (token: string) => void
     }
   }
   await PushNotifications.register();
-  PushNotifications.addListener("registration", (t) => onToken(t.value));
+  return () => {
+    void onRegistration.remove();
+    void onError.remove();
+  };
+}
+
+/**
+ * Sign-out half of the above: delete this device's token from the signed-out
+ * user's subscriptions, so a shared crew iPad stops buzzing with the previous
+ * tech's notifications. Best-effort and bounded — a sign-out must never wait
+ * on it, and the next user's registration reassigns the token anyway.
+ * Must run while the session is still valid. No-op on web.
+ */
+export async function releasePushRegistration(timeoutMs = 3000): Promise<void> {
+  const token = registeredPushToken;
+  if (!isNative() || !token) return;
+  registeredPushToken = null;
+  try {
+    const { unsubscribeStaffNativePush } = await import("@/lib/push.functions");
+    await Promise.race([
+      unsubscribeStaffNativePush({ data: { token } }),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  } catch {
+    // Offline sign-out. The row stays until the next user on this device
+    // registers, which moves it to them.
+  }
 }
 
 /**

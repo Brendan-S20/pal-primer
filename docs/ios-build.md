@@ -100,32 +100,119 @@ Auth, Supabase and Stripe all behave exactly as they do on the web.
 
 ---
 
-## Push notifications: code complete, capability not enabled
+## Push notifications
 
-Both ends exist and are wired:
+**State on 2026-10-03:** code complete end to end; the APNs key exists and all
+five `APNS_*` values are set as Lovable project secrets. What is left is two
+owner checks in the Apple portal and on a phone — the checklist at the end of
+this section.
 
-- **Device side** — `src/routes/_authenticated/route.tsx` registers for push on
-  launch, hands the APNs token to `subscribeStaffNativePush`, and routes a
-  notification tap to the deep link in the payload (`initPushDeepLinks`, which
-  rejects any URL whose origin is not the app's own).
-- **Server side** — `src/lib/push.server.ts` signs an ES256 JWT and posts to
-  APNs over HTTP/2.
+### What sends a push
 
-**Three things are not done, and none of them can be done from a repo:**
+Every in-app notification (the bell, `/notifications`) is also pushed to each
+recipient's registered devices — iOS app, Android app, and any browser they
+turned push on in — by `notifyUsers` in `src/lib/notify-center.server.ts`.
+Mutes in Settings › Notifications apply to both. The tap opens the row's link.
 
-1. **Enable the Push Notifications capability in Xcode** (Signing &
-   Capabilities → + Capability → Push Notifications). This writes an
-   `App.entitlements` with `aps-environment`. There is no entitlements file in
-   the project today, which is why this is listed rather than assumed.
-2. **Create an APNs auth key** (`.p8`) in the Apple Developer portal.
-3. **Set the server env vars**: `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_AUTH_KEY`
-   (raw .p8 contents), `APNS_TOPIC` (`consulting.thenorth.houndstack`), and
-   `APNS_ENVIRONMENT` (`sandbox` while testing on a development build,
-   `production` for TestFlight and the App Store).
+| Event | Who | Opens |
+|-------|-----|-------|
+| Inbound text needs a reply (`inbound_sms`) | owner, office manager, dispatcher | /messages |
+| AI receptionist escalation | owner, office manager, dispatcher | /messages |
+| Client says do not enter (gate) | owner, office, dispatcher, tech | /my-day |
+| New concern / re-clean / extra cleanup (portal) | owner, office manager | /concerns |
+| Add-on requested (portal) | owner, office manager | the client's Services tab |
+| Quote accepted or declined | owner, office manager | the quote |
+| Client payment failed | owner, office manager | /invoices |
+| Refund failed / payout failed / fraud warning on a payment | owner, office manager | /notifications (these rows carry no link) |
+| Webhook switched off after failing | owner, office manager | /settings/webhooks |
+| Teammate joined | owner, office manager | /settings/users |
+| Trial ending | owner | /settings/billing |
 
-Until those are done, `sendApns` returns `{ sent: 0, failed: 0 }`. It does not
-throw and it does not report success — deliberately, so an unconfigured push
-stack cannot look like a working one in the logs.
+In-app only, deliberately: `schedule.horizon` (the nightly "schedule filled
+through…" summary — it runs in the small hours) and `payout_paid` (good news,
+nothing to do). And `field_collection` (cash/check a tech collected) is written
+by a SQL function straight into `app_notifications`, so it does not pass
+through `notifyUsers` and is not pushed.
+
+Separately, a completed visit pushes the CUSTOMER (`sendPushToClient` in
+`my-day.functions.ts`) — that is web push to the portal, not the iOS app.
+
+### How the pieces connect
+
+- **Entitlement** — `ios/App/App/App.entitlements` carries `aps-environment`
+  = `development`, which is what Xcode's Push Notifications capability writes.
+  That is correct for TestFlight too: Apple signs the entitlement from the
+  provisioning profile, and a distribution profile (every Xcode Cloud archive)
+  makes it `production`. Writing `production` in the file would break a Debug
+  run from Xcode against a development profile. No `SystemCapabilities` block
+  is added to the pbxproj — modern Xcode does not use one, and Sign in with
+  Apple is declared the same way, by entitlement only.
+- **AppDelegate** — forwards `didRegisterForRemoteNotificationsWithDeviceToken`
+  and `didFailToRegister…` to the plugin. Without these two methods iOS mints a
+  token and nothing hears it.
+- **No background mode.** `UIBackgroundModes` / `remote-notification` is for
+  silent (`content-available`) pushes; every push here is a visible alert.
+- **Device** — `registerPushNotifications` (`src/lib/native.ts`) runs from the
+  signed-in shell, so the permission prompt appears right after the first
+  sign-in and never on the sign-in screen. It runs on every launch, which is
+  how a rotated token reaches the server. Sign-out deletes this device's token
+  from the signed-out user (`releasePushRegistration`), and the next person to
+  sign in on a shared iPad takes the token over.
+- **Storage** — `subscribeStaffNativePush` → `savePushSubscription`. It used to
+  upsert on `native_token`, a column unique only through a PARTIAL index, which
+  Postgres cannot infer from `ON CONFLICT (native_token)` — every registration
+  failed. No migration was needed to fix it.
+- **Server** — `src/lib/push.server.ts`, token auth with the `.p8` key (not a
+  certificate). ES256 via WebCrypto, provider token cached 50 minutes (Apple
+  rejects one regenerated more than every 20), host from `APNS_ENVIRONMENT`.
+  A 410 or `BadDeviceToken` switches that device's row off
+  (`disabled = true`, reason in `last_error`). Missing or unreadable
+  credentials are logged once and skipped; nothing throws into the action that
+  raised the notification. `APNS_AUTH_KEY` may be pasted with real newlines,
+  literal `\n`, or flattened — it is normalised before import.
+- **HTTP/2** — APNs refuses HTTP/1.1. The deployed server is a Cloudflare
+  Worker, whose fetch reaches Apple over HTTP/2. **Local `npm run dev` runs on
+  Node, whose fetch is HTTP/1.1, and cannot deliver to APNs** — test on the
+  deployed app.
+
+### Environment, and why a phone may not buzz
+
+`APNS_ENVIRONMENT=production` matches TestFlight and App Store installs, which
+are all Xcode Cloud builds. An app run from Xcode on a cable gets a SANDBOX
+token; production APNs answers `BadDeviceToken` for it, and the server switches
+that row off. That is expected — to test a cable build, temporarily set
+`APNS_ENVIRONMENT=sandbox`, and set it back.
+
+### Owner checklist
+
+1. ~~Create an APNs auth key (`.p8`) in Apple Developer › Keys.~~ **Done.**
+2. ~~Set `APNS_AUTH_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID`,
+   `APNS_TOPIC=consulting.thenorth.houndstack`, `APNS_ENVIRONMENT=production`
+   as Lovable project secrets.~~ **Done.**
+3. **Confirm Push Notifications is ticked on the App ID.** developer.apple.com ›
+   Certificates, Identifiers & Profiles › Identifiers ›
+   `consulting.thenorth.houndstack` › Capabilities › Push Notifications ✓ ›
+   Save. (Ignore the "Configure" button beside it — that is for certificate
+   auth, which this app does not use.) Xcode Cloud's automatic signing
+   regenerates the profile with the entitlement on the next build; nothing to
+   do in Xcode.
+4. **Merge this branch, let Xcode Cloud build, install that TestFlight build**
+   (the push code is in the binary: an older build has no AppDelegate forward
+   and cannot receive anything).
+5. **Test on the phone.** Open the app, sign in, tap **Allow** on the
+   notification prompt. Then, from another device, cause an event for that
+   user — the quickest is texting the business number from a phone that is a
+   client (`inbound_sms` → owner, office manager, dispatcher), or a portal
+   concern. The phone should buzz; tapping it should open /messages (or
+   /concerns). Try once with the app open (banner) and once with it closed.
+6. **If nothing arrives,** look at that user's row in `push_subscriptions`
+   (Supabase › Table editor, filter `platform = ios`): no row means the token
+   never registered (check step 3, and that you allowed notifications in iOS
+   Settings › HoundStack); `last_error` holds Apple's reason otherwise —
+   `InvalidProviderToken` is a wrong key/key id/team id, `BadDeviceToken` is an
+   environment mismatch, `TopicDisallowed` is step 3.
+
+The device QA list below still carries the push item; it is step 5.
 
 ---
 
