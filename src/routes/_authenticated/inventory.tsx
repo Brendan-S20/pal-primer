@@ -23,6 +23,9 @@ import { toast } from "sonner";
 import { AlertTriangle, Package, Plus } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
+import { useMyRole } from "@/hooks/useMyRole";
+import { useDismissed } from "@/lib/dismissible";
+import { DismissButton } from "@/components/DismissButton";
 
 export const Route = createFileRoute("/_authenticated/inventory")({
   head: () => titleHead("Inventory"),
@@ -72,6 +75,16 @@ function InventoryPage() {
   const lowStock = useMemo(
     () => (items.data ?? []).filter((i) => Number(i.on_hand) <= Number(i.reorder_threshold) && i.active),
     [items.data],
+  );
+  // The low-stock notice can be put away (2026-10-03). Its version is WHICH
+  // items are low, so it comes back when the list changes (an item crosses
+  // its threshold, or one is restocked), and after a week regardless, because
+  // a reorder nobody placed is still a reorder. Rule in src/lib/dismissible.ts.
+  const { orgId } = useMyRole();
+  const lowStockNotice = useDismissed(
+    "inventory-low-stock",
+    lowStock.length ? lowStock.map((i) => String(i.id)).sort().join(",") : null,
+    { orgId, snoozeDays: 7 },
   );
 
   // Multi-select on the Items tab (Invoices-page pattern). Bulk archive loops
@@ -154,8 +167,13 @@ function InventoryPage() {
         <ItemDialog />
       </div>
 
-      {lowStock.length > 0 && (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+      {lowStock.length > 0 && !lowStockNotice.dismissed && (
+        <div className="relative rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 pe-12 text-sm">
+          <DismissButton
+            onClick={lowStockNotice.dismiss}
+            label="Hide the low stock notice"
+            className="absolute end-0 top-0"
+          />
           <div className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-4 w-4 shrink-0" /> {lowStock.length} item{lowStock.length === 1 ? "" : "s"} at or below reorder threshold
           </div>

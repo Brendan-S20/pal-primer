@@ -4,6 +4,9 @@ import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { CampaignStats, CampaignStatus } from "@/lib/campaigns.functions";
 import { SEND_BLOCKER_TEXT } from "@/lib/campaigns";
+import { useMyRole } from "@/hooks/useMyRole";
+import { useDismissed } from "@/lib/dismissible";
+import { DismissButton } from "@/components/DismissButton";
 
 const STATUS_STYLES: Record<CampaignStatus, string> = {
   draft: "border-transparent bg-muted text-muted-foreground hover:bg-muted",
@@ -28,12 +31,28 @@ export function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
 
 /** Shown wherever Send is, while the business has no postal address. Send is
  *  refused without one (the server and the database both check), so this is
- *  the page saying why before anybody presses it. */
-export function NoAddressWarning() {
+ *  the page saying why before anybody presses it.
+ *
+ *  `dismissible` on the campaign LIST only (2026-10-03). An owner who does not
+ *  run campaigns met this every time he opened the list, with no way to move
+ *  it. In the editor it stays put, because that is where Send is and where the
+ *  refusal would otherwise be a surprise. Once put away it stays away for 30
+ *  days; adding the address removes it everywhere anyway. One version: the
+ *  only state it reports is "no address". Rule in src/lib/dismissible.ts. */
+export function NoAddressWarning({ dismissible = false }: { dismissible?: boolean }) {
+  const { orgId } = useMyRole();
+  const { dismissed, dismiss } = useDismissed(
+    "campaigns-no-address",
+    dismissible ? "no-address" : null,
+    { orgId, snoozeDays: 30 },
+  );
+  if (dismissed) return null;
   return (
     <div
       role="alert"
-      className="flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200"
+      className={`flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200 ${
+        dismissible ? "pe-1" : ""
+      }`}
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0 space-y-1">
@@ -46,6 +65,13 @@ export function NoAddressWarning() {
           Add your business address
         </Link>
       </div>
+      {dismissible ? (
+        <DismissButton
+          onClick={dismiss}
+          label="Hide the campaign address warning"
+          className="-my-3 ms-auto"
+        />
+      ) : null}
     </div>
   );
 }

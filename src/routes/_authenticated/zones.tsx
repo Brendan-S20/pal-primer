@@ -24,7 +24,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, MapPin, MoreHorizontal, Eye, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { usePermissions } from "@/hooks/useMyRole";
+import { useMyRole, usePermissions } from "@/hooks/useMyRole";
+import { useDismissed } from "@/lib/dismissible";
+import { DismissButton } from "@/components/DismissButton";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { ZoneDrawer } from "@/components/ZoneDrawer";
 import { MetaChip } from "@/components/client-detail/primitives";
@@ -87,6 +89,13 @@ function ZonesPage() {
   });
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
+  // The coverage warning can be put away (2026-10-03). Its version is the
+  // sentence itself, which carries every count it reports ("12 of 40
+  // properties fall outside every zone"), so it comes back the moment a zone
+  // edit or a new property changes any of them, and not before. No timed
+  // snooze: an unchanged gap is not news. Rule in src/lib/dismissible.ts.
+  const { orgId } = useMyRole();
+  const coverageNotice = useDismissed("zone-coverage", coverage?.problem ?? null, { orgId });
   // A zone's own first-cleanup fee is only a price in "flat" mode; in the
   // other two it is a number nothing charges, so the card does not show it.
   const firstCleanupFn = useServerFn(getFirstCleanupPricing);
@@ -181,11 +190,19 @@ function ZonesPage() {
           </div>
         </div>
       )}
-      {coverage?.problem ? (
+      {coverage?.problem && !coverageNotice.dismissed ? (
         <div
           role="status"
-          className="rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/20"
+          className="relative rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 pe-12 text-sm dark:border-amber-900/60 dark:bg-amber-950/20"
         >
+          {/* In the corner rather than in a row: the body below is a sentence,
+              a paragraph and sometimes a button, and the X should not push any
+              of them sideways. `pe-12` keeps the text clear of it. */}
+          <DismissButton
+            onClick={coverageNotice.dismiss}
+            label="Hide the zone coverage warning"
+            className="absolute end-0 top-0"
+          />
           <p className="font-medium">{coverage.problem}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Checked by running the matching rules over every property again, so this reflects the

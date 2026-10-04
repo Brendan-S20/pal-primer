@@ -5,6 +5,8 @@ import { Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import i18n from "@/lib/i18n";
+import { useMyRole } from "@/hooks/useMyRole";
+import { useDismissed } from "@/lib/dismissible";
 import {
   getPushPublicKey,
   subscribeStaffPush,
@@ -204,6 +206,7 @@ export function PushToggle({ portalToken, className, compact }: Props) {
   }
 
   if (!supported) return null;
+  if (perm === "denied" && !portalToken) return <StaffBlocked compact={compact} />;
   if (perm === "denied") {
     // Also compact-able. This branch is easy to forget -- it is a `<span>`
     // rather than the Button the other two return, so it inherits none of
@@ -253,5 +256,49 @@ export function PushToggle({ portalToken, className, compact }: Props) {
       <BellOff className={compact ? "h-4 w-4" : "h-4 w-4 me-1"} />
       {compact ? <span className="sr-only">{label}</span> : t("push.enable")}
     </Button>
+  );
+}
+
+/**
+ * "Notifications blocked", for staff, as something that can be put away.
+ *
+ * It sat in My Day's title bar every day for anybody whose browser had said
+ * no, and nothing on the page can change that answer: only the browser's or
+ * the phone's own settings can. Owner, 2026-10-03, on notices that cannot be
+ * cleared away: "it would be nice to dismiss or hide them if they are not
+ * necessary." So a tap hides it and says, once, where the switch actually is.
+ *
+ * Re-shows after 30 days, as a reminder that alerts are still off. If the
+ * browser is switched back to allow, the normal bell replaces it whatever was
+ * dismissed. The customer portal keeps the plain label; it is a customer's
+ * screen and not ours to tidy. Rule in src/lib/dismissible.ts.
+ */
+function StaffBlocked({ compact }: { compact?: boolean }) {
+  const { t } = useTranslation();
+  const { orgId } = useMyRole();
+  const { dismissed, dismiss } = useDismissed("push-blocked", "denied", {
+    orgId,
+    snoozeDays: 30,
+  });
+  if (dismissed) return null;
+  const hide = () => {
+    dismiss();
+    toast(t("push.blockedHidden"));
+  };
+  return (
+    <button
+      type="button"
+      onClick={hide}
+      aria-label={t("push.blockedHide")}
+      title={t("push.blockedHide")}
+      className={
+        compact
+          ? "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+          : "inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent"
+      }
+    >
+      <BellOff className={compact ? "h-4 w-4 shrink-0" : "h-3 w-3 shrink-0"} aria-hidden="true" />
+      {compact ? null : t("push.blocked")}
+    </button>
   );
 }
