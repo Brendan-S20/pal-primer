@@ -1,16 +1,21 @@
 // The app's one view controller: Capacitor's own, plus the two things this
 // app needs from it that a stock CAPBridgeViewController does not do.
 //
-// Main.storyboard names this class instead of CAPBridgeViewController. The
-// @objc name pins the class name the storyboard looks up, so it does not
-// depend on the target's module name (PRODUCT_NAME is HoundStack, the target
-// is App, and a storyboard that guesses the wrong one fails silently to a
-// plain UIViewController with no web view at all).
+// Main.storyboard names this class instead of CAPBridgeViewController, with
+// customModuleProvider="target" (the module is HoundStack, from PRODUCT_NAME,
+// not App, the target's name). NOT an `@objc(HSBridgeViewController)` rename:
+// that was tried, and the app launched to a black screen with "Unknown class
+// HSBridgeViewController in Interface Builder file". The superclass lives in
+// Capacitor's binary framework, so the Objective-C runtime only learns this
+// class once Swift has initialised its metadata, and a lookup by the bare
+// Objective-C name happens before anything has. A storyboard that names the
+// module looks it up through Swift, which initialises it. A storyboard that
+// cannot find its class falls back to a plain UIViewController: no web view,
+// no error anywhere a user would see.
 
 import UIKit
 import Capacitor
 
-@objc(HSBridgeViewController)
 class HSBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -28,5 +33,9 @@ class HSBridgeViewController: CAPBridgeViewController {
         // the browser's Back would. Without it the only way back on a phone
         // is whatever button the page draws.
         webView?.allowsBackForwardNavigationGestures = true
+
+        #if DEBUG
+        RouteActivityDemo.checkBridgeIfAsked(webView)
+        #endif
     }
 }

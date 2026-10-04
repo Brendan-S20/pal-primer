@@ -26,8 +26,10 @@
 //                           error, when nothing is showing, so My Day can call
 //                           it on every change without asking first.
 //   end({state?, dismissalPolicy, dismissAt?})
-//                           "immediate", "default" (iOS keeps it up to four
-//                           hours), or "after" with dismissAt in epoch ms.
+//                           { ended, ids }. "immediate", "default" (iOS keeps
+//                           it up to four hours), or "after" with dismissAt in
+//                           epoch ms. Ends every route activity, and says
+//                           which, so the server can stop pushing to them.
 //
 // Two events: `pushToken` {id, token, routeDate} and `ended` {id, routeDate}
 // when the person swipes it away or iOS ends it, so the server stops pushing
@@ -163,7 +165,7 @@ public class RouteActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func end(_ call: CAPPluginCall) {
         guard #available(iOS 16.2, *) else {
-            call.resolve(["ended": 0])
+            call.resolve(["ended": 0, "ids": [String]()])
             return
         }
         let state = Self.decodeState(call.options["state"])
@@ -184,7 +186,7 @@ public class RouteActivityPlugin: CAPPlugin, CAPBridgedPlugin {
                 await activity.end(content, dismissalPolicy: policy)
                 self?.tokens.removeValue(forKey: activity.id)
             }
-            call.resolve(["ended": all.count])
+            call.resolve(["ended": all.count, "ids": all.map { $0.id }])
         }
     }
 

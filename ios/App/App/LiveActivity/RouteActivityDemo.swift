@@ -9,17 +9,55 @@
 //   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liveActivityDemoStep 12
 //   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liveActivityDemoLang ar
 //
+// And to prove the JS bridge reaches the plugin, without signing in:
+//
+//   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityBridgeCheck
+//
+// waits for the page, then calls RouteActivity.isSupported(), start() and
+// update() FROM JS, the way src/lib/live-activity.ts does, and logs what came
+// back. The activity it leaves up reads "Stop 6 of 12, 88 Birch Ave".
+//
 // The whole file is inside `#if DEBUG`, so a Release build (every Xcode
 // Cloud archive) has no trace of it: no launch argument is read and no
 // fixture string ships.
 
 #if DEBUG
 import Foundation
+import WebKit
 #if canImport(ActivityKit)
 import ActivityKit
 #endif
 
 enum RouteActivityDemo {
+    /// Called from HSBridgeViewController once the web view exists.
+    static func checkBridgeIfAsked(_ webView: WKWebView?) {
+        guard ProcessInfo.processInfo.arguments.contains("-liveActivityBridgeCheck"),
+              let webView = webView else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
+            let js = """
+            const p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RouteActivity;
+            if (!p) return "RouteActivity is not on window.Capacitor.Plugins";
+            const r = await p.isSupported();
+            const state = (n, street) => ({ stopLabel: "Stop " + n + " of 12", nextLabel: "Next stop",
+              nextStop: street, window: "11:15 AM–11:35 AM", doneLabel: (n - 2) + " done", skippedLabel: "1 skipped",
+              done: n - 2, skipped: 1, total: 12, position: n, allDone: false, rtl: false });
+            const started = await p.start({ attributes: { routeDate: "2026-10-04", title: "Today's route" },
+              state: state(5, "412 Elm St") });
+            const updated = await p.update({ state: state(6, "88 Birch Ave") });
+            return "available=" + window.Capacitor.isPluginAvailable("RouteActivity") +
+              " isSupported=" + JSON.stringify(r) +
+              " start=" + JSON.stringify({ id: started.id, reused: started.reused, pushToken: started.pushToken ? started.pushToken.length + " hex chars" : null }) +
+              " update=" + JSON.stringify({ updated: updated.updated, sameId: updated.id === started.id });
+            """
+            webView.callAsyncJavaScript(js, arguments: [:], in: nil, in: .page) { result in
+                switch result {
+                case .success(let value): NSLog("[RouteActivityDemo] bridge check: \(String(describing: value))")
+                case .failure(let error): NSLog("[RouteActivityDemo] bridge check failed: \(error)")
+                }
+            }
+        }
+    }
+
     private static var started = false
 
     /// Called from applicationDidBecomeActive: ActivityKit refuses a request

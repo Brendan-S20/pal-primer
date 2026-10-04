@@ -533,11 +533,16 @@ describe("the native project", () => {
   });
 
   it("registers the local plugin from the storyboard's bridge view controller", () => {
+    // Through the module, never by a bare @objc name: the superclass is in
+    // Capacitor's binary framework, so the bare name is unknown to the
+    // Objective-C runtime when the storyboard loads (measured: a black screen
+    // and "Unknown class HSBridgeViewController in Interface Builder file").
     expect(read("ios/App/App/Base.lproj/Main.storyboard")).toMatch(
-      /customClass="HSBridgeViewController"/,
+      /customClass="HSBridgeViewController" customModule="HoundStack" customModuleProvider="target"/,
     );
     const vc = codeOnly(read("ios/App/App/HSBridgeViewController.swift"));
-    expect(vc).toMatch(/@objc\(HSBridgeViewController\)/);
+    expect(vc).not.toMatch(/@objc\(HSBridgeViewController\)/);
+    expect(read("ios/App/App.xcodeproj/project.pbxproj")).toContain("PRODUCT_NAME = HoundStack;");
     expect(vc).toMatch(/override func capacitorDidLoad\(\)/);
     expect(vc).toMatch(/bridge\?\.registerPluginInstance\(RouteActivityPlugin\(\)\)/);
     expect(vc).toMatch(/allowsBackForwardNavigationGestures = true/);

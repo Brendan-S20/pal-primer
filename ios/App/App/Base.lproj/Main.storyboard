@@ -11,7 +11,7 @@
         <!--HS Bridge View Controller-->
         <scene sceneID="tne-QT-ifu">
             <objects>
-                <viewController id="BYZ-38-t0r" customClass="HSBridgeViewController" sceneMemberID="viewController"/>
+                <viewController id="BYZ-38-t0r" customClass="HSBridgeViewController" customModule="HoundStack" customModuleProvider="target" sceneMemberID="viewController"/>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
             </objects>
         </scene>
