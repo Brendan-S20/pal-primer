@@ -409,12 +409,26 @@ export function apnsErrorIsGone(status: number, reason: string | undefined): boo
 }
 
 /** The DER body of the .p8, however it was pasted: with real newlines, with
- *  `\n` escaped by an env-var UI, or flattened onto one line. */
+ *  literal `\n` sequences (secret stores often flatten newlines that way), with
+ *  Windows line endings, or flattened onto one line with spaces.
+ *
+ *  Token auth only. A .cer / .p12 is the OTHER APNs auth scheme
+ *  (certificate-based, a TLS client certificate that expires yearly) and
+ *  cannot sign a JWT; it is named in the error rather than failing later as
+ *  an opaque WebCrypto DataError. */
 export function p8ToDer(authKey: string): ArrayBuffer {
+  if (/BEGIN CERTIFICATE/.test(authKey)) {
+    throw new Error(
+      "APNS_AUTH_KEY holds a certificate. This server uses token auth: paste the contents of the .p8 key file",
+    );
+  }
   const b64 = authKey
+    .replace(/\\r/g, "")
     .replace(/\\n/g, "\n")
     .replace(/-----(BEGIN|END)[^-]*-----/g, "")
-    .replace(/\s+/g, "");
+    // Whitespace of any kind, and quotes a paste may have wrapped it in —
+    // neither is a base64 character, so removing them cannot alter the key.
+    .replace(/[\s"']+/g, "");
   if (!b64 || !/^[A-Za-z0-9+/=]+$/.test(b64)) {
     throw new Error("APNS_AUTH_KEY is not the contents of a .p8 file");
   }
