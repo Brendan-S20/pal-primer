@@ -14,7 +14,7 @@ import { resolveIdentity } from "@/lib/offline/identity";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
-import { setMonitoringIdentity } from "@/lib/monitoring/client";
+import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
@@ -144,43 +144,55 @@ function AppShell() {
   // Native Capacitor bootstrap — theme-coherent status bar; no-ops on web.
   // Also registers APNs/FCM device tokens with our backend and routes push
   // notification taps to the deep link in the payload (e.g. /my-day?date=…).
+  //
+  // ── EACH STEP STANDS ALONE, AND A FAILURE IS REPORTED ───────────────────
+  //
+  // This was one `try { … } catch { /* ignore */ }` around the whole chain,
+  // so a throw from the status bar (cosmetic) also skipped push registration,
+  // and nothing anywhere said so. On 2026-10-04 an owner signed in on iOS,
+  // never saw the notifications prompt, and push_subscriptions had no row:
+  // whether iOS already held an answer or a step threw before the prompt was
+  // unknowable, because both looked exactly the same. Now every step runs
+  // whatever happened to the one before it (connectivity still goes before
+  // push, so the order the comment below asks for holds), and a throw is
+  // sent to monitoring tagged with the step it died in. Off in dev and tests.
   useEffect(() => {
     let cancelled = false;
     let removeDeepLinks: (() => void) | undefined;
     let removeConnectivity: (() => void) | undefined;
     let removePushRegistration: (() => void) | undefined;
-    (async () => {
+    const step = async <T,>(name: string, run: () => Promise<T>): Promise<T | undefined> => {
       try {
-        const native = await import("@/lib/native");
-        await native.initStatusBar();
-        if (!native.isNative()) return;
-        // Before push: a resumed app that is actually offline should know it
-        // before anything tries to talk to the server. No-ops on web.
-        const conn = await import("@/lib/offline/connectivity");
-        removeConnectivity = await conn.initNativeConnectivity();
-        removeDeepLinks = await native.initPushDeepLinks((path) => {
-          if (!cancelled) router.history.push(path);
-        });
-        const { subscribeStaffNativePush } = await import("@/lib/push.functions");
-        removePushRegistration = await native.registerPushNotifications(async (token) => {
-          if (cancelled) return;
-          try {
-            await subscribeStaffNativePush({
-              data: {
-                token,
-                platform: native.platform() === "ios" ? "ios" : "android",
-                userAgent: navigator.userAgent,
-              },
-            });
-          } catch (e) {
-            console.warn("native push register failed", e);
-          }
-        });
-        // Unmounted while registering: the cleanup below already ran.
-        if (cancelled) removePushRegistration();
-      } catch {
-        /* ignore */
+        return await run();
+      } catch (e) {
+        reportClientError(e, { area: "native_startup", step: name });
+        return undefined;
       }
+    };
+    (async () => {
+      const native = await step("load_native", () => import("@/lib/native"));
+      if (!native) return;
+      await step("status_bar", () => native.initStatusBar());
+      if (!native.isNative()) return;
+      // Before push: a resumed app that is actually offline should know it
+      // before anything tries to talk to the server. No-ops on web.
+      removeConnectivity = await step("connectivity", async () => {
+        const conn = await import("@/lib/offline/connectivity");
+        return conn.initNativeConnectivity();
+      });
+      removeDeepLinks = await step("push_deep_links", () =>
+        native.initPushDeepLinks((path) => {
+          if (!cancelled) router.history.push(path);
+        }),
+      );
+      // The same call the Preferences card's button makes; the token is saved
+      // through subscribeStaffNativePush in there, not here.
+      const registered = await step("push_registration", () =>
+        native.turnOnPushNotifications({ isCancelled: () => cancelled }),
+      );
+      removePushRegistration = registered?.cleanup;
+      // Unmounted while registering: the cleanup below already ran.
+      if (cancelled) removePushRegistration?.();
     })();
     return () => {
       cancelled = true;

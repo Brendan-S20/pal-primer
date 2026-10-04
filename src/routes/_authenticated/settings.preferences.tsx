@@ -17,6 +17,7 @@ import { useMyRole } from "@/hooks/useMyRole";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { headerControlsForRole } from "@/lib/header-prefs";
 import { ThemeCard } from "@/components/settings/ThemeCard";
+import { NativePushCard } from "@/components/settings/NativePushCard";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 // ── THIS DEVICE, AND NOTHING ELSE ─────────────────────────────────────────
@@ -176,6 +177,8 @@ function PreferencesPage() {
         </CardContent>
       </Card>
 
+      {/* Draws nothing on the web, where PushToggle is the control. */}
+      <NativePushCard />
       <ThemeCard />
       <AppearanceCard />
     </div>

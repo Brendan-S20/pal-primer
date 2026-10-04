@@ -64,6 +64,35 @@ export function reportBoundaryError(error: unknown, boundary: string): void {
   void load().then((m) => m?.captureBoundary(error, boundary));
 }
 
+/** Tags for one report: short, fixed vocabulary, never a value somebody typed
+ *  or a record's contents. They are scrubbed like everything else (policy.ts),
+ *  but a tag is indexed and searchable in Sentry, so it should be something a
+ *  developer filters BY ("area", "step", "push_permission"), not a payload. */
+export type ClientReportTags = Record<string, string>;
+
+/** Report a fault that was caught on purpose, somewhere a throw is never the
+ *  product working: a native start-up step, a token the server would not save.
+ *  The original error rides along as the cause; see sentry-browser.ts on why
+ *  it is wrapped. Nothing is sent in dev or tests, like everything here. */
+export function reportClientError(error: unknown, tags: ClientReportTags): void {
+  if (!browserDsn()) return;
+  void load().then((m) => m?.captureClientError(error, tags));
+}
+
+/** Report something that is not an exception but that a developer needs to
+ *  know happened on a real device: APNs refusing to issue a token, or a person
+ *  who never ended up with notifications on. `level` is "warning" or "info"
+ *  for a state, "error" only for a fault, so a state that is a person's
+ *  choice does not page anybody. Same scrub, same identity, same off-switch. */
+export function reportClientIssue(
+  message: string,
+  tags: ClientReportTags,
+  level: "error" | "warning" | "info" = "warning",
+): void {
+  if (!browserDsn()) return;
+  void load().then((m) => m?.captureClientIssue(message, tags, level));
+}
+
 /** Attach who is signed in to later events: ids only. Pass null on sign-out.
  *  Takes the identity type rather than a profile so that nothing else can be
  *  handed over by accident; policy.identityUser enforces it again. */

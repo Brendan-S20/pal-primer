@@ -111,6 +111,8 @@ describe("dev and test builds send nothing", () => {
     client.initClientMonitoring();
     client.reportBoundaryError(new TypeError("x is undefined"), "router_default_error");
     client.setMonitoringIdentity({ userId: "u1", orgId: "o1" });
+    client.reportClientError(new TypeError("x"), { area: "native_startup", step: "status_bar" });
+    client.reportClientIssue("Push permission not granted", { area: "native_push" });
     expect(await client.sendClientTestError()).toBe(false);
     await new Promise((r) => setTimeout(r, 0));
 
@@ -142,12 +144,13 @@ describe("a production browser build", () => {
     asProduction();
     vi.stubGlobal("window", {});
     vi.stubGlobal("fetch", vi.fn());
-    const scope = { setTag: vi.fn() };
+    const scope = { setTag: vi.fn(), setLevel: vi.fn() };
     const sdk = {
       init: vi.fn(),
       setUser: vi.fn(),
       setTag: vi.fn(),
       captureException: vi.fn(),
+      captureMessage: vi.fn(),
       withScope: vi.fn((cb: (s: typeof scope) => void) => cb(scope)),
       breadcrumbsIntegration: vi.fn((opts: unknown) => ({ name: "Breadcrumbs", opts })),
     };
@@ -289,6 +292,43 @@ describe("a production browser build", () => {
     client.reportBoundaryError(err, "router_default_error");
     await vi.waitFor(() => expect(sdk.captureException).toHaveBeenCalledWith(err));
     expect(scope.setTag).toHaveBeenCalledWith("boundary", "router_default_error");
+  });
+
+  // A native plugin rejects with a sentence ("PushNotifications plugin is not
+  // implemented on ios"), which isExpectedError would read as a refusal and
+  // drop. A caller that reports on purpose has already decided it is a fault.
+  it("a deliberately reported error survives beforeSend, tagged, with the original as its cause", async () => {
+    const { client, sdk, scope } = await loadWithMockedSdk();
+    const original = new Error("PushNotifications plugin is not implemented on ios");
+    expect(isExpectedError(original)).toBe(true);
+    client.reportClientError(original, { area: "native_startup", step: "push_registration" });
+    await vi.waitFor(() => expect(sdk.captureException).toHaveBeenCalled());
+    const sent = sdk.captureException.mock.calls.at(-1)?.[0] as Error;
+    expect(sent.cause).toBe(original);
+    expect(sent.message).toContain("push_registration");
+    expect(sent.message).toContain("not implemented on ios");
+    expect(isExpectedError(sent)).toBe(false);
+    expect(scope.setTag).toHaveBeenCalledWith("area", "native_startup");
+    expect(scope.setTag).toHaveBeenCalledWith("step", "push_registration");
+    const { beforeSend } = sdk.init.mock.calls[0][0];
+    expect(beforeSend({ message: "x" }, { originalException: sent })).not.toBeNull();
+  });
+
+  it("an issue is a message at the level asked for, with its tags", async () => {
+    const { client, sdk, scope } = await loadWithMockedSdk();
+    client.reportClientIssue(
+      "Push permission not granted",
+      { area: "native_push", push_permission: "denied" },
+      "warning",
+    );
+    await vi.waitFor(() =>
+      expect(sdk.captureMessage).toHaveBeenCalledWith("Push permission not granted"),
+    );
+    expect(scope.setLevel).toHaveBeenCalledWith("warning");
+    expect(scope.setTag).toHaveBeenCalledWith("push_permission", "denied");
+    // captureMessage hands beforeSend the message string as the original, and
+    // a string is never judged "expected".
+    expect(isExpectedError("Push permission not granted")).toBe(false);
   });
 
   it("the test button's event is not mistaken for a deliberate refusal", async () => {

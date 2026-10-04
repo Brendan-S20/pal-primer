@@ -147,6 +147,64 @@ export const ANDROID_PUSH_CHANNEL = {
  *  shell, so a session that has a token to release always set this first. */
 let registeredPushToken: string | null = null;
 
+/** Where this device stands on notifications, in the four states a person can
+ *  do something different about:
+ *
+ *    prompt       iOS (or Android) will still ask. A tap can bring the prompt up.
+ *    granted      On. The token is registered on every launch.
+ *    denied       Answered no. iOS never asks again; the way back is Settings.
+ *    unavailable  This build cannot do push at all (Android without a Firebase
+ *                 config; see the guard in registerPush below).
+ *
+ *  `prompt-with-rationale` is Android's "asked once, may ask once more", which
+ *  for the person is still "a tap will ask", so it folds into `prompt`. */
+export type PushPermission = "prompt" | "granted" | "denied" | "unavailable";
+
+function permissionFrom(receive: string): PushPermission {
+  if (receive === "granted") return "granted";
+  if (receive === "prompt" || receive === "prompt-with-rationale") return "prompt";
+  return "denied";
+}
+
+/** True for a build where calling the push plugin's register() would crash
+ *  the app rather than fail. See the long note in registerPush. */
+function pushCannotInitialise(): boolean {
+  return platform() === "android" && !FCM_CONFIGURED;
+}
+
+/**
+ * The current notification permission, WITHOUT asking. Null on web, where
+ * PushToggle and the browser's own permission are the whole story.
+ *
+ * For Settings → Preferences, which has to draw the right control before the
+ * person touches anything.
+ */
+export async function getPushPermission(): Promise<PushPermission | null> {
+  if (!isNative()) return null;
+  if (pushCannotInitialise()) return "unavailable";
+  const { PushNotifications } = await import("@capacitor/push-notifications");
+  return permissionFrom((await PushNotifications.checkPermissions()).receive);
+}
+
+/** Said once per app launch, not once per call: the shell runs registration on
+ *  every mount of the signed-in layout, and the Preferences button can run it
+ *  again. A person who said no is a fact about this launch, not an event to
+ *  count. */
+let reportedNotGranted = false;
+
+/** The listeners of the registration that is current on this device. One set
+ *  at a time: the shell makes one on launch and the Preferences button makes
+ *  one when it turns notifications on, and two `registration` listeners would
+ *  save the same token twice. Whichever call comes second replaces the first,
+ *  and the shell's teardown (sign-out) removes whichever is current. */
+let activeListeners: (() => void) | null = null;
+
+function stopPushListeners() {
+  const stop = activeListeners;
+  activeListeners = null;
+  stop?.();
+}
+
 /**
  * Ask for notification permission and register this device for push.
  *
@@ -155,6 +213,8 @@ let registeredPushToken: string | null = null;
  * token has a user to belong to, and never on the sign-in screen of a fresh
  * install. After the first answer iOS never shows the prompt again; later
  * launches only re-register, which is how a rotated token reaches the server.
+ * The "Notifications on this phone" card in Settings → Preferences calls it
+ * too, through turnOnPushNotifications, for a person who wants to answer now.
  *
  * TOKEN REFRESH: APNs can hand out a new token (restore from backup, reinstall,
  * OS update). `register()` runs on every launch and the `registration` event
@@ -162,12 +222,24 @@ let registeredPushToken: string | null = null;
  * launch; the stale row is switched off by the server the first time APNs
  * answers 410 for it.
  *
+ * REPORTED (lib/monitoring/client.ts, off in dev and tests): APNs refusing to
+ * issue a token, and, once per launch, a permission that did not end up
+ * granted. Not the granted path, which is every launch of every phone that
+ * works. Until 2026-10-04 both of those went to console.warn or nowhere, on a
+ * phone, so an owner who never saw the prompt left no trace at all.
+ *
  * Returns a cleanup that removes the listeners.
  */
 export async function registerPushNotifications(
   onToken: (token: string) => void,
 ): Promise<() => void> {
-  if (!isNative()) return () => {};
+  return (await registerPush(onToken)).cleanup;
+}
+
+async function registerPush(
+  onToken: (token: string) => void,
+): Promise<{ permission: PushPermission | null; cleanup: () => void }> {
+  if (!isNative()) return { permission: null, cleanup: () => {} };
 
   // ── ANDROID WITHOUT A FIREBASE CONFIG CRASHES, IT DOES NOT DEGRADE ──────
   //
@@ -187,23 +259,47 @@ export async function registerPushNotifications(
   // google-services.json into android/app/ and this switches back on at the next
   // build with no code change here. iOS is untouched -- it reaches APNs without
   // Firebase, where a missing key means push quietly does not arrive.
-  if (platform() === "android" && !FCM_CONFIGURED) {
+  if (pushCannotInitialise()) {
     console.warn(
       "[push] android/app/google-services.json is absent, so FCM cannot initialise. " +
         "Skipping push registration: calling it would crash the app, not fail softly.",
     );
-    return () => {};
+    return { permission: "unavailable", cleanup: () => {} };
   }
 
   const { PushNotifications } = await import("@capacitor/push-notifications");
   // Check first and only ASK while asking is still possible. After a denial
   // requestPermissions() is a silent no-op on iOS; the way back is Settings.
-  let perm = await PushNotifications.checkPermissions();
-  if (perm.receive === "prompt" || perm.receive === "prompt-with-rationale") {
-    perm = await PushNotifications.requestPermissions();
+  const before = (await PushNotifications.checkPermissions()).receive;
+  let after = before;
+  if (before === "prompt" || before === "prompt-with-rationale") {
+    after = (await PushNotifications.requestPermissions()).receive;
   }
-  if (perm.receive !== "granted") return () => {};
+  const permission = permissionFrom(after);
+  if (permission !== "granted") {
+    // Which of the two it was is the whole question when a phone has no row
+    // in push_subscriptions: `asked` is "the prompt was shown and the answer
+    // was no", `not_asked` is "iOS had an answer before this launch and the
+    // prompt could not appear". Warning, not error: a person saying no is the
+    // product working, and it should be countable, not alarming.
+    if (!reportedNotGranted) {
+      reportedNotGranted = true;
+      const { reportClientIssue } = await import("@/lib/monitoring/client");
+      reportClientIssue(
+        "Push permission not granted",
+        {
+          area: "native_push",
+          step: "permission",
+          push_permission: after,
+          push_prompt: permissionFrom(before) === "prompt" ? "asked" : "not_asked",
+        },
+        "warning",
+      );
+    }
+    return { permission, cleanup: () => {} };
+  }
 
+  stopPushListeners();
   // Listeners BEFORE register(), not after. On iOS register() resolves at
   // once and the token arrives later through AppDelegate, and the plugin does
   // not retain a `registration` event for a listener that is not there yet —
@@ -214,9 +310,24 @@ export async function registerPushNotifications(
   });
   const onError = await PushNotifications.addListener("registrationError", (e) => {
     // Most often: the build is not signed with the aps-environment
-    // entitlement (see docs/ios-build.md › Push notifications).
+    // entitlement (see docs/ios-build.md › Push notifications). That one
+    // reads "no valid 'aps-environment' entitlement string found for
+    // application", and it is the message that says which link is broken,
+    // so it is sent as written; the scrubber in policy.ts runs over it first.
     console.warn("[push] registration failed", e.error);
+    void import("@/lib/monitoring/client").then(({ reportClientIssue }) =>
+      reportClientIssue(
+        `Push registration failed: ${e.error}`,
+        { area: "native_push", step: "registration_error" },
+        "error",
+      ),
+    );
   });
+  const remove = () => {
+    void onRegistration.remove();
+    void onError.remove();
+  };
+  activeListeners = remove;
   if (platform() === "android") {
     // Before register(), so the channel exists before the first message can.
     // AndroidManifest.xml names this id as FCM's default channel; without it
@@ -231,10 +342,76 @@ export async function registerPushNotifications(
     }
   }
   await PushNotifications.register();
-  return () => {
-    void onRegistration.remove();
-    void onError.remove();
-  };
+  return { permission, cleanup: stopPushListeners };
+}
+
+/**
+ * Turn notifications on for this device: ask if asking is still possible,
+ * register, and save the token to the signed-in user. The ONE path both
+ * callers take — the signed-in shell on every launch, and the "Notifications
+ * on this phone" button in Settings → Preferences — so a token reaches
+ * push_subscriptions the same way whichever of them got it.
+ *
+ * `isCancelled` is the shell's: a token that arrives after the shell has
+ * unmounted (sign-out mid-registration) belongs to nobody and is not saved.
+ *
+ * Returns where permission ended up (null on web) and the cleanup. The
+ * Preferences button ignores the cleanup on purpose: the token may arrive
+ * after the person has left the page, and the shell's own teardown removes
+ * the listeners on sign-out.
+ */
+export async function turnOnPushNotifications(
+  opts: { isCancelled?: () => boolean } = {},
+): Promise<{ permission: PushPermission | null; cleanup: () => void }> {
+  return registerPush(async (token) => {
+    if (opts.isCancelled?.()) return;
+    try {
+      const { subscribeStaffNativePush } = await import("@/lib/push.functions");
+      await subscribeStaffNativePush({
+        data: {
+          token,
+          platform: platform() === "ios" ? "ios" : "android",
+          userAgent: navigator.userAgent,
+        },
+      });
+    } catch (e) {
+      // The token was minted and the server would not keep it: the exact
+      // shape of "push_subscriptions has no row for this phone", so it is
+      // reported rather than left on a console nobody can read.
+      console.warn("native push register failed", e);
+      const { reportClientError } = await import("@/lib/monitoring/client");
+      reportClientError(e, { area: "native_push", step: "save_token" });
+    }
+  });
+}
+
+/**
+ * Open this app's own page in iOS Settings, where Notifications is a switch.
+ *
+ * `app-settings:` is the value of UIApplication.openSettingsURLString. Nothing
+ * in this app calls UIApplication directly; it does not need to. Capacitor's
+ * WKWebView navigation handler (node_modules/@capacitor/ios/Capacitor/
+ * Capacitor/WebViewDelegationHandler.swift, decidePolicyFor navigationAction)
+ * hands every top-level navigation that is not the app's own origin and not in
+ * allowNavigation to `UIApplication.shared.open(navURL)` and cancels it in the
+ * WebView. `app-settings:` has no host and is not capacitor://localhost, so it
+ * goes to the system, which opens Settings › HoundStack. No plugin in this
+ * build overrides shouldOverrideLoad to intercept it first.
+ *
+ * iOS only. Android's Bridge.launchIntent would build an ACTION_VIEW intent for
+ * a scheme no activity handles, so the Android card says where to go in words
+ * instead. Returns whether it tried.
+ */
+export function openAppNotificationSettings(): boolean {
+  if (!isNative() || platform() !== "ios") return false;
+  window.location.href = "app-settings:";
+  return true;
+}
+
+/** For tests: forget that this launch already reported a refusal. */
+export function resetPushReportingForTests() {
+  reportedNotGranted = false;
+  activeListeners = null;
 }
 
 /**

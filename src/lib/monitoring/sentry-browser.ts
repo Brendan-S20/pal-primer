@@ -80,6 +80,50 @@ export function captureBoundary(error: unknown, boundary: string): void {
   });
 }
 
+/** A fault a caller caught on purpose and decided to report. The original is
+ *  kept as `cause`, which Sentry's default linked-errors integration sends as
+ *  the chained exception with its own stack. Wrapped rather than sent as-is
+ *  because isExpectedError judges a plain Error by its message, and a native
+ *  plugin's rejection ("PushNotifications plugin is not implemented on ios")
+ *  reads like a sentence and would be dropped as a deliberate refusal. The
+ *  catch site already knows it is a fault; this class is how it says so. */
+class ReportedClientError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "ReportedClientError";
+  }
+}
+
+function originalMessage(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
+
+export function captureClientError(error: unknown, tags: Record<string, string>): void {
+  const where = Object.values(tags).join(" / ");
+  Sentry.withScope((scope) => {
+    for (const [k, v] of Object.entries(tags)) scope.setTag(k, v);
+    Sentry.captureException(new ReportedClientError(`${where}: ${originalMessage(error)}`, error));
+  });
+}
+
+export function captureClientIssue(
+  message: string,
+  tags: Record<string, string>,
+  level: "error" | "warning" | "info",
+): void {
+  Sentry.withScope((scope) => {
+    for (const [k, v] of Object.entries(tags)) scope.setTag(k, v);
+    scope.setLevel(level);
+    Sentry.captureMessage(message);
+  });
+}
+
 export function captureTest(): void {
   Sentry.withScope((scope) => {
     scope.setTag("test_event", "yes");
