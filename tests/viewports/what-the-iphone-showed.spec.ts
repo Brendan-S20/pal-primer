@@ -15,8 +15,8 @@
  *     wide as its words;
  *   - the Fix a time entry dialog's inputs stay inside the dialog and do not
  *     sit on each other;
- *   - a full-height sheet pads by the safe-area insets (asserted in the CSS,
- *     because Chromium's insets are 0 — see that test);
+ *   - a full-height sheet pads by the safe-area insets (asserted in the CSS;
+ *     the dialogs below measure positions with the insets emulated);
  *   - the station form's actions clear the tab bar once scrolled to;
  *   - a capped dialog (Add expense, Book a one-off visit) starts below the
  *     status bar and ends above the home indicator, measured with the real
@@ -235,9 +235,10 @@ for (const size of SIZES) {
     });
 
     test("Edit service opens a sheet that pads by the safe-area insets", async ({ page }) => {
-      // Chromium reports every safe-area inset as 0, and the hosted build does
-      // not opt into viewport-fit=cover, so the real inset can only be seen on
-      // a device. What CAN be proved here is that the rules are in the CSS
+      // Written when Chromium's insets were believed to be always 0. They are
+      // 0 by default but can be emulated (see DIALOGS, WITH THE INSETS
+      // ACTUALLY ON, below), which is how the dialogs are measured. This test
+      // still proves only that the rules are in the CSS
       // and apply to the sheet that opened: its padding-top and the close
       // button's top both reference env(safe-area-inset-top), and its padding
       // bottom references env(safe-area-inset-bottom).
@@ -385,7 +386,7 @@ for (const size of SIZES) {
 
 // ── DIALOGS, WITH THE INSETS ACTUALLY ON ───────────────────────────────────
 //
-// The sheet test above can only read the rules, because it believes
+// The sheet test above reads the rules only; it was written believing
 // Chromium's insets are always 0. They are 0 by default, but the DevTools
 // protocol can set them (`Emulation.setSafeAreaInsetsOverride`), and env()
 // then resolves to the override whatever the viewport meta says. So the
