@@ -204,10 +204,7 @@ const SheetContent = React.forwardRef<
           Clear of the status bar on every sheet that reaches the top of the
           screen (see the note on sheetVariants); a bottom sheet's top edge is
           nowhere near it, so it keeps its 0.5rem. */}
-        <SheetPrimitive.Close
-          ref={closeRef}
-          className="absolute end-2 top-[calc(0.5rem+env(safe-area-inset-top))] group-data-[side=bottom]/sheet:top-2 flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary"
-        >
+        <SheetPrimitive.Close className="absolute end-2 top-[calc(0.5rem+env(safe-area-inset-top))] group-data-[side=bottom]/sheet:top-2 flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary" ref={closeRef}>
           <X className="h-4 w-4 shrink-0" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>
