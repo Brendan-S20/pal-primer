@@ -196,7 +196,7 @@ that row off. That is expected — to test a cable build, temporarily set
    auth, which this app does not use.) Xcode Cloud's automatic signing
    regenerates the profile with the entitlement on the next build; nothing to
    do in Xcode.
-4. **Merge this branch, let Xcode Cloud build, install that TestFlight build**
+4. **Let Xcode Cloud build from `main` (#322 merged 2026-10-03), install that TestFlight build**
    (the push code is in the binary: an older build has no AppDelegate forward
    and cannot receive anything).
 5. **Test on the phone.** Open the app, sign in, tap **Allow** on the
@@ -263,6 +263,39 @@ then executing the command Xcode Cloud itself runs:
 xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
   → Resolved source packages: CapacitorCamera, CapacitorPushNotifications, …
 ```
+
+### Capacitor 8 and a plugin that is still on 7
+
+`@capacitor-community/apple-sign-in` 7.1.0 is the newest release and there is
+no Capacitor 8 one. Its `Package.swift` asks for capacitor-swift-pm
+`from: "7.0.0"` (7.0.0..<8.0.0), `ios/App/CapApp-SPM/Package.swift` pins
+`exact: "8.4.1"`, and Swift Package Manager gives up before anything compiles:
+
+```
+Failed to resolve dependencies Dependencies could not be resolved because
+'apple-sign-in' depends on 'capacitor-swift-pm' 7.0.0..<8.0.0 and
+'status-bar' depends on 'capacitor-swift-pm' 8.0.0..<9.0.0.
+```
+
+`package.json`'s `postinstall` runs `scripts/patch-native-plugins.mjs`, which
+rewrites that one range to `from: "8.0.0"` in `node_modules`. The plugin's
+Swift needed nothing else — every Capacitor API it calls is still declared,
+un-deprecated, in 8.4.1. `npm ci` in `ci_post_clone.sh` runs it, so Xcode Cloud
+gets it with no setting; never install with lifecycle scripts switched off.
+Android is unaffected: the plugin's Android half is a Java stub that only
+builds against `:capacitor-android`, and Apple sign-in is iOS-only in
+`src/lib/native-oauth.ts`.
+
+The script is idempotent and **fails the install** if the line it expects is
+gone and the file does not already accept 8.x — so a plugin upgrade cannot undo
+it silently. It fails only where an iOS build depends on it (a Mac, Xcode Cloud,
+GitHub Actions); on any other install, which includes Lovable's web build, it
+prints the same error and carries on, because the web bundle never reads the
+file. If that happens: check the new `Package.swift` resolves against
+CapApp-SPM, then update or delete the entry in the script. When a Capacitor 8
+release of the plugin ships, the script reports "already accepts Capacitor 8"
+and the entry can go. `tests/a-plugin-still-on-capacitor-7-stopped-every-ios-build.test.ts`
+pins all of this against the original 7.1.0 file.
 
 ### The workflow's Test action has nothing to test, and never will
 

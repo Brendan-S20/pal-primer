@@ -6,7 +6,48 @@ that is not mine to make. Nothing in here can be done from the repo.
 Ordered by what blocks the most. Last measured 2026-09-09 against `main`
 (`2799691`), except item 11, added 2026-09-11 against `5ec7654`. The 2026-08-26 pass against `76410a0` is what most of the DONE
 entries below rest on; item 2 was re-measured on 2026-08-30, and item 6, item 7
-and item 9 on 2026-09-09.
+and item 9 on 2026-09-09. **Items 7, 11, 11b, 12 and 13 were re-checked on
+2026-10-04 against `a47e2a52`** and production, read-only.
+
+## What is still open, in one list (2026-10-04)
+
+The sections below keep the history of each item; this is the list to work
+from. Each line says where the detail is.
+
+1. **Add the `BACKUP_PASSPHRASE` GitHub secret, then run the Backup workflow
+   once by hand.** The nightly encrypted backup and the Sunday restore drill
+   (#319) cannot run without it. Checked 2026-10-04: the repository has two
+   Actions secrets (`STRIPE_SECRET_KEY`, `SUPABASE_DB_URL`) and the workflow
+   has never run. `docs/backups-and-restore.md` › Owner steps.
+2. **iOS push: tick Push Notifications on App ID
+   `consulting.thenorth.houndstack`, then install the next TestFlight build
+   and test on a phone.** The code shipped in #322 and the five `APNS_*`
+   secrets are set; no device has registered in production yet
+   (`push_subscriptions` is empty). `docs/ios-build.md` › Push notifications ›
+   Owner checklist, steps 3–5.
+3. **Sentry: one test error after the next publish**, from
+   /platform/health on the web and in the iOS app, and the two recommended
+   project settings. `OPS_RUNBOOK.md` §8. **And add it to the App Privacy
+   answers (item 4):** Sentry reports from inside the iOS binary, so App
+   Store Connect needs **Diagnostics › Crash Data** (and Other Diagnostic
+   Data), *linked to the user* (events carry the user id and org id, never a
+   name, email or IP), *not used for tracking*, purpose App Functionality.
+   The answers given before #323 do not include it. Play's equivalent is in
+   `docs/play-store-submission.md` §3.
+4. **Decide where routing and geocoding run** (item 11). Still the public OSRM
+   demo server and public Nominatim unless `OSRM_URL` and `GEOCODIO_API_KEY`
+   are set in Lovable, which nothing here can read.
+5. **The `Mac0s` runner** (item 12): still 16 GB, swap 83% used on
+   2026-10-04, Supabase CLI still v2.78.1 against v2.119.0.
+6. **Check the Google map once in the iOS app, and confirm the budget alert**
+   (item 13).
+7. **Diarise the Sign in with Apple secret expiry** (item 1), parked
+   deliberately.
+8. **Drop `backup.demo_geo_20260830`** when you are happy with the Detroit
+   demo (item 7). It is still there on 2026-10-04.
+9. The App Store pre-submit list: `docs/app-store-submission.md` §5.
+10. The person-only QA items: `docs/owner-qa-checklist.md` — chiefly one real
+    Stripe charge and an install on a physical handset.
 
 ---
 
@@ -73,7 +114,11 @@ exactly ONE target and it is of type `application`. The UITests are a separate
 project, `ios/UITests/UITests.xcodeproj`, so the App workspace has no test
 bundle to run. If a Test action is ever added back, it will fail the same way.
 
-## 4. App Privacy questionnaire — DONE
+## 4. App Privacy questionnaire — DONE, one addition open
+
+Answered before error monitoring shipped. Since #323 the app sends crash
+reports to Sentry, so **Diagnostics › Crash Data** needs adding; see item 3 in
+the open list above.
 
 ## 5. Category — DECIDED: Productivity
 
@@ -137,7 +182,13 @@ own pin as before, and the areas shrank 2.6% — which is
 latitude, and therefore evidence the translation was clean rather than a
 reshape.
 
-**A second thing the relocation missed, found 2026-09-08 and still open.** The
+**RESOLVED by 2026-10-04.** Read from production that day: `Demo Pet Waste Co`
+has one zone, `Main`, whose ZIP list is metro-Detroit 480xx–483xx and which
+holds all 110 of its properties, and each franchise location has two Detroit
+zones of its own. The seed that Reseed runs writes Detroit too since #320
+(20261004010000). The paragraph below is what was true on 2026-09-08.
+
+**A second thing the relocation missed, found 2026-09-08.** The
 zones did not move. `Demo Pet Waste Co` has two: `Downtown Core`, matching on
 ZIPs 10001, 10002 and 10003, and `Westside Suburb`, matching on 10023 and 10024
 plus a polygon over Manhattan. Every one of the 110 active properties is now in
@@ -160,7 +211,7 @@ is done in a minute.
 House numbers are synthetic and street names are real to those suburbs, so the
 addresses read correctly without being anyone's home. The previous values are
 in `backup.demo_geo_20260830` (130 properties, 10 staff); drop that table once
-you are happy.
+you are happy. (Still present on 2026-10-04.)
 
 Still open, and both still need you:
 
@@ -217,7 +268,7 @@ value at a time.
       So this one is a judgement, not a measurement. Say 2 and it matches
       everything else in one statement.
 
-## 8. Facebook sign-in — IN REVIEW at Meta
+## 8. Facebook sign-in — LIVE
 
 Live and verified from our side. One thing is still not checkable from here:
 
@@ -469,7 +520,17 @@ mine is that it adds an unattended Stripe API call per organization per night,
 every night, forever. That is an operating cost and a rate-limit surface, and it
 should be chosen rather than arrive in a commit.
 
-## 11. Decide where the routing engine runs — NEW to this list
+## 11. Decide where the routing engine runs — still open
+
+**What changed by 2026-10-04, none of which decides it.** The planner's search
+moved out of Postgres into `src/lib/route-solver.ts` (#298); the app now skips
+OSRM when every leg is cached and fresh, paces the public demo 1.1 s apart,
+counts every measuring run in `road_leg_runs`, and shows a Routing health card
+on /platform/overview. Geocodio is wired: setting `GEOCODIO_API_KEY` switches
+every server-side geocode to it. Whether `OSRM_URL` or `GEOCODIO_API_KEY` is set
+in production is a Lovable secret this repo cannot read, and `road_leg_runs`
+held no rows on 2026-10-04, so the health card has nothing to say yet. The two
+decisions below are still yours.
 
 Not blocking submission. It is here because the dispatch path currently depends
 on somebody else's demo server, and that is a decision rather than an oversight.
@@ -585,7 +646,14 @@ spread against an effect of 3-6%, so the number was reporting which stop
 happened to sort first. Fixed by trying every start; the figures above are from
 after that.
 
-## 11b. The Auth server's connection cap — NEW, and it is a launch item
+## 11b. The Auth server's connection cap — DONE
+
+- [x] **Switched by the owner to percentage-based allocation.** Evidence: the
+      Supabase performance advisor run on 2026-10-04 no longer reports the
+      Auth connection finding (its only findings are unindexed foreign keys,
+      unused indexes and the backup table's missing primary key).
+
+What follows is the 2026-09-16 finding, kept for why it mattered.
 
 Found on 2026-09-16 by running Supabase's PERFORMANCE advisor, which had never
 been run against this project. Recorded nowhere before now.
@@ -602,7 +670,7 @@ ones do, and the trap in that sentence is the expensive one: paying for a bigger
 instance and getting no more Auth throughput, because the allocation is absolute
 rather than proportional.
 
-- [ ] Switch Auth to percentage-based connection allocation in the Supabase
+- [x] Switch Auth to percentage-based connection allocation in the Supabase
       dashboard, before the first real sign-in load rather than after.
 
 **The security advisor was re-run at the same time and nothing regressed** — the
@@ -815,7 +883,8 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
             is the honest fix and overlaps with the runner-shape question below;
             or more RAM, since 16 GB does not fit Docker plus an emulator plus a
             browser sweep plus a desktop.
-- [ ] Update the Supabase CLI on the runner, v2.78.1 against v2.117.0. It was
+- [ ] Update the Supabase CLI on the runner, v2.78.1 against v2.117.0
+      (v2.119.0 by 2026-10-04; still v2.78.1 on the runner that day). It was
       listed here as "the most likely fix for (4)", the container-restart race.
       **It was not**, and that should be recorded before somebody updates it and
       believes the update fixed something. (4) was a PORT COLLISION: another
@@ -829,7 +898,13 @@ Supabase CLI on the runner is v2.78.1 against v2.117.0 current.
       swap; a second HOST is a different proposal and belongs with the decision
       immediately above, not here.
 
-## 13. Google draws the maps — the key's settings in Google Cloud — NEW
+## 13. Google draws the maps — the key's settings in Google Cloud — DONE, one check left
+
+**The owner reports the browser key set up** (restrictions, key source). That
+is a Google Cloud and Lovable setting this repo cannot read, so the boxes
+below are ticked on the owner's word rather than on a measurement. What is
+still open is the iOS check at the end of this section, which needs the real
+key on a real build.
 
 Every map now draws through the Google Maps JavaScript API (src/lib/maps/).
 With no key, or a key Google refuses, each map falls back to the old
@@ -840,11 +915,11 @@ the thing you moved off, so the browser console line to look for is
 On the BROWSER key (the one restricted to the Maps JavaScript API — not the
 Places/server key):
 
-- [ ] **API restriction:** Maps JavaScript API only. Nothing else is called
+- [x] **API restriction:** Maps JavaScript API only. Nothing else is called
       from the browser. Maps Embed, Maps Static and Map Tiles are NOT needed
       (no surface is a single pin with no overlay, so nothing qualifies for the
       free Embed API).
-- [ ] **Application restriction → Websites**, these entries exactly:
+- [x] **Application restriction → Websites**, these entries exactly:
       - `https://app.houndstack.com/*` (the only web host; `www.app` has
         not resolved since 2026-08-10, see src/lib/app-origin.ts)
       - `https://localhost/*` — the Android app (Capacitor serves the bundle
@@ -854,10 +929,10 @@ Places/server key):
         `https://id-preview--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app/*`.
         Do NOT add `https://*.lovable.app/*`: that lets every Lovable app on
         the internet spend your quota.
-- [ ] **No Map ID is needed.** Pins are HTML overlays, not Advanced Markers.
-- [ ] **A budget alert** on the billing account (say $10/month). Not a quota
+- [x] **No Map ID is needed.** Pins are HTML overlays, not Advanced Markers.
+- [ ] **A budget alert** on the billing account (not confirmed either way) (say $10/month). Not a quota
       that would stop maps for your users — an email if something is wrong.
-- [ ] **Where the key comes from.** Either is enough, and the app tries both:
+- [x] **Where the key comes from.** Either is enough, and the app tries both:
       the Lovable Google Maps connector's
       `VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY` (inlined at build), or a
       runtime secret named `GOOGLE_MAPS_BROWSER_KEY` (read by
@@ -888,10 +963,10 @@ Listed so they stop taking up room.
 | Google sign-in | **live on the web**, verified against a real Google sign-in page |
 | Account deletion (5.1.1(v)) | **live in production**, `authenticated`/`service_role` only |
 | Auto-routing | **fixed and verified in production** — 21 stops split 8 / 7 / 6 |
-| Routing panel | reduced to who / which days / Apply |
+| Routing panel | reduced to who / which days / Apply, plus a one-run arrival-window override since #298 |
 | Frequency repricing + visit-debit bounds | applied to production |
-| Migration drift | in sync — 302 files, 276 applied, 201 functions declared |
-| Deploy | `main` is live; `latest_commit_sha` matches |
+| Migration drift | checked by `check-migrations` and `check-schema-declared` in CI. The 2026-08-26 figure was 302 files and 276 ledger rows; on 2026-10-04 it is 373 files and 348 rows. The two counts are not expected to match, because early history was applied under other names (MASTER_BRIEF §4) and MCP-applied files are recorded under the MCP's own timestamp |
+| Deploy | `main` reaches production when someone presses Publish in Lovable; merging alone does not ship (see the end of this file) |
 
 ---
 

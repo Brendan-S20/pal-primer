@@ -1,5 +1,12 @@
 # BYOK Integrations Plan — Stripe & Twilio (per-tenant)
 
+> **Superseded, kept for history (note added 2026-10-04).** Bring-your-own-key
+> was retired in IMP-9 (see `docs/MASTER_BRIEF.md`): tenants no longer paste
+> AI or Twilio keys, `org_ai_credentials` was dropped, and texting is planned
+> as per-tenant Twilio subaccounts HoundStack provisions (BUILD-3). Stripe
+> Connect Express, described below, is the part that stands. Current secrets
+> and failure modes are in `OPS_RUNBOOK.md`.
+
 **Status:** 🔧 Both items BUILT (July 10, 2026) — #59 Twilio and #58 Stripe Connect shipped to the branch; live end-to-end verification (real OAuth connect, real charge, real SMS) still needs the platform Connect app + Twilio numbers provisioned by Brendan. Decisions locked below; open questions still flagged for the live cutover.
 
 **Implemented:**

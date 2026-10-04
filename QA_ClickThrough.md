@@ -1,5 +1,11 @@
 # HoundStack QA Click-Through
 
+> **Superseded, kept for history (note added 2026-10-04).** This July script
+> predates the retirement of bring-your-own-key AI (there is no tenant API key
+> to test any more) and the removal of AI dispatch. What still needs a person
+> is in `docs/owner-qa-checklist.md`, which also names the `tests/e2e/` spec
+> that now covers each item a machine can prove.
+
 Base URL: **https://app.houndstack.com**
 
 This script covers the items that need a real browser + real credentials to

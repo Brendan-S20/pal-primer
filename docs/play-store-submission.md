@@ -230,7 +230,7 @@ purpose **App functionality** unless stated.
 | Financial info | User payment info | Optional | Card entry goes to **Stripe** (service provider); the app keeps brand and last four only |
 | Messages | Other in-app messages | Optional | Conversations between a business and its clients in the inbox |
 | Photos and videos | Photos | Optional | Visit and DNA-sample photos |
-| App info and performance | Diagnostics | Optional | Server logs for reliability and security; no crash-reporting SDK is in the binary |
+| App info and performance | Crash logs, Diagnostics | Required | Error reports to **Sentry** (service provider, `src/lib/monitoring/`) from the app and the server: the error, the screen's path, device and OS. Tied to the account's user id and org id only; never a name, email, IP, cookies, screen recording or performance tracing. Plus server logs for reliability and security |
 | Device or other IDs | Device or other IDs | Optional | The FCM push token, for notifications only |
 
 Do **not** declare: contacts, calendar, SMS or email on the device, web

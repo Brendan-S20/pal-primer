@@ -1,5 +1,11 @@
 # HoundStack QA Punch List — Claude Code Track
 
+> **Historical (note added 2026-10-04).** This is the July 2026 QA punch list.
+> Its findings were worked through and tracked in `docs/MASTER_BRIEF.md`'s
+> status ledger; model names and the AI items here describe that time, not the
+> product today (AI is now only the receptionist and marketing posts, both
+> coming soon). Current owner actions: `docs/owner-actions-before-submission.md`.
+
 **Generated:** July 8, 2026 &nbsp;|&nbsp; **Last updated:** July 10, 2026 (post-migration retouch) &nbsp;|&nbsp; **Items in this file:** 38 of 57 total findings &nbsp;|&nbsp; **Source:** Consolidated Master QA Report (HoundStack_QA_Findings_Consolidated_Master.docx)
 
 ## How to use this file
