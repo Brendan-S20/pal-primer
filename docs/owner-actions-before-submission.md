@@ -14,26 +14,23 @@ and item 9 on 2026-09-09. **Items 7, 11, 11b, 12 and 13 were re-checked on
 The sections below keep the history of each item; this is the list to work
 from. Each line says where the detail is.
 
-1. **Add the `BACKUP_PASSPHRASE` GitHub secret, then run the Backup workflow
-   once by hand.** The nightly encrypted backup and the Sunday restore drill
-   (#319) cannot run without it. Checked 2026-10-04: the repository has two
-   Actions secrets (`STRIPE_SECRET_KEY`, `SUPABASE_DB_URL`) and the workflow
-   has never run. `docs/backups-and-restore.md` › Owner steps.
-2. **iOS push: tick Push Notifications on App ID
-   `consulting.thenorth.houndstack`, then install the next TestFlight build
-   and test on a phone.** The code shipped in #322 and the five `APNS_*`
-   secrets are set; no device has registered in production yet
-   (`push_subscriptions` is empty). `docs/ios-build.md` › Push notifications ›
-   Owner checklist, steps 3–5.
-3. **Sentry: one test error after the next publish**, from
-   /platform/health on the web and in the iOS app, and the two recommended
-   project settings. `OPS_RUNBOOK.md` §8. **And add it to the App Privacy
-   answers (item 4):** Sentry reports from inside the iOS binary, so App
-   Store Connect needs **Diagnostics › Crash Data** (and Other Diagnostic
-   Data), *linked to the user* (events carry the user id and org id, never a
-   name, email or IP), *not used for tracking*, purpose App Functionality.
-   The answers given before #323 do not include it. Play's equivalent is in
-   `docs/play-store-submission.md` §3.
+1. ~~**Backups.**~~ **DONE 2026-10-04.** `BACKUP_PASSPHRASE` is set; run
+   37213954144 made an encrypted backup (140 tables, 47,799 rows) and the
+   drill restored it into an empty database: 140 of 140 tables with exactly
+   the backed-up rows, all 232 foreign keys intact, 6 cron jobs restored and
+   switched off. The first run's drill had failed on the email queue tables
+   (#328). Nightly from here; the drill repeats every Sunday.
+2. **iOS push: one test from a BUSINESS account.** Push Notifications is
+   ticked on the App ID and a build with push is on the owner's phone. The
+   owner's own login is a platform admin with no organization, so the app
+   opens the platform console, which does not register for push (nothing
+   sends a platform admin one). Sign in on the phone as a business account
+   (the demo owner works), allow notifications, and trigger one: a
+   `push_subscriptions` row and a banner on the phone are the pass.
+3. ~~**Sentry.**~~ **DONE 2026-10-04.** Published; test errors arrived from
+   the iOS app (HOUNDSTACK-1) and the server (HOUNDSTACK-2), with no name,
+   email or IP. Crash Data is declared in App Privacy. Errors from the
+   platform console now carry the admin's user id too (#329).
 4. **Decide where routing and geocoding run** (item 11). Still the public OSRM
    demo server and public Nominatim unless `OSRM_URL` and `GEOCODIO_API_KEY`
    are set in Lovable, which nothing here can read.
