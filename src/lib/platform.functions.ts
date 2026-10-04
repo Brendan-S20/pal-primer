@@ -20,7 +20,10 @@ export const getPlatformContext = createServerFn({ method: "GET" })
       _user_id: context.userId,
     });
     if (error) throw new Error(error.message);
-    return { isPlatformAdmin: !!data };
+    // userId so the console can name its own error reports (by id only);
+    // a platform admin with no org never passes through the _authenticated
+    // layout, which is where every other page sets that.
+    return { isPlatformAdmin: !!data, userId: context.userId };
   });
 
 const updatePlanSchema = z.object({
