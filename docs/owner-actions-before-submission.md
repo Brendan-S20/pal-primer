@@ -20,13 +20,12 @@ from. Each line says where the detail is.
    the backed-up rows, all 232 foreign keys intact, 6 cron jobs restored and
    switched off. The first run's drill had failed on the email queue tables
    (#328). Nightly from here; the drill repeats every Sunday.
-2. **iOS push: one test from a BUSINESS account.** Push Notifications is
-   ticked on the App ID and a build with push is on the owner's phone. The
-   owner's own login is a platform admin with no organization, so the app
-   opens the platform console, which does not register for push (nothing
-   sends a platform admin one). Sign in on the phone as a business account
-   (the demo owner works), allow notifications, and trigger one: a
-   `push_subscriptions` row and a banner on the phone are the pass.
+2. ~~**iOS push.**~~ **DONE 2026-10-04.** The owner's iPhone registered at
+   17:30 UTC on a business account and a test notification arrived. Two gaps
+   found on the way: a platform-admin login never registers (correct: nothing
+   pushes to one), and the app had no way to ask again. Preferences now has
+   "Notifications on this phone" (ask, open iOS Settings, send a test to your
+   own devices), and push failures report to Sentry (#331).
 3. ~~**Sentry.**~~ **DONE 2026-10-04.** Published; test errors arrived from
    the iOS app (HOUNDSTACK-1) and the server (HOUNDSTACK-2), with no name,
    email or IP. Crash Data is declared in App Privacy. Errors from the
