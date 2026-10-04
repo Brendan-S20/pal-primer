@@ -66,10 +66,14 @@ const codeOnly = (src: string) =>
 
 const panel = () => codeOnly(read("src/components/routes/AutoRoutingPanel.tsx"));
 const fns = () => codeOnly(read("src/lib/visits.functions.ts"));
+// CHANGED 2026-10-04: auto-routing became a background run and left
+// visits.functions.ts. applyOptimize, the server function, is gone (an
+// export with no caller is a live endpoint); the work it did is
+// runAutoRouting in auto-routing.server.ts, which is what these read now.
 const applyBlock = () => {
-  const src = fns();
-  const at = src.indexOf("export const applyOptimize");
-  expect(at, "applyOptimize is gone").toBeGreaterThan(-1);
+  const src = codeOnly(read("src/lib/auto-routing.server.ts"));
+  const at = src.indexOf("export async function runAutoRouting");
+  expect(at, "runAutoRouting is gone").toBeGreaterThan(-1);
   return src.slice(at);
 };
 
@@ -130,15 +134,29 @@ describe("the measurement survived the step", () => {
   // nothing for it to disagree with. These pin that the facts still arrive.
   const plan = () => codeOnly(read("src/lib/route-plan.server.ts"));
 
-  it("applyOptimize reads, solves and writes each day, in that order", () => {
+  // CHANGED 2026-10-04: still read, solve, write, in that order -- but the
+  // write is once per RUN, after every day is solved, in one transaction
+  // (apply_route_plans), so a run cut off part-way has written nothing.
+  it("the run reads and solves each day, then writes them all, in that order", () => {
     const p = plan();
     const readAt = p.indexOf('rpc("route_day_inputs"');
     const solvedAt = p.indexOf("planDay(");
-    const wroteAt = p.indexOf('rpc("apply_route_plan"');
+    const wroteAt = p.indexOf('rpc("apply_route_plans"');
     expect(readAt).toBeGreaterThan(-1);
     expect(readAt).toBeLessThan(solvedAt);
     expect(solvedAt).toBeLessThan(wroteAt);
-    expect(applyBlock()).toMatch(/await planAndApplyDay\(/);
+    const apply = applyBlock();
+    expect(apply).toMatch(/await planDayRoutes\(/);
+    const loopAt = apply.indexOf("for (const day of days)");
+    const planAt = apply.indexOf("await planDayRoutes(");
+    const writeAt = apply.indexOf("await applyRoutePlans(");
+    expect(loopAt).toBeGreaterThan(-1);
+    expect(loopAt).toBeLessThan(planAt);
+    expect(planAt).toBeLessThan(writeAt);
+    // Exactly one write, and it is outside the day loop: the loop's body
+    // ends (its `continue` and `solved++`) before the write is reached.
+    expect(apply.match(/applyRoutePlans\(/g)).toHaveLength(1);
+    expect(apply.slice(planAt, writeAt)).toMatch(/solved\+\+;\s*\}\s*\}/);
   });
 
   it("the read writes nothing that outlives the call", () => {
@@ -189,7 +207,7 @@ describe("both refusals still reach the person who pressed the button", () => {
     // Unchanged by any of this, and asserted here anyway: the skipped days are
     // the other half of "refusals are surfaced, not swallowed", and the two
     // now arrive through the same toast handler.
-    expect(fns()).toMatch(/skipped\.push\(/);
+    expect(applyBlock()).toMatch(/skipped\.push\(/);
     expect(panel()).toMatch(/r\.skipped\.slice\(0, 3\)/);
   });
 });

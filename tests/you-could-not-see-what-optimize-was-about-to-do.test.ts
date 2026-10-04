@@ -278,7 +278,8 @@ describe("it refuses to invent a saving", () => {
     // rather than a dry run, and route_day_inputs carries route_cost_current's
     // `sequenced` for each technician's day as it was. The fence is the same:
     // a technician-day with no order before the run adds nothing to the saving.
-    const fn = readFileSync(join(import.meta.dirname, "..", "src/lib/visits.functions.ts"), "utf8");
+    // CHANGED 2026-10-04: the run moved to auto-routing.server.ts.
+    const fn = readFileSync(join(import.meta.dirname, "..", "src/lib/auto-routing.server.ts"), "utf8");
     expect(fn).toMatch(/if \(b\?\.sequenced\) \{\s*techDaysMeasured\+\+;\s*savedMin \+= b\.minutes - r\.travel_min;/);
     const plan = readFileSync(join(import.meta.dirname, "..", "src/lib/route-plan.server.ts"), "utf8");
     expect(plan).toMatch(/sequenced: Boolean\(t\.current_sequenced\)/);
@@ -331,7 +332,7 @@ describe("the guards still apply, and refusals are visible", () => {
   });
 
   it("a skipped day is reported, not swallowed", () => {
-    const fn = readFileSync(join(import.meta.dirname, "..", "src/lib/visits.functions.ts"), "utf8");
+    const fn = readFileSync(join(import.meta.dirname, "..", "src/lib/auto-routing.server.ts"), "utf8");
     expect(fn).toMatch(/skipped\.push\(/);
     const ui = readFileSync(
       join(import.meta.dirname, "..", "src/components/routes/AutoRoutingPanel.tsx"),
