@@ -165,3 +165,61 @@ export const unsubscribeStaffNativePush = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+
+// ── "Send me a test notification" ──────────────────────────────────────────
+
+/** One test per person per this long. In memory, per server instance, which
+ *  is all it needs to be: it stops a thumb on the button from queueing a
+ *  dozen pushes, not a determined caller, who can only ever reach their own
+ *  phone anyway. */
+export const TEST_PUSH_INTERVAL_MS = 30_000;
+const lastTestPushAt = new Map<string, number>();
+
+/** For tests. */
+export function resetTestPushLimitForTests() {
+  lastTestPushAt.clear();
+}
+
+/**
+ * Send a test notification to the CALLER's own devices, and say how many
+ * it reached. For the "Notifications on this phone" card in Settings →
+ * Preferences, so a person who just turned notifications on can see one
+ * arrive, and so "0 devices" says the token never reached the server.
+ *
+ * The recipient is `context.userId` and nothing else. There is no user,
+ * device or org in the input to change; the only thing a caller chooses is
+ * the wording, which arrives already translated into the language their
+ * phone reads, and which only they will ever see.
+ */
+export const sendMyselfTestPush = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        title: z.string().trim().min(1).max(80),
+        body: z.string().trim().min(1).max(200),
+      })
+      .strict()
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = context;
+    const now = Date.now();
+    const last = lastTestPushAt.get(userId);
+    if (last !== undefined && now - last < TEST_PUSH_INTERVAL_MS) {
+      return {
+        ok: false as const,
+        reason: "too_soon" as const,
+        retryAfterSeconds: Math.ceil((TEST_PUSH_INTERVAL_MS - (now - last)) / 1000),
+      };
+    }
+    lastTestPushAt.set(userId, now);
+    const { sendPushToUser } = await import("@/lib/push.server");
+    const { sent, failed } = await sendPushToUser(userId, {
+      title: data.title,
+      body: data.body,
+      tag: "test-notification",
+      url: "/settings/preferences",
+    });
+    return { ok: true as const, sent, failed };
+  });

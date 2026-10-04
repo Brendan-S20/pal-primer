@@ -397,6 +397,30 @@ const en = {
     blockedHidden:
       "Hidden. To get alerts, turn notifications on for this app in your browser or phone settings.",
   },
+  nativePush: {
+    title: "Notifications on this phone",
+    description: "Route changes, new jobs and messages, even when the app is closed.",
+    promptBody: "This phone has not been asked yet. Tap the button, then choose Allow.",
+    turnOn: "Turn on notifications",
+    turnedOn: "Notifications are on",
+    turnOnFailed: "Could not turn on notifications",
+    onBody: "Notifications are on for this phone.",
+    sendTest: "Send me a test notification",
+    testTitle: "Test notification",
+    testBody: "If you can read this, notifications work on this phone.",
+    testSent_one: "Sent to {{count}} device. It should arrive in a few seconds.",
+    testSent_other: "Sent to {{count}} devices. It should arrive in a few seconds.",
+    testNone: "No device was reached. Close the app, open it again, and try once more.",
+    testTooSoon_one: "Wait {{count}} second before sending another.",
+    testTooSoon_other: "Wait {{count}} seconds before sending another.",
+    testFailed: "Could not send a test notification",
+    deniedBodyIos:
+      "iOS asks only once, and this phone said no. To turn them on, go to Settings › HoundStack › Notifications.",
+    deniedBodyAndroid:
+      "This phone said no. To turn them on, go to Settings › Apps › HoundStack › Notifications.",
+    openSettings: "Open Settings",
+    unavailable: "Notifications are not available in this version of the app.",
+  },
   nav: {
     primary: "Primary",
     allSections: "All sections",

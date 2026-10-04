@@ -38,6 +38,9 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // stored server-written text and stay as written; the Knowledge Center
   // article behind the "?" is English-only.
   { file: "src/components/settings/ThemeCard.tsx" },
+  // "Notifications on this phone" on Preferences: the native app's only way
+  // to bring up the iOS prompt, or to find the switch after a no.
+  { file: "src/components/settings/NativePushCard.tsx" },
   { file: "src/routes/_authenticated/my-schedule.tsx" },
   { file: "src/routes/_authenticated/waste-log.tsx" },
   { file: "src/routes/_authenticated/notifications.tsx" },

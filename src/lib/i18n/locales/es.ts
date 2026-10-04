@@ -397,6 +397,30 @@ const es: Translations = {
     blockedHidden:
       "Oculto. Para recibir alertas, activa las notificaciones de esta app en la configuración del navegador o del teléfono.",
   },
+  nativePush: {
+    title: "Notificaciones en este teléfono",
+    description: "Cambios de ruta, trabajos nuevos y mensajes, aunque la app esté cerrada.",
+    promptBody: "Este teléfono todavía no ha respondido. Toca el botón y elige Permitir.",
+    turnOn: "Activar notificaciones",
+    turnedOn: "Notificaciones activadas",
+    turnOnFailed: "No se pudieron activar las notificaciones",
+    onBody: "Las notificaciones están activadas en este teléfono.",
+    sendTest: "Enviarme una notificación de prueba",
+    testTitle: "Notificación de prueba",
+    testBody: "Si puedes leer esto, las notificaciones funcionan en este teléfono.",
+    testSent_one: "Enviada a {{count}} dispositivo. Debería llegar en unos segundos.",
+    testSent_other: "Enviada a {{count}} dispositivos. Debería llegar en unos segundos.",
+    testNone: "No llegó a ningún dispositivo. Cierra la app, ábrela de nuevo y vuelve a intentarlo.",
+    testTooSoon_one: "Espera {{count}} segundo antes de enviar otra.",
+    testTooSoon_other: "Espera {{count}} segundos antes de enviar otra.",
+    testFailed: "No se pudo enviar la notificación de prueba",
+    deniedBodyIos:
+      "iOS pregunta una sola vez, y este teléfono dijo que no. Para activarlas, ve a Ajustes › HoundStack › Notificaciones.",
+    deniedBodyAndroid:
+      "Este teléfono dijo que no. Para activarlas, ve a Ajustes › Aplicaciones › HoundStack › Notificaciones.",
+    openSettings: "Abrir Ajustes",
+    unavailable: "Las notificaciones no están disponibles en esta versión de la app.",
+  },
   nav: {
     primary: "Principal",
     allSections: "Todas las secciones",
