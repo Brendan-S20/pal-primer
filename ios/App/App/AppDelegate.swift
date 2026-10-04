@@ -27,6 +27,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        #if DEBUG
+        // A sample route on the lock screen, for a simulator with nobody
+        // signed in. Launch argument only, Debug only: RouteActivityDemo.swift.
+        RouteActivityDemo.startIfAsked()
+        #endif
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
