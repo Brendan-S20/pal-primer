@@ -27,7 +27,8 @@
 # automation run twice, webhooks delivered twice to customers from a database
 # nobody meant to be live. pg_cron only ever sees committed rows, so jobs that
 # commit inactive never run once. Turning them back on is a deliberate step
-# for whoever is cutting over -- `update cron.job set active = true` -- and
+# for whoever is cutting over --
+# `select cron.alter_job(jobid, active := true) from cron.job` -- and
 # only once the old project is no longer running them.
 #
 # ── ERRORS ARE PRINTED WITHOUT CUSTOMER DATA ──────────────────────────────

@@ -244,7 +244,8 @@ in plaintext.
    - The custom domain `api.houndstack.com` → the new project, and the app's
      Lovable secrets (`SUPABASE_URL`, anon and service-role keys).
    - **Last**, once the old project is no longer running them, turn the cron
-     jobs back on: `update cron.job set active = true;`
+     jobs back on: `select cron.alter_job(jobid, active := true) from cron.job;`
+     (`postgres` cannot UPDATE `cron.job` directly on Supabase).
    - Run CI's migrations job against the new project (update the
      `SUPABASE_DB_URL` secret) to confirm the schema matches the repo.
 6. Delete the decrypted `./restore` directory.
@@ -254,6 +255,11 @@ in plaintext.
 For: one organization lost or mangled data; every other tenant must keep
 everything they did since the backup. Do it in a quiet hour, and read it
 through first.
+
+Rehearsed on 2026-10-04 against a database built from `supabase/migrations`
+with two seeded tenants: one tenant's 10 properties and 149 visits deleted,
+then brought back by exactly the steps below, with the other tenant's rows
+untouched and all 232 foreign keys holding.
 
 **1. Bring the backup up locally** (as in (b), `KEEP_STACK=1`). Call that
 database `scratch` (`postgresql://postgres:postgres@127.0.0.1:54722/postgres`).
@@ -298,7 +304,7 @@ select table_name from information_schema.tables t
 If the tenant's **accounts** were deleted too, copy their `auth.users` and
 `auth.identities` rows the same way (join through `public.user_roles`).
 
-**4. Move the staging schema to production**, and only the staging schema:
+**4. Copy the staging schema to production**, and only the staging schema:
 
 ```bash
 pg_dump "<scratch url>" --schema=tenant_restore --no-owner --no-privileges -f tenant_restore.sql
@@ -308,40 +314,56 @@ psql "<production url>" -v ON_ERROR_STOP=1 -f tenant_restore.sql
 **5. Put the rows back, in one transaction, in production.** For each staged
 table, generate an `insert … select` with an explicit column list — the
 columns both sides have, so a migration applied since the backup does not
-break it:
+break it — that skips any row whose primary key production already has. Run
+it in the same psql session as step 6, with `\set org` set again:
 
 ```sql
+\set org '00000000-0000-0000-0000-000000000000'
 begin;
 -- Triggers off for this transaction only: no "visit completed" webhook, no
 -- invoice email, no automation re-run for rows that already happened once.
 set local session_replication_role = replica;
 
 select format(
-  'insert into public.%I (%s) select %s from tenant_restore.%I on conflict (id) do nothing;',
-  s.table_name, cols, cols, s.table_name)
+  'insert into public.%I (%s) overriding system value select %s from tenant_restore.%I s where not exists (select 1 from public.%I p where %s);',
+  s.table_name, s.cols, s.cols, s.table_name, s.table_name, k.pk)
 from (
   select st.table_name,
          string_agg(quote_ident(st.column_name), ', ' order by st.ordinal_position) as cols
     from information_schema.columns st
     join information_schema.columns pr
       on pr.table_schema = 'public' and pr.table_name = st.table_name and pr.column_name = st.column_name
-   where st.table_schema = 'tenant_restore'
+   where st.table_schema = 'tenant_restore' and pr.is_generated = 'NEVER'
    group by st.table_name
 ) s
+join (
+  select c.relname as table_name,
+         string_agg(format('p.%I = s.%I', a.attname, a.attname), ' and ') as pk
+    from pg_index i
+    join pg_class c on c.oid = i.indrelid
+    join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+    join pg_attribute a on a.attrelid = c.oid and a.attnum = any(i.indkey)
+   where i.indisprimary
+   group by c.relname
+) k using (table_name)
 order by 1 \gexec
 ```
 
-`on conflict (id) do nothing` brings back rows that were **deleted** and leaves
-every existing row as it is now. If rows were **changed** rather than deleted
-and you want the backup's values back, use
-`on conflict (id) do update set (<cols>) = row(excluded.<col>, …)` for that
-table instead — which also throws away anything the tenant changed in those
-rows since the backup. Tables whose key is not `id` need their own conflict
-target.
+Why it is shaped like this: the first two versions were run and refused —
+`on conflict (id)` fails on a table whose key is not `id`
+(`ai_usage_periods`), and a bare `on conflict do nothing` is refused by a table
+with a deferrable unique constraint. Keying on each table's own primary key
+avoids both; generated columns are left out because Postgres computes them. (A staged table with no primary key is silently left out by the join;
+every table with `organization_id` had one when this was written.)
 
-Before committing, check nothing points at a missing parent (triggers off
-means foreign keys were not checked), and that the tenant's counts look
-right:
+This brings back rows that were **deleted** and leaves every row that still
+exists exactly as it is now. If rows were **changed** rather than deleted and
+you want the backup's values back, delete the tenant's current rows of that
+table inside the same transaction first, then insert — which also throws away
+anything the tenant changed in those rows since the backup.
+
+**6. Check, then commit.** Triggers off means foreign keys were not checked,
+so check them, and check the tenant's counts:
 
 ```sql
 \i scripts/backup/no-orphans-after-restore.sql
