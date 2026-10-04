@@ -1,6 +1,6 @@
 # Security-advisor triage
 
-**Audited 2026-08-20. Counts re-measured 2026-09-13.** The Supabase security
+**Audited 2026-08-20. Counts re-measured 2026-09-13 and 2026-10-04.** The Supabase security
 advisor returns a hundred-odd findings for this project. One was a real hole and
 is fixed. The rest are the shape this application is built in, and this document
 is why they can be dismissed — so the next person reads a page instead of
@@ -9,12 +9,12 @@ repeating an afternoon.
 The correct way to re-check any section is to re-run the queries it quotes.
 Re-reading the advisor tells you nothing new.
 
-| category | 2026-08-20 | 2026-09-13 | verdict |
-| --- | --- | --- | --- |
-| `authenticated_security_definer_function_executable` | 92 | 90 | by design, **1 was a hole** — fixed 2026-08-20 |
-| `anon_security_definer_function_executable` | 6 | 6 | by design — the deliberate public allowlist |
-| `rls_enabled_no_policy` | 8 | 9 | by design — deny-all, pinned by a test |
-| `extension_in_public` (pg_net) | 1 | 1 | false positive, and the remediation is unavailable |
+| category | 2026-08-20 | 2026-09-13 | 2026-10-04 | verdict |
+| --- | --- | --- | --- | --- |
+| `authenticated_security_definer_function_executable` | 92 | 90 | 109 | by design, **1 was a hole** — fixed 2026-08-20 |
+| `anon_security_definer_function_executable` | 6 | 6 | 6 | by design — the deliberate public allowlist |
+| `rls_enabled_no_policy` | 8 | 9 | 1 | by design — deny-all, pinned by a test; why it fell to 1 is in §4 |
+| `extension_in_public` (pg_net) | 1 | 1 | 1 | false positive, and the remediation is unavailable |
 
 ### The count moves. Do not read a moved count as a finding.
 
@@ -60,6 +60,8 @@ finding whatever the totals say.
 
 `prosrc` and not `pg_get_functiondef`, deliberately — see the migrations rule in
 CLAUDE.md for why the latter raises on a set it has not been narrowed by name.
+
+Run again 2026-10-04: the same six rows, and nothing else.
 
 ---
 
@@ -193,6 +195,17 @@ platform console can see how often the free public router fails us. Written by
 the service role; there is no tenant-side reader, so there is nothing to open
 it for. The advisor count will read 11 once it is applied.
 
+**It did not, and the reason is #302, not a regression.** On 2026-10-04 the
+advisor's `rls_enabled_no_policy` lists one table, and it is none of these
+eleven: `reference.zip_centroids`, the Census ZIP centres from 20261001120000,
+in a schema PostgREST does not expose and readable only through the
+membership-gated `zip_centroids_in_box`. The eleven dropped off the list because
+each now carries exactly one policy, the RESTRICTIVE two-step sign-in policy
+`require_mfa_policy` adds, and the advisor counts a restrictive policy as a
+policy. A restrictive policy can only take access away, so they are still
+deny-all. Checked live the same day: each of the eleven has one policy and zero
+permissive ones. That is the property; the advisor's count is not.
+
 RLS enabled, zero policies — deny-all to `anon` and `authenticated`, evaluated
 after the blanket table grants, so those grants buy nothing.
 `relforcerowsecurity` is false, so the postgres-owned definer functions and the
@@ -244,16 +257,24 @@ production.
 
 ---
 
-## Two things noted during the audit that are owner decisions, not findings
+## Two things noted during the audit, both since settled
 
-- **`post_credit_entry`** gates on `is_org_member` only, while its billing
-  siblings gate on `has_permission(…, 'manage_client_billing')`. So any `tech`
-  can post a credit-ledger adjustment against a client **in their own org**.
-  Same-tenant privilege breadth, not a cross-tenant leak.
-- **`TrialState.restricted`** has no consumer anywhere in `src/`. Enforcement is
-  computed and discarded; `aiAvailableFor` gates on `phase === "paid"` whether
-  the flag is true or false. `TRIAL_ENFORCEMENT` is `true` and pinned by a test,
-  but flipping it today would change no observable behaviour.
+- **`post_credit_entry` — CLOSED.** At the audit it gated on `is_org_member`
+  only, while its billing siblings gated on
+  `has_permission(…, 'manage_client_billing')`, so any `tech` could post a
+  credit-ledger adjustment against a client in their own org. 20260820140000
+  replaced the check with `manage_client_billing`; 20260825070000 put back the
+  one entry a tech legitimately causes (the visit debit their own completion
+  posts, which the first fix had broken), and 20260825190000 pinned that
+  exemption to exactly the subscription price, once per visit. Read from
+  production on 2026-10-04: the live body calls `has_permission(…,
+  'manage_client_billing')`, does not mention `is_org_member`, and is not
+  executable by `anon`.
+- **`TrialState.restricted` — unwired by decision.** It still has no consumer
+  in `src/`, and that is now the settled design rather than an oversight: on
+  2026-08-20 the owner ratified "an expired trial cannot add a new customer"
+  (the `org_can_add_client` trigger) and declined a broader freeze. The
+  reasoning is written up in `src/lib/trial.ts`.
 
 ---
 
@@ -301,6 +322,11 @@ rather than proportional.
 
 It is a project setting in the Supabase dashboard, so it is an owner action. See
 `docs/owner-actions-before-submission.md`.
+
+**Done.** The owner switched Auth to percentage-based allocation, and the
+performance advisor run on 2026-10-04 no longer reports it: its findings that day
+are `unindexed_foreign_keys` (80), `unused_index` (40) and `no_primary_key` (1,
+the same backup table), with no Auth connection finding at all.
 
 ## Re-running these
 
