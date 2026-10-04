@@ -49,8 +49,9 @@ plus a row count of each table.
 |---|---|
 | `roles.sql` | Custom database roles (no passwords; Supabase's own roles are left out because every project has them) |
 | `schema.sql` | Every schema the app owns — `public`, `reference`, anything a migration created — with functions, policies, triggers, grants. Not `auth`/`storage`/`cron`/`vault`: the platform creates those itself |
-| `data.sql` | Every row in every schema the platform does not manage, **including `auth.users` and the rest of `auth`** — logins, password hashes, identities — plus `storage.objects` (file *metadata*), `cron.job`, the email queues and `reference.zip_centroids` |
-| `counts.json` | Rows per table, counted from `data.sql` itself |
+| `data.sql` | Every row in every schema the platform does not manage, **including `auth.users` and the rest of `auth`** — logins, password hashes, identities — plus `storage.buckets`/`storage.objects` (file *metadata*) and `reference.zip_centroids` |
+| `extension-state.sql` | The pg_cron schedule and the email queues, as statements that recreate them. `pg_dump` skips both, because their tables belong to extensions — found by dumping a database built from the migrations and getting neither back. Two of the cron jobs exist in no migration, so this is their only copy. Queue *contents* (emails waiting at 07:30 UTC) are not kept |
+| `counts.json` | Rows per table, counted from `data.sql` itself, plus the number of cron jobs and queues |
 
 **Why auth is in the data and not the schema.** `auth`'s *structure* belongs to
 Supabase and is created by the new project's own auth service; its *rows* are
@@ -80,7 +81,7 @@ pg_cron's run history (`cron.job_run_details`).
 - **App secrets** in Lovable, and anything held by Stripe, Twilio or Resend,
   which keep their own records.
 
-The encrypted archive is a gzip'd tar of those four files, encrypted with
+The encrypted archive is a gzip'd tar of those five files, encrypted with
 OpenPGP (AES-256) under the `BACKUP_PASSPHRASE` secret. Any GnuPG opens it.
 
 The **summary** artifact (`summary.json`) is not encrypted and holds no
@@ -213,7 +214,8 @@ in plaintext.
    ```
    (prompts for the passphrase; or `gpg --decrypt <file> | tar -xzf -`).
 3. Restore — Supabase's documented command, which `restore.sh` wraps, adding
-   only the cron switch-off and data-free error messages:
+   the cron schedule and email queues `pg_dump` leaves out, the cron
+   switch-off, and error messages with no customer data in them:
    ```bash
    scripts/backup/restore.sh ./restore "postgresql://postgres.<new-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres"
    ```
@@ -224,6 +226,7 @@ in plaintext.
      --file restore/schema.sql \
      --command 'SET session_replication_role = replica' \
      --file restore/data.sql \
+     --file restore/extension-state.sql \
      --file scripts/backup/disable-restored-cron-jobs.sql \
      --dbname "<new project connection string>"
    ```
