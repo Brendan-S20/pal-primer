@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { countCopyRows } from "../scripts/backup/copy-row-counts.mjs";
+import { countCopyRows, countExtensionState } from "../scripts/backup/copy-row-counts.mjs";
 import { KEY_TABLES, MUST_NOT_BE_EMPTY } from "../scripts/backup/key-tables.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -141,6 +141,15 @@ describe("the backup is the one Supabase documents, auth included", () => {
   it("leaves pg_net's outbox out, so a restore cannot re-send requests", () => {
     expect(dump).toMatch(/-x "net\.http_request_queue"/);
   });
+
+  it("carries the cron schedule and email queues, which pg_dump skips", () => {
+    // Found by dumping a database built from the migrations: cron.job and the
+    // pgmq queue tables belong to extensions and came back empty-handed.
+    expect(dump).toMatch(/format\('SELECT pgmq\.create\(%L\);', queue_name\) from pgmq\.meta/);
+    expect(dump).toMatch(/format\('SELECT cron\.schedule\(%L, %L, %L\);', jobname, schedule, command\)/);
+    expect(dump).toMatch(/copy-row-counts\.mjs" "\$out\/data\.sql" "\$out\/extension-state\.sql"/);
+    expect(read("scripts/backup/crypt.sh")).toMatch(/roles\.sql schema\.sql data\.sql extension-state\.sql counts\.json/);
+  });
 });
 
 describe("the drill restores and then actually checks", () => {
@@ -168,10 +177,19 @@ describe("the drill restores and then actually checks", () => {
   it("commits every restored cron job inactive, in the same transaction as the data", () => {
     const r = read("scripts/backup/restore.sh");
     const files = [...r.matchAll(/--file "([^"]+)"/g)].map((m) => m[1]);
-    expect(files.at(-1)).toBe("$here/disable-restored-cron-jobs.sql");
-    expect(files.indexOf("$dir/data.sql")).toBe(files.length - 2);
+    // roles, schema, data, then the cron schedule and queues pg_dump skips,
+    // and LAST the switch-off -- after everything that can create a job.
+    expect(files).toEqual([
+      "$dir/roles.sql",
+      "$dir/schema.sql",
+      "$dir/data.sql",
+      "$dir/extension-state.sql",
+      "$here/disable-restored-cron-jobs.sql",
+    ]);
     expect(r).toMatch(/--single-transaction/);
-    expect(read("scripts/backup/disable-restored-cron-jobs.sql")).toMatch(/UPDATE cron\.job SET active = false/);
+    // Through cron.alter_job: on Supabase `postgres` cannot UPDATE cron.job,
+    // which a restore into a local stack proved.
+    expect(read("scripts/backup/disable-restored-cron-jobs.sql")).toMatch(/cron\.alter_job\(j\.jobid, active := false\)/);
   });
 });
 
@@ -215,6 +233,21 @@ describe("counting the rows a dump holds", () => {
       "public.organizations": 0,
       'public.we"ird': 1,
     });
+  });
+
+  it("counts cron jobs and queues by statement, not by line", async () => {
+    const p = write(
+      "ext.sql",
+      [
+        "-- generated",
+        "SELECT pgmq.create('auth_emails');",
+        "SELECT cron.schedule('weekly-digest', '0 13 * * 1', '",
+        "  select net.http_post(url := ''https://example.test'');",
+        "  ');",
+        "SELECT cron.schedule('prune', '30 4 * * 0', 'SELECT 1;');",
+      ].join("\n") + "\n",
+    );
+    expect(await countExtensionState(p)).toEqual({ "cron.job": 2, "pgmq.meta": 1 });
   });
 
   it("refuses a dump cut off inside a COPY block rather than reporting what it read", async () => {
