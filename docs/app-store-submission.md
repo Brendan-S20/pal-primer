@@ -1,7 +1,9 @@
 # App Store submission: HoundStack for iPhone and iPad
 
-Last updated 2026-08-20. **Nothing here has been submitted.** This is a draft
-for the owner to review, edit and submit.
+Last updated 2026-10-04. **This repo records no App Review submission.** Builds
+reach TestFlight through Xcode Cloud (internal and external groups; see
+`docs/owner-actions-before-submission.md` §3). This is a draft for the owner to
+review, edit and submit.
 
 Owner decision (2026-08-20): the iOS app is a **free companion app for
 organizations that already exist**. HoundStack's SaaS subscription stays
@@ -104,9 +106,9 @@ pooper scooper,dog waste,pet waste,field service,route,dispatch,scooper,kennel,y
 ```
 (96 characters.)
 
-**Category**
-- Primary: **Business**
-- Secondary: **Productivity**
+**Category** (set in App Store Connect by the owner, 2026-09-15)
+- Primary: **Productivity**
+- Secondary: **Business**
 
 **Age rating:** 4+
 
@@ -173,6 +175,8 @@ PERMISSIONS
 - Location, when in use only: showing the technician's own position on the
   route map relative to the next stop. It is not shared with clients, not used
   for tracking, and not requested in the background.
+- Notifications: alerts staff to things that need them, such as a customer's
+  text that needs a reply or a gate marked do-not-enter. Never marketing.
 
 OFFLINE
 
@@ -222,7 +226,9 @@ it does
 ## 5. Before you press Submit
 
 ```
-[ ] Apple Developer account active
+[x] Apple Developer account active — evidence, not assumption: the App Store
+      Connect record below exists and Xcode Cloud distributes builds to two
+      TestFlight groups, neither of which an inactive membership allows.
 [x] Bundle ID consulting.thenorth.houndstack registered — confirmed in App
       Store Connect 2026-08-24. App record exists (Apple ID 6804336787, SKU
       consulting.thenorth.houndstack). The record was created THROUGH Xcode
@@ -230,9 +236,15 @@ it does
       Categories were Business / Utilities when this was written on 2026-08-24;
       the owner set them to **Productivity then Business** on 2026-09-15, which
       is what §5 of docs/owner-actions-before-submission.md had been asking for.
-[ ] Push: APNs key created and APNS_* secrets set (done 2026-10-03);
-      Push Notifications ticked on the App ID and a TestFlight build receiving
-      one is the rest (docs/ios-build.md › Push notifications › Owner checklist)
+[x] App Privacy questionnaire (the privacy "nutrition label") answered in App
+      Store Connect by the owner — docs/owner-actions-before-submission.md §4
+[ ] Push: the code shipped in #322 (entitlement, AppDelegate token forwarding,
+      the APNs sender) and the APNs key and five APNS_* secrets are set
+      (2026-10-03). Left for the owner: tick Push Notifications on App ID
+      consulting.thenorth.houndstack, install the first TestFlight build made
+      after #322, and receive one on a phone (docs/ios-build.md › Push
+      notifications › Owner checklist, steps 3–5). No device had registered in
+      production on 2026-10-04.
 [ ] App icon renders correctly at every size in Xcode's asset preview
 [ ] Device QA checklist in docs/ios-build.md worked through on real hardware
 [ ] Billing screen confirmed on a device to show no purchase path
