@@ -366,3 +366,325 @@
   );
   color: var(--brand-foreground);
 }
+
+/*
+ * ── MOTION ────────────────────────────────────────────────────────────────
+ *
+ * One set of durations and curves for everything that moves: page
+ * transitions, sheets, dialogs, toasts, list entrances, the pull-to-refresh
+ * indicator and the press feedback on a button. A component that animates
+ * reads these rather than writing its own number, so "how fast does this app
+ * feel" is a decision made here, once.
+ *
+ *   --motion-duration-instant   90ms   a colour or opacity nudge
+ *   --motion-duration-fast     160ms   crossfades, popovers, tab switches
+ *   --motion-duration-base     220ms   page slides, dialogs, list rise
+ *   --motion-duration-slow     320ms   sheets, toasts, anything that travels
+ *
+ *   --motion-ease-standard   cubic-bezier(0.32, 0.72, 0, 1)
+ *       The iOS sheet curve (vaul uses the same one): fast out of the gate,
+ *       long soft landing. Everything that moves from A to B.
+ *   --motion-ease-out        cubic-bezier(0.16, 1, 0.3, 1)
+ *       Things arriving: list rise, the progress bar, the check.
+ *   --motion-ease-in         cubic-bezier(0.4, 0, 1, 1)
+ *       Things leaving.
+ *   --motion-ease-spring     cubic-bezier(0.34, 1.56, 0.64, 1)
+ *       A small overshoot, for the completion check only.
+ *
+ * Reduced motion is honoured HERE as well as in script: every duration drops
+ * to 1ms (not 0, so animationend still fires and Radix still unmounts), every
+ * distance to nothing, and the press scale to 1. Script that moves things
+ * (count-up, page transitions) asks `prefersReducedMotion()` in
+ * src/lib/motion/reduced-motion.ts and does not start at all.
+ */
+:root {
+  --motion-duration-instant: 90ms;
+  --motion-duration-fast: 160ms;
+  --motion-duration-base: 220ms;
+  --motion-duration-slow: 320ms;
+  --motion-ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --motion-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* List entrance: each row starts this far below where it lands, and each
+     waits one stagger step longer than the row above it, up to eight steps.
+     Past the eighth row everything arrives together, so a 200-row list takes
+     the same quarter of a second as a 9-row one. */
+  --motion-rise: 6px;
+  --motion-stagger: 30ms;
+  --motion-press-scale: 0.97;
+  /* Page transitions. On a wide screen the page only drifts: a 1600px column
+     sliding its own width past a docked sidebar is a lot of motion for a
+     click. Below md, where the page IS the screen, it is the full native
+     push: the new page comes in from the edge and the old one parallaxes
+     away under it. */
+  --motion-page-in: 2rem;
+  --motion-page-out: 1rem;
+  --motion-page-in-opacity: 0;
+  --motion-page-out-opacity: 0;
+  /* +1 left to right, -1 right to left. "Deeper" comes in from the END edge,
+     which is the right in English and the left in Arabic; this is the one
+     place that knows that. lib/i18n puts dir on <html>. */
+  --motion-dir: 1;
+}
+
+:root[dir="rtl"] {
+  --motion-dir: -1;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --motion-page-in: 100%;
+    --motion-page-out: 30%;
+    --motion-page-in-opacity: 1;
+    --motion-page-out-opacity: 0.6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-instant: 1ms;
+    --motion-duration-fast: 1ms;
+    --motion-duration-base: 1ms;
+    --motion-duration-slow: 1ms;
+    --motion-rise: 0px;
+    --motion-stagger: 0ms;
+    --motion-press-scale: 1;
+    --motion-page-in: 0px;
+    --motion-page-out: 0px;
+  }
+
+  /* Everything else, including the animations this file does not own
+     (tw-animate's enter/exit on every Radix layer, spinners, pulses). One
+     iteration of a 1ms animation ends on its last frame, so a skeleton is a
+     still grey block and a spinner is a still glyph. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Toasts. sonner ships its own 400ms on an unnamed curve; it already turns
+   all of it off under reduced motion. `:not([data-swiping])` because sonner
+   sets `transition: none` while a toast follows a finger, and a duration here
+   would make the swipe lag behind the thumb. */
+[data-sonner-toaster] [data-sonner-toast]:not([data-swiping="true"]) {
+  transition-duration: var(--motion-duration-slow);
+  transition-timing-function: var(--motion-ease-standard);
+}
+
+/* ── LIST ENTRANCE ───────────────────────────────────────────────────────
+ *
+ * `motion-list` on a list's container: its children fade and rise into
+ * place the first time each one is inserted. A CSS animation runs on
+ * insertion and never again for the same node, so a refetch that keeps the
+ * same keys does not replay it, and a filter only animates the rows it adds.
+ *
+ * `backwards` fill, so a row waiting for its stagger slot is not drawn at
+ * its final position first and then jump back to start. NOT `both`: a
+ * transform animation that keeps filling after it ends leaves the row with a
+ * transform for good, which makes it the containing block of anything
+ * `fixed` inside it (a stop card's own overlays). Transform and opacity only:
+ * nothing about the row's box changes, so nothing around it moves.
+ *
+ * `animate-fade-in` is the same entrance for a single element. My Day's stop
+ * cards and status banners carried that class from before it was defined.
+ */
+@theme {
+  --animate-fade-in: hs-rise var(--motion-duration-base) var(--motion-ease-out) backwards;
+}
+
+@keyframes hs-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-rise));
+  }
+}
+
+@utility motion-list {
+  & > * {
+    animation: hs-rise var(--motion-duration-base) var(--motion-ease-out) backwards;
+  }
+  & > :nth-child(2) { animation-delay: calc(var(--motion-stagger) * 1); }
+  & > :nth-child(3) { animation-delay: calc(var(--motion-stagger) * 2); }
+  & > :nth-child(4) { animation-delay: calc(var(--motion-stagger) * 3); }
+  & > :nth-child(5) { animation-delay: calc(var(--motion-stagger) * 4); }
+  & > :nth-child(6) { animation-delay: calc(var(--motion-stagger) * 5); }
+  & > :nth-child(7) { animation-delay: calc(var(--motion-stagger) * 6); }
+  & > :nth-child(8) { animation-delay: calc(var(--motion-stagger) * 7); }
+  & > :nth-child(n + 9) { animation-delay: calc(var(--motion-stagger) * 8); }
+}
+
+/* ── PAGE TRANSITIONS (View Transitions API) ─────────────────────────────
+ *
+ * src/lib/motion/page-transitions.ts decides the direction of a navigation
+ * and writes it to <html data-nav-dir="forward|back|tab|none"> before the
+ * router starts the transition. Everything visual is here.
+ *
+ * The names are only given WHILE a transition is running. A
+ * view-transition-name makes its element a stacking context, and <main>
+ * holding one permanently would trap every z-indexed thing inside a page
+ * (My Day's sticky bar, a map's controls) below the tab bar for good. So the
+ * page, the shell header and the tab bar are named under a live
+ * data-nav-dir and are ordinary elements the rest of the time.
+ *
+ * The header and the tab bar are named so they do NOT move: they are their
+ * own groups with no animation, and the page slides underneath them.
+ */
+html[data-nav-dir="forward"] [data-vt="page"],
+html[data-nav-dir="back"] [data-vt="page"],
+html[data-nav-dir="tab"] [data-vt="page"] {
+  view-transition-name: hs-page;
+}
+html[data-nav-dir="forward"] [data-vt="header"],
+html[data-nav-dir="back"] [data-vt="header"],
+html[data-nav-dir="tab"] [data-vt="header"] {
+  view-transition-name: hs-header;
+}
+html[data-nav-dir="forward"] [data-vt="tabbar"],
+html[data-nav-dir="back"] [data-vt="tabbar"],
+html[data-nav-dir="tab"] [data-vt="tabbar"] {
+  view-transition-name: hs-tabbar;
+}
+
+::view-transition-group(*) {
+  animation-duration: var(--motion-duration-base);
+  animation-timing-function: var(--motion-ease-standard);
+}
+
+/* Whatever is not the page (a public page, the portal, the sidebar's active
+   item) crossfades, quickly. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--motion-duration-fast);
+  animation-timing-function: var(--motion-ease-standard);
+}
+
+/* Chrome that stays put: the new picture shows at once (it is the same
+   picture, bar the highlighted tab) and the old one is not drawn at all. */
+::view-transition-old(hs-header),
+::view-transition-old(hs-tabbar) {
+  display: none;
+}
+::view-transition-new(hs-header),
+::view-transition-new(hs-tabbar) {
+  animation: none;
+}
+
+/* A page snapshot is transparent wherever the page draws nothing, and a
+   full-width push needs the incoming page to cover the outgoing one. */
+::view-transition-old(hs-page),
+::view-transition-new(hs-page) {
+  background-color: var(--color-background);
+  animation-duration: var(--motion-duration-base);
+  animation-timing-function: var(--motion-ease-standard);
+  animation-fill-mode: both;
+}
+
+@keyframes hs-page-in-from-end {
+  from {
+    transform: translateX(calc(var(--motion-dir) * var(--motion-page-in)));
+    opacity: var(--motion-page-in-opacity);
+  }
+}
+@keyframes hs-page-out-to-start {
+  to {
+    transform: translateX(calc(var(--motion-dir) * -1 * var(--motion-page-out)));
+    opacity: var(--motion-page-out-opacity);
+  }
+}
+@keyframes hs-page-in-from-start {
+  from {
+    transform: translateX(calc(var(--motion-dir) * -1 * var(--motion-page-out)));
+    opacity: var(--motion-page-out-opacity);
+  }
+}
+@keyframes hs-page-out-to-end {
+  to {
+    transform: translateX(calc(var(--motion-dir) * var(--motion-page-in)));
+    opacity: var(--motion-page-in-opacity);
+  }
+}
+@keyframes hs-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes hs-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Deeper: the new page arrives from the end edge, over the old one. */
+html[data-nav-dir="forward"]::view-transition-old(hs-page) {
+  animation-name: hs-page-out-to-start;
+}
+html[data-nav-dir="forward"]::view-transition-new(hs-page) {
+  animation-name: hs-page-in-from-end;
+}
+/* Back: the page you are leaving slides off to the end edge, on top, and
+   the one you are returning to was waiting underneath. */
+html[data-nav-dir="back"]::view-transition-old(hs-page) {
+  animation-name: hs-page-out-to-end;
+  z-index: 1;
+}
+html[data-nav-dir="back"]::view-transition-new(hs-page) {
+  animation-name: hs-page-in-from-start;
+}
+/* Sideways between tabs: no direction to imply, so a crossfade. */
+html[data-nav-dir="tab"]::view-transition-old(hs-page) {
+  animation-name: hs-fade-out;
+  animation-duration: var(--motion-duration-fast);
+}
+html[data-nav-dir="tab"]::view-transition-new(hs-page) {
+  animation-name: hs-fade-in;
+  animation-duration: var(--motion-duration-fast);
+}
+/* No transition wanted (reduced motion, the browser already animated a
+   swipe-back, a same-page update) but the browser has no view-transition
+   types, so the router started one anyway: make it instant. */
+html[data-nav-dir="none"]::view-transition-group(*),
+html[data-nav-dir="none"]::view-transition-old(*),
+html[data-nav-dir="none"]::view-transition-new(*) {
+  animation: none;
+}
+
+/* ── ROUTE PROGRESS ──────────────────────────────────────────────────────
+ *
+ * The thin bar along the top while a navigation is slow (RouteProgress.tsx).
+ * It creeps toward 90% and never claims to know how long is left; it jumps
+ * to 100% and fades only when the router says the page is ready.
+ */
+@keyframes hs-progress-creep {
+  from {
+    transform: scaleX(0.08);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
+.hs-progress-bar {
+  transform-origin: left;
+}
+:root[dir="rtl"] .hs-progress-bar {
+  transform-origin: right;
+}
+/* Eight seconds to creep most of the way: long enough that it is still
+   moving on a slow connection, and it never reaches the end on its own. */
+.hs-progress-running {
+  animation: hs-progress-creep 8s var(--motion-ease-out) forwards;
+}
+.hs-progress-done {
+  transform: scaleX(1);
+  opacity: 0;
+  transition:
+    transform var(--motion-duration-base) var(--motion-ease-out),
+    opacity var(--motion-duration-slow) var(--motion-ease-in) var(--motion-duration-fast);
+}

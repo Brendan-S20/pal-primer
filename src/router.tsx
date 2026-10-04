@@ -3,6 +3,9 @@ import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { RouteError, RouteNotFound } from "./components/RouteError";
+import { RoutePending } from "./components/PageSkeletons";
+import { installPageTransitions, pageViewTransition } from "./lib/motion/page-transitions";
+import { PENDING_MIN_VISIBLE_MS, PENDING_SHOW_AFTER_MS } from "./lib/motion/pending";
 import {
   isImpersonationExpiredError,
   notifyImpersonationExpired,
@@ -98,7 +101,28 @@ export const getRouter = () => {
     defaultPreloadStaleTime: 0,
     defaultErrorComponent: RouteError,
     defaultNotFoundComponent: RouteNotFound,
+    // ── PAGE TRANSITIONS ────────────────────────────────────────────────
+    //
+    // Every navigation goes through document.startViewTransition where the
+    // browser has it (Chrome; Safari and WKWebView from 18), and the
+    // direction (deeper, back, sideways between tabs, or not at all) is
+    // decided in src/lib/motion. Where it does not exist the router skips it
+    // and navigation is exactly what it was.
+    defaultViewTransition: pageViewTransition,
+    // ── WHAT A SLOW NAVIGATION SHOWS ────────────────────────────────────
+    //
+    // A route that has not finished loading (its code, its beforeLoad) after
+    // 300ms shows a skeleton of a page in its place, held for at least 400ms
+    // so it cannot flash; RouteProgress in __root.tsx draws the bar along the
+    // top on the same two numbers. Below 300ms nothing is drawn at all. The
+    // router's own defaults were 1000 and 500, which left a second of a dead
+    // tap before anything acknowledged it.
+    defaultPendingMs: PENDING_SHOW_AFTER_MS,
+    defaultPendingMinMs: PENDING_MIN_VISIBLE_MS,
+    defaultPendingComponent: RoutePending,
   });
+
+  if (typeof window !== "undefined") installPageTransitions(router);
 
   return router;
 };

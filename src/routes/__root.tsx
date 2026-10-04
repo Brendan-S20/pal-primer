@@ -15,6 +15,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { initClientMonitoring, reportBoundaryError } from "../lib/monitoring/client";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
+import { RouteProgress } from "../components/motion/RouteProgress";
 import "../lib/i18n";
 import { appOrigin, appUrl } from "@/lib/app-origin";
 import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
@@ -230,18 +231,53 @@ function RootComponent() {
   // after it, so by the time this fires there is real UI underneath the splash.
   // Hiding on mount alone would swap the splash for an unpainted frame, which
   // is the white gap this exists to remove, just shorter.
+  //
+  // ── AND NOT UNTIL THE FIRST ROUTE HAS RESOLVED ─────────────────────────
+  //
+  // The root painting is not the app painting. A signed-in launch lands on a
+  // page under _authenticated, whose beforeLoad (session, second step,
+  // organisation) runs after the root mounts; until it settles the outlet
+  // had nothing to draw, so the splash came down onto an empty frame. So this
+  // waits for the router to go idle, and only then for the paint. The shell
+  // now has a skeleton for that window too (ShellPending), so a launch that
+  // is slow to resolve is still not white: after SPLASH_CEILING_MS the splash
+  // lifts onto the skeleton rather than sitting on the logo for the config's
+  // 20-second backstop.
+  const router = useRouter();
   useEffect(() => {
     let cancelled = false;
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        import("../lib/native").then((m) => m.hideSplashScreen()).catch(() => {});
+    let raf = 0;
+    let unsubscribe: (() => void) | undefined;
+    const hide = () => {
+      if (cancelled) return;
+      cancelled = true;
+      unsubscribe?.();
+      clearTimeout(ceiling);
+      raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(() => {
+          import("../lib/native").then((m) => m.hideSplashScreen()).catch(() => {});
+        });
       });
-    });
+    };
+    const SPLASH_CEILING_MS = 6000;
+    const ceiling = setTimeout(hide, SPLASH_CEILING_MS);
+    if (router.state.status === "idle") hide();
+    else unsubscribe = router.subscribe("onResolved", hide);
     return () => {
       cancelled = true;
+      unsubscribe?.();
+      clearTimeout(ceiling);
       cancelAnimationFrame(raf);
     };
+  }, [router]);
+
+  // iOS only applies `:active` styles on a page that listens for touches.
+  // One passive no-op listener is the whole of the pressed state on every
+  // button in the app (ui/button.tsx, `active:scale-…`).
+  useEffect(() => {
+    const noop = () => {};
+    document.addEventListener("touchstart", noop, { passive: true });
+    return () => document.removeEventListener("touchstart", noop);
   }, []);
 
   // Android hardware back button (native shell only — web no-op): close the
@@ -253,7 +289,6 @@ function RootComponent() {
   // Android App Links in the same effect, for the same reason: a tapped
   // https://app.houndstack.com/<staff page> link arrives here whether or not
   // anyone is signed in, and the _authenticated guard takes it from there.
-  const router = useRouter();
   useEffect(() => {
     let removed = false;
     const removers: Array<() => void> = [];
@@ -275,6 +310,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <RouteProgress />
       <ImpersonationBanner />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />

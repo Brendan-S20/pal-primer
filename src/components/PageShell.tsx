@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 /**
  * THE ONE COLUMN every signed-in page is laid out in.
@@ -107,6 +107,12 @@ const COLUMN: Record<PageWidth, string> = {
   wide: "w-full space-y-6",
 };
 
+/** True inside PageShell. Lets a component that can render either inside the
+ *  column or before the shell exists (the router's pending skeleton) put the
+ *  gutter on itself only when nothing else has. */
+const InPageShell = createContext(false);
+export const useInPageShell = () => useContext(InPageShell);
+
 export function PageShell({
   width = "standard",
   children,
@@ -115,9 +121,12 @@ export function PageShell({
   children: ReactNode;
 }) {
   return (
-    <div className={`min-w-0 pt-4 sm:pt-5 ${PAGE_GUTTER_X}`}>
+    // data-vt="page": the region that slides during a page transition (see
+    // the PAGE TRANSITIONS block in styles.css). The column, not <main>, so
+    // the page moves and the shell's own padding and banners do not.
+    <div data-vt="page" className={`min-w-0 pt-4 sm:pt-5 ${PAGE_GUTTER_X}`}>
       <div data-page-shell={width} className={COLUMN[width]}>
-        {children}
+        <InPageShell.Provider value={true}>{children}</InPageShell.Provider>
       </div>
     </div>
   );
