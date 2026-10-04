@@ -67,7 +67,7 @@ Import from `@/lib/native` — every helper no-ops on web, uses the plugin nativ
 
 1. iOS: done in the repo (entitlement + AppDelegate forwards); the server sends to APNs directly with the `.p8` key — no Firebase. See `docs/ios-build.md` › Push notifications.
 2. Android: drop `google-services.json` into `android/app/`.
-3. Wire tokens to the existing `push_subscriptions` table via `registerPushNotifications`.
+3. Tokens: done. `registerPushNotifications` runs from the signed-in shell (`src/routes/_authenticated/route.tsx`) and saves to `push_subscriptions`. Android still needs step 2 (no `google-services.json` in the repo as of 2026-10-04).
 
 ## Permissions to declare
 
