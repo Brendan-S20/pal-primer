@@ -29,8 +29,7 @@ const NAME = "Jane Customer";
 
 /** A JWT-shaped bearer token whose payload carries an email beside `sub`. */
 function bearerFor(sub: string): string {
-  const b64 = (o: unknown) =>
-    Buffer.from(JSON.stringify(o)).toString("base64url");
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
   return `Bearer ${b64({ alg: "HS256" })}.${b64({ sub, email: EMAIL, name: NAME })}.c2lnbmF0dXJl`;
 }
 
@@ -63,7 +62,11 @@ describe("which builds report, and where to", () => {
   it("the dev server sends nothing unless a DSN is set on purpose", () => {
     expect(resolveDsn({ explicit: undefined, prod: false, mode: "development" })).toBe("");
     expect(
-      resolveDsn({ explicit: "https://k@example.ingest.sentry.io/1", prod: false, mode: "development" }),
+      resolveDsn({
+        explicit: "https://k@example.ingest.sentry.io/1",
+        prod: false,
+        mode: "development",
+      }),
     ).toBe("https://k@example.ingest.sentry.io/1");
   });
 
@@ -222,12 +225,31 @@ describe("a production browser build", () => {
           query_string: "token=abc",
         },
         exception: {
-          values: [{ type: "TypeError", value: `Cannot read x of ${EMAIL}`, stacktrace: { frames: [{ vars: { password: "p" }, filename: "https://app.houndstack.com/pay/i/PAYTOKEN/x.js?v=1" }] } }],
+          values: [
+            {
+              type: "TypeError",
+              value: `Cannot read x of ${EMAIL}`,
+              stacktrace: {
+                frames: [
+                  {
+                    vars: { password: "p" },
+                    filename: "https://app.houndstack.com/pay/i/PAYTOKEN/x.js?v=1",
+                  },
+                ],
+              },
+            },
+          ],
         },
         breadcrumbs: [
           { category: "ui.click", message: `button[aria-label="Call ${NAME}"]` },
-          { category: "fetch", data: { url: "https://app.houndstack.com/q/QUOTETOKEN?x=1", method: "GET" } },
-          { category: "navigation", data: { from: "/track/TRACKTOKEN", to: "/invite/INVITETOKEN" } },
+          {
+            category: "fetch",
+            data: { url: "https://app.houndstack.com/q/QUOTETOKEN?x=1", method: "GET" },
+          },
+          {
+            category: "navigation",
+            data: { from: "/track/TRACKTOKEN", to: "/invite/INVITETOKEN" },
+          },
         ],
         extra: { email: EMAIL, name: NAME, note: `call ${EMAIL}` },
       },
@@ -235,7 +257,20 @@ describe("a production browser build", () => {
     );
 
     const s = JSON.stringify(event);
-    for (const secret of [EMAIL, NAME, "tok_SECRET123", "PAYTOKEN", "QUOTETOKEN", "TRACKTOKEN", "INVITETOKEN", "hs_portal_x", "session=abc", "gate 1234", "203.0.113.9", '"p"']) {
+    for (const secret of [
+      EMAIL,
+      NAME,
+      "tok_SECRET123",
+      "PAYTOKEN",
+      "QUOTETOKEN",
+      "TRACKTOKEN",
+      "INVITETOKEN",
+      "hs_portal_x",
+      "session=abc",
+      "gate 1234",
+      "203.0.113.9",
+      '"p"',
+    ]) {
       expect(s).not.toContain(secret);
     }
     expect(event.user).toEqual({ id: "user-1" });
@@ -367,7 +402,10 @@ describe("a production server", () => {
     // Stripe's handler reports its exception itself; the 500 is then not
     // reported a second time.
     const stripe = new Request("https://app.houndstack.com/api/public/hooks/stripe");
-    await server.reportServerError(new Error("Invoice not found"), { request: stripe, force: true });
+    await server.reportServerError(new Error("Invoice not found"), {
+      request: stripe,
+      force: true,
+    });
     await server.reportFailedHookResponse(stripe, new Response("Handler error", { status: 500 }));
     expect(calls).toHaveLength(2);
 
@@ -401,7 +439,10 @@ describe("scrubUrl", () => {
     ["/invite/abc", "/invite/[token]"],
     ["/api/public/calendar/feed.ics", "/api/public/calendar/[token]"],
     ["/auth#access_token=eyJabc&refresh_token=x", "/auth"],
-    ["/clients/123e4567-e89b-12d3-a456-426614174000", "/clients/123e4567-e89b-12d3-a456-426614174000"],
+    [
+      "/clients/123e4567-e89b-12d3-a456-426614174000",
+      "/clients/123e4567-e89b-12d3-a456-426614174000",
+    ],
     ["/api/public/invoice-pdf?token=abc", "/api/public/invoice-pdf"],
   ])("%s", (input, expected) => {
     expect(scrubUrl(input)).toBe(expected);
@@ -420,7 +461,10 @@ describe("scrubUrl", () => {
     walk(routes);
     expect(files.length).toBeGreaterThan(5);
     for (const f of files) {
-      const rel = relative(routes, f).split(/[\\/]/).join("/").replace(/\.(tsx?|ts)$/, "");
+      const rel = relative(routes, f)
+        .split(/[\\/]/)
+        .join("/")
+        .replace(/\.(tsx?|ts)$/, "");
       const path =
         "/" +
         rel
@@ -440,7 +484,16 @@ describe("scrubText", () => {
         `token Bearer abc.def.ghi jwt eyJhbGciOi.eyJzdWIiOi.sig key sk_live_abcdefgh123 ` +
         `link https://app.houndstack.com/pay/i/PAYTOKEN?x=1`,
     );
-    for (const s of [EMAIL, "123-4567", "15551234567", "5551234567", "abc.def.ghi", "eyJhbGciOi", "sk_live_abcdefgh123", "PAYTOKEN"]) {
+    for (const s of [
+      EMAIL,
+      "123-4567",
+      "15551234567",
+      "5551234567",
+      "abc.def.ghi",
+      "eyJhbGciOi",
+      "sk_live_abcdefgh123",
+      "PAYTOKEN",
+    ]) {
       expect(out).not.toContain(s);
     }
   });
@@ -454,7 +507,9 @@ describe("scrubText", () => {
 
 describe("scrubEvent", () => {
   it("keeps the user's id and drops every other user field", () => {
-    const e = scrubEvent({ user: { id: "u", email: EMAIL, username: NAME, name: NAME, ip_address: "1.2.3.4" } });
+    const e = scrubEvent({
+      user: { id: "u", email: EMAIL, username: NAME, name: NAME, ip_address: "1.2.3.4" },
+    });
     expect(e.user).toEqual({ id: "u" });
   });
 
@@ -487,8 +542,16 @@ describe("isExpectedError", () => {
     ["plan gate", named("PlanUpgradeRequiredError")],
     ["impersonation", named("ImpersonationExpiredError")],
     ["refund", named("RefundRefused")],
-    ["portal", Object.assign(new Error("PORTAL_VERIFICATION_REQUIRED"), { code: "PORTAL_VERIFICATION_REQUIRED" })],
-    ["card declined", Object.assign(new Error("Your card was declined."), { type: "StripeCardError" })],
+    [
+      "portal",
+      Object.assign(new Error("PORTAL_VERIFICATION_REQUIRED"), {
+        code: "PORTAL_VERIFICATION_REQUIRED",
+      }),
+    ],
+    [
+      "card declined",
+      Object.assign(new Error("Your card was declined."), { type: "StripeCardError" }),
+    ],
     ["redirect", new Response(null, { status: 307 })],
     ["notFound()", { isNotFound: true }],
     ["HTTP 404", Object.assign(new Error("x"), { statusCode: 404 })],
@@ -512,7 +575,7 @@ describe("isExpectedError", () => {
     ["missing key", named("MissingEncryptionKeyError", "CREDENTIAL_ENCRYPTION_KEY is not set")],
     ["HTTP 500", Object.assign(new Error("x"), { statusCode: 500 })],
     ["a thrown string", "boom"],
-    ["a PostgREST error object", { message: "relation \"x\" does not exist", code: "42P01" }],
+    ["a PostgREST error object", { message: 'relation "x" does not exist', code: "42P01" }],
   ])("reported: %s", (_label, err) => {
     expect(isExpectedError(err)).toBe(false);
   });
@@ -550,7 +613,9 @@ describe("the only door out", () => {
   it("no session replay or tracing integration is configured anywhere", () => {
     const browser = readFileSync(join(ROOT, "src/lib/monitoring/sentry-browser.ts"), "utf8");
     const code = browser.replace(/\/\/.*$/gm, "");
-    expect(code).not.toMatch(/replayIntegration|browserTracingIntegration|replaysSessionSampleRate/);
+    expect(code).not.toMatch(
+      /replayIntegration|browserTracingIntegration|replaysSessionSampleRate/,
+    );
     expect(code).toMatch(/tracesSampleRate:\s*0\b/);
   });
 });
@@ -558,5 +623,8 @@ describe("the only door out", () => {
 beforeEach(() => {
   // Belt and braces: whatever a test forgets, nothing in this file reaches
   // the network. A test that needs fetch stubs its own.
-  vi.stubGlobal("fetch", vi.fn(async () => new Response("{}")));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("{}")),
+  );
 });

@@ -204,7 +204,9 @@ export function buildServerEvent(
     tags: { platform: "server", runtime: runtimeTag(), ...(ctx.tags ?? {}) },
     ...(ctx.extra ? { extra: ctx.extra } : {}),
     ...(userId ? { user: { id: userId } } : {}),
-    ...(request ? { request: { ...(url ? { url: url.toString() } : {}), method: request.method } } : {}),
+    ...(request
+      ? { request: { ...(url ? { url: url.toString() } : {}), method: request.method } }
+      : {}),
     ...(values.length ? { exception: { values } } : {}),
     ...(input.message ? { message: input.message } : {}),
     ...(url ? { transaction: `${request?.method ?? "GET"} ${url.pathname}` } : {}),

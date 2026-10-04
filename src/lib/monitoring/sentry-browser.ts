@@ -84,7 +84,9 @@ export function captureTest(): void {
   Sentry.withScope((scope) => {
     scope.setTag("test_event", "yes");
     Sentry.captureException(
-      new MonitoringTestError("HoundStack client test error, sent on purpose from /platform/health"),
+      new MonitoringTestError(
+        "HoundStack client test error, sent on purpose from /platform/health",
+      ),
     );
   });
 }
