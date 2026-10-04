@@ -52,9 +52,23 @@ const buttonVariants = cva(
         // filter ("All", 39pt) and several icon-only buttons. The height floor
         // was added and the width one was not, so a short label or a bare glyph
         // produced a target that was legal in one axis and not the other.
-        sm: "h-8 rounded-md px-3 text-xs touch:min-h-11 touch:min-w-11",
+        //
+        // ── AND WHY THE WIDTH FLOOR CARRIES `touch:shrink-0` ─────────────────
+        //
+        // A flex item's `min-width` is `auto`, which means "no narrower than my
+        // content". `min-w-11` REPLACES that with 44px. So on touch every sm
+        // button beside a long description became free to shrink to 44px, and
+        // its nowrap label ran out through its own border: "Add card" on the
+        // client billing tab, "Add item" on Inventory clipped by the screen
+        // edge, both on the owner's iPhone (2026-10-04). On a mouse the same
+        // rows were fine, because there the automatic minimum still applied.
+        // `shrink-0` puts the floor back: a button's label never wraps, so
+        // there is nothing a button gains by shrinking, and the description
+        // beside it wraps instead. tests/a-width-floor-is-not-a-shrink-floor
+        // holds every other touch width floor in src/ to the same rule.
+        sm: "h-8 rounded-md px-3 text-xs touch:min-h-11 touch:min-w-11 touch:shrink-0",
         lg: "h-10 rounded-md px-8 touch:min-h-11",
-        icon: "h-9 w-9 touch:min-h-11 touch:min-w-11",
+        icon: "h-9 w-9 touch:min-h-11 touch:min-w-11 touch:shrink-0",
       },
     },
     defaultVariants: {

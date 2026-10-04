@@ -31,6 +31,7 @@ import {
   findControlsOffTheSide,
   findSilentlyClippedText,
   findControlsUnder44px,
+  findControlsNarrowerThanTheirLabel,
 } from "./rules";
 
 const TABS = [
@@ -93,6 +94,13 @@ for (const width of WIDTHS) {
 
         expect(await findControlsOffTheSide(page), `${name} @${width}: off the side`).toEqual([]);
         expect(await findSilentlyClippedText(page), `${name} @${width}: clipped`).toEqual([]);
+        // Added 2026-10-04: this sweep opened Billing at 360px and passed while
+        // "Add card" drew its label out through its own border. On screen and
+        // not clipped, so none of the rules above could fail on it.
+        expect(
+          await findControlsNarrowerThanTheirLabel(page),
+          `${name} @${width}: a button narrower than its label`,
+        ).toEqual([]);
         if (width < 768) {
           expect(await findControlsUnder44px(page), `${name} @${width}: under 44px`).toEqual([]);
         }

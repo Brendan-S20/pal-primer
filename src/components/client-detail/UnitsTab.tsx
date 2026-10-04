@@ -2,7 +2,7 @@
 // per-unit dogs (PooPrints-style DNA registration status), and offending
 // incidents. Incidents can carry a one-off charge which bills through the
 // add-on charge RPC so it lands on the client's next invoice.
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
@@ -16,6 +16,8 @@ import { DateField } from "@/components/fields";
 import { EmptyState, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { formatDay } from "@/lib/format";
+import { focusFirstInvalid, looksLikeEmail } from "@/lib/form-errors";
+import { isValidEntityName, isValidLabel } from "@/lib/dna-linkage";
 import { usePermissions } from "@/hooks/useMyRole";
 import { Switch } from "@/components/ui/switch";
 import { listDogsForClient } from "@/lib/clients.functions";
@@ -544,7 +546,18 @@ function UnitDogsSection({
     setName("");
     setBreed("");
     setDna("not_registered");
+    setShowNameError(false);
   };
+  // Same treatment as the unit form: Save stays pressable and says what is
+  // wrong. The name is the one required field (assertValidDogName on the
+  // server: two characters, a letter, not a placeholder).
+  const dogFormRef = useRef<HTMLFormElement>(null);
+  const [showNameError, setShowNameError] = useState(false);
+  const nameError = !name.trim()
+    ? "Enter the dog's name."
+    : !isValidEntityName(name)
+      ? "Use the dog's real name: at least two characters, including a letter."
+      : undefined;
 
   const startEdit = (d: any) => {
     setAdding(true);
@@ -638,17 +651,41 @@ function UnitDogsSection({
       {adding && (
         <form
           className="mt-2 grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-4"
+          ref={dogFormRef}
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            if (name.trim()) saveMut.mutate();
+            if (nameError) {
+              setShowNameError(true);
+              focusFirstInvalid(dogFormRef.current);
+              return;
+            }
+            saveMut.mutate();
           }}
         >
           <div>
-            <Label className="text-xs">Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            <Label htmlFor={`unit-dog-name-${unit.id}`} className="text-xs">
+              Name
+            </Label>
+            <Input
+              id={`unit-dog-name-${unit.id}`}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              aria-invalid={showNameError && !!nameError}
+              aria-describedby={
+                showNameError && nameError ? `unit-dog-name-${unit.id}-error` : undefined
+              }
+              className={showNameError && nameError ? "border-destructive" : undefined}
+            />
+            {showNameError && nameError && (
+              <p id={`unit-dog-name-${unit.id}-error`} className="mt-1 text-xs text-destructive">
+                {nameError}
+              </p>
+            )}
           </div>
           <div>
-            <Label className="text-xs">Breed</Label>
+            <Label className="text-xs">Breed (optional)</Label>
             <Input value={breed} onChange={(e) => setBreed(e.target.value)} />
           </div>
           <div>
@@ -666,7 +703,7 @@ function UnitDogsSection({
             </select>
           </div>
           <div className="flex items-end gap-2">
-            <Button type="submit" size="sm" disabled={saveMut.isPending || !name.trim()}>
+            <Button type="submit" size="sm" disabled={saveMut.isPending}>
               {saveMut.isPending ? "Saving…" : editingDogId ? "Save dog" : "Add dog"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
@@ -718,6 +755,23 @@ function UnitDrawer({
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Required: the label, and only the label — `unit_label text NOT NULL` and
+  // assertValidUnitLabel on the server, which also refuses placeholders like
+  // "tbd". Everything else is nullable, and its label says "(optional)".
+  // The button used to sit disabled until a label was typed, with nothing on
+  // screen saying so (the owner's iPhone, 2026-10-04). Now it is always
+  // pressable and a submit with a problem says what the problem is.
+  const formRef = useRef<HTMLFormElement>(null);
+  const [showErrors, setShowErrors] = useState(false);
+  if (!open && showErrors) setShowErrors(false);
+  const errors: { unitLabel?: string; residentEmail?: string } = {};
+  if (!form.unitLabel.trim()) errors.unitLabel = "Enter a unit label, like 101 or B-12.";
+  else if (!isValidLabel(form.unitLabel))
+    errors.unitLabel = "Use the unit's real label, not a placeholder.";
+  if (form.residentEmail.trim() && !looksLikeEmail(form.residentEmail))
+    errors.residentEmail = "Enter an email like name@example.com, or leave it blank.";
+  const err = (k: keyof typeof errors) => (showErrors ? errors[k] : undefined);
+
   const saveMut = useMutation({
     mutationFn: () => {
       const fields = {
@@ -750,10 +804,17 @@ function UnitDrawer({
       dirty={dirty}
     >
       <form
+        ref={formRef}
         className="space-y-4"
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (form.unitLabel.trim()) saveMut.mutate();
+          if (Object.keys(errors).length > 0) {
+            setShowErrors(true);
+            focusFirstInvalid(formRef.current);
+            return;
+          }
+          saveMut.mutate();
         }}
       >
         <div>
@@ -764,11 +825,19 @@ function UnitDrawer({
             onChange={(e) => set("unitLabel", e.target.value)}
             placeholder="101, B-12, Cottage 3…"
             required
+            aria-invalid={!!err("unitLabel")}
+            aria-describedby={err("unitLabel") ? "unit-label-error" : undefined}
+            className={err("unitLabel") ? "border-destructive" : undefined}
           />
+          {err("unitLabel") && (
+            <p id="unit-label-error" className="mt-1 text-xs text-destructive">
+              {err("unitLabel")}
+            </p>
+          )}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label htmlFor="unit-resident">Resident name</Label>
+            <Label htmlFor="unit-resident">Resident name (optional)</Label>
             <Input
               id="unit-resident"
               value={form.residentName}
@@ -776,7 +845,7 @@ function UnitDrawer({
             />
           </div>
           <div>
-            <Label htmlFor="unit-phone">Resident phone</Label>
+            <Label htmlFor="unit-phone">Resident phone (optional)</Label>
             <Input
               id="unit-phone"
               value={form.residentPhone}
@@ -785,16 +854,24 @@ function UnitDrawer({
           </div>
         </div>
         <div>
-          <Label htmlFor="unit-email">Resident email</Label>
+          <Label htmlFor="unit-email">Resident email (optional)</Label>
           <Input
             id="unit-email"
             type="email"
             value={form.residentEmail}
             onChange={(e) => set("residentEmail", e.target.value)}
+            aria-invalid={!!err("residentEmail")}
+            aria-describedby={err("residentEmail") ? "unit-email-error" : undefined}
+            className={err("residentEmail") ? "border-destructive" : undefined}
           />
+          {err("residentEmail") && (
+            <p id="unit-email-error" className="mt-1 text-xs text-destructive">
+              {err("residentEmail")}
+            </p>
+          )}
         </div>
         <div>
-          <Label htmlFor="unit-notes">Notes</Label>
+          <Label htmlFor="unit-notes">Notes (optional)</Label>
           <Textarea
             id="unit-notes"
             rows={3}
@@ -803,7 +880,7 @@ function UnitDrawer({
           />
         </div>
         <DrawerFooter>
-          <Button type="submit" disabled={saveMut.isPending || !form.unitLabel.trim()}>
+          <Button type="submit" disabled={saveMut.isPending}>
             {saveMut.isPending ? "Saving…" : unit ? "Save unit" : "Add unit"}
           </Button>
         </DrawerFooter>

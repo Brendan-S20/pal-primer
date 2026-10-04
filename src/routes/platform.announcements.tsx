@@ -108,8 +108,8 @@ function AnnouncementsPage() {
   return (
     <div className="space-y-6">
       {dialog}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Announcements</h1>
           <p className="text-sm text-muted-foreground">Broadcast in-app banners to tenants. Optionally email them too.</p>
         </div>

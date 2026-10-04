@@ -85,12 +85,9 @@ export function FranchiseLocationDrawer({
 
   return (
     <Sheet open={!!row} onOpenChange={onOpenChange}>
-      {/* Same safe-area treatment as VisitDetailDrawer — identical shape, and
-          the iOS sweep flagged it by code shape without opening it. */}
-      <SheetContent
-        side="right"
-        className="w-full overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] [&>button]:top-[calc(0.5rem+env(safe-area-inset-top))] sm:max-w-xl"
-      >
+      {/* The safe-area insets and the close button's offset come from
+          ui/sheet.tsx, which gives them to every full-height sheet. */}
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         {row && (
           <>
             <SheetHeader>

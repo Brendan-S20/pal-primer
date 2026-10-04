@@ -228,12 +228,11 @@ export function VisitDetailDrawer({
           Close occupied y 8-52 and the title y 24-52 against a 54pt status
           bar, so the clock printed through the client name and the battery
           glyph sat on the X. This is the screen a tech opens at every stop.
-          The close button needs its own offset because sheet.tsx pins it at
-          top-2, inside the inset. env() is 0 on the web, so the hosted layout
-          is unchanged — the same pattern MobileTabBar and CreateSheet use. */}
-      <SheetContent
-        side="right"
-        className="w-full overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] [&>button]:top-[calc(0.5rem+env(safe-area-inset-top))] sm:max-w-lg"
+          This drawer carried its own copy of the insets and the close
+          button's offset; since 2026-10-04 ui/sheet.tsx gives both to every
+          full-height sheet, after the owner's iPhone found the same fault on
+          the client editors that had no copy. */}
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg"
       >
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">

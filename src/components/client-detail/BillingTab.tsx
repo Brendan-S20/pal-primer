@@ -363,8 +363,11 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   return (
     <section className="rounded-lg border bg-card shadow-sm p-5">
       {dialog}
-      <div className="flex items-center justify-between">
-        <div>
+      {/* Wraps, like every other title-and-action header in src/: beside a
+          two-line description the button goes underneath on a phone rather
+          than being squeezed. See tests/a-width-floor-is-not-a-shrink-floor. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-sm font-medium">Payment methods</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Card details are stored with our payment processor, never on HoundStack. Autopay charges

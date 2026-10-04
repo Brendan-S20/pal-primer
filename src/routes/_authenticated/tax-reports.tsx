@@ -294,8 +294,8 @@ function TaxReportsPage() {
 function ReportView({ data, onDownload }: { data: ReportResult; onDownload: () => void }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
-        <div>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 pb-3">
+        <div className="min-w-0">
           <CardTitle className="text-base">{data.title}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">{data.purpose}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">

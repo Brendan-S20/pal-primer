@@ -50,7 +50,7 @@ export function WorkDaysPicker({
           // do we work" was a question the control could not answer at a
           // glance (reported 2026-09-27). aria-pressed says it to a screen
           // reader; this says it to everyone else.
-          className={`inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 touch:min-h-11 touch:min-w-11 ${
+          className={`inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 touch:min-h-11 touch:min-w-11 shrink-0 ${
             selected.has(d)
               ? "border-primary bg-primary font-medium text-primary-foreground"
               : "text-muted-foreground hover:bg-muted"

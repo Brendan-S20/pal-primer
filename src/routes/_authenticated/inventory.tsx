@@ -159,8 +159,8 @@ function InventoryPage() {
   return (
     <>
       {bulkDialog}
-      <div className="flex items-end justify-between gap-4">
-        <div>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold flex items-center gap-2"><Package className="h-6 w-6 shrink-0"/> Inventory</h1>
           <p className="text-sm text-muted-foreground">Track supplies, per-tech assignments, and consumption.</p>
         </div>
