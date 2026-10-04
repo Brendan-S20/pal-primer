@@ -192,6 +192,33 @@ export async function getPushPermission(): Promise<PushPermission | null> {
  *  count. */
 let reportedNotGranted = false;
 
+/** And once per PHONE per answer, across launches. Once per launch was still
+ *  one warning every time a tech who said no opened the app, which is noise
+ *  that spends the monitoring quota and says nothing new. The first report on
+ *  2026-10-04 (HOUNDSTACK-3, denied/not_asked) answered its question once;
+ *  the next thousand would not have. A granted answer clears it, so a phone
+ *  that later turns notifications off again is reported again. Device-local:
+ *  wrapped, because storage can be unavailable, and a failure here must never
+ *  stop registration. */
+const REPORTED_PERMISSION_KEY = "houndstack.push.reportedPermission";
+
+function alreadyReportedOnThisPhone(state: string): boolean {
+  try {
+    return window.localStorage.getItem(REPORTED_PERMISSION_KEY) === state;
+  } catch {
+    return false;
+  }
+}
+
+function rememberReportedOnThisPhone(state: string | null) {
+  try {
+    if (state === null) window.localStorage.removeItem(REPORTED_PERMISSION_KEY);
+    else window.localStorage.setItem(REPORTED_PERMISSION_KEY, state);
+  } catch {
+    // Unavailable storage means at worst one warning per launch, as before.
+  }
+}
+
 /** The listeners of the registration that is current on this device. One set
  *  at a time: the shell makes one on launch and the Preferences button makes
  *  one when it turns notifications on, and two `registration` listeners would
@@ -282,8 +309,9 @@ async function registerPush(
     // was no", `not_asked` is "iOS had an answer before this launch and the
     // prompt could not appear". Warning, not error: a person saying no is the
     // product working, and it should be countable, not alarming.
-    if (!reportedNotGranted) {
+    if (!reportedNotGranted && !alreadyReportedOnThisPhone(after)) {
       reportedNotGranted = true;
+      rememberReportedOnThisPhone(after);
       const { reportClientIssue } = await import("@/lib/monitoring/client");
       reportClientIssue(
         "Push permission not granted",
@@ -298,6 +326,7 @@ async function registerPush(
     }
     return { permission, cleanup: () => {} };
   }
+  rememberReportedOnThisPhone(null);
 
   stopPushListeners();
   // Listeners BEFORE register(), not after. On iOS register() resolves at
@@ -411,6 +440,7 @@ export function openAppNotificationSettings(): boolean {
 /** For tests: forget that this launch already reported a refusal. */
 export function resetPushReportingForTests() {
   reportedNotGranted = false;
+  rememberReportedOnThisPhone(null);
   activeListeners = null;
 }
 
