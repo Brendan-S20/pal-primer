@@ -1,8 +1,9 @@
 /**
- * The trial notice is shown on every authenticated page, and it is not
- * dismissible on purpose — a countdown you can permanently hide is a countdown
- * that ends without warning. `TrialBanner`'s own header says so, and this file
- * does not argue with it.
+ * The trial notice is shown on every authenticated page. Since 2026-10-03 it
+ * can be put away, but never permanently: a dismissal lasts only until the
+ * trial gets materially closer to its end, or a week (`TrialBanner`'s header
+ * and src/lib/dismissible.ts). Every case here starts on a fresh browser
+ * context, so nothing has been dismissed and the notice is on screen.
  *
  * What it measures is the size. On the `expired` phase the banner was 233px at
  * 360, 217 at 390 and 197 at 430, against 125 at 1280. Twenty of those pixels
@@ -17,7 +18,8 @@
  * ── WHY BOTH HALVES ARE ASSERTED ──────────────────────────────────────────
  *
  * A test that only checked the height would pass if the whole banner had been
- * deleted, which is exactly the change this component forbids. So the headline
+ * deleted, which is exactly the change this component forbids (putting it away
+ * is the reader's choice, never the page's). So the headline
  * and the action are asserted present at EVERY width, and the explanation is
  * asserted to come back when the control is pressed. Folded is not hidden, and
  * the difference is the point.

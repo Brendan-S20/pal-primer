@@ -38,6 +38,15 @@
  * Google draws its logo and the data attribution inside the map div. Nothing
  * here hides them and the containers clip only at their own edge; the terms
  * require both to stay visible.
+ *
+ * Owner on iOS, 2026-10-03: "not a huge fan of the attribution list or the
+ * text in the bottom right (takes up a lot of space)". What CAN go went: the
+ * "Keyboard shortcuts" link (keyboardShortcuts: false below) and the scale
+ * bar. What cannot is the Google logo and the "Map data ©… / Terms" line: the
+ * Google Maps Platform Terms of Service require them to stay visible and
+ * uncovered, so no option, CSS rule or overlay here may hide them, and
+ * anything this app draws over a map keeps clear of the bottom edge (see the
+ * scroll hint in RouteMap.tsx).
  */
 import type {
   EditableMarkerOptions,
@@ -93,7 +102,16 @@ export function mapOptions(o: MapSurfaceOptions): Record<string, unknown> {
     // Satellite at yard zoom otherwise tilts to 45° imagery, and a boundary
     // drawn on oblique imagery is drawn on the roofs.
     tilt: 0,
-    keyboardShortcuts: true,
+    // Off since 2026-10-03. With it on, Google adds a "Keyboard shortcuts"
+    // link to the attribution strip in the bottom-right corner, which on a
+    // phone is a third line of small print beside "Map data" and "Terms" for a
+    // keyboard the phone does not have. Arrow-key panning goes with it; the
+    // zoom buttons, pinch, drag and ctrl/⌘ + scroll all still work.
+    keyboardShortcuts: false,
+    // Off: the scale bar is more bottom-right text, and nothing here measures
+    // distance off the map by eye. (Off by default too; said explicitly so a
+    // future default change cannot add it back.)
+    scaleControl: false,
   };
 }
 

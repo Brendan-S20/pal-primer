@@ -288,6 +288,13 @@ export function createLeafletRenderer(container: HTMLElement, o: MapSurfaceOptio
     zoomControl: o.zoomControl !== false,
     ...(o.gestures === "map" ? { scrollWheelZoom: true } : GATED_WHEEL),
   });
+  // No "Leaflet" link in front of the attribution (2026-10-03, the same
+  // owner request that trimmed Google's corner: the small print took a lot of
+  // space on a phone). That prefix is Leaflet advertising itself and is not
+  // required. The tile layer's own attribution stays: "© OpenStreetMap
+  // contributors" is required by the ODbL, and the Esri credit by Esri's terms
+  // (src/lib/map-tiles.ts).
+  map.attributionControl?.setPrefix(false);
   // Hosts include animated modals and scroll containers; re-measure once
   // layout settles so the map never initializes into a stale size.
   requestAnimationFrame(() => {
