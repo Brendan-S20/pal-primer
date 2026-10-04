@@ -145,16 +145,24 @@ export function EditDrawer({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
+      {/* `p-0` drops the status-bar and home-indicator insets ui/sheet.tsx
+          gives every full-height sheet, so they come back here as the sheet's
+          only padding. Without them the owner's iPhone drew "12:05" through
+          "Edit service" and the battery through the close X.
+          The header stays put and only the body scrolls — the same shape as
+          the desktop dialog above. When the whole sheet scrolled, the title
+          and its inset scrolled away together and the form slid up under
+          the clock. */}
       <SheetContent
         side="right"
-        className="flex w-full max-w-full flex-col gap-0 overflow-y-auto p-0"
+        className="flex w-full max-w-full flex-col gap-0 overflow-hidden p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
         onEscapeKeyDown={escapeGuard}
       >
-        <SheetHeader className="border-b px-6 py-4 text-left">
+        <SheetHeader className="shrink-0 border-b px-6 py-4 pe-14 text-left">
           <SheetTitle>{title}</SheetTitle>
           {description ? <SheetDescription>{description}</SheetDescription> : null}
         </SheetHeader>
-        <div className="flex-1 px-6 pt-4">{body}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4">{body}</div>
         {discardDialog}
       </SheetContent>
     </Sheet>

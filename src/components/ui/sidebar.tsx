@@ -218,7 +218,11 @@ const Sidebar = React.forwardRef<
                padding; this branch got the padding on its inner column and the
                button, being a direct child of SheetContent, never moved.
                env() is 0 on the web, so nothing hosted changes. */
-            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:top-[calc(0.5rem+env(safe-area-inset-top))]"
+            /* Since 2026-10-04 that offset is ui/sheet.tsx's own default for
+               every sheet that reaches the top of the screen, so the override
+               that lived here is gone. The padding stays on the inner column
+               (nativeSidebarStyle, below) rather than on this `p-0` sheet. */
+            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
