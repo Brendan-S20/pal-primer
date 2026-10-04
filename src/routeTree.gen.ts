@@ -81,6 +81,7 @@ import { Route as AuthenticatedCampaignsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
+import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from './routes/[.]well-known.assetlinks[.]json'
 import { Route as PortalSlugIndexRouteImport } from './routes/portal.$slug.index'
 import { Route as PlatformTenantsIndexRouteImport } from './routes/platform.tenants.index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
@@ -517,6 +518,12 @@ const AuthenticatedAiToolsRoute = AuthenticatedAiToolsRouteImport.update({
   path: '/ai-tools',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const DotwellKnownAssetlinksDotjsonRoute =
+  DotwellKnownAssetlinksDotjsonRouteImport.update({
+    id: '/.well-known/assetlinks.json',
+    path: '/.well-known/assetlinks.json',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const PortalSlugIndexRoute = PortalSlugIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -948,6 +955,7 @@ export interface FileRoutesByFullPath {
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/billing': typeof AuthenticatedBillingRoute
@@ -1094,6 +1102,7 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/billing': typeof AuthenticatedBillingRoute
@@ -1235,6 +1244,7 @@ export interface FileRoutesById {
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/_authenticated/ai-tools': typeof AuthenticatedAiToolsRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
@@ -1384,6 +1394,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
+    | '/.well-known/assetlinks.json'
     | '/ai-tools'
     | '/analytics'
     | '/billing'
@@ -1530,6 +1541,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
+    | '/.well-known/assetlinks.json'
     | '/ai-tools'
     | '/analytics'
     | '/billing'
@@ -1670,6 +1682,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
+    | '/.well-known/assetlinks.json'
     | '/_authenticated/ai-tools'
     | '/_authenticated/analytics'
     | '/_authenticated/billing'
@@ -1819,6 +1832,7 @@ export interface RootRouteChildren {
   SignUpRoute: typeof SignUpRoute
   TwoStepRoute: typeof TwoStepRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute
   EmailSuppressionRoute: typeof EmailSuppressionRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -2359,6 +2373,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/ai-tools'
       preLoaderRoute: typeof AuthenticatedAiToolsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/.well-known/assetlinks.json': {
+      id: '/.well-known/assetlinks.json'
+      path: '/.well-known/assetlinks.json'
+      fullPath: '/.well-known/assetlinks.json'
+      preLoaderRoute: typeof DotwellKnownAssetlinksDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/portal/$slug/': {
       id: '/portal/$slug/'
@@ -3203,6 +3224,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignUpRoute: SignUpRoute,
   TwoStepRoute: TwoStepRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
   EmailSuppressionRoute: EmailSuppressionRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
