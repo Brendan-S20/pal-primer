@@ -116,7 +116,7 @@ export function ScheduleRecleanDialog({
 
   return (
     <Dialog open={!!ticket} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Schedule re-clean</DialogTitle>
           <DialogDescription>

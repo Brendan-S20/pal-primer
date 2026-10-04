@@ -677,7 +677,7 @@ function PlansPage() {
         {/* The form is taller than a phone. Without the scroll container the
             dialog is centred, clipped top and bottom, and the Save button is
             somewhere off-screen with no way to reach it. */}
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>New plan</DialogTitle>
           </DialogHeader>
