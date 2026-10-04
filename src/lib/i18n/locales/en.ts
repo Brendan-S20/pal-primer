@@ -36,6 +36,7 @@ const en = {
     add: "Add",
     close: "Close",
     delete: "Delete",
+    dismiss: "Dismiss",
   },
   myDay: {
     title: "My day",
@@ -392,6 +393,9 @@ const en = {
     disableFailed: "Could not disable",
     enable: "Enable notifications",
     onShort: "On",
+    blockedHide: "Notifications are blocked. Hide this",
+    blockedHidden:
+      "Hidden. To get alerts, turn notifications on for this app in your browser or phone settings.",
   },
   nav: {
     primary: "Primary",

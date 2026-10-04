@@ -43,6 +43,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     add: "إضافة",
     close: "إغلاق",
     delete: "حذف",
+    dismiss: "تجاهل",
   },
   myDay: {
     title: "يومي",
@@ -431,6 +432,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     disableFailed: "تعذّر الإيقاف",
     enable: "تفعيل الإشعارات",
     onShort: "مفعّلة",
+    blockedHide: "الإشعارات محظورة. إخفاء هذا",
+    blockedHidden:
+      "تم الإخفاء. لتلقي التنبيهات، فعّل الإشعارات لهذا التطبيق من إعدادات المتصفح أو الهاتف.",
   },
   nav: {
     primary: "التنقل الرئيسي",
