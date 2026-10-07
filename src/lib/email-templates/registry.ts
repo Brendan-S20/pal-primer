@@ -6,6 +6,7 @@ import { template as paymentReceivedTemplate } from "./payment-received";
 import { template as visitCompletedTemplate } from "./visit-completed";
 import { template as weatherRescheduleTemplate } from "./weather-reschedule";
 import { template as overdueReminderTemplate } from "./overdue-reminder";
+import { template as paymentFailedTemplate } from "./payment-failed";
 import { template as winBackTemplate } from "./win-back";
 import { template as weeklyDigestTemplate } from "./weekly-digest";
 import { template as reviewRequestTemplate } from "./review-request";
@@ -30,6 +31,7 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   "visit-completed": visitCompletedTemplate,
   "weather-reschedule": weatherRescheduleTemplate,
   "overdue-reminder": overdueReminderTemplate,
+  "payment-failed": paymentFailedTemplate,
   "win-back": winBackTemplate,
   "weekly-digest": weeklyDigestTemplate,
   "review-request": reviewRequestTemplate,

@@ -102,8 +102,9 @@ export const getMyDay = createServerFn({ method: "GET" })
  *  that can only fail. "On my way" stays: it goes by email when it can't text. */
 async function businessCanText(orgId: string): Promise<boolean> {
   try {
-    const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
-    return (await endCustomerSmsSender(orgId)) !== null;
+    // The same switch every other texting control reads (lib/client-texting).
+    const { orgCanTextClients } = await import("@/lib/twilio-credentials.server");
+    return await orgCanTextClients(orgId);
   } catch (e) {
     console.warn("texting-number lookup failed; hiding Text reminder", e);
     return false;

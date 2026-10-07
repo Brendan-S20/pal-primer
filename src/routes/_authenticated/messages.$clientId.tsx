@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatDateTime } from "@/lib/format";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
+import { useClientTexting } from "@/hooks/useClientTexting";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export const Route = createFileRoute("/_authenticated/messages/$clientId")({
   head: () => titleHead("Conversation", "Messages"),
@@ -22,6 +24,7 @@ function Thread() {
   const sendFn = useServerFn(sendSmsToClient);
   const [body, setBody] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const texting = useClientTexting();
 
   const { data, isLoading } = useQuery({
     queryKey: ["messages", clientId],
@@ -50,7 +53,7 @@ function Thread() {
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
   const client = data?.client;
   const messages = data?.messages ?? [];
-  const canSend = !!client?.primary_phone && !client?.sms_opt_out;
+  const canSend = texting && !!client?.primary_phone && !client?.sms_opt_out;
 
   return (
     <div className="flex h-[70vh] flex-col rounded-lg border bg-card">
@@ -110,7 +113,12 @@ function Thread() {
       </div>
 
       <div className="border-t p-3">
-        {!canSend && (
+        {!texting ? (
+          <p className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <ComingSoonBadge />
+            <span className="min-w-0">Texting your clients is coming soon.</span>
+          </p>
+        ) : !canSend && (
           <p className="mb-2 text-xs text-destructive">
             {client?.sms_opt_out
               ? "Client has opted out. Cannot send SMS."

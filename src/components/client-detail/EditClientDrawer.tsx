@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { updateClient } from "@/lib/clients.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useCommercialAccounts } from "@/components/CommercialOnly";
+import { useClientTexting } from "@/hooks/useClientTexting";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export function EditClientDrawer({
   open,
@@ -51,6 +53,9 @@ export function EditClientDrawer({
     [client],
   );
   const [form, setForm] = useState(initial);
+  // The client's texting preference is kept and saved exactly as stored; it
+  // just cannot be switched while the business cannot text anyone.
+  const texting = useClientTexting();
   // Reset only on closed -> open; background refetches must not wipe edits.
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -275,15 +280,22 @@ export function EditClientDrawer({
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Communication preferences
           </legend>
-          <label className="flex items-center gap-2 text-sm touch:min-h-11">
+          <label className="flex flex-wrap items-center gap-2 text-sm touch:min-h-11">
             <input
               type="checkbox"
-              checked={!form.smsOptOut}
+              checked={texting ? !form.smsOptOut : false}
+              disabled={!texting}
               onChange={(e) => set("smsOptOut", !e.target.checked)}
             />
-            <span>Send SMS notifications</span>
+            <span className={texting ? "" : "text-muted-foreground"}>Send text notifications</span>
+            {!texting && <ComingSoonBadge />}
           </label>
-          {!form.smsOptOut && !form.primaryPhone.trim() && (
+          {!texting && (
+            <p className="ml-6 text-xs text-muted-foreground">
+              Texting your clients is coming soon. Until then, notifications go by email.
+            </p>
+          )}
+          {texting && !form.smsOptOut && !form.primaryPhone.trim() && (
             <p className="ml-6 text-xs text-amber-700 dark:text-amber-400">
               SMS is on but there's no phone number on file. Add one above or texts won't send.
             </p>

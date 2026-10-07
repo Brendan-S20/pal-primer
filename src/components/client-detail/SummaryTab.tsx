@@ -9,6 +9,7 @@ import { formatFrequency, isServiceEnded } from "@/lib/subscription-form";
 import { computeZoneVisitPrice } from "@/lib/pricing";
 import { formatDay, formatDateTime, formatPhone } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { useClientTexting } from "@/hooks/useClientTexting";
 import { listClientMessages } from "@/lib/messages.functions";
 import { NotesPanel } from "@/components/client-detail/NotesPanel";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
@@ -44,6 +45,7 @@ export function SummaryTab({
   onGoToTab: (tab: string) => void;
 }) {
   const today = useOrgToday();
+  const texting = useClientTexting();
   const activeProps = properties.filter((p: any) => !p.archived_at);
   const activeSubs = subscriptions.filter(
     (s: any) => s.status === "active" && !isServiceEnded(s, today),
@@ -95,7 +97,9 @@ export function SummaryTab({
       severity: "warning",
       text: "Email notifications are enabled but there's no email address on file.",
     });
-  if (client.sms_opt_out === false && !client.primary_phone)
+  // Only a warning once this business can text: until then a missing phone
+  // number stops no text from going, because none go.
+  if (texting && client.sms_opt_out === false && !client.primary_phone)
     alerts.push({
       severity: "warning",
       text: "SMS notifications are enabled but there's no phone number on file.",
@@ -349,6 +353,7 @@ function CommunicationCard({ client, onGoToTab }: { client: any; onGoToTab: (t: 
   });
   const messages: any[] = (data as any)?.messages ?? [];
   const last = messages[messages.length - 1];
+  const texting = useClientTexting();
 
   return (
     <section className="rounded-lg border bg-card shadow-sm p-5">
@@ -374,7 +379,11 @@ function CommunicationCard({ client, onGoToTab }: { client: any; onGoToTab: (t: 
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">
           No messages yet.
-          {client.primary_phone ? "" : " Add a phone number to text this client."}
+          {!texting
+            ? " Texting your clients is coming soon."
+            : client.primary_phone
+              ? ""
+              : " Add a phone number to text this client."}
         </p>
       )}
     </section>

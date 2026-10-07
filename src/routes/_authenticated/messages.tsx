@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { MessageSquarePlus } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
+import { useClientTexting } from "@/hooks/useClientTexting";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export const Route = createFileRoute("/_authenticated/messages")({
   head: () => titleHead("Messages"),
@@ -76,6 +78,10 @@ function NewMessagePicker({ onClose }: { onClose: () => void }) {
 function MessagesLayout() {
   const fn = useServerFn(listMessageThreads);
   const [composing, setComposing] = useState(false);
+  // No business can text its clients until its own number clears carrier
+  // registration. Until then this page is the history it has and a state
+  // that says so, not a New message button that ends in an error.
+  const texting = useClientTexting();
   const { data, isLoading } = useQuery({
     queryKey: ["message-threads"],
     queryFn: () => fn({}),
@@ -97,9 +103,14 @@ function MessagesLayout() {
           inside a thread, where the thread's own header with its back link
           is the heading and a second one would push the messages down. */}
       <div className={`md:col-span-2 ${onThread ? "max-md:hidden" : ""}`}>
-        <h1 className="text-2xl font-semibold">Messages</h1>
+        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
+          Messages
+          {!texting && <ComingSoonBadge />}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Text conversations between your business and your clients.
+          {texting
+            ? "Text conversations between your business and your clients."
+            : "Texting your clients is coming soon. Until then, visit reminders, on-my-way notices, review requests and billing reminders go by email."}
         </p>
       </div>
       <aside className={`rounded-lg border bg-card ${onThread ? "max-md:hidden" : ""}`}>
@@ -114,18 +125,22 @@ function MessagesLayout() {
             size="sm"
             className="touch:min-h-11"
             aria-expanded={composing}
+            disabled={!texting}
+            title={texting ? undefined : "Texting your clients is coming soon"}
             onClick={() => setComposing((v) => !v)}
           >
             <MessageSquarePlus className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
             New message
           </Button>
         </div>
-        {composing && <NewMessagePicker onClose={() => setComposing(false)} />}
+        {composing && texting && <NewMessagePicker onClose={() => setComposing(false)} />}
         <div className="max-h-[70vh] overflow-y-auto">
           {isLoading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
           {!isLoading && (data?.threads?.length ?? 0) === 0 && (
             <p className="p-4 text-sm text-muted-foreground">
-              No conversations yet. Press New message to text a client; their replies show up here.
+              {texting
+                ? "No conversations yet. Press New message to text a client; their replies show up here."
+                : "No conversations yet. Once texting your clients arrives, conversations show up here."}
             </p>
           )}
           <ul className="divide-y">

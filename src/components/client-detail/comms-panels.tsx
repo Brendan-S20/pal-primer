@@ -18,6 +18,9 @@ import { sendSmsToClient, listClientMessages } from "@/lib/messages.functions";
 import { formatDay } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { humanizeEnum } from "@/lib/humanize";
+import { useClientTexting } from "@/hooks/useClientTexting";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { TEXTING_COMING_SOON_LINE } from "@/lib/client-texting";
 
 export function MessageComposer({ client, bare = false }: { client: any; bare?: boolean }) {
   const qc = useQueryClient();
@@ -26,6 +29,10 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
   const [body, setBody] = useState("");
   // Composer collapses to a single line until focused (spec 3.4).
   const [composerFocused, setComposerFocused] = useState(false);
+  // Until this business has its own texting number the composer is a state,
+  // not a Send button that answers with an error. The thread above it, any
+  // history there is, stays readable.
+  const texting = useClientTexting();
 
   const messagesQ = useQuery({
     queryKey: ["client-messages", client.id],
@@ -45,11 +52,19 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
   });
 
   const noPhone = !client.primary_phone;
+  const cannotSend = !texting || noPhone;
   const shown = bare ? messages : messages.slice(-6);
   const Wrapper = bare ? "div" : "section";
   return (
     <Wrapper className={bare ? "" : "rounded-lg border bg-card shadow-sm p-5"}>
-      {!bare && <h2 className="text-sm font-medium">Messages</h2>}
+      {/* Bare, it sits under the Communication tab's own heading, which
+          carries the Coming soon badge; here it carries its own. */}
+      {!bare && (
+        <h2 className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          Messages
+          {!texting && <ComingSoonBadge />}
+        </h2>
+      )}
       {messages.length > 0 && (
         <ul className={`mt-3 space-y-2 overflow-y-auto ${bare ? "max-h-96" : "max-h-48"}`}>
           {shown.map((m) => (
@@ -82,19 +97,32 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
           rows={composerFocused || body ? 3 : 1}
           maxLength={1500}
           placeholder={
-            noPhone
+            !texting
+              ? "Write a message…"
+              : noPhone
               ? "Add a phone number to this client to send SMS."
               : messages.length === 0
                 ? "Send the first message to this client…"
                 : "Write a reply…"
           }
-          disabled={noPhone}
+          disabled={cannotSend}
         />
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
-            Sends an SMS from your business number.
-          </span>
-          <Button type="submit" size="sm" disabled={noPhone || !body.trim() || sendMut.isPending}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {texting ? (
+            <span className="text-xs text-muted-foreground">
+              Sends an SMS from your business number.
+            </span>
+          ) : (
+            <span className="min-w-0 text-xs text-muted-foreground">
+              {TEXTING_COMING_SOON_LINE}
+            </span>
+          )}
+          <Button
+            type="submit"
+            size="sm"
+            className="touch:min-h-11"
+            disabled={cannotSend || !body.trim() || sendMut.isPending}
+          >
             {sendMut.isPending ? "Sending…" : "Send message"}
           </Button>
         </div>
@@ -108,6 +136,14 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
   const sendReview = useServerFn(sendReviewRequest);
   const applyRef = useServerFn(applyReferralCode);
   const [code, setCode] = useState("");
+  // The request goes by text when the business can text this client, and by
+  // email otherwise (sendReviewRequest). This button said "Send review SMS"
+  // and was locked whenever there was no phone, which was the one case the
+  // email was for.
+  const texting = useClientTexting();
+  const canEmail = Boolean(client.primary_email) && !client.email_opt_out;
+  const canText = texting && Boolean(client.primary_phone) && !client.sms_opt_out;
+  const canAsk = canEmail || canText;
 
   const askMut = useMutation({
     mutationFn: (force: boolean) => sendReview({ data: { clientId: client.id, force } }),
@@ -215,25 +251,39 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
+              className="touch:min-h-11"
               onClick={() => askMut.mutate(false)}
-              disabled={askMut.isPending || client.sms_opt_out || !client.primary_phone}
+              disabled={askMut.isPending || !canAsk}
             >
-              Send review SMS
+              Send review request
             </Button>
             {alreadyAsked && (
               <Button
                 size="sm"
                 variant="outline"
+                className="touch:min-h-11"
                 onClick={() => askMut.mutate(true)}
-                disabled={askMut.isPending || client.sms_opt_out || !client.primary_phone}
+                disabled={askMut.isPending || !canAsk}
               >
                 Send anyway
               </Button>
             )}
           </div>
-          {(client.sms_opt_out || !client.primary_phone) && (
+          {!texting && (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <ComingSoonBadge />
+              <span className="min-w-0">
+                Texting your clients is coming soon. Until then, review requests go by email.
+              </span>
+            </p>
+          )}
+          {!canAsk && (
             <p className="text-xs text-amber-600">
-              {client.sms_opt_out ? "Client opted out of SMS." : "No phone number on file."}
+              {texting
+                ? "This client has no email or phone they can be reached on."
+                : !client.primary_email
+                  ? "No email address on file."
+                  : "Client opted out of email."}
             </p>
           )}
         </div>

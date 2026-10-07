@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { isEncrypted } from "@/lib/secret-encryption.server";
+import { rowCanTextClients } from "@/lib/twilio-credentials.server";
 
 // Twilio settings after the BYOK retirement (IMP-9).
 //
@@ -43,7 +44,9 @@ export const getOrgTwilioSettings = createServerFn({ method: "GET" })
     // IMP-1: hint from its own column; the stored token is ciphertext now.
     const token: string = data.auth_token ?? "";
     return {
-      configured: true,
+      // "Texting is active" only when the business can actually text, by the
+      // rule the sender uses: a row with nothing to send from is not that.
+      configured: rowCanTextClients(data),
       accountSid: (data.account_sid as string) ?? null,
       tokenLast4:
         (data.token_last4 as string | null) ??

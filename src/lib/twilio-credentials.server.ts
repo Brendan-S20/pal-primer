@@ -88,13 +88,59 @@ export type EndCustomerSmsSender = {
  */
 export async function endCustomerSmsSender(orgId: string): Promise<EndCustomerSmsSender | null> {
   const tenant = await resolveOrgTwilioConfig(orgId);
-  if (!tenant) return null;
-  if (!tenant.from && !tenant.messagingServiceSid) return null;
+  if (
+    !tenant ||
+    !rowCanTextClients({
+      account_sid: tenant.accountSid,
+      auth_token: tenant.authToken,
+      sms_from_number: tenant.from,
+      messaging_service_sid: tenant.messagingServiceSid,
+    })
+  )
+    return null;
   return {
     credentials: { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken },
     from: tenant.from,
     messagingServiceSid: tenant.messagingServiceSid,
   };
+}
+
+/** The rule `endCustomerSmsSender` applies, on the raw row: a subaccount with
+ *  its credentials and something to send from. One predicate, so the switch
+ *  the app draws (`orgCanTextClients`) and the sender that actually texts
+ *  cannot disagree about which businesses can text. */
+export function rowCanTextClients(
+  row: {
+    account_sid?: string | null;
+    auth_token?: string | null;
+    sms_from_number?: string | null;
+    messaging_service_sid?: string | null;
+  } | null,
+): boolean {
+  return Boolean(
+    row?.account_sid && row?.auth_token && (row?.sms_from_number || row?.messaging_service_sid),
+  );
+}
+
+/**
+ * Whether this business can text its own clients: true exactly when
+ * `endCustomerSmsSender(orgId)` would return a sender. Read from the same row
+ * by the same rule, without decrypting the token, because the answer is a
+ * yes or no and the screens that ask (Messages, the client page, Settings,
+ * My Day) never need the secret.
+ *
+ * False for every business until per-business numbers clear carrier
+ * registration. When a subaccount is provisioned for one, that business's
+ * texting controls light up and nobody else's do.
+ */
+export async function orgCanTextClients(orgId: string): Promise<boolean> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await (supabaseAdmin as any)
+    .from("org_twilio_credentials")
+    .select("account_sid, auth_token, sms_from_number, messaging_service_sid")
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  return rowCanTextClients(data ?? null);
 }
 
 /**
