@@ -16,6 +16,10 @@ import { titleHead } from "@/lib/page-title";
 // Nobody loses anything: no organization had Twilio credentials configured and
 // none had a sender number set, verified against live data.
 //
+// 2026-10-06: until then this page said automated notifications and portal
+// codes went out on HoundStack's platform sender. They no longer do; a client
+// is texted only from the business's own number (lib/twilio-credentials.server).
+//
 // The sender-number field is gone too. It was editable because a customer's own
 // number had to be declared; a subaccount number is issued during provisioning,
 // so an editable field would just be a place to type something that gets
@@ -56,9 +60,9 @@ function SmsSettings() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Inbound replies arrive in Messages automatically. Automated notifications (reminders,
-            on-my-way, review asks) and portal login codes are sent on HoundStack&apos;s platform
-            sender rather than this number.
+            Inbound replies arrive in Messages automatically. Every text to your clients goes out
+            from this number: messages from your staff, reminders, on-my-way notices, review asks
+            and portal sign-in codes.
           </p>
         </div>
       ) : (
@@ -76,8 +80,9 @@ function SmsSettings() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            In the meantime, portal login codes and automated notifications still go out on
-            HoundStack&apos;s platform sender. Only staff↔client conversations are waiting on this.
+            Until then, nothing is texted to your clients. On-my-way notices, review requests,
+            overdue reminders and portal sign-in codes go by email instead. HoundStack&apos;s own
+            number only texts the people who sign in to HoundStack, never your clients.
           </p>
         </div>
       )}
