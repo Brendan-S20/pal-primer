@@ -759,6 +759,26 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     weather: "الطقس",
     weatherAria: "إظهار زر الطقس في الشريط العلوي",
   },
+  liveActivity: {
+    title: "مسار اليوم",
+    stopOf: "المحطة {{position}} من {{total}}",
+    nextStop: "المحطة التالية",
+    inProgress: "قيد التنفيذ",
+    allDone: "انتهت كل المحطات",
+    finished: "انتهى المسار",
+    window: "{{start}}–{{end}}",
+    after: "بعد {{time}}",
+    by: "قبل {{time}}",
+    done: "{{n}} منجزة",
+    skipped: "{{n}} متخطاة",
+    cardTitle: "المسار على شاشة القفل",
+    cardOn: "يظهر على شاشة القفل",
+    cardOff: "شاهد محطتك التالية دون فتح القفل",
+    cardDisabled: "فعّل الأنشطة المباشرة لتطبيق HoundStack في إعدادات iPhone",
+    show: "إظهار",
+    hide: "إخفاء",
+    failed: "تعذّر إظهار المسار على شاشة القفل",
+  },
 };
 
 export default ar;
