@@ -22,7 +22,7 @@ export const Route = createFileRoute("/legal/sms")({
 
 function SmsPolicyPage() {
   return (
-    <LegalShell title="SMS Consent & Messaging Policy" updated="August 20, 2026">
+    <LegalShell title="SMS Consent & Messaging Policy" updated="October 7, 2026">
       <section>
         <h2>The short version</h2>
         <p>
@@ -62,25 +62,18 @@ function SmsPolicyPage() {
 
       <section>
         <h2>What messages we send</h2>
-        <p>{APP_NAME} sends two kinds of text messages, and both require prior consent:</p>
-        <ul>
-          <li>
-            <strong>Account messages to business users.</strong> If you create a {APP_NAME} account
-            and choose to give us a mobile number, we may text you account and service
-            notifications. This is optional: {APP_NAME} accounts sign in with an email address and
-            password, so you never need to receive a text to create, access or use your account.
-          </li>
-          <li>
-            <strong>Service messages to a business's customers.</strong> Pet-care businesses that
-            run on {APP_NAME} can text their own customers things like visit reminders,
-            "your technician is on the way" notices, visit-completed confirmations, portal sign-in
-            codes, overdue-invoice reminders, and review requests. These messages are sent only to
-            customers who gave that business their number and consent to be contacted.
-          </li>
-        </ul>
         <p>
-          We do not send marketing or promotional cold texts, and we never text numbers that have
-          not opted in.
+          <strong>Text messaging is coming soon and is pending carrier registration.</strong> No
+          text messages are sent under this program until that registration is complete.
+        </p>
+        <p>
+          Account holders who opt in may receive verification codes, security alerts, billing
+          notices and support replies by text from {APP_NAME}. These messages go only to the{" "}
+          {APP_NAME} account holder who gave us the number and ticked the consent box.
+        </p>
+        <p>
+          These messages are not used for marketing, and {APP_NAME} does not use them to message
+          account holders&apos; own customers. We never text numbers that have not opted in.
         </p>
       </section>
 
@@ -95,15 +88,15 @@ function SmsPolicyPage() {
         {/* em-dash-ok: quotes SMS_CONSENT_TEXT verbatim. See the note there. */}
         <p className="rounded-md border bg-muted/40 p-3 text-sm">
           "I agree to receive text messages from {APP_NAME} at the number provided about my account
-          and service notifications. Consent is optional and is not a condition of purchase — you
-          can create and use a {APP_NAME} account without it. Message frequency varies. Message
-          &amp; data rates may apply. Reply STOP to opt out or HELP for help."
+          and service notifications, including verification codes, security alerts and billing
+          notices. Consent is optional and is not a condition of purchase — you can create and use a{" "}
+          {APP_NAME} account without it. Message frequency varies. Message &amp; data rates may
+          apply. Reply STOP to opt out or HELP for help."
         </p>
         <p>
           We record when consent was given, the number it covers, and the exact language shown.
-          Businesses using {APP_NAME} to message their customers are responsible for collecting
-          equivalent consent from those customers, and the platform enforces opt-outs for them
-          automatically.
+          Mobile numbers and texting consent records are collected only from account holders who
+          opt in this way.
         </p>
       </section>
 
@@ -141,17 +134,17 @@ function SmsPolicyPage() {
         <h2>How to opt out (SMS un-consent)</h2>
         <ul>
           <li>
-            <strong>Reply STOP</strong> to any message you receive from {APP_NAME} or from a
-            business using {APP_NAME}. Opt-outs take effect immediately and are enforced
-            automatically: the platform blocks further texts to your number.
+            <strong>Reply STOP</strong> to any message you receive from {APP_NAME}. Opt-outs take
+            effect immediately and are enforced automatically: the platform blocks further texts to
+            your number, and we send one confirmation that you have been unsubscribed.
           </li>
           <li>
-            Reply <strong>HELP</strong> to any message for assistance.
+            Reply <strong>HELP</strong> to any message for assistance. We reply with our name and
+            how to reach support.
           </li>
           <li>
-            Business users can also remove their mobile number or withdraw texting consent in
-            Settings, and customers of a {APP_NAME} business can manage notification preferences in
-            their client portal or by contacting the business directly.
+            Account holders can also remove their mobile number or withdraw texting consent in
+            Settings.
           </li>
           <li>
             You can always email <a href="mailto:support@houndstack.com">support@houndstack.com</a>{" "}
@@ -167,11 +160,6 @@ function SmsPolicyPage() {
           promotional purposes. Text messaging originator opt-in data and consent are not shared
           with any third parties, except with our SMS delivery provider solely to send the messages
           you asked for. See our <a href="/legal/privacy">Privacy Policy</a> for full details.
-        </p>
-        <p>
-          If the business you are texting has turned on its automated assistant, your message is
-          sent to an AI provider to write the reply, and the assistant says that it is automated.
-          Replying STOP, START or HELP is always handled directly and never by the assistant.
         </p>
       </section>
 
