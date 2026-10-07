@@ -37,8 +37,9 @@ export function etaPhrase(
   return null;
 }
 
-/** The text. The org name is in it because automated texts go from the
- *  platform's number, which the customer has never seen before.
+/** The text. The org name is in it because it comes from a number the
+ *  customer may never have seen before: the business's own texting number,
+ *  never HoundStack's (lib/twilio-credentials.server).
  *
  *  `trackUrl` is the live map (src/lib/live-tracking.ts), present only when
  *  the business has live tracking on. Without it the text is exactly what it
@@ -56,7 +57,7 @@ export function onMyWayText(p: {
   const when = p.eta ? `, arriving ${p.eta}` : "";
   const track = p.trackUrl ? ` Live map: ${p.trackUrl}` : "";
   // ENT / DNE is the handshake operators teach their customers; the reply
-  // lands on the visit (platform-inbound.server.ts) and shows on the stop.
+  // lands on the visit (gate-reply.server.ts) and shows on the stop.
   return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}.${track} Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.`;
 }
 

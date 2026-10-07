@@ -3,6 +3,7 @@ import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { invoiceEmailTaxData, taxShareCents } from "@/lib/sales-tax";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
+import type { EndCustomerSmsSender } from "@/lib/twilio-credentials.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
 // Called by pg_cron on a schedule. Iterates orgs and:
@@ -64,7 +65,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, notify_email_visit_reminder, quote_followup_days",
+            "id, name, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, notify_email_visit_reminder, quote_followup_days",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -220,20 +221,21 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             );
           }
 
-          // Overdue reminders are automated notifications → PLATFORM Twilio sender.
-          const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-          const reminderFrom = platformTwilioFrom() ?? org.sms_from_number;
-          if (
-            org.overdue_reminders_enabled &&
-            (org.notify_sms_overdue_invoice ?? true) &&
-            reminderFrom
-          ) {
-            perOrg.reminders_sent = await sendOverdueReminders(
-              supabaseAdmin,
-              org.id,
-              reminderFrom,
-              org.overdue_reminder_days ?? 7,
-            );
+          // Overdue-invoice texts go to a business's client, so from the
+          // business's own subaccount or not at all. They preferred the
+          // PLATFORM number until 2026-10-06. With no subaccount the
+          // overdue EMAILS below still go, and the run says why no text did.
+          if (org.overdue_reminders_enabled && (org.notify_sms_overdue_invoice ?? true)) {
+            const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+            const reminderSender = await endCustomerSmsSender(org.id);
+            perOrg.reminders_sent = reminderSender
+              ? await sendOverdueReminders(
+                  supabaseAdmin,
+                  org.id,
+                  reminderSender,
+                  org.overdue_reminder_days ?? 7,
+                )
+              : "skipped: the business has no texting number of its own";
           }
 
           // Day-before reminder, by email: see visit-reminders.server.ts.
@@ -633,7 +635,7 @@ function daysPastDueFrom(dueOn: string | null | undefined): number {
 async function sendOverdueReminders(
   supabaseAdmin: any,
   orgId: string,
-  from: string,
+  sender: EndCustomerSmsSender,
   reminderDays: number,
 ): Promise<number | string> {
   const dueCutoff = dueOnCutoff(reminderDays);
@@ -707,13 +709,19 @@ async function sendOverdueReminders(
     const link = await buildPortalLink(orgId, client.portal_token, slug);
     const body = `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${link}`;
     try {
-      const res = await sendTwilioSms({ from, to: client.primary_phone, body });
+      const res = await sendTwilioSms({
+        to: client.primary_phone,
+        body,
+        from: sender.from ?? undefined,
+        messagingServiceSid: sender.messagingServiceSid ?? undefined,
+        credentials: sender.credentials,
+      });
       await supabaseAdmin.from("messages").insert({
         organization_id: orgId,
         client_id: client.id,
         direction: "outbound",
         body,
-        from_number: from,
+        from_number: sender.from,
         to_number: client.primary_phone,
         twilio_sid: res.sid,
         status: res.status,

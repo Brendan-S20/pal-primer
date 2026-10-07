@@ -142,7 +142,10 @@ describe("the wiring", () => {
       "opted out",
       "on hold",
       "no consent",
-      "no sender",
+      // CHANGED 2026-10-06: was "no sender", when the sender could be the
+      // platform number. A client is texted only from the business's own
+      // subaccount (tests/the-toll-free-number-texts-account-holders.test.ts).
+      "no business texting number",
       "carrier refused",
     ]) {
       expect(sms, reason).toContain(`"${reason}"`);

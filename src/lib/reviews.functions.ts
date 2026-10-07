@@ -41,10 +41,10 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
     if (!org.google_review_url)
       throw new Error("Add a Google review URL in Settings → Reviews & referrals first");
 
-    // Review asks go out on the tenant's OWN connected Twilio number; when they
-    // haven't connected one, fall back to email — never the platform SMS number.
-    const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
-    const tenant = await resolveOrgTwilioConfig(client.organization_id);
+    // Review asks go out on the business's OWN subaccount; without one, email.
+    // Never the platform SMS number, which texts account holders only.
+    const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+    const sender = await endCustomerSmsSender(client.organization_id);
     const firstName = (client.display_name ?? "").split(/\s+/)[0] || "there";
 
     // Consent, not merely the absence of a STOP. Asked through SQL so this
@@ -52,12 +52,12 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
     const { data: mayTextReview } = await (supabase as any).rpc("client_may_be_texted", {
       _client_id: client.id,
     });
-    if (tenant && mayTextReview && client.primary_phone) {
+    if (sender && mayTextReview && client.primary_phone) {
       const template =
         org.review_ask_template?.trim() ||
         `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
       const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, org.google_review_url);
-      const fromNumber = tenant.from ?? null;
+      const fromNumber = sender.from;
 
       const { data: staff } = await supabase
         .from("staff").select("id").eq("user_id", userId).eq("organization_id", client.organization_id).maybeSingle();
@@ -70,9 +70,9 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
         const res = await sendTwilioSms({
           to: client.primary_phone,
           body,
-          from: fromNumber ?? undefined,
-          messagingServiceSid: tenant.messagingServiceSid ?? undefined,
-          credentials: { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken },
+          from: sender.from ?? undefined,
+          messagingServiceSid: sender.messagingServiceSid ?? undefined,
+          credentials: sender.credentials,
         });
         sid = res.sid;
         status = res.status || "sent";
@@ -102,7 +102,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       return { ok: true, channel: "sms" as const, body };
     }
 
-    // Email fallback (no tenant Twilio connected, or SMS not available).
+    // Email fallback (no subaccount of the business's own, or SMS not available).
     const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
     const res = await enqueueAppEmail({
       organizationId: client.organization_id,
@@ -118,7 +118,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
     if (!res.ok) {
       const msg =
         res.reason === "no_recipient"
-          ? "This client has no email on file and your Twilio isn't connected. Add an email, or connect your Twilio in Settings → SMS."
+          ? "This client has no email on file, and texting clients isn't available for your business yet. Add an email to send the request."
           : res.reason === "client_opted_out"
             ? "This client has opted out of email."
             : res.reason === "org_toggle_off"

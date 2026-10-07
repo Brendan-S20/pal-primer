@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { verifyTwilioInbound } from "@/lib/twilio-inbound-auth.server";
+import { classifyReply } from "@/lib/platform-replies";
 
 // Inbound SMS webhook.
 // Configure in Twilio Console for each number as the "A MESSAGE COMES IN" URL:
@@ -40,41 +41,45 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           return xml("<Response/>", 200);
         }
 
+        // HoundStack's own toll-free number FIRST, before any business is
+        // looked up. It texts account holders only, so a text sent to it is
+        // from an account holder or a stranger and is never routed into a
+        // business's client conversation, even if some org's legacy
+        // sms_from_number were (wrongly) the same number. STOP, START and HELP
+        // are answered in HoundStack's name. See lib/platform-inbound.server.
+        const { platformAccountHolderFrom } = await import("@/lib/twilio-credentials.server");
+        const { samePhone } = await import("@/lib/platform-replies");
+        const platform = platformAccountHolderFrom();
+        if (platform && samePhone(to, platform)) {
+          const { handlePlatformReply } = await import("@/lib/platform-inbound.server");
+          const r = await handlePlatformReply({
+            requestUrl: request.url,
+            pathWithQuery: url.pathname + url.search,
+            params,
+            signature,
+            from,
+            to,
+            body,
+            sid,
+          });
+          if (r.status === 401) return new Response("unauthorized", { status: 401 });
+          return r.reply
+            ? xml(`<Response><Message>${escapeXml(r.reply)}</Message></Response>`, 200)
+            : xml("<Response/>", 200);
+        }
+
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-        // Match org by sms_from_number == To
+        // Match org by sms_from_number == To: a business's OWN number.
         const { data: org } = await supabaseAdmin
           .from("organizations")
           // name/contact are not decoration: carrier rules require the BRAND to
           // identify itself in every STOP and HELP auto-reply, and require HELP
           // to give a real support contact.
-          .select("id, slug, name, contact_email, contact_phone, sms_from_number, ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona")
+          .select("id, slug, name, timezone, contact_email, contact_phone, sms_from_number, ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona")
           .eq("sms_from_number", to)
           .maybeSingle();
         if (!org) {
-          // Not a business's own number. It may be the PLATFORM number every
-          // automated text is sent from, whose replies used to stop here,
-          // STOP included. See lib/platform-replies.
-          const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-          const { samePhone } = await import("@/lib/platform-replies");
-          const platform = platformTwilioFrom();
-          if (platform && samePhone(to, platform)) {
-            const { handlePlatformReply } = await import("@/lib/platform-inbound.server");
-            const r = await handlePlatformReply({
-              requestUrl: request.url,
-              pathWithQuery: url.pathname + url.search,
-              params,
-              signature,
-              from,
-              to,
-              body,
-              sid,
-            });
-            if (r.status === 401) return new Response("unauthorized", { status: 401 });
-            return r.reply
-              ? xml(`<Response><Message>${escapeXml(r.reply)}</Message></Response>`, 200)
-              : xml("<Response/>", 200);
-          }
           console.warn("Inbound SMS: no org for To=", to);
           return xml("<Response/>", 200);
         }
@@ -155,6 +160,22 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           reply =
             `${brand}: Service and account messages. For help contact ${supportContact}. ` +
             `Msg & data rates may apply. Reply STOP to opt out.`;
+        } else if (client) {
+          // ENT / DNE, answering this business's "on my way" text, which went
+          // from this number. See lib/gate-reply.server.
+          const gate = classifyReply(body);
+          if (gate === "enter" || gate === "do_not_enter") {
+            const { answerGateReply } = await import("@/lib/gate-reply.server");
+            reply = await answerGateReply({
+              supabaseAdmin,
+              orgId: org.id,
+              phone: from,
+              kind: gate,
+              tz: (org as any).timezone ?? null,
+              brand,
+              contact: supportContact,
+            });
+          }
         }
 
         const { data: inboundMsg } = await supabaseAdmin.from("messages").insert({

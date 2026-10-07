@@ -572,6 +572,18 @@ And one from what the owner's iPhone showed (2026-10-04):
   → `tests/a-width-floor-is-not-a-shrink-floor.test.ts`, and in a browser
   `findControlsNarrowerThanTheirLabel` in `tests/viewports/rules.ts`.
 
+And one from the Twilio toll-free resubmission (2026-10-06):
+
+- **The toll-free number texts account holders only.** A business's client
+  or lead is texted only from that business's own subaccount, through
+  `endCustomerSmsSender(orgId)` in `src/lib/twilio-credentials.server.ts`,
+  which returns null rather than falling back to anything. Gateway mode (the
+  platform's Twilio) only type-checks with `purpose: "account_holder"`, and
+  `platformAccountHolderFrom()` is allowlisted to the inbound webhook. The
+  filing says the number is "not used ... to message account holders' own
+  customers"; until #341 every automated client text preferred it.
+  → `tests/the-toll-free-number-texts-account-holders.test.ts`
+
 And one that is not a test: **the local Supabase stack on 54421-54427 is the
 database CI's test job runs the SQL proofs against** (the runner is this
 machine). A branch's migration applied there for a quick look fails every other

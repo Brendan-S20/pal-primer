@@ -84,63 +84,112 @@ cycle to discover.
 
 ## 30507 — Opt-In Does Not Match the Use Case
 
-Three separate mismatches. The first is almost certainly the trigger.
+**Rewritten 2026-10-06, when the code was changed to match the resubmission.**
+An earlier version of this section said the traffic was wider than the
+description and proposed widening the description to two populations. The
+resubmission went the other way: it narrows the TRAFFIC. The toll-free number
+texts account holders only, and the code now does exactly that.
 
-### 1. The use case is narrower than the traffic (the real problem)
+### What the rejection was about
 
-The submitted description says the number sends
+The first submission said the number sends "transactional SMS to account
+holders only". In operation it did not. Every automated text to a pet-care
+business's client chose its sender as `platformTwilioFrom() ??
+org.sms_from_number`, which prefers the platform number, and `sendTwilioSms`
+fell back to the platform's own Twilio account (gateway mode) whenever a call
+left `credentials` out. Reminders, on my way, visit completed, overdue
+invoices, a declined card and customer portal sign-in codes all left
+HoundStack's toll-free number for people who are not HoundStack account
+holders. A description its traffic contradicts is a rejection at best, and a
+block after approval at worst.
 
-> transactional SMS to account holders only
+### Who the toll-free number texts now
 
-`PLATFORM_SMS_FROM_NUMBER` is set in production. Every one of these paths reads
-`platformTwilioFrom()` first and sends **to a pet-care business's end customer**,
-not to a HoundStack account holder:
+**Account holders, and nobody else**: the people who sign in to HoundStack.
+Verification codes, security alerts, billing notices to the business, and
+support replies. Only `platformAccountHolderFrom()` names the number, and
+only gateway mode with a declared `purpose: "account_holder"` sends on the
+platform's account (`src/lib/twilio-credentials.server.ts`,
+`src/lib/twilio.server.ts`). There is no default any more: a send that does
+not say who it is for does not compile, and throws if it is forced through.
 
-| What | Where | Recipient |
+Today the codebase has **no** account-holder text at all. Staff two-step
+codes go through Supabase Auth's phone factor, which is configured in the
+Supabase dashboard rather than in this repo, and billing notices to the
+business go by email. The number's only job in code today is answering texts
+sent to it (below).
+
+### What a business's client gets instead
+
+A business's client or lead is texted only from **that business's own
+subaccount**, through `endCustomerSmsSender(orgId)`. It returns the
+subaccount's credentials and number or messaging service, or null. There is
+no fallback: not to the platform number, not to gateway mode, and not to the
+legacy `organizations.sms_from_number` column, which has no credentials of its
+own.
+
+No business has a subaccount yet (provisioning, BUILD-3, waits on carrier
+registration), so today every one of these is null and **no client is texted
+by anything in this codebase**:
+
+| Message | Where | With no subaccount |
 |---|---|---|
-| Visit reminder | `messages.functions.ts:282` (`kind: "reminder"`) | client |
-| Technician on the way | same (`kind: "on_my_way"`) | client |
-| Visit completed | same (`kind: "completed"`) | client |
-| Customer portal sign-in code | `portal-auth.server.ts:329` | portal contact |
-| Overdue invoice reminder | `nightly.ts:224` | client |
-| Payment-failed alert | `stripe.ts:755` | client |
+| On my way | `on-my-way.server.ts` | email, which was already the fallback |
+| Review request, automatic and manual | `my-day.functions.ts`, `reviews.functions.ts` | email |
+| Portal sign-in code | `portal-auth.server.ts` | email only; the portal no longer offers "Text me a code", and the company sign-in page asks for an email, not a phone |
+| Overdue invoice | `nightly.ts` | the overdue EMAIL the same job already sends; the run log records why no text went |
+| Card declined on autopay | `stripe.ts` | no text; the office's in-app notice still goes |
+| Visit reminder / completed buttons | `messages.functions.ts` | refused with a plain message; My Day hides its "Text reminder" button |
+| Staff-to-client message | `messages.functions.ts` | refused with a plain message |
 
-So "account holders only" is not true in operation. That matters more than the
-rejection: a number approved on a description that does not match its traffic
-gets blocked *after* approval, which is a worse position than this one.
+Production `public.messages` had no rows in the sixty days before the change,
+so nothing that was actually being sent stopped.
 
-The description below names both populations. It is defensible because the
-consent architecture for the second one is real — see §2.
+### Texts sent TO the toll-free number
 
-### 2. The proof you submitted contradicts the description you submitted
+They are from an account holder or a stranger, never a business's client,
+and they are checked for **before** any business is looked up
+(`routes/api/public/hooks/twilio.ts`, `lib/platform-inbound.server.ts`).
+STOP, START and HELP are answered in HoundStack's name with
+support@houndstack.com; Twilio's own opt-out list is what blocks further
+texts after STOP. Anything else gets no reply. Nothing is written to any
+business's messages, no client record is touched, and no office is notified.
+Until this change a reply to that number was routed into the conversation of
+whichever business had texted that phone last.
 
-The privacy policy URL (`/legal/sms`) and opt-in proof (`6-sms-policy.png`) both
-describe the customer population — visit reminders, on-the-way notices, portal
-sign-in codes, invoice reminders. The reviewer was pointed at a page that
-contradicts "account holders only".
+The ENT / DNE handshake that answers "on my way" moved with the text: it now
+arrives on the business's own number and is handled on that business's path
+(`lib/gate-reply.server.ts`).
 
-**The page is accurate. The form was wrong.** No page change is needed; the
-description is what has to widen.
+### When customer texts come back
 
-### 3. The consent text you quoted is not the text the app shows
+When per-business numbers clear carrier registration. Each business then gets
+a subaccount under HoundStack's 10DLC brand, `endCustomerSmsSender` stops
+returning null for it, and every message in the table above goes out from that
+business's own number with no further code change. Customer texting is not a
+use case of the toll-free number at any point, before or after.
 
-Submitted in *Additional information*:
+### What keeps it that way
 
-> "I agree to receive text messages from HoundStack at the number provided,
-> including login codes and service notifications. Msg & data rates may apply.
-> Reply STOP to opt out or HELP for help."
+`tests/the-toll-free-number-texts-account-holders.test.ts` parses `src/` and
+fails, naming file and line, on: any call to `platformAccountHolderFrom()`
+outside its allowlist (one entry, the inbound webhook), any `{ mode: "gateway" }`
+outside its allowlist (empty), any `sendTwilioSms` whose credentials did not
+come from `endCustomerSmsSender`, any `from` not taken from that same sender,
+and any file that sends without being classified as account-holder or
+end-customer. It was mutation-checked by putting
+`platformTwilioFrom() ?? org.sms_from_number` back into `on-my-way.server.ts`.
+`tests/a-business-client-is-texted-from-the-business-number.test.ts` runs the
+senders against a fake fetch and checks what actually goes on the wire.
 
-Actual string, `src/routes/get-started.tsx:66` — the one in screenshots 4 and 5:
+### What else in this file predates the change
 
-> "I agree to receive text messages from HoundStack at the number provided about
-> my account and service notifications. Consent is optional and is not a
-> condition of purchase — you can create and use a HoundStack account without it.
-> Message frequency varies. Message & data rates may apply. Reply STOP to opt out
-> or HELP for help."
-
-The real one is **stronger**: it carries "not a condition of purchase" and
-"message frequency varies", both of which carriers look for and neither of which
-made it onto the form. Quote it verbatim.
+The *Paste-ready replacements* below describe two populations on this number,
+and their sample messages include client reminders and on-my-way texts. That
+was the earlier plan and is superseded by the account-holders-only filing. The
+30506 section's closing recommendation, to keep the toll-free number for
+account holders and move customer traffic onto per-tenant 10DLC, is what the
+code now does.
 
 ---
 

@@ -778,6 +778,9 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
   });
   const org = orgQ.data as any;
   const branding: Branding = org?.found ? org.branding : null;
+  // A code is texted only by a business with its own texting number; the
+  // rest sign in by email, and the form does not ask for a phone it can't use.
+  const textCodes = org?.found ? org.textCodes === true : false;
 
   const goToPortal = (s: string, token: string) =>
     navigate({ to: "/portal/$slug/$token", params: { slug: s || slug, token } });
@@ -838,7 +841,9 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
         <>
           <h1 className="text-xl font-semibold">Sign in to your portal</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Enter the phone number or email on your account and we'll send you a one-time code.
+            {textCodes
+              ? "Enter the phone number or email on your account and we'll send you a one-time code."
+              : "Enter the email on your account and we'll send you a one-time code."}
           </p>
           <form
             className="mt-5 space-y-3"
@@ -851,7 +856,7 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
               type="text"
               inputMode="email"
               autoComplete="email"
-              placeholder="you@example.com or (555) 123-4567"
+              placeholder={textCodes ? "you@example.com or (555) 123-4567" : "you@example.com"}
               value={contact}
               onChange={(e) => setContact(e.target.value)}
             />

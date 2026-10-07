@@ -1,12 +1,22 @@
 // A reply to an automated text went nowhere.
 //
-// Automated texts go out from the PLATFORM number. The inbound webhook found
+// Automated texts went out from the PLATFORM number. The inbound webhook found
 // a business by matching the number a reply was sent to against
 // organizations.sms_from_number, which the platform number never is, so every
 // reply to an automated text was dropped with "no org for To=". That included
 // STOP: the customer's opt-out was never recorded in the app. And it meant
 // the dogs-secured handshake (ENT / DNE, answering "on my way") could not
-// exist. These drive the handler against a fake database.
+// exist. These drive the handlers against a fake database.
+//
+// CHANGED 2026-10-06. The platform number now texts ACCOUNT HOLDERS only (the
+// toll-free resubmission; tests/the-toll-free-number-texts-account-holders
+// .test.ts), so a business's client is texted from the business's own number
+// and replies to it, ENT and DNE included, arrive on the business's own path.
+// A text to the platform number is from an account holder or a stranger: it
+// is answered in HoundStack's name and routed to no business. What this file
+// still guards is the original point: no reply goes nowhere. STOP is answered
+// wherever it lands, and the handshake is recorded wherever "on my way" went
+// from.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -17,6 +27,7 @@ import en from "@/lib/i18n/locales/en";
 
 type Call = { table: string; op: string; payload?: unknown; filters: Array<[string, unknown]> };
 const calls: Call[] = [];
+const reads: Call[] = [];
 let tables: Record<string, any> = {};
 
 function builder(table: string) {
@@ -44,8 +55,11 @@ function builder(table: string) {
       if (table === "messages") return Promise.resolve({ data: null }); // no duplicate SID
       return Promise.resolve({ data: tables[table] ?? null });
     },
-    then: (res: (v: unknown) => unknown) =>
-      Promise.resolve({ data: table === "messages" ? tables.sent : null, error: null }).then(res),
+    then: (res: (v: unknown) => unknown) => {
+      // Reads are recorded too, so a test can say which business was asked.
+      if (call.op === "select") reads.push(call);
+      return Promise.resolve({ data: table === "messages" ? tables.sent : null, error: null }).then(res);
+    },
   };
   return b;
 }
@@ -65,6 +79,7 @@ vi.mock("@/lib/notify-center.server", () => ({
 }));
 
 const { handlePlatformReply } = await import("@/lib/platform-inbound.server");
+const { answerGateReply } = await import("@/lib/gate-reply.server");
 
 const PLATFORM = "+15125550000";
 const CUSTOMER = "(512) 555-0100";
@@ -81,16 +96,29 @@ const reply = (body: string) =>
     to: PLATFORM,
     body,
     sid: `SM${Math.random()}`,
+  });
+
+/** A reply to Acme Scoop's OWN number, which its "on my way" went from. */
+const gate = (kind: "enter" | "do_not_enter") =>
+  answerGateReply({
+    supabaseAdmin: { from: (t: string) => builder(t) },
+    orgId: "org-a",
+    phone: "+15125550100",
+    kind,
+    tz: "America/Chicago",
+    brand: "Acme Scoop",
+    contact: "512-555-0142",
     now: NOW,
   });
 
 beforeEach(() => {
   calls.length = 0;
+  reads.length = 0;
   notified.length = 0;
   authOk = true;
   tables = {
     sent: [
-      // Two businesses have texted this customer from the platform number.
+      // Texts this business sent the customer, newest first once sorted.
       {
         organization_id: "org-a",
         client_id: "client-a",
@@ -151,12 +179,11 @@ describe("what a reply means", () => {
 });
 
 describe("STOP to the platform number", () => {
-  it("opts the customer out everywhere that number texted them, and says who", async () => {
+  it("is answered in HoundStack's name, and touches no business's client", async () => {
     const r = await reply("STOP");
-    const opt = calls.find((c) => c.table === "clients" && c.op === "update");
-    expect(opt?.payload).toEqual({ sms_opt_out: true });
-    expect(opt?.filters).toContainEqual(["id", ["client-a", "client-b"]]);
-    expect(r.reply).toMatch(/^Acme Scoop: You are unsubscribed/);
+    expect(r.reply).toMatch(/^HoundStack: You are unsubscribed/);
+    expect(calls).toEqual([]);
+    expect(reads).toEqual([]);
   });
 
   it("is refused without a valid signature, and changes nothing", async () => {
@@ -167,66 +194,84 @@ describe("STOP to the platform number", () => {
   });
 });
 
-describe("the dogs-secured handshake", () => {
+describe("the dogs-secured handshake, on the business's own number", () => {
   it("ENT marks today's visit and thanks the customer", async () => {
-    const r = await reply("ENT");
+    const r = await gate("enter");
     const upd = calls.find((c) => c.table === "visits" && c.op === "update");
     expect(upd?.payload).toEqual({ gate_reply: "enter", gate_reply_at: NOW.toISOString() });
     expect(upd?.filters).toContainEqual(["id", "visit-1"]);
-    expect(r.reply).toMatch(/dogs are secured/);
+    expect(r).toMatch(/dogs are secured/);
     expect(notified).toEqual([]);
   });
 
+  it("asks only this business's texts, and only this business's visits", async () => {
+    await gate("enter");
+    const sent = reads.find((c) => c.table === "messages");
+    expect(sent?.filters).toContainEqual(["organization_id", "org-a"]);
+  });
+
   it("DNE marks it and tells the office and the crew", async () => {
-    const r = await reply("DNE");
+    const r = await gate("do_not_enter");
     expect(calls.find((c) => c.table === "visits" && c.op === "update")?.payload).toMatchObject({
       gate_reply: "do_not_enter",
     });
     expect(notified).toEqual([expect.objectContaining({ type: "gate_do_not_enter" })]);
-    expect(r.reply).toMatch(/will not enter/);
+    expect(r).toMatch(/will not enter/);
   });
 
   it("does not touch a visit that is not today's", async () => {
     tables.visits = { ...tables.visits, scheduled_on: "2026-09-27" };
-    const r = await reply("ENT");
+    const r = await gate("enter");
     expect(calls.find((c) => c.table === "visits" && c.op === "update")).toBeUndefined();
-    expect(r.reply).toMatch(/couldn't match that/);
+    expect(r).toMatch(/couldn't match that/);
   });
 
   it("does not touch a finished visit", async () => {
     tables.visits = { ...tables.visits, status: "completed" };
-    await reply("DNE");
+    await gate("do_not_enter");
     expect(calls.find((c) => c.table === "visits" && c.op === "update")).toBeUndefined();
+  });
+
+  it("does nothing for a phone this business did not text about a visit", async () => {
+    tables.sent = [];
+    const r = await gate("enter");
+    expect(calls).toEqual([]);
+    expect(r).toMatch(/couldn't match that/);
   });
 });
 
-describe("anything else", () => {
-  it("goes to the office of the business that texted last, logged against it", async () => {
-    const r = await reply("Can you come Thursday instead?");
-    expect(r.reply).toBeNull();
-    expect(notified).toEqual([expect.objectContaining({ orgId: "org-a", type: "inbound_sms" })]);
-    const logged = calls.find((c) => c.table === "messages" && c.op === "insert");
-    expect(logged?.payload).toMatchObject({ organization_id: "org-a", direction: "inbound" });
-  });
-
-  it("from a phone the number never texted, is dropped without a reply", async () => {
-    tables.sent = [];
-    const r = await reply("STOP");
-    expect(r.reply).toBeNull();
-    expect(calls.filter((c) => c.op !== "select")).toEqual([]);
+describe("anything else to the platform number", () => {
+  it("gets no reply, and goes to no business's office or conversation", async () => {
+    for (const body of ["Can you come Thursday instead?", "ENT", "DNE"]) {
+      const r = await reply(body);
+      expect(r.reply, body).toBeNull();
+    }
+    expect(notified).toEqual([]);
+    expect(calls).toEqual([]);
   });
 });
 
 describe("the wiring", () => {
-  it("routes replies to the platform number before giving up on an unknown To", () => {
+  it("checks for the platform number BEFORE looking up any business", () => {
     const hook = readFileSync(
       join(import.meta.dirname, "../src/routes/api/public/hooks/twilio.ts"),
       "utf8",
     );
-    const i = hook.indexOf("if (!org) {");
-    const block = hook.slice(i, hook.indexOf('console.warn("Inbound SMS: no org for To="', i));
-    expect(block).toMatch(/samePhone\(to, platform\)/);
-    expect(block).toMatch(/handlePlatformReply\(/);
+    const platform = hook.indexOf("samePhone(to, platform)");
+    const handled = hook.indexOf("handlePlatformReply(");
+    const orgLookup = hook.indexOf('.eq("sms_from_number", to)');
+    expect(platform).toBeGreaterThan(-1);
+    expect(handled).toBeGreaterThan(platform);
+    expect(orgLookup).toBeGreaterThan(handled);
+  });
+
+  it("answers ENT and DNE on the business's own number", () => {
+    const hook = readFileSync(
+      join(import.meta.dirname, "../src/routes/api/public/hooks/twilio.ts"),
+      "utf8",
+    );
+    const afterOrg = hook.slice(hook.indexOf('.eq("sms_from_number", to)'));
+    expect(afterOrg).toMatch(/answerGateReply\(\{[\s\S]*?orgId: org\.id/);
   });
 
   it("asks for ENT or DNE in the on-my-way text, and My Day shows the answer", () => {

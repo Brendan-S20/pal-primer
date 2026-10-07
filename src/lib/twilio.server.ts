@@ -1,9 +1,15 @@
-// Server-only Twilio helper. Two credential modes:
-//   - "gateway" (default): the PLATFORM's own Twilio via the Lovable connector
-//     gateway. Used for OTP + automated notifications.
-//   - "direct": a TENANT's own Twilio account (BYOK), calling the Twilio REST
-//     API directly with the org's Account SID + Auth Token. Used for the
-//     tenant<->client conversation channel.
+// Server-only Twilio helper. Two credential modes, and every call names one:
+//   - "gateway": the PLATFORM's own Twilio via the Lovable connector gateway,
+//     which owns HoundStack's toll-free number. ACCOUNT HOLDERS ONLY, and the
+//     caller has to say so: `{ mode: "gateway", purpose: "account_holder" }`.
+//   - "direct": a business's own provisioned subaccount, calling the Twilio
+//     REST API with its Account SID + Auth Token. The only way to text a
+//     business's client or lead; get it from `endCustomerSmsSender`.
+//
+// There is no default. Gateway used to be what you got by leaving
+// `credentials` out, so an end-customer text reached the platform account by
+// omission, which is the opposite of what the toll-free filing says. See
+// lib/twilio-credentials.server.
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 const TWILIO_API = "https://api.twilio.com/2010-04-01";
 
@@ -15,7 +21,10 @@ export type TwilioSendResult = {
 };
 
 export type TwilioCredentials =
-  | { mode: "gateway" }
+  /** HoundStack's own account and toll-free number. `purpose` is not
+   *  decoration: it is the declaration that the person texted signs in to
+   *  HoundStack, and the ratchet test allowlists every place that makes it. */
+  | { mode: "gateway"; purpose: "account_holder" }
   | { mode: "direct"; accountSid: string; authToken: string };
 
 export async function sendTwilioSms(params: {
@@ -23,9 +32,14 @@ export async function sendTwilioSms(params: {
   body: string;
   from?: string;
   messagingServiceSid?: string;
-  credentials?: TwilioCredentials;
+  credentials: TwilioCredentials;
 }): Promise<TwilioSendResult> {
-  const creds = params.credentials ?? { mode: "gateway" };
+  const creds = params.credentials;
+  if (!creds) throw new Error("Twilio send requires credentials: a subaccount, or the platform for an account holder");
+  if (creds.mode === "gateway" && creds.purpose !== "account_holder") {
+    // The type already refuses this; an `any` on the way in does not.
+    throw new Error("The platform number texts account holders only");
+  }
   if (!params.from && !params.messagingServiceSid) {
     throw new Error("Twilio send requires a From number or a Messaging Service SID");
   }
