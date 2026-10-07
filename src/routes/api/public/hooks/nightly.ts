@@ -988,7 +988,18 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           // any pass-through fee), so a later credit application — or the tenant
           // switching pass-through on — mints a fresh key instead of replaying
           // this one with a different amount.
-          idempotencyKey: `autopay-${inv.id}-${quote.totalCents}`,
+          //
+          // And per UTC DAY. Stripe keeps an idempotency key for 24 hours and
+          // answers a repeat with the ORIGINAL response, so with invoice+amount
+          // alone, tonight's retry of last night's decline (a one-day ladder
+          // step, the run landing a few minutes earlier) was handed last
+          // night's decline back without the card being tried at all: a card
+          // the client had fixed in the meantime stayed "declined" another
+          // night. A second run on the same day still shares the key, which is
+          // the protection the key was for. A charge that succeeded but whose
+          // PaymentIntent was missed is still caught by reconcile above, before
+          // any new key is minted.
+          idempotencyKey: `autopay-${inv.id}-${quote.totalCents}-${new Date().toISOString().slice(0, 10)}`,
         },
       );
       // Store the PI on the invoice so a missed success webhook is rescued by
