@@ -186,7 +186,7 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { data: current, error: curErr } = await supabase
       .from("properties")
       .select(
-        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, clients(account_type)",
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, gate_code, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
       )
       .eq("id", data.propertyId)
       .single();
@@ -262,6 +262,21 @@ export const updateProperty = createServerFn({ method: "POST" })
       })
       .eq("id", data.propertyId);
     if (error) throw new Error(error.message);
+
+    // A tech going there TODAY hears that the gate code, the do-not-enter
+    // rule or the hazard notes changed (never the code itself: a push is on
+    // a lock screen). Never throws.
+    const { notifyAccessChanged } = await import("@/lib/field-notify.server");
+    await notifyAccessChanged({
+      propertyId: data.propertyId,
+      before: current as any,
+      after: {
+        gate_code: data.gateCode || null,
+        do_not_enter_if_dog_out: !!data.doNotEnterIfDogOut,
+        hazard_notes: data.hazardNotes || null,
+      },
+      actorUserId: context.userId,
+    });
 
     // The property's total_units is the single source of truth for commercial
     // unit counts (no double entry): when it changes, active subscriptions on
