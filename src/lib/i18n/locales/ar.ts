@@ -835,6 +835,13 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     show: "إظهار",
     hide: "إخفاء",
     failed: "تعذّر إظهار المسار على شاشة القفل",
+    // The buttons on the lock screen and in the Dynamic Island. The same
+    // words as the buttons on My Day they open.
+    action: {
+      navigate: "ملاحة",
+      start: "بدء",
+      complete: "إنهاء",
+    },
   },
 };
 

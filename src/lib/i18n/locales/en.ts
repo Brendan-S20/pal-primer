@@ -759,6 +759,13 @@ const en = {
     show: "Show",
     hide: "Hide",
     failed: "Couldn't show the route on the lock screen",
+    // The buttons on the lock screen and in the Dynamic Island. The same
+    // words as the buttons on My Day they open.
+    action: {
+      navigate: "Navigate",
+      start: "Start",
+      complete: "Complete",
+    },
   },
 };
 

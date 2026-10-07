@@ -718,6 +718,13 @@ const zh: TranslationsWithPlurals<"other"> = {
     show: "显示",
     hide: "隐藏",
     failed: "无法在锁定屏幕上显示路线",
+    // The buttons on the lock screen and in the Dynamic Island. The same
+    // words as the buttons on My Day they open.
+    action: {
+      navigate: "导航",
+      start: "开始",
+      complete: "完成",
+    },
   },
 };
 

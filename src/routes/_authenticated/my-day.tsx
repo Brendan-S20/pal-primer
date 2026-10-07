@@ -128,6 +128,8 @@ import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
+import { isLiveActivityAction, type LiveActivityAction } from "@/lib/live-activity-links";
+import { useLiveActivityAction } from "@/components/my-day/use-live-activity-action";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 import { MyDaySkeleton } from "@/components/PageSkeletons";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
@@ -143,10 +145,12 @@ export const Route = createFileRoute("/_authenticated/my-day")({
   // silently showing today (P1.8). ?staff=<uuid> lets office roles preview a
   // technician's day read-only. ?visit=<uuid> is the stop a push was about
   // (src/lib/field-notify.ts myDayLink): the page opens scrolled to it.
+  // &action=start|complete comes with it from the lock screen's buttons
+  // (src/lib/live-activity-links.ts), allowlisted again here.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { date?: string; staff?: string; visit?: string } => {
-    const out: { date?: string; staff?: string; visit?: string } = {};
+  ): { date?: string; staff?: string; visit?: string; action?: LiveActivityAction } => {
+    const out: { date?: string; staff?: string; visit?: string; action?: LiveActivityAction } = {};
     const raw = typeof search.date === "string" ? search.date : undefined;
     if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())) {
       out.date = raw;
@@ -155,6 +159,7 @@ export const Route = createFileRoute("/_authenticated/my-day")({
     if (s && /^[0-9a-f-]{36}$/i.test(s)) out.staff = s;
     const v = typeof search.visit === "string" ? search.visit : undefined;
     if (v && /^[0-9a-f-]{36}$/i.test(v)) out.visit = v;
+    if (out.visit && isLiveActivityAction(search.action)) out.action = search.action;
     return out;
   },
   component: MyDay,
@@ -190,7 +195,12 @@ const VISIT_STATIONS_CACHE = {
 } as const;
 
 function MyDay() {
-  const { date: dateParam, staff: staffParam, visit: visitParam } = Route.useSearch();
+  const {
+    date: dateParam,
+    staff: staffParam,
+    visit: visitParam,
+    action: actionParam,
+  } = Route.useSearch();
   const navigate = Route.useNavigate();
   // "Today" is the ORGANIZATION'S today, not the device's. The times on this
   // page speak the org's wall clock (orgLocalTime below), so the day the page
@@ -597,6 +607,18 @@ function MyDay() {
       cancelAnimationFrame(second);
     };
   }, [visitParam, visitOnPage]);
+  // ...and from the lock screen's Start or Complete, onto that button.
+  useLiveActivityAction({
+    visitId: visitParam,
+    action: actionParam,
+    ready: visitOnPage,
+    labels: { start: t("myDay.start"), complete: t("myDay.complete") },
+    onHandled: () =>
+      navigate({
+        search: (prev: Record<string, unknown>) => ({ ...prev, action: undefined }),
+        replace: true,
+      }),
+  });
 
   if (isLoading) return <MyDaySkeleton title={t("myDay.title")} label={t("common.loading")} />;
 
