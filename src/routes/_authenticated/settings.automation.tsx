@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { pageTitle } from "@/lib/page-title";
+import { useClientTexting } from "@/hooks/useClientTexting";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 const key = ["automation"] as const;
 
@@ -25,6 +27,12 @@ function AutomationPage() {
   const save = useServerFn(updateAutomationSettings);
   const opts = queryOptions({ queryKey: key, queryFn: () => load() });
   const { data, refetch } = useSuspenseQuery(opts);
+  // Until this business has its own texting number, the text-only switches
+  // below are a state: drawn off, locked, and badged Coming soon. Their
+  // STORED values are untouched: the form state still holds what was loaded
+  // and saves it back unchanged, so a business that had a text turned on
+  // still has it on the day texting arrives.
+  const texting = useClientTexting();
 
   const [autoGen, setAutoGen] = useState(data.auto_generate_visits);
   const [days, setDays] = useState(data.auto_generate_days_ahead);
@@ -145,12 +153,12 @@ function AutomationPage() {
       <Card>
         <CardHeader><CardTitle>Overdue reminders</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm touch:min-h-11">
             <input type="checkbox" checked={remOn} onChange={(e) => setRemOn(e.target.checked)} />
-            Send SMS reminder when an open invoice is past due
+            Send a reminder when an open invoice is past due
           </label>
           <div className="max-w-xs">
-            <Label htmlFor="remdays">Days past issue date before reminding</Label>
+            <Label htmlFor="remdays">Days past the due date before reminding</Label>
             <Input
               id="remdays"
               type="number"
@@ -162,7 +170,9 @@ function AutomationPage() {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Requires an SMS sender number (Settings → SMS) and that the client has not opted out.
+            {texting
+              ? "By email, and by text to clients who have agreed to texts. "
+              : "By email, to clients who have not opted out. Texting your clients is coming soon; the text part of this reminder starts then. "}
             Reminders re-send at most every {remDays} day(s).
           </p>
         </CardContent>
@@ -230,7 +240,8 @@ function AutomationPage() {
               })}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              The 1st of each selected month, active clients get an email/SMS offering a discounted seasonal deep-clean add-on.
+              On the 1st of each selected month, every active service gets a deep-clean visit
+              added, billed at your deep-clean charge on top of the regular visit.
             </p>
           </div>
         </CardContent>
@@ -244,7 +255,10 @@ function AutomationPage() {
               Tell the client when a tech taps Navigate
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 Once per visit, for today&apos;s stops, with the tech&apos;s first name and the
-                arrival window. By text when the client can be texted, otherwise by email.
+                arrival window.{" "}
+                {texting
+                  ? "By text when the client can be texted, otherwise by email."
+                  : "By email. Texting your clients is coming soon."}
               </span>
             </span>
             <input
@@ -277,10 +291,27 @@ function AutomationPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>SMS notifications</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            Text notifications
+            {!texting && <ComingSoonBadge />}
+          </CardTitle>
+        </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            Turn individual automated texts on or off. Requires an SMS sender number and that the client hasn't opted out.
+            {texting ? (
+              "Turn individual automated texts on or off. A client is texted only once they have agreed to texts and have not replied STOP."
+            ) : (
+              <>
+                Texting your clients is coming soon. Until then, these messages go by email: the
+                overdue and declined-card reminders, the day-before reminder, the on-my-way notice
+                and the visit-completed note each have their own switch in{" "}
+                <Link to="/settings/emails" className="text-primary underline">
+                  Settings &rsaquo; Emails
+                </Link>
+                .
+              </>
+            )}
           </p>
           {[
             { label: "Overdue invoice reminder", val: nOverdue, set: setNOverdue },
@@ -289,9 +320,18 @@ function AutomationPage() {
             { label: '"On my way" text', val: nOnWay, set: setNOnWay },
             { label: "Visit completed confirmation", val: nDone, set: setNDone },
           ].map((row) => (
-            <label key={row.label} className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm">
-              <span>{row.label}</span>
-              <input type="checkbox" checked={row.val} onChange={(e) => row.set(e.target.checked)} />
+            <label
+              key={row.label}
+              className={`flex min-h-11 items-center justify-between gap-2 rounded border px-3 py-2 text-sm ${texting ? "" : "text-muted-foreground"}`}
+            >
+              <span className="min-w-0">{row.label}</span>
+              <input
+                type="checkbox"
+                className="shrink-0"
+                checked={texting ? row.val : false}
+                disabled={!texting}
+                onChange={(e) => row.set(e.target.checked)}
+              />
             </label>
           ))}
         </CardContent>

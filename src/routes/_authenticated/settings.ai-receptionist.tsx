@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { formatDateTime, formatPhone } from "@/lib/format";
 import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { titleHead } from "@/lib/page-title";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")({
   head: () => titleHead("AI receptionist", "Settings"),
@@ -70,17 +71,14 @@ function Page() {
       <div>
         <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
           AI Receptionist
-          {!RECEPTIONIST_LAUNCHED && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-              Coming soon
-            </span>
-          )}
+          {!RECEPTIONIST_LAUNCHED && <ComingSoonBadge />}
         </h2>
+        {/* Worded as what it WILL do until it launches: it needs the
+            business's own number, which no business has yet either. */}
         <p className="text-sm text-muted-foreground">
-          Answers texts and calls to your business number using your FAQ and your own prices. It
-          can quote, take down a new client&apos;s details, and hand off to a person.
-          {!RECEPTIONIST_LAUNCHED &&
-            " It is not switched on for anyone yet. You can write its FAQ and persona now, ready for launch."}
+          {RECEPTIONIST_LAUNCHED
+            ? "Answers texts and calls to your business number using your FAQ and your own prices. It can quote, take down a new client's details, and hand off to a person."
+            : "When it launches, it will answer texts and calls to your business number using your FAQ and your own prices, quote, take down a new client's details, and hand off to a person. It is not switched on for anyone yet. You can write its FAQ and persona now, ready for launch."}
         </p>
       </div>
 

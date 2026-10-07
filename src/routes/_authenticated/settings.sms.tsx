@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, Clock } from "lucide-react";
 import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
 import { titleHead } from "@/lib/page-title";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 // IMP-9: this page used to be a "Bring your own Twilio" form — Account SID, Auth
 // Token, Messaging Service SID, plus instructions for wiring an inbound webhook
@@ -37,7 +38,10 @@ function SmsSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">SMS settings</h2>
+        <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+          SMS settings
+          {!q.isLoading && !q.data?.configured && <ComingSoonBadge />}
+        </h2>
         <p className="text-sm text-muted-foreground">
           Two-way texting with clients runs on a HoundStack-managed number, provisioned for your
           organization. There is no Twilio account to connect and no carrier registration for you to

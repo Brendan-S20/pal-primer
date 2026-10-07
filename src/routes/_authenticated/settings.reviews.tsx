@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { titleHead } from "@/lib/page-title";
+import { useClientTexting } from "@/hooks/useClientTexting";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export const Route = createFileRoute("/_authenticated/settings/reviews")({
   head: () => titleHead("Reviews & referrals", "Settings"),
@@ -28,6 +30,9 @@ function ReviewsSettings() {
   const settingsFn = useServerFn(getReviewSettings);
   const statsFn = useServerFn(getReferralStats);
   const saveFn = useServerFn(updateReviewSettings);
+  // The ask goes by text when the business can text the client, by email
+  // otherwise. The template is a draft until then, kept for when it can.
+  const texting = useClientTexting();
 
   const { data, isLoading } = useQuery({
     queryKey: ["review-settings"],
@@ -90,7 +95,9 @@ function ReviewsSettings() {
           <div>
             <div className="font-medium">Auto-ask for reviews</div>
             <div className="text-xs text-muted-foreground">
-              Send the SMS below after a completed visit (once per client per 90 days).
+              {texting
+                ? "Send the text below after a completed visit (once per client per 90 days). Clients who can't be texted get it by email."
+                : "Send a review request after a completed visit (once per client per 90 days). It goes by email until texting your clients arrives."}
             </div>
           </div>
           <Switch checked={enabled} onCheckedChange={setEnabled} />
@@ -109,7 +116,15 @@ function ReviewsSettings() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium">SMS template</label>
+          <label className="mb-1 flex flex-wrap items-center gap-2 text-sm font-medium">
+            Text message template
+            {!texting && <ComingSoonBadge />}
+          </label>
+          {!texting && (
+            <p className="mb-1 text-xs text-muted-foreground">
+              Texting your clients is coming soon. You can write the message now, ready for it.
+            </p>
+          )}
           <Textarea
             value={template}
             onChange={(e) => setTemplate(e.target.value)}

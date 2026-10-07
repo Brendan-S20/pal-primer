@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SMS_CONSENT_TEXT, recordClientSmsConsent } from "@/lib/clients.functions";
 import { formatDay, formatPhone } from "@/lib/format";
+import { useClientTexting } from "@/hooks/useClientTexting";
 
 const digits = (p: string | null | undefined) => (p ?? "").replace(/[^0-9]/g, "");
 
@@ -33,11 +34,17 @@ export function TextingConsentPanel({ client }: { client: any }) {
   const qc = useQueryClient();
   const recordFn = useServerFn(recordClientSmsConsent);
   const [attested, setAttested] = useState(false);
+  // Consent is worth recording before the business can text anyone: it is
+  // what the first text will be checked against. But "Can be texted" and
+  // "You can text this client now" are not true until it can.
+  const texting = useClientTexting();
 
   const record = useMutation({
     mutationFn: () => recordFn({ data: { clientId: client.id } }),
     onSuccess: () => {
-      toast.success("Consent recorded. You can text this client now.");
+      toast.success(
+        texting ? "Consent recorded. You can text this client now." : "Consent recorded.",
+      );
       setAttested(false);
       qc.invalidateQueries({ queryKey: ["client", client.id] });
       qc.invalidateQueries({ queryKey: ["sms-consent-coverage"] });
@@ -94,9 +101,14 @@ export function TextingConsentPanel({ client }: { client: any }) {
             canText ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
           }`}
         >
-          {canText ? "Can be texted" : "Cannot be texted"}
+          {canText ? (texting ? "Can be texted" : "Consent on file") : "Cannot be texted"}
         </span>
       </div>
+      {!texting && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Texting your clients is coming soon. Consent you record now is kept for it.
+        </p>
+      )}
 
       {canText ? (
         <p className="mt-2 text-xs text-muted-foreground">

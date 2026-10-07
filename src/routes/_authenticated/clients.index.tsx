@@ -38,6 +38,7 @@ import { AlertTriangle, Download, MessageSquareOff, Search, Tag, Users } from "l
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { titleHead } from "@/lib/page-title";
+import { useClientTexting } from "@/hooks/useClientTexting";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => titleHead("Clients"),
@@ -755,6 +756,7 @@ function SmsConsentBanner() {
   const fn = useServerFn(getSmsConsentCoverage);
   const q = useQuery({ queryKey: ["sms-consent-coverage"], queryFn: () => fn() });
   const { orgId } = useMyRole();
+  const texting = useClientTexting();
   const d = q.data;
   const missing = d ? d.withPhone - d.consented : 0;
   const { dismissed, dismiss } = useDismissed(
@@ -774,8 +776,10 @@ function SmsConsentBanner() {
           <strong>
             {missing} of {d.withPhone}
           </strong>{" "}
-          clients with a phone number have no texting consent on file, so reminders and
-          notifications will not reach them.
+          clients with a phone number have no texting consent on file,{" "}
+          {texting
+            ? "so reminders and notifications will not reach them."
+            : "so they won't get texts when texting your clients arrives (coming soon)."}
         </span>
         {/* Says what to do, not just what is wrong. Both routes are real: the
             client opts in from their portal, or you record consent you already

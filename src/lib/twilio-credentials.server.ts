@@ -109,7 +109,7 @@ export async function endCustomerSmsSender(orgId: string): Promise<EndCustomerSm
  *  its credentials and something to send from. One predicate, so the switch
  *  the app draws (`orgCanTextClients`) and the sender that actually texts
  *  cannot disagree about which businesses can text. */
-function rowCanTextClients(
+export function rowCanTextClients(
   row: {
     account_sid?: string | null;
     auth_token?: string | null;

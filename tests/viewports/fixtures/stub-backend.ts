@@ -734,6 +734,12 @@ const BASE_STUBS: Record<string, Stub> = {
   getCampaignAudience: fx.CAMPAIGN_AUDIENCE,
   previewCampaignEmail: fx.CAMPAIGN_PREVIEW,
 
+  // Whether the business can text its own clients. False, as it is for every
+  // business until per-business numbers clear carrier registration, so the
+  // sweep measures the Coming soon state every page actually draws today
+  // (Messages, the client page, Settings > Automation).
+  getClientTextingAvailability: { available: false },
+
   // /settings/automation, /settings/invoicing and /settings/emails, which
   // read these and threw on the null the fence answered — so the unlisted
   // sweep measured three error boundaries until it learned to refuse one on

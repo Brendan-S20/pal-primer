@@ -268,7 +268,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ── Communications ─────────────────────────────────────────────────────────
   {
     slug: "texting-setup",
-    title: "Texting: setup, consent, and STOP",
+    title: "Texting your clients (coming soon): setup, consent, and STOP",
     section: "Communications",
     body: [
       // IMP-9: this told customers two-way texting ran on "your own Twilio
@@ -277,9 +277,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
       // 2026-10-06: this said automated notifications and portal codes went
       // out through the platform sender. They no longer do: HoundStack's own
       // number texts the people who sign in to HoundStack, never their clients.
-      "Every text to your clients, whether a message from your staff, an automated notification (visit reminders, on-my-way, completed, review asks) or a portal sign-in code, goes out from a HoundStack-managed number provisioned for your business. There is no Twilio account to connect and no carrier registration for you to file. That number is pending US carrier (10DLC) registration, and until it is ready nothing is texted to your clients: on-my-way notices, review requests, overdue reminders and portal sign-in codes go by email instead. [SMS settings](/settings/sms) shows its current state.",
-      "Every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. Consent details live in the public [SMS policy](/legal/sms).",
-      "Pick which automated texts go out in [SMS settings](/settings/sms); per-client opt-outs show on the client's page.",
+      // 2026-10-07: says "coming soon" first, and points the automated-text
+      // switches at Settings > Automation, where they are. It pointed at SMS
+      // settings, which has none.
+      "Texting your clients is **coming soon**. Each business will text from a HoundStack-managed number of its own, provisioned for you: there is no Twilio account to connect and no carrier registration for you to file. Those numbers are waiting on US carrier (10DLC) registration, and until yours is ready nothing is texted to your clients. Visit reminders, on-my-way notices, review requests, overdue and declined-card reminders, and portal sign-in codes go by email instead. [SMS settings](/settings/sms) shows where your number stands.",
+      "While texting is coming soon, the texting controls in the app (New message in [Messages](/messages), the composer on a client's page, the text switches in [Automation](/settings/automation)) show a Coming soon badge instead of sending. Your settings are kept, and they light up on their own when your number is ready.",
+      "Once it arrives, every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. A client is texted only after they have agreed to texts, which you can record now on their Communication tab. Consent details live in the public [SMS policy](/legal/sms).",
+      "Pick which automated texts go out in [Automation](/settings/automation), under Text notifications; the emails that stand in for them are in [Emails](/settings/emails). Per-client opt-outs show on the client's page.",
     ],
     appLink: { to: "/settings/sms", label: "Open SMS settings" },
     related: ["client-portal", "ai-tools"],
