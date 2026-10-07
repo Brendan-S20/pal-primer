@@ -455,6 +455,10 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     const workDays = await loadWorkDays(supabase, orgId);
     const blackouts = await loadBlackouts(supabase, orgId, data.newDate, addDays(data.newDate, 14));
 
+    // A rained-off today or tomorrow comes off the techs' routes: they hear it.
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({ actorUserId: userId, orgId, visitIds: data.visitIds });
+
     for (const id of data.visitIds) {
       const pre = preMap.get(id);
       const target = shiftToAllowedDay(data.newDate, {
@@ -473,6 +477,8 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
         if (pre) moves.push({ visitId: id, from: pre.scheduled_on, to: target });
       }
     }
+
+    await watch.finish();
 
     // Fire weather-reschedule emails (best-effort) — only for visits that
     // actually moved, and with each visit's REAL target date (which may have
@@ -538,6 +544,11 @@ export const undoReschedule = createServerFn({ method: "POST" })
     const { supabase } = context;
     let restored = 0;
     const errors: string[] = [];
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: context.userId,
+      visitIds: data.moves.map((m) => m.visitId),
+    });
     for (const m of data.moves) {
       const { error } = await supabase.rpc("reschedule_visit", {
         _visit_id: m.visitId,
@@ -547,6 +558,7 @@ export const undoReschedule = createServerFn({ method: "POST" })
       if (error) errors.push(error.message);
       else restored++;
     }
+    await watch.finish();
     return { restored, errors };
   });
 

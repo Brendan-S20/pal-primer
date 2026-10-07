@@ -290,6 +290,11 @@ export const completeVisit = createServerFn({ method: "POST" })
       console.warn("visit.completed activity log failed", data.visitId, e);
     }
 
+    // The office hears when the route is finished, or when the NEXT stop is
+    // now going to be late (field-notify.server.ts). Never throws.
+    const { afterStopResolved } = await import("@/lib/field-notify.server");
+    await afterStopResolved({ visitId: data.visitId, actorUserId: context.userId });
+
     // Fire visit-completed email (best-effort)
     try {
       const { data: v } = await context.supabase
@@ -509,6 +514,11 @@ export const skipVisit = createServerFn({ method: "POST" })
       _skipped_at: data.skippedAt ?? undefined,
     });
     if (error) throw new Error(error.message);
+    // The office hears it with the reason, once (a replayed skip is the same
+    // skip), and then whatever a resolved stop means for the day: finished,
+    // or the next stop late. Never throws.
+    const { notifyVisitSkipped } = await import("@/lib/field-notify.server");
+    await notifyVisitSkipped({ visitId: data.visitId, actorUserId: context.userId });
     return { ok: true };
   });
 
