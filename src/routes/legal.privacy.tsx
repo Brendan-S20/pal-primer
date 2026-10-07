@@ -132,9 +132,10 @@ function PrivacyPage() {
           <li>Cloud hosting and infrastructure providers</li>
         </ul>
         <p>
-          When a business turns on its AI receptionist, the text of messages and calls to its
-          number, with the recent conversation, is sent to the AI provider to write the reply. The
-          receptionist says it is an automated assistant.
+          When a business turns on its AI receptionist (coming soon), the text of messages and calls
+          to that business&apos;s own number, with the recent conversation, is sent to the AI
+          provider to write the reply. The receptionist says it is an automated assistant. It never
+          uses {APP_NAME}&apos;s own number, which only ever texts {APP_NAME} account holders.
         </p>
         <p>
           A business can also choose to connect other services, such as its accounting software or

@@ -15,7 +15,7 @@ export const Route = createFileRoute("/legal/terms")({
 
 function TermsPage() {
   return (
-    <LegalShell title="Terms of Service" updated="August 20, 2026">
+    <LegalShell title="Terms of Service" updated="October 7, 2026">
       <section>
         <p>
           These terms govern your use of {APP_NAME}, the field-service platform for pet-care
@@ -54,8 +54,10 @@ function TermsPage() {
           </li>
           <li>
             You are responsible for having the right to store your customers' information, and for
-            obtaining any consent required to contact them, including texting consent. {APP_NAME}
-            enforces SMS opt-outs automatically, but the underlying consent is yours to collect.
+            obtaining any consent required to contact them, including texting consent. Any texts to
+            your customers go from your business&apos;s own number, never from {APP_NAME}&apos;s own
+            number, which only ever texts {APP_NAME} account holders. {APP_NAME} enforces opt-outs
+            on your number automatically, but the underlying consent is yours to collect.
           </li>
           <li>
             You will comply with applicable laws when using the service, including telemarketing

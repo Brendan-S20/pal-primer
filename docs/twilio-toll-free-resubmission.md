@@ -1,9 +1,17 @@
 # Toll-free verification: what to change before resubmitting
 
-Rejected 2026-08-31 on two codes. This is the diagnosis and the paste-ready
-replacement text. Nothing here has been applied — every field below is yours
-to paste into the Twilio console, and the two app-side items at the bottom are
-flagged rather than changed because they alter what customers actually receive.
+Rejected 2026-08-31 (30482, 30507), and again in October (30482, 30474). This
+is the diagnosis and the paste-ready text for the resubmission due live by
+2026-10-09. Every field under *Paste-ready replacements* is yours to paste into
+the Twilio console.
+
+**The filing is account holders only.** The HoundStack toll-free number texts
+people who use HoundStack, and nobody else. Texting is not live yet: the pages
+say "Text messaging is coming soon and is pending carrier registration." Every
+section below was brought in line with that on 2026-10-07. An earlier version
+proposed a two-population filing (account holders and the businesses' own
+clients); that plan is superseded, and so is any text here that still reads
+that way.
 
 ## 30482 — Business Email Address Must Use an Official Domain
 
@@ -182,187 +190,171 @@ end-customer. It was mutation-checked by putting
 `tests/a-business-client-is-texted-from-the-business-number.test.ts` runs the
 senders against a fake fetch and checks what actually goes on the wire.
 
-### What else in this file predates the change
+### The rest of this file
 
-The *Paste-ready replacements* below describe two populations on this number,
-and their sample messages include client reminders and on-my-way texts. That
-was the earlier plan and is superseded by the account-holders-only filing. The
-30506 section's closing recommendation, to keep the toll-free number for
-account holders and move customer traffic onto per-tenant 10DLC, is what the
-code now does.
+The *Paste-ready replacements*, the app-side items and the 30504 / 30506
+sections below were rewritten on 2026-10-07 for the account-holders-only
+filing. They no longer describe a second population on this number.
 
 ---
 
 # Paste-ready replacements
 
+Everything quoted here matches what is live on 2026-10-07 at
+app.houndstack.com/get-started, /legal/sms, /legal/privacy, /legal/terms and
+www.houndstack.com. If you change a word on the form, change the page too, or
+the mismatch is a rejection of its own (30507).
+
+### Business information (30474 and 30482)
+
+Use these exactly as the site shows them. The footer of www.houndstack.com and
+app.houndstack.com, and the top of every /legal page, carry the same sentence:
+"HoundStack is operated by The North Consulting LLC, 2222 West Grand River
+Avenue STE A, Okemos, MI 48864. Contact: brendan@houndstack.com".
+
+| Field | Value |
+|---|---|
+| Business name | The North Consulting LLC |
+| Brand / DBA | HoundStack |
+| Street address | 2222 West Grand River Avenue STE A |
+| City, state, ZIP | Okemos, MI 48864 |
+| Website | https://www.houndstack.com |
+| BusinessContactEmail | brendan@houndstack.com |
+| Contact name | Brendan, the named representative. Use the person's own name, not "Support" or "Admin" (see the 30483 trap above). |
+
+Do not put `support@houndstack.com` in `BusinessContactEmail`. It stays as the
+HELP contact. No business phone number is published on the site, deliberately.
+Use whatever the form requires there, but do not add one to the site.
+
 ### Use case description
 
-> HoundStack is a field service platform used by pet waste removal businesses.
-> This number sends transactional SMS in two categories, both requiring prior
-> express written consent that is recorded before any message is sent.
+> HoundStack (operated by The North Consulting LLC) is field service software
+> for pet waste removal businesses. This toll-free number sends transactional
+> SMS to HoundStack account holders only: the business owners and staff who
+> sign in to HoundStack. Messages are verification codes, account and security
+> alerts, subscription billing notices, and replies to support requests the
+> account holder opened.
 >
-> (1) To HoundStack account holders (business owners and their staff): 2FA and
-> verification codes, account and security alerts, subscription billing notices,
-> and replies to support requests they opened. Consent is collected via an
-> unchecked checkbox on the final step of signup at
-> app.houndstack.com/get-started. The account is created whether or not the box
-> is ticked. The exact consent wording, the phone number and a timestamp are
-> stored on the account record.
+> Consent is collected through an optional checkbox, unticked by default, on the
+> final step of signup at app.houndstack.com/get-started, next to an optional
+> mobile number field. The account is created whether or not the box is ticked.
+> The exact consent wording, the phone number and a timestamp are stored on the
+> account record.
 >
-> (2) To the customers of those businesses: appointment reminders,
-> technician-on-the-way and visit-completed notices, sign-in codes for the
-> customer portal, and overdue-invoice reminders. These recipients opt in either
-> themselves, through a checkbox on their own portal account page, or through a
-> consent the business holds and records with an attestation. In both cases
-> HoundStack stores the exact wording agreed, the number, the timestamp and the
-> source. Every automated send is gated in the database by
-> `client_may_be_texted`, which requires a stored consent record and returns
-> false for anyone who has replied STOP.
->
-> STOP, START and HELP are handled centrally for both categories on this number.
-> No marketing or promotional messages are sent from it.
+> This number is not used for marketing and is not used to message account
+> holders' own customers. STOP, START and HELP are supported; STOP stops all
+> further messages from this number. Text messaging is not live yet and is shown
+> on our site as coming soon, pending this registration.
 
 ### Additional information
 
-> Account-holder consent checkbox, quoted verbatim from
-> app.houndstack.com/get-started (screenshots 4 and 5):
+> Consent checkbox, quoted verbatim from app.houndstack.com/get-started
+> (screenshots 4 and 5) and from app.houndstack.com/legal/sms:
 >
 > "I agree to receive text messages from HoundStack at the number provided about
-> my account and service notifications. Consent is optional and is not a
-> condition of purchase — you can create and use a HoundStack account without it.
-> Message frequency varies. Message & data rates may apply. Reply STOP to opt out
-> or HELP for help."
+> my account and service notifications, including verification codes, security
+> alerts and billing notices. Consent is optional and is not a condition of
+> purchase — you can create and use a HoundStack account without it. Message
+> frequency varies. Message & data rates may apply. Reply STOP to opt out or
+> HELP for help."
 >
-> Customer consent checkbox, quoted verbatim from the customer portal account
-> page (screenshot 9):
->
-> "I agree to receive service text messages about my appointments, visit updates,
-> and billing from this business at the number provided. Consent is not a
-> condition of purchase. Message and data rates may apply. Message frequency
-> varies. Reply STOP to opt out or HELP for help."
->
-> Both boxes are unticked by default and neither is a condition of signup or of
-> purchase. Consent text, phone number, timestamp and source are stored per
-> record and shown back in the UI for audit. Standard keywords (STOP, START,
-> HELP, UNSTOP) are supported and STOP overrides any stored consent.
+> The box is unticked by default and is not a condition of signup or of
+> purchase. Our Terms of Service and Privacy Policy each state that accepting
+> them does not give consent to receive text messages. The privacy policy states
+> that mobile numbers and SMS consent records are collected only from account
+> holders who opt in and are not shared with or sold to third parties or
+> affiliates for marketing.
 
 ### Sample messages
 
-Replace with the real templates, which are what actually goes out:
+Account-holder messages only. The STOP and HELP replies are the live strings in
+`src/lib/platform-inbound.server.ts`. The first four are the registered message
+types: no code sends them yet (see "Who the toll-free number texts now" above),
+so write the real templates to match these when they are built.
 
 > HoundStack: your verification code is 481920. It expires in 10 minutes. Do not share this code with anyone.
-> Hi Jane, this is a reminder your visit is scheduled for Tue Sep 2. Reply STOP to opt out.
-> Hi Jane, your tech is on the way for today's visit. Reply STOP to opt out.
-> HoundStack: your payment method was declined for your monthly subscription. Update it at app.houndstack.com/settings/billing to avoid interruption. Reply STOP to opt out or HELP for help.
+>
+> HoundStack: a new sign-in to your account from a new device. If this was not you, reset your password at app.houndstack.com. Reply STOP to opt out or HELP for help.
+>
+> HoundStack: the card on file for your HoundStack subscription was declined. Update it at app.houndstack.com/settings/billing to avoid interruption. Reply STOP to opt out or HELP for help.
+>
+> HoundStack support: we have replied to your request about importing clients. See the reply in your email or at app.houndstack.com. Reply STOP to opt out or HELP for help.
+>
+> HoundStack: You are unsubscribed from HoundStack account messages and will receive no further texts from this number. Reply START to resubscribe or HELP for help.
+>
+> HoundStack: Account messages for people who use HoundStack: sign-in codes, security alerts and billing notices. For help contact support@houndstack.com. Msg & data rates may apply. Reply STOP to opt out.
+
+### Privacy policy URL
+
+> https://app.houndstack.com/legal/privacy
 
 ### Terms and conditions URL
-
-Currently blank. `/legal/terms` exists:
 
 > https://app.houndstack.com/legal/terms
 
 ### Opt-in policy proof
 
-Add the two you already host and one you need to capture:
+All of these load logged out and were re-captured from production on
+2026-10-07 (`scripts/capture-sms-opt-in.mjs https://app.houndstack.com`):
 
 ```
 https://app.houndstack.com/get-started
+https://app.houndstack.com/legal/sms
+https://app.houndstack.com/sms-opt-in/3-finish-no-number.png
 https://app.houndstack.com/sms-opt-in/4-opt-in-unticked.png
 https://app.houndstack.com/sms-opt-in/5-opt-in-ticked.png
-https://app.houndstack.com/sms-opt-in/3-finish-no-number.png
 https://app.houndstack.com/sms-opt-in/6-sms-policy.png
 https://app.houndstack.com/sms-opt-in/7-terms.png
 https://app.houndstack.com/sms-opt-in/8-privacy.png
-https://app.houndstack.com/sms-opt-in/9-portal-opt-in.png
 ```
 
-**Screenshot 9 does not exist yet and is the one that answers 30507.** Capture
-the customer portal account page — route
-`src/routes/portal.$slug.$token.account.tsx`, live at
-`/portal/:slug/:token/account` — showing the texting section with the consent
-wording visible and the box unticked. That is the opt-in for population (2), and
-its absence is why the evidence pack only ever proved population (1).
+There is no screenshot 9. The customer portal opt-in that an earlier version
+asked for belongs to a business's own clients, who are not on this number, so
+it is not evidence for this filing and should not be submitted with it.
 
 ---
 
-# Two app-side items, flagged not changed
+# App-side items
 
-Both alter what customers receive, so they want an explicit decision.
+### The lifecycle texts do not identify the sender (moved, not fixed)
 
-### The lifecycle texts do not identify the sender
-
-`messages.functions.ts:232-237` sends:
-
-> "Hi Jane, this is a reminder your visit is scheduled for Tue Sep 2. Reply STOP to opt out."
-
-From an unrecognised toll-free number, that does not tell the recipient who is
-texting them. CTIA guidance wants the sender identifiable in the message, and a
-reviewer comparing these samples against a "customer notifications" use case may
-well raise it. Prefixing the business name would read:
-
-> "Acme Pet Waste: hi Jane, this is a reminder your visit is scheduled for Tue Sep 2. Reply STOP to opt out."
-
-`org.name` is already loaded on that path.
+The visit reminder in `messages.functions.ts` reads "Hi Jane, this is a reminder
+your visit is scheduled for Tue Sep 2. Reply STOP to opt out." without naming
+the business. It no longer leaves the toll-free number at all (see "What a
+business's client gets instead"), so it is not part of this filing. It still
+matters for the per-business 10DLC registration later: prefix `org.name`
+("Acme Pet Waste: hi Jane, …") before those numbers go live.
 
 ### The signup consent string contains an em dash
 
-`get-started.tsx:69` has "not a condition of purchase — you can create…". That
-is customer-facing copy and would normally fall under the em-dash rule.
-
-**Leave it.** Changing it desyncs the stored consent records (the wording is
-stored per account as the evidence), invalidates screenshots 4 and 5, and would
-mean the text quoted to Twilio no longer matches the text on the page — which is
-mismatch §3 all over again, self-inflicted.
+`SMS_CONSENT_TEXT` in `get-started.tsx` has "not a condition of purchase — you
+can create…". That would normally fall under the em-dash rule. **Leave it.** It
+is the wording on the filing, word for word. It is stored per account as the
+consent record and appears in screenshots 4 and 5. Changing it would make the
+text quoted to Twilio differ from the page, which is a 30507 mismatch of our
+own making. The `em-dash-ok` exemption on it is deliberate.
 
 ---
 
-# Two rejection codes the resubmission has not accounted for
+# Two neighbouring rejection codes, and why they no longer apply
 
-Found by reading the neighbouring error codes rather than only the two that
-fired. Both bear directly on the broadened description above.
-
-## 30504 — a single opt-in cannot cover multiple use cases
+## 30504: a single opt-in cannot cover multiple use cases
 
 https://www.twilio.com/docs/api/errors/30504 rejects "combining multiple use
-cases under one consent mechanism" and asks for "separate opt-in mechanisms for
-each message type".
+cases under one consent mechanism". This mattered for the two-population plan.
+The filing now has one use case (account notifications to account holders) and
+one opt-in (the signup checkbox), so there is nothing to combine. Do not add
+customer reminders or anything else to the description, or this code comes
+back.
 
-The description drafted above names two populations. That is only safe because
-the two opt-ins are genuinely separate mechanisms, and the submission has to
-make that structural rather than leave it implied:
+## 30506: opt-ins must clearly reflect the end business
 
-- **Account holders** consent at signup, on app.houndstack.com/get-started, to
-  account and service notifications about their own HoundStack account.
-- **A business's customers** consent separately — either themselves on their
-  portal account page, or through a consent the business records — to messages
-  about their appointments, visits and billing with that business.
-
-Neither box covers the other population, neither is pre-ticked, and neither is a
-condition of anything. Say that explicitly. A description that blends them into
-one paragraph of "we send transactional messages" is what 30504 exists to catch.
-
-## 30506 — opt-ins must clearly reflect the end business
-
-This is the one to watch, and it is structural rather than a wording fix.
-Twilio's review "looks at the business sending messaging (not the software
-powering it)". For category (2) the business with the consumer relationship is
-the pet-care company, not HoundStack — but the messages leave HoundStack's
-toll-free number, and the customer consent string reads:
-
-> "I agree to receive service text messages about my appointments, visit
-> updates, and billing **from this business** at the number provided."
-
-"this business" is not a name. On the portal page the business is identifiable
-from the surrounding page, which may satisfy a reviewer, but the consent string
-alone does not name who is texting. The same gap shows in the messages
-themselves — see the sender-identification item below, which is the same problem
-seen from the other end.
-
-If a reviewer treats HoundStack as an ISV messaging on behalf of end businesses,
-the guidance under 30472 applies and the submission should carry the END
-business's details, not the platform's. That is a different shape of submission
-from the one in flight, and it is the argument for the narrower option: keep the
-toll-free number for HoundStack's own account holders, and move customer traffic
-onto per-tenant 10DLC where each business is its own sender. The code already
-anticipates exactly that split — `resolveOrgTwilioConfig` provisions a subaccount
-per tenant and returns null until 10DLC clears.
+Twilio reviews "the business sending messaging (not the software powering
+it)". Under the earlier plan, a business's clients would have been texted from
+HoundStack's number, and the end business would have been the pet-care
+company, not HoundStack. Now the end business and the sender are the same:
+HoundStack texts its own account holders, and the opt-in names HoundStack. The
+business's clients get texts only from that business's own number, under
+per-business 10DLC registration, where each business is its own sender. That is
+the split this section used to recommend, and since #341 it is what the code
+does.
