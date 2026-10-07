@@ -52,10 +52,15 @@ describe("sendTwilioSms — direct (tenant BYOK)", () => {
   });
 });
 
-describe("sendTwilioSms — gateway (platform)", () => {
+describe("sendTwilioSms — gateway (platform, account holders only)", () => {
   it("routes through the Lovable connector gateway with platform keys", async () => {
     fetchMock.mockResolvedValueOnce(ok({ sid: "SM3", status: "sent" }));
-    await sendTwilioSms({ to: "+15550001111", body: "hi", from: "+15550002222" });
+    await sendTwilioSms({
+      to: "+15550001111",
+      body: "hi",
+      from: "+15550002222",
+      credentials: { mode: "gateway", purpose: "account_holder" },
+    });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("connector-gateway.lovable.dev/twilio");
     expect((init as any).headers.Authorization).toBe("Bearer lov-key");
@@ -63,7 +68,9 @@ describe("sendTwilioSms — gateway (platform)", () => {
   });
 
   it("throws when neither From nor Messaging Service is supplied", async () => {
-    await expect(sendTwilioSms({ to: "+1", body: "x" })).rejects.toThrow(
+    await expect(
+      sendTwilioSms({ to: "+1", body: "x", credentials: { mode: "gateway", purpose: "account_holder" } }),
+    ).rejects.toThrow(
       /From number or a Messaging Service/,
     );
     expect(fetchMock).not.toHaveBeenCalled();
