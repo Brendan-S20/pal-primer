@@ -18,6 +18,7 @@ import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { headerControlsForRole } from "@/lib/header-prefs";
 import { ThemeCard } from "@/components/settings/ThemeCard";
 import { NativePushCard } from "@/components/settings/NativePushCard";
+import { RouteOnLockScreenCard } from "@/components/settings/RouteOnLockScreenCard";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 // ── THIS DEVICE, AND NOTHING ELSE ─────────────────────────────────────────
@@ -179,6 +180,8 @@ function PreferencesPage() {
 
       {/* Draws nothing on the web, where PushToggle is the control. */}
       <NativePushCard />
+      {/* iPhone app only, beside the notifications it is a cousin of. */}
+      <RouteOnLockScreenCard />
       <ThemeCard />
       <AppearanceCard />
     </div>

@@ -1,16 +1,31 @@
-// The time clock at the top of My Day.
+// The time clock on My Day, as one chip in the status row.
 //
-// One card, one button. Off the clock it offers Clock in; on the clock it says
-// since when and for how long, and offers Clock out. Clocking out says what the
-// day came to -- hours and visits -- because that is the moment a tech wants to
-// know it and the only moment the product has their attention for it.
+// It was a full-width card ("On the clock · 11h 23m / Since 6:04 AM / Clock
+// out"), and with the lock-screen card under it the first stop started
+// halfway down the phone. The owner: "the clock in and clock out ... need a
+// better home/location. It's too cluttered." So:
+//
+//   OFF the clock, the slot is a primary Clock in button. That is a tech's
+//   first action of the day, so it stays one tap and stays obvious.
+//
+//   ON the clock, it is a green timer, "11h 23m", which opens a bottom sheet:
+//   on since when, the shift and the day so far, and Clock out. Clocking out
+//   is two deliberate taps, never one brushed in passing on the way to a
+//   stop's Start button.
+//
+// Clocking out says what the day came to -- hours and visits -- because that
+// is the moment a tech wants to know it and the only moment the product has
+// their attention for it.
 //
 // Works in a dead zone the way the visit buttons do: runOrQueue tries the
-// server with a deadline and queues the tap otherwise, and the card is drawn
+// server with a deadline and queues the tap otherwise, and the chip is drawn
 // from the server's copy with the queued taps applied on top
-// (queued-clock-state.ts), so a clock-in at a yard with no signal reads "On
-// the clock since 7:02" at once and still does after the app is reopened. The
-// replay sends the tap time, so 7:02 is also what the timesheet will say.
+// (queued-clock-state.ts), so a clock-in at a yard with no signal reads
+// "On the clock" at once and still does after the app is reopened. The replay
+// sends the tap time, so 7:02 is also what the timesheet will say.
+//
+// The route on the lock screen starts on Clock in by watching this query
+// (useRouteLiveActivity), so nothing here has to know about it.
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +35,13 @@ import { CloudOff, Timer } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useIntlLocale } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { clockIn, clockOut, getMyClock, type MyClock } from "@/lib/time-clock.functions";
 import { minutesBetween, minutesOnDay } from "@/lib/time-clock";
 import type { TFunction } from "i18next";
@@ -36,7 +58,7 @@ import { haptic } from "@/lib/haptics";
  *  (read-cache-policy) and refetched with it after a sync. */
 export const MY_CLOCK_QUERY_KEY = ["my-day", "clock"] as const;
 
-export function TimeClockCard({
+export function TimeClockChip({
   visitsCompletedToday,
 }: {
   /** My Day's own count when it is showing today, which already includes
@@ -54,6 +76,7 @@ export function TimeClockCard({
   });
   const taps = useQueuedClock(dataUpdatedAt);
   const [busy, setBusy] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const { t } = useTranslation();
   const locale = useIntlLocale();
 
@@ -75,10 +98,11 @@ export function TimeClockCard({
   const todayMinutes = minutesOnDay(shown.entries, today, tz, now);
   const open = shown.open;
   const shiftMinutes = open ? minutesBetween(open.clock_in, now) : 0;
+  const visits = visitsCompletedToday ?? data.visitsCompletedToday;
 
-  const summarise = (minutes: number, visits: number | null) => {
+  const summarise = (minutes: number, count: number | null) => {
     const parts = [t("clock.today", { duration: durationLabel(t, minutes) })];
-    if (visits != null) parts.push(t("clock.visitsCompleted", { count: visits }));
+    if (count != null) parts.push(t("clock.visitsCompleted", { count }));
     return parts.join(" · ");
   };
 
@@ -128,6 +152,7 @@ export function TimeClockCard({
           duration: 8_000,
         });
       }
+      if (kind === "clock_out") setSheetOpen(false);
       if (!queued) await qc.invalidateQueries({ queryKey: MY_CLOCK_QUERY_KEY });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("clock.unreachable"));
@@ -136,59 +161,107 @@ export function TimeClockCard({
     }
   };
 
-  const earlierToday = todayMinutes - shiftMinutes;
+  const waiting =
+    shown.queued === "clock_in"
+      ? t("clock.clockInWaiting")
+      : shown.queued === "clock_out"
+        ? t("clock.clockOutWaiting")
+        : null;
+  // Said, not only drawn: on the chip the cloud is the whole of the message.
+  const waitingMark = waiting ? (
+    <>
+      <CloudOff className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden="true" />
+      <span className="sr-only">{waiting}</span>
+    </>
+  ) : null;
 
-  return (
-    <section
-      aria-label={t("clock.label")}
-      className={`flex items-center gap-3 rounded-lg border p-3 ${
-        open ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card"
-      }`}
-    >
-      <Timer
-        className={`h-5 w-5 shrink-0 ${open ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
-        aria-hidden="true"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
-          {/* The running time on the first line and the start on the second,
-              not "On the clock since 7:42 AM" as one: at 360px beside the
-              button that sentence truncated exactly the part being asked
-              about, the time. */}
-          {open
-            ? t("clock.onTheClock", { duration: durationLabel(t, shiftMinutes) })
-            : t("clock.offTheClock")}
-        </p>
-        <p className="truncate text-xs text-muted-foreground">
-          {open
-            ? `${t("clock.since", { time: orgLocalTime(open.clock_in, tz, locale) })}${
-                earlierToday >= 1
-                  ? ` · ${t("clock.today", { duration: durationLabel(t, todayMinutes) })}`
-                  : ""
-              }`
-            : todayMinutes >= 1
-              ? t("clock.today", { duration: durationLabel(t, todayMinutes) })
-              : t("clock.prompt")}
-        </p>
-        {shown.queued && (
-          <p className="flex min-w-0 items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
-            <CloudOff className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="truncate">
-              {shown.queued === "clock_in" ? t("clock.clockInWaiting") : t("clock.clockOutWaiting")}
-            </span>
-          </p>
-        )}
-      </div>
+  if (!open) {
+    return (
       <Button
         type="button"
-        variant={open ? "outline" : "default"}
         disabled={busy}
-        onClick={() => tap(open ? "clock_out" : "clock_in")}
-        className="min-h-11 shrink-0 px-4"
+        onClick={() => tap("clock_in")}
+        data-time-clock="off"
+        className="min-h-11 shrink-0 gap-1.5 px-4"
       >
-        {open ? t("clock.clockOut") : t("clock.clockIn")}
+        <Timer className="h-4 w-4 shrink-0" aria-hidden="true" />
+        {t("clock.clockIn")}
+        {waitingMark}
       </Button>
-    </section>
+    );
+  }
+
+  const shift = durationLabel(t, shiftMinutes);
+  return (
+    <>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-label={t("clock.onTheClock", { duration: shift })}
+        onClick={() => {
+          haptic("tap");
+          setSheetOpen(true);
+        }}
+        data-time-clock="on"
+        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 text-sm font-semibold tabular-nums text-emerald-700 transition-colors active:scale-95 dark:text-emerald-400"
+      >
+        <Timer className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="whitespace-nowrap">{shift}</span>
+        {waitingMark}
+      </button>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-xl">
+          <div className="mx-auto w-full max-w-md space-y-4">
+            <SheetHeader className="text-start">
+              <SheetTitle className="flex items-center gap-2">
+                <Timer
+                  className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden="true"
+                />
+                {t("clock.label")}
+              </SheetTitle>
+              <SheetDescription>
+                {t("clock.onSince", { time: orgLocalTime(open.clock_in, tz, locale) })}
+              </SheetDescription>
+            </SheetHeader>
+
+            <dl className="grid grid-cols-2 gap-3">
+              <div className="min-w-0 rounded-lg bg-muted/60 p-3">
+                <dt className="truncate text-xs text-muted-foreground">{t("clock.thisShift")}</dt>
+                <dd className="text-lg font-semibold tabular-nums">{shift}</dd>
+              </div>
+              <div className="min-w-0 rounded-lg bg-muted/60 p-3">
+                <dt className="truncate text-xs text-muted-foreground">{t("clock.todayTotal")}</dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {durationLabel(t, Math.max(todayMinutes, shiftMinutes))}
+                </dd>
+              </div>
+            </dl>
+            {visits != null && (
+              <p className="text-sm text-muted-foreground">
+                {t("clock.visitsCompleted", { count: visits })}
+              </p>
+            )}
+            {waiting && (
+              <p className="flex min-w-0 items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+                <CloudOff className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0">{waiting}</span>
+              </p>
+            )}
+
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => tap("clock_out")}
+              className="min-h-11 w-full"
+            >
+              {t("clock.clockOut")}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

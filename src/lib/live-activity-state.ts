@@ -2,7 +2,7 @@
 // My Day draws.
 //
 // One builder, two callers: My Day on the phone (src/components/my-day/
-// RouteLiveActivityCard.tsx), with the visits as worked -- queued Completes
+// useRouteLiveActivity.ts), with the visits as worked -- queued Completes
 // and Skips applied -- and the server when the office changes the day
 // (src/lib/push-liveactivity.server.ts), with the visits as stored. Both pass
 // a `t` in the tech's language, so the strings the widget extension draws are

@@ -47,8 +47,10 @@ export const FOCUS_MY_DAY_SCHEDULE_EVENT = "houndstack:focus-my-day-schedule";
 const OFFICE_TAB_URLS = ["/dashboard", "/routes", "/clients"];
 const TECH_TAB_URLS = ["/my-day", "/waste-log", "/notifications"];
 
+// `h-full`: each tab fills the bar's fixed row (see the nav below), so the
+// whole of the bar's height is a hit area and not just the icon and label.
 const tabClass = (active: boolean) =>
-  `flex min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-3xs font-medium transition-colors ${
+  `flex h-full min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-3xs font-medium transition-colors ${
     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
   }`;
 
@@ -173,7 +175,12 @@ export function MobileTabBar() {
         // highest of these, so a full-height map stops above the navigation
         // instead of behind it. Nothing else reads the attribute.
         data-bottom-chrome=""
-        className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80 ${barHiddenFrom}`}
+        // EXACTLY --tab-bar-h tall above the home indicator (styles.css). It
+        // used to be as tall as its contents happened to come to, 51px, while
+        // everything parked on top of it assumed 56: My Day's NEXT UP strip
+        // floated 5px above the bar with the stop list scrolling through the
+        // gap. Now the bar is the number and the number is in one place.
+        className={`fixed inset-x-0 bottom-0 z-40 h-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80 ${barHiddenFrom}`}
       >
         {isTech ? (
           /* FOUR TABS, THREE OF THEM DESTINATIONS.
@@ -186,7 +193,7 @@ export function MobileTabBar() {
              two taps deep in More.
              The day strip keeps doing the job the Schedule tab pretended to
              do, which is why dropping the tab costs nothing. */
-          <ul className="grid grid-cols-4">
+          <ul className="grid h-full grid-cols-4">
             <li>
               <Link
                 to="/my-day"
@@ -247,7 +254,7 @@ export function MobileTabBar() {
             <li>{moreButton}</li>
           </ul>
         ) : (
-          <ul className="grid grid-cols-5">
+          <ul className="grid h-full grid-cols-5">
             <li>
               <Link
                 to="/dashboard"

@@ -109,8 +109,10 @@ import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
-import { TimeClockCard } from "@/components/TimeClockCard";
-import { RouteLiveActivityCard } from "@/components/my-day/RouteLiveActivityCard";
+import { TimeClockChip } from "@/components/TimeClockChip";
+import { useRouteLiveActivity } from "@/components/my-day/useRouteLiveActivity";
+import { RouteLockScreenToggle } from "@/components/my-day/RouteLockScreenToggle";
+import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
 import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
@@ -308,14 +310,33 @@ function MyDay() {
   // branches are written out in full because Tailwind scans for literal class
   // names and never sees a string it had to assemble.
   const { barThroughTablet } = useTabletTier();
-  // 7rem clears the NEXT UP bar on its own; the wider value adds the tab bar's
-  // 3.5rem on top of it, for exactly as long as the tab bar is on screen.
-  const belowTabBarPadding = barThroughTablet
-    ? "pb-[calc(7rem+env(safe-area-inset-bottom))] max-lg:pb-[calc(10.5rem+env(safe-area-inset-bottom))]"
-    : "pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(10.5rem+env(safe-area-inset-bottom))]";
-  const nextUpAboveTabBar = barThroughTablet
-    ? "max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-lg:pb-0"
-    : "max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:pb-0";
+  // And whether there is a tab bar at all: a phone set to the side menu
+  // (Preferences → Menu on a phone) draws none, and NEXT UP parked 56px above
+  // the bottom of the screen with nothing under it.
+  const { prefs: headerPrefs } = useHeaderPrefs();
+  const tabBarDrawn = headerPrefs.phoneNav === "bottom";
+  // ── NEXT UP SITS ON THE TAB BAR, NOT NEAR IT ─────────────────────────────
+  //
+  // The offset is the tab bar's height as the tab bar itself is drawn,
+  // `--tab-bar-h` (styles.css), plus the home indicator's inset, which the
+  // tab bar pads by. Until 2026-10-07 it was a literal 3.5rem while the bar
+  // was 51px, so NEXT UP floated 5px above it and the stop list scrolled
+  // through the gap: the owner circled it on an iPhone 17 Pro, TestFlight
+  // build 261. tests/viewports/my-day-gets-its-room-back.spec.ts measures the
+  // two edges against each other, with the iPhone's insets and without.
+  //
+  // 7rem clears the NEXT UP bar on its own; the wider value adds the tab bar
+  // on top of it, for exactly as long as the tab bar is on screen.
+  const belowTabBarPadding = !tabBarDrawn
+    ? "pb-[calc(7rem+env(safe-area-inset-bottom))]"
+    : barThroughTablet
+      ? "pb-[calc(7rem+env(safe-area-inset-bottom))] max-lg:pb-[calc(7rem+var(--tab-bar-h)+env(safe-area-inset-bottom))]"
+      : "pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(7rem+var(--tab-bar-h)+env(safe-area-inset-bottom))]";
+  const nextUpAboveTabBar = !tabBarDrawn
+    ? ""
+    : barThroughTablet
+      ? "max-lg:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] max-lg:pb-0"
+      : "max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] max-md:pb-0";
   // And the NEXT UP bar starts clear of the docked sidebar — from wherever the
   // sidebar docks, which for a tech is now `lg` (sidebarDocksFrom). A fixed
   // `md:` here would leave a 256px gap on the left of a crew tablet, beside
@@ -559,6 +580,17 @@ function MyDay() {
   // (H1: skipped is not done; BUG-17: an open job outranks the next scheduled
   // one) live in lib/my-day-progress.ts, where they are tested.
   const { completedCount, skippedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
+
+  // The route on the iPhone lock screen. Called here, above every early
+  // return, rather than inside the control that shows it: the route has to
+  // start on Clock in, follow every Complete and end with the day whether or
+  // not the status row is drawn. Does nothing off iOS, and nothing on any day
+  // but the tech's own today.
+  const lockScreen = useRouteLiveActivity({
+    visits,
+    day,
+    enabled: day === orgTodayIso && !previewing && !!staff,
+  });
 
   // ...and bring it back on screen without the tech hunting for it. Scrolls
   // once per open visit, not on every render, so it never fights a tech who has
@@ -815,70 +847,112 @@ function MyDay() {
             </div>
           </div>
 
-          {total > 0 && (
-            <div className="flex items-center gap-2">
-              {/* PROGRESS LEFT, VIEW RIGHT.
-                  The toggle used to lead the row and the progress followed it,
-                  which put the control first and the fact second. The number
-                  is what a technician reads at a glance between driveways; the
-                  toggle is pressed a few times a day. min-w-0 so the pill
-                  yields to the toggle rather than pushing it off the edge. */}
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
-                <div className="min-w-0 shrink-0 truncate text-xs font-medium">
-                  {completedCount} {t("common.of")} {total} {t("common.done")}
-                  {skippedCount > 0 && (
-                    <span className="ms-1 font-normal text-muted-foreground">
-                      · {t("myDay.skippedCount", { count: skippedCount })}
-                    </span>
-                  )}
-                </div>
-                {/* The bar is the one thing here allowed to give up width, so
-                    it is the only flex item without shrink-0. At 320px it
-                    narrows to a sliver and the two numbers stay readable,
-                    which is the right way round: the bar restates the
-                    percentage, the percentage does not restate the bar. */}
-                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted-foreground/20">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <div className="shrink-0 text-xs font-medium text-muted-foreground">{pct}%</div>
-              </div>
+          {/* ── THE STATUS ROW ───────────────────────────────────────────
+              Progress, the time clock, the route on the lock screen, and the
+              view. The clock and the lock-screen control used to be two
+              full-width cards under this header, and on the owner's iPhone
+              the first stop started halfway down the screen. They are a chip
+              and an icon now, and the list starts right under this row.
 
-              {/* Labelled, not icon-only. "List" and "Map" next to the glyph
-                  cost about 60px and remove the guess; the icons alone were a
-                  list and a folded map, which are not far apart at 16px. Still
-                  44px tall -- the height is now the padding plus the label
-                  rather than a fixed square, so min-h-11 states it outright. */}
-              <div
-                className="flex shrink-0 rounded-lg border p-0.5"
-                role="group"
-                aria-label={t("myDay.view")}
-              >
-                {(["list", "map"] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    aria-pressed={view === v}
-                    onClick={() => {
-                      haptic("tap");
-                      setView(v);
-                    }}
-                    className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors ${
-                      view === v
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {v === "list" ? (
-                      <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    ) : (
-                      <MapIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    )}
-                    {v === "list" ? t("myDay.viewList") : t("myDay.viewMap")}
-                  </button>
-                ))}
+              One row wherever it fits, which is from a 36rem column (an iPad,
+              a laptop). Below that the clock and the lock-screen icon take a
+              slim row of their own directly under the progress, and the row
+              above stays exactly the one the-top-bar-a-technician-reads-
+              between-driveways measures: at 320px, progress, a clock chip,
+              an icon and List/Map are about 460px of controls. Keyed on the
+              COLUMN's width (a container query), not the screen's, because
+              the sidebar takes a different share of the screen at every
+              tier. The time clock is about NOW, whichever day the list shows,
+              so it is drawn on every day, but never while previewing somebody
+              else's: the taps would be the viewer's own. */}
+          {(total > 0 || !previewing) && (
+            <div className="@container">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 @xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+                {total > 0 && (
+                  <>
+                    {/* PROGRESS LEFT, VIEW RIGHT.
+                        The toggle used to lead the row and the progress followed it,
+                        which put the control first and the fact second. The number
+                        is what a technician reads at a glance between driveways; the
+                        toggle is pressed a few times a day. min-w-0 so the pill
+                        yields to the toggle rather than pushing it off the edge. */}
+                    <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
+                      <div className="min-w-0 shrink-0 truncate text-xs font-medium">
+                        {completedCount} {t("common.of")} {total} {t("common.done")}
+                        {skippedCount > 0 && (
+                          <span className="ms-1 font-normal text-muted-foreground">
+                            · {t("myDay.skippedCount", { count: skippedCount })}
+                          </span>
+                        )}
+                      </div>
+                      {/* The bar is the one thing here allowed to give up width, so
+                          it is the only flex item without shrink-0. At 320px it
+                          narrows to a sliver and the two numbers stay readable,
+                          which is the right way round: the bar restates the
+                          percentage, the percentage does not restate the bar. */}
+                      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted-foreground/20">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <div className="shrink-0 text-xs font-medium text-muted-foreground">{pct}%</div>
+                    </div>
+
+                    {/* Labelled, not icon-only. "List" and "Map" next to the glyph
+                        cost about 60px and remove the guess; the icons alone were a
+                        list and a folded map, which are not far apart at 16px. Still
+                        44px tall -- the height is now the padding plus the label
+                        rather than a fixed square, so min-h-11 states it outright. */}
+                    <div
+                      className="col-start-2 row-start-1 flex shrink-0 rounded-lg border p-0.5 @xl:col-start-3"
+                      role="group"
+                      aria-label={t("myDay.view")}
+                    >
+                      {(["list", "map"] as const).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          aria-pressed={view === v}
+                          onClick={() => {
+                            haptic("tap");
+                            setView(v);
+                          }}
+                          className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors ${
+                            view === v
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {v === "list" ? (
+                            <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          ) : (
+                            <MapIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          )}
+                          {v === "list" ? t("myDay.viewList") : t("myDay.viewMap")}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {/* `empty:hidden`: an account with no staff row has no clock,
+                    and off iOS there is no lock-screen icon; a row with
+                    nothing in it must not leave its gap behind. */}
+                <div
+                  data-my-day-tools=""
+                  className={`flex min-w-0 items-center gap-2 empty:hidden ${
+                    total > 0
+                      ? "col-span-2 row-start-2 @xl:col-span-1 @xl:col-start-2 @xl:row-start-1"
+                      : "col-span-2 row-start-1"
+                  }`}
+                >
+                  {!previewing && (
+                    <TimeClockChip
+                      visitsCompletedToday={day === orgTodayIso ? completedCount : null}
+                    />
+                  )}
+                  <RouteLockScreenToggle activity={lockScreen} />
+                </div>
               </div>
             </div>
           )}
@@ -929,20 +1003,9 @@ function MyDay() {
       </div>
 
       <div className="space-y-3 pt-4">
-        {/* The time clock is about NOW, whichever day the list is showing, so
-            it is drawn on every day -- but never while previewing somebody
-            else's day, because the taps would be the viewer's own. It draws
-            nothing for an account with no staff row. */}
-        {!previewing && (
-          <TimeClockCard visitsCompletedToday={day === orgTodayIso ? completedCount : null} />
-        )}
-        {/* The route on the iPhone lock screen. Renders nothing off iOS, and
-            nothing on any day but the tech's own today. */}
-        <RouteLiveActivityCard
-          visits={visits}
-          day={day}
-          enabled={day === orgTodayIso && !previewing && !!staff}
-        />
+        {/* No cards above the first stop. The time clock and the route on
+            the lock screen were two of them, and are now a chip and an icon
+            in the status row above; the list starts right under it. */}
         {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}
