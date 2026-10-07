@@ -1001,7 +1001,6 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         .eq("id", inv.id);
       charged++;
     } catch (e) {
-      const msg = (e as Error).message || "autopay failed";
       const { isStripeMissingResource, clearClientStripeRefs } =
         await import("@/lib/stripe-connect.server");
       if (isStripeMissingResource(e)) {
@@ -1019,16 +1018,17 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           .eq("id", c.id);
         continue;
       }
-      const nextCount = failures + 1;
-      await supabaseAdmin
-        .from("clients")
-        .update({
-          autopay_last_attempt_at: new Date().toISOString(),
-          autopay_last_error: msg,
-          autopay_failure_count: nextCount,
-          autopay_paused: nextCount >= pauseAfter,
-        })
-        .eq("id", c.id);
+      // One decline counts once (autopay-decline.server). A decline that
+      // reached Stripe has a PaymentIntent, and the webhook counts it when
+      // Stripe reports it; counting it here as well is what made autopay pause
+      // after half the declines the business set. This counts only a failure
+      // that never produced a PaymentIntent, which no webhook will report.
+      try {
+        const { recordNightlyAutopayFailure } = await import("@/lib/autopay-decline.server");
+        await recordNightlyAutopayFailure(supabaseAdmin, { clientId: c.id, error: e });
+      } catch (recordErr) {
+        console.error("autopay failure could not be recorded", inv.id, recordErr);
+      }
     }
   }
   return charged;

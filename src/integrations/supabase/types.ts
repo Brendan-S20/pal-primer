@@ -1031,6 +1031,7 @@ export type Database = {
           accounting_remote_id: string | null
           active: boolean
           autopay_enabled: boolean
+          autopay_counted_decline_pis: string[]
           autopay_failure_count: number
           autopay_last_attempt_at: string | null
           autopay_last_error: string | null
@@ -1083,6 +1084,7 @@ export type Database = {
           accounting_remote_id?: string | null
           active?: boolean
           autopay_enabled?: boolean
+          autopay_counted_decline_pis?: string[]
           autopay_failure_count?: number
           autopay_last_attempt_at?: string | null
           autopay_last_error?: string | null
@@ -1135,6 +1137,7 @@ export type Database = {
           accounting_remote_id?: string | null
           active?: boolean
           autopay_enabled?: boolean
+          autopay_counted_decline_pis?: string[]
           autopay_failure_count?: number
           autopay_last_attempt_at?: string | null
           autopay_last_error?: string | null
@@ -6938,6 +6941,19 @@ export type Database = {
           _visit_id: string
         }
         Returns: string
+      }
+      count_autopay_decline: {
+        Args: {
+          _client_id: string
+          _error: string
+          _payment_intent_id: string
+        }
+        Returns: {
+          counted: boolean
+          failure_count: number
+          pause_after: number
+          paused: boolean
+        }[]
       }
       count_fresh_road_legs: {
         Args: { _lats: number[]; _lons: number[]; _org_id: string }
