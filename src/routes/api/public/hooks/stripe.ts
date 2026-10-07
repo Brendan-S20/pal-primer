@@ -749,30 +749,21 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 .eq("id", invoiceId)
                 .single();
               if (inv?.client_id && isSavedCardCharge) {
-                // Dunning: increment failure count, pause autopay if past org threshold.
-                const [{ data: c }, { data: orgCfg }] = await Promise.all([
-                  supabaseAdmin
-                    .from("clients")
-                    .select("autopay_failure_count")
-                    .eq("id", inv.client_id)
-                    .single(),
-                  supabaseAdmin
-                    .from("organizations")
-                    .select("dunning_pause_after_failures")
-                    .eq("id", inv.organization_id)
-                    .single(),
-                ]);
-                const nextCount = (c?.autopay_failure_count ?? 0) + 1;
-                const threshold = orgCfg?.dunning_pause_after_failures ?? 3;
-                await supabaseAdmin
-                  .from("clients")
-                  .update({
-                    autopay_last_error: err,
-                    autopay_last_attempt_at: new Date().toISOString(),
-                    autopay_failure_count: nextCount,
-                    autopay_paused: nextCount >= threshold,
-                  })
-                  .eq("id", inv.client_id);
+                // Dunning: count this decline toward the ladder and pause
+                // autopay at the org's threshold, ONCE per PaymentIntent.
+                // Stripe redelivers this event, and until 2026-10-07 every
+                // delivery added one, as did the nightly run for the same
+                // charge, so autopay paused after as few as half the declines
+                // the business set. The count, the idempotency and the pause
+                // are one SQL function (autopay-decline.server). If it fails
+                // this throws, the handler answers 500, and Stripe's
+                // redelivery is safe because a second report counts nothing.
+                const { countAutopayDecline } = await import("@/lib/autopay-decline.server");
+                const decline = await countAutopayDecline(supabaseAdmin, {
+                  clientId: inv.client_id,
+                  paymentIntentId: pi.id,
+                  error: err,
+                });
 
                 // Tell the client, by email. An AUTOPAY decline only: the
                 // portal_saved_card source is the client pressing Pay in their
@@ -804,99 +795,111 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   }
                 }
 
-                // Optional SMS alert to client (org toggle)
-                try {
-                  const { data: org } = await supabaseAdmin
-                    .from("organizations")
-                    .select("notify_sms_payment_failed")
-                    .eq("id", inv.organization_id)
-                    .single();
-                  // A text to a business's client: from the business's own
-                  // subaccount, or not at all. This preferred the PLATFORM
-                  // number until 2026-10-06. With no subaccount the client
-                  // is not texted; the office's in-app notice below still
-                  // goes, and so do the nightly overdue-invoice emails.
-                  const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
-                  const sender = org?.notify_sms_payment_failed
-                    ? await endCustomerSmsSender(inv.organization_id)
-                    : null;
-                  if (org?.notify_sms_payment_failed && !sender) {
-                    console.info(
-                      "payment-failed SMS not sent: the business has no texting number of its own",
-                      inv.organization_id,
-                    );
-                  }
-                  if (sender) {
-                    const { data: c } = await supabaseAdmin
-                      .from("clients")
-                      .select(
-                        "display_name, primary_phone, sms_opt_out, portal_token, comms_paused",
-                      )
-                      .eq("id", inv.client_id)
+                // The text and the office's notice go once per decline, on the
+                // delivery that counted it. A redelivery of a decline already
+                // counted is the same decline told again, and used to text the
+                // client and notify the office again with it. (The email above
+                // has its own once-a-day guard.)
+                if (decline.counted) {
+                  // Optional SMS alert to client (org toggle)
+                  try {
+                    const { data: org } = await supabaseAdmin
+                      .from("organizations")
+                      .select("notify_sms_payment_failed")
+                      .eq("id", inv.organization_id)
                       .single();
-                    // comms_paused: imported clients get no automated dunning
-                    // SMS until the org initiates contact.
-                    // Consent, via the one SQL gate every manual sender uses.
-                    // This automated path checked three of its four conditions
-                    // by hand and skipped the recorded-consent one, which is
-                    // the condition Twilio verification turns on.
-                    const { data: mayTextDeclined } = await (supabaseAdmin as any).rpc(
-                      "client_may_be_texted",
-                      { _client_id: inv.client_id },
-                    );
-                    if (
-                      c &&
-                      mayTextDeclined &&
-                      !c.sms_opt_out &&
-                      !c.comms_paused &&
-                      c.primary_phone
-                    ) {
-                      const { sendTwilioSms } = await import("@/lib/twilio.server");
-                      const { buildPortalLink } = await import("@/lib/portal-links.server");
-                      const url = await buildPortalLink(
+                    // A text to a business's client: from the business's own
+                    // subaccount, or not at all. This preferred the PLATFORM
+                    // number until 2026-10-06. With no subaccount the client
+                    // is not texted; the office's in-app notice below still
+                    // goes, and so do the nightly overdue-invoice emails.
+                    const { endCustomerSmsSender } =
+                      await import("@/lib/twilio-credentials.server");
+                    const sender = org?.notify_sms_payment_failed
+                      ? await endCustomerSmsSender(inv.organization_id)
+                      : null;
+                    if (org?.notify_sms_payment_failed && !sender) {
+                      console.info(
+                        "payment-failed SMS not sent: the business has no texting number of its own",
                         inv.organization_id,
-                        c.portal_token as string | null,
                       );
-                      const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
-                      const r = await sendTwilioSms({
-                        to: c.primary_phone,
-                        body,
-                        from: sender.from ?? undefined,
-                        messagingServiceSid: sender.messagingServiceSid ?? undefined,
-                        credentials: sender.credentials,
-                      });
-                      await supabaseAdmin.from("messages").insert({
-                        organization_id: inv.organization_id,
-                        client_id: inv.client_id,
-                        direction: "outbound",
-                        body,
-                        from_number: sender.from,
-                        to_number: c.primary_phone,
-                        twilio_sid: r.sid,
-                        status:
-                          (r.status as
-                            "queued" | "sent" | "delivered" | "failed" | "received" | undefined) ??
-                          "queued",
-                      });
                     }
+                    if (sender) {
+                      const { data: c } = await supabaseAdmin
+                        .from("clients")
+                        .select(
+                          "display_name, primary_phone, sms_opt_out, portal_token, comms_paused",
+                        )
+                        .eq("id", inv.client_id)
+                        .single();
+                      // comms_paused: imported clients get no automated dunning
+                      // SMS until the org initiates contact.
+                      // Consent, via the one SQL gate every manual sender uses.
+                      // This automated path checked three of its four conditions
+                      // by hand and skipped the recorded-consent one, which is
+                      // the condition Twilio verification turns on.
+                      const { data: mayTextDeclined } = await (supabaseAdmin as any).rpc(
+                        "client_may_be_texted",
+                        { _client_id: inv.client_id },
+                      );
+                      if (
+                        c &&
+                        mayTextDeclined &&
+                        !c.sms_opt_out &&
+                        !c.comms_paused &&
+                        c.primary_phone
+                      ) {
+                        const { sendTwilioSms } = await import("@/lib/twilio.server");
+                        const { buildPortalLink } = await import("@/lib/portal-links.server");
+                        const url = await buildPortalLink(
+                          inv.organization_id,
+                          c.portal_token as string | null,
+                        );
+                        const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
+                        const r = await sendTwilioSms({
+                          to: c.primary_phone,
+                          body,
+                          from: sender.from ?? undefined,
+                          messagingServiceSid: sender.messagingServiceSid ?? undefined,
+                          credentials: sender.credentials,
+                        });
+                        await supabaseAdmin.from("messages").insert({
+                          organization_id: inv.organization_id,
+                          client_id: inv.client_id,
+                          direction: "outbound",
+                          body,
+                          from_number: sender.from,
+                          to_number: c.primary_phone,
+                          twilio_sid: r.sid,
+                          status:
+                            (r.status as
+                              | "queued"
+                              | "sent"
+                              | "delivered"
+                              | "failed"
+                              | "received"
+                              | undefined) ?? "queued",
+                        });
+                      }
+                    }
+                  } catch (e) {
+                    console.error("payment-failed SMS failed", e);
                   }
-                } catch (e) {
-                  console.error("payment-failed SMS failed", e);
-                }
 
-                // In-app notification to owners/managers.
-                try {
-                  const { notifyRoles } = await import("@/lib/notify-center.server");
-                  const { invoiceRef } = await import("@/lib/invoice-labels");
-                  await notifyRoles(["owner", "office_manager"], {
-                    orgId: inv.organization_id,
-                    type: "payment_failed",
-                    title: "A client payment failed",
-                    body: `Invoice ${await invoiceRef(supabaseAdmin, invoiceId)}: card declined.`,
-                    link: "/invoices",
-                  });
-                } catch (e) {
-                  console.error("payment-failed in-app notification failed", e);
+                  // In-app notification to owners/managers.
+                  try {
+                    const { notifyRoles } = await import("@/lib/notify-center.server");
+                    const { invoiceRef } = await import("@/lib/invoice-labels");
+                    await notifyRoles(["owner", "office_manager"], {
+                      orgId: inv.organization_id,
+                      type: "payment_failed",
+                      title: "A client payment failed",
+                      body: `Invoice ${await invoiceRef(supabaseAdmin, invoiceId)}: card declined.`,
+                      link: "/invoices",
+                    });
+                  } catch (e) {
+                    console.error("payment-failed in-app notification failed", e);
+                  }
                 }
               }
             }
