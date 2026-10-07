@@ -1101,9 +1101,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // tax_cents: the sales tax inside amount_cents. Owed to the state,
               // so the part of a reversal that was tax comes off tax collected,
               // not off revenue.
-              .select(
-                "id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents, status",
-              )
+              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents, status")
               .eq("stripe_payment_intent_id", paymentIntentId)
               .maybeSingle();
             if (!pay) return new Response("ok", { status: 200 });
@@ -1254,13 +1252,8 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   Number(pay.amount_cents ?? 0) +
                   Number(pay.surcharge_cents ?? 0) +
                   Number(pay.tip_cents ?? 0);
-                revenueAmount = splitRefund(
-                  amount,
-                  chargeTotal,
-                  0,
-                  0,
-                  Number(pay.tax_cents ?? 0),
-                ).revenueCents;
+                revenueAmount = splitRefund(amount, chargeTotal, 0, 0, Number(pay.tax_cents ?? 0))
+                  .revenueCents;
               }
               disputeRef = typeof obj?.id === "string" ? obj.id : null;
 
