@@ -331,14 +331,26 @@ export const portalRequestSkip = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+    // A skip inside the cutoff takes a stop off a tech's day: that tech hears
+    // it, and their lock screen is rebuilt (see portalRescheduleVisit).
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: null,
+      orgId: session.organizationId,
+      visitIds: [data.visitId],
+    });
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await sb.rpc("portal_request_skip", {
       _token: data.token,
       _visit_id: data.visitId,
       _reason: data.reason,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
+    await pushRoutes();
     return { ok: true };
   });
 
@@ -380,14 +392,29 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+    // A customer moving their visit takes it off the tech's day it was on
+    // (portal_reschedule_visit unassigns it for the office to place again).
+    // If that day is the tech's today or tomorrow, the tech hears it, the
+    // same way they hear a dispatcher's move; the actor is null because the
+    // customer is nobody on the staff. The lock screen follows both days.
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: null,
+      orgId: session.organizationId,
+      visitIds: [data.visitId],
+    });
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await sb.rpc("portal_reschedule_visit", {
       _token: data.token,
       _visit_id: data.visitId,
       _new_date: data.newDate,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
+    await pushRoutes();
     return { ok: true };
   });
 
@@ -1530,8 +1557,31 @@ export const portalRequestVacationHold = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+    // With auto-apply on, a hold skips every visit in the range outright, and
+    // the first of them can be on a tech's today or tomorrow. The watch only
+    // looks at those two days, so it needs only the EARLIEST of this client's
+    // open visits in the range: twenty is several weeks of the busiest plan.
+    const { data: inRange } = await sb
+      .from("visits")
+      .select("id")
+      .eq("organization_id", session.organizationId)
+      .eq("client_id", session.clientId)
+      .gte("scheduled_on", data.startDate)
+      .lte("scheduled_on", data.endDate)
+      .in("status", ["scheduled", "in_progress"])
+      .order("scheduled_on", { ascending: true })
+      .limit(20);
+    const visitIds = ((inRange ?? []) as Array<{ id: string }>).map((v) => v.id);
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: null,
+      orgId: session.organizationId,
+      visitIds,
+    });
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities(visitIds);
     const { data: n, error } = await sb.rpc("portal_request_vacation_hold" as any, {
       _token: data.token,
       _start: data.startDate,
@@ -1539,6 +1589,8 @@ export const portalRequestVacationHold = createServerFn({ method: "POST" })
       _reason: data.reason,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
+    await pushRoutes();
     return { skippedCount: (n as number) ?? 0 };
   });
 

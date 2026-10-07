@@ -323,6 +323,99 @@ export function estimateDriveMin(
  *  promise and the estimate is not that precise. */
 export const roundLate = (minutes: number) => Math.ceil(minutes / 5) * 5;
 
+// ── A truck that never moved ───────────────────────────────────────────────
+//
+// The two triggers above need the truck to DO something: send a GPS ping, or
+// finish a stop. A tech stuck at one long stop with location sharing off does
+// neither, so the next stop's window passes and the office hears nothing. The
+// periodic check (checkStuckTrucks in field-notify.server.ts, run every five
+// minutes by the `late-check` cron job) asks the same question on a clock,
+// and files its answer under the same event key, so whichever of the three
+// notices a slip first is the only one the office hears.
+
+/** A window this far off cannot be missed from anywhere a scooping route
+ *  drives: the same three hours the GPS check stops at. */
+export const LATE_LOOKAHEAD_MIN = 180;
+/** A window that closed this long ago has been announced eight times by
+ *  now. Past it the office already knows, and a ninth push every quarter of
+ *  an hour for the rest of the afternoon is noise. */
+export const LATE_GIVE_UP_MIN = 120;
+/** A route can run past the end of the working day; the check keeps
+ *  watching this long after it. */
+export const LATE_AFTER_HOURS_MIN = 60;
+
+/** "08:00", "08:00:00" or "8:00" as minutes past midnight, or null. */
+export function clockMinutes(t: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t ?? "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h < 24 && min < 60 ? h * 60 + min : null;
+}
+
+/** Is `localMinutes` (minutes past midnight on the organization's own clock)
+ *  inside the working day, from its start to `afterMin` past its end? The
+ *  org's workday_start and workday_end, defaulting to 08:00 and 17:00 as the
+ *  columns do. The late check keeps watching an hour past the end, because a
+ *  route can run over; a schedule change pushes only inside the day itself. */
+export function withinWorkingHours(
+  localMinutes: number | null,
+  workdayStart: string | null | undefined,
+  workdayEnd: string | null | undefined,
+  afterMin: number = LATE_AFTER_HOURS_MIN,
+): boolean {
+  if (localMinutes == null) return false;
+  const start = clockMinutes(workdayStart) ?? 8 * 60;
+  const end = (clockMinutes(workdayEnd) ?? 17 * 60) + afterMin;
+  if (end > start && end <= 24 * 60) return localMinutes >= start && localMinutes <= end;
+  // A day that runs past midnight: either side of it counts.
+  return localMinutes >= start || localMinutes <= end % (24 * 60);
+}
+
+export type OpenStop = {
+  id: string;
+  assigned_staff_id: string | null;
+  scheduled_on: string;
+  status: string;
+  sequence: number | null;
+  eta_end: string | null;
+};
+
+const routeOrder = (a: OpenStop, b: OpenStop) =>
+  (a.sequence ?? Number.MAX_SAFE_INTEGER) - (b.sequence ?? Number.MAX_SAFE_INTEGER) ||
+  String(a.eta_end).localeCompare(String(b.eta_end));
+
+/** Each tech-day's NEXT stop: the scheduled one with a window that comes
+ *  first in route order, the rule afterStopResolved picks it by. */
+export function nextStopPerTechDay<T extends OpenStop>(rows: T[]): T[] {
+  const best = new Map<string, T>();
+  for (const r of rows) {
+    if (r.status !== "scheduled" || !r.eta_end || !r.assigned_staff_id) continue;
+    const key = `${r.assigned_staff_id}|${r.scheduled_on}`;
+    const was = best.get(key);
+    if (!was || routeOrder(r, was) < 0) best.set(key, r);
+  }
+  return [...best.values()];
+}
+
+export type DoneStop = {
+  status: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+};
+
+/** Where a tech's truck is, as far as the stops say: the one in progress
+ *  (the latest started, if somehow two are), else the one finished last,
+ *  else null, meaning the route has not started and the truck is wherever
+ *  the day begins. */
+export function whereTheTruckIs<T extends DoneStop>(rows: T[]): T | null {
+  const latest = (col: "started_at" | "completed_at") => (a: T, b: T) =>
+    String(b[col] ?? "").localeCompare(String(a[col] ?? ""));
+  const going = rows.filter((r) => r.status === "in_progress").sort(latest("started_at"));
+  if (going.length) return going[0];
+  return rows.filter((r) => r.status === "completed").sort(latest("completed_at"))[0] ?? null;
+}
+
 // ── A finished route ───────────────────────────────────────────────────────
 
 export type DayTally = {

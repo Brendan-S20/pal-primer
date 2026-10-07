@@ -26,8 +26,13 @@ import {
   diffRoutes,
   estimateDriveMin,
   finishedTitle,
+  LATE_GIVE_UP_MIN,
+  LATE_LOOKAHEAD_MIN,
   lateStep,
   minutesLate,
+  nextStopPerTechDay,
+  whereTheTruckIs,
+  withinWorkingHours,
   myDayLink,
   roundLate,
   routeThreadId,
@@ -38,7 +43,7 @@ import {
   type RouteChange,
   type RouteRow,
 } from "@/lib/field-notify";
-import { DEFAULT_ORG_TIMEZONE, orgLocalTime, orgToday } from "@/lib/org-day";
+import { DEFAULT_ORG_TIMEZONE, orgLocalMinutes, orgLocalTime, orgToday } from "@/lib/org-day";
 
 type Admin = { from: (table: string) => any };
 
@@ -62,12 +67,26 @@ type OrgClock = {
   roadFactor: number;
 };
 
+const CLOCK_COLS = "timezone, avg_speed_kmh, measured_speed_kmh, road_factor, measured_road_factor";
+
 async function orgClock(db: Admin, orgId: string, now = new Date()): Promise<OrgClock> {
   const { data: org } = await db
     .from("organizations")
-    .select("timezone, avg_speed_kmh, measured_speed_kmh, road_factor, measured_road_factor")
+    .select(CLOCK_COLS)
     .eq("id", orgId)
     .maybeSingle();
+  return clockOf(orgId, org, now);
+}
+
+type ClockRow = {
+  timezone?: string | null;
+  avg_speed_kmh?: number | null;
+  measured_speed_kmh?: number | null;
+  road_factor?: number | null;
+  measured_road_factor?: number | null;
+} | null;
+
+function clockOf(orgId: string, org: ClockRow, now: Date): OrgClock {
   const tz = (org?.timezone as string | null) || DEFAULT_ORG_TIMEZONE;
   const today = orgToday(tz, now);
   const speed = Number(org?.measured_speed_kmh ?? org?.avg_speed_kmh ?? 40);
@@ -209,12 +228,15 @@ async function stopsOnDay(
   return error ? null : (count ?? null);
 }
 
-/** Tell each tech whose today or tomorrow changed, once, in their language. */
+/** Tell each tech whose today or tomorrow changed, once, in their language.
+ *  `push: false` files it in the notification centre without buzzing the
+ *  phone (the nightly run, outside working hours). */
 async function notifyRouteChanges(
   db: Admin,
   clock: OrgClock,
   changes: RouteChange[],
   actorUserId: string | null,
+  push?: boolean,
 ): Promise<void> {
   if (!changes.length) return;
   const staff = await staffRows(db, clock.orgId, [...new Set(changes.map((c) => c.staffId))]);
@@ -237,6 +259,7 @@ async function notifyRouteChanges(
       threadId: routeThreadId(change.staffId, change.day),
       collapseId: notice.collapseId,
       exceptUserId: actorUserId,
+      ...(push === false ? { push: false } : {}),
       coalesce: {
         windowMs: ROUTE_COALESCE_MS,
         ...coalescedRouteNotice(t, change.day, kind, total),
@@ -245,13 +268,18 @@ async function notifyRouteChanges(
   }
 }
 
+/** A tech's day, by staff id and calendar day. */
+export type TechDay = { staffId: string; day: string };
+
 export type RouteWatch = {
   /** Call after the change has been written. Extra visit ids are ones the
-   *  change created (a one-off booked straight onto a route). Never throws. */
-  finish: (extra?: { visitIds?: string[] }) => Promise<void>;
+   *  change created (a one-off booked straight onto a route). Answers which
+   *  tech-days changed, for a caller that has a lock screen to refresh and no
+   *  visit ids to find them by (the nightly generation). Never throws. */
+  finish: (extra?: { visitIds?: string[] }) => Promise<TechDay[]>;
 };
 
-const NO_WATCH: RouteWatch = { finish: async () => {} };
+const NO_WATCH: RouteWatch = { finish: async () => [] };
 
 /**
  * Look at the affected techs' today and tomorrow before a dispatcher's
@@ -273,6 +301,9 @@ export async function startRouteWatch(input: {
   orgId?: string | null;
   visitIds?: string[];
   staffIds?: string[];
+  /** false: in the notification centre only, no push. For a system job that
+   *  runs while the tech is asleep. Default: each type's own rule. */
+  push?: boolean;
 }): Promise<RouteWatch> {
   try {
     const db = await admin();
@@ -288,9 +319,11 @@ export async function startRouteWatch(input: {
           const ids = [...before.map((r) => r.id), ...visitIds, ...(extra?.visitIds ?? [])];
           const after = await snapshot(db, clock, ids, staffIds);
           const changes = diffRoutes(before, after, [clock.today, clock.tomorrow]);
-          await notifyRouteChanges(db, clock, changes, input.actorUserId);
+          await notifyRouteChanges(db, clock, changes, input.actorUserId, input.push);
+          return changes.map((c) => ({ staffId: c.staffId, day: c.day }));
         } catch (e) {
           console.warn("[field-notify] route change not told", e);
+          return [];
         }
       },
     };
@@ -544,20 +577,20 @@ export async function afterStopResolved(input: {
 }
 
 /** The office hears a stop will be late: once per stop, again only when it
- *  slips another LATE_STEP_MIN. */
+ *  slips another LATE_STEP_MIN. Answers how many people were pushed. */
 async function tellIfLate(
   v: Stop,
   techName: string,
   clock: OrgClock,
   projected: Date,
   actorUserId: string | null,
-): Promise<void> {
-  if (!v.assigned_staff_id) return;
+): Promise<number> {
+  if (!v.assigned_staff_id) return 0;
   const late = minutesLate(v.eta_end, projected);
-  if (late == null) return;
+  if (late == null) return 0;
   const { notifyRoles } = await import("@/lib/notify-center.server");
   const address = addressOf(propOf(v));
-  await notifyRoles([...OFFICE], {
+  const told = await notifyRoles([...OFFICE], {
     orgId: v.organization_id,
     type: FIELD_TYPES.late,
     title: `${techName} is running about ${roundLate(late)} min late`,
@@ -572,6 +605,7 @@ async function tellIfLate(
     eventKey: `late:${v.id}:${lateStep(late)}`,
     exceptUserId: actorUserId,
   });
+  return told.pushed.length;
 }
 
 /**
@@ -622,6 +656,201 @@ export async function checkRunningLateFromPosition(input: {
   } catch (e) {
     console.warn("[field-notify] late check from position failed", e);
   }
+}
+
+// ── A truck that never moved ───────────────────────────────────────────────
+
+/** At most this many open stops are read per run. Comfortably more than
+ *  every tech on the platform has inside a five-hour band; if it is ever
+ *  reached, the earliest windows are read first and the run says it capped. */
+export const LATE_CHECK_CANDIDATE_CAP = 500;
+/** At most this many stops are announced late per run. The rest are still
+ *  late in five minutes, and are told then. */
+export const LATE_CHECK_TELL_CAP = 100;
+
+export type StuckTruckSummary = {
+  /** Open stops with a window inside the band, before any per-org rule. */
+  candidates: number;
+  /** Organizations whose clock is inside their working day right now. */
+  orgsInHours: number;
+  /** Tech-days whose next stop was checked. */
+  checked: number;
+  /** Next stops that will be reached after their window (and grace). */
+  late: number;
+  /** People pushed this run. A slip already told is not told again. */
+  pushed: number;
+  /** Next stops passed over because the tech is off or inactive today. */
+  off: number;
+  capped: boolean;
+};
+
+const ORG_COLS = `id, ${CLOCK_COLS}, workday_start, workday_end, latitude, longitude`;
+
+type At = { lat: number; lng: number } | null;
+const at = (lat: unknown, lng: unknown): At =>
+  lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))
+    ? { lat: Number(lat), lng: Number(lng) }
+    : null;
+
+/**
+ * The periodic half of late detection, for the truck that sends nothing: a
+ * tech at one long stop with location sharing off produces neither a GPS ping
+ * nor a finished stop, so neither trigger above fires and the office learns
+ * the next stop was late from the customer. Run every five minutes by the
+ * `late-check` cron job through /api/public/hooks/late-check.
+ *
+ * For each tech with a route TODAY on their organization's calendar, inside
+ * that organization's working day: take the next scheduled stop with an
+ * arrival window, and the drive to it from where the truck is (the stop in
+ * progress, else the last one finished, else the start of the day). If now
+ * plus that drive is past the end of the window plus LATE_GRACE_MIN, the
+ * office hears it through tellIfLate: the same text, collapse key and event
+ * key `late:<visitId>:<step>` the other two triggers use, so a slip the GPS
+ * or a finished stop already announced is not announced again, and running
+ * twice at once is one notification (the event key is a unique index).
+ *
+ * Bounded: one query for candidates (scheduled, assigned, a window between
+ * LATE_GIVE_UP_MIN ago and LATE_LOOKAHEAD_MIN ahead), then one each for their
+ * organizations, techs, time off and where those techs' trucks are, all
+ * keyed on the candidates. No road router: the drive is the planner's own
+ * travel_min, else its straight-line estimate, as afterStopResolved does.
+ */
+export async function checkStuckTrucks(opts: { now?: Date } = {}): Promise<StuckTruckSummary> {
+  const now = opts.now ?? new Date();
+  const summary: StuckTruckSummary = {
+    candidates: 0,
+    orgsInHours: 0,
+    checked: 0,
+    late: 0,
+    pushed: 0,
+    off: 0,
+    capped: false,
+  };
+  const db = await admin();
+  const ms = now.getTime();
+  const utcToday = now.toISOString().slice(0, 10);
+
+  // 1. Every open, assigned stop whose window closes inside the band. The
+  //    calendar day is narrowed to the three that can be "today" somewhere,
+  //    and settled per organization below.
+  const { data: rows, error } = await db
+    .from("visits")
+    .select(STOP_COLS)
+    .eq("status", "scheduled")
+    .not("assigned_staff_id", "is", null)
+    .gte("eta_end", new Date(ms - LATE_GIVE_UP_MIN * 60_000).toISOString())
+    .lte("eta_end", new Date(ms + LATE_LOOKAHEAD_MIN * 60_000).toISOString())
+    .in("scheduled_on", [addDay(utcToday, -1), utcToday, addDay(utcToday, 1)])
+    .order("eta_end", { ascending: true })
+    .limit(LATE_CHECK_CANDIDATE_CAP);
+  if (error) throw new Error(error.message);
+  const candidates = (rows ?? []) as Stop[];
+  summary.candidates = candidates.length;
+  summary.capped = candidates.length >= LATE_CHECK_CANDIDATE_CAP;
+  if (!candidates.length) return summary;
+
+  // 2. Their organizations: the clock, the working day, the speed.
+  const { data: orgRows, error: orgErr } = await db
+    .from("organizations")
+    .select(ORG_COLS)
+    .in("id", [...new Set(candidates.map((v) => v.organization_id))]);
+  if (orgErr) throw new Error(orgErr.message);
+  const orgs = new Map<string, { clock: OrgClock; base: At }>();
+  for (const o of (orgRows ?? []) as Array<Record<string, any>>) {
+    const clock = clockOf(o.id, o, now);
+    if (!withinWorkingHours(orgLocalMinutes(now, clock.tz), o.workday_start, o.workday_end)) {
+      continue;
+    }
+    orgs.set(o.id, { clock, base: at(o.latitude, o.longitude) });
+  }
+  summary.orgsInHours = orgs.size;
+  const today = candidates.filter(
+    (v) => orgs.get(v.organization_id)?.clock.today === v.scheduled_on,
+  );
+  const next = nextStopPerTechDay(today);
+  if (!next.length) return summary;
+
+  // 3. The techs, whether any is off today, and where each truck is.
+  const staffIds = [...new Set(next.map((v) => v.assigned_staff_id!))];
+  const days = [...new Set(next.map((v) => v.scheduled_on))].sort();
+  const [{ data: staffData }, { data: offData }, { data: doneData }] = await Promise.all([
+    db
+      .from("staff")
+      .select("id, display_name, active, start_latitude, start_longitude")
+      .in("id", staffIds),
+    db
+      .from("staff_time_off")
+      .select("staff_id, starts_on, ends_on")
+      .in("staff_id", staffIds)
+      .lte("starts_on", days[days.length - 1])
+      .gte("ends_on", days[0]),
+    db
+      .from("visits")
+      .select(
+        "id, assigned_staff_id, scheduled_on, status, started_at, completed_at, properties(latitude, longitude)",
+      )
+      .in("assigned_staff_id", staffIds)
+      .in("scheduled_on", days)
+      .in("status", ["in_progress", "completed"]),
+  ]);
+  const staff = new Map(
+    ((staffData ?? []) as Array<Record<string, any>>).map((s) => [s.id as string, s]),
+  );
+  const off = (staffId: string, day: string) =>
+    ((offData ?? []) as Array<{ staff_id: string; starts_on: string; ends_on: string }>).some(
+      (t) => t.staff_id === staffId && t.starts_on <= day && t.ends_on >= day,
+    );
+  const done = (doneData ?? []) as Array<{
+    assigned_staff_id: string;
+    scheduled_on: string;
+    status: string;
+    started_at: string | null;
+    completed_at: string | null;
+    properties: unknown;
+  }>;
+
+  // 4. The arithmetic, and the office told about each late one.
+  for (const v of next) {
+    const staffId = v.assigned_staff_id!;
+    const s = staff.get(staffId);
+    if (!s || s.active === false || off(staffId, v.scheduled_on)) {
+      summary.off++;
+      continue;
+    }
+    summary.checked++;
+    const org = orgs.get(v.organization_id)!;
+    const truck = whereTheTruckIs(
+      done.filter((d) => d.assigned_staff_id === staffId && d.scheduled_on === v.scheduled_on),
+    );
+    const truckAt = truck
+      ? (() => {
+          const p = one(truck.properties as any) as {
+            latitude?: number;
+            longitude?: number;
+          } | null;
+          return at(p?.latitude, p?.longitude);
+        })()
+      : null;
+    const from = truckAt ?? at(s.start_latitude, s.start_longitude) ?? org.base;
+    const there = propOf(v);
+    const to = at(there?.latitude, there?.longitude);
+    const drive =
+      v.travel_min != null
+        ? Number(v.travel_min)
+        : from && to
+          ? estimateDriveMin(from, to, org.clock.speedKmh, org.clock.roadFactor)
+          : 0;
+    const projected = new Date(ms + drive * 60_000);
+    if (minutesLate(v.eta_end, projected) == null) continue;
+    summary.late++;
+    if (summary.late > LATE_CHECK_TELL_CAP) {
+      summary.capped = true;
+      continue;
+    }
+    const name = String(s.display_name ?? "").trim() || "A tech";
+    summary.pushed += await tellIfLate(v, name, org.clock, projected, null);
+  }
+  return summary;
 }
 
 // ── Cash or a check ────────────────────────────────────────────────────────

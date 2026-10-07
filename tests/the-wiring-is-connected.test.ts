@@ -67,7 +67,15 @@ describe("CSRF is registered, not merely defined", () => {
 describe("every cron endpoint enforces the auth it computes", () => {
   // webhook-deliveries joined on 2026-09-29: the outbound webhook worker, which
   // signs and sends tenants' events to URLs they chose.
-  const ROUTES = ["nightly", "announcement-emails", "weekly-digest", "webhook-deliveries"] as const;
+  // late-check joined on 2026-10-07: every five minutes, it pushes every
+  // office whose truck will miss a window.
+  const ROUTES = [
+    "nightly",
+    "announcement-emails",
+    "weekly-digest",
+    "webhook-deliveries",
+    "late-check",
+  ] as const;
 
   for (const route of ROUTES) {
     it(`${route} refuses an unauthorized request`, () => {
@@ -487,7 +495,17 @@ describe("a database can actually be built from these files", () => {
       // deliver-webhooks joined on 2026-09-29 (20260929080000). Every minute,
       // and it only makes a request when the outbox has something due. Its
       // own file only WARNS about it, as this test requires.
-    ).toEqual(["deliver-webhooks", "prune-road-legs", "run-billing-cycles", "weekly-digest"]);
+      //
+      // late-check joined on 2026-10-07 (20261007160000). Every five minutes,
+      // and it only makes a request when some open stop's window is near. It
+      // too only WARNS about itself.
+    ).toEqual([
+      "deliver-webhooks",
+      "late-check",
+      "prune-road-legs",
+      "run-billing-cycles",
+      "weekly-digest",
+    ]);
     expect([...unschedulable]).toEqual([]);
   });
 
