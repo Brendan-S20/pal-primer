@@ -796,11 +796,6 @@ export async function portalVerifyGeneric(
   if (!org) throw new Error("We couldn't find that company.");
   const c = normalizeContact(contactRaw);
   if (!c) throw new Error("Enter a valid phone number or email.");
-  // Asked before any lookup, so the answer says nothing about who is a
-  // customer: only whether this business can text a code at all.
-  if (c.kind === "sms" && !(await smsOtpDeliverable(org.organizationId))) {
-    throw new Error(TEXT_CODES_UNAVAILABLE);
-  }
   const matches = await matchClients(org.organizationId, c);
   if (matches.length === 0) throw new Error("Request a new code.");
 
