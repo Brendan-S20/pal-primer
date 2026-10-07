@@ -57,7 +57,14 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
   const Wrapper = bare ? "div" : "section";
   return (
     <Wrapper className={bare ? "" : "rounded-lg border bg-card shadow-sm p-5"}>
-      {!bare && <h2 className="text-sm font-medium">Messages</h2>}
+      {/* Bare, it sits under the Communication tab's own heading, which
+          carries the Coming soon badge; here it carries its own. */}
+      {!bare && (
+        <h2 className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          Messages
+          {!texting && <ComingSoonBadge />}
+        </h2>
+      )}
       {messages.length > 0 && (
         <ul className={`mt-3 space-y-2 overflow-y-auto ${bare ? "max-h-96" : "max-h-48"}`}>
           {shown.map((m) => (
@@ -91,7 +98,7 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
           maxLength={1500}
           placeholder={
             !texting
-              ? "Texting your clients is coming soon."
+              ? "Write a message…"
               : noPhone
               ? "Add a phone number to this client to send SMS."
               : messages.length === 0
@@ -106,9 +113,8 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
               Sends an SMS from your business number.
             </span>
           ) : (
-            <span className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <ComingSoonBadge />
-              <span className="min-w-0">{TEXTING_COMING_SOON_LINE}</span>
+            <span className="min-w-0 text-xs text-muted-foreground">
+              {TEXTING_COMING_SOON_LINE}
             </span>
           )}
           <Button
