@@ -124,6 +124,15 @@ describe("the content state", () => {
       position: 5,
       allDone: false,
       rtl: false,
+      // The buttons (tests/buttons-on-the-lock-screen.test.ts). No
+      // coordinates in this fixture, so Navigate goes by the address.
+      visitId: "v5",
+      destLat: null,
+      destLng: null,
+      destAddress: "105 Elm St",
+      nextAction: "start",
+      navigateLabel: "Navigate",
+      actionLabel: "Start",
     } satisfies RouteActivityState);
   });
 

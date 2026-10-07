@@ -6,6 +6,14 @@
 // and vite.config.ts), and a paw for a glyph. Every word is computed in the
 // app in the tech's language (RouteActivityAttributes.swift says why); the
 // views only lay out what they are given, and flip for Arabic.
+//
+// Buttons, on iOS 17 and later, on the lock screen and in the expanded
+// Dynamic Island: Navigate, and Start or Complete for the stop on the card.
+// Each is a plain `Link`, nothing runs in the extension. Navigate opens the
+// maps app; Start and Complete open My Day on that stop with the button in
+// hand (src/lib/live-activity-links.ts), and never press it. A tap anywhere
+// else on the card opens My Day on the stop (`widgetURL`), on 16.2 too. On
+// 16.2 to 16.x the card is drawn exactly as before, without the buttons.
 
 import ActivityKit
 import SwiftUI
@@ -22,12 +30,18 @@ private enum Brand {
 struct RouteLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RouteActivityAttributes.self) { context in
-            LockScreenView(title: context.attributes.title, state: context.state)
+            LockScreenView(
+                title: context.attributes.title,
+                routeDate: context.attributes.routeDate,
+                state: context.state
+            )
                 .environment(\.layoutDirection, context.state.rtl ? .rightToLeft : .leftToRight)
                 .activityBackgroundTint(Brand.navy)
                 .activitySystemActionForegroundColor(Brand.cream)
+                .widgetURL(context.state.cardURL(routeDate: context.attributes.routeDate))
         } dynamicIsland: { context in
             let s = context.state
+            let routeDate = context.attributes.routeDate
             let dir: LayoutDirection = s.rtl ? .rightToLeft : .leftToRight
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -68,9 +82,21 @@ struct RouteLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 6) {
-                        ProgressView(value: s.progress)
-                            .tint(Brand.cream)
-                        Counts(state: s, compact: true)
+                        if showsButtons(s, routeDate: routeDate) {
+                            // Counts beside the bar rather than under it, to
+                            // leave the buttons their 44pt.
+                            HStack(spacing: 10) {
+                                ProgressView(value: s.progress)
+                                    .tint(Brand.cream)
+                                Counts(state: s, compact: true, fill: false)
+                                    .fixedSize()
+                            }
+                            ActionButtons(routeDate: routeDate, state: s)
+                        } else {
+                            ProgressView(value: s.progress)
+                                .tint(Brand.cream)
+                            Counts(state: s, compact: true)
+                        }
                     }
                     .environment(\.layoutDirection, dir)
                     .padding(.horizontal, 4)
@@ -86,6 +112,7 @@ struct RouteLiveActivity: Widget {
                 ProgressRing(progress: s.progress)
             }
             .keylineTint(Brand.cream)
+            .widgetURL(s.cardURL(routeDate: routeDate))
         }
     }
 }
@@ -96,12 +123,25 @@ private func fraction(_ s: RouteActivityAttributes.ContentState) -> String {
     s.allDone ? "\(s.total)/\(s.total)" : "\(s.position)/\(s.total)"
 }
 
+/// Whether to draw the buttons: iOS 17 or later, a route not finished, and
+/// at least one button with somewhere to go and a label to say so. A state
+/// from before the buttons existed has neither, and draws none.
+private func showsButtons(_ s: RouteActivityAttributes.ContentState, routeDate: String) -> Bool {
+    guard #available(iOS 17.0, *) else { return false }
+    return !s.allDone && (s.directionsURL != nil || s.actionURL(routeDate: routeDate) != nil)
+}
+
 private struct LockScreenView: View {
     let title: String
+    let routeDate: String
     let state: RouteActivityAttributes.ContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let buttons = showsButtons(state, routeDate: routeDate)
+        // A Live Activity is at most 160pt tall on the lock screen. The
+        // buttons take 44 of it, so with them the counts move up beside the
+        // bar and the padding tightens, and nothing is cut off.
+        VStack(alignment: .leading, spacing: buttons ? 8 : 10) {
             HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     Circle().fill(Brand.cream)
@@ -139,18 +179,91 @@ private struct LockScreenView: View {
                 }
             }
 
-            ProgressView(value: state.progress)
-                .tint(Brand.cream)
+            if buttons {
+                HStack(spacing: 10) {
+                    ProgressView(value: state.progress)
+                        .tint(Brand.cream)
+                    Counts(state: state, compact: true, fill: false)
+                        .fixedSize()
+                }
+                ActionButtons(routeDate: routeDate, state: state)
+            } else {
+                ProgressView(value: state.progress)
+                    .tint(Brand.cream)
 
-            Counts(state: state, compact: false)
+                Counts(state: state, compact: false)
+            }
         }
-        .padding(16)
+        .padding(buttons ? 14 : 16)
+    }
+}
+
+/// Navigate, then Start or Complete, side by side, each at least 44pt tall
+/// and sharing the width. Navigate is the filled one: on the road it is the
+/// one a tech wants. In Arabic the row flips with the rest of the card.
+private struct ActionButtons: View {
+    let routeDate: String
+    let state: RouteActivityAttributes.ContentState
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let url = state.directionsURL, let label = state.navigateLabel {
+                Link(destination: url) {
+                    ActionLabel(
+                        text: label,
+                        systemImage: "arrow.triangle.turn.up.right.diamond.fill",
+                        filled: true
+                    )
+                }
+            }
+            if let url = state.actionURL(routeDate: routeDate), let label = state.actionLabel {
+                Link(destination: url) {
+                    ActionLabel(
+                        text: label,
+                        systemImage: state.nextAction == "complete" ? "checkmark.circle.fill" : "play.circle.fill",
+                        filled: false
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct ActionLabel: View {
+    let text: String
+    let systemImage: String
+    let filled: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+            Text(text)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundColor(filled ? Brand.navy : Brand.cream)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(filled ? Brand.cream : Brand.cream.opacity(0.16))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Brand.cream.opacity(filled ? 0 : 0.45), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
     }
 }
 
 private struct Counts: View {
     let state: RouteActivityAttributes.ContentState
     let compact: Bool
+    /// Push to the leading edge across the full width. Off when the counts
+    /// sit beside the progress bar.
+    var fill: Bool = true
 
     var body: some View {
         HStack(spacing: 14) {
@@ -165,7 +278,7 @@ private struct Counts: View {
                 Image(systemName: "arrow.uturn.right.circle.fill")
             }
             .opacity(state.skipped > 0 ? 1 : 0.6)
-            Spacer(minLength: 0)
+            if fill { Spacer(minLength: 0) }
         }
         .font(compact ? .caption2 : .caption)
         .foregroundColor(Brand.cream.opacity(0.9))
