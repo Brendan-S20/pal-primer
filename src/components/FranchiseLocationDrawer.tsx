@@ -265,7 +265,7 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
       >
         {/* Taller than the tenant-delete dialog because it says more, so it
             scrolls inside itself rather than running off a phone screen. */}
-        <AlertDialogContent className="max-h-[85vh] overflow-y-auto">
+        <AlertDialogContent className="max-h-[85vh]">
           <AlertDialogHeader>
             <AlertDialogTitle className="break-words">
               Remove {row.organization_name} from this franchise?

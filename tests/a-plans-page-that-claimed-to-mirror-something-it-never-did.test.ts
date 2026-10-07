@@ -252,11 +252,19 @@ describe("the catalog says which plans are not in Stripe", () => {
 
 describe("the form fits a phone", () => {
   it("scrolls inside the dialog instead of hanging off both ends of it", () => {
-    // ui/dialog.tsx centres its content with no max height, so a form taller
-    // than the viewport is clipped top AND bottom and the Save button cannot be
-    // reached at all. Same fix platform.users.tsx and OneOffVisitDialog use.
+    // ui/dialog.tsx used to centre its content with no max height, so a form
+    // taller than the viewport was clipped top AND bottom and the Save button
+    // could not be reached at all. This page fixed it with its own
+    // `max-h-[90dvh] overflow-y-auto`, as other dialogs did, and every one of
+    // those put the dialog's top edge under the clock in the iOS app. The cap
+    // and the scroll now live in ui/dialog.tsx, where they also clear the
+    // safe-area insets; a private 90dvh here would REPLACE that cap with one
+    // that does not.
     const dialog = plansRouteCode.slice(plansRouteCode.indexOf("open={creating}"));
-    expect(dialog.slice(0, 400)).toMatch(/max-h-\[90dvh\] overflow-y-auto/);
+    expect(dialog.slice(0, 400), "a private cap replaces the safe one").not.toMatch(/max-h-\[/);
+    const primitive = read("src/components/ui/dialog.tsx");
+    expect(primitive).toMatch(/max-h-\[calc\(100dvh[^\]]*safe-area-inset-top[^\]]*\)\]/);
+    expect(primitive).toMatch(/\boverflow-y-auto\b/);
   });
 
   it("stacks its paired fields below sm rather than halving a 360px screen", () => {

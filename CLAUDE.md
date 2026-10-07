@@ -213,6 +213,16 @@ Seven things about it are worth knowing before you trust or extend it:
   during development, and made an earlier mutation test look successful for the
   wrong reason. If you add a rule here, add it to a page you have proved is
   rendering.
+- **Safe-area insets can be emulated, so measure them rather than reading
+  CSS.** Chromium's `env(safe-area-inset-*)` is 0 by default, which is why the
+  first sheet fix (#332) could only assert that the rules were present. But
+  `Emulation.setSafeAreaInsetsOverride` over CDP makes `env()` resolve to the
+  override whatever the viewport meta says, and
+  `tests/viewports/what-the-iphone-showed.spec.ts` uses it to put a dialog's
+  top edge below a 62px status bar at 402x874, with a probe that refuses to
+  measure until the insets have actually taken. Before that, the iPhone 17
+  Pro's dialogs measured 35px from the top, inside the status bar, with every
+  test green.
 - **Under `isMobile`, a page wider than the phone makes the phone wider.**
   Chromium's mobile emulation zooms out to fit the layout, and
   `window.innerWidth` — the visual viewport — grows with it. Until 2026-09-28

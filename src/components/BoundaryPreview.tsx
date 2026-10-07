@@ -101,7 +101,13 @@ export function BoundaryPreview({
       )}
 
       <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent className="flex h-[92vh] w-[96vw] max-w-none flex-col gap-3 p-4 sm:max-w-none">
+        {/* `h-dvh` asks for the whole screen and ui/dialog.tsx's cap takes it
+            back down to the safe region: clear of the status bar and the home
+            indicator in the iOS app, where the old 92vh put the title under
+            the clock. The width loses the side insets for landscape. The map
+            fills what is left and scrolls nothing, so the panel's own scroll
+            never engages. */}
+        <DialogContent className="flex h-dvh w-[calc(100vw_-_1rem_-_env(safe-area-inset-left)_-_env(safe-area-inset-right))] max-w-none flex-col gap-3 p-4 sm:max-w-none">
           <DialogTitle className="pr-8 text-base">
             {title}
             {areaSqm != null && (

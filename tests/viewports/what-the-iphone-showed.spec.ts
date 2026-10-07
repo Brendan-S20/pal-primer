@@ -15,9 +15,12 @@
  *     wide as its words;
  *   - the Fix a time entry dialog's inputs stay inside the dialog and do not
  *     sit on each other;
- *   - a full-height sheet pads by the safe-area insets (asserted in the CSS,
- *     because Chromium's insets are 0 — see that test);
+ *   - a full-height sheet pads by the safe-area insets (asserted in the CSS;
+ *     the dialogs below measure positions with the insets emulated);
  *   - the station form's actions clear the tab bar once scrolled to;
+ *   - a capped dialog (Add expense, Book a one-off visit) starts below the
+ *     status bar and ends above the home indicator, measured with the real
+ *     insets emulated, and scrolls rather than clips (see DIALOG_SIZES);
  *   - Add unit and Add station say what is missing instead of greying out.
  *
  * Fixtures are local to this file and layered over the shared stub backend:
@@ -29,7 +32,11 @@ import { test, expect, type Page, type Route } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
 import * as fx from "./fixtures/dataset";
-import { findControlsNarrowerThanTheirLabel } from "./rules";
+import {
+  findControlsNarrowerThanTheirLabel,
+  findSilentlyClippedText,
+  measurePageOverflow,
+} from "./rules";
 
 const SIZES = [
   { width: 320, height: 568 },
@@ -228,9 +235,10 @@ for (const size of SIZES) {
     });
 
     test("Edit service opens a sheet that pads by the safe-area insets", async ({ page }) => {
-      // Chromium reports every safe-area inset as 0, and the hosted build does
-      // not opt into viewport-fit=cover, so the real inset can only be seen on
-      // a device. What CAN be proved here is that the rules are in the CSS
+      // Written when Chromium's insets were believed to be always 0. They are
+      // 0 by default but can be emulated (see DIALOGS, WITH THE INSETS
+      // ACTUALLY ON, below), which is how the dialogs are measured. This test
+      // still proves only that the rules are in the CSS
       // and apply to the sheet that opened: its padding-top and the close
       // button's top both reference env(safe-area-inset-top), and its padding
       // bottom references env(safe-area-inset-bottom).
@@ -372,6 +380,200 @@ for (const size of SIZES) {
       await expect(label).toHaveAttribute("aria-invalid", "true");
       await expect(sheet.locator("#unit-label-error")).toBeVisible();
       await expect(label).toBeFocused();
+    });
+  });
+}
+
+// ── DIALOGS, WITH THE INSETS ACTUALLY ON ───────────────────────────────────
+//
+// The sheet test above reads the rules only; it was written believing
+// Chromium's insets are always 0. They are 0 by default, but the DevTools
+// protocol can set them (`Emulation.setSafeAreaInsetsOverride`), and env()
+// then resolves to the override whatever the viewport meta says. So the
+// dialogs are measured with the insets of the device each width stands for,
+// and the question is the geometric one the owner's phone asked: does the
+// panel's top edge clear the status bar?
+//
+// Before ui/dialog.tsx took the cap over, Add expense was `max-h-[92dvh]`
+// centred on the whole screen: at 402x874 its top edge sat at 35px, inside a
+// 62px status bar. Book a one-off visit was 90dvh, at 44px.
+//
+// Widths per the brief, 320 / 390 / 402 / 768; each carries the inset of the
+// real device at that size (iPhone SE, iPhone 14, iPhone 17 Pro, iPad).
+const DIALOG_SIZES = [
+  { width: 320, height: 568, insets: { top: 20, bottom: 0 } },
+  { width: 390, height: 844, insets: { top: 47, bottom: 34 } },
+  { width: 402, height: 874, insets: { top: 62, bottom: 34 } },
+  { width: 768, height: 1024, insets: { top: 20, bottom: 0 } },
+];
+/** The 1rem ui/dialog.tsx keeps between the panel and each inset. */
+const DIALOG_MARGIN = 16;
+
+/** Every value of `prop` declared by a stylesheet rule that matches `el`.
+ *  Passed whole to evaluate(), so it closes over nothing. */
+function matchedDeclarations(el: Element, prop: string): string[] {
+  const hits: string[] = [];
+  const walk = (rules: CSSRuleList) => {
+    for (const r of Array.from(rules)) {
+      if (r instanceof CSSStyleRule) {
+        let matches = false;
+        try {
+          matches = el.matches(r.selectorText);
+        } catch {
+          /* a selector this engine cannot parse is not one that matched */
+        }
+        const v = r.style.getPropertyValue(prop);
+        if (matches && v) hits.push(v);
+      }
+      if ("cssRules" in r && (r as CSSGroupingRule).cssRules) {
+        walk((r as CSSGroupingRule).cssRules);
+      }
+    }
+  };
+  for (const s of Array.from(document.styleSheets)) {
+    try {
+      walk(s.cssRules);
+    } catch {
+      /* cross-origin sheet */
+    }
+  }
+  return hits;
+}
+
+async function emulateInsets(page: Page, insets: { top: number; bottom: number }) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send(
+    "Emulation.setSafeAreaInsetsOverride" as never,
+    {
+      insets: { top: insets.top, bottom: insets.bottom, left: 0, right: 0 },
+    } as never,
+  );
+}
+
+/** Proof the override is in force on THIS document. Without it every
+ *  assertion below passes against a 0 inset, which is the web, not the app. */
+async function expectInsetsResolve(page: Page, insets: { top: number; bottom: number }) {
+  const got = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      "position:fixed;left:0;top:0;width:1px;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);visibility:hidden";
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    const out = { top: parseFloat(cs.paddingTop), bottom: parseFloat(cs.paddingBottom) };
+    probe.remove();
+    return out;
+  });
+  expect(got, "the safe-area emulation did not take; this would measure the web").toEqual(insets);
+}
+
+async function measureDialog(page: Page, name: string, size: (typeof DIALOG_SIZES)[number]) {
+  const dialog = page.getByRole("dialog", { name });
+  await expect(dialog).toBeVisible();
+  // The panel zooms in from 95%; a box measured mid-animation is not the box.
+  await dialog.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+
+  const safeTop = size.insets.top;
+  const safeBottom = size.height - size.insets.bottom;
+
+  const g = await dialog.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const close = Array.from(el.querySelectorAll(":scope > button")).find(
+      (b) => b.textContent?.trim() === "Close",
+    ) as HTMLElement | undefined;
+    const title = el.querySelector("h2");
+    const cs = getComputedStyle(el);
+    return {
+      top: r.top,
+      bottom: r.bottom,
+      left: r.left,
+      right: r.right,
+      overflowY: cs.overflowY,
+      scrolls: el.scrollHeight - el.clientHeight > 1,
+      titleTop: title ? title.getBoundingClientRect().top : -1,
+      closeTop: close ? close.getBoundingClientRect().top : -1,
+      closeBox: close ? close.getBoundingClientRect() : null,
+    };
+  });
+
+  expect(g.top, "the dialog's top edge is under the status bar").toBeGreaterThanOrEqual(
+    safeTop + DIALOG_MARGIN - 0.5,
+  );
+  expect(g.bottom, "the dialog's bottom edge is over the home indicator").toBeLessThanOrEqual(
+    safeBottom - DIALOG_MARGIN + 0.5,
+  );
+  // Centred on the safe region, not on the screen.
+  expect(
+    Math.abs(g.top - safeTop - (safeBottom - g.bottom)),
+    "the dialog is not centred between the status bar and the home indicator",
+  ).toBeLessThanOrEqual(1);
+  expect(g.left).toBeGreaterThanOrEqual(-0.5);
+  expect(g.right).toBeLessThanOrEqual(size.width + 0.5);
+  expect(g.titleTop, "the title is under the clock").toBeGreaterThanOrEqual(safeTop);
+  expect(g.closeTop, "the close button is under the island").toBeGreaterThanOrEqual(safeTop);
+  expect(g.closeBox!.width, "the close button lost its 44px box").toBeGreaterThanOrEqual(44);
+  expect(g.closeBox!.height, "the close button lost its 44px box").toBeGreaterThanOrEqual(44);
+
+  // Taller than the cap: it must scroll, not clip. And the last row has to be
+  // reachable by scrolling, inside the panel and above the home indicator.
+  if (g.scrolls) {
+    expect(["auto", "scroll"], "the dialog overflows with no scrollbar").toContain(g.overflowY);
+  }
+  await dialog.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+  const c = (await cancel.boundingBox())!;
+  expect(c.y, "Cancel is above the dialog's top once scrolled to").toBeGreaterThanOrEqual(
+    g.top - 0.5,
+  );
+  expect(c.y + c.height, "Cancel cannot be scrolled into the dialog").toBeLessThanOrEqual(
+    g.bottom + 0.5,
+  );
+  expect(await findSilentlyClippedText(page)).toEqual([]);
+  const { scrollW } = await measurePageOverflow(page);
+  expect(scrollW, "the page scrolls sideways under the dialog").toBeLessThanOrEqual(size.width);
+  return g;
+}
+
+for (const size of DIALOG_SIZES) {
+  test.describe(`a dialog below the island, at ${size.width}x${size.height}`, () => {
+    test.use({
+      viewport: { width: size.width, height: size.height },
+      isMobile: size.width < 768,
+      hasTouch: true,
+      deviceScaleFactor: 2,
+    });
+
+    test("Add expense clears the status bar and scrolls inside itself", async ({ page }) => {
+      await emulateInsets(page, size.insets);
+      await signIn(page);
+      await page.goto("/expenses", { waitUntil: "domcontentloaded" });
+      await expect(page.getByText("By category", { exact: true }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await expectInsetsResolve(page, size.insets);
+      await page.getByRole("button", { name: "Add expense" }).first().click();
+      await measureDialog(page, "Add expense", size);
+
+      // And the rules are where they belong: the panel's centring and its cap
+      // both come from ui/dialog.tsx and name both insets, so a caller that
+      // brings back its own `max-h-[92dvh]` shows up here as a cap with none.
+      const dialog = page.getByRole("dialog", { name: "Add expense" });
+      const top = await dialog.evaluate(matchedDeclarations, "top");
+      const maxH = await dialog.evaluate(matchedDeclarations, "max-height");
+      for (const side of ["top", "bottom"]) {
+        expect(top.join(" | ")).toContain(`safe-area-inset-${side}`);
+        expect(maxH.join(" | ")).toContain(`safe-area-inset-${side}`);
+      }
+    });
+
+    test("Book a one-off visit clears the status bar and scrolls inside itself", async ({
+      page,
+    }) => {
+      await emulateInsets(page, size.insets);
+      await signIn(page);
+      await openClientTab(page, "Visits");
+      await expectInsetsResolve(page, size.insets);
+      await page.getByRole("button", { name: "Book a visit" }).first().click();
+      await measureDialog(page, "Book a one-off visit", size);
     });
   });
 }
