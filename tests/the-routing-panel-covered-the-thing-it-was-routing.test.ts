@@ -56,9 +56,11 @@ describe("it floats instead of displacing the board", () => {
     // height — on the web the overlap was 23px and survivable, and it was the
     // 34pt inset that turned it into "the primary action does not exist".
     // Same shape as InstallBanner.tsx:71, and it stops at md because that is
-    // where the bar stops.
+    // where the bar stops. The bar's height is --tab-bar-h (styles.css) since
+    // 2026-10-07, the one number MobileTabBar is drawn at, rather than a 3.5rem
+    // each caller wrote down for itself.
     expect(panel).toMatch(
-      /max-md:bottom-\[calc\(3\.5rem\+env\(safe-area-inset-bottom\)\+0\.75rem\)\]/,
+      /max-md:bottom-\[calc\(var\(--tab-bar-h\)\+env\(safe-area-inset-bottom\)\+0\.75rem\)\]/,
     );
   });
 

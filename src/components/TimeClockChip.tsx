@@ -25,7 +25,8 @@
 // sends the tap time, so 7:02 is also what the timesheet will say.
 //
 // The route on the lock screen starts on Clock in by watching this query
-// (useRouteLiveActivity), so nothing here has to know about it.
+// (useRouteLiveActivity in my-day/RouteLockScreen.tsx), so nothing here has to
+// know about it.
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";

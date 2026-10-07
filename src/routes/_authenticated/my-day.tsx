@@ -110,8 +110,10 @@ import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { TimeClockChip } from "@/components/TimeClockChip";
-import { useRouteLiveActivity } from "@/components/my-day/useRouteLiveActivity";
-import { RouteLockScreenToggle } from "@/components/my-day/RouteLockScreenToggle";
+import {
+  RouteLockScreenToggle,
+  useRouteLiveActivity,
+} from "@/components/my-day/RouteLockScreen";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";

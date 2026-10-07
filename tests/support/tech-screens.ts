@@ -21,8 +21,7 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/components/my-day/StopFacts.tsx" },
   // The route on the iPhone lock screen: the icon in My Day's status row that
   // shows or hides it, and the hook behind it, whose toasts a tech reads.
-  { file: "src/components/my-day/RouteLockScreenToggle.tsx" },
-  { file: "src/components/my-day/useRouteLiveActivity.ts" },
+  { file: "src/components/my-day/RouteLockScreen.tsx" },
   { file: "src/components/CloseOutOpenVisits.tsx" },
   { file: "src/components/EnRouteLocationChip.tsx" },
   // The time clock chip in My Day's status row, and its Clock out sheet.
