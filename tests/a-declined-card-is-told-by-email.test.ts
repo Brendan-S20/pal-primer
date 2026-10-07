@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeAdmin, stripeSignature } from "./helpers/fake-supabase";
+import { modelCountAutopayDecline } from "./helpers/count-autopay-decline-model";
 
 // A declined card on autopay is told to the client by email.
 //
@@ -28,6 +29,8 @@ const MONDAY_9AM = Date.UTC(2026, 9, 7, 9, 0, 0) / 1000;
 const HOUR = 3600;
 
 const fake = createFakeAdmin();
+// The decline is counted before the email goes (one-decline-counts-once.test.ts).
+modelCountAutopayDecline(fake);
 
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: new Proxy({}, { get: (_t, p) => fake.admin[p as keyof typeof fake.admin] }),
