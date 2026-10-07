@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PAGE_BLEED_TOP, PAGE_BLEED_X, PAGE_GUTTER_X, useInPageShell } from "@/components/PageShell";
+import {
+  PAGE_BLEED_TOP,
+  PAGE_BLEED_X,
+  PAGE_GUTTER_X,
+  useInPageShell,
+} from "@/components/PageShell";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { cn } from "@/lib/utils";
 
@@ -126,7 +131,11 @@ export function ShellPending() {
           style={nativeTopBarStyle(3.5)}
           className="h-14 border-b bg-card/80 max-md:hidden"
         />
-        <div aria-hidden="true" style={{ height: "env(safe-area-inset-top)" }} className="md:hidden" />
+        <div
+          aria-hidden="true"
+          style={{ height: "env(safe-area-inset-top)" }}
+          className="md:hidden"
+        />
         <RoutePending />
       </div>
     </div>
@@ -276,10 +285,7 @@ export function ScheduleDaysSkeleton({ label }: { label: string }) {
   return (
     <Region label={label} className="space-y-2">
       {range(5).map((i) => (
-        <div
-          key={i}
-          className="flex min-h-16 items-center gap-3 rounded-lg border bg-card p-3"
-        >
+        <div key={i} className="flex min-h-16 items-center gap-3 rounded-lg border bg-card p-3">
           <div className="min-w-0 flex-1 space-y-1.5">
             <Bone className="h-5 w-40" />
             <Bone className="h-3 w-28" />
@@ -346,7 +352,10 @@ export function ListSkeleton({
           ))}
         </div>
         {range(rows).map((i) => (
-          <div key={i} className="flex h-[3.3rem] items-center gap-6 border-t px-4 first:border-t-0">
+          <div
+            key={i}
+            className="flex h-[3.3rem] items-center gap-6 border-t px-4 first:border-t-0"
+          >
             {range(columns).map((c) => (
               <Bone key={c} className={cn("h-4 flex-1", c === 0 && "flex-[2]")} />
             ))}

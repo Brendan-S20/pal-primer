@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import {
-  PENDING_SHOW_AFTER_MS,
-  remainingVisibleMs,
-} from "@/lib/motion/pending";
+import { PENDING_SHOW_AFTER_MS, remainingVisibleMs } from "@/lib/motion/pending";
 
 type Phase = "idle" | "running" | "finishing";
 

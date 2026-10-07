@@ -12,7 +12,8 @@ import {
 type Phase = "idle" | "pulling" | "refreshing" | "settling";
 
 /** An open dialog, sheet or menu owns the touch, not the page under it. */
-const OPEN_LAYER = '[role="dialog"]:not([data-state="closed"]), [role="alertdialog"]:not([data-state="closed"])';
+const OPEN_LAYER =
+  '[role="dialog"]:not([data-state="closed"]), [role="alertdialog"]:not([data-state="closed"])';
 
 /**
  * Pull down at the top of the page to refetch what the page shows.

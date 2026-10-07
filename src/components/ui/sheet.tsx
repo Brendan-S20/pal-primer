@@ -79,19 +79,16 @@ interface SheetContentProps
  *
  * The gesture every phone user tries first on a sheet that came up from the
  * bottom. The sheet follows the thumb; let go a third of the way down, or
- * flick it, and it closes through its own Close button (so Radix runs the
- * same close path, focus return and exit animation as a tap on the X, which
- * stays where it was: the gesture is never the only way). Short of that it
- * springs back.
+ * flick it, and it closes the way Escape closes it (so Radix runs the same
+ * close path, focus return and exit animation as a tap on the X, which stays
+ * where it was: the gesture is never the only way). Short of that it springs
+ * back.
  *
  * It only takes a drag that is more down than sideways and that starts where
  * nothing inside the sheet is scrolled: a list scrolled halfway down scrolls
  * up first, as it should, and only a drag from its top moves the sheet.
  */
-function useSwipeToDismiss(
-  el: HTMLDivElement | null,
-  closeRef: React.RefObject<HTMLButtonElement | null>,
-) {
+function useSwipeToDismiss(el: HTMLDivElement | null) {
   React.useEffect(() => {
     if (!el) return;
     let tracking = false;
@@ -141,7 +138,12 @@ function useSwipeToDismiss(
       if (shouldDismissSheet(dy, performance.now() - startedAt, el.offsetHeight)) {
         // The exit animation starts from wherever the thumb left the sheet.
         el.style.transition = "";
-        closeRef.current?.click();
+        // Escape is the close path every Radix layer already has: the same
+        // onOpenChange(false), focus return and exit animation as the X,
+        // and a sheet that refuses Escape (unsaved work) refuses this too.
+        el.ownerDocument.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
       } else {
         springBack();
       }
@@ -161,14 +163,13 @@ function useSwipeToDismiss(
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onCancel);
     };
-  }, [el, closeRef]);
+  }, [el]);
 }
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
 >(({ side = "right", className, children, ...props }, ref) => {
-  const closeRef = React.useRef<HTMLButtonElement | null>(null);
   // State, not a ref: the content mounts after this component first renders
   // (Radix Presence), and the gesture has to attach on the render where the
   // node exists.
@@ -181,7 +182,7 @@ const SheetContent = React.forwardRef<
     },
     [ref],
   );
-  useSwipeToDismiss(side === "bottom" ? node : null, closeRef);
+  useSwipeToDismiss(side === "bottom" ? node : null);
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -204,7 +205,7 @@ const SheetContent = React.forwardRef<
           Clear of the status bar on every sheet that reaches the top of the
           screen (see the note on sheetVariants); a bottom sheet's top edge is
           nowhere near it, so it keeps its 0.5rem. */}
-        <SheetPrimitive.Close className="absolute end-2 top-[calc(0.5rem+env(safe-area-inset-top))] group-data-[side=bottom]/sheet:top-2 flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary" ref={closeRef}>
+        <SheetPrimitive.Close className="absolute end-2 top-[calc(0.5rem+env(safe-area-inset-top))] group-data-[side=bottom]/sheet:top-2 flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
           <X className="h-4 w-4 shrink-0" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>

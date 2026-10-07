@@ -60,9 +60,13 @@ function watchTraversals() {
       uaAnimated: uaAlreadyAnimated(typeof has === "boolean" ? has : undefined, ios),
     };
   };
-  window.addEventListener("popstate", (e) => record((e as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition), {
-    capture: true,
-  });
+  window.addEventListener(
+    "popstate",
+    (e) => record((e as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition),
+    {
+      capture: true,
+    },
+  );
   // The Navigation API fires `navigate` before `popstate`, with the same flag.
   const nav = (window as unknown as { navigation?: EventTarget }).navigation;
   nav?.addEventListener?.("navigate", (e) => {

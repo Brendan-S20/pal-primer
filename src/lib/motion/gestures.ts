@@ -52,10 +52,17 @@ export function shouldDismissSheet(dy: number, ms: number, height: number): bool
  * (the gesture is that scroller's), on a map, in a text field, or anywhere
  * marked `data-no-pull`.
  */
-export function touchCanStartVerticalGesture(target: EventTarget | null, stopAt?: Element | null): boolean {
+export function touchCanStartVerticalGesture(
+  target: EventTarget | null,
+  stopAt?: Element | null,
+): boolean {
   let el = target instanceof Element ? target : null;
   if (!el) return true;
-  if (el.closest("[data-no-pull], .leaflet-container, .gm-style, input, textarea, select, [contenteditable='true']")) {
+  if (
+    el.closest(
+      "[data-no-pull], .leaflet-container, .gm-style, input, textarea, select, [contenteditable='true']",
+    )
+  ) {
     return false;
   }
   // Up to and including `stopAt` (a sheet that is itself the scroller), or

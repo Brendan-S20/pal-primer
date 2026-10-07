@@ -72,12 +72,17 @@ async function recordViewTransitions(context: BrowserContext) {
           // incoming page is drawn from.
           const anims = document
             .getAnimations()
-            .filter((a: any) => String(a.effect?.pseudoElement ?? "").includes("view-transition-new(hs-page)"));
+            .filter((a: any) =>
+              String(a.effect?.pseudoElement ?? "").includes("view-transition-new(hs-page)"),
+            );
           for (const a of anims) {
             a.pause();
             a.currentTime = 0;
           }
-          const m = getComputedStyle(document.documentElement, "::view-transition-new(hs-page)").transform;
+          const m = getComputedStyle(
+            document.documentElement,
+            "::view-transition-new(hs-page)",
+          ).transform;
           const match = /matrix\(([^)]+)\)/.exec(m);
           entry.startX = match ? Number(match[1].split(",")[4]) : null;
           for (const a of anims) a.play();
@@ -90,7 +95,12 @@ async function recordViewTransitions(context: BrowserContext) {
 
 const transitions = (page: Page) =>
   page.evaluate(
-    () => (window as unknown as { __vt: { types: string[] | null; dir?: string; startX: number | null }[] }).__vt,
+    () =>
+      (
+        window as unknown as {
+          __vt: { types: string[] | null; dir?: string; startX: number | null }[];
+        }
+      ).__vt,
   );
 
 /** The first client's link, whichever of the card list and the table is on
@@ -207,7 +217,8 @@ test.describe("the progress bar", () => {
       }).observe(document, { subtree: true, childList: true });
     });
   }
-  const progressSeen = (page: Page) => page.evaluate(() => (window as any).__progressSeen as boolean);
+  const progressSeen = (page: Page) =>
+    page.evaluate(() => (window as any).__progressSeen as boolean);
 
   test("does not appear for a fast navigation", async ({ page, context }) => {
     await signIn(context);
@@ -288,7 +299,9 @@ test.describe("skeletons", () => {
       // The first card below `sm`, the table above it: whichever the
       // skeleton stood in for.
       const firstRow =
-        w < 640 ? page.locator(".motion-list > a[href^='/clients/']").first() : page.locator("table").first();
+        w < 640
+          ? page.locator(".motion-list > a[href^='/clients/']").first()
+          : page.locator("table").first();
       await expect(firstRow).toBeVisible({ timeout: 10_000 });
       await expect(skeleton).toHaveCount(0);
       // Let the row's entrance (opacity and transform only) finish; neither
@@ -318,10 +331,16 @@ test.describe("gestures", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   /** One finger from (x, y0) to (x1, y1), as a touch browser delivers it. */
-  async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, selector = "body") {
+  async function drag(
+    page: Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    selector = "body",
+  ) {
     await page.evaluate(
       async ({ from, to, selector }) => {
-        const target = document.elementFromPoint(from.x, from.y) ?? document.querySelector(selector)!;
+        const target =
+          document.elementFromPoint(from.x, from.y) ?? document.querySelector(selector)!;
         const touch = (x: number, y: number) =>
           new Touch({ identifier: 1, target, clientX: x, clientY: y, pageX: x, pageY: y });
         const fire = (type: string, t: Touch | null) =>
@@ -392,7 +411,9 @@ test.describe("gestures", () => {
   test("a bottom sheet closes when swiped down", async ({ page, context }) => {
     await signIn(context, "tech");
     await page.goto("/my-day", { waitUntil: "domcontentloaded" });
-    const more = page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "More" });
+    const more = page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "More" });
     await expect(more).toBeVisible({ timeout: FIRST_PAINT_MS });
     await page.waitForLoadState("networkidle").catch(() => {});
     await more.click();
@@ -402,7 +423,11 @@ test.describe("gestures", () => {
     const box = (await sheet.boundingBox())!;
 
     // A short drag springs back.
-    await drag(page, { x: box.x + box.width / 2, y: box.y + 20 }, { x: box.x + box.width / 2, y: box.y + 40 });
+    await drag(
+      page,
+      { x: box.x + box.width / 2, y: box.y + 20 },
+      { x: box.x + box.width / 2, y: box.y + 40 },
+    );
     await page.waitForTimeout(500);
     await expect(sheet).toBeVisible();
 

@@ -51,12 +51,10 @@ describe("which way a page moves", () => {
   it("goes deeper forward and shallower back", () => {
     expect(navDirection(nav({}))).toBe("forward");
     expect(navDirection(nav({ fromPath: "/clients/123", toPath: "/clients" }))).toBe("back");
-    expect(navDirection(nav({ fromPath: "/settings", toPath: "/settings/users" }))).toBe(
-      "forward",
+    expect(navDirection(nav({ fromPath: "/settings", toPath: "/settings/users" }))).toBe("forward");
+    expect(navDirection(nav({ fromPath: "/clients/123/edit", toPath: "/clients/123" }))).toBe(
+      "back",
     );
-    expect(
-      navDirection(nav({ fromPath: "/clients/123/edit", toPath: "/clients/123" })),
-    ).toBe("back");
   });
 
   it("crossfades between top-level sections, which is what a tab is", () => {
@@ -86,7 +84,13 @@ describe("which way a page moves", () => {
     ).toBe("back");
     expect(
       navDirection(
-        nav({ fromPath: "/clients/123", toPath: "/clients", isPop: true, fromIndex: 2, toIndex: 3 }),
+        nav({
+          fromPath: "/clients/123",
+          toPath: "/clients",
+          isPop: true,
+          fromIndex: 2,
+          toIndex: 3,
+        }),
       ),
     ).toBe("forward");
   });
