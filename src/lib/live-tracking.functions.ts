@@ -149,6 +149,16 @@ export const postLiveLocation = createServerFn({ method: "POST" })
       // stopped, or tracking turned off). Anything else is worth one retry.
       return { ok: false, stop: error.code === "42501" };
     }
+    // Where the truck is says when it will arrive: if that is past the
+    // window the customer was given, the office hears it, once per stop per
+    // slip however often the phone reports (field-notify.server.ts).
+    const { checkRunningLateFromPosition } = await import("@/lib/field-notify.server");
+    await checkRunningLateFromPosition({
+      visitId: v.id,
+      lat: data.lat,
+      lng: data.lng,
+      actorUserId: userId,
+    });
     return { ok: true, stop: false };
   });
 

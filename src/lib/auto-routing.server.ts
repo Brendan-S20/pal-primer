@@ -112,7 +112,14 @@ export function daysOf(from: string, to: string): string[] {
  */
 export async function runAutoRouting(
   supabase: SupabaseClient<Database>,
-  args: { orgId: string; runId: string; data: AutoRouteInput; progress: ReportProgress },
+  args: {
+    orgId: string;
+    runId: string;
+    data: AutoRouteInput;
+    progress: ReportProgress;
+    /** Who pressed Apply: the techs whose day changed are told, not them. */
+    actorUserId?: string | null;
+  },
 ) {
   const { orgId, runId, data, progress } = args;
   const days = daysOf(data.from, data.to);
@@ -198,7 +205,21 @@ export async function runAutoRouting(
   // nothing) if the run was declared abandoned meanwhile or the statement
   // ran out of time; a day apply_route_plan refuses comes back on its own.
   if (!(await progress("saving", solved))) throw new RunStopped();
+  // A plan applied to today or tomorrow rewrites those routes: each tech
+  // whose stops or order changed hears it once, as a summary, and the person
+  // who pressed Apply does not (field-notify.server.ts). Days further out are
+  // not watched, so a quarter's plan costs the same two snapshots as a day's.
+  // Taken immediately before the write, so "before" is the day the write
+  // actually replaced, not the one that stood when the run began.
+  const { startRouteWatch } = await import("@/lib/field-notify.server");
+  const watch = await startRouteWatch({
+    actorUserId: args.actorUserId ?? null,
+    orgId,
+    staffIds: data.staffIds,
+  });
   const written = await applyRoutePlans(supabase, { runId, reassign: data.reassign, plans });
+  // Only after a write that committed: a refused write changed nobody's day.
+  await watch.finish();
   const planOf = new Map(plans.map((p) => [p.day, p]));
 
   for (const w of written) {
@@ -372,8 +393,16 @@ export type StartOutcome =
 
 export type Notify = (
   userIds: string[],
-  n: { orgId: string; type: string; title: string; body?: string | null; link?: string | null },
-) => Promise<void>;
+  n: {
+    orgId: string;
+    type: string;
+    title: string;
+    body?: string | null;
+    link?: string | null;
+    threadId?: string | null;
+    collapseId?: string | null;
+  },
+) => Promise<unknown>;
 
 /** "Oct 5" or "Oct 5 to Oct 9", for a push someone reads on a lock screen. */
 function rangeLabel(from: string, to: string): string {
@@ -465,7 +494,16 @@ export async function startAndRunAutoRouting(deps: {
   ) => {
     if (!fin?.finished || !shouldPushWhenDone(fin.watched_at, now())) return;
     try {
-      await notify([userId], { orgId, ...n, link: REVIEW_LINK });
+      await notify([userId], {
+        orgId,
+        ...n,
+        link: REVIEW_LINK,
+        // One thread for the organization's auto-routing on the lock screen,
+        // and one notification per run: a run that failed and was then
+        // reported again replaces itself rather than stacking.
+        threadId: `routing:${orgId}`,
+        collapseId: `routing-run:${runId}`,
+      });
     } catch (err) {
       console.error("routing push failed", (err as Error).message);
     }
@@ -477,6 +515,7 @@ export async function startAndRunAutoRouting(deps: {
         orgId,
         runId,
         data,
+        actorUserId: userId,
         progress: async (stage, daysDone) => {
           const { data: ok, error } = await rpc("routing_run_progress", {
             _id: runId,
@@ -495,7 +534,7 @@ export async function startAndRunAutoRouting(deps: {
       });
       const fin = await finish("succeeded", result, null);
       await pushIfAway(fin, {
-        type: "routing.ready",
+        type: "routing_ready",
         title: "Routes ready",
         body:
           result.forecast && result.forecast.daysPlanned > 0
@@ -507,7 +546,7 @@ export async function startAndRunAutoRouting(deps: {
       const message = (err as Error).message || "Auto-routing failed.";
       const fin = await finish("failed", null, message);
       await pushIfAway(fin, {
-        type: "routing.failed",
+        type: "routing_failed",
         title: "Auto-routing did not finish",
         // Said only when it is true: a run that fails AFTER its write
         // committed (the summary could not be built or recorded) did change

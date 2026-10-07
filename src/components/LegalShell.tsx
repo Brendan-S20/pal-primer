@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import { Logo } from "@/components/Logo";
-import { PublicFooter } from "@/components/PublicFooter";
+import { OperatorIdentity, PublicFooter } from "@/components/PublicFooter";
 import { nativeTopBarStyle } from "@/lib/native-build";
 
 /**
@@ -77,6 +77,7 @@ export function LegalShell({
       <main className="mx-auto max-w-3xl pl-[calc(1.5rem+env(safe-area-inset-left))] pr-[calc(1.5rem+env(safe-area-inset-right))] py-10 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
         <h1 className="text-3xl font-semibold">{title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">Last updated: {updated}</p>
+        <OperatorIdentity className="mt-3 rounded-md border bg-muted/40 p-3 text-sm" />
         <div className="mt-8 space-y-8 text-[15px] leading-relaxed [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-medium [&_p]:mt-2 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-6">
           {children}
         </div>

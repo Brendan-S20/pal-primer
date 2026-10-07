@@ -58,6 +58,21 @@ vi.mock("@/lib/push-liveactivity.server", () => ({
   refreshRouteLiveActivities: (p: unknown) => refreshRouteLiveActivities(p),
 }));
 
+// The "your route changed" watch (#336): started before the write, finished
+// after it. Recorded in one list with the write so the ORDER is checked.
+const events: string[] = [];
+const startRouteWatch = vi.fn(async (_input: unknown) => {
+  events.push("watch:start");
+  return {
+    finish: async () => {
+      events.push("watch:finish");
+    },
+  };
+});
+vi.mock("@/lib/field-notify.server", () => ({
+  startRouteWatch: (i: unknown) => startRouteWatch(i),
+}));
+
 const { runAutoRouting, startAndRunAutoRouting, RunStopped, REVIEW_LINK } =
   await import("@/lib/auto-routing.server");
 
@@ -138,6 +153,8 @@ beforeEach(() => {
   applyRoutePlans.mockReset();
   refreshRoadLegs.mockReset();
   refreshRouteLiveActivities.mockClear();
+  startRouteWatch.mockClear();
+  events.length = 0;
   refreshRoadLegs.mockResolvedValue({ problem: null, pointsOutsideGraph: 0 });
   planDayRoutes.mockImplementation(async (_s: unknown, a: { day: string }) => plan(a.day));
   applyRoutePlans.mockImplementation(async (_s: unknown, a: { plans: Array<{ day: string }> }) =>
@@ -493,7 +510,7 @@ describe("startAndRunAutoRouting", () => {
     expect(h.notify).not.toHaveBeenCalled();
   });
 
-  it("pushes 'routing.ready' to the person who left, with the review link", async () => {
+  it("pushes 'routing_ready' to the person who left, with the review link", async () => {
     const h = harness({
       start_routing_run: () => ({ run_id: RUN_ID, attached: false }),
       finish_routing_run: () => ({ finished: true, watched_at: iso(60_000), applied_at: iso(500) }),
@@ -519,15 +536,18 @@ describe("startAndRunAutoRouting", () => {
     expect(ids).toEqual(["me"]);
     expect(n).toMatchObject({
       orgId: "org",
-      type: "routing.ready",
+      type: "routing_ready",
       title: "Routes ready",
       link: REVIEW_LINK,
+      // One lock-screen thread per organization, one notification per run.
+      threadId: "routing:org",
+      collapseId: `routing-run:${RUN_ID}`,
     });
     expect(n.body).toMatch(/21 stops routed/);
     expect(REVIEW_LINK).toBe("/routes?autoroute=review");
   });
 
-  it("a failed run finishes as failed and pushes 'routing.failed', saying nothing changed", async () => {
+  it("a failed run finishes as failed and pushes 'routing_failed', saying nothing changed", async () => {
     const h = harness({
       start_routing_run: () => ({ run_id: RUN_ID, attached: false }),
       finish_routing_run: () => ({ finished: true, watched_at: null, applied_at: null }),
@@ -555,7 +575,7 @@ describe("startAndRunAutoRouting", () => {
       _error: "canceling statement due to statement timeout",
     });
     const n = (h.notify.mock.calls[0] as unknown as [string[], Record<string, string>])[1];
-    expect(n.type).toBe("routing.failed");
+    expect(n.type).toBe("routing_failed");
     expect(n.body).toMatch(/nothing was changed/);
   });
 
@@ -662,5 +682,76 @@ describe("the wiring", () => {
     );
     expect(intervals.length).toBe(2);
     for (const m of intervals) expect(m * 60_000).toBe(ABANDONED_AFTER_MS);
+  });
+});
+
+describe("the techs whose day changed are told, once, and not the person who pressed Apply", () => {
+  it("watches their routes from just before the write to just after it", async () => {
+    applyRoutePlans.mockImplementation(
+      async (_s: unknown, a: { plans: Array<{ day: string }> }) => {
+        events.push("write");
+        return a.plans.map((p) => wrote(p.day));
+      },
+    );
+    await runAutoRouting(fakeSupabase(), {
+      orgId: "org",
+      runId: "run-1",
+      data: INPUT,
+      actorUserId: "me",
+      progress: async () => true,
+    });
+    expect(events).toEqual(["watch:start", "write", "watch:finish"]);
+    expect(startRouteWatch).toHaveBeenCalledWith({
+      actorUserId: "me",
+      orgId: "org",
+      staffIds: ["a"],
+    });
+  });
+
+  it("a write refused whole tells nobody anything changed", async () => {
+    applyRoutePlans.mockRejectedValue(new Error("canceling statement due to statement timeout"));
+    await expect(
+      runAutoRouting(fakeSupabase(), {
+        orgId: "org",
+        runId: "run-1",
+        data: INPUT,
+        actorUserId: "me",
+        progress: async () => true,
+      }),
+    ).rejects.toThrow();
+    expect(events).toEqual(["watch:start"]);
+  });
+
+  it("a run stopped before the write never starts watching", async () => {
+    await expect(
+      runAutoRouting(fakeSupabase(), {
+        orgId: "org",
+        runId: "run-1",
+        data: INPUT,
+        actorUserId: "me",
+        progress: async (stage) => stage !== "saving",
+      }),
+    ).rejects.toBeInstanceOf(RunStopped);
+    expect(startRouteWatch).not.toHaveBeenCalled();
+  });
+
+  it("startAndRunAutoRouting passes who pressed Apply through to the run", async () => {
+    const h = harness({
+      start_routing_run: () => ({ run_id: RUN_ID, attached: false }),
+      finish_routing_run: () => ({ finished: true, watched_at: null, applied_at: iso(1) }),
+    });
+    const run = vi.fn(async () => ({ stops: 0, skipped: [], balance: [], forecast: null }));
+    await startAndRunAutoRouting({
+      supabase: h.supabase,
+      userId: "me",
+      orgId: "org",
+      runId: RUN_ID,
+      data: INPUT,
+      keepAlive: h.keepAlive,
+      notify: h.notify,
+      now: () => NOW,
+      run: run as any,
+    });
+    expect((run.mock.calls[0] as unknown[])[1]).toMatchObject({ actorUserId: "me" });
   });
 });

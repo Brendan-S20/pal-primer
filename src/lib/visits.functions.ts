@@ -196,6 +196,12 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // function with two callers is not.
     const { bookOneOffVisit } = await import("@/lib/one-off-visit.server");
     const booked = await bookOneOffVisit(supabase, { ...data, orgId, actorUserId: userId });
+    // Booked straight onto a tech's today or tomorrow: that tech hears it.
+    if (booked.assigned) {
+      const { startRouteWatch } = await import("@/lib/field-notify.server");
+      const watch = await startRouteWatch({ actorUserId: userId, orgId });
+      await watch.finish({ visitIds: [booked.visitId] });
+    }
     if (data.staffId) {
       const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
       await refreshRouteLiveActivities([{ staffId: data.staffId, day: data.scheduledOn }]);
@@ -209,6 +215,9 @@ export const reassignVisit = createServerFn({ method: "POST" })
     z.object({ visitId: z.string().uuid(), staffId: z.string().uuid().nullable() }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    // The tech it comes off and the tech it goes to are told (field-notify).
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: [data.visitId] });
     // Both techs' lock screens: the one losing the stop and the one gaining it.
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
@@ -217,6 +226,7 @@ export const reassignVisit = createServerFn({ method: "POST" })
       _staff_id: data.staffId as string,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     await pushRoutes();
     // QA round 8: reassignment shows on the client's Activity timeline.
     try {
@@ -263,12 +273,19 @@ export const reorderRoute = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: context.userId,
+      staffIds: [data.staffId],
+      visitIds: data.orderedIds,
+    });
     const { data: count, error } = await context.supabase.rpc("reorder_route", {
       _staff_id: data.staffId,
       _day: data.day,
       _ordered_ids: data.orderedIds,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     await refreshRouteLiveActivities([{ staffId: data.staffId, day: data.day }]);
     return { updated: (count as number) ?? 0 };
@@ -489,6 +506,12 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: userId,
+      orgId: v.organization_id,
+      visitIds: [data.visitId],
+    });
     // The day it left and the day it went to.
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
@@ -497,6 +520,7 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       _new_date: data.newDate,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
@@ -539,6 +563,12 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be canceled");
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: userId,
+      orgId: v.organization_id,
+      visitIds: [data.visitId],
+    });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_skip_visit", {
@@ -547,6 +577,7 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
       _code: data.code,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
@@ -586,6 +617,8 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities(data.visitIds);
     const { data: n, error } = await (context.supabase as any).rpc("bulk_reassign_visits", {
@@ -593,6 +626,7 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
       _staff_id: data.staffId,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     await pushRoutes();
     return { moved: (n as number) ?? 0 };
   });
@@ -608,6 +642,8 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities(data.visitIds);
     const { data: rows, error } = await (context.supabase as any).rpc("bulk_reschedule_visits", {
@@ -615,6 +651,7 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       _to_date: data.toDate,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     await pushRoutes();
     // `skipped` is not an error and must reach the caller: a weekly client
     // moved exactly a week already has a visit there, and the honest report is
@@ -640,10 +677,15 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ staffId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    // Everything this tech holds today and tomorrow goes to someone else:
+    // the snapshot of their two days is followed to wherever it lands.
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({ actorUserId: context.userId, staffIds: [data.staffId] });
     const { data: n, error } = await (context.supabase as any).rpc("redistribute_staff_work", {
       _staff_id: data.staffId,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     // The work went to whoever had room, which this call does not say, so
     // every live route in the business is rebuilt; an unchanged one is not
     // pushed.

@@ -5,6 +5,8 @@ const h = vi.hoisted(() => ({
   prefs: [] as any[],
   inserted: [] as any[],
   pushed: [] as Array<{ userId: string; payload: any }>,
+  // The database before 20261004150000: no thread_id or event_key yet.
+  schemaBehind: false,
 }));
 
 vi.mock("@/lib/push.server", () => ({
@@ -26,17 +28,28 @@ vi.mock("@/integrations/supabase/client.server", () => {
       };
       return p;
     }
+    const behind = { code: "PGRST204", message: "Could not find the 'thread_id' column" };
     return {
       insert: (rows: any[]) => {
+        if (h.schemaBehind && rows.some((r) => "thread_id" in r || "event_key" in r)) {
+          return Promise.resolve({ error: behind });
+        }
         h.inserted.push(...rows);
         return Promise.resolve({ error: null });
       },
+      upsert: (rows: any[]) => ({
+        select: () => {
+          if (h.schemaBehind) return Promise.resolve({ data: null, error: behind });
+          h.inserted.push(...rows);
+          return Promise.resolve({ data: rows.map((r) => ({ recipient_user_id: r.recipient_user_id })), error: null });
+        },
+      }),
     };
   }
   return { supabaseAdmin: { from } };
 });
 
-import { notifyUsers, notifyRoles } from "@/lib/notify-center.server";
+import { notifyUsers, notifyRoles, resetNotifyMemoForTests } from "@/lib/notify-center.server";
 
 const BASE = {
   orgId: "org-1",
@@ -51,6 +64,8 @@ beforeEach(() => {
   h.prefs = [];
   h.inserted = [];
   h.pushed = [];
+  h.schemaBehind = false;
+  resetNotifyMemoForTests();
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -125,5 +140,39 @@ describe("notifyRoles", () => {
     h.userRoles = [];
     await notifyRoles(["owner"], BASE);
     expect(h.inserted).toHaveLength(0);
+  });
+});
+
+describe("notifyUsers on a database the migration has not reached yet", () => {
+  // The app deploys on merge and 20261004150000 is applied after it. For
+  // those minutes a notification must go out the old way, not not at all.
+  it("an event-keyed notification falls back to a plain row, and still pushes", async () => {
+    h.schemaBehind = true;
+    await notifyUsers(["u1"], { ...BASE, eventKey: "skip:v1", threadId: "route:s:d" });
+    expect(h.inserted).toHaveLength(1);
+    expect(h.inserted[0]).not.toHaveProperty("event_key");
+    expect(h.inserted[0]).not.toHaveProperty("thread_id");
+    expect(h.pushed.map((p) => p.userId)).toEqual(["u1"]);
+  });
+
+  it("a threaded notification is retried without its thread", async () => {
+    h.schemaBehind = true;
+    await notifyUsers(["u1"], { ...BASE, threadId: "route:s:d", collapseId: "c" });
+    expect(h.inserted).toHaveLength(1);
+    expect(h.pushed[0].payload).toMatchObject({ threadId: "route:s:d", collapseId: "c" });
+  });
+});
+
+describe("notifyUsers, the person who acted", () => {
+  it("is never a recipient", async () => {
+    await notifyUsers(["u1", "u2"], { ...BASE, exceptUserId: "u2" });
+    expect(h.inserted.map((r) => r.recipient_user_id)).toEqual(["u1"]);
+    expect(h.pushed.map((p) => p.userId)).toEqual(["u1"]);
+  });
+
+  it("push: false keeps a row in the centre and off the phone", async () => {
+    await notifyUsers(["u1"], { ...BASE, push: false });
+    expect(h.inserted).toHaveLength(1);
+    expect(h.pushed).toHaveLength(0);
   });
 });
