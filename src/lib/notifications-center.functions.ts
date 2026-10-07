@@ -75,6 +75,10 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   { type: "visit_skipped", label: "A tech skipped a stop" },
   { type: "visit_late", label: "A tech running late for a stop" },
   { type: "route_finished", label: "A tech finished their route" },
+  // Auto-routing that ran in the background (src/lib/auto-routing.server.ts),
+  // to the person who pressed Apply, and only when they had left the page.
+  { type: "routing_ready", label: "Auto-routing finished in the background" },
+  { type: "routing_failed", label: "Auto-routing did not finish" },
 ];
 
 export const getNotificationPrefs = createServerFn({ method: "GET" })
@@ -96,7 +100,10 @@ export const setNotificationPrefs = createServerFn({ method: "POST" })
     const muted = data.mutedTypes.filter((t) => allowed.has(t));
     const { error } = await (context.supabase as any)
       .from("app_notification_prefs")
-      .upsert({ user_id: context.userId, muted_types: muted, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      .upsert(
+        { user_id: context.userId, muted_types: muted, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" },
+      );
     if (error) throw new Error(error.message);
     return { ok: true };
   });

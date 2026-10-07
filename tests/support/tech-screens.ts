@@ -50,4 +50,8 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/components/HelpTip.tsx" },
   { file: "src/components/AddressAutocomplete.tsx" },
   { file: "src/components/LogExpenseSheet.tsx" },
+  // In the app header on every page, My Day included. It renders only for a
+  // person who can route, and on a one-truck business that is the same
+  // person who works My Day.
+  { file: "src/components/routes/RoutingRunIndicator.tsx" },
 ];

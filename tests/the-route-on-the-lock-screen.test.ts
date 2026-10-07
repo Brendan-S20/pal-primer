@@ -603,8 +603,20 @@ describe("an office change to a tech's day pushes to their lock screen", () => {
     expect(push).toBeGreaterThan(rpc);
   });
 
-  it.each(["reorderRoute", "applyOptimize", "createOneOffVisit"])("%s pushes the days it changed", (name) => {
+  it.each(["reorderRoute", "createOneOffVisit"])("%s pushes the days it changed", (name) => {
     expect(body(name)).toMatch(/refreshRouteLiveActivities\(/);
+  });
+
+  // CHANGED 2026-10-06: applyOptimize became a background run
+  // (auto-routing.server.ts, started by routing-runs.functions.ts), and the
+  // whole run is written in one transaction. The push moved with it, to just
+  // after that write, for the days it wrote.
+  it("an auto-routing run pushes the days it wrote, after it wrote them", () => {
+    const run = codeOnly(read("src/lib/auto-routing.server.ts"));
+    const write = run.indexOf("await applyRoutePlans(");
+    const push = run.indexOf("refreshRouteLiveActivities(");
+    expect(write).toBeGreaterThan(-1);
+    expect(push).toBeGreaterThan(write);
   });
 
   it("redistributeStaffWork rebuilds every live route in the business", () => {

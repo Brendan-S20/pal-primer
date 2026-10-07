@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -363,6 +363,20 @@ function RoutesPage() {
   const [hoveredVisitId, setHoveredVisitId] = useState<string | null>(null);
 
   const [toolsOpen, setToolsOpen] = useState(false);
+  // `?autoroute=review` is where the header's "Planning routes…" pill and the
+  // "Routes ready" push both land: open the auto-routing card, which shows a
+  // run in progress or replays a finished one. Read raw rather than through
+  // validateSearch, so every other <Link to="/routes"> stays as it is; and
+  // removed once read, so a refresh does not reopen the card.
+  const autorouteParam = useRouterState({
+    select: (r) => (r.location.search as Record<string, unknown>).autoroute,
+  });
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!autorouteParam) return;
+    setToolsOpen(true);
+    void navigate({ href: "/routes", replace: true });
+  }, [autorouteParam, navigate]);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
   const [oneOffOpen, setOneOffOpen] = useState(false);
   // Booking a one-off sets a price, so it takes manage_pricing — the same gate
@@ -1237,6 +1251,7 @@ function RoutesPage() {
           staff={staff}
           onApplied={() => setLocalColumns(null)}
           onClose={() => setToolsOpen(false)}
+          onReviewDay={(d) => setDay(d)}
         />
       )}
 

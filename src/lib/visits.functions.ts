@@ -1,9 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
-import type { RoadLegProblem } from "@/lib/road-legs.server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
-import { measureDayFit } from "@/lib/route-day-fit";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -703,307 +701,16 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
     return { moved: (n as number) ?? 0 };
   });
 
-// ── Auto-routing: one button ───────────────────────────────────────────────
+// ── Auto-routing moved out of this file on 2026-10-04 ─────────────────────
 //
-// There used to be two presses. Preview measured the day, showed a headline,
-// and only then did Apply light up. QA on 2026-08-19: "Also remove the
-// preview, let's just have apply." So the STEP is gone — the dispatcher picks
-// the days and the people, and presses one button.
-//
-// ── AND SINCE 2026-10, THE SEARCH RUNS HERE, NOT IN POSTGRES ────────────
-//
-// Each day is three short steps (route-plan.server.ts): route_day_inputs
-// reads everything the planner may know, the solver (route-solver.ts) searches
-// in this process inside a time budget, and apply_route_plan checks the plan,
-// replays the clock in SQL and writes it. plan_day_across_staff did all three
-// inside one statement and took 7-23 seconds on a 200-stop day against the
-// API's 8-second limit; see 20261002090700.
-//
-// What the panel shows afterwards comes from the write itself, which is
-// better than what it had: the old forecast was a dry run taken BEFORE the
-// road was measured, so on a brand-new area its window count could differ
-// from the plan applied (#294). Now the count is the plan applied.
-
-const LEVELS = ["fast", "balanced", "thorough"] as const;
-
-/** The search budget for one day, by level, before it is shared out across a
- *  multi-day run. "thorough" is what the panel sends. */
-const DAY_BUDGET_MS = { fast: 300, balanced: 1200, thorough: 2500 } as const;
-/** And for a whole run: a 92-day range gets a short search per day rather
- *  than four minutes of waiting. */
-const RUN_BUDGET_MS = 25_000;
-const MIN_DAY_BUDGET_MS = 250;
-
-export type WindowMissOut = {
-  day: string;
-  staffId: string;
-  client: string | null;
-  kind: "late" | "early";
-  etaStart: string;
-  earliest: string | null;
-  latest: string | null;
-};
-
-export const applyOptimize = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        staffIds: z.array(z.string().uuid()).min(1).max(50),
-        // Bare z.string() here was a one-request denial of service. The refine
-        // below is a LEXICAL compare, so "zzzz" passed it, and the day loop in
-        // the handler breaks on `iso > data.to` — which "2026-08-27" > "zzzz"
-        // never satisfies. Reproduced: 2,000,001 iterations and 117MB of heap
-        // still climbing, from a single authenticated POST. Shape first, so a
-        // non-date cannot reach the loop at all; the same idiom as
-        // cpa-reports.functions.ts:51 and four other files.
-        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date."),
-        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date."),
-        level: z.enum(LEVELS).default("balanced"),
-        reassign: z.boolean().default(false),
-        // Arrival windows for THIS run: "org" follows Settings -> Scheduling,
-        // the other two override it once. See 20261002090400.
-        windows: z.enum(["org", "honour", "ignore"]).default("org"),
-      })
-      // A well-formed but absurd range is still 2.9M planner calls, so the
-      // span is bounded as well as the shape. A quarter is far past what a
-      // dispatcher plans in one press.
-      .refine(
-        (v) =>
-          (Date.parse(`${v.to}T00:00:00Z`) - Date.parse(`${v.from}T00:00:00Z`)) / 86_400_000 <= 92,
-        { message: "Route at most 92 days at a time.", path: ["to"] },
-      )
-      .refine((v) => v.to >= v.from, {
-        message: "The end date is before the start date.",
-        path: ["to"],
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-
-    const days: string[] = [];
-    for (let d = new Date(`${data.from}T12:00:00`); ; d.setDate(d.getDate() + 1)) {
-      const iso = d.toISOString().slice(0, 10);
-      if (iso > data.to) break;
-      days.push(iso);
-    }
-    const dayBudget = Math.max(
-      MIN_DAY_BUDGET_MS,
-      Math.min(DAY_BUDGET_MS[data.level], Math.floor(RUN_BUDGET_MS / days.length)),
-    );
-    const honourWindows =
-      data.windows === "honour" ? true : data.windows === "ignore" ? false : null;
-
-    const { planAndApplyDay } = await import("@/lib/route-plan.server");
-    // A plan applied to today or tomorrow rewrites those routes: each tech
-    // whose stops or order changed hears it once, as a summary. Days further
-    // out are not watched (startRouteWatch), so a quarter's plan costs the
-    // same two snapshots as a day's.
-    const { startRouteWatch } = await import("@/lib/field-notify.server");
-    const watch = await startRouteWatch({ actorUserId: userId, orgId, staffIds: data.staffIds });
-
-    let stops = 0;
-    const skipped: Array<{ staffId: string; day: string; reason: string }> = [];
-    // Days planned from straight-line estimates because nothing could be
-    // measured, and days where only some points were measurable. Kept apart
-    // because they are different sentences: one day is wrong throughout, the
-    // other is wrong in places.
-    const estimatedDays: Array<{ day: string; problem: RoadLegProblem }> = [];
-    const partlyEstimatedDays: Array<{ day: string; points: number }> = [];
-    const perStaff = new Map<string, { stops: number; totalMin: number }>();
-    // What the old read-only forecast reported, now read off the write.
-    let techDays = 0;
-    let techDaysMeasured = 0;
-    let savedMin = 0;
-    let violations = 0;
-    const windowMisses: WindowMissOut[] = [];
-    // Whether arrival windows were honoured on the days planned (the
-    // organization's setting, unless this run overrode it).
-    let windowsHonoured: boolean | null = honourWindows;
-
-    for (const day of days) {
-      // Measure the real road legs for this day before planning it. Best
-      // effort on purpose: anything unmeasured is priced by the estimate, and
-      // a dispatcher whose routing engine is down still gets a plan. It is a
-      // cache warm, not a dependency -- but it is not SILENT: a day planned
-      // from estimates is reported, by reason, because a solver minimising
-      // the wrong quantity picks the wrong ORDER (road-legs.server.ts).
-      try {
-        const { refreshRoadLegs } = await import("@/lib/road-legs.server");
-        const legs = await refreshRoadLegs(orgId, day);
-        if (legs.problem) estimatedDays.push({ day, problem: legs.problem });
-        else if (legs.pointsOutsideGraph > 0)
-          partlyEstimatedDays.push({ day, points: legs.pointsOutsideGraph });
-      } catch (err) {
-        // A throw here is not one of refreshRoadLegs' own answers -- it returns
-        // its failures. This is the import or something below it, and the day
-        // is on estimates either way, so it is reported as an outage rather
-        // than left out of the count.
-        estimatedDays.push({ day, problem: "router_unreachable" });
-        console.error("road leg refresh failed for", day, (err as Error).message);
-      }
-
-      let result: Awaited<ReturnType<typeof planAndApplyDay>>;
-      try {
-        result = await planAndApplyDay(supabase, {
-          orgId,
-          staffIds: data.staffIds,
-          day,
-          reassign: data.reassign,
-          honourWindows,
-          timeLimitMs: data.level === "fast" ? DAY_BUDGET_MS.fast : dayBudget,
-          rounds: data.level === "fast" ? 0 : undefined,
-        });
-      } catch (err) {
-        // A day that could not be planned must not abandon the other twenty.
-        // Collected and reported, not swallowed — silently skipping is how a
-        // dispatcher ends up believing a day was optimized when it was
-        // refused. staffId is empty because the refusal is about the DAY: the
-        // planner considers the whole team at once.
-        skipped.push({ staffId: "", day, reason: `${day}: ${(err as Error).message}` });
-        continue;
-      }
-      windowsHonoured = result.honourWindows;
-
-      const before = new Map(result.before.map((b) => [b.staffId, b]));
-      for (const r of result.rows) {
-        stops += r.stops;
-        violations += r.late;
-        const prev = perStaff.get(r.staff_id) ?? { stops: 0, totalMin: 0 };
-        perStaff.set(r.staff_id, {
-          stops: prev.stops + r.stops,
-          totalMin: prev.totalMin + r.total_min,
-        });
-        if (r.stops === 0) continue;
-        techDays++;
-        // Saving is summed ONLY over technician-days that had a real route
-        // to compare against. A day whose stops carried no sequence is not a
-        // slower route, it is no route — counting it would inflate the
-        // headline with the entire cost of a day nobody had planned yet.
-        const b = before.get(r.staff_id);
-        if (b?.sequenced) {
-          techDaysMeasured++;
-          savedMin += b.minutes - r.travel_min;
-        }
-      }
-      for (const m of result.misses) {
-        windowMisses.push({
-          day,
-          staffId: m.staff_id,
-          client: m.client,
-          kind: m.kind,
-          etaStart: m.eta_start,
-          earliest: m.earliest,
-          latest: m.latest,
-        });
-      }
-    }
-
-    await watch.finish();
-    // Any of these techs whose route for one of these days is on a lock
-    // screen gets the new order; nobody else costs more than a lookup.
-    {
-      const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
-      await refreshRouteLiveActivities(
-        days.flatMap((day) => data.staffIds.map((staffId) => ({ staffId, day }))),
-      );
-    }
-
-    // The split itself, so the screen can show that the work was actually
-    // divided. Without this the dispatcher has to go and count rows to find
-    // out whether the thing they just pressed did anything.
-    const balance = [...perStaff.entries()]
-      .map(([staffId, v]) => ({ staffId, stops: v.stops, totalMin: Math.round(v.totalMin) }))
-      .sort((a, b) => b.totalMin - a.totalMin);
-
-    // The same five numbers the read-only forecast used to carry, so the
-    // panel's sentences did not have to change. Null only when every day was
-    // refused: then there is nothing to report, and "nothing to route" would
-    // be the wrong sentence.
-    const forecast =
-      skipped.length === days.length
-        ? null
-        : {
-            stops,
-            daysPlanned: techDays,
-            daysMeasured: techDaysMeasured,
-            // Rounded once, at the end. Rounding per day and summing drifts.
-            savedMin: Math.round(savedMin * 10) / 10,
-            violations,
-          };
-
-    // ── DOES WHAT WAS WRITTEN FIT THE DAY? ──────────────────────────────
-    //
-    // The planner plans a day with more work than hours rather than refuse
-    // it -- the routing trials planned one technician to 02:51 the next
-    // morning and reported only "Routed 40 stops". Planning it is right; not
-    // saying so is not. Read back after the write, because the ETAs only
-    // exist then.
-    //
-    // Best effort: a failed read must never undo or block the routing the
-    // dispatcher asked for, so it degrades to null.
-    let fit: ReturnType<typeof measureDayFit> | null = null;
-    try {
-      const [{ data: org }, { data: crew }, { data: planned, error: plannedError }] =
-        await Promise.all([
-          supabase
-            .from("organizations")
-            .select("timezone, workday_end")
-            .eq("id", orgId)
-            .maybeSingle(),
-          supabase.from("staff").select("id, daily_capacity_minutes").in("id", data.staffIds),
-          supabase
-            .from("visits")
-            .select(
-              "assigned_staff_id, scheduled_on, eta_end, travel_min, properties(latitude, longitude, service_duration_min)",
-            )
-            .eq("organization_id", orgId)
-            .eq("status", "scheduled")
-            .gte("scheduled_on", data.from)
-            .lte("scheduled_on", data.to)
-            .in("assigned_staff_id", data.staffIds),
-        ]);
-      if (plannedError) throw plannedError;
-      fit = measureDayFit(
-        (planned ?? []).map((v) => ({
-          staffId: v.assigned_staff_id,
-          day: v.scheduled_on,
-          etaEnd: v.eta_end,
-          travelMin: v.travel_min == null ? null : Number(v.travel_min),
-          serviceMin: v.properties?.service_duration_min ?? null,
-          latitude: v.properties?.latitude ?? null,
-          longitude: v.properties?.longitude ?? null,
-        })),
-        {
-          timezone: org?.timezone || DEFAULT_ORG_TIMEZONE,
-          workdayEnd: org?.workday_end ?? null,
-          capacityByStaff: Object.fromEntries(
-            (crew ?? []).map((s) => [s.id, s.daily_capacity_minutes]),
-          ),
-        },
-      );
-    } catch (err) {
-      console.error("day-fit check failed", (err as Error).message);
-      fit = null;
-    }
-
-    return {
-      stops,
-      skipped,
-      balance,
-      forecast,
-      estimatedDays,
-      partlyEstimatedDays,
-      fit,
-      windowsHonoured,
-      // Capped: a 92-day run with windows set aside could miss hundreds, and
-      // the panel names a handful and counts the rest.
-      windowMisses: windowMisses.slice(0, 50),
-      windowMissCount: windowMisses.length,
-    };
-  });
+// applyOptimize was the one server function the panel awaited: it read,
+// solved and wrote each day in turn, inside the request. It is now a
+// background run with a row of its own -- src/lib/routing-runs.functions.ts
+// (startRoutingRun) records it, src/lib/auto-routing.server.ts does the work
+// and writes the whole run in one transaction at the end. The old export is
+// gone rather than kept beside it, for the reason the paragraph below gives:
+// an exported server function with no caller is still a live endpoint, and
+// this one wrote a whole day.
 
 // assignRoute / optimizeRoute / optimizeWeek / reoptimizeAll were removed here.
 //
@@ -1017,8 +724,8 @@ export const applyOptimize = createServerFn({ method: "POST" })
 // gone rather than baselined, because an unreferenced export is still a live
 // RPC endpoint for anyone who can post to it.
 //
-// Everything they did is in applyOptimize, which measures with the read-only
-// planner before it writes and only reassigns when explicitly asked.
+// Everything they did is in auto-routing (auto-routing.server.ts), which only
+// reassigns when explicitly asked.
 //
 // previewOptimize left the same way on 2026-08-19, when the preview STEP was
 // removed from the panel: with no caller it was an exported server function

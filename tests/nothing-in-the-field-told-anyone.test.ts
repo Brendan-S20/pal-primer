@@ -847,7 +847,6 @@ describe("every field event is wired to its server function", () => {
     ["src/lib/visits.functions.ts", "bulkAssignVisits"],
     ["src/lib/visits.functions.ts", "bulkRescheduleVisits"],
     ["src/lib/visits.functions.ts", "redistributeStaffWork"],
-    ["src/lib/visits.functions.ts", "applyOptimize"],
     ["src/lib/visits.functions.ts", "rescheduleVisitFromOffice"],
     ["src/lib/visits.functions.ts", "cancelVisitFromOffice"],
     ["src/lib/visits.functions.ts", "createOneOffVisit"],
@@ -859,6 +858,20 @@ describe("every field event is wired to its server function", () => {
     const finish = body.indexOf(".finish(");
     expect(start, "startRouteWatch").toBeGreaterThan(-1);
     expect(finish, "watch.finish").toBeGreaterThan(start);
+  });
+
+  // CHANGED 2026-10-06: applyOptimize became a background run
+  // (auto-routing.server.ts) whose whole write is one statement at the end.
+  // The watch moved with it and now brackets that write exactly.
+  it("an auto-routing run watches the routes it changes, around its one write", () => {
+    const s = src("src/lib/auto-routing.server.ts");
+    const body = s.slice(s.indexOf("export async function runAutoRouting"));
+    const start = body.indexOf("startRouteWatch(");
+    const write = body.indexOf("await applyRoutePlans(");
+    const finish = body.indexOf("watch.finish(");
+    expect(start, "startRouteWatch").toBeGreaterThan(-1);
+    expect(write).toBeGreaterThan(start);
+    expect(finish).toBeGreaterThan(write);
   });
 
   it("a skip, a completion, a GPS ping, cash and a property edit each tell someone", () => {

@@ -19,7 +19,9 @@ import { describe, expect, it } from "vitest";
 // dispatcher then drives that order.
 
 const LEGS = readFileSync(join(process.cwd(), "src/lib/road-legs.server.ts"), "utf8");
-const VISITS = readFileSync(join(process.cwd(), "src/lib/visits.functions.ts"), "utf8");
+// CHANGED 2026-10-04: auto-routing left visits.functions.ts for
+// auto-routing.server.ts when it became a background run; repointed.
+const VISITS = readFileSync(join(process.cwd(), "src/lib/auto-routing.server.ts"), "utf8");
 const PANEL = readFileSync(
   join(process.cwd(), "src/components/routes/AutoRoutingPanel.tsx"),
   "utf8",
@@ -91,17 +93,26 @@ describe("the planner collects it instead of discarding it", () => {
     // refreshRoadLegs returns its own failures, so a throw here is something
     // below it. The day is on estimates either way.
     const block = VISITS.slice(VISITS.indexOf("const legs = await refreshRoadLegs"));
-    const cat = block.slice(block.indexOf("} catch"), block.indexOf("planAndApplyDay(supabase"));
+    const cat = block.slice(block.indexOf("} catch"), block.indexOf("planDayRoutes(supabase"));
     expect(cat).toMatch(/estimatedDays\.push/);
   });
 
   it("still does not fail the run when measurement fails", () => {
     // It is a cache warm, not a dependency. A dispatcher whose router is down
     // must still get a plan.
-    const block = VISITS.slice(
-      VISITS.indexOf("const legs = await refreshRoadLegs"),
-      VISITS.indexOf("plan_day_across_staff"),
-    );
+    //
+    // CHANGED 2026-10-04: this used to end its slice at the first
+    // "plan_day_across_staff", which by then sat in the header comment ABOVE
+    // the refresh -- so the slice was empty and the assertion passed on
+    // nothing. It now ends where the measurement ends (the next stage's
+    // heartbeat) and reads code, not comments, and it has been seen to fail
+    // with a `throw` added inside the catch.
+    const from = VISITS.indexOf("const legs = await refreshRoadLegs");
+    const to = VISITS.indexOf('progress("optimizing"', from);
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    const block = VISITS.slice(from, to).replace(/^[ \t]*\/\/.*$/gm, "");
+    expect(block).toMatch(/catch \(err\)/);
     expect(block).not.toMatch(/\bthrow\b/);
   });
 });

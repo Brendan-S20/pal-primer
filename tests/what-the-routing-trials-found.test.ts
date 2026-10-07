@@ -109,8 +109,9 @@ describe("measureDayFit says when a route runs past the day", () => {
     expect(fit.unlocated).toEqual([{ day: "2026-10-14", count: 1 }]);
   });
 
-  it("is what applyOptimize returns and the panel reads", () => {
-    const visits = read("src/lib/visits.functions.ts");
+  // CHANGED 2026-10-04: auto-routing moved to auto-routing.server.ts.
+  it("is what the run returns and the panel reads", () => {
+    const visits = read("src/lib/auto-routing.server.ts");
     expect(visits).toMatch(/fit = measureDayFit\(/);
     expect(visits).toMatch(/workday_end/);
     const panel = read("src/components/routes/AutoRoutingPanel.tsx");

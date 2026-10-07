@@ -32,7 +32,9 @@ const migration = readdirSync(join(root, "supabase/migrations"))
   .map((f) => read(`supabase/migrations/${f}`))
   .join("\n");
 const server = read("src/lib/road-legs.server.ts");
-const visits = read("src/lib/visits.functions.ts");
+// CHANGED 2026-10-04: auto-routing left visits.functions.ts for
+// auto-routing.server.ts when it became a background run; repointed.
+const visits = read("src/lib/auto-routing.server.ts");
 
 describe("measured road legs are preferred, and the estimate still catches everything else", () => {
   it("drive_minutes consults the cache", () => {
@@ -97,7 +99,9 @@ describe("the fetcher is a cache warm, not a dependency", () => {
     const at = visits.indexOf("refreshRoadLegs(orgId, day)");
     // CHANGED 2026-10-02: the planner is planAndApplyDay (read, solve,
     // write) rather than one plan_day_across_staff call; still after this.
-    const rpc = visits.indexOf("planAndApplyDay(supabase");
+    // CHANGED 2026-10-04: planDayRoutes (read, solve); the write is one
+    // call for the whole run, after every day. Still after this.
+    const rpc = visits.indexOf("planDayRoutes(supabase");
     expect(rpc).toBeGreaterThan(0);
     expect(at, "the refresh runs after the planner, so it warms nothing").toBeLessThan(rpc);
     const region = visits.slice(at - 400, at + 200);

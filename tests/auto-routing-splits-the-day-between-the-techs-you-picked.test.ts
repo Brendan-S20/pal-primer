@@ -56,20 +56,29 @@ const codeOnly = (src: string) =>
     .join("\n");
 
 describe("applying auto-routing hands the whole team to one planner", () => {
-  const fn = codeOnly(read("src/lib/visits.functions.ts"));
-  const apply = fn.slice(fn.indexOf("export const applyOptimize"));
+  // CHANGED 2026-10-04: the run moved to auto-routing.server.ts when it
+  // became a background job; the server function applyOptimize is gone.
+  const fn = codeOnly(read("src/lib/auto-routing.server.ts"));
+  const apply = fn.slice(fn.indexOf("export async function runAutoRouting"));
 
   it("plans each day for the selected technicians together", () => {
     // CHANGED 2026-10-02: the planner moved out of plan_day_across_staff into
     // route-plan.server.ts (read, solve, write), and the whole selected team
     // still goes to it at once. The plural is the entire fix: the selected
     // technicians passed whole is what makes a split possible at all.
-    expect(apply).toMatch(/planAndApplyDay\(supabase, \{/);
+    //
+    // CHANGED 2026-10-04: the write is apply_route_plans, once per run, and
+    // it takes the people from the RUN's own row rather than from the caller,
+    // so the read is the one place the app passes them and the write cannot
+    // be handed somebody the run was not started for.
+    expect(apply).toMatch(/planDayRoutes\(supabase, \{/);
     expect(apply).toMatch(/staffIds:\s*data\.staffIds/);
     const plan = codeOnly(read("src/lib/route-plan.server.ts"));
     expect(plan).toMatch(/rpc\("route_day_inputs"/);
-    expect(plan).toMatch(/rpc\("apply_route_plan"/);
-    expect(plan.match(/_staff_ids:\s*args\.staffIds/g)).toHaveLength(2);
+    expect(plan).toMatch(/rpc\("apply_route_plans"/);
+    expect(plan.match(/_staff_ids:\s*args\.staffIds/g)).toHaveLength(1);
+    const runs = read("supabase/migrations/20261004160000_routing-runs-in-the-background.sql");
+    expect(runs).toMatch(/public\.apply_route_plan\(\s*_run\.organization_id, _run\.staff_ids, _day/);
   });
 
   it("no longer calls the single-technician planner once per technician", () => {

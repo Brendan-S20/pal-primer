@@ -32,6 +32,7 @@ import { useMyRole } from "@/hooks/useMyRole";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationBell } from "@/components/NotificationBell";
+import { RoutingRunIndicator } from "@/components/routes/RoutingRunIndicator";
 import { WeatherPopover } from "@/components/WeatherPopover";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { SuspensionBanner } from "@/components/SuspensionBanner";
@@ -433,6 +434,9 @@ function AppShell() {
               </Link>
             )}
             {roleControls.weather && headerPrefs.showWeather && <WeatherPopover />}
+            {/* Auto-routing running in the background, or finished and not
+                yet looked at. Renders nothing otherwise. */}
+            <RoutingRunIndicator />
             <NotificationBell />
             {/* Wherever the tab bar reaches, this lives in its More sheet —
                 the most dangerous action doesn't belong in a phone header.
