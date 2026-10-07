@@ -281,15 +281,20 @@ payloads that become a notification request, and refuses one with no alert.
 
 ### Owner checklist
 
-1. **Nothing to register by hand, probably.** Xcode Cloud signs with
-   automatic signing and creates the App ID for
-   `consulting.thenorth.houndstack.RouteActivity` itself on the first archive
-   that contains it, the same way it did for the app. If that archive fails
-   at signing with "No profiles for 'consulting.thenorth.houndstack.RouteActivity'
-   were found", register the App ID by hand: developer.apple.com ›
-   Identifiers › + › App IDs › App › Bundle ID
-   `consulting.thenorth.houndstack.RouteActivity`, no capabilities needed.
-   The extension needs no entitlement of its own.
+1. **Register the extension's App ID by hand. Done 2026-10-07.** The
+   expectation that Xcode Cloud would create
+   `consulting.thenorth.houndstack.RouteActivity` itself was wrong. Every build
+   from #337 (Xcode Cloud 249) to 259 ARCHIVED fine and then failed all four
+   export steps (ad hoc, App Store, development) with `xcodebuild
+   -exportArchive ... exit-code: 70`, so nothing reached TestFlight for three
+   days and the phone kept running 1.0 (247) from 2026-10-04. Registering the
+   ID (developer.apple.com › Identifiers › + › App IDs › App › Explicit
+   `consulting.thenorth.houndstack.RouteActivity`, no capabilities) and
+   rebuilding is the fix. **Any future extension target needs the same step
+   before its first merge**, because the extension was added to the project
+   file directly rather than through Xcode's target wizard, which is what
+   would have registered it. If an export fails with exit 70 again, the reason
+   is in the build's Artifacts › the export logs › `IDEDistribution.standard.log`.
 2. **No new APNs key and no new secret.** A Live Activity push uses the same
    `.p8` key and the same five `APNS_*` values; only the topic differs
    (`consulting.thenorth.houndstack.push-type.liveactivity`), and the server
