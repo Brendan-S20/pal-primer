@@ -127,7 +127,12 @@ test.describe("page transitions", () => {
 
     await clientLink(page).click();
     await expect(page).toHaveURL(/\/clients\/[0-9a-f-]+$/);
-    await expect.poll(async () => (await transitions(page)).length).toBeGreaterThan(0);
+    // Wait for the START POSITION, not just the entry: the entry is pushed
+    // when the transition starts and startX is filled in on `ready`, so on a
+    // busy runner reading as soon as the entry exists read null (CI, #340).
+    await expect
+      .poll(async () => (await transitions(page))[0]?.startX ?? null)
+      .not.toBeNull();
     const [into] = await transitions(page);
     expect(into.dir, "the direction on <html> when the transition started").toBe("forward");
     expect(into.types).toEqual(["hs-forward"]);
@@ -144,7 +149,12 @@ test.describe("page transitions", () => {
     await page.evaluate(() => ((window as any).__vt = []));
     await page.goBack();
     await expect(page).toHaveURL(/\/clients$/);
-    await expect.poll(async () => (await transitions(page)).length).toBeGreaterThan(0);
+    // Wait for the START POSITION, not just the entry: the entry is pushed
+    // when the transition starts and startX is filled in on `ready`, so on a
+    // busy runner reading as soon as the entry exists read null (CI, #340).
+    await expect
+      .poll(async () => (await transitions(page))[0]?.startX ?? null)
+      .not.toBeNull();
     const [back] = await transitions(page);
     expect(back.dir).toBe("back");
     expect(back.types).toEqual(["hs-back"]);
@@ -170,7 +180,12 @@ test.describe("page transitions", () => {
 
     await clientLink(page).click();
     await expect(page).toHaveURL(/\/clients\/[0-9a-f-]+$/);
-    await expect.poll(async () => (await transitions(page)).length).toBeGreaterThan(0);
+    // Wait for the START POSITION, not just the entry: the entry is pushed
+    // when the transition starts and startX is filled in on `ready`, so on a
+    // busy runner reading as soon as the entry exists read null (CI, #340).
+    await expect
+      .poll(async () => (await transitions(page))[0]?.startX ?? null)
+      .not.toBeNull();
     const [into] = await transitions(page);
     expect(into.dir).toBe("forward");
     // The END edge of a right-to-left page is its left.
