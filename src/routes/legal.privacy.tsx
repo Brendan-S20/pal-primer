@@ -15,7 +15,7 @@ export const Route = createFileRoute("/legal/privacy")({
 
 function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="September 29, 2026">
+    <LegalShell title="Privacy Policy" updated="October 7, 2026">
       <section>
         <p>
           {APP_NAME} ("we", "us") provides field-service software for pet-care businesses at
@@ -67,7 +67,7 @@ function PrivacyPage() {
           <li>To provide, maintain, and improve the service.</li>
           <li>To authenticate sign-ins and secure accounts.</li>
           <li>
-            To send communications you request or that are essential to the service: login codes,
+            To send communications you request or that are essential to the service: sign-in emails,
             visit and billing notifications, and account notices.
           </li>
           <li>To provide support and respond to requests.</li>
@@ -79,15 +79,30 @@ function PrivacyPage() {
       <section>
         <h2>Text messaging</h2>
         <p>
-          Text messages are only sent with prior consent, and every message includes opt-out
-          instructions (reply STOP).{" "}
+          <strong>Text messaging is coming soon and is pending carrier registration.</strong>
+        </p>
+        <p>
+          We collect mobile numbers and SMS consent records only from {APP_NAME} account holders who
+          opt in. When you opt in we store the number, the exact consent wording you agreed to, and
+          the time you agreed. Account holders who opt in may receive verification codes, security
+          alerts, billing notices and support replies by text from {APP_NAME}. We do not use these
+          messages for marketing.
+        </p>
+        <p>
           <strong>
-            No mobile information will be shared with third parties or affiliates for marketing or
-            promotional purposes.
+            Mobile numbers and SMS consent records are not shared with or sold to third parties or
+            affiliates for marketing or promotional purposes.
           </strong>{" "}
-          Text messaging originator opt-in data and consent are not shared with any third parties,
-          except with our SMS delivery provider solely to deliver the messages you asked for. See
-          the <a href="/legal/sms">SMS Consent &amp; Messaging Policy</a> for details.
+          The only party that receives them is our SMS delivery provider, and only to deliver the
+          messages you asked for. See the{" "}
+          <a href="/legal/sms">SMS Consent &amp; Messaging Policy</a> for details.
+        </p>
+        <p>
+          <strong>STOP and HELP.</strong> Reply STOP to any text from {APP_NAME} to opt out. The
+          opt-out takes effect immediately, we send one confirmation, and no further texts are sent
+          to that number. Reply HELP for help, or email{" "}
+          <a href="mailto:support@houndstack.com">support@houndstack.com</a>. You can also remove
+          your number or withdraw consent in Settings.
         </p>
         <p>
           <strong>Accepting this policy does not give consent to receive text messages.</strong>{" "}

@@ -67,9 +67,10 @@ export const Route = createFileRoute("/get-started")({
 // all.
 export const SMS_CONSENT_TEXT =
   `I agree to receive text messages from ${APP_NAME} at the number provided about my ` +
-  `account and service notifications. Consent is optional and is not a condition of ` +
-  `purchase — you can create and use a ${APP_NAME} account without it. Message ` +
-  `frequency varies. Message & data rates may apply. Reply STOP to opt out or HELP for help.`;
+  `account and service notifications, including verification codes, security alerts and ` +
+  `billing notices. Consent is optional and is not a condition of purchase — you can ` +
+  `create and use a ${APP_NAME} account without it. Message frequency varies. Message & ` +
+  `data rates may apply. Reply STOP to opt out or HELP for help.`;
 
 // Not "Texting". The last step creates the workspace; the texting opt-in is one
 // optional control inside it. Naming the step after the opt-in made messaging

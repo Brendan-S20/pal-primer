@@ -56,6 +56,7 @@ function publishedConsentText(): string {
   );
   expect(quote, "quoted consent block on /legal/sms").not.toBeNull();
   return quote![1]
+    .replaceAll('{" "}', " ")
     .replaceAll("{APP_NAME}", "HoundStack")
     .replaceAll("&amp;", "&")
     .replace(/\s+/g, " ")
@@ -152,5 +153,33 @@ describe("messaging consent cannot be a condition of service", () => {
     expect(linked.length, "screenshots linked from /legal/sms").toBeGreaterThanOrEqual(8);
     const missing = linked.filter((u) => !existsSync(join(root, "public", u)));
     expect(missing, `linked but not in public/: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  // ── Twilio's THIRD rejection: 30482 (email domain) and 30474 (end-business
+  // details) ──────────────────────────────────────────────────────────────
+  //
+  // The reviewer has to find, on the public site, who operates HoundStack and
+  // a contact address on the houndstack.com domain, and policy wording that
+  // matches the filing. The filing says texting is not live yet and covers
+  // account holders only.
+  it("names the operator and a same-domain contact on every legal page and in the footer", () => {
+    const footer = readFileSync(join(root, "src/components/PublicFooter.tsx"), "utf8");
+    const shell = readFileSync(join(root, "src/components/LegalShell.tsx"), "utf8");
+    const flat = footer.replace(/\s+/g, " ");
+    expect(flat).toMatch(
+      /is operated by The North Consulting LLC, 2222 West Grand River Avenue STE A, Okemos, MI 48864\. Contact:/,
+    );
+    expect(footer).toMatch(/href="mailto:brendan@houndstack\.com"/);
+    expect(footer).toMatch(/<OperatorIdentity /);
+    expect(shell).toMatch(/<OperatorIdentity /);
+  });
+
+  it("says texting is not live, and never claims an account never needs a text", () => {
+    for (const page of [legalSms, legalPrivacy]) {
+      expect(page.replace(/\s+/g, " ")).toMatch(
+        /Text messaging is coming soon and is pending carrier registration\./,
+      );
+    }
+    expect(legalSms).not.toMatch(/never need to receive a text/i);
   });
 });
