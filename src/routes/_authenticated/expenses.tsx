@@ -721,7 +721,7 @@ function ExpenseDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92dvh] max-w-lg overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{existing ? "Edit expense" : "Add expense"}</DialogTitle>
           <DialogDescription>

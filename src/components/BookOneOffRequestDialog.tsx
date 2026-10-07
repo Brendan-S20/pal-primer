@@ -142,7 +142,7 @@ export function BookOneOffRequestDialog({
 
   return (
     <Dialog open={!!ticket} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Book the extra cleanup</DialogTitle>
           <DialogDescription>

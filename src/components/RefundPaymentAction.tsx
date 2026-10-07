@@ -219,7 +219,7 @@ function RefundDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !refundM.isPending && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{step === "confirm" ? "Confirm refund" : "Refund payment"}</DialogTitle>
           <DialogDescription asChild>

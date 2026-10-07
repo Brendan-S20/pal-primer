@@ -30,6 +30,8 @@
 	<string>HoundStack uses the camera so your crew can photograph completed work, gate or yard conditions, and DNA sample collections, and attach them to the visit record.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>HoundStack shows your position on the route map so you can see where you are relative to the next stop. If your business turns on live tracking, your approximate location is also shown to the customer you are driving to, from the on-my-way message until you start their visit. Location is used only while the app is open.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>HoundStack needs access to your photos so you can attach an existing picture to a visit, a client property, or a DNA sample.</string>
 	<key>UILaunchStoryboardName</key>
