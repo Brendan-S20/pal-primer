@@ -177,6 +177,7 @@ describe("emails say who sent them", () => {
   const TEMPLATES = [
     "invoice-sent",
     "overdue-reminder",
+    "payment-failed",
     "payment-received",
     "visit-completed",
     "weather-reschedule",

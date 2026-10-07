@@ -51,6 +51,17 @@ interface EnqueueParams {
    *  see client_unsubscribe_tokens. Requires `clientId`. */
   clientUnsubscribe?: boolean;
   idempotencyKey?: string;
+  /** Send at most once per `idempotencyKey`, however many times this is
+   *  called, on any day. For an email driven by a webhook, which Stripe
+   *  delivers at least once and may redeliver days later.
+   *
+   *  The key alone does not do that. It reaches Resend as an Idempotency-Key
+   *  header, which Resend honours for 24 hours, and nothing else reads it. So
+   *  with this set the key also names the message: the message_id is derived
+   *  from it, the send log is checked for that id before anything is queued,
+   *  and /email/queue/process already refuses to send a message_id it has
+   *  logged as sent. Three layers on one id, all on tables that exist. */
+  oncePerKey?: boolean;
   /** Override the client email lookup (rarely needed). */
   toOverride?: string | null;
   /** Explicit user-initiated send (e.g. the "Send invoice" button, an
@@ -82,7 +93,8 @@ interface EnqueueResult {
     | "suppressed"
     | "unknown_template"
     | "render_failed"
-    | "enqueue_failed";
+    | "enqueue_failed"
+    | "already_sent";
   messageId?: string;
 }
 
@@ -92,6 +104,19 @@ function hexToken(): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/** A message_id that is the same every time for the same template and key,
+ *  shaped like the random UUIDs every other message gets. */
+async function messageIdForKey(templateName: string, key: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${templateName}:${key}`),
+  );
+  const h = Array.from(new Uint8Array(digest).slice(0, 16), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
 export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueResult> {
@@ -151,6 +176,25 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     .eq("email", recipient)
     .maybeSingle();
   if (suppressed) return { ok: false, reason: "suppressed" };
+
+  // Once per key: has a message with this id already gone to the queue?
+  //
+  // Every status the log can hold except `failed` means it did: `pending` is
+  // written as it is queued, `sent`/`dlq`/`bounced`/... come after. A
+  // `failed` row on its own is either an enqueue that never reached the
+  // queue (marked below, so the next call may try again) or a send attempt
+  // the queue is still retrying, which always sits beside its `pending` row.
+  const onceKey = params.oncePerKey && params.idempotencyKey ? params.idempotencyKey : null;
+  const keyedMessageId = onceKey ? await messageIdForKey(params.templateName, onceKey) : null;
+  if (keyedMessageId) {
+    const { data: prior } = await supabaseAdmin
+      .from("email_send_log")
+      .select("status")
+      .eq("message_id", keyedMessageId);
+    if (((prior ?? []) as Array<{ status: string }>).some((r) => r.status !== "failed")) {
+      return { ok: false, reason: "already_sent", messageId: keyedMessageId };
+    }
+  }
 
   // A client-scoped unsubscribe link, minted BEFORE rendering because the
   // template prints it. One token per client, reused by every campaign: the
@@ -253,7 +297,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   }
   const queueName = params.queue ?? "transactional_emails";
 
-  const messageId = crypto.randomUUID();
+  const messageId = keyedMessageId ?? crypto.randomUUID();
   const idempotencyKey = params.idempotencyKey || messageId;
 
   await supabaseAdmin.from("email_send_log").insert({
@@ -304,13 +348,24 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   });
   if (enqueueError) {
     console.error("enqueue_email failed", enqueueError);
-    await supabaseAdmin.from("email_send_log").insert({
-      message_id: messageId,
-      template_name: params.templateName,
-      recipient_email: recipient,
-      status: "failed",
-      error_message: enqueueError.message,
-    });
+    if (keyedMessageId) {
+      // The pending row above claims a message that never reached the queue.
+      // Turn it into the failure, so the once-per-key check lets the next
+      // call (a webhook redelivery) try again instead of reading a claim.
+      await supabaseAdmin
+        .from("email_send_log")
+        .update({ status: "failed", error_message: enqueueError.message })
+        .eq("message_id", messageId)
+        .eq("status", "pending");
+    } else {
+      await supabaseAdmin.from("email_send_log").insert({
+        message_id: messageId,
+        template_name: params.templateName,
+        recipient_email: recipient,
+        status: "failed",
+        error_message: enqueueError.message,
+      });
+    }
     return { ok: false, reason: "enqueue_failed", messageId };
   }
   // A successful explicit manual send lifts the imported comms hold —

@@ -774,6 +774,37 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   })
                   .eq("id", inv.client_id);
 
+                // Tell the client, by email. An AUTOPAY decline only: the
+                // portal_saved_card source is the client pressing Pay in their
+                // own portal, who has just watched the decline happen. Once per
+                // invoice per day of the decline, so Stripe's redeliveries and
+                // a second failure the same day send nothing; the opt-outs are
+                // the overdue reminders' own. See declined-card-email.server.
+                // Until 2026-10-07 the text below was the only notice, and with
+                // no business able to text yet, the client got nothing.
+                if (failSource === "autopay") {
+                  try {
+                    const { emailClientAboutDeclinedCard } = await import(
+                      "@/lib/declined-card-email.server"
+                    );
+                    const res = await emailClientAboutDeclinedCard({
+                      organizationId: inv.organization_id,
+                      clientId: inv.client_id,
+                      invoiceId,
+                      amountCents: invoiceAppliedCents(pi.amount, pi.metadata),
+                      declinedAt:
+                        typeof event.created === "number"
+                          ? new Date(event.created * 1000)
+                          : new Date(),
+                    });
+                    if (!res.ok) {
+                      console.info("payment-failed email not sent", res.reason, invoiceId);
+                    }
+                  } catch (e) {
+                    console.error("payment-failed email failed", e);
+                  }
+                }
+
                 // Optional SMS alert to client (org toggle)
                 try {
                   const { data: org } = await supabaseAdmin
