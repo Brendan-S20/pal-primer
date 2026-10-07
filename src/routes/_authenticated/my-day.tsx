@@ -856,20 +856,24 @@ function MyDay() {
               the first stop started halfway down the screen. They are a chip
               and an icon now, and the list starts right under this row.
 
-              One row wherever it fits, which is from a 36rem column (an iPad,
-              a laptop). Below that the clock and the lock-screen icon take a
-              slim row of their own directly under the progress, and the row
-              above stays exactly the one the-top-bar-a-technician-reads-
-              between-driveways measures: at 320px, progress, a clock chip,
-              an icon and List/Map are about 460px of controls. Keyed on the
-              COLUMN's width (a container query), not the screen's, because
-              the sidebar takes a different share of the screen at every
-              tier. The time clock is about NOW, whichever day the list shows,
+              One row wherever it fits, which is from a 32rem column: a phone
+              on its side, an iPad, a laptop. Below that the clock and the
+              lock-screen icon take a slim row of their own directly under the
+              progress, and the row above stays exactly the one the-top-bar-a-
+              technician-reads-between-driveways measures: at 320px, progress,
+              a clock chip, an icon and List/Map are about 460px of controls.
+              Not a pixel later than it has to: this header is sticky, and on
+              an 844x390 phone on its side with the sidebar docked, a second
+              row left 90px of screen between it and NEXT UP, too little for a
+              card's More options to be reached (the Apple sweep's "log an
+              expense" case found it). Keyed on the COLUMN's width (a container
+              query), not the screen's, because the sidebar takes a different
+              share of the screen at every tier. The time clock is about NOW, whichever day the list shows,
               so it is drawn on every day, but never while previewing somebody
               else's: the taps would be the viewer's own. */}
           {(total > 0 || !previewing) && (
             <div className="@container">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 @xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 @lg:grid-cols-[minmax(0,1fr)_auto_auto]">
                 {total > 0 && (
                   <>
                     {/* PROGRESS LEFT, VIEW RIGHT.
@@ -907,7 +911,7 @@ function MyDay() {
                         44px tall -- the height is now the padding plus the label
                         rather than a fixed square, so min-h-11 states it outright. */}
                     <div
-                      className="col-start-2 row-start-1 flex shrink-0 rounded-lg border p-0.5 @xl:col-start-3"
+                      className="col-start-2 row-start-1 flex shrink-0 rounded-lg border p-0.5 @lg:col-start-3"
                       role="group"
                       aria-label={t("myDay.view")}
                     >
@@ -944,7 +948,7 @@ function MyDay() {
                   data-my-day-tools=""
                   className={`flex min-w-0 items-center gap-2 empty:hidden ${
                     total > 0
-                      ? "col-span-2 row-start-2 @xl:col-span-1 @xl:col-start-2 @xl:row-start-1"
+                      ? "col-span-2 row-start-2 @lg:col-span-1 @lg:col-start-2 @lg:row-start-1"
                       : "col-span-2 row-start-1"
                   }`}
                 >
