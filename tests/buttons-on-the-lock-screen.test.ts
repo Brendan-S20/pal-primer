@@ -387,6 +387,24 @@ describe("the widget's buttons", () => {
     expect(attrs).toMatch(/URLQueryItem\(name: "api", value: "1"\),\s*URLQueryItem\(name: "destination", value: destination\)/);
   });
 
+  it("Navigate is passed on by the app, which iOS hands the card's link to, rebuilt and not echoed", () => {
+    // Measured on the simulator: a Link on a Live Activity opens the app
+    // that owns it with the URL, whatever the URL is. So AppDelegate has to
+    // pass a directions link on, and must do it before Capacitor sees it.
+    const delegate = codeOnly(read("ios/App/App/AppDelegate.swift"));
+    const open = delegate.slice(delegate.indexOf("open url: URL"));
+    const handOff = open.indexOf("RouteLinks.directionsHandOff(url)");
+    expect(handOff).toBeGreaterThan(-1);
+    expect(handOff).toBeLessThan(open.indexOf("ApplicationDelegateProxy.shared.application(app, open: url"));
+    expect(open).toMatch(/app\.open\(maps\)/);
+    expect(open).not.toMatch(/app\.open\(url\)/);
+    // Exactly the shape directions() builds, and the result is rebuilt by it.
+    const fn = attrs.slice(attrs.indexOf("static func directionsHandOff"));
+    expect(fn).toMatch(/url\.scheme == "https", url\.host == "www\.google\.com", url\.path == "\/maps\/dir"/);
+    expect(fn).toMatch(/return directions\(lat: lat, lng: lng, address: nil\)/);
+    expect(fn).toMatch(/return directions\(lat: nil, lng: nil, address: destination\)/);
+  });
+
   it("are plain Links: no App Intent, no network, no session", () => {
     expect(extensionCode).toMatch(/Link\(destination: url\)/);
     expect(extensionCode).not.toMatch(/AppIntent|LiveActivityIntent|URLSession|fetch|Authorization|api\.houndstack|supabase/i);

@@ -244,6 +244,47 @@ What a tech sees: "Stop 5 of 12", a progress bar, the next stop's property
 label or street (never the customer's name), its arrival window, and done and
 skipped counts, in the language the phone is set to.
 
+### The buttons (2026-10-07)
+
+On iOS 17 and later the lock screen and the expanded Dynamic Island carry two
+buttons, in the tech's language: **Navigate**, and **Start** (a stop not yet
+started) or **Complete** (a stop under way). On 16.2 to 16.x the card is drawn
+exactly as before, without them. A tap anywhere else on the card opens My Day
+on the stop, on every version (`widgetURL`).
+
+All three are plain SwiftUI `Link`s. Nothing runs in the extension, nothing
+in the path holds a session or calls the HoundStack API, and no App Intent,
+target, entitlement or capability was added, so there is no portal step.
+
+- **Navigate** opens the same Google Maps directions link My Day's own
+  Navigate button opens, to the property's coordinates (or its address when it
+  has none). iOS does not open a Live Activity's link itself: it gives every
+  URL tapped on the card to the app that owns it, the Google one included
+  (measured on the simulator), so `AppDelegate` recognises the directions
+  link, rebuilds it with `RouteLinks.directionsHandOff`, and opens it from the
+  app. HoundStack comes forward for a moment and Google Maps, or Safari when it
+  is not installed, takes over. It does not send the customer's "on my way"
+  that My Day's Navigate can; that needs the API.
+- **Start / Complete** open
+  `consulting.thenorth.houndstack://open/my-day?date=…&visit=…&action=start|complete`.
+  `initAppLinks` (`src/lib/native.ts`) passes it through
+  `src/lib/live-activity-links.ts`, which rebuilds a `/my-day` path from
+  validated parts and allowlists `action`. My Day scrolls to the stop and
+  focuses that stop's own Start or Complete button
+  (`src/components/my-day/use-live-activity-action.ts`). It never presses it:
+  a lock screen is touched by accident, Start stamps the visit's time, and
+  Complete can need a photo, a checklist or a cash entry.
+
+The content state gained seven optional fields (`visitId`, `destLat`,
+`destLng`, `destAddress`, `nextAction`, `navigateLabel`, `actionLabel`). A
+state without them, from build 261 or saved in `last_state`, still decodes and
+draws no buttons.
+
+```bash
+# the demo, with the Complete button instead of Start
+xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liveActivityDemoAction complete
+```
+
 ### The pieces
 
 | | where |

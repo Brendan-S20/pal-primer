@@ -227,6 +227,33 @@ public enum RouteLinks {
         ]
         return c?.url
     }
+
+    /// The Navigate hand-off. A `Link` on a Live Activity does not open its
+    /// URL itself: iOS gives every URL tapped on the card to THIS app, the
+    /// Google Maps one included (measured on the simulator, 2026-10-07:
+    /// SpringBoard "Sending open application request ... url =
+    /// https://www.google.com/maps/dir/?api=1&destination=..." to
+    /// consulting.thenorth.houndstack). So AppDelegate asks this whether an
+    /// incoming URL is one of the card's directions links and, if it is,
+    /// opens the maps link from the app, which iOS then sends on to Google
+    /// Maps or Safari.
+    ///
+    /// Only a link of exactly the shape `directions` builds is recognised,
+    /// and what is opened is rebuilt from its destination, not the URL as it
+    /// arrived, so this cannot be used to open anything else.
+    public static func directionsHandOff(_ url: URL) -> URL? {
+        guard url.scheme == "https", url.host == "www.google.com", url.path == "/maps/dir",
+              url.user == nil, url.password == nil, url.port == nil,
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              items.first(where: { $0.name == "api" })?.value == "1",
+              let destination = items.first(where: { $0.name == "destination" })?.value,
+              !destination.isEmpty, destination.count <= 300 else { return nil }
+        let parts = destination.split(separator: ",", omittingEmptySubsequences: false)
+        if parts.count == 2, let lat = Double(parts[0]), let lng = Double(parts[1]) {
+            return directions(lat: lat, lng: lng, address: nil)
+        }
+        return directions(lat: nil, lng: nil, address: destination)
+    }
 }
 
 @available(iOS 16.1, *)

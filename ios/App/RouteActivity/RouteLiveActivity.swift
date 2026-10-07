@@ -10,8 +10,11 @@
 // Buttons, on iOS 17 and later, on the lock screen and in the expanded
 // Dynamic Island: Navigate, and Start or Complete for the stop on the card.
 // Each is a plain `Link`, nothing runs in the extension. Navigate opens the
-// maps app; Start and Complete open My Day on that stop with the button in
-// hand (src/lib/live-activity-links.ts), and never press it. A tap anywhere
+// maps app: iOS gives a link tapped on a Live Activity to the app that owns
+// it, whatever its URL, so AppDelegate passes the directions link on
+// (RouteLinks.directionsHandOff). Start and Complete open My Day on that stop
+// with the button in hand (src/lib/live-activity-links.ts), and never press
+// it. A tap anywhere
 // else on the card opens My Day on the stop (`widgetURL`), on 16.2 too. On
 // 16.2 to 16.x the card is drawn exactly as before, without the buttons.
 
