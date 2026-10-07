@@ -1,4 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ListSkeleton } from "@/components/PageSkeletons";
+import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
@@ -705,6 +707,7 @@ function InvoicesPage() {
 
   return (
     <>
+      <PullToRefresh />
       {dialog}
       {paymentDialog}
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -1015,9 +1018,7 @@ function InvoicesPage() {
       )}
 
       {invQ.isLoading ? (
-        <div className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
-          Loading…
-        </div>
+        <ListSkeleton breakpoint="md" columns={6} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={FileText}
@@ -1035,7 +1036,7 @@ function InvoicesPage() {
           {/* Mobile Phase 2: below `md` invoices render as tap-through cards
               (shared InvoiceCard — same data, ••• actions, and drawer as the
               table rows). Bulk-select stays via the card checkbox. */}
-          <div className="space-y-3 md:hidden">
+          <div className="motion-list space-y-3 md:hidden">
             <label className="flex min-h-10 items-center gap-2 px-1 text-xs text-muted-foreground">
               <Checkbox
                 checked={allVisibleSelected}

@@ -4,8 +4,17 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
+// ── PRESSED ───────────────────────────────────────────────────────────────
+//
+// `active:scale-(--motion-press-scale)` is the press a finger can feel: 0.97
+// for the length of the touch, back on release, on the motion tokens in
+// styles.css (1, i.e. nothing, under reduced motion). `scale` rather than
+// `transform` so it composes with any translate a caller adds, and it is a
+// paint-only change, so nothing beside the button moves. iOS only applies
+// :active to a page that listens for touchstart; __root.tsx adds that one
+// passive listener.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-duration-fast) ease-(--motion-ease-standard) active:scale-(--motion-press-scale) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {

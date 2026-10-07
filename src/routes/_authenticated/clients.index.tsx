@@ -1,4 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ListSkeleton } from "@/components/PageSkeletons";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { RowActions } from "@/components/RowActions";
 import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -235,6 +238,7 @@ function ClientsList() {
 
   return (
     <>
+      <PullToRefresh />
       {dialog}
       <Dialog open={tagAction != null} onOpenChange={(o) => !o && setTagAction(null)}>
         <DialogContent className="sm:max-w-sm">
@@ -396,7 +400,12 @@ function ClientsList() {
             <SelectItem value="commercial">Commercial</SelectItem>
           </SelectContent>
         </Select>
-        {allTags.length > 0 && (
+        {/* While the list loads nobody knows yet whether there are tags, and
+            on a phone this filter is a row of its own: hold its place, so the
+            list does not drop 52px when the clients arrive. */}
+        {isLoading ? (
+          <Skeleton aria-hidden="true" className="h-9 w-44 touch:h-11" />
+        ) : allTags.length > 0 && (
           <Select value={tag} onValueChange={setTag}>
             <SelectTrigger className="w-44" aria-label="Filter by tag">
               <SelectValue placeholder="Tag" />
@@ -482,7 +491,7 @@ function ClientsList() {
       )}
 
       {isLoading ? (
-        <p className="text-muted-foreground">Loading…</p>
+        <ListSkeleton breakpoint="sm" columns={7} />
       ) : !filtered.length ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">
           <p className="text-muted-foreground">
@@ -497,7 +506,7 @@ function ClientsList() {
       ) : (
         <>
           {/* Mobile: stacked cards */}
-          <div className="space-y-3 sm:hidden">
+          <div className="motion-list space-y-3 sm:hidden">
             {filtered.map((c: any) => (
               <Link
                 key={c.id}

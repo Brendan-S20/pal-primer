@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { HelpCircle, Search } from "lucide-react";
 import { useBrandAccent } from "@/hooks/useBrandAccent";
 import { PageShell } from "@/components/PageShell";
+import { ShellPending } from "@/components/PageSkeletons";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -129,6 +130,10 @@ export const Route = createFileRoute("/_authenticated")({
     return { userId: identity.userId, user: identity.user, organization: org.organization };
   },
   component: AppShell,
+  // Client-only route: this is also what the server sends for a signed-in
+  // URL and what a cold native launch paints while beforeLoad decides who
+  // is signed in. See ShellPending.
+  pendingComponent: ShellPending,
 });
 
 function openPalette() {
@@ -345,6 +350,9 @@ function AppShell() {
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <header
+            // Holds still while the page beneath it slides (styles.css, PAGE
+            // TRANSITIONS). Named only during a transition.
+            data-vt="header"
             // NATIVE ONLY — extends the bar under the status bar and pads its
             // contents clear of it. `h-14` alone put the search box and the
             // bell underneath the clock as soon as the page scrolled.

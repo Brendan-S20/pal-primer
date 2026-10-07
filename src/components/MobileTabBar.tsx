@@ -164,6 +164,9 @@ export function MobileTabBar() {
   return (
     <>
       <nav
+        // Holds still while the page beneath it slides (styles.css, PAGE
+        // TRANSITIONS). Named only during a transition.
+        data-vt="tabbar"
         aria-label={t("nav.primary")}
         // Marks this as one of the bars pinned to the bottom of the screen.
         // My Day's map measures the gap between its own top edge and the
