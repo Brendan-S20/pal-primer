@@ -511,7 +511,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
 
   return (
     <Dialog open={!!userId} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[85vh] sm:max-w-xl">
         {dialog}
         <DialogHeader>
           <DialogTitle>User detail</DialogTitle>

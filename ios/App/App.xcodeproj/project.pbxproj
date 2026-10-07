@@ -15,7 +15,42 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		7A5E1C0D2EA0000000000101 /* HSBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000001 /* HSBridgeViewController.swift */; };
+		7A5E1C0D2EA0000000000102 /* RouteActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */; };
+		7A5E1C0D2EA0000000000103 /* RouteActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000003 /* RouteActivityPlugin.swift */; };
+		7A5E1C0D2EA0000000000104 /* RouteActivityDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000004 /* RouteActivityDemo.swift */; };
+		7A5E1C0D2EA0000000000105 /* RouteActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */; };
+		7A5E1C0D2EA0000000000106 /* RouteActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000005 /* RouteActivityBundle.swift */; };
+		7A5E1C0D2EA0000000000107 /* RouteLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000006 /* RouteLiveActivity.swift */; };
+		7A5E1C0D2EA0000000000108 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000009 /* ActivityKit.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
+		7A5E1C0D2EA0000000000109 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA000000000000A /* WidgetKit.framework */; };
+		7A5E1C0D2EA000000000010A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA000000000000B /* SwiftUI.framework */; };
+		7A5E1C0D2EA000000000010B /* RouteActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000008 /* RouteActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7A5E1C0D2EA0000000000305 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7A5E1C0D2EA0000000000301;
+			remoteInfo = RouteActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7A5E1C0D2EA0000000000201 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7A5E1C0D2EA000000000010B /* RouteActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -28,6 +63,17 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		7A5E1C0D2EA0000000000001 /* HSBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HSBridgeViewController.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityAttributes.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000003 /* RouteActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityPlugin.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000004 /* RouteActivityDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityDemo.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000005 /* RouteActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityBundle.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000006 /* RouteLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteLiveActivity.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000008 /* RouteActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RouteActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A5E1C0D2EA0000000000009 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
+		7A5E1C0D2EA000000000000A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		7A5E1C0D2EA000000000000B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -36,6 +82,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+				7A5E1C0D2EA0000000000108 /* ActivityKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A5E1C0D2EA0000000000203 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A5E1C0D2EA0000000000109 /* WidgetKit.framework in Frameworks */,
+				7A5E1C0D2EA000000000010A /* SwiftUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -47,6 +103,8 @@
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				7A5E1C0D2EA0000000000402 /* RouteActivity */,
+				7A5E1C0D2EA0000000000403 /* Frameworks */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -55,6 +113,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* HoundStack.app */,
+				7A5E1C0D2EA0000000000008 /* RouteActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -64,6 +123,8 @@
 			children = (
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				7A5E1C0D2EA0000000000001 /* HSBridgeViewController.swift */,
+				7A5E1C0D2EA0000000000401 /* LiveActivity */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -72,6 +133,36 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		7A5E1C0D2EA0000000000401 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */,
+				7A5E1C0D2EA0000000000003 /* RouteActivityPlugin.swift */,
+				7A5E1C0D2EA0000000000004 /* RouteActivityDemo.swift */,
+			);
+			path = LiveActivity;
+			sourceTree = "<group>";
+		};
+		7A5E1C0D2EA0000000000402 /* RouteActivity */ = {
+			isa = PBXGroup;
+			children = (
+				7A5E1C0D2EA0000000000005 /* RouteActivityBundle.swift */,
+				7A5E1C0D2EA0000000000006 /* RouteLiveActivity.swift */,
+				7A5E1C0D2EA0000000000007 /* Info.plist */,
+			);
+			path = RouteActivity;
+			sourceTree = "<group>";
+		};
+		7A5E1C0D2EA0000000000403 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				7A5E1C0D2EA0000000000009 /* ActivityKit.framework */,
+				7A5E1C0D2EA000000000000A /* WidgetKit.framework */,
+				7A5E1C0D2EA000000000000B /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -84,10 +175,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				7A5E1C0D2EA0000000000201 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7A5E1C0D2EA0000000000306 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -96,6 +189,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* HoundStack.app */;
 			productType = "com.apple.product-type.application";
+		};
+		7A5E1C0D2EA0000000000301 /* RouteActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A5E1C0D2EA0000000000302 /* Build configuration list for PBXNativeTarget "RouteActivity" */;
+			buildPhases = (
+				7A5E1C0D2EA0000000000202 /* Sources */,
+				7A5E1C0D2EA0000000000203 /* Frameworks */,
+				7A5E1C0D2EA0000000000204 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RouteActivity;
+			productName = RouteActivity;
+			productReference = 7A5E1C0D2EA0000000000008 /* RouteActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -110,6 +220,10 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
+						ProvisioningStyle = Automatic;
+					};
+					7A5E1C0D2EA0000000000301 = {
+						CreatedOnToolsVersion = 26.0;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -131,6 +245,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				7A5E1C0D2EA0000000000301 /* RouteActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -149,6 +264,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7A5E1C0D2EA0000000000204 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -157,10 +279,32 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				7A5E1C0D2EA0000000000101 /* HSBridgeViewController.swift in Sources */,
+				7A5E1C0D2EA0000000000102 /* RouteActivityAttributes.swift in Sources */,
+				7A5E1C0D2EA0000000000103 /* RouteActivityPlugin.swift in Sources */,
+				7A5E1C0D2EA0000000000104 /* RouteActivityDemo.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A5E1C0D2EA0000000000202 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A5E1C0D2EA0000000000105 /* RouteActivityAttributes.swift in Sources */,
+				7A5E1C0D2EA0000000000106 /* RouteActivityBundle.swift in Sources */,
+				7A5E1C0D2EA0000000000107 /* RouteLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7A5E1C0D2EA0000000000306 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7A5E1C0D2EA0000000000301 /* RouteActivity */;
+			targetProxy = 7A5E1C0D2EA0000000000305 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -353,6 +497,56 @@
 			};
 			name = Release;
 		};
+		7A5E1C0D2EA0000000000303 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RouteActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.houndstack.RouteActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7A5E1C0D2EA0000000000304 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RouteActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.houndstack.RouteActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -370,6 +564,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7A5E1C0D2EA0000000000302 /* Build configuration list for PBXNativeTarget "RouteActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A5E1C0D2EA0000000000303 /* Debug */,
+				7A5E1C0D2EA0000000000304 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

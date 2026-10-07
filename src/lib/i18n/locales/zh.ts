@@ -682,6 +682,26 @@ const zh: TranslationsWithPlurals<"other"> = {
     weather: "天气",
     weatherAria: "在顶部栏显示天气按钮",
   },
+  liveActivity: {
+    title: "今日路线",
+    stopOf: "第 {{position}} 站，共 {{total}} 站",
+    nextStop: "下一站",
+    inProgress: "进行中",
+    allDone: "所有站点已完成",
+    finished: "路线已完成",
+    window: "{{start}}–{{end}}",
+    after: "{{time}} 之后",
+    by: "{{time}} 之前",
+    done: "已完成 {{n}} 个",
+    skipped: "已跳过 {{n}} 个",
+    cardTitle: "锁定屏幕上的路线",
+    cardOn: "正在锁定屏幕上显示",
+    cardOff: "无需解锁即可查看下一站",
+    cardDisabled: "请在 iPhone 设置中为 HoundStack 打开实时活动",
+    show: "显示",
+    hide: "隐藏",
+    failed: "无法在锁定屏幕上显示路线",
+  },
 };
 
 export default zh;

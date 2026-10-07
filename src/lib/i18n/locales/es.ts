@@ -719,6 +719,26 @@ const es: Translations = {
     weather: "Clima",
     weatherAria: "Mostrar el botón del clima en la barra superior",
   },
+  liveActivity: {
+    title: "Ruta de hoy",
+    stopOf: "Parada {{position}} de {{total}}",
+    nextStop: "Siguiente parada",
+    inProgress: "En curso",
+    allDone: "Todas las paradas hechas",
+    finished: "Ruta terminada",
+    window: "{{start}}–{{end}}",
+    after: "Después de {{time}}",
+    by: "Antes de {{time}}",
+    done: "{{n}} hechas",
+    skipped: "{{n}} omitidas",
+    cardTitle: "Ruta en la pantalla de bloqueo",
+    cardOn: "Se muestra en tu pantalla de bloqueo",
+    cardOff: "Ve tu próxima parada sin desbloquear",
+    cardDisabled: "Activa las Actividades en vivo de HoundStack en Ajustes del iPhone",
+    show: "Mostrar",
+    hide: "Ocultar",
+    failed: "No se pudo mostrar la ruta en la pantalla de bloqueo",
+  },
 };
 
 export default es;

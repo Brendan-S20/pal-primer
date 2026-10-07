@@ -232,6 +232,82 @@ The device QA list below still carries the push item; it is step 5.
 
 ---
 
+## The route on the lock screen (Live Activity)
+
+**State on 2026-10-04:** built, and seen on a simulator (iPhone 17 Pro, iOS
+26.5) on the lock screen, in the Dynamic Island (compact and expanded) and in
+Arabic, started and updated through the same JS bridge My Day uses. Not yet
+seen: a remote update from the server reaching a phone, which needs a real
+device (below).
+
+What a tech sees: "Stop 5 of 12", a progress bar, the next stop's property
+label or street (never the customer's name), its arrival window, and done and
+skipped counts, in the language the phone is set to.
+
+### The pieces
+
+| | where |
+|---|---|
+| Widget extension (ActivityKit, iOS 16.2+) | `ios/App/RouteActivity/` — target `RouteActivity`, bundle id `consulting.thenorth.houndstack.RouteActivity`, embedded in the app, automatic signing, the app's team |
+| The shape both halves share | `ios/App/App/LiveActivity/RouteActivityAttributes.swift`, a member of BOTH targets |
+| The Capacitor plugin | `ios/App/App/LiveActivity/RouteActivityPlugin.swift`, a local plugin (no npm package), registered in `ios/App/App/HSBridgeViewController.swift`, which Main.storyboard names instead of `CAPBridgeViewController` |
+| JS wrappers | `src/lib/live-activity.ts`, no-ops off iOS |
+| The content | `src/lib/live-activity-state.ts`, built in the tech's language, used by the phone and the server |
+| My Day | `src/components/my-day/RouteLiveActivityCard.tsx`: starts on Clock in or the first Start, follows every Complete and Skip (queued ones too), ends when nothing is left, on Clock out, or on Hide |
+| Office changes | `src/lib/push-liveactivity.server.ts`, called from the dispatch server functions in `src/lib/visits.functions.ts`; tokens in `live_activity_tokens` |
+
+The app's deployment target stays iOS 15.0. ActivityKit is weak-linked and
+every use is behind `#available(iOS 16.2, *)`, so iOS 15 runs the app and
+simply has no card.
+
+`App.xcodeproj` is Capacitor's file, and `npx cap add ios` would regenerate
+it without the extension target. Nobody runs `cap add` on an existing
+project; `cap sync` does not touch targets. If the project is ever
+regenerated, the target has to be added back.
+
+### On a simulator, with nobody signed in
+
+Debug builds only (the code is `#if DEBUG` and absent from every archive):
+
+```bash
+xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo
+xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liveActivityDemoLang ar
+# the JS bridge: isSupported, start, update called from the page, result in the log
+xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityBridgeCheck
+```
+
+`xcrun simctl push` cannot deliver a Live Activity update: it accepts only
+payloads that become a notification request, and refuses one with no alert.
+
+### Owner checklist
+
+1. **Nothing to register by hand, probably.** Xcode Cloud signs with
+   automatic signing and creates the App ID for
+   `consulting.thenorth.houndstack.RouteActivity` itself on the first archive
+   that contains it, the same way it did for the app. If that archive fails
+   at signing with "No profiles for 'consulting.thenorth.houndstack.RouteActivity'
+   were found", register the App ID by hand: developer.apple.com ›
+   Identifiers › + › App IDs › App › Bundle ID
+   `consulting.thenorth.houndstack.RouteActivity`, no capabilities needed.
+   The extension needs no entitlement of its own.
+2. **No new APNs key and no new secret.** A Live Activity push uses the same
+   `.p8` key and the same five `APNS_*` values; only the topic differs
+   (`consulting.thenorth.houndstack.push-type.liveactivity`), and the server
+   derives it.
+3. **Apply the migration** `20261004120000_the-route-on-the-lock-screen.sql`
+   to production after merge, as with every migration.
+4. **On the phone (TestFlight build):** sign in as a tech with visits today,
+   open My Day, tap Clock in. The route should appear on the lock screen. The
+   first time, iOS asks "Allow Live Activities from HoundStack?" on the lock
+   screen itself; tap Allow. Complete a stop: the lock screen moves on. Then,
+   from the office on another device, reassign that tech's next stop to
+   someone else: within a few seconds the lock screen should name the stop
+   after it. If it does not, look at that tech's row in
+   `live_activity_tokens`: no row means the token never reached the server;
+   `last_error` or `end_reason` holds Apple's answer otherwise.
+
+---
+
 ## Xcode Cloud
 
 `ios/App/ci_scripts/ci_post_clone.sh` exists because a cloud build fails

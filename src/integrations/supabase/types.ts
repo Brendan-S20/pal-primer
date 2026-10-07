@@ -2783,6 +2783,65 @@ export type Database = {
           },
         ]
       }
+      live_activity_tokens: {
+        Row: {
+          activity_id: string
+          created_at: string
+          end_reason: string | null
+          ended_at: string | null
+          id: string
+          last_error: string | null
+          last_sent_at: string | null
+          last_state: Json | null
+          locale: string
+          organization_id: string
+          push_token: string
+          route_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity_id: string
+          created_at?: string
+          end_reason?: string | null
+          ended_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_sent_at?: string | null
+          last_state?: Json | null
+          locale?: string
+          organization_id: string
+          push_token: string
+          route_date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity_id?: string
+          created_at?: string
+          end_reason?: string | null
+          ended_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_sent_at?: string | null
+          last_state?: Json | null
+          locale?: string
+          organization_id?: string
+          push_token?: string
+          route_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_activity_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           city: string | null

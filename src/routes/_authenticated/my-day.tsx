@@ -110,6 +110,7 @@ import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { TimeClockCard } from "@/components/TimeClockCard";
+import { RouteLiveActivityCard } from "@/components/my-day/RouteLiveActivityCard";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
 import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
@@ -931,6 +932,13 @@ function MyDay() {
         {!previewing && (
           <TimeClockCard visitsCompletedToday={day === orgTodayIso ? completedCount : null} />
         )}
+        {/* The route on the iPhone lock screen. Renders nothing off iOS, and
+            nothing on any day but the tech's own today. */}
+        <RouteLiveActivityCard
+          visits={visits}
+          day={day}
+          enabled={day === orgTodayIso && !previewing && !!staff}
+        />
         {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}
