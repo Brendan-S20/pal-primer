@@ -784,9 +784,8 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 // no business able to text yet, the client got nothing.
                 if (failSource === "autopay") {
                   try {
-                    const { emailClientAboutDeclinedCard } = await import(
-                      "@/lib/declined-card-email.server"
-                    );
+                    const { emailClientAboutDeclinedCard } =
+                      await import("@/lib/declined-card-email.server");
                     const res = await emailClientAboutDeclinedCard({
                       organizationId: inv.organization_id,
                       clientId: inv.client_id,

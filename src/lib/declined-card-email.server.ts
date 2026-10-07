@@ -62,8 +62,7 @@ export async function emailClientAboutDeclinedCard(p: {
 
   // The same link the overdue reminder carries, with the same fallback.
   const portalUrl =
-    (await buildPortalLink(p.organizationId, (client as any)?.portal_token ?? null)) ??
-    appOrigin();
+    (await buildPortalLink(p.organizationId, client?.portal_token ?? null)) ?? appOrigin();
 
   return enqueueAppEmail({
     organizationId: p.organizationId,

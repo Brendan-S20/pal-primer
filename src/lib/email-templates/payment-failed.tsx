@@ -67,8 +67,8 @@ const PaymentFailed = ({
           </Button>
         ) : null}
         <Text style={styles.small}>
-          If you&apos;ve already sorted this out, you can ignore this email. Questions? Get in
-          touch with {orgName} using the details below.
+          If you&apos;ve already sorted this out, you can ignore this email. Questions? Get in touch
+          with {orgName} using the details below.
         </Text>
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
