@@ -278,6 +278,9 @@ test.describe("the progress bar", () => {
     await expect(clientLink(page)).toBeVisible();
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.waitForTimeout(500);
+    // A bar still finishing from the warm-up's own navigation (slow on a busy
+    // machine) is not this navigation's bar.
+    await expect(page.locator("[data-route-progress]")).toHaveCount(0, { timeout: 5000 });
     await page.evaluate(() => ((window as any).__progressAt = null));
 
     // When did the client page draw, relative to the click? Recorded in the
