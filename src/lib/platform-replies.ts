@@ -1,16 +1,13 @@
-/** Replies to the texts HoundStack sends from its own number.
+/** Reading an inbound text: what a reply asks for, and whose phone it is.
  *
- *  Automated texts (reminders, "on my way", payment alerts, login codes) go
- *  out from the PLATFORM number, shared by every business. The inbound webhook
- *  found a business by matching the number a reply was sent TO against
- *  `organizations.sms_from_number`, which the platform number is not, so a
- *  reply to an automated text matched nobody and was dropped with a warning.
- *  That included STOP: a customer who opted out was never marked opted out in
- *  the app.
- *
- *  A reply to a shared number says nothing about which business it is for,
- *  so it is matched to the most recent text that number sent to that phone.
- *  That is the conversation the customer is answering. */
+ *  Named for where it started. Automated customer texts used to go out from
+ *  HoundStack's PLATFORM number, and replies to it were matched to the
+ *  business that texted that phone last. Since 2026-10-06 the platform number
+ *  texts account holders only: a reply to it is answered in HoundStack's name
+ *  and goes to no business (platform-inbound.server), while a reply to a
+ *  business's own number, ENT and DNE included, is that business's
+ *  (routes/api/public/hooks/twilio.ts, gate-reply.server). Both read replies
+ *  with these. */
 
 export type ReplyKind = "stop" | "start" | "help" | "enter" | "do_not_enter";
 
@@ -61,7 +58,7 @@ export type SentText = {
 };
 
 /** The texts sent to this phone, newest first. Callers pass texts already
- *  limited to the platform number and a time window. */
+ *  limited to one business and a time window. */
 export function textsTo(sent: SentText[], phone: string): SentText[] {
   return sent
     .filter((m) => samePhone(m.to_number, phone))

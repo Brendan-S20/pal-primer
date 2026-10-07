@@ -76,10 +76,13 @@ export const portalContext = createServerFn({ method: "GET" })
 export const portalOrgBySlug = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ slug: z.string().min(1).max(120) }).parse(d))
   .handler(async ({ data }) => {
-    const { orgBrandingBySlug } = await portalAuth();
+    const { orgBrandingBySlug, smsOtpDeliverable } = await portalAuth();
     const org = await orgBrandingBySlug(data.slug);
     if (!org) return { found: false as const };
-    return { found: true as const, branding: org };
+    // Whether the sign-in form may ask for a phone number: only when this
+    // business can text a code from its own number. Otherwise email only.
+    const textCodes = await smsOtpDeliverable(org.organizationId);
+    return { found: true as const, branding: org, textCodes };
   });
 
 /** Resolve a legacy bare token to its org slug so /portal/{uuid} can redirect. */

@@ -4,6 +4,11 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { formatDay } from "@/lib/format";
 
+/** Said when a business has no texting number of its own yet, which until
+ *  per-business numbers clear carrier registration is every business. */
+const NO_TEXTING_YET =
+  "Texting clients isn't available for your business yet. It turns on when your business's own texting number is registered with the carriers. Until then, use email or call.";
+
 export const listMessageThreads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -99,13 +104,6 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
     }
 
 
-    const { data: org, error: oErr } = await supabase
-      .from("organizations")
-      .select("sms_from_number")
-      .eq("id", client.organization_id)
-      .single();
-    if (oErr) throw new Error(oErr.message);
-
     const { data: staff } = await supabase
       .from("staff")
       .select("id")
@@ -113,13 +111,14 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
       .eq("organization_id", client.organization_id)
       .maybeSingle();
 
-    // Conversation channel: prefer the org's own (BYOK) Twilio; fall back to the
-    // platform gateway with the org's legacy sms_from_number until they onboard.
-    const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
-    const tenant = await resolveOrgTwilioConfig(client.organization_id);
-    const fromNumber = tenant?.from ?? org.sms_from_number ?? null;
-    if (!tenant?.messagingServiceSid && !fromNumber)
-      throw new Error("Your organization has no SMS sender configured. Add one in Settings → SMS.");
+    // The business's own subaccount, or no text. This used to fall back to
+    // the PLATFORM's account (gateway mode) with the org's legacy number,
+    // which is HoundStack texting a business's client, and the toll-free
+    // filing says it does not. See lib/twilio-credentials.server.
+    const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+    const sender = await endCustomerSmsSender(client.organization_id);
+    if (!sender) throw new Error(NO_TEXTING_YET);
+    const fromNumber = sender.from;
 
     const { sendTwilioSms } = await import("@/lib/twilio.server");
     let sid: string | null = null;
@@ -129,11 +128,9 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
       const res = await sendTwilioSms({
         to: client.primary_phone,
         body: data.body,
-        from: fromNumber ?? undefined,
-        messagingServiceSid: tenant?.messagingServiceSid ?? undefined,
-        credentials: tenant
-          ? { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken }
-          : { mode: "gateway" },
+        from: sender.from ?? undefined,
+        messagingServiceSid: sender.messagingServiceSid ?? undefined,
+        credentials: sender.credentials,
       });
       sid = res.sid;
       status = res.status || "sent";
@@ -186,7 +183,8 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
 // that would be overwritten — and leaving the server function in place would
 // have kept a tenant-facing write path open after its UI was gone.
 // organizations.sms_from_number itself stays: provisioning writes it, and the
-// automated-notification path still reads it as a legacy fallback.
+// inbound webhook finds a business by it. Nothing SENDS from it any more
+// unless it is also the business's subaccount number (endCustomerSmsSender).
 
 export const sendVisitStatusSms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -272,16 +270,16 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       );
     const { data: org } = await supabase
       .from("organizations")
-      .select("sms_from_number, notify_sms_visit_reminder, notify_sms_visit_completed")
+      .select("notify_sms_visit_reminder, notify_sms_visit_completed")
       .eq("id", client.organization_id)
       .single();
     if (!org) throw new Error("Organization not found");
-    // Automated notification → PLATFORM Twilio (prefer the platform sender
-    // number; fall back to the org's legacy number only if unset).
-    const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-    const notifyFrom = platformTwilioFrom() ?? org.sms_from_number ?? null;
-    if (!notifyFrom)
-      throw new Error("No SMS sender is configured for notifications. Add one in Settings → SMS.");
+    // A text to a business's client: the business's own subaccount, or none.
+    // This preferred the PLATFORM number until 2026-10-06.
+    const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+    const sender = await endCustomerSmsSender(client.organization_id);
+    if (!sender) throw new Error(NO_TEXTING_YET);
+    const notifyFrom = sender.from;
     const kindEnabled =
       data.kind === "reminder" ? org.notify_sms_visit_reminder : org.notify_sms_visit_completed;
     if (!kindEnabled) throw new Error("This notification is turned off in Settings → Automation.");
@@ -297,7 +295,13 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     let status = "queued";
     let err: string | null = null;
     try {
-      const r = await sendTwilioSms({ from: notifyFrom, to: destPhone, body });
+      const r = await sendTwilioSms({
+        to: destPhone,
+        body,
+        from: sender.from ?? undefined,
+        messagingServiceSid: sender.messagingServiceSid ?? undefined,
+        credentials: sender.credentials,
+      });
       sid = r.sid;
       status = r.status || "sent";
     } catch (e: any) {

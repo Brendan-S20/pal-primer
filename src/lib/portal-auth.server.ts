@@ -21,6 +21,9 @@ const OTP_MAX_ATTEMPTS = 5; // guesses per issued code
 const OTP_MIN_INTERVAL_MS = 30_000; // between requests for one client
 const OTP_MAX_PER_CLIENT_HOUR = 5;
 const OTP_MAX_PER_IP_HOUR = 15;
+/** A business with no texting number of its own sends codes by email only. */
+const TEXT_CODES_UNAVAILABLE =
+  "This company sends sign-in codes by email. Enter the email on your account, or ask us to read you a code.";
 
 /** Thrown when a staff preview tries to do something only the customer may.
  *  The message is what the owner sees in the toast. */
@@ -164,20 +167,15 @@ function brandingOf(c: OrgBranding): PortalBranding {
   };
 }
 
-/** True when the platform can actually deliver an SMS OTP. Offering "Text me
- *  a code" (and pre-selecting it) while Twilio is unconfigured shows the
- *  customer a raw config error on the default login path (P0.5). */
-async function smsOtpDeliverable(orgId: string): Promise<boolean> {
-  if (!process.env.TWILIO_API_KEY) return false;
-  const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-  if (platformTwilioFrom()) return true;
-  const supabaseAdmin = await sbAdmin();
-  const { data } = await supabaseAdmin
-    .from("organizations")
-    .select("sms_from_number")
-    .eq("id", orgId)
-    .maybeSingle();
-  return !!data?.sms_from_number;
+/** True when this business can text a sign-in code: only from its own
+ *  subaccount (endCustomerSmsSender). A portal sign-in code goes to a
+ *  business's CLIENT, and HoundStack's toll-free number texts account holders
+ *  only, so with no subaccount the portal offers email and nothing else.
+ *  Offering "Text me a code" (and pre-selecting it) when it cannot go shows the
+ *  customer a dead end on the default login path (P0.5). */
+export async function smsOtpDeliverable(orgId: string): Promise<boolean> {
+  const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+  return (await endCustomerSmsSender(orgId)) !== null;
 }
 
 /** Channels we can send an OTP to, with masked hints + org branding for the UI. */
@@ -395,19 +393,20 @@ export async function issuePortalOtp(
   const message = `${contact.org_name}: your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`;
   try {
     if (channel === "sms") {
-      const { data: org } = await supabaseAdmin
-        .from("organizations")
-        .select("sms_from_number")
-        .eq("id", contact.organization_id)
-        .single();
-      // OTP is an auth flow — always sent from the PLATFORM's Twilio (reliable,
-      // A2P-registered), never the tenant's BYOK number. Prefer the platform
-      // sender number; fall back to the org's legacy number only if unset.
-      const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-      const otpFrom = platformTwilioFrom() ?? org?.sms_from_number ?? null;
-      if (!otpFrom) throw new Error("SMS is not configured. Ask us to read you the code.");
+      // The person signing in is a business's CLIENT, not a HoundStack
+      // account holder, so the code goes from the business's own subaccount
+      // or not at all. Until 2026-10-06 it went from the PLATFORM number.
+      const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+      const sender = await endCustomerSmsSender(contact.organization_id);
+      if (!sender) throw new Error(TEXT_CODES_UNAVAILABLE);
       const { sendTwilioSms } = await import("@/lib/twilio.server");
-      await sendTwilioSms({ from: otpFrom, to: dest, body: message });
+      await sendTwilioSms({
+        to: dest,
+        body: message,
+        from: sender.from ?? undefined,
+        messagingServiceSid: sender.messagingServiceSid ?? undefined,
+        credentials: sender.credentials,
+      });
     } else {
       // Send OTP email DIRECTLY (synchronous) via Resend, and LOG the
       // provider's response to email_send_log so every send is provable
@@ -481,7 +480,7 @@ export async function issuePortalOtp(
           );
         console.error("portal OTP email send failed", msg);
         throw new Error(
-          "We couldn't email your code right now. Try SMS, or ask us to read it to you.",
+          "We couldn't email your code right now. Try again in a minute, or ask us to read it to you.",
         );
       }
     }
@@ -697,6 +696,11 @@ export async function portalIdentify(
   if (!org) throw new Error("We couldn't find that company.");
   const c = normalizeContact(contactRaw);
   if (!c) throw new Error("Enter a valid phone number or email.");
+  // Asked before any lookup, so the answer says nothing about who is a
+  // customer: only whether this business can text a code at all.
+  if (c.kind === "sms" && !(await smsOtpDeliverable(org.organizationId))) {
+    throw new Error(TEXT_CODES_UNAVAILABLE);
+  }
   const matches = await matchClients(org.organizationId, c);
   if (matches.length === 0) {
     throw new Error(
@@ -792,6 +796,11 @@ export async function portalVerifyGeneric(
   if (!org) throw new Error("We couldn't find that company.");
   const c = normalizeContact(contactRaw);
   if (!c) throw new Error("Enter a valid phone number or email.");
+  // Asked before any lookup, so the answer says nothing about who is a
+  // customer: only whether this business can text a code at all.
+  if (c.kind === "sms" && !(await smsOtpDeliverable(org.organizationId))) {
+    throw new Error(TEXT_CODES_UNAVAILABLE);
+  }
   const matches = await matchClients(org.organizationId, c);
   if (matches.length === 0) throw new Error("Request a new code.");
 

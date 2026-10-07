@@ -998,6 +998,7 @@ function MyDay() {
                 index={idx + 1}
                 day={day}
                 preview={previewing}
+                canText={data?.canText === true}
                 onLogExpense={previewing ? undefined : () => setExpenseOpen(true)}
               />
             ))}
@@ -1519,12 +1520,16 @@ function VisitCard({
   index,
   day,
   preview = false,
+  canText = false,
   onLogExpense,
 }: {
   visit: any;
   index: number;
   day: string;
   preview?: boolean;
+  /** The business has a texting number of its own (getMyDay). Without one,
+   *  "Text reminder" could only fail, so it is not drawn. */
+  canText?: boolean;
   /** Opens the page's one "Log an expense" sheet. Absent while previewing. */
   onLogExpense?: () => void;
 }) {
@@ -2532,7 +2537,7 @@ function VisitCard({
                     {t("visit.dnaSample")}
                   </Button>
                 )}
-                {visit.clients?.primary_phone && (
+                {canText && visit.clients?.primary_phone && (
                   <Button
                     size="sm"
                     variant="outline"
