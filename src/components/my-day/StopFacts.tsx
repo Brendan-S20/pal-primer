@@ -184,7 +184,11 @@ export function YardOutline({
         </span>
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[92dvh] w-[96vw] max-w-3xl flex-col gap-3 p-4">
+        {/* Height: ui/dialog.tsx caps it clear of the status bar and the home
+            indicator. Width: nearly the screen, but in landscape the island
+            and the home indicator are at the SIDES, so the insets come off
+            here (they are 0 everywhere else). */}
+        <DialogContent className="flex w-[calc(100vw_-_1rem_-_env(safe-area-inset-left)_-_env(safe-area-inset-right))] max-w-3xl flex-col gap-3 p-4">
           <DialogTitle className="min-w-0 pe-10 text-base [overflow-wrap:anywhere]">
             {title}
             {area ? (

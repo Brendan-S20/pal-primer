@@ -29,6 +29,41 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+// ── THE STATUS BAR AND THE HOME INDICATOR ARE PART OF THE SCREEN ──────────
+//
+// The same fault ui/sheet.tsx fixed for sheets (see the note on its
+// sheetVariants), in the shape a centred panel has it. Inside the iOS app the
+// WebView runs edge to edge (`viewport-fit=cover`, see __root.tsx), so the
+// screen a dialog is centred on includes the ~62pt strip under the clock and
+// the Dynamic Island, and the 34pt one over the home indicator. A dialog that
+// was capped at `max-h-[90dvh]` and centred on the whole screen put its top
+// edge 44px down on an 874pt iPhone: inside the status bar, the title under
+// the clock and the close X under the island. Eight callers each wrote their
+// own 90 or 92dvh cap; none of them could have known about the insets.
+//
+// So the cap and the centring are decided here, once:
+//   - the panel is never taller than the screen minus both insets minus a
+//     1rem margin above and below;
+//   - it is centred on the SAFE region, not the screen: its centre sits half
+//     the difference between the two insets below the screen's centre, so a
+//     panel at the cap starts exactly 1rem below the status bar and ends 1rem
+//     above the home indicator;
+//   - anything taller than that scrolls inside the panel.
+//
+// env() is 0 on the web, where the hosted viewport does not opt into `cover`,
+// so there the cap is the screen minus 2rem and the centre is the centre.
+//
+// A caller that manages its own scrolling (a fixed header over a scrolling
+// body, as client-detail/EditDrawer does) passes `overflow-hidden` and
+// tailwind-merge drops the default. A caller that passes its own `max-h-*`
+// REPLACES this cap rather than adding to it, so a caller cap must be one
+// that is smaller on every screen (85vh is, on every Apple size), or a
+// `min()` with this one. `h-dvh` is the way to ask for the full safe height:
+// the cap clamps it. tests/viewports/what-the-iphone-showed.spec.ts reads
+// these rules out of the stylesheet, because Chromium's insets are 0 too.
+const DIALOG_SAFE_FRAME =
+  "top-[calc(50%_+_(env(safe-area-inset-top)_-_env(safe-area-inset-bottom))_/_2)] max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_2rem)] overflow-y-auto overscroll-contain";
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
@@ -84,7 +119,8 @@ const DialogContent = React.forwardRef<
         panelRef.current?.focus();
       }}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
+        "fixed left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
+        DIALOG_SAFE_FRAME,
         className,
       )}
       {...props}
@@ -144,6 +180,7 @@ const DialogDescription = React.forwardRef<
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 export {
+  DIALOG_SAFE_FRAME,
   Dialog,
   DialogPortal,
   DialogOverlay,

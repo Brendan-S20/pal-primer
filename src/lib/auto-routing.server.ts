@@ -246,6 +246,22 @@ export async function runAutoRouting(
     }
   }
 
+  // Any of these techs whose route for a day this run wrote is on a lock
+  // screen gets the new order (push-liveactivity.server.ts); nobody else
+  // costs more than a lookup. After the write has committed, and only for the
+  // days it wrote, so a lock screen never shows a plan that did not land.
+  // Every selected tech, not just those who ended up with stops: a tech the
+  // run took stops AWAY from has a changed route too. Never throws.
+  {
+    const wroteDays = written.filter((w) => w.ok).map((w) => w.day);
+    if (wroteDays.length) {
+      const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+      await refreshRouteLiveActivities(
+        wroteDays.flatMap((day) => data.staffIds.map((staffId) => ({ staffId, day }))),
+      );
+    }
+  }
+
   // The split itself, so the screen can show that the work was actually
   // divided. Without this the dispatcher has to go and count rows to find
   // out whether the thing they just pressed did anything.
@@ -341,22 +357,6 @@ export async function runAutoRouting(
 }
 
 export type AutoRouteResult = Awaited<ReturnType<typeof runAutoRouting>>;
-
-// ── THE LIVE ACTIVITY HOOK POINT ──────────────────────────────────────────
-//
-// A technician's lock-screen Live Activity shows their day. When auto-routing
-// rewrites it, that Activity is out of date. Nothing is wired here yet: the
-// Live Activity work is landing separately, and when it exposes an update
-// function (expected: updateRouteLiveActivity), this is the one place to call
-// it. It is called after the write has committed and only for days that were
-// actually written, so it never announces a plan that did not land.
-export async function routesChangedByAutoRouting(_change: {
-  orgId: string;
-  days: string[];
-  staffIds: string[];
-}): Promise<void> {
-  // Intentionally empty until the Live Activity update function exists.
-}
 
 // ── THE RUN, START TO FINISH ──────────────────────────────────────────────
 
@@ -494,12 +494,6 @@ export async function startAndRunAutoRouting(deps: {
         },
       });
       const fin = await finish("succeeded", result, null);
-      const wroteDays = result.forecast
-        ? daysOf(data.from, data.to).filter((d) => !result.skipped.some((x) => x.day === d))
-        : [];
-      if (wroteDays.length) {
-        await routesChangedByAutoRouting({ orgId, days: wroteDays, staffIds: data.staffIds });
-      }
       await pushIfAway(fin, {
         type: "routing.ready",
         title: "Routes ready",

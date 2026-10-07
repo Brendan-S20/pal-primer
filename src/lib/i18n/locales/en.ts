@@ -707,6 +707,29 @@ const en = {
     weather: "Weather",
     weatherAria: "Show the weather button in the top bar",
   },
+  // The route on the lock screen and in the Dynamic Island (a Live Activity),
+  // and the card on My Day that shows or hides it. The first group is sent to
+  // the phone as finished text: the widget extension draws it as given.
+  liveActivity: {
+    title: "Today's route",
+    stopOf: "Stop {{position}} of {{total}}",
+    nextStop: "Next stop",
+    inProgress: "In progress",
+    allDone: "All stops done",
+    finished: "Route finished",
+    window: "{{start}}–{{end}}",
+    after: "After {{time}}",
+    by: "By {{time}}",
+    done: "{{n}} done",
+    skipped: "{{n}} skipped",
+    cardTitle: "Route on the lock screen",
+    cardOn: "Showing on your lock screen",
+    cardOff: "See your next stop without unlocking",
+    cardDisabled: "Turn on Live Activities for HoundStack in iPhone Settings",
+    show: "Show",
+    hide: "Hide",
+    failed: "Couldn't show the route on the lock screen",
+  },
 };
 
 /** The same tree with every leaf widened to `string`, so a translation is

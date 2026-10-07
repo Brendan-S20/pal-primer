@@ -53,6 +53,11 @@ vi.mock("@/lib/road-legs.server", () => ({
   refreshRoadLegs: (...a: unknown[]) => refreshRoadLegs(...a),
 }));
 
+const refreshRouteLiveActivities = vi.fn(async (_pairs: unknown) => {});
+vi.mock("@/lib/push-liveactivity.server", () => ({
+  refreshRouteLiveActivities: (p: unknown) => refreshRouteLiveActivities(p),
+}));
+
 const { runAutoRouting, startAndRunAutoRouting, RunStopped, REVIEW_LINK } =
   await import("@/lib/auto-routing.server");
 
@@ -132,6 +137,7 @@ beforeEach(() => {
   planDayRoutes.mockReset();
   applyRoutePlans.mockReset();
   refreshRoadLegs.mockReset();
+  refreshRouteLiveActivities.mockClear();
   refreshRoadLegs.mockResolvedValue({ problem: null, pointsOutsideGraph: 0 });
   planDayRoutes.mockImplementation(async (_s: unknown, a: { day: string }) => plan(a.day));
   applyRoutePlans.mockImplementation(async (_s: unknown, a: { plans: Array<{ day: string }> }) =>
@@ -296,6 +302,8 @@ describe("runAutoRouting writes once, at the end", () => {
     ).rejects.toBeInstanceOf(RunStopped);
     expect(planDayRoutes).toHaveBeenCalledTimes(1);
     expect(applyRoutePlans).not.toHaveBeenCalled();
+    // Nothing was written, so no lock screen is told anything changed.
+    expect(refreshRouteLiveActivities).not.toHaveBeenCalled();
   });
 
   it("and nothing when it is stopped at the very last step, before the write", async () => {
@@ -353,6 +361,13 @@ describe("runAutoRouting writes once, at the end", () => {
       progress: async () => true,
     });
     expect(r.skipped.map((s) => s.day)).toEqual(["2026-10-07"]);
+    // The lock screens of every selected tech, for the days that were
+    // written and only those: the refused day did not change.
+    expect(refreshRouteLiveActivities).toHaveBeenCalledTimes(1);
+    expect(refreshRouteLiveActivities.mock.calls[0][0]).toEqual([
+      { staffId: "a", day: "2026-10-05" },
+      { staffId: "a", day: "2026-10-06" },
+    ]);
     expect(r.skipped[0].reason).toMatch(/day changed while it was being planned/);
     expect(r.stops).toBe(2);
     expect(r.forecast).not.toBeNull();

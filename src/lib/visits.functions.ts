@@ -195,7 +195,12 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // same code. Two ways to make the same row is how the two diverge; one
     // function with two callers is not.
     const { bookOneOffVisit } = await import("@/lib/one-off-visit.server");
-    return bookOneOffVisit(supabase, { ...data, orgId, actorUserId: userId });
+    const booked = await bookOneOffVisit(supabase, { ...data, orgId, actorUserId: userId });
+    if (data.staffId) {
+      const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+      await refreshRouteLiveActivities([{ staffId: data.staffId, day: data.scheduledOn }]);
+    }
+    return booked;
   });
 
 export const reassignVisit = createServerFn({ method: "POST" })
@@ -204,11 +209,15 @@ export const reassignVisit = createServerFn({ method: "POST" })
     z.object({ visitId: z.string().uuid(), staffId: z.string().uuid().nullable() }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Both techs' lock screens: the one losing the stop and the one gaining it.
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await context.supabase.rpc("reassign_visit", {
       _visit_id: data.visitId,
       _staff_id: data.staffId as string,
     });
     if (error) throw new Error(error.message);
+    await pushRoutes();
     // QA round 8: reassignment shows on the client's Activity timeline.
     try {
       const [{ data: v }, { data: staff }] = await Promise.all([
@@ -260,6 +269,8 @@ export const reorderRoute = createServerFn({ method: "POST" })
       _ordered_ids: data.orderedIds,
     });
     if (error) throw new Error(error.message);
+    const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    await refreshRouteLiveActivities([{ staffId: data.staffId, day: data.day }]);
     return { updated: (count as number) ?? 0 };
   });
 
@@ -443,10 +454,13 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled" && v.status !== "in_progress")
       throw new Error("Only scheduled or in-progress visits can be completed");
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_complete_visit", {
       _visit_id: data.visitId,
     });
     if (error) throw new Error(error.message);
+    await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: v.organization_id,
@@ -475,11 +489,15 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
+    // The day it left and the day it went to.
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await supabase.rpc("reschedule_visit", {
       _visit_id: data.visitId,
       _new_date: data.newDate,
     });
     if (error) throw new Error(error.message);
+    await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: v.organization_id,
@@ -521,12 +539,15 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be canceled");
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_skip_visit", {
       _visit_id: data.visitId,
       _reason: data.reason,
       _code: data.code,
     });
     if (error) throw new Error(error.message);
+    await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: v.organization_id,
@@ -565,11 +586,14 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities(data.visitIds);
     const { data: n, error } = await (context.supabase as any).rpc("bulk_reassign_visits", {
       _visit_ids: data.visitIds,
       _staff_id: data.staffId,
     });
     if (error) throw new Error(error.message);
+    await pushRoutes();
     return { moved: (n as number) ?? 0 };
   });
 
@@ -584,11 +608,14 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities(data.visitIds);
     const { data: rows, error } = await (context.supabase as any).rpc("bulk_reschedule_visits", {
       _visit_ids: data.visitIds,
       _to_date: data.toDate,
     });
     if (error) throw new Error(error.message);
+    await pushRoutes();
     // `skipped` is not an error and must reach the caller: a weekly client
     // moved exactly a week already has a visit there, and the honest report is
     // "moved 12, left 2 alone", not silence.
@@ -617,6 +644,18 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
       _staff_id: data.staffId,
     });
     if (error) throw new Error(error.message);
+    // The work went to whoever had room, which this call does not say, so
+    // every live route in the business is rebuilt; an unchanged one is not
+    // pushed.
+    const { data: staffRow } = await context.supabase
+      .from("staff")
+      .select("organization_id")
+      .eq("id", data.staffId)
+      .maybeSingle();
+    if (staffRow?.organization_id) {
+      const { refreshOrgRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+      await refreshOrgRouteLiveActivities(staffRow.organization_id);
+    }
     return { moved: (n as number) ?? 0 };
   });
 

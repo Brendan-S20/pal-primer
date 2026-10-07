@@ -19,6 +19,8 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // The stop card's dogs, yard outline, stations and money lines, and the
   // form a tech records cash or a check with.
   { file: "src/components/my-day/StopFacts.tsx" },
+  // The card that shows or hides the route on the iPhone lock screen.
+  { file: "src/components/my-day/RouteLiveActivityCard.tsx" },
   { file: "src/components/CloseOutOpenVisits.tsx" },
   { file: "src/components/EnRouteLocationChip.tsx" },
   { file: "src/components/TimeClockCard.tsx" },
