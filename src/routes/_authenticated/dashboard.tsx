@@ -25,6 +25,15 @@ import {
   UserX,
 } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { CountUp } from "@/components/motion/CountUp";
+import {
+  DashboardSkeleton,
+  KpiValueBone,
+  LineBones,
+  TechProgressBones,
+} from "@/components/PageSkeletons";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { ReactNode } from "react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => titleHead("Dashboard"),
@@ -80,12 +89,12 @@ function Dashboard() {
     }
   }, [orgMissing, platformCtx, navigate]);
 
-  if (orgLoading) return <p className="text-muted-foreground">Loading…</p>;
+  if (orgLoading) return <DashboardSkeleton />;
 
   const org = orgData?.organization;
   if (!org) {
     if (platformLoading || platformCtx?.isPlatformAdmin) {
-      return <p className="text-muted-foreground">Loading…</p>;
+      return <DashboardSkeleton />;
     }
     return (
       <div className="rounded-lg border bg-card p-(--card-pad)">
@@ -239,7 +248,7 @@ function Dashboard() {
         <KpiCard
           icon={Users}
           label="Active clients"
-          value={sum ? String(sum.activeClients) : "-"}
+          value={sum ? <CountUp value={sum.activeClients} /> : <KpiValueBone />}
           hint={billing?.planName ? `On the ${billing.planName} plan` : undefined}
         />
         {/* Financial KPIs are null for roles without view_financials — the
@@ -248,7 +257,13 @@ function Dashboard() {
           <KpiCard
             icon={DollarSign}
             label="Collected MTD"
-            value={sum ? fmtMoney(sum.mtdRevenueCents ?? 0) : "-"}
+            value={
+              sum ? (
+                <CountUp value={sum.mtdRevenueCents ?? 0} format={(c) => fmtMoney(Math.round(c))} />
+              ) : (
+                <KpiValueBone />
+              )
+            }
             // IMP-10: net of this month's refunds and chargebacks. The hint
             // appears only when something came back — an org that has never had
             // a reversal keeps the card it already knows, and when the figure
@@ -264,7 +279,13 @@ function Dashboard() {
           <KpiCard
             icon={Receipt}
             label="AR open"
-            value={sum ? fmtMoney(sum.arOpenCents ?? 0) : "-"}
+            value={
+              sum ? (
+                <CountUp value={sum.arOpenCents ?? 0} format={(c) => fmtMoney(Math.round(c))} />
+              ) : (
+                <KpiValueBone />
+              )
+            }
             hint={sum && (sum.overdueCount ?? 0) > 0 ? `${sum.overdueCount} overdue` : undefined}
             tone={sum && (sum.overdueCount ?? 0) > 0 ? "danger" : undefined}
           />
@@ -272,14 +293,22 @@ function Dashboard() {
         <KpiCard
           icon={CalendarCheck}
           label="Visits today"
-          value={sum ? `${completed} / ${total}` : "-"}
+          value={
+            sum ? (
+              <>
+                <CountUp value={completed} /> / <CountUp value={total} />
+              </>
+            ) : (
+              <KpiValueBone />
+            )
+          }
           hint={total > 0 ? `${pct}% done` : "None scheduled"}
         />
         {sum && sum.mtdRevenueCents === null && (
           <KpiCard
             icon={UserX}
             label="Unassigned today"
-            value={String(sum.unassignedToday)}
+            value={<CountUp value={sum.unassignedToday} />}
             hint={sum.unassignedToday > 0 ? "Needs assignment" : "All covered"}
             tone={sum.unassignedToday > 0 ? "danger" : undefined}
           />
@@ -316,9 +345,7 @@ function Dashboard() {
           </div>
           <div className={mapOpen ? "" : "max-md:hidden"}>
             {sumLoading ? (
-              <div className="flex h-[380px] items-center justify-center text-sm text-muted-foreground">
-                Loading map…
-              </div>
+              <Skeleton aria-hidden="true" className="h-[380px]" />
             ) : groups.length === 0 ? (
               <div className="flex h-[380px] items-center justify-center text-sm text-muted-foreground">
                 No visits scheduled today.
@@ -341,10 +368,14 @@ function Dashboard() {
         <div className="min-w-0 space-y-4 max-md:order-1">
           <div className="rounded-lg border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold">Techs today</h2>
-            {groups.length === 0 ? (
+            {/* "No routes yet." while the summary is still loading was a
+                claim, not a placeholder. */}
+            {sumLoading ? (
+              <TechProgressBones />
+            ) : groups.length === 0 ? (
               <p className="text-xs text-muted-foreground">No routes yet.</p>
             ) : (
-              <ul className="space-y-3 text-sm">
+              <ul className="motion-list space-y-3 text-sm">
                 {groups.map((g) => {
                   const total = g.visits.length;
                   const done = g.visits.filter((v) => v.status === "completed").length;
@@ -387,7 +418,9 @@ function Dashboard() {
                   All →
                 </Link>
               </div>
-              {sum?.overdueInvoices?.length ? (
+              {sumLoading ? (
+                <LineBones />
+              ) : sum?.overdueInvoices?.length ? (
                 <ul className="space-y-2 text-sm">
                   {sum.overdueInvoices.map((i) => (
                     <li key={i.id} className="flex items-center justify-between gap-2">
@@ -439,7 +472,7 @@ function KpiCard({
 }: {
   icon: any;
   label: string;
-  value: string;
+  value: ReactNode;
   hint?: string;
   tone?: "danger";
 }) {

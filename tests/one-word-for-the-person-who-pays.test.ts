@@ -82,6 +82,7 @@ const STAFF_COPY_IN_LIB = [
   "src/lib/quotes.functions.ts",
   "src/lib/one-off-booking.ts",
   "src/lib/platform-inbound.server.ts",
+  "src/lib/gate-reply.server.ts",
   "src/lib/refunds.server.ts",
   "src/lib/live-tracking.functions.ts",
   "src/lib/imports.functions.ts",

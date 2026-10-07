@@ -274,7 +274,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
       // IMP-9: this told customers two-way texting ran on "your own Twilio
       // account, connected in SMS settings". Both halves are retired — there is
       // no account to bring and no form to connect it in.
-      "HoundStack texts fall into two buckets. **Automated notifications** (visit reminders, on-my-way, completed, review asks) and portal login codes go out through the platform sender. **Two-way conversations** with clients run on a HoundStack-managed number provisioned for your organization, and there is no Twilio account to connect and no carrier registration for you to file. Conversational texting is pending US carrier (10DLC) registration; [SMS settings](/settings/sms) shows its current state.",
+      // 2026-10-06: this said automated notifications and portal codes went
+      // out through the platform sender. They no longer do: HoundStack's own
+      // number texts the people who sign in to HoundStack, never their clients.
+      "Every text to your clients, whether a message from your staff, an automated notification (visit reminders, on-my-way, completed, review asks) or a portal sign-in code, goes out from a HoundStack-managed number provisioned for your business. There is no Twilio account to connect and no carrier registration for you to file. That number is pending US carrier (10DLC) registration, and until it is ready nothing is texted to your clients: on-my-way notices, review requests, overdue reminders and portal sign-in codes go by email instead. [SMS settings](/settings/sms) shows its current state.",
       "Every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. Consent details live in the public [SMS policy](/legal/sms).",
       "Pick which automated texts go out in [SMS settings](/settings/sms); per-client opt-outs show on the client's page.",
     ],

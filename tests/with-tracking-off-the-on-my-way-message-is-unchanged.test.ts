@@ -67,7 +67,14 @@ vi.mock("@/integrations/supabase/client.server", () => ({
     },
   },
 }));
-vi.mock("@/lib/twilio-credentials.server", () => ({ platformTwilioFrom: () => "+15125550000" }));
+// The business's own subaccount: the only thing a client is texted from.
+vi.mock("@/lib/twilio-credentials.server", () => ({
+  endCustomerSmsSender: async () => ({
+    credentials: { mode: "direct", accountSid: "ACsub", authToken: "tok" },
+    from: "+15125550000",
+    messagingServiceSid: null,
+  }),
+}));
 vi.mock("@/lib/twilio.server", () => ({
   sendTwilioSms: vi.fn(async (p: { body: string }) => {
     sms.push(p.body);
@@ -101,7 +108,6 @@ beforeEach(() => {
   org = {
     name: "Acme Scoop",
     timezone: "America/Chicago",
-    sms_from_number: null,
     notify_sms_on_my_way: true,
     notify_email_on_my_way: true,
     on_my_way_on_navigate: true,

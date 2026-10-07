@@ -9,8 +9,10 @@ import { trackingUrl } from "@/lib/live-tracking";
  *  The text used to be the only channel, and it refused any client with no
  *  texting consent on file, which on day one is every imported client. So the
  *  order here is a preference, not a gate: each refusal on the SMS side
- *  (turned off, no consent, opted out, on hold, no sender, no phone, or the
- *  carrier said no) falls through to email, and the result says which went.
+ *  (turned off, no consent, opted out, on hold, no phone, the business has
+ *  no texting number of its own yet, or the carrier said no) falls through
+ *  to email, and the result says which went. Today the fourth is every
+ *  business: see endCustomerSmsSender.
  *
  *  `supabase` is the CALLER's client. Reading the visit through it is the
  *  access check: a tech who cannot see the visit cannot announce it. Only the
@@ -43,7 +45,7 @@ export async function sendOnMyWay(opts: {
   const { data: org } = await supabase
     .from("organizations")
     .select(
-      "name, timezone, sms_from_number, notify_sms_on_my_way, notify_email_on_my_way, on_my_way_on_navigate, live_tracking_enabled",
+      "name, timezone, notify_sms_on_my_way, notify_email_on_my_way, on_my_way_on_navigate, live_tracking_enabled",
     )
     .eq("id", v.organization_id)
     .single();
@@ -174,7 +176,7 @@ async function ensureTrackingToken(visitId: string, existing: string | null): Pr
 
 async function trySms(p: {
   supabase: SupabaseClient<any>;
-  org: { sms_from_number: string | null; notify_sms_on_my_way: boolean | null };
+  org: { notify_sms_on_my_way: boolean | null };
   visit: { id: string; organization_id: string; client_id: string };
   client: { sms_opt_out: boolean | null; comms_paused: boolean | null } | null;
   destPhone: string | null;
@@ -189,16 +191,26 @@ async function trySms(p: {
     _client_id: p.visit.client_id,
   });
   if (error || !mayText) return { ok: false, reason: "no consent" };
-  const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-  const from = platformTwilioFrom() ?? p.org.sms_from_number ?? null;
-  if (!from) return { ok: false, reason: "no sender" };
+  // The business's own subaccount, or no text: the email below carries it.
+  // This preferred the PLATFORM number until 2026-10-06, which is HoundStack
+  // texting a business's client; the toll-free filing says it does not.
+  const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+  const sender = await endCustomerSmsSender(p.visit.organization_id);
+  if (!sender) return { ok: false, reason: "no business texting number" };
+  const from = sender.from;
 
   const { sendTwilioSms } = await import("@/lib/twilio.server");
   let sid: string | null = null;
   let status = "queued";
   let err: string | null = null;
   try {
-    const r = await sendTwilioSms({ from, to: p.destPhone, body: p.body });
+    const r = await sendTwilioSms({
+      to: p.destPhone,
+      body: p.body,
+      from: sender.from ?? undefined,
+      messagingServiceSid: sender.messagingServiceSid ?? undefined,
+      credentials: sender.credentials,
+    });
     sid = r.sid;
     status = r.status || "sent";
   } catch (e: any) {

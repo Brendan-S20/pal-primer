@@ -778,13 +778,25 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 try {
                   const { data: org } = await supabaseAdmin
                     .from("organizations")
-                    .select("sms_from_number, notify_sms_payment_failed")
+                    .select("notify_sms_payment_failed")
                     .eq("id", inv.organization_id)
                     .single();
-                  // Dunning is an automated notification → PLATFORM Twilio sender.
-                  const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-                  const dunningFrom = platformTwilioFrom() ?? org?.sms_from_number ?? null;
-                  if (org?.notify_sms_payment_failed && dunningFrom) {
+                  // A text to a business's client: from the business's own
+                  // subaccount, or not at all. This preferred the PLATFORM
+                  // number until 2026-10-06. With no subaccount the client
+                  // is not texted; the office's in-app notice below still
+                  // goes, and so do the nightly overdue-invoice emails.
+                  const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+                  const sender = org?.notify_sms_payment_failed
+                    ? await endCustomerSmsSender(inv.organization_id)
+                    : null;
+                  if (org?.notify_sms_payment_failed && !sender) {
+                    console.info(
+                      "payment-failed SMS not sent: the business has no texting number of its own",
+                      inv.organization_id,
+                    );
+                  }
+                  if (sender) {
                     const { data: c } = await supabaseAdmin
                       .from("clients")
                       .select(
@@ -817,16 +829,18 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       );
                       const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
                       const r = await sendTwilioSms({
-                        from: dunningFrom,
                         to: c.primary_phone,
                         body,
+                        from: sender.from ?? undefined,
+                        messagingServiceSid: sender.messagingServiceSid ?? undefined,
+                        credentials: sender.credentials,
                       });
                       await supabaseAdmin.from("messages").insert({
                         organization_id: inv.organization_id,
                         client_id: inv.client_id,
                         direction: "outbound",
                         body,
-                        from_number: dunningFrom,
+                        from_number: sender.from,
                         to_number: c.primary_phone,
                         twilio_sid: r.sid,
                         status:

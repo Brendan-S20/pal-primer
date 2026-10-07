@@ -290,8 +290,12 @@ export function minutesLate(etaEnd: string | null | undefined, projected: Date):
   if (!etaEnd) return null;
   const end = Date.parse(etaEnd);
   if (Number.isNaN(end) || Number.isNaN(projected.getTime())) return null;
-  const late = (projected.getTime() - end) / 60_000;
-  return late > LATE_GRACE_MIN ? Math.ceil(late) : null;
+  // Rounded to the nearest minute, not up: the projection is "now" plus a
+  // drive, so it always carries the milliseconds since the window was read,
+  // and ceil turned a truck 25 minutes late into 26, which roundLate then
+  // reported as "about 30". The test that caught it failed most runs.
+  const late = Math.round((projected.getTime() - end) / 60_000);
+  return late > LATE_GRACE_MIN ? late : null;
 }
 
 /** Which slip this is: 0 for the first, 1 once it is 15 minutes worse, and so

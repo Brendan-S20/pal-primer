@@ -129,6 +129,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
+import { MyDaySkeleton } from "@/components/PageSkeletons";
+import { PullToRefresh } from "@/components/motion/PullToRefresh";
+import { showCompletionCheck } from "@/lib/motion/completion-check";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   head: () => titleHead("My day"),
@@ -595,7 +598,7 @@ function MyDay() {
     };
   }, [visitParam, visitOnPage]);
 
-  if (isLoading) return <p className="text-muted-foreground">{t("common.loading")}</p>;
+  if (isLoading) return <MyDaySkeleton title={t("myDay.title")} label={t("common.loading")} />;
 
   // Fetch failed and nothing is cached for this day — say so plainly instead
   // of falling through to the misleading "not linked to a staff record" state.
@@ -627,6 +630,7 @@ function MyDay() {
     // runs edge to edge is the sticky bar below, and it now says so with
     // PAGE_BLEED_X, which is the gutter's exact inverse.
     <div className={view === "map" ? "" : belowTabBarPadding}>
+      <PullToRefresh />
       {/* BUILD-11: a visit started on an earlier day (or before today's workday
           ended) that was never closed. Asks the tech what happened rather than
           guessing — nothing here completes anything on its own. */}
@@ -990,7 +994,7 @@ function MyDay() {
             }}
           />
         ) : (
-          <ol className="space-y-3">
+          <ol className="motion-list space-y-3">
             {visits.map((v: any, idx: number) => (
               <VisitCard
                 key={v.id}
@@ -998,6 +1002,7 @@ function MyDay() {
                 index={idx + 1}
                 day={day}
                 preview={previewing}
+                canText={data?.canText === true}
                 onLogExpense={previewing ? undefined : () => setExpenseOpen(true)}
               />
             ))}
@@ -1519,12 +1524,16 @@ function VisitCard({
   index,
   day,
   preview = false,
+  canText = false,
   onLogExpense,
 }: {
   visit: any;
   index: number;
   day: string;
   preview?: boolean;
+  /** The business has a texting number of its own (getMyDay). Without one,
+   *  "Text reminder" could only fail, so it is not drawn. */
+  canText?: boolean;
   /** Opens the page's one "Log an expense" sheet. Absent while previewing. */
   onLogExpense?: () => void;
 }) {
@@ -1740,6 +1749,7 @@ function VisitCard({
       }),
     onSuccess: (r) => {
       haptic("success");
+      showCompletionCheck();
       toast.success(r.queued ? t("visit.completeQueued") : t("visit.completed"));
       setCheckedItems([]);
       setNote("");
@@ -2532,7 +2542,7 @@ function VisitCard({
                     {t("visit.dnaSample")}
                   </Button>
                 )}
-                {visit.clients?.primary_phone && (
+                {canText && visit.clients?.primary_phone && (
                   <Button
                     size="sm"
                     variant="outline"

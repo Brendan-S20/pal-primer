@@ -70,7 +70,8 @@ export const getMyDay = createServerFn({ method: "GET" })
       previewing = true;
     }
 
-    if (!targetStaff) return { staff: null, visits: [] as any[], previewing: false };
+    if (!targetStaff)
+      return { staff: null, visits: [] as any[], previewing: false, canText: false };
 
     const { data: visits, error } = await supabase
       .from("visits")
@@ -91,8 +92,23 @@ export const getMyDay = createServerFn({ method: "GET" })
       staff: targetStaff,
       visits: await withStopFacts(supabase, visits ?? []),
       previewing,
+      canText: await businessCanText(targetStaff.organization_id),
     };
   });
+
+/** Whether this business can text its clients at all: only from its own
+ *  subaccount, which until per-business numbers clear carrier registration
+ *  no business has. The card hides "Text reminder" rather than offer a button
+ *  that can only fail. "On my way" stays: it goes by email when it can't text. */
+async function businessCanText(orgId: string): Promise<boolean> {
+  try {
+    const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+    return (await endCustomerSmsSender(orgId)) !== null;
+  } catch (e) {
+    console.warn("texting-number lookup failed; hiding Text reminder", e);
+    return false;
+  }
+}
 
 /**
  * What the card needs that the visit's own row does not carry: the dog count
@@ -395,7 +411,7 @@ export const completeVisit = createServerFn({ method: "POST" })
       const { data: v } = await context.supabase
         .from("visits")
         .select(
-          "organization_id, client_id, clients(id, display_name, sms_opt_out, comms_paused, primary_phone, review_asked_at), organizations!inner(name, review_ask_enabled, google_review_url, sms_from_number, review_ask_template)",
+          "organization_id, client_id, clients(id, display_name, sms_opt_out, comms_paused, primary_phone, review_asked_at), organizations!inner(name, review_ask_enabled, google_review_url, review_ask_template)",
         )
         .eq("id", data.visitId)
         .single();
@@ -417,17 +433,17 @@ export const completeVisit = createServerFn({ method: "POST" })
         (!c?.review_asked_at || new Date(c.review_asked_at).getTime() < ninetyDaysAgo);
       if (eligible) {
         const orgId = (v as any).organization_id;
-        // Review asks ride the tenant's OWN Twilio number; when not connected,
-        // fall back to email (never the platform SMS number).
-        const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
-        const tenant = await resolveOrgTwilioConfig(orgId);
+        // Review asks ride the business's OWN subaccount; without one, email
+        // (never the platform SMS number, which texts account holders only).
+        const { endCustomerSmsSender } = await import("@/lib/twilio-credentials.server");
+        const sender = await endCustomerSmsSender(orgId);
         // Same consent gate as every other sender. Without it the nightly
         // job is the single largest source of un-consented traffic, which is
         // precisely what a toll-free number gets shut off for.
         const { data: mayTextDaily } = await (context.supabase as any).rpc("client_may_be_texted", {
           _client_id: c.id,
         });
-        if (tenant && mayTextDaily) {
+        if (sender && mayTextDaily && c.primary_phone) {
           const firstName = (c.display_name ?? "").split(/\s+/)[0] || "there";
           const template =
             (o.review_ask_template && String(o.review_ask_template).trim()) ||
@@ -440,13 +456,9 @@ export const completeVisit = createServerFn({ method: "POST" })
             const res = await sendTwilioSms({
               to: c.primary_phone,
               body,
-              from: tenant.from ?? undefined,
-              messagingServiceSid: tenant.messagingServiceSid ?? undefined,
-              credentials: {
-                mode: "direct",
-                accountSid: tenant.accountSid,
-                authToken: tenant.authToken,
-              },
+              from: sender.from ?? undefined,
+              messagingServiceSid: sender.messagingServiceSid ?? undefined,
+              credentials: sender.credentials,
             });
             await context.supabase.from("messages").insert({
               organization_id: orgId,
@@ -454,7 +466,7 @@ export const completeVisit = createServerFn({ method: "POST" })
               visit_id: data.visitId,
               direction: "outbound",
               body,
-              from_number: tenant.from ?? null,
+              from_number: sender.from,
               to_number: c.primary_phone,
               twilio_sid: res.sid,
               status: (res.status || "sent") as any,
