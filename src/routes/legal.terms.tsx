@@ -48,9 +48,9 @@ function TermsPage() {
         <h2>Your data and your customers</h2>
         <ul>
           <li>
-            You own the business data you store in {APP_NAME} (clients, schedules, invoices, photos,
-            messages). You grant us the limited rights needed to host and process it to provide the
-            service.
+            You own the business data you store in {APP_NAME} (clients, schedules, invoices,
+            photos, messages). You grant us the limited rights needed to host and process it to
+            provide the service.
           </li>
           <li>
             You are responsible for having the right to store your customers' information, and for
@@ -60,8 +60,9 @@ function TermsPage() {
             on your number automatically, but the underlying consent is yours to collect.
           </li>
           <li>
-            You will comply with applicable laws when using the service, including telemarketing and
-            messaging laws (such as the TCPA), consumer-protection laws, and data-protection laws.
+            You will comply with applicable laws when using the service, including telemarketing
+            and messaging laws (such as the TCPA), consumer-protection laws, and data-protection
+            laws.
           </li>
         </ul>
       </section>
@@ -76,20 +77,20 @@ function TermsPage() {
           </li>
           <li>
             The AI features (the AI receptionist and drafting marketing posts) are coming soon and
-            are not yet available. Once they are, each plan includes a monthly allowance of AI
-            actions. Usage beyond that allowance is billed at the published per-action rate and
-            appears as a single line on your next invoice. Your current allowance, usage and rate
-            are shown in the app under Settings → AI usage, where you can also set a ceiling that
-            stops AI rather than billing past it.
+            are not yet available. Once they are, each plan includes a monthly
+            allowance of AI actions. Usage beyond that allowance is billed at the
+            published per-action rate and appears as a single line on your next invoice. Your
+            current allowance, usage and rate are shown in the app under Settings → AI usage,
+            where you can also set a ceiling that stops AI rather than billing past it.
           </li>
           <li>
-            You can cancel at any time; paid access continues to the end of the billing period. Fees
-            already paid are non-refundable except where required by law.
+            You can cancel at any time; paid access continues to the end of the billing period.
+            Fees already paid are non-refundable except where required by law.
           </li>
           <li>
             Payments you collect from your own customers run through your connected Stripe account
-            and are subject to Stripe's terms. {APP_NAME} is not a party to the service relationship
-            between you and your customers.
+            and are subject to Stripe's terms. {APP_NAME} is not a party to the service
+            relationship between you and your customers.
           </li>
         </ul>
       </section>
