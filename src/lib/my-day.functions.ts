@@ -687,6 +687,18 @@ export const confirmOpenVisit = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
 
+    // The tech's own lock screen, if that day's route is on it: a stop that
+    // read "in progress" is now done or missed. No route watch, on purpose:
+    // the watch tells the tech whose day it is, and this is that tech closing
+    // out their own stop (confirm_open_visit refuses anyone else), so it
+    // would always be telling the actor about their own action, which the
+    // watch never does.
+    if (outcome === "completed" || outcome === "missed") {
+      const { routeDaysForVisits, refreshRouteLiveActivities } =
+        await import("@/lib/push-liveactivity.server");
+      await refreshRouteLiveActivities(await routeDaysForVisits([data.visitId]));
+    }
+
     // Audit the assertion, not just the state change: a completion nobody
     // measured should be legible as such on the timeline afterwards (10.6).
     try {

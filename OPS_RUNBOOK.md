@@ -167,6 +167,15 @@ with `x-cron-secret: <CRON_SECRET>` (or `?s=`). **Autopay charges run only under
 `CRON_SECRET`** — the anon-key path is accepted for the non-charging automation but
 will not move money (security fix C2). Schedule it once daily.
 
+`POST /api/public/hooks/late-check` tells the office when a truck will miss its
+next arrival window, for the tech who is neither sharing location nor finishing
+stops. pg_cron job `late-check`, every five minutes, created by migration
+20261007160000; it only makes a request when `public.late_check_due()` finds an
+open stop whose window closes inside the next three hours (or closed in the
+last two), and the hook skips any organization outside its own working day.
+Bearer service-role from the `cron_service_role_key` Vault secret, like the
+other migration-scheduled jobs.
+
 ## 6. Security posture (as of the pre-pilot review)
 
 - Tenant charges are isolated per connected account; the Connect webhook verifies

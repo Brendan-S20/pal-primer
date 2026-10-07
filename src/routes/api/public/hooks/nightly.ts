@@ -65,7 +65,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, notify_email_visit_reminder, quote_followup_days",
+            "id, name, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, workday_start, workday_end, notify_email_visit_reminder, quote_followup_days",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -120,10 +120,14 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           if (org.auto_generate_visits) {
             const ahead = new Date(today);
             ahead.setDate(ahead.getDate() + (org.auto_generate_days_ahead ?? 90));
+            // A generated visit that lands on a tech's today or tomorrow is a
+            // stop on their route like any other (see watchTheCrew).
+            const watch = await watchTheCrew(supabaseAdmin, org);
             const { data: n, error } = await supabaseAdmin.rpc("admin_generate_visits_through", {
               _org_id: org.id,
               _through: iso(ahead),
             });
+            await watch.finish();
             perOrg.visits_generated = error ? `err: ${error.message}` : (n as number);
 
             // Say so, once a week, if they asked.
@@ -292,6 +296,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             Array.isArray(org.seasonal_deepclean_months) &&
             org.seasonal_deepclean_months.includes(today.getUTCMonth() + 1)
           ) {
+            const watch = await watchTheCrew(supabaseAdmin, org);
             const { data: n, error } = await supabaseAdmin.rpc(
               "admin_generate_seasonal_deepcleans",
               {
@@ -300,6 +305,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
                 _month: today.getUTCMonth() + 1,
               },
             );
+            await watch.finish();
             perOrg.deepcleans_generated = error ? `err: ${error.message}` : (n as number);
           }
 
@@ -474,6 +480,79 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
     },
   },
 });
+
+/**
+ * The nightly generation puts visits on routes, and a visit that lands on a
+ * tech's today or tomorrow is a stop added to their day like any a dispatcher
+ * adds: the tech is told (field-notify's route watch, the actor null because
+ * nobody did it), and a route on their lock screen is rebuilt.
+ *
+ * WHO HEARS IT, AND WHETHER IT BUZZES. This job runs at 09:00 UTC, which is
+ * between 2am and 5am for every US organization. So:
+ *
+ *   a day after tomorrow   nobody. The watch only looks at today and
+ *                          tomorrow; a stop next Thursday is something the
+ *                          tech sees when they look at next Thursday. Almost
+ *                          everything the nightly run generates is here: it
+ *                          extends a rolling 90-day horizon by one day.
+ *   today or tomorrow      the notification centre, coalesced like any burst
+ *                          on that tech-day, and a PUSH only when the
+ *                          organization's own clock is inside its working
+ *                          day (workday_start to workday_end). At 09:00 UTC
+ *                          that is no US organization: the tech finds it in
+ *                          Notifications and on My Day when they open the
+ *                          app, and nobody's phone lights up at 3am about
+ *                          tomorrow. Keyed on the org's clock rather than on
+ *                          this job's hour, so moving the schedule cannot
+ *                          quietly start waking people up.
+ *
+ * The lock screen is refreshed either way: a Live Activity update is silent.
+ * Never throws: the run carries on for this org and every org after it.
+ */
+async function watchTheCrew(
+  supabaseAdmin: any,
+  org: {
+    id: string;
+    timezone?: string | null;
+    workday_start?: string | null;
+    workday_end?: string | null;
+  },
+): Promise<{ finish: () => Promise<void> }> {
+  try {
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const { withinWorkingHours } = await import("@/lib/field-notify");
+    const { orgLocalMinutes } = await import("@/lib/org-day");
+    const { data: crew } = await supabaseAdmin
+      .from("staff")
+      .select("id")
+      .eq("organization_id", org.id)
+      .eq("active", true);
+    const staffIds = ((crew ?? []) as Array<{ id: string }>).map((s) => s.id);
+    if (!staffIds.length) return { finish: async () => {} };
+    const push = withinWorkingHours(
+      orgLocalMinutes(new Date(), org.timezone || undefined),
+      org.workday_start,
+      org.workday_end,
+      0,
+    );
+    const watch = await startRouteWatch({ actorUserId: null, orgId: org.id, staffIds, push });
+    return {
+      finish: async () => {
+        try {
+          const changed = await watch.finish();
+          if (!changed.length) return;
+          const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+          await refreshRouteLiveActivities(changed);
+        } catch (e) {
+          console.error("nightly route watch failed", org.id, e);
+        }
+      },
+    };
+  } catch (e) {
+    console.error("nightly route watch could not start", org.id, e);
+    return { finish: async () => {} };
+  }
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

@@ -471,12 +471,22 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled" && v.status !== "in_progress")
       throw new Error("Only scheduled or in-progress visits can be completed");
+    // The office closing a stop takes it off the tech's work for the day:
+    // "I did the Smiths myself" is a stop they no longer drive to, and they
+    // hear it as one that came off. The lock screen already followed (#337).
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: userId,
+      orgId: v.organization_id,
+      visitIds: [data.visitId],
+    });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_complete_visit", {
       _visit_id: data.visitId,
     });
     if (error) throw new Error(error.message);
+    await watch.finish();
     await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
