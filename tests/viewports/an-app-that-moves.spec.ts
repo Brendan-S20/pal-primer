@@ -205,35 +205,122 @@ test.describe("page transitions", () => {
   });
 });
 
+test.describe("the iOS edge swipe is not animated twice", () => {
+  // WKWebView's own back gesture (HSBridgeViewController turns it on) slides
+  // the previous page in with the finger and then fires popstate. On iOS a
+  // history traversal therefore gets no transition of ours; a link still
+  // does.
+  test.use({
+    viewport: { width: 1280, height: 800 },
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+  });
+
+  test("forward still slides; back does not", async ({ page, context }) => {
+    await signIn(context);
+    await recordViewTransitions(context);
+    await openClients(page);
+    await page.evaluate(() => ((window as any).__vt = []));
+
+    await clientLink(page).click();
+    await expect(page).toHaveURL(/\/clients\/[0-9a-f-]+$/);
+    await expect.poll(async () => (await transitions(page)).length).toBeGreaterThan(0);
+    expect((await transitions(page))[0].dir).toBe("forward");
+
+    await expect(page.getByRole("link", { name: "← Clients" })).toBeVisible({
+      timeout: FIRST_PAINT_MS,
+    });
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(500);
+    await page.evaluate(() => ((window as any).__vt = []));
+    await page.goBack();
+    await expect(page).toHaveURL(/\/clients$/);
+    await expect(page.getByText(FIRST_CLIENT).filter({ visible: true }).first()).toBeVisible();
+    await page.waitForTimeout(600);
+    expect(await transitions(page), "a traversal on iOS started a transition of its own").toEqual(
+      [],
+    );
+  });
+});
+
 test.describe("the progress bar", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  /** Has a route progress bar been on the page at any point? */
+  /** When (performance.now()) a route progress bar first appeared, if it
+   *  did, and when the last click happened. */
   async function watchForProgress(context: BrowserContext) {
     await context.addInitScript(() => {
-      (window as any).__progressSeen = false;
+      const w = window as any;
+      w.__progressAt = null;
+      w.__clickAt = null;
+      document.addEventListener("click", () => (w.__clickAt = performance.now()), true);
       new MutationObserver(() => {
-        if (document.querySelector("[data-route-progress]")) (window as any).__progressSeen = true;
+        if (w.__progressAt === null && document.querySelector("[data-route-progress]"))
+          w.__progressAt = performance.now();
       }).observe(document, { subtree: true, childList: true });
     });
   }
-  const progressSeen = (page: Page) =>
-    page.evaluate(() => (window as any).__progressSeen as boolean);
 
   test("does not appear for a fast navigation", async ({ page, context }) => {
     await signIn(context);
     await watchForProgress(context);
     await openClients(page);
-    // Warm: the client page's code is fetched on hover/intent, and its data
-    // is a stub that answers at once.
-    await clientLink(page).hover();
+    // Warm, the way a real session is: the client page's code has been
+    // fetched once already (a cold dev server spends longer than 300ms
+    // compiling it, which is a fact about Vite, not about the app), and its
+    // data is a stub that answers at once.
+    await clientLink(page).click();
+    await expect(page.getByRole("link", { name: "← Clients" })).toBeVisible({
+      timeout: FIRST_PAINT_MS,
+    });
     await page.waitForLoadState("networkidle").catch(() => {});
-    await page.evaluate(() => ((window as any).__progressSeen = false));
+    await page.goBack();
+    await expect(clientLink(page)).toBeVisible();
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(500);
+    await page.evaluate(() => ((window as any).__progressAt = null));
 
+    // When did the client page draw, relative to the click? Recorded in the
+    // page, because a round trip to the test runner is itself tens of ms.
+    await page.evaluate(() => {
+      const w = window as any;
+      w.__renderedAt = null;
+      new MutationObserver((_, obs) => {
+        const back = [...document.querySelectorAll("a")].find((a) =>
+          a.textContent?.includes("← Clients"),
+        );
+        if (back) {
+          w.__renderedAt = performance.now();
+          obs.disconnect();
+        }
+      }).observe(document, { subtree: true, childList: true });
+    });
     await clientLink(page).click();
     await expect(page).toHaveURL(/\/clients\/[0-9a-f-]+$/);
     await page.waitForTimeout(800);
-    expect(await progressSeen(page), "a fast navigation flashed the progress bar").toBe(false);
+    const t = await page.evaluate(() => {
+      const w = window as any;
+      return { click: w.__clickAt, rendered: w.__renderedAt, progress: w.__progressAt };
+    });
+    // Whatever the machine: the bar never appears sooner than 300ms after
+    // the navigation began.
+    if (t.progress !== null) {
+      expect(
+        t.progress - t.click,
+        "the bar appeared before the 300ms threshold",
+      ).toBeGreaterThanOrEqual(280);
+    }
+    // And a navigation that finished inside 300ms never drew it at all. On a
+    // loaded dev server the page can take longer than that, in which case
+    // the bar was right to appear and this says so rather than failing.
+    if (t.rendered !== null && t.rendered - t.click < 300) {
+      expect(t.progress, "a fast navigation flashed the progress bar").toBeNull();
+    } else {
+      test.info().annotations.push({
+        type: "slow-machine",
+        description: `the client page took ${Math.round((t.rendered ?? NaN) - t.click)}ms to draw`,
+      });
+    }
   });
 
   test("appears for a slow one, and goes when the page is ready", async ({ page, context }) => {
@@ -249,7 +336,7 @@ test.describe("the progress bar", () => {
       },
     );
     await openClients(page);
-    await page.evaluate(() => ((window as any).__progressSeen = false));
+    await page.evaluate(() => ((window as any).__progressAt = null));
 
     await page.getByRole("link", { name: "Invoices", exact: true }).first().click();
     await expect(page.locator("[data-route-progress]")).toBeVisible({ timeout: 1500 });

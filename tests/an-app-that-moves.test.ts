@@ -126,10 +126,14 @@ describe("which way a page moves", () => {
     ).toBe("none");
   });
 
-  it("stands aside for a swipe-back the platform animated, and assumes one on iOS when it cannot ask", () => {
+  it("stands aside for a swipe-back the platform animated, and on iOS for every traversal", () => {
     expect(uaAlreadyAnimated(true, false)).toBe(true);
-    expect(uaAlreadyAnimated(false, true)).toBe(false);
+    expect(uaAlreadyAnimated(false, false)).toBe(false);
     expect(uaAlreadyAnimated(undefined, false)).toBe(false);
+    // iOS: WKWebView's edge swipe (HSBridgeViewController) and Safari's
+    // animate the traversal themselves, whatever the event reports.
+    expect(uaAlreadyAnimated(true, true)).toBe(true);
+    expect(uaAlreadyAnimated(false, true)).toBe(true);
     expect(uaAlreadyAnimated(undefined, true)).toBe(true);
   });
 });

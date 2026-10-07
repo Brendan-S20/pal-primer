@@ -73,17 +73,26 @@ export function navDirection(i: NavInput): NavDirection {
  * history traversal already?
  *
  * `hasUAVisualTransition` is the standard answer (PopStateEvent and the
- * Navigation API's NavigateEvent both carry it). Where it is not implemented
- * the property is `undefined`, and on iOS the only gesture that pops history
- * without a button is the edge swipe, which WKWebView animates with its own
- * snapshot. So on iOS an unknown answer is read as "yes": losing a slide on a
- * button-driven back is a small cost; a page sliding in twice is not.
+ * Navigation API's NavigateEvent both carry it), and `true` is always
+ * believed.
+ *
+ * On iOS nothing else is. The native app turns on WKWebView's edge swipe
+ * (ios/App/App/HSBridgeViewController.swift,
+ * allowsBackForwardNavigationGestures), and Safari has the same gesture; both
+ * slide a snapshot of the previous page in with the finger and then fire
+ * popstate. Whether a given WebKit reports that as `true`, `false` or not at
+ * all is not something this code can verify from here, and a wrong `false`
+ * is a page that slides in twice. So on iOS EVERY history traversal is taken
+ * as already animated: the cost is that a back made by a button that calls
+ * history.back() gets no slide on an iPhone, which is invisible next to the
+ * swipe that is the normal way back there. Elsewhere (Chrome's back button,
+ * Android's back key) an absent or `false` answer means nobody animated it,
+ * and the page slides back.
  */
 export function uaAlreadyAnimated(
   hasUAVisualTransition: boolean | undefined,
   isIOS: boolean,
 ): boolean {
   if (hasUAVisualTransition === true) return true;
-  if (hasUAVisualTransition === false) return false;
   return isIOS;
 }
