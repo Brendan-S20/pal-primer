@@ -349,8 +349,6 @@ const BASE_STUBS: Record<string, Stub> = {
       },
     ],
   },
-    ],
-  },
   listActiveAnnouncements: { rows: [] },
   getSuspensionState: null,
   // The header's auto-routing indicator asks on every page for an owner,
@@ -942,8 +940,27 @@ const BASE_STUBS: Record<string, Stub> = {
   },
 
   // ── Settings ────────────────────────────────────────────────────────────
+  // The shape getOrgBranding actually returns: the organizations row. It was
+  // `{ branding: { company_name, ... } }`, a shape nothing reads, so the
+  // client-portal branding card and the setup guide's business step were both
+  // measured with every field empty -- the narrowest version of a form whose
+  // fault would be the 46-character name in it. Found by the guided setup's
+  // walk, whose business step drew a blank name for a business that has one.
   getOrgBranding: {
-    branding: { logo_path: null, accent_hex: "#2563eb", company_name: fx.ORG_NAME },
+    id: fx.ORG_ID,
+    name: fx.ORG_NAME,
+    brand_color: "#2563eb",
+    logo_url: null,
+    contact_phone: "+1 (312) 555-0142",
+    contact_email: "office@whitfield-ramirez-yard-and-waste-services.example",
+    contact_address: "4413 North Ravenswood Manor Terrace, Chicago, IL 60611",
+    latitude: 41.9632,
+    longitude: -87.6745,
+    portal_reschedule_cutoff_hours: 24,
+    portal_allow_self_reschedule: true,
+    portal_allow_vacation_hold: true,
+    portal_allow_frequency_change: true,
+    portal_auto_apply_changes: false,
   },
   getStandardPricing: { pricing: [] },
   getSignupSettings: {

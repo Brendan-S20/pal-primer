@@ -45,9 +45,9 @@ import { APP_NAME } from "@/lib/scoop";
 // The step list and whether each is done come from getOnboardingStatus, the
 // same call the dashboard checklist draws, so the two cannot disagree.
 //
-// It replaced a spotlight tour that floated over the app and could be
-// trapped by any modal underneath it; see src/lib/setup-guide.ts. This is a
-// page, so every control is an ordinary button in the document flow, and
+// It replaced a spotlight tour that floated over the app and, on every
+// tablet and desktop width, placed its own Next button off the top of the
+// screen at step 6; see src/lib/setup-guide.ts. This is a page, so every control is an ordinary button in the document flow, and
 // the step lives in the URL: a reload, or a trip to /clients/new and back,
 // lands on the same step.
 
@@ -172,7 +172,7 @@ function SetupPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,42rem)] lg:items-start">
+      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,42rem)] lg:items-start">
         {/* The step list. Every step is reachable from here at any time, so
             no step can strand anybody: a step they cannot finish today is
             one tap away from the next. */}
@@ -207,7 +207,7 @@ function SetupPage() {
         </nav>
 
         <section
-          className="min-w-0 rounded-lg border bg-card p-4 md:p-5"
+          className="min-w-0 rounded-lg border bg-card p-4 pb-0 md:p-5 md:pb-0"
           data-setup-step={current.id}
           aria-labelledby="setup-step-title"
         >
@@ -231,8 +231,18 @@ function SetupPage() {
 
           {/* The way forward is ALWAYS here, done or not. "Skip for now" is
               not a failure path: every step can be finished later from the
-              checklist, and payouts in particular waits on an email. */}
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+              checklist, and payouts in particular waits on an email.
+
+              And always ON SCREEN: sticky to the bottom of the viewport while
+              the step is, so a step taller than a phone (the business form at
+              360x780 is) still has Back and Next under the thumb without
+              scrolling past the form to find them. Below `md` the office
+              roles this page is for have the tab bar there, so it sits on top
+              of the bar rather than behind it; that is a layout offset keyed
+              on width, which is what width is for. No z-index: it comes after
+              the form in the document, so it paints over it, and an address
+              suggestion list (which does set one) still paints over this. */}
+          <div className="sticky bottom-0 -mx-4 mt-5 flex flex-wrap items-center justify-between gap-2 rounded-b-lg border-t bg-card px-4 py-3 max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] md:-mx-5 md:px-5">
             {isFirst ? (
               <span />
             ) : (
@@ -265,13 +275,13 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
     case "business":
       return <BusinessPanel onSaved={onSaved} />;
     case "zones":
-      return <ServiceAreaPanel onSaved={onSaved} />;
+      return <ServiceAreaPanel done={step.done} onSaved={onSaved} />;
     case "clients":
       return <ClientsPanel step={step} />;
     case "staff":
       return <StaffPanel onSaved={onSaved} />;
     case "dump_site":
-      return <DumpSitePanel onSaved={onSaved} />;
+      return <DumpSitePanel done={step.done} onSaved={onSaved} />;
     case "payouts":
       return <PayoutsPanel />;
   }
@@ -404,8 +414,12 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
 
 const MILES = [5, 10, 15, 25, 40] as const;
 
-function ServiceAreaPanel({ onSaved }: { onSaved: () => void }) {
+function ServiceAreaPanel({ done, onSaved }: { done: boolean; onSaved: () => void }) {
   const qc = useQueryClient();
+  // Done means a priced area exists. Offering the create form again on a
+  // finished step reads as "you have not done this yet"; adding a second
+  // area is one tap further, for the business that has one.
+  const [adding, setAdding] = useState(false);
   const brandingFn = useServerFn(getOrgBranding);
   const brandingQ = useQuery({ queryKey: ["org-branding"], queryFn: () => brandingFn() });
   const createFn = useServerFn(createZone);
@@ -450,6 +464,23 @@ function ServiceAreaPanel({ onSaved }: { onSaved: () => void }) {
   });
 
   const priceOk = parseFloat(price) > 0;
+
+  if (done && !adding) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm">
+          New clients in your area are quoted its price. Prices and areas can be changed on{" "}
+          <Link to="/zones" className="underline">
+            Zones
+          </Link>
+          .
+        </p>
+        <Button type="button" variant="outline" onClick={() => setAdding(true)}>
+          Add another area
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <form
@@ -670,8 +701,9 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
 
 // ── 5. Where the day ends ──────────────────────────────────────────────────
 
-function DumpSitePanel({ onSaved }: { onSaved: () => void }) {
+function DumpSitePanel({ done, onSaved }: { done: boolean; onSaved: () => void }) {
   const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
   const saveFn = useServerFn(upsertFacility);
   const brandingFn = useServerFn(getOrgBranding);
   const brandingQ = useQuery({ queryKey: ["org-branding"], queryFn: () => brandingFn() });
@@ -690,6 +722,24 @@ function DumpSitePanel({ onSaved }: { onSaved: () => void }) {
   });
 
   const start = brandingQ.data?.contact_address;
+
+  if (done && !adding) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm">
+          Routes end at your dump site, or wherever a tech's own end point is. Sites are listed
+          on{" "}
+          <Link to="/waste-log" className="underline">
+            Waste log
+          </Link>
+          .
+        </p>
+        <Button type="button" variant="outline" onClick={() => setAdding(true)}>
+          Add another dump site
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <form

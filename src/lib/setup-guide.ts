@@ -12,11 +12,13 @@
 //     no address, no price, no client and nobody to run a route; the
 //     checklist on the dashboard asked for all of that separately, so the
 //     product had two first-run flows that did not know about each other.
-//   * NOT COMPLETABLE. The overlay was its own layer over a live page, and
-//     any page that put a modal up underneath it took the controls away: a
-//     Radix dialog sets `pointer-events: none` on <body>, the tour card
-//     inherited it, and Next stopped answering. See
-//     tests/the-tour-that-would-not-finish.test.ts for the measured case.
+//   * NOT COMPLETABLE. At every tablet and desktop width it stranded people
+//     at step 6 of 8. Its card was placed clear of the phone tab bar by
+//     measuring that bar, and the bar is `display: none` from `md` up: a
+//     hidden element's rect is all zeros, so "clear of the bar" meant "the
+//     height of the screen above the bottom", and the card, Next and Skip
+//     went off the top over a dimmed layer that swallowed every other click.
+//     tests/the-tour-that-would-not-finish.test.ts has the numbers.
 //
 // The replacement is not a layer. It is a page, /setup, that walks the
 // SAME six steps the dashboard checklist lists (getOnboardingStatus is the

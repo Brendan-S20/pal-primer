@@ -8,9 +8,9 @@
  * productive and isn't allowed to continue through all the way."
  *
  * The tour was a `fixed inset-0 z-[100]` overlay walking eight menu entries.
- * Its controls could be taken away by the page underneath it (see
- * tests/the-tour-that-would-not-finish.test.ts for the measured cause), and
- * finishing it set nothing up. It is gone. The guided setup is a page,
+ * At 768 and 1280 it put its own card, Next and Skip included, above the top
+ * of the screen at step 6 of 8 (tests/the-tour-that-would-not-finish.test.ts
+ * has the cause), and finishing it set nothing up. It is gone. The guided setup is a page,
  * /setup, walking the same six steps as the dashboard checklist, each done in
  * place; off that page a banner in the flow takes the owner back.
  *
@@ -95,28 +95,42 @@ async function expectStepIsUsable(page: Page, width: number, height: number, id:
   const forward = page.locator('[data-setup-action="next"], [data-setup-action="skip"], [data-setup-action="done"]');
   await expect(forward, `step ${id} has exactly one way forward`).toHaveCount(1);
 
-  for (const control of [
-    forward,
-    page.locator('[data-setup-action="back"]'),
-    page.locator('[data-setup-action="later"]'),
-  ]) {
+  // From the top of the page, as the step arrives: Back and the way forward
+  // must already be on screen, WITHOUT scrolling. The footer is sticky for
+  // exactly this; a step taller than a phone does not get to hide them.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(150);
+  for (const [name, control] of [
+    ["the way forward", forward],
+    ["Back", page.locator('[data-setup-action="back"]')],
+    ["Finish later", page.locator('[data-setup-action="later"]')],
+  ] as const) {
     if ((await control.count()) === 0) continue;
-    await control.scrollIntoViewIfNeeded();
     const box = await control.boundingBox();
-    expect(box, `step ${id}: a control has no box`).not.toBeNull();
+    expect(box, `step ${id}: ${name} has no box`).not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width, `step ${id}: a control runs off the right at ${width}px`).toBeLessThanOrEqual(width);
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height, `step ${id}: a control is below the screen`).toBeLessThanOrEqual(height);
-    expect(box!.height, `step ${id}: a control is ${box!.height}px tall on touch`).toBeGreaterThanOrEqual(44);
-    // Hit-testable: nothing is drawn over it. This is the exact failure of
-    // the tour it replaced, whose Next button was on screen and dead.
-    const hit = await control.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return !!top && (top === el || el.contains(top));
-    });
-    expect(hit, `step ${id}: something covers a control at ${width}px`).toBe(true);
+    expect(box!.x + box!.width, `step ${id}: ${name} runs off the right at ${width}px`).toBeLessThanOrEqual(width);
+    expect(box!.y, `step ${id}: ${name} is above the screen`).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height, `step ${id}: ${name} is below the screen at ${width}x${height}`).toBeLessThanOrEqual(height);
+    expect(box!.height, `step ${id}: ${name} is ${box!.height}px tall on touch`).toBeGreaterThanOrEqual(44);
+    // On screen (above) AND hit-testable: nothing is drawn over it. The tour
+    // this replaced failed the first half at 768 and 1280, with its Next
+    // button 73px above the top of the viewport under a dimmed layer.
+    //
+    // Polled, because a step change is a page transition (styles.css, PAGE
+    // TRANSITIONS) and while one runs the whole viewport is the transition's
+    // snapshot: elementFromPoint answers <html> for every point on the page.
+    await expect
+      .poll(
+        () =>
+          control.evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return !!top && (top === el || el.contains(top));
+          }),
+        { message: `step ${id}: something covers ${name} at ${width}px`, timeout: 3000 },
+      )
+      .toBe(true);
   }
 
   const { scrollW, innerW } = await measurePageOverflow(page);

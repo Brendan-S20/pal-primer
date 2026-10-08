@@ -20,9 +20,10 @@ import {
  *
  * One line in the page flow, under the header, where the trial notice sits:
  * never an overlay. The spotlight tour this replaces was a `fixed inset-0`
- * layer over the live app, and anything underneath it that opened a modal
- * took its Next button away. A banner in the flow cannot cover anything and
- * cannot be covered.
+ * layer over the live app with a card positioned by measuring other chrome,
+ * and from `md` up it measured a hidden tab bar and put its own Next button
+ * above the screen. A banner in the flow has no position to get wrong: it
+ * cannot cover anything and cannot be covered.
  *
  * It is what makes the guide survive leaving it. The clients step sends the
  * owner to /clients/new on purpose, because that form is the right tool; when

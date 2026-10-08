@@ -54,6 +54,11 @@ export async function signIn(page: Page, who = OWNER) {
   // tour subtree intercepts pointer events"). The device record is the
   // tour's own first check and needs no network, so write it on every page
   // load for whoever the stored session says is signed in.
+  //
+  // 2026-10-08: the tour is gone. The guided setup that replaced it reads
+  // the same two records, and draws a banner IN the page flow rather than an
+  // overlay, so nothing intercepts a click any more; the stamp still keeps
+  // that banner from moving the page under a spec.
   await page.addInitScript(() => {
     try {
       for (let i = 0; i < localStorage.length; i++) {
