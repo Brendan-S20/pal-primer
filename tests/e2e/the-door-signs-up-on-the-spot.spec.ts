@@ -110,14 +110,28 @@ test("with online signup on, the sheet opens the signup flow prefilled from the 
   // Turn the org's public signup on for this test only. portal_slug rather
   // than slug, because getCanvassSignupTarget mirrors the lookup RPC's
   // preference order and this pins that they agree.
+  //
+  // And a connected Stripe account that can take a charge. Since the lead
+  // form and the signup became one form (2026-10-08), the card is offered
+  // only where it can actually be taken: getPublicSignupForm checks the
+  // account first, so a business without one gets a quote request on the
+  // public page and, here, a sheet that says so. Nothing in this test
+  // reaches Stripe; the id only has to exist and be marked charge-ready.
   const { data: before } = await db
     .from("organizations")
-    .select("portal_slug, public_signup_enabled")
+    .select(
+      "portal_slug, public_signup_enabled, stripe_connect_account_id, stripe_connect_charges_enabled",
+    )
     .eq("id", orgId)
     .single();
   const { error: onErr } = await db
     .from("organizations")
-    .update({ portal_slug: "e2e-demo-yard", public_signup_enabled: true })
+    .update({
+      portal_slug: "e2e-demo-yard",
+      public_signup_enabled: true,
+      stripe_connect_account_id: "acct_e2e_door_signup",
+      stripe_connect_charges_enabled: true,
+    } as any)
     .eq("id", orgId);
   if (onErr) throw new Error(`enabling signup: ${onErr.message}`);
 
@@ -147,7 +161,9 @@ test("with online signup on, the sheet opens the signup flow prefilled from the 
       .update({
         portal_slug: before?.portal_slug ?? null,
         public_signup_enabled: before?.public_signup_enabled ?? false,
-      })
+        stripe_connect_account_id: (before as any)?.stripe_connect_account_id ?? null,
+        stripe_connect_charges_enabled: (before as any)?.stripe_connect_charges_enabled ?? false,
+      } as any)
       .eq("id", orgId);
     await db.from("neighbor_leads").delete().eq("organization_id", orgId);
   }

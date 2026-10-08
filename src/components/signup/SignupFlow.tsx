@@ -320,7 +320,10 @@ export function SignupFlow({
         )}
         <div className="space-y-1.5">
           <Label htmlFor="frequency">Frequency</Label>
-          <Select value={form.frequency} onValueChange={(v) => setFormField({ ...form, frequency: v })}>
+          <Select
+            value={form.frequency}
+            onValueChange={(v) => setFormField({ ...form, frequency: v })}
+          >
             <SelectTrigger id="frequency">
               <SelectValue />
             </SelectTrigger>

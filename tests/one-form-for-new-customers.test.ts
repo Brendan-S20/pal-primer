@@ -40,7 +40,13 @@ const codeOnly = (src: string) =>
     .split("\n")
     .filter((l) => {
       const t = l.trim();
-      return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || t.startsWith("--") || t.startsWith("{/*"));
+      return !(
+        t.startsWith("//") ||
+        t.startsWith("*") ||
+        t.startsWith("/*") ||
+        t.startsWith("--") ||
+        t.startsWith("{/*")
+      );
     })
     .join("\n");
 
@@ -49,24 +55,44 @@ const QUOTE = { zone_name: "North", recurring_price_cents: 2500 };
 describe("which way the form can go", () => {
   it("a priced zone offers both: start service, or just send a quote", () => {
     const b = decideFormBranch({ instantStart: true, answer: { available: true, quote: QUOTE } });
-    expect(b).toEqual({ canStartService: true, canRequestQuote: true, quote: QUOTE, reason: "priced" });
+    expect(b).toEqual({
+      canStartService: true,
+      canRequestQuote: true,
+      quote: QUOTE,
+      reason: "priced",
+    });
   });
 
   it("a ZIP outside every zone is a quote request, not a dead end", () => {
     const b = decideFormBranch({ instantStart: true, answer: { available: false } });
-    expect(b).toEqual({ canStartService: false, canRequestQuote: true, quote: null, reason: "no-zone" });
+    expect(b).toEqual({
+      canStartService: false,
+      canRequestQuote: true,
+      quote: null,
+      reason: "no-zone",
+    });
   });
 
   it("instant start switched off is a quote request, even where a price exists", () => {
     // The page never asks for a price when the switch is off (public_quote
     // refuses anyway), but even handed one, the decision does not offer a card.
     const b = decideFormBranch({ instantStart: false, answer: { available: true, quote: QUOTE } });
-    expect(b).toEqual({ canStartService: false, canRequestQuote: true, quote: null, reason: "instant-off" });
+    expect(b).toEqual({
+      canStartService: false,
+      canRequestQuote: true,
+      quote: null,
+      reason: "instant-off",
+    });
   });
 
   it("before the visitor has asked for a price, a quote request is still there", () => {
     const b = decideFormBranch({ instantStart: true, answer: null });
-    expect(b).toEqual({ canStartService: false, canRequestQuote: true, quote: null, reason: "not-priced-yet" });
+    expect(b).toEqual({
+      canStartService: false,
+      canRequestQuote: true,
+      quote: null,
+      reason: "not-priced-yet",
+    });
   });
 
   it("walk mode turns the quote request off and keeps everything else", () => {
@@ -81,7 +107,12 @@ describe("which way the form can go", () => {
 
   it("with a price on offer the ZIP and the dogs are always asked; without, the owner's toggles stand", () => {
     const off = { phone: false, location: false, dogCount: false, message: false };
-    expect(askedFields(off, true)).toEqual({ phone: false, location: true, dogCount: true, message: false });
+    expect(askedFields(off, true)).toEqual({
+      phone: false,
+      location: true,
+      dogCount: true,
+      message: false,
+    });
     expect(askedFields(off, false)).toEqual(off);
   });
 });
@@ -139,7 +170,17 @@ describe("the quote request is the lead form's request", () => {
 
   it("the endpoint's schema accepts every key the form sends", () => {
     const api = read("src/routes/api/public/leads.ts");
-    for (const k of ["slug", "name", "email", "phone", "location", "dog_count", "frequency", "message", "source"]) {
+    for (const k of [
+      "slug",
+      "name",
+      "email",
+      "phone",
+      "location",
+      "dog_count",
+      "frequency",
+      "message",
+      "source",
+    ]) {
       expect(api, k).toMatch(new RegExp(`\\b${k}: z\\.`));
     }
   });
@@ -171,7 +212,10 @@ describe("consent: exactly what was captured before", () => {
 
   it("nothing it writes carries a consent field", () => {
     const api = codeOnly(read("src/routes/api/public/leads.ts"));
-    const insert = api.slice(api.indexOf('.from("leads")'), api.indexOf("if (error)", api.indexOf('.from("leads")')));
+    const insert = api.slice(
+      api.indexOf('.from("leads")'),
+      api.indexOf("if (error)", api.indexOf('.from("leads")')),
+    );
     expect(insert).not.toMatch(/consent/i);
 
     const fns = codeOnly(read("src/lib/signup.functions.ts"));
@@ -200,7 +244,8 @@ describe("consent: exactly what was captured before", () => {
 
 describe("the retired address forwards, query string and all", () => {
   it("keeps every parameter, in order, exactly as it arrived", () => {
-    const qs = "?zone=north&ref=door-42&utm_source=flyer&utm_campaign=spring%20promo&embed=1&walk=1";
+    const qs =
+      "?zone=north&ref=door-42&utm_source=flyer&utm_campaign=spring%20promo&embed=1&walk=1";
     expect(retiredLeadFormHref("acme-yard", qs)).toBe(`/signup/acme-yard${qs}`);
   });
 
@@ -219,8 +264,11 @@ describe("the retired address forwards, query string and all", () => {
     expect(code).toMatch(/beforeLoad: \(\{ params, location \}\)/);
     expect(code).toMatch(/retiredLeadFormHref\(params\.slug, location\.searchStr\)/);
     expect(code).toMatch(/statusCode: 302/);
-    expect(code).not.toMatch(/component:/);
     expect(code).not.toMatch(/ssr: false/);
+    // If it is ever rendered rather than redirected, it says where it is
+    // going and goes there, query string and all (RedirectFallback keeps
+    // the search params).
+    expect(code).toMatch(/<RedirectFallback to=\{`\/signup\/\$\{encodeURIComponent\(slug\)\}`\}/);
   });
 
   it("and the page it lands on passes every parameter through", () => {
@@ -258,7 +306,9 @@ describe("one page always loads, and the switch decides only the card", () => {
 
   it("the old two lookups are gone, not left beside the new one", () => {
     expect(codeOnly(fns)).not.toMatch(/export const getSignupOrg\b/);
-    expect(codeOnly(read("src/lib/leads.functions.ts"))).not.toMatch(/export const getPublicLeadForm\b/);
+    expect(codeOnly(read("src/lib/leads.functions.ts"))).not.toMatch(
+      /export const getPublicLeadForm\b/,
+    );
   });
 
   it("the owner's words win, and the defaults follow the mode", () => {
@@ -306,7 +356,9 @@ describe("every signup lands in Leads too", () => {
 
   it("the migration that links them replays into an empty database", () => {
     const sql = read("supabase/migrations/20261008120000_a-signup-is-a-lead-too.sql");
-    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public\.leads\(id\) ON DELETE SET NULL/);
+    expect(sql).toMatch(
+      /ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public\.leads\(id\) ON DELETE SET NULL/,
+    );
     expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS signup_requests_lead_id_idx/);
     expect(codeOnly(sql)).not.toMatch(/ENABLE ROW LEVEL SECURITY/);
   });
@@ -330,7 +382,9 @@ describe("every signup lands in Leads too", () => {
 
     const page = read("src/routes/_authenticated/leads.tsx");
     expect(page).toMatch(/leadOriginLabel\(l\.source, signup\)/);
-    expect(read("src/lib/leads.functions.ts")).toMatch(/signup_requests\(status, refunded_at, created_at\)/);
+    expect(read("src/lib/leads.functions.ts")).toMatch(
+      /signup_requests\(status, refunded_at, created_at\)/,
+    );
   });
 });
 
@@ -338,7 +392,7 @@ describe("one settings page", () => {
   it("Lead form forwards to Signup & quote form", () => {
     const old = codeOnly(read("src/routes/_authenticated/settings.lead-form.tsx"));
     expect(old).toMatch(/throw redirect\(\{ to: "\/settings\/online-signup"/);
-    expect(old).not.toMatch(/component:/);
+    expect(old).toMatch(/<RedirectFallback to="\/settings\/online-signup"/);
   });
 
   it("the merged page keeps every option either page had", () => {

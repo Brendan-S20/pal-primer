@@ -94,11 +94,12 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
         console.error("signup stripe readiness lookup failed", found.id, e);
       }
       if (instantStart) {
-        const { data: canAdd, error: gateErr } = await supabaseAdmin.rpc("org_can_add_client", {
-          _org_id: found.id,
-        });
-        if (gateErr) console.error("signup entitlement check failed", found.id, gateErr);
-        else if (canAdd === false) instantStart = false;
+        const { data: mayTakeClient, error: mayErr } = await supabaseAdmin.rpc(
+          "org_can_add_client",
+          { _org_id: found.id },
+        );
+        if (mayErr) console.error("signup form entitlement lookup failed", found.id, mayErr);
+        else if (mayTakeClient === false) instantStart = false;
       }
     }
 

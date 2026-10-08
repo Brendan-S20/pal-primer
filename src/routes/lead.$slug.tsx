@@ -1,5 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { RedirectFallback } from "@/components/RedirectFallback";
 import { retiredLeadFormHref } from "@/lib/new-customer-form";
+import { customerTitle } from "@/lib/page-title";
 
 // The hosted lead form's old address. It forwards to /signup/{slug}, the one
 // public form a business has now (see lib/new-customer-form.ts for why there
@@ -19,10 +21,19 @@ import { retiredLeadFormHref } from "@/lib/new-customer-form";
 // the redirect is an HTTP response that an iframe, a crawler or a link preview
 // follows, not a page that waits for JavaScript to send it somewhere else.
 export const Route = createFileRoute("/lead/$slug")({
+  head: () => ({ meta: [{ title: customerTitle("Get a quote") }] }),
   beforeLoad: ({ params, location }) => {
     throw redirect({
       href: retiredLeadFormHref(params.slug, location.searchStr),
       statusCode: 302,
     });
   },
+  // Never reached on the happy path; see RedirectFallback for why a redirect
+  // stub still renders something. It keeps the query string (search: s => s).
+  component: LeadFormMoved,
 });
+
+function LeadFormMoved() {
+  const { slug } = Route.useParams();
+  return <RedirectFallback to={`/signup/${encodeURIComponent(slug)}`} label="the quote form" />;
+}

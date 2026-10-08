@@ -24,9 +24,7 @@
 // ── Who the page is for, and what it offers ────────────────────────────────
 
 /** The answer `getSignupQuote` gives, in the shape the decision needs. */
-export type QuoteAnswer<Q = unknown> =
-  | { available: true; quote: Q }
-  | { available: false };
+export type QuoteAnswer<Q = unknown> = { available: true; quote: Q } | { available: false };
 
 export type FormBranch<Q = unknown> = {
   /** "Start service" is on offer: card, client, property, subscription. */
@@ -127,7 +125,8 @@ export const QUOTE_REQUEST_DISCLOSURE = "We'll only use this to follow up about 
 export const FORM_DEFAULTS = {
   instant: {
     headline: "Get an instant quote",
-    intro: "Tell us about your yard and we'll price it in seconds. Start service online, or ask us for a quote.",
+    intro:
+      "Tell us about your yard and we'll price it in seconds. Start service online, or ask us for a quote.",
   },
   quoteOnly: {
     headline: "Request a quote",
@@ -202,7 +201,8 @@ export function askedFields(fields: FormFields, instantStart: boolean): FormFiel
  * re-encoded or dropped on the way through.
  */
 export function retiredLeadFormHref(slug: string, searchStr: string): string {
-  const qs = searchStr && searchStr !== "?" ? (searchStr.startsWith("?") ? searchStr : `?${searchStr}`) : "";
+  const qs =
+    searchStr && searchStr !== "?" ? (searchStr.startsWith("?") ? searchStr : `?${searchStr}`) : "";
   return `/signup/${encodeURIComponent(slug)}${qs}`;
 }
 
@@ -220,9 +220,7 @@ export function leadOriginLabel(source: string, signup: LeadSignupState): string
   const isSignup = source === LEAD_SOURCE.onlineSignup || source === LEAD_SOURCE.doorSignup;
   if (!isSignup) {
     if (source === LEAD_SOURCE.quoteRequest) return "Quote request";
-    return source
-      .replace(/[_-]+/g, " ")
-      .replace(/^\w/, (c) => c.toUpperCase());
+    return source.replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
   }
   const where = source === LEAD_SOURCE.doorSignup ? "at the door" : "online";
   if (!signup) return `Started signup ${where}, didn't pay`;

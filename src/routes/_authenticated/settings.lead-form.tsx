@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { RedirectFallback } from "@/components/RedirectFallback";
 
 // Settings → Lead form is now part of Settings → Signup & quote form, because
 // the two public forms it and Online signup configured are now one form (see
@@ -9,4 +10,7 @@ export const Route = createFileRoute("/_authenticated/settings/lead-form")({
   beforeLoad: () => {
     throw redirect({ to: "/settings/online-signup", replace: true });
   },
+  component: () => (
+    <RedirectFallback to="/settings/online-signup" label="Signup & quote form settings" />
+  ),
 });

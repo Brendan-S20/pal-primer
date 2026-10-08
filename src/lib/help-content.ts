@@ -211,8 +211,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Your signup & quote form",
     section: "Client-facing",
     body: [
-      "Your signup & quote form is one public page (and embeddable widget) for new customers. They enter their ZIP, dogs and frequency and see your price where you have priced that zone, then either start service with a card or ask you for a quote. Every signup and every quote request lands in your [Leads](/leads) list, labeled so you can tell them apart.",
-      "Choose whether customers can start service online, and customize the questions and branding, in [Signup & quote form](/settings/online-signup). With online signup off, the page takes quote requests only and shows no prices. Old lead form links keep working and open the same page.",
+      "Your signup & quote form is one public page (and embeddable widget) for new clients. They enter their ZIP, dogs and frequency and see your price where you have priced that zone, then either start service with a card or ask you for a quote. Every signup and every quote request lands in your [Leads](/leads) list, labeled so you can tell them apart.",
+      "Choose whether new clients can start service online, and customize the questions and branding, in [Signup & quote form](/settings/online-signup). With online signup off, the page takes quote requests only and shows no prices. Old lead form links keep working and open the same page.",
     ],
     steps: [
       "Open [Settings -> Signup & quote form](/settings/online-signup) and decide whether to accept signups online.",

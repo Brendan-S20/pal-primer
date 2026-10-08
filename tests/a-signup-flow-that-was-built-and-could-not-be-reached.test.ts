@@ -156,7 +156,12 @@ describe("the signup lookup resolves an address that actually exists", () => {
 });
 
 describe("the card is not charged before the tenant is allowed to take a client", () => {
-  const fns = read("src/lib/signup.functions.ts");
+  // The checkout itself. Since the forms merged, the page's lookup
+  // (getPublicSignupForm) asks org_can_add_client too, earlier in the file, to
+  // offer a quote request instead of a card that would be refused; that is a
+  // courtesy, and these assertions are about the gate that guards the money.
+  const all = read("src/lib/signup.functions.ts");
+  const fns = all.slice(all.indexOf("export const createSignupPaymentIntent"));
 
   it("the entitlement gate runs before the PaymentIntent exists", () => {
     // org_can_add_client is enforced by a trigger on `clients`, which fires in

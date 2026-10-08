@@ -109,8 +109,8 @@ function SignupAndQuoteFormSettings() {
       <div>
         <h2 className="text-lg font-semibold">Signup &amp; quote form</h2>
         <p className="text-sm text-muted-foreground">
-          One page for new customers. They price their yard, then start service with a card or
-          ask you for a quote. Every signup and every quote request lands in{" "}
+          One page for new clients. They price their yard, then start service with a card or ask you
+          for a quote. Every signup and every quote request lands in{" "}
           <Link to="/leads" className="text-primary underline">
             Leads
           </Link>
@@ -129,9 +129,9 @@ function SignupAndQuoteFormSettings() {
                   Accept signups online
                 </Label>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  On: visitors in a zone you have priced see their price and can start service
-                  with a card, or ask for a quote instead. Off: the form only takes quote
-                  requests, and shows no prices.
+                  On: visitors in a zone you have priced see their price and can start service with
+                  a card, or ask for a quote instead. Off: the form only takes quote requests, and
+                  shows no prices.
                 </p>
               </div>
               <Switch
