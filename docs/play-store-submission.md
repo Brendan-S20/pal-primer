@@ -99,10 +99,13 @@ Each step says what it unblocks. Steps 1 to 4 can happen today.
    costs days. Then `cp android/keystore.properties.example
    android/keystore.properties` and fill in the four values. Never commit it.
 
-4. **Firebase, for push.**
-   1. console.firebase.google.com > Add project (or reuse one) > HoundStack.
-   2. Add app > Android > package name `consulting.thenorth.houndstack`,
-      nickname HoundStack Android. The SHA-1 is optional (FCM does not need it).
+4. **Firebase, for push.** Steps 1-3 done 2026-10-07: project
+   `houndstack-thenorth` (number 365671572406), Android app
+   `consulting.thenorth.houndstack` registered as "HoundStack Android", FCM API
+   (V1) enabled, legacy API disabled, and `google-services.json` committed.
+   1. ~~console.firebase.google.com > Add project (or reuse one) > HoundStack.~~
+   2. ~~Add app > Android > package name `consulting.thenorth.houndstack`,
+      nickname HoundStack Android. The SHA-1 is optional (FCM does not need it).~~
    3. Download `google-services.json` and place it at
       `android/app/google-services.json`. It is not a secret (its API key is
       restricted to this package), and committing it is the normal choice so
@@ -132,7 +135,8 @@ Each step says what it unblocks. Steps 1 to 4 can happen today.
    **physical** Android phone. This is the Play analogue of TestFlight
    Internal.
 
-7. **App Links fingerprint**: Play Console > Test and release > App integrity >
+7. **App Links fingerprint**: done 2026-10-07. Both SHA-256s (Play's app signing key `C1:FA:…:19:CC` and the upload key `DF:73:…:21:F1`) are in
+   `ANDROID_CERT_SHA256_FINGERPRINTS`. What it took, for the record: Play Console > Test and release > App integrity >
    App signing > *App signing key certificate* > **SHA-256** (not the SHA-1
    beside it). Either paste it into `ANDROID_CERT_SHA256_FINGERPRINTS` in
    `src/lib/android-app-links.ts` (and update the one test that expects it

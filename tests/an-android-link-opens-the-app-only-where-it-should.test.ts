@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+  ANDROID_CERT_SHA256_FINGERPRINTS,
   ANDROID_PACKAGE_NAME,
   APP_LINK_EXACT_PATHS,
   APP_LINK_HOST,
@@ -195,20 +196,25 @@ describe("assetlinks.json refuses to publish a placeholder", () => {
     (i * 7 + 16).toString(16).toUpperCase().padStart(2, "0"),
   ).join(":");
 
-  it("serves nothing until a real SHA-256 is configured", () => {
-    expect(assetLinksBody(undefined)).toBeNull();
-    expect(assetLinksBody("")).toBeNull();
-    expect(assetLinksBody("REPLACE_WITH_PLAY_APP_SIGNING_SHA256")).toBeNull();
-    expect(assetLinksBody(Array(32).fill("00").join(":"))).toBeNull();
+  it("never publishes a placeholder, a zero value or a SHA-1", () => {
+    // Only the repo's own fingerprints come through; the junk is dropped.
+    const shipped = publishedFingerprints(undefined);
+    expect(publishedFingerprints("")).toEqual(shipped);
+    expect(publishedFingerprints("REPLACE_WITH_PLAY_APP_SIGNING_SHA256")).toEqual(shipped);
+    expect(publishedFingerprints(Array(32).fill("00").join(":"))).toEqual(shipped);
     // SHA-1 sits next to SHA-256 on the same console page, and is the wrong one.
-    expect(assetLinksBody(Array(20).fill("AB").join(":"))).toBeNull();
+    expect(publishedFingerprints(Array(20).fill("AB").join(":"))).toEqual(shipped);
   });
 
-  it("ships no fingerprint in the repo until the owner adds Play's", () => {
-    // If this fails, someone pasted one in: check it is the APP SIGNING key
-    // certificate from Play Console, not the upload key alone, then update
-    // this expectation.
-    expect(publishedFingerprints(undefined)).toEqual([]);
+  it("ships Play's app signing key, and the upload key beside it", () => {
+    // The app signing key is the one that matters: Play re-signs every
+    // install with it, so without it no link from Play's build ever verifies.
+    // The upload key alone would verify only a sideloaded build.
+    expect(publishedFingerprints(undefined)).toEqual([
+      "C1:FA:C5:F8:DA:69:E4:B6:F8:DA:E2:19:10:F8:0C:27:EA:78:6A:54:5E:B5:7D:5B:77:ED:BD:50:0B:3B:19:CC",
+      "DF:73:23:9B:DF:4A:4A:A3:3D:79:D3:33:22:E8:4C:DC:39:CD:21:76:2E:FC:42:B2:B5:90:99:0F:EC:52:21:F1",
+    ]);
+    expect(assetLinksBody(undefined)).not.toBeNull();
   });
 
   it("publishes the package and the fingerprint, in Android's shape", () => {
@@ -222,7 +228,7 @@ describe("assetlinks.json refuses to publish a placeholder", () => {
         target: {
           namespace: "android_app",
           package_name: ANDROID_PACKAGE_NAME,
-          sha256_cert_fingerprints: [real],
+          sha256_cert_fingerprints: [...ANDROID_CERT_SHA256_FINGERPRINTS, real],
         },
       },
     ]);
