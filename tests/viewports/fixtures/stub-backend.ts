@@ -70,7 +70,7 @@ function argsOf(route: Route): Record<string, any> {
   return data && typeof data === "object" ? (data as Record<string, any>) : {};
 }
 
-type Stub = unknown | ((args: Record<string, any>) => unknown);
+export type Stub = unknown | ((args: Record<string, any>) => unknown);
 
 const ok = { ok: true };
 
@@ -79,7 +79,7 @@ const ok = { ok: true };
  * calls it and a rename in `src/lib` shows up here as an unstubbed call
  * rather than as a wrong-looking page.
  */
-const BASE_STUBS: Record<string, Stub> = {
+export const BASE_STUBS: Record<string, Stub> = {
   // ── The shell. Every authenticated route waits on these. ────────────────
   getMyOrg: { organization: fx.ORGANIZATION },
   getPlatformContext: { isPlatformAdmin: true },
@@ -919,7 +919,15 @@ const BASE_STUBS: Record<string, Stub> = {
   getPaymentRefundQuote: fx.REFUND_QUOTE,
   // Fees & tips on /payments.
   getTipSettings: { tipsEnabled: true },
-  getCollectedThisMonth: { grossCents: 1_301_900, refundsCents: 63_500, netCents: 1_238_400 },
+  // CollectedSummary's counts too: without paymentCount the Invoices card
+  // drew "0 payments received" under $13,019 collected, in every sweep.
+  getCollectedThisMonth: {
+    grossCents: 1_301_900,
+    refundsCents: 63_500,
+    netCents: 1_238_400,
+    paymentCount: 37,
+    reversalCount: 2,
+  },
 
   // ── Address autocomplete (seven fields were wired to it today) ──────────
   addressSearchStatus: { enabled: true, provider: "google", configured: true },
