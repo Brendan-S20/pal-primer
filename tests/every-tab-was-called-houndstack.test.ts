@@ -155,7 +155,7 @@ describe("every route says what it is", () => {
     const missing = ROUTE_FILES.filter(
       (r) => !(r.file in NO_TITLE_NEEDED) && !/\n\s+head:\s*\(/.test(r.src),
     ).map((r) => r.file);
-    expect(missing, "these routes inherit 'HoundStack - Field Service App'").toEqual([]);
+    expect(missing, "these routes inherit the root's plain 'HoundStack'").toEqual([]);
   });
 
   it("a staff or HoundStack page builds its title with pageTitle(), not a literal", () => {
