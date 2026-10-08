@@ -5,7 +5,7 @@
 // DEFINER functions. This spec proves each of those claims against real
 // Postgres and real RLS, with real logins:
 //
-//   * the card on My Day clocks a tech in and out, and the row lands;
+//   * the time clock (in the menu since #357) clocks a tech in and out, and the row lands;
 //   * clock_in is idempotent -- a double tap, and an offline replay arriving
 //     while a shift is open, return the same shift -- and a replay keeps the
 //     tap time and says it was a replay;
@@ -81,24 +81,38 @@ test("a tech clocks in and out, and the office sees it and can fix it", async ({
           .order("clock_in")
       ).data ?? [];
 
-    // ── The card on My Day, driven as the tech. ───────────────────────────
+    // ── The time clock, driven as the tech. ───────────────────────────────
+    // Since #357 the clock lives in the menu (More on a phone, the sidebar at
+    // this config's 1280px) and opens a sheet. My Day shows an "off the
+    // clock" banner only when there is work today, and this tech has none,
+    // so the menu entry is the one way in that always exists.
     await signIn(page, { email: a.email, password: a.password });
     await page.goto("/my-day");
-    const card = page.getByRole("region", { name: "Time clock" });
-    await expect(card, "the time clock card on My Day").toBeVisible({ timeout: 30_000 });
-    await expect(card).toContainText("Off the clock");
+    const clockSheet = async () => {
+      const sheet = page.getByRole("dialog", { name: "Time clock" });
+      if (await sheet.isVisible()) return sheet;
+      const row = page.locator("[data-time-clock-row]:visible").first();
+      await expect(row, "the time clock in the menu").toBeVisible({ timeout: 30_000 });
+      await row.click();
+      await expect(sheet).toBeVisible({ timeout: 10_000 });
+      return sheet;
+    };
+    let card = await clockSheet();
+    await expect(card).toContainText("You're off the clock");
     await card.getByRole("button", { name: "Clock in" }).click();
-    await expect(card).toContainText("On the clock ·", { timeout: 20_000 });
-    await expect(card).toContainText("Since ");
+    card = await clockSheet();
+    await expect(card).toContainText("On the clock since", { timeout: 20_000 });
 
     let rows = await entriesOf(a.staffId!);
     expect(rows, "one shift, opened by the tap").toHaveLength(1);
     expect(rows[0].clock_out).toBeNull();
     expect(rows[0].clock_in_source).toBe("tech_live");
 
+    card = await clockSheet();
     await card.getByRole("button", { name: "Clock out" }).click();
     await expect(page.getByText("Clocked out", { exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(card).toContainText("Off the clock");
+    card = await clockSheet();
+    await expect(card).toContainText("You're off the clock");
     rows = await entriesOf(a.staffId!);
     expect(rows[0].clock_out, "the tap closed the shift").not.toBeNull();
     expect(rows[0].clock_out_source).toBe("tech_live");
