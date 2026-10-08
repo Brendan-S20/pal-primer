@@ -52,6 +52,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { splitAssignments } from "../scripts/playwright-with-env.mjs";
 
 const root = join(import.meta.dirname, "..");
 
@@ -189,5 +190,46 @@ describe("every viewport spec is run by something", () => {
       );
 
     expect(unswept).toEqual([]);
+  });
+
+  // ── AND A STEP THAT CANNOT START ON THE RUNNER IT IS SENT TO ────────────
+  //
+  // On 2026-10-08 the viewport job moved to the Windows runner, which runs
+  // npm scripts through cmd.exe and steps through PowerShell. Neither reads
+  // `APPLE_SIZES=1 playwright test` as an assignment: it is a command called
+  // `APPLE_SIZES=1`, and the step dies before Playwright starts -- the same
+  // way `NATIVE_BUILD=1 vite build` died in ci.yml on 2026-10-02.
+  //
+  // The rule above still finds the mode by reading `APPLE_SIZES=1` in the
+  // script, so the assignment stays visible; it is just an ARGUMENT to
+  // scripts/playwright-with-env.mjs now rather than a shell prefix. These two
+  // keep it that way: no CI script starts with an assignment, and the
+  // wrapper really does turn the assignment into the environment.
+  it("starts every script a step runs the same way under cmd, PowerShell and sh", () => {
+    const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
+    const shellOnly = stepsInCi()
+      .filter((script) => /(^|&&|;)\s*[A-Za-z_][A-Za-z0-9_]*=/.test(pkg.scripts[script] ?? ""))
+      .map(
+        (script) =>
+          `${script}: "${pkg.scripts[script]}" sets a variable with sh syntax, which cmd.exe and ` +
+          `PowerShell run as a command named after it. Use ` +
+          `\`node scripts/playwright-with-env.mjs NAME=value test ...\` instead.`,
+      );
+    expect(shellOnly).toEqual([]);
+  });
+
+  it("turns the leading NAME=value arguments into the environment, and passes the rest on", () => {
+    expect(
+      splitAssignments(["APPLE_SIZES=1", "test", "every-public-page", "every-signed-in-page"]),
+    ).toEqual({
+      env: { APPLE_SIZES: "1" },
+      args: ["test", "every-public-page", "every-signed-in-page"],
+    });
+    // Only LEADING assignments: once Playwright's own arguments start, an
+    // `=` inside one (a --grep, a --reporter) is Playwright's business.
+    expect(splitAssignments(["A=1", "B=", "test", "--grep=a=b", "C=2"])).toEqual({
+      env: { A: "1", B: "" },
+      args: ["test", "--grep=a=b", "C=2"],
+    });
   });
 });
