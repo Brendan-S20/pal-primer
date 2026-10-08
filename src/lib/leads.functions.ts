@@ -1,10 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import type { Database } from "@/integrations/supabase/types";
-import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import { LEAD_SOURCE, normalizeFormConfig } from "@/lib/new-customer-form";
+
+const FORM_SOURCES = [LEAD_SOURCE.quoteRequest, LEAD_SOURCE.onlineSignup];
 
 const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as const;
 
@@ -22,42 +22,13 @@ const leadSchema = z.object({
   source: z.string().trim().max(60).optional(),
 });
 
-function anonClient() {
-  const url = resolveSupabaseUrl();
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY!;
-  return createClient<Database>(url, key, { auth: { persistSession: false } });
-}
 
-// Finding #25: config + basic analytics for the tenant's embeddable lead form.
-
-// Default copy + field visibility for the hosted/embedded lead form. name +
-// email are always required; the rest are toggleable.
-const LEAD_FORM_DEFAULTS = {
-  brandColor: null as string | null,
-  logoUrl: null as string | null,
-  headline: "Request a quote",
-  intro: "Tell us about your yard and we'll get you a quote.",
-  confirmation: "Thanks, we got your request! We'll be in touch shortly to set up your service.",
-  fields: { phone: true, location: true, dogCount: true, message: true },
-};
-
-function normalizeLeadFormConfig(raw: any) {
-  const c = raw && typeof raw === "object" ? raw : {};
-  const f = c.fields && typeof c.fields === "object" ? c.fields : {};
-  return {
-    brandColor: typeof c.brandColor === "string" && c.brandColor ? c.brandColor : LEAD_FORM_DEFAULTS.brandColor,
-    logoUrl: typeof c.logoUrl === "string" && c.logoUrl ? c.logoUrl : LEAD_FORM_DEFAULTS.logoUrl,
-    headline: typeof c.headline === "string" && c.headline.trim() ? c.headline : LEAD_FORM_DEFAULTS.headline,
-    intro: typeof c.intro === "string" && c.intro.trim() ? c.intro : LEAD_FORM_DEFAULTS.intro,
-    confirmation: typeof c.confirmation === "string" && c.confirmation.trim() ? c.confirmation : LEAD_FORM_DEFAULTS.confirmation,
-    fields: {
-      phone: f.phone !== false,
-      location: f.location !== false,
-      dogCount: f.dogCount !== false,
-      message: f.message !== false,
-    },
-  };
-}
+// Finding #25: config + basic analytics for the tenant's public form. Since
+// 2026-10-08 that is ONE form, /signup/{slug}, which prices the yard and lets
+// the visitor start service or ask for a quote; /lead/{slug} forwards to it.
+// The config (branding, copy, which optional questions to ask) is the hosted
+// lead form's, read through normalizeFormConfig in new-customer-form.ts so the
+// public page and this settings read cannot disagree about a default.
 
 export const getLeadFormConfig = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -65,23 +36,33 @@ export const getLeadFormConfig = createServerFn({ method: "GET" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
     const [{ data: org }, totalRes, weekRes] = await Promise.all([
       (context.supabase.from("organizations") as any)
-        .select("name, portal_slug, public_signup_enabled, lead_form_config")
+        .select("name, portal_slug, slug, public_signup_enabled, lead_form_config")
         .eq("id", orgId)
         .maybeSingle(),
-      context.supabase.from("leads").select("id", { count: "exact", head: true }).eq("source", "website"),
+      // Both things the public form makes: a quote request, and a signup
+      // (which writes a lead too, see createSignupPaymentIntent). Not door
+      // signups: those come from walk mode, not from the form.
       context.supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
-        .eq("source", "website")
+        .in("source", FORM_SOURCES),
+      context.supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .in("source", FORM_SOURCES)
         .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString()),
     ]);
     return {
       orgName: org?.name ?? null,
-      slug: org?.portal_slug ?? null,
+      // The address the form answers on: portal_slug first, the signup slug
+      // as the fallback, the same order public_get_org_for_lead_form and
+      // public_quote resolve it in. portal_slug alone (as this read until the
+      // forms merged) said "no address" to a business that had one.
+      slug: org?.portal_slug ?? org?.slug ?? null,
       publicSignupEnabled: !!org?.public_signup_enabled,
       submissionsTotal: totalRes.count ?? 0,
       submissionsLast30: weekRes.count ?? 0,
-      config: normalizeLeadFormConfig(org?.lead_form_config),
+      config: normalizeFormConfig(org?.lead_form_config),
     };
   });
 
@@ -120,35 +101,16 @@ export const setLeadFormConfig = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Public (no-auth) branding + field config for the hosted lead form. */
-export const getPublicLeadForm = createServerFn({ method: "GET" })
-  .inputValidator((d) => z.object({ slug: z.string().trim().min(1).max(120) }).parse(d))
-  .handler(async ({ data }) => {
-    const supabase = anonClient();
-    const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", { _slug: data.slug });
-    const org = (orgRows as Array<{ id: string; name?: string }> | null)?.[0] ?? null;
-    if (!org) throw new Error("Unknown business");
-    // Read the (public-safe) branding config with the service role — anon can't
-    // select organizations directly under RLS.
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: cfgRow } = await (supabaseAdmin as any)
-      .from("organizations")
-      .select("name, lead_form_config")
-      .eq("id", org.id)
-      .maybeSingle();
-    return {
-      orgName: cfgRow?.name ?? org.name ?? null,
-      config: normalizeLeadFormConfig(cfgRow?.lead_form_config),
-    };
-  });
-
 export const listLeads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await requirePermission(context.supabase, context.userId, "manage_leads");
+    // With the signup a lead started, when it started one: Leads labels a
+    // row "Started service online" or "Started signup online, didn't pay"
+    // from it. signup_requests.lead_id (20261008120000) is the link.
     const { data, error } = await context.supabase
       .from("leads")
-      .select("*")
+      .select("*, signup_requests(status, refunded_at, created_at)")
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);

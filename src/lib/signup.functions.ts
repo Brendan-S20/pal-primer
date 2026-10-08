@@ -8,6 +8,7 @@ import { platformFeeCents } from "@/lib/platform-fee";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
+import { LEAD_SOURCE } from "@/lib/new-customer-form";
 
 function anon() {
   return createClient<Database>(
@@ -19,32 +20,51 @@ function anon() {
 
 const FREQS = ["weekly", "biweekly", "twice_weekly", "monthly"] as const;
 
-export const getSignupOrg = createServerFn({ method: "GET" })
-  .inputValidator((d) => z.object({ slug: z.string().min(1).max(80) }).parse(d))
+// The one public form's lookup: who the business is, how it looks, what its
+// form asks, and whether this visitor can start service on the spot.
+//
+// It resolves through `public_get_org_for_lead_form`, NOT the signup lookup,
+// and that is the point. `public_get_org_by_slug` and `public_quote` only
+// answer for a business with public_signup_enabled, which is the right gate
+// for taking a card and the wrong one for being reachable at all: an owner who
+// only wants leads must still have a page. So the page always loads (for any
+// business that has not been deleted), and `instantStart` says whether the
+// price and the card are on offer. The price itself still comes only from
+// `public_quote`, through getSignupQuote below, unchanged.
+//
+// This replaces getSignupOrg (the signup page's lookup) and getPublicLeadForm
+// (the lead page's), which asked the same question of two different RPCs.
+export const getPublicSignupForm = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ slug: z.string().trim().min(1).max(120) }).parse(d))
   .handler(async ({ data }) => {
     const sb = anon();
-    const { data: rows, error } = await sb.rpc("public_get_org_by_slug", { _slug: data.slug });
+    const { data: rows, error } = await sb.rpc("public_get_org_for_lead_form", { _slug: data.slug });
     if (error) throw new Error(error.message);
-    const org = rows?.[0];
-    if (!org) throw new Error("Signup is not available for this URL.");
+    const found = (rows as Array<{ id: string; name?: string }> | null)?.[0] ?? null;
+    if (!found) throw new Error("This page isn't available.");
 
-    // Whether to ask "when was your yard last cleaned?", and with which
-    // answers. Labels and ids only: a price depends on the zone and the dogs,
-    // so it comes back with the quote, priced by the database. Read with the
-    // service role because the anon key cannot read organizations, and only
-    // for the org the public lookup above already resolved.
+    // Read with the service role because the anon key cannot read
+    // organizations, and only for the org the public lookup above resolved.
+    // Nothing returned is private: name, branding, the form's own copy, and
+    // the labels (never the prices) of the first-cleanup answers.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: org } = await (supabaseAdmin as any)
+      .from("organizations")
+      .select(
+        "id, name, currency, logo_url, brand_color, portal_slug, slug, public_signup_enabled, lead_form_config, first_cleanup_pricing",
+      )
+      .eq("id", found.id)
+      .maybeSingle();
+
+    const { normalizeFormConfig } = await import("@/lib/new-customer-form");
+    const form = normalizeFormConfig(org?.lead_form_config);
+
     let firstCleanup: { mode: string; tiers: Array<{ id: string; label: string }> } = {
       mode: "off",
       tiers: [],
     };
     try {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { data: cfg } = await (supabaseAdmin as any)
-        .from("organizations")
-        .select("first_cleanup_pricing")
-        .eq("id", org.id)
-        .maybeSingle();
-      const pricing = parseFirstCleanupPricing(cfg?.first_cleanup_pricing);
+      const pricing = parseFirstCleanupPricing(org?.first_cleanup_pricing);
       firstCleanup = {
         mode: pricing.mode,
         tiers: pricing.tiers.map((t) => ({ id: t.id, label: t.label })),
@@ -52,9 +72,51 @@ export const getSignupOrg = createServerFn({ method: "GET" })
     } catch (e) {
       // Without it the page still quotes; the server refuses to charge a
       // tiered first cleanup nobody answered for, so this cannot under-bill.
-      console.error("signup first-cleanup settings lookup failed", org.id, e);
+      console.error("signup first-cleanup settings lookup failed", found.id, e);
     }
-    return { ...org, firstCleanup };
+
+    // Whether "Start service" is on offer. The owner's switch first; then the
+    // two things that would otherwise fail AFTER the visitor had typed
+    // everything in and pressed the button: no Stripe account that can take
+    // a charge (requireOrgStripeAccount throws at checkout), and a business
+    // whose plan cannot take a client (the gate in createSignupPaymentIntent).
+    // Either one now makes the page a quote request instead of a dead end.
+    // A check that ERRORS is not a no, for the same reason as the gate below:
+    // an outage in a lookup must not close every tenant's signup.
+    const enabled = !!org?.public_signup_enabled;
+    let instantStart = enabled;
+    if (enabled) {
+      try {
+        const { resolveOrgStripeAccount } = await import("@/lib/stripe-connect.server");
+        const acct = await resolveOrgStripeAccount(found.id);
+        if (!acct || !acct.chargesEnabled) instantStart = false;
+      } catch (e) {
+        console.error("signup stripe readiness lookup failed", found.id, e);
+      }
+      if (instantStart) {
+        const { data: canAdd, error: gateErr } = await supabaseAdmin.rpc("org_can_add_client", {
+          _org_id: found.id,
+        });
+        if (gateErr) console.error("signup entitlement check failed", found.id, gateErr);
+        else if (canAdd === false) instantStart = false;
+      }
+    }
+
+    return {
+      id: found.id as string,
+      name: ((org?.name as string | null) ?? found.name ?? null) as string | null,
+      currency: ((org?.currency as string | null) ?? "usd") as string,
+      // The form's own brand colour and logo, when the owner set them on the
+      // lead form, else the business's. Both settings existed; neither is lost.
+      logoUrl: (form.logoUrl ?? (org?.logo_url as string | null) ?? null) as string | null,
+      brandColor: (form.brandColor ?? (org?.brand_color as string | null) ?? null) as
+        | string
+        | null,
+      resolvedSlug: ((org?.portal_slug as string | null) ?? (org?.slug as string | null) ?? data.slug) as string,
+      instantStart,
+      form,
+      firstCleanup,
+    };
   });
 
 const quoteSchema = z.object({
@@ -96,6 +158,10 @@ export const signupCheckoutSchema = quoteSchema.extend({
   street: z.string().trim().min(1).max(200),
   city: z.string().trim().max(120).optional().or(z.literal("")),
   region: z.string().trim().max(80).optional().or(z.literal("")),
+  // Where the signup happened, for the label in Leads: the public page, or a
+  // tech's phone handed over in walk mode. A label only; nothing is priced,
+  // gated or trusted on it.
+  channel: z.enum(["page", "door"]).optional(),
 });
 
 /** In-app signup prepay (Payment Element): records the signup request and
@@ -168,9 +234,28 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       );
     }
 
+    // Every signup is a lead too, so the office sees it in Leads beside the
+    // quote requests: as "Started service online" once the card goes
+    // through (the webhook marks it converted), and as "Started signup
+    // online, didn't pay" if it never does, which is the person most worth a
+    // call. Best-effort: a lead that fails to write must not stop a sale.
+    const leadId = await recordSignupLead(supabaseAdmin, {
+      orgId: q.organization_id,
+      source: data.channel === "door" ? LEAD_SOURCE.doorSignup : LEAD_SOURCE.onlineSignup,
+      name: data.name,
+      email: data.email,
+      phone: data.phone || null,
+      location: [data.street, data.city, [data.region, data.postal_code.trim()].filter(Boolean).join(" ")]
+        .filter(Boolean)
+        .join(", "),
+      dogCount: data.dog_count,
+      frequency: data.frequency,
+    });
+
     const { data: sr, error: srErr } = await supabaseAdmin
       .from("signup_requests")
       .insert({
+        lead_id: leadId,
         organization_id: q.organization_id,
         zone_id: q.zone_id,
         name: data.name,
@@ -234,6 +319,69 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       signupRequestId: sr.id as string,
     };
   });
+
+/**
+ * The lead a signup writes, or the one it already wrote. Pressing "Start
+ * service", editing a field and pressing it again mints a fresh signup
+ * request each time (the price has to be re-asked), and each one writing a
+ * lead would put the same household in Leads three times. So a signup lead
+ * from the same email at the same business in the last day, not yet worked,
+ * is reused and brought up to date instead.
+ *
+ * Service role, because the visitor has no session; the row is a `new` lead
+ * with no contacted or converted stamp, which is exactly what the public
+ * INSERT policy allows an anonymous form to write anyway.
+ */
+async function recordSignupLead(
+  admin: any,
+  lead: {
+    orgId: string;
+    source: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    location: string;
+    dogCount: number;
+    frequency: string;
+  },
+): Promise<string | null> {
+  try {
+    const email = lead.email.trim().toLowerCase();
+    const fields = {
+      name: lead.name,
+      phone: lead.phone,
+      location: lead.location || null,
+      dog_count: lead.dogCount,
+      frequency: lead.frequency,
+    };
+    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const { data: existing } = await admin
+      .from("leads")
+      .select("id")
+      .eq("organization_id", lead.orgId)
+      .eq("email", email)
+      .eq("source", lead.source)
+      .eq("status", "new")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) {
+      await admin.from("leads").update(fields).eq("id", existing.id);
+      return existing.id as string;
+    }
+    const { data: created, error } = await admin
+      .from("leads")
+      .insert({ organization_id: lead.orgId, email, source: lead.source, status: "new", ...fields })
+      .select("id")
+      .single();
+    if (error) throw error;
+    return (created?.id as string) ?? null;
+  } catch (e) {
+    console.error("signup lead write failed", lead.orgId, e);
+    return null;
+  }
+}
 
 export const getSignupStatus = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
@@ -299,7 +447,19 @@ export const getSignupSettings = createServerFn({ method: "GET" })
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
+    // Whether a card can be taken, so the settings page can say why the form
+    // is still a quote request with the switch on. Null when the lookup
+    // failed: that is "unknown", not "no".
+    let stripeReady: boolean | null = null;
+    try {
+      const { resolveOrgStripeAccount } = await import("@/lib/stripe-connect.server");
+      const acct = await resolveOrgStripeAccount(orgId);
+      stripeReady = !!acct?.chargesEnabled;
+    } catch (e) {
+      console.error("signup settings stripe lookup failed", orgId, e);
+    }
     return {
+      stripeReady,
       orgName: (org?.name as string | null) ?? null,
       signupSlug: (org?.slug as string | null) ?? null,
       portalSlug: (org?.portal_slug as string | null) ?? null,

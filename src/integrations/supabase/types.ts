@@ -5401,6 +5401,7 @@ export type Database = {
           frequency: string
           id: string
           initial_cleanup_cents: number
+          lead_id: string | null
           name: string
           organization_id: string
           phone: string | null
@@ -5430,6 +5431,7 @@ export type Database = {
           frequency: string
           id?: string
           initial_cleanup_cents: number
+          lead_id?: string | null
           name: string
           organization_id: string
           phone?: string | null
@@ -5459,6 +5461,7 @@ export type Database = {
           frequency?: string
           id?: string
           initial_cleanup_cents?: number
+          lead_id?: string | null
           name?: string
           organization_id?: string
           phone?: string | null
@@ -5477,6 +5480,13 @@ export type Database = {
           zone_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "signup_requests_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "signup_requests_organization_id_fkey"
             columns: ["organization_id"]
