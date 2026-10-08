@@ -249,10 +249,12 @@ export const SURFACES: Surface[] = [
   {
     // The long-value case CLAUDE.md names by hand: a signup URL with nowhere
     // to break, in a box that may or may not let you read the end of it.
+    // Since 2026-10-08 this is also the lead form's settings (the two public
+    // forms became one), so the embed code and the customizer are on it too.
     id: "/settings/online-signup",
     path: "/settings/online-signup",
-    proof: (p) => p.getByRole("heading", { name: "Online signup" }).first(),
-    proofLabel: 'the "Online signup" heading',
+    proof: (p) => p.getByRole("heading", { name: "Signup & quote form" }).first(),
+    proofLabel: 'the "Signup & quote form" heading',
     expectsData: "whitfield-ramirez-yard-and-waste-services",
   },
   {

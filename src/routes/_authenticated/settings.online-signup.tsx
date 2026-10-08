@@ -362,14 +362,12 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // A <div>, not a <form>: inside a form, Radix's Checkbox also renders a
+  // hidden native checkbox for form submission, and that 16px input is what a
+  // touch-target sweep (correctly, for a real one) measures. Nothing here
+  // needs native submission; the button saves.
   return (
-    <form
-      className="space-y-4 rounded-lg border bg-card p-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        save.mutate();
-      }}
-    >
+    <div className="space-y-4 rounded-lg border bg-card p-4">
       <h2 className="text-sm font-medium">Customize the form</h2>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -472,9 +470,9 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
         </div>
       </div>
 
-      <Button type="submit" disabled={save.isPending}>
+      <Button type="button" disabled={save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? "Saving…" : "Save form"}
       </Button>
-    </form>
+    </div>
   );
 }
