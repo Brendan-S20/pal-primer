@@ -131,6 +131,13 @@ export const PET_WASTE_MODULES: Record<PetWasteModule, string> = {
   reclean: "The re-clean guarantee setting, and the portal's Request a re-clean button",
 };
 
+/** The pages that ARE pet-waste modules. Any signpost to one of these -- a
+ *  sidebar or More entry, a settings tab, a command-palette row -- carries
+ *  `petWasteOnly: true`, and tests/a-dog-walker-should-not-have-to-learn-
+ *  about-dump-sites.test.ts finds the one that does not. The pages stay
+ *  routable: a link someone saved still opens. */
+export const PET_WASTE_ROUTES = ["/waste-log", "/dna", "/settings/deep-clean"] as const;
+
 /** One question for every module above. Kept as a function of the module so
  *  a module that later needs a different rule (grooming wants the yard step
  *  for mobile vans' parking, say) changes here and nowhere else. */
