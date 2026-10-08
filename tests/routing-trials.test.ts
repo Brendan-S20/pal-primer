@@ -20,7 +20,20 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 type Admin = { from: (table: string) => unknown; rpc: (...a: unknown[]) => unknown };
-const h = vi.hoisted(() => ({ admin: null as unknown as Admin }));
+const h = vi.hoisted(() => {
+  // The solver stops on whichever comes first: its round budget or a wall-clock
+  // limit (2.5 s in production). The quality assertions below are about the
+  // ALGORITHM, so they must not depend on how loaded the machine is: on the CI
+  // Mac at a load average near 300, the clock ran out mid-balance and the
+  // Phoenix day came out 27.4 against a 27.3 ceiling, with no code changed
+  // (four red runs on 2026-10-07/08). Unlimited time leaves only the seeded
+  // round and patience budgets, so every machine runs the same search and gets
+  // the same answer. The report (`npm run trials:routing`) keeps production's
+  // limit, and solve time is still printed, never asserted. An explicit
+  // ROUTING_TRIALS_SOLVER_MS still wins, for measuring the production budget.
+  process.env.ROUTING_TRIALS_SOLVER_MS ??= "Infinity";
+  return { admin: null as unknown as Admin };
+});
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: {
     from: (table: string) => h.admin.from(table),
