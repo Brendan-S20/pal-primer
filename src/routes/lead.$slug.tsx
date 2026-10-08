@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createIsomorphicFn } from "@tanstack/react-start";
 import { RedirectFallback } from "@/components/RedirectFallback";
 import { retiredLeadFormHref } from "@/lib/new-customer-form";
 import { customerTitle } from "@/lib/page-title";
@@ -20,11 +21,31 @@ import { customerTitle } from "@/lib/page-title";
 // No `ssr: false` (the old form had it): beforeLoad has to run on the server so
 // the redirect is an HTTP response that an iframe, a crawler or a link preview
 // follows, not a page that waits for JavaScript to send it somewhere else.
+//
+// The query string is read from the REQUEST, not from the router. The router
+// parses a query into values and writes it back out, and on the way a ref code
+// of `12e3` becomes `12000`, `1.50` becomes `1.5` and a space changes its
+// spelling. A tenant's tracking codes are theirs, so on the server (where this
+// redirect actually happens) the string goes through untouched. Only a
+// client-side navigation to this address, which nothing in the app makes,
+// falls back to the router's copy.
+const requestQueryString = createIsomorphicFn()
+  .server(async (): Promise<string | null> => {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    try {
+      return new URL(getRequest().url).search;
+    } catch {
+      return null;
+    }
+  })
+  .client(async (): Promise<string | null> => null);
+
 export const Route = createFileRoute("/lead/$slug")({
   head: () => ({ meta: [{ title: customerTitle("Get a quote") }] }),
-  beforeLoad: ({ params, location }) => {
+  beforeLoad: async ({ params, location }) => {
+    const raw = await requestQueryString();
     throw redirect({
-      href: retiredLeadFormHref(params.slug, location.searchStr),
+      href: retiredLeadFormHref(params.slug, raw ?? location.searchStr),
       statusCode: 302,
     });
   },

@@ -526,7 +526,7 @@ test.describe("one form for a new customer: a price, or a quote request", () => 
     }) => {
       await page.setViewportSize({ width, height: 900 });
       await installStubBackend(page, { portal: true });
-      const qs = "?zone=north&ref=door-42&utm_source=flyer&utm_campaign=spring%20promo&embed=1";
+      const qs = "?zone=north&ref=12e3&utm_source=flyer&utm_campaign=spring%20promo&embed=1";
       await page.goto(`/lead/${QUOTE_ONLY_SLUG}${qs}`, { waitUntil: "domcontentloaded" });
 
       await page.waitForURL((u) => u.pathname === `/signup/${QUOTE_ONLY_SLUG}`, {

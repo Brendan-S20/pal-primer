@@ -261,8 +261,11 @@ describe("the retired address forwards, query string and all", () => {
   it("the route redirects on the server, temporarily, and renders nothing", () => {
     const route = read("src/routes/lead.$slug.tsx");
     const code = codeOnly(route);
-    expect(code).toMatch(/beforeLoad: \(\{ params, location \}\)/);
-    expect(code).toMatch(/retiredLeadFormHref\(params\.slug, location\.searchStr\)/);
+    expect(code).toMatch(/beforeLoad: async \(\{ params, location \}\)/);
+    // The raw query string from the request, not the router's re-serialised
+    // copy, which turns a ref code of 12e3 into 12000.
+    expect(code).toMatch(/new URL\(getRequest\(\)\.url\)\.search/);
+    expect(code).toMatch(/retiredLeadFormHref\(params\.slug, raw \?\? location\.searchStr\)/);
     expect(code).toMatch(/statusCode: 302/);
     expect(code).not.toMatch(/ssr: false/);
     // If it is ever rendered rather than redirected, it says where it is
