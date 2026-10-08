@@ -627,24 +627,41 @@ jobs:
     # always meant to be: on whether this job's own inputs moved.
     needs: changes
     if: needs.changes.outputs.viewports == 'true'
-    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    # ── THIS JOB RUNS ON THE WINDOWS RUNNER, ON PURPOSE ──────────────────
     #
-    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
-    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
-    # dispatches to whichever is idle. The steps below need a Unix shell and
-    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
-    # would fail on that box in a way that reads like a broken migration
-    # rather than a broken match.
+    # Until 2026-10-08 it carried the same `UNIX_RUNNER` line as the database
+    # job above, under a note saying the steps "need a Unix shell and Unix
+    # tooling -- psql, Docker, the Supabase CLI, or a bash guard". Only the
+    # last of those was ever true of THIS job: it talks to a stubbed backend
+    # (tests/viewports/fixtures/stub-backend.ts) behind a network fence, so it
+    # needs no database, no Docker and no CLI. The bash guard was its disk and
+    # swap check, and that is now `node scripts/runner-headroom.mjs`.
     #
-    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
-    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
-    # is untouched: clear both variables and everything returns to hosted
-    # runners with no edit to this file.
+    # Why it had to move rather than merely could: both jobs in this file
+    # were pinned to one Mac -- the owner's laptop, measured this month at
+    # 91-94% swap -- so a PR that touched both waited for them back to back,
+    # and this job alone took 40-45 minutes there against a 45-minute ceiling
+    # and timed out repeatedly on 2026-10-08. DESKTOP-JUC6SL1 sat idle for
+    # all of it. With this line the two jobs run side by side, one per box.
     #
-    # ci.yml's `verify` job deliberately does NOT have this line. Every step
-    # in it is `npm run` and portable, which is the point -- it is the long
-    # one, and the whole reason for a second machine.
-    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    # `[self-hosted, Windows]`, not `self-hosted`: plain `self-hosted`
+    # matches both machines and would put this back on the Mac whenever the
+    # Mac happened to be idle first -- the same trap ci.yml's windows-probe
+    # spells out. Two ways out, neither of which needs a PR:
+    #
+    #   * `VIEWPORTS_RUNNER` (unset today) overrides it. Set it to `macOS` to
+    #     send this job back to the Mac if the Windows box is ever offline --
+    #     a job addressed only to an offline runner queues for a day rather
+    #     than failing.
+    #   * Clear `CI_RUNNER` and it falls to a hosted runner like everything
+    #     else, which is the escape hatch every other job keeps.
+    #
+    # The Windows runner runs steps under PowerShell 5.1 and has no `bash` on
+    # its PATH (measured 2026-09-18, see ci.yml), so every `run:` below is a
+    # single `npm run`, `npx` or `node` command, and the one npm script that
+    # used to begin with `APPLE_SIZES=1` goes through
+    # scripts/playwright-with-env.mjs instead.
+    runs-on: ${{ vars.VIEWPORTS_RUNNER || (vars.CI_RUNNER && fromJSON('["self-hosted","Windows"]')) || 'ubuntu-latest' }}
     # 45, raised from 30 on 2026-09-14 after this job was cancelled at 30m13s
     # with the last step mid-run. Raising a ceiling is usually how a real
     # slowdown gets hidden, so here is the arithmetic it was raised against,
@@ -696,7 +713,29 @@ jobs:
     # pressure.
     timeout-minutes: 45
     steps:
+      # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT (Windows only) ──────
+      #
+      # The same two steps as ci.yml's windows-probe, for the same reason, and
+      # the long note there is the explanation: `.gitattributes` says LF, a
+      # reused workspace may hold CRLF from a checkout that predates it, and
+      # `git checkout --force` will not rewrite a file whose content already
+      # matches the index. Both jobs share this repo's workspace on that box.
+      #
+      # `if:` on the OS rather than unconditional, because the first one is
+      # `git config --global`, and on the Mac fallback that is the owner's own
+      # git config on his own laptop.
+      - name: Make git write LF
+        if: runner.os == 'Windows'
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
       - uses: actions/checkout@v4
+      - name: Renormalise a workspace checked out before .gitattributes
+        if: runner.os == 'Windows'
+        run: |
+          git rm --cached -r -q .
+          git reset --hard
+          git status --porcelain
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -715,79 +754,35 @@ jobs:
       # Same prerequisite, smaller number — see the long note in the database
       # job for what this can and cannot catch. 5 GiB rather than 15: this job
       # downloads a browser rather than thirteen container images, and writes
-      # traces and screenshots only when something has already failed. Both
-      # jobs run on one self-hosted runner, so whichever is scheduled first
-      # is the one that reports a disk the other was going to trip over.
+      # traces and screenshots only when something has already failed.
+      #
+      # ── AND ROOM IN MEMORY, WHICH IS WHAT ACTUALLY BIT US ───────────────
+      #
+      # The memory half WARNS and never fails, deliberately. On 2026-09-15 the
+      # Mac was measured at 15.4 GB of swap used of 16.4 GB -- 94% -- with a
+      # load average of 59-73 on 8 cores, and that one condition produced
+      # EIGHT failures in a single day that all looked like code: five
+      # viewport specs failing on timeouts or stability assertions, and three
+      # builds dying with SIGBUS. Every one was re-run and passed. Failing on
+      # it would block a diff on a condition the diff did not cause; what is
+      # worth having is the number IN THE LOG.
+      # docs/owner-actions-before-submission.md §12 is the write-up.
+      #
+      # This was forty lines of bash (`df`, `sysctl`, /proc/meminfo) until
+      # 2026-10-08. The Windows runner has no bash on its PATH and no `df`, so
+      # it is now the same Node script ci.yml's `verify` uses for memory --
+      # sysctl on darwin, /proc/meminfo on linux, the pagefile on win32 --
+      # with `--need-disk-gib`, which adds the disk floor as the one thing it
+      # fails on. Disk is a certainty rather than a likelihood: a browser
+      # download that runs out of disk half way reports as a layout failure
+      # on every route at every width.
       - name: Find room to work
-        run: |
-          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
-          if [ "$avail_kb" -lt 5242880 ]; then
-            echo "::error::Only $((avail_kb / 1048576)) GiB free on the runner; this job needs 5 GiB"
-            echo "  A browser download that runs out of disk half way leaves a cache that exists,"
-            echo "  fails to launch, and reports as a layout failure on every route at every width."
-            exit 1
-          fi
-          echo "$((avail_kb / 1048576)) GiB free"
+        run: node scripts/runner-headroom.mjs --need-disk-gib 5
 
-          # ── AND ROOM IN MEMORY, WHICH IS WHAT ACTUALLY BIT US ───────────
-          #
-          # This WARNS and never fails, deliberately. Read why before
-          # changing it to an error.
-          #
-          # On 2026-09-15 this runner was measured at 15.4 GB of swap used of
-          # 16.4 GB -- 94% -- with 277 million swapouts and a load average of
-          # 59-73 on 8 cores, after 17 days uptime. That one condition produced
-          # EIGHT failures in a single day that all looked like code: five
-          # viewport specs failing on timeouts or stability assertions, and
-          # three builds dying with SIGBUS. Every one was re-run and passed.
-          # One sent somebody down a wrong diagnosis about a search bar that
-          # had nothing to do with it.
-          #
-          # Vite, esbuild and rolldown read through mmap. When the kernel
-          # cannot back a memory-mapped page -- which is what an exhausted swap
-          # file means -- the access raises SIGBUS, not ENOMEM. That is why
-          # "✓ built in 9.24s" is followed by "Bus error: 10": the build
-          # finished and the teardown touched a page that no longer existed.
-          #
-          # Failing here would be the wrong trade. The condition is not caused
-          # by the diff, so blocking the diff on it adds a ninth failure mode
-          # to a machine that already manufactures eight. What is worth having
-          # is the number IN THE LOG, so the next unexplained timeout is an
-          # explained one. docs/owner-actions-before-submission.md §12 is the
-          # write-up.
-          #
-          # macOS has vm.swapusage; Linux runners have /proc/meminfo. If
-          # neither is readable this says so rather than passing quietly -- an
-          # unrun check and a clean one must not look alike.
-          # Portable: Git Bash on Windows has neither getconf nor uptime, and
-          # every probe below is allowed to come back empty rather than fail.
-          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "?")
-          load1=$(uptime 2>/dev/null | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
-          [ -n "$load1" ] || load1="?"
-          if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
-            used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
-            total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')
-            pct=$(awk -v u="$used" -v t="$total" 'BEGIN{printf "%d", (t>0? u*100/t : 0)}')
-            echo "swap ${pct}% used (${used}M of ${total}M), load ${load1} on ${cores} cores"
-            if [ "$pct" -ge 50 ]; then
-              echo "::warning::Swap is ${pct}% full on this runner (${used}M of ${total}M), load ${load1} on ${cores} cores. Timeouts, stability-assertion failures and SIGBUS in this run are more likely to be the machine than the diff -- re-run once before believing any of them. See docs/owner-actions-before-submission.md §12."
-            fi
-          elif [ -r /proc/meminfo ]; then
-            st=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
-            sf=$(awk '/SwapFree/{print $2}' /proc/meminfo)
-            if [ "${st:-0}" -gt 0 ]; then
-              pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
-              echo "swap ${pct}% used, load ${load1} on ${cores} cores"
-              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
-            else
-              echo "no swap configured; load ${load1} on ${cores} cores"
-            fi
-          else
-            echo "::warning::could not read swap usage on this runner (no vm.swapusage, no /proc/meminfo), so memory pressure was NOT checked for this run"
-          fi
-
-      # A self-hosted runner keeps its workspace between jobs, so the browser is
-      # usually already there and this is a no-op after the first run.
+      # A self-hosted runner keeps its browser cache between jobs, so this is
+      # usually a no-op after the first run. On Windows `--with-deps` runs
+      # Playwright's media-pack script, which installs something only on
+      # Windows SERVER; on a desktop edition it checks and exits.
       - name: Install the browser
         run: npx playwright install --with-deps chromium
 
@@ -850,8 +845,8 @@ jobs:
       # selected by a step that SETS it, so deleting the step below fails that
       # rule by name rather than quietly returning this job to four widths.
       #
-      # Budget: the job's arithmetic above totals 19-24 minutes against a
-      # 45-minute ceiling. This adds ~8, so 27-32. Still margin, and less of
+      # Budget (2026-09-17): the job's arithmetic above totals 19-24 minutes
+      # against a 45-minute ceiling. This adds ~8, so 27-32. Still margin, and less of
       # it — if a third mode is ever added, raise the ceiling deliberately or
       # split the job rather than discovering it at 45m01s.
       #

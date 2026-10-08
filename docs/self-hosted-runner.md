@@ -93,9 +93,9 @@ OS it is on. A diagnostic stopped every real check from running.
 runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
 ```
 
-on the jobs that need Unix tooling — `ci.yml`'s `migrations` (psql) and all three
-of `sandboxes.yml` (Docker, the Supabase CLI, a bash gate, a bash disk guard).
-`UNIX_RUNNER` is `macOS`, a label only the Mac carries.
+on the jobs that need Unix tooling — `ci.yml`'s `migrations` (psql) and two of
+`sandboxes.yml`'s three (`changes`, a bash gate; `database`, Docker and the
+Supabase CLI). `UNIX_RUNNER` is `macOS`, a label only the Mac carries.
 
 `ci.yml`'s `verify` deliberately keeps the plain `CI_RUNNER` line. Every step in
 it is `npm run` or `npx`, it is the longest job in the repo at roughly forty
@@ -106,11 +106,24 @@ Letting it use either machine is the entire reason for a second machine.
 GitHub-hosted runners with no edit to any workflow — `UNIX_RUNNER` is checked
 first but falls through the same way.
 
-**Still Mac-only, and worth revisiting:** the `viewports` job. Its only
-Unix-specific step is the disk guard; Playwright itself runs on Windows. It is
-pinned because browser installation and dev-server startup on that box are
-unverified, not because they are known to fail. It is the second-longest job, so
-it is the next candidate if the Mac stays saturated.
+**The `viewports` job runs on the Windows box** (since 2026-10-08):
+
+```yaml
+runs-on: ${{ vars.VIEWPORTS_RUNNER || (vars.CI_RUNNER && fromJSON('["self-hosted","Windows"]')) || 'ubuntu-latest' }}
+```
+
+It was pinned to the Mac beside the database job, so a PR touching both waited
+for them one after the other, and the sweep alone ran 40-45 minutes on a Mac at
+90%+ swap against its 45-minute ceiling. It needs no database or Docker — the
+backend is a stub — and its only Unix-specific pieces were the bash disk/swap
+guard (now `node scripts/runner-headroom.mjs --need-disk-gib 5`) and one npm
+script that began `APPLE_SIZES=1` (now `node scripts/playwright-with-env.mjs
+APPLE_SIZES=1 test ...`, which works under cmd, PowerShell and sh alike).
+
+`VIEWPORTS_RUNNER` is unset. If the Windows machine is offline, a job addressed
+only to it queues for up to a day rather than failing, so set
+`VIEWPORTS_RUNNER` to `macOS` to send the sweep back to the Mac until it
+returns, then delete the variable.
 
 ## What the machine needs
 
