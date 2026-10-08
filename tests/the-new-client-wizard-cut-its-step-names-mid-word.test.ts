@@ -46,11 +46,14 @@ const codeOnly = (src: string) =>
 const wizard = codeOnly(read("src/routes/_authenticated/clients.new.tsx"));
 const sketch = codeOnly(read("src/components/BoundarySketch.tsx"));
 
-/** The stepper: from the map over STEPS to the first step's card. */
+/** The stepper: from the map over the steps to the first step's card.
+ *  `steps`, not `STEPS`, since 2026-10-08: the list comes from
+ *  newClientWizardSteps (lib/service-lines), which drops the Yard step for a
+ *  business that does not run pet waste. */
 function stepper(): string {
-  const start = wizard.indexOf("{STEPS.map(");
+  const start = wizard.indexOf("{steps.map(");
   const end = wizard.indexOf("<Card", start);
-  expect(start, "the stepper's STEPS.map was not found").toBeGreaterThan(-1);
+  expect(start, "the stepper's steps.map was not found").toBeGreaterThan(-1);
   return wizard.slice(start, end);
 }
 
@@ -69,7 +72,7 @@ describe("the step bar on a phone", () => {
 
   it("names the current step on its own line, truncating rather than cut", () => {
     expect(bar).toMatch(/<p className="[^"]*\btruncate\b[^"]*\blg:hidden\b[^"]*">/);
-    expect(bar).toMatch(/Step \{step \+ 1\} of \{STEPS\.length\}: \{STEPS\[step\]\}/);
+    expect(bar).toMatch(/Step \{step \+ 1\} of \{steps\.length\}: \{current\}/);
   });
 
   it("gives each dot its name, since the name beside it is hidden", () => {

@@ -31,10 +31,17 @@ import { join } from "node:path";
 vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
-const MIGRATION = join(ROOT, "supabase/migrations/20261008120000_a-dog-walker-should-not-have-to-learn-about-dump-sites.sql");
-const PROOF = join(ROOT, "tests/sql/a-dog-walker-should-not-have-to-learn-about-dump-sites.proof.sql");
+const MIGRATION = join(
+  ROOT,
+  "supabase/migrations/20261008120000_a-dog-walker-should-not-have-to-learn-about-dump-sites.sql",
+);
+const PROOF = join(
+  ROOT,
+  "tests/sql/a-dog-walker-should-not-have-to-learn-about-dump-sites.proof.sql",
+);
 const DB_URL =
-  process.env.SERVICE_LINES_PROOF_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
+  process.env.SERVICE_LINES_PROOF_DB_URL ??
+  "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
 
 function findPsql(): string | null {
   for (const p of [

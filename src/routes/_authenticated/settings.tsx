@@ -147,7 +147,8 @@ function SettingsLayout() {
     staleTime: 60_000,
     retry: false,
   });
-  const stillInUse = (to: string) => to === "/settings/deep-clean" && deepClean.data?.enabled === true;
+  const stillInUse = (to: string) =>
+    to === "/settings/deep-clean" && deepClean.data?.enabled === true;
   // Only the heading follows the interface language. A tech reaches exactly
   // one section, their own Preferences, which is translated; the section
   // picker below is office-only and stays in English with the screens it

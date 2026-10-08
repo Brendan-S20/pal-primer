@@ -141,7 +141,10 @@ export const PET_WASTE_ROUTES = ["/waste-log", "/dna", "/settings/deep-clean"] a
 /** One question for every module above. Kept as a function of the module so
  *  a module that later needs a different rule (grooming wants the yard step
  *  for mobile vans' parking, say) changes here and nowhere else. */
-export function showsPetWasteModule(_module: PetWasteModule, lines: readonly ServiceLine[]): boolean {
+export function showsPetWasteModule(
+  _module: PetWasteModule,
+  lines: readonly ServiceLine[],
+): boolean {
   return runsPetWaste(lines);
 }
 
@@ -174,7 +177,9 @@ export type LineSeeds = {
   addOnExample: { code: string; name: string };
   /** Per-visit price multiplier by cadence. Pet waste accumulates, so a
    *  monthly visit is a bigger job than a weekly one; a walk is not. */
-  frequencyMultipliers: Readonly<Record<"weekly" | "biweekly" | "twice_weekly" | "monthly", number>>;
+  frequencyMultipliers: Readonly<
+    Record<"weekly" | "biweekly" | "twice_weekly" | "monthly", number>
+  >;
   /** The estimator's constants (estimated-time.ts). */
   estTime: EstTimeConfig;
 };

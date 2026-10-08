@@ -65,7 +65,8 @@ import { techSecondTab, techTabUrls } from "@/components/MobileTabBar";
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const MIGRATION = "supabase/migrations/20261008120000_a-dog-walker-should-not-have-to-learn-about-dump-sites.sql";
+const MIGRATION =
+  "supabase/migrations/20261008120000_a-dog-walker-should-not-have-to-learn-about-dump-sites.sql";
 
 /** Comment lines stripped, so prose describing a pattern cannot satisfy or
  *  defeat an assertion about code. */
@@ -154,7 +155,11 @@ describe("the gating table: what each set of lines shows", () => {
       expect(techSecondTab(runsPetWaste(c.lines))).toBe(c.secondTab);
       // And whatever is a tab is not ALSO in More, which is built by
       // excluding these.
-      expect(techTabUrls(runsPetWaste(c.lines))).toEqual(["/my-day", c.secondTab, "/notifications"]);
+      expect(techTabUrls(runsPetWaste(c.lines))).toEqual([
+        "/my-day",
+        c.secondTab,
+        "/notifications",
+      ]);
     });
 
     it(`${name}: the new-client wizard is ${c.wizard.join(" → ")}`, () => {
@@ -183,13 +188,25 @@ describe("the gating table: what each set of lines shows", () => {
     // that no longer exist. Each module names a piece of code that asks.
     const wiring: Record<string, [string, RegExp]> = {
       waste_log: ["src/components/MobileTabBar.tsx", /techSecondTab\(navVisibility\.petWaste\)/],
-      dump_site_step: ["src/lib/onboarding.functions.ts", /petWaste\s*\?\s*\{[\s\S]*?id: "dump_site"[\s\S]*?id: "day_end"/],
-      stations_dna: ["src/components/client-detail/stations-panel.tsx", /!petWaste && known && data && stations\.length === 0/],
+      dump_site_step: [
+        "src/lib/onboarding.functions.ts",
+        /petWaste\s*\?\s*\{[\s\S]*?id: "dump_site"[\s\S]*?id: "day_end"/,
+      ],
+      stations_dna: [
+        "src/components/client-detail/stations-panel.tsx",
+        /!petWaste && known && data && stations\.length === 0/,
+      ],
       yard_step: ["src/routes/_authenticated/clients.new.tsx", /newClientWizardSteps\(petWaste\)/],
-      yard_outline_prompt: ["src/routes/_authenticated/my-day.tsx", /promptWhenMissing=\{petWaste\}/],
+      yard_outline_prompt: [
+        "src/routes/_authenticated/my-day.tsx",
+        /promptWhenMissing=\{petWaste\}/,
+      ],
       area_pricing: ["src/components/ZoneDrawer.tsx", /showAreaPricing = petWaste \|\|/],
       first_cleanup: ["src/routes/_authenticated/zones.tsx", /showFirstCleanup =\s*petWaste \|\|/],
-      deep_clean: ["src/routes/_authenticated/settings.automation.tsx", /showSeasonal = petWaste \|\|/],
+      deep_clean: [
+        "src/routes/_authenticated/settings.automation.tsx",
+        /showSeasonal = petWaste \|\|/,
+      ],
       reclean: ["src/lib/portal.functions.ts", /reclean_window_hours: petWaste \?/],
     };
     expect(Object.keys(wiring).sort()).toEqual(Object.keys(PET_WASTE_MODULES).sort());
@@ -216,12 +233,16 @@ describe("an answer that cannot be read is pet waste", () => {
 
   it("a real answer is respected, unknown values dropped, duplicates collapsed", () => {
     expect(serviceLinesOrDefault(["dog_walking"])).toEqual(["dog_walking"]);
-    expect(serviceLinesOrDefault(["dog_walking", "lawn_care", "dog_walking"])).toEqual(["dog_walking"]);
+    expect(serviceLinesOrDefault(["dog_walking", "lawn_care", "dog_walking"])).toEqual([
+      "dog_walking",
+    ]);
   });
 
   it("the hook falls open on error and guesses pet waste while loading", () => {
     const hook = codeOnly(read("src/components/CommercialOnly.tsx"));
-    expect(hook).toMatch(/if \(q\.isLoading\) return \{ lines: \[\.\.\.DEFAULT_SERVICE_LINES\], petWaste: true, known: false \}/);
+    expect(hook).toMatch(
+      /if \(q\.isLoading\) return \{ lines: \[\.\.\.DEFAULT_SERVICE_LINES\], petWaste: true, known: false \}/,
+    );
     expect(hook).toMatch(/serviceLinesOrDefault\(q\.isError \? null : q\.data\?\.serviceLines\)/);
     expect([...DEFAULT_SERVICE_LINES]).toEqual(["pet_waste"]);
   });
@@ -271,9 +292,15 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
   });
 
   it("byte-identical to the constants the product still reads", () => {
-    expect(JSON.stringify(LINE_SEEDS.pet_waste.checklist)).toBe(JSON.stringify(SUGGESTED_CHECKLIST));
-    expect(JSON.stringify(LINE_SEEDS.pet_waste.estTime)).toBe(JSON.stringify(DEFAULT_EST_TIME_CONFIG));
-    expect(JSON.stringify(suggestedChecklistFor(["pet_waste"]))).toBe(JSON.stringify(SUGGESTED_CHECKLIST));
+    expect(JSON.stringify(LINE_SEEDS.pet_waste.checklist)).toBe(
+      JSON.stringify(SUGGESTED_CHECKLIST),
+    );
+    expect(JSON.stringify(LINE_SEEDS.pet_waste.estTime)).toBe(
+      JSON.stringify(DEFAULT_EST_TIME_CONFIG),
+    );
+    expect(JSON.stringify(suggestedChecklistFor(["pet_waste"]))).toBe(
+      JSON.stringify(SUGGESTED_CHECKLIST),
+    );
     expect(addOnExampleFor(["pet_waste"])).toEqual(TODAY.addOnExample);
     expect(addOnExampleFor(["dog_walking", "pet_waste"])).toEqual(TODAY.addOnExample);
   });
@@ -300,7 +327,9 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
     for (const line of SERVICE_LINES) expect(LINE_SEEDS[line], line).toBeDefined();
     for (const line of SERVICE_LINES.filter((l) => l !== "pet_waste")) {
       expect(LINE_SEEDS[line].estTime.sqftPerMinute, line).toBe(0);
-      expect(new Set(Object.values(LINE_SEEDS[line].frequencyMultipliers)), line).toEqual(new Set([1]));
+      expect(new Set(Object.values(LINE_SEEDS[line].frequencyMultipliers)), line).toEqual(
+        new Set([1]),
+      );
     }
   });
 
@@ -314,13 +343,18 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
   it("offers four lines, of which only pet waste is bookable yet", () => {
-    expect([...OFFERED_SERVICE_LINES]).toEqual(["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming"]);
+    expect([...OFFERED_SERVICE_LINES]).toEqual([
+      "pet_waste",
+      "dog_walking",
+      "pet_sitting",
+      "mobile_grooming",
+    ]);
     expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste"]);
   });
 
   it("refuses what the database's CHECK refuses, with a sentence", () => {
     expect(serviceLinesProblem([])).toMatch(/at least one/);
-    expect(serviceLinesProblem(["lawn_care"])).toMatch(/doesn't know/);
+    expect(serviceLinesProblem(["lawn_care"])).toMatch(/isn't a service/);
     expect(serviceLinesProblem(["pet_waste", "pet_waste"])).toMatch(/twice/);
     expect(serviceLinesProblem(["pet_waste", "dog_walking"])).toBeNull();
   });
@@ -328,7 +362,9 @@ describe("what an owner can choose", () => {
   it("the database knows the same five values", () => {
     const m = read(MIGRATION);
     for (const line of SERVICE_LINES) expect(m).toContain(`'${line}'`);
-    expect(m).toMatch(/ADD COLUMN IF NOT EXISTS service_lines text\[\] NOT NULL DEFAULT '\{pet_waste\}'::text\[\]/);
+    expect(m).toMatch(
+      /ADD COLUMN IF NOT EXISTS service_lines text\[\] NOT NULL DEFAULT '\{pet_waste\}'::text\[\]/,
+    );
     expect(m).toMatch(/CHECK \(public\.service_lines_are_valid\(service_lines\)\)/);
   });
 
@@ -340,7 +376,9 @@ describe("what an owner can choose", () => {
   });
 
   it("is not on /get-started (the Twilio-reviewed signup)", () => {
-    expect(read("src/routes/get-started.tsx")).not.toMatch(/service_lines|serviceLines|What do you run/);
+    expect(read("src/routes/get-started.tsx")).not.toMatch(
+      /service_lines|serviceLines|What do you run/,
+    );
   });
 });
 
@@ -349,7 +387,9 @@ describe("lines hide; they never refuse a write and never delete", () => {
   it("no server function asserts a line", () => {
     const libs = readdirSync(join(ROOT, "src/lib")).filter((f) => f.endsWith(".ts"));
     for (const f of libs) {
-      expect(codeOnly(read(`src/lib/${f}`)), f).not.toMatch(/requirePetWaste|assertPetWaste|assertServiceLine/);
+      expect(codeOnly(read(`src/lib/${f}`)), f).not.toMatch(
+        /requirePetWaste|assertPetWaste|assertServiceLine/,
+      );
     }
   });
 
@@ -362,19 +402,35 @@ describe("lines hide; they never refuse a write and never delete", () => {
   it("the setter goes through updateOwnOrg after manage_settings — nothing widened", () => {
     const fns = read("src/lib/org-features.functions.ts");
     const setter = fns.slice(fns.indexOf("export const setServiceLines"));
-    expect(setter).toMatch(/requirePermission\(context\.supabase, context\.userId, "manage_settings"\)/);
-    expect(setter).toMatch(/updateOwnOrg\(context\.supabase, orgId, \{ service_lines: data\.lines \}\)/);
-    expect(codeOnly(read(MIGRATION))).not.toMatch(/\bGRANT\s+(UPDATE|ALL)\b|CREATE POLICY|ALTER POLICY/i);
+    expect(setter).toMatch(
+      /requirePermission\(context\.supabase, context\.userId, "manage_settings"\)/,
+    );
+    expect(setter).toMatch(
+      /updateOwnOrg\(context\.supabase, orgId, \{ service_lines: data\.lines \}\)/,
+    );
+    expect(codeOnly(read(MIGRATION))).not.toMatch(
+      /\bGRANT\s+(UPDATE|ALL)\b|CREATE POLICY|ALTER POLICY/i,
+    );
   });
 
   it("a module still in use stays visible", () => {
     // A first cleanup, area pricing, a zone fee or a seasonal campaign that is
     // configured is charging somebody; its switch must stay findable.
-    expect(read("src/routes/_authenticated/zones.tsx")).toMatch(/firstCleanupQ\.data\.pricing\.mode !== "off"/);
-    expect(read("src/components/ZoneDrawer.tsx")).toMatch(/\(zone\?\.pricing_mode \?\? "flat"\) !== "flat"/);
-    expect(read("src/components/ZoneDrawer.tsx")).toMatch(/Number\(zone\?\.initial_cleanup_cents \?\? 0\) > 0/);
-    expect(read("src/routes/_authenticated/settings.automation.tsx")).toMatch(/!!data\.seasonal_deepclean_enabled/);
-    expect(read("src/routes/_authenticated/settings.tsx")).toMatch(/deepClean\.data\?\.enabled === true/);
+    expect(read("src/routes/_authenticated/zones.tsx")).toMatch(
+      /firstCleanupQ\.data\.pricing\.mode !== "off"/,
+    );
+    expect(read("src/components/ZoneDrawer.tsx")).toMatch(
+      /\(zone\?\.pricing_mode \?\? "flat"\) !== "flat"/,
+    );
+    expect(read("src/components/ZoneDrawer.tsx")).toMatch(
+      /Number\(zone\?\.initial_cleanup_cents \?\? 0\) > 0/,
+    );
+    expect(read("src/routes/_authenticated/settings.automation.tsx")).toMatch(
+      /!!data\.seasonal_deepclean_enabled/,
+    );
+    expect(read("src/routes/_authenticated/settings.tsx")).toMatch(
+      /deepClean\.data\?\.enabled === true/,
+    );
   });
 });
 
@@ -411,12 +467,12 @@ describe("every signpost to a pet-waste page carries petWasteOnly", () => {
     // Guard against a regex that matches nothing and passes vacuously.
     const sidebar = read("src/components/AppSidebar.tsx");
     expect([...sidebar.matchAll(ENTRY)].map((m) => m[1]).sort()).toEqual(["/dna", "/waste-log"]);
-    expect([...read("src/routes/_authenticated/settings.tsx").matchAll(ENTRY)].map((m) => m[1])).toEqual([
-      "/settings/deep-clean",
-    ]);
-    expect([...read("src/components/CommandPalette.tsx").matchAll(ENTRY)].map((m) => m[1])).toEqual([
-      "/waste-log",
-    ]);
+    expect(
+      [...read("src/routes/_authenticated/settings.tsx").matchAll(ENTRY)].map((m) => m[1]),
+    ).toEqual(["/settings/deep-clean"]);
+    expect([...read("src/components/CommandPalette.tsx").matchAll(ENTRY)].map((m) => m[1])).toEqual(
+      ["/waste-log"],
+    );
   });
 
   it("and every one of them is gated", () => {
@@ -441,7 +497,11 @@ describe("every signpost to a pet-waste page carries petWasteOnly", () => {
 
   it("and each list filters on it", () => {
     expect(read("src/components/AppSidebar.tsx")).toMatch(/\(!it\.petWasteOnly \|\| v\.petWaste\)/);
-    expect(read("src/routes/_authenticated/settings.tsx")).toMatch(/\(!t\.petWasteOnly \|\| petWaste/);
-    expect(read("src/components/CommandPalette.tsx")).toMatch(/\(!item\.petWasteOnly \|\| petWaste\)/);
+    expect(read("src/routes/_authenticated/settings.tsx")).toMatch(
+      /\(!t\.petWasteOnly \|\| petWaste/,
+    );
+    expect(read("src/components/CommandPalette.tsx")).toMatch(
+      /\(!item\.petWasteOnly \|\| petWaste\)/,
+    );
   });
 });

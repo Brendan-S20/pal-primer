@@ -859,74 +859,74 @@ export function ZoneDrawer({
             </div>
 
             {showAreaPricing && (
-            <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <Label className="text-sm font-medium">Pricing mode</Label>
-                <select
-                  value={pricingMode}
-                  onChange={(e) => mark(setPricingMode)(e.target.value as any)}
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                >
-                  <option value="flat">Flat rate (use base price above)</option>
-                  <option value="per_sqft">Per square foot of yard</option>
-                  <option value="per_acre">Per acre of yard</option>
-                </select>
+              <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-sm font-medium">Pricing mode</Label>
+                  <select
+                    value={pricingMode}
+                    onChange={(e) => mark(setPricingMode)(e.target.value as any)}
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                  >
+                    <option value="flat">Flat rate (use base price above)</option>
+                    <option value="per_sqft">Per square foot of yard</option>
+                    <option value="per_acre">Per acre of yard</option>
+                  </select>
+                </div>
+                {pricingMode !== "flat" && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      When the property has a sketched boundary, per-visit price = area x rate +
+                      per-dog add-ons, then applies frequency multiplier. Falls back to base price
+                      when no boundary is set.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {pricingMode === "per_sqft" ? (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Rate per sq ft (cents)</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={perSqft}
+                            onChange={(e) => mark(setPerSqft)(e.target.value)}
+                            placeholder="0.75"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Rate per acre ($)</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={perAcre}
+                            onChange={(e) => mark(setPerAcre)(e.target.value)}
+                            placeholder="300.00"
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        <Label className="text-xs">Minimum charge / visit ($)</Label>
+                        <Input
+                          inputMode="decimal"
+                          value={areaMin}
+                          onChange={(e) => mark(setAreaMin)(e.target.value)}
+                          placeholder="25.00"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Maximum charge / visit ($)</Label>
+                        <Input
+                          inputMode="decimal"
+                          value={areaMax}
+                          onChange={(e) => mark(setAreaMax)(e.target.value)}
+                          placeholder="60.00"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Required. The rate above times a big enough yard has no upper bound of its
+                          own. This is the most the area part of a quote can ever reach.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-              {pricingMode !== "flat" && (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    When the property has a sketched boundary, per-visit price = area x rate +
-                    per-dog add-ons, then applies frequency multiplier. Falls back to base price
-                    when no boundary is set.
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {pricingMode === "per_sqft" ? (
-                      <div className="space-y-1">
-                        <Label className="text-xs">Rate per sq ft (cents)</Label>
-                        <Input
-                          inputMode="decimal"
-                          value={perSqft}
-                          onChange={(e) => mark(setPerSqft)(e.target.value)}
-                          placeholder="0.75"
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <Label className="text-xs">Rate per acre ($)</Label>
-                        <Input
-                          inputMode="decimal"
-                          value={perAcre}
-                          onChange={(e) => mark(setPerAcre)(e.target.value)}
-                          placeholder="300.00"
-                        />
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      <Label className="text-xs">Minimum charge / visit ($)</Label>
-                      <Input
-                        inputMode="decimal"
-                        value={areaMin}
-                        onChange={(e) => mark(setAreaMin)(e.target.value)}
-                        placeholder="25.00"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Maximum charge / visit ($)</Label>
-                      <Input
-                        inputMode="decimal"
-                        value={areaMax}
-                        onChange={(e) => mark(setAreaMax)(e.target.value)}
-                        placeholder="60.00"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Required. The rate above times a big enough yard has no upper bound of its
-                        own. This is the most the area part of a quote can ever reach.
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
             )}
           </div>
         )}

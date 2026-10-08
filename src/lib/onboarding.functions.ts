@@ -4,14 +4,7 @@ import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
 
 export type OnboardingStep = {
   id:
-    | "verify_email"
-    | "zones"
-    | "staff"
-    | "dump_site"
-    | "day_end"
-    | "clients"
-    | "route"
-    | "billing";
+    "verify_email" | "zones" | "staff" | "dump_site" | "day_end" | "clients" | "route" | "billing";
   label: string;
   description: string;
   done: boolean;
@@ -170,33 +163,33 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
       },
       petWaste
         ? {
-        // ── WHY THIS IS A SETUP STEP AND NOT A SETTING ──────────────────
-        //
-        // Routes are planned from where a technician STARTS and, since
-        // 20260831150000, to where their day ENDS. When a technician has no end
-        // address the planner falls back to the organization's dump site, and
-        // when there is no dump site either it plans an open path -- every stop
-        // ordered as though the van evaporates on arrival at the last one.
-        //
-        // Measured on the demo day: an end-blind order leaves 116.3 minutes of
-        // driving to the dump still to do, against 22.3 for one that knows
-        // where the dump is. Same stops, same technicians, 45% less driving
-        // over the whole day.
-        //
-        // It is a checklist step because of what production looked like on
-        // 2026-08-31: six organizations, one disposal facility between them,
-        // and that one not geocoded. Nobody is withholding this address; they
-        // do not know the router wants it. A field sitting unused in Settings
-        // is how that stays true, so it is asked for here, where the other
-        // things a route needs are asked for.
-        id: "dump_site",
-        label: "Add your dump site",
-        description:
-          "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
-        done: (dumps.count ?? 0) > 0,
-        to: "/waste-log",
-        cta: "Add dump site",
-      }
+            // ── WHY THIS IS A SETUP STEP AND NOT A SETTING ──────────────────
+            //
+            // Routes are planned from where a technician STARTS and, since
+            // 20260831150000, to where their day ENDS. When a technician has no end
+            // address the planner falls back to the organization's dump site, and
+            // when there is no dump site either it plans an open path -- every stop
+            // ordered as though the van evaporates on arrival at the last one.
+            //
+            // Measured on the demo day: an end-blind order leaves 116.3 minutes of
+            // driving to the dump still to do, against 22.3 for one that knows
+            // where the dump is. Same stops, same technicians, 45% less driving
+            // over the whole day.
+            //
+            // It is a checklist step because of what production looked like on
+            // 2026-08-31: six organizations, one disposal facility between them,
+            // and that one not geocoded. Nobody is withholding this address; they
+            // do not know the router wants it. A field sitting unused in Settings
+            // is how that stays true, so it is asked for here, where the other
+            // things a route needs are asked for.
+            id: "dump_site",
+            label: "Add your dump site",
+            description:
+              "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
+            done: (dumps.count ?? 0) > 0,
+            to: "/waste-log",
+            cta: "Add dump site",
+          }
         : {
             // ── THE SAME QUESTION, FOR A BUSINESS WITH NO DUMP ──────────
             //

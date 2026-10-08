@@ -127,13 +127,10 @@ export function CommandPalette() {
 
   const groups = NAV.filter(
     (item) => canAccess(role, item.to) && (!item.petWasteOnly || petWaste),
-  ).reduce<Record<string, NavEntry[]>>(
-    (acc, item) => {
-      (acc[item.group] ||= []).push(item);
-      return acc;
-    },
-    {},
-  );
+  ).reduce<Record<string, NavEntry[]>>((acc, item) => {
+    (acc[item.group] ||= []).push(item);
+    return acc;
+  }, {});
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>

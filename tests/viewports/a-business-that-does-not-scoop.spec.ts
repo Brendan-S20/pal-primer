@@ -40,7 +40,14 @@ import { installStubBackend, type SweepRole } from "./fixtures/stub-backend";
 const DOG_WALKING = ["dog_walking"];
 const PET_WASTE = ["pet_waste"];
 
-async function open(page: Page, role: SweepRole, lines: string[], path: string, width: number, height: number) {
+async function open(
+  page: Page,
+  role: SweepRole,
+  lines: string[],
+  path: string,
+  width: number,
+  height: number,
+) {
   await page.setViewportSize({ width, height });
   await installSignedInSession(page);
   await installStubBackend(page, { role, serviceLines: lines });
@@ -88,7 +95,9 @@ for (const { w, h, label } of WIDTHS) {
         timeout: 30_000,
       });
       await expect.poll(() => allText(page), { timeout: 15_000 }).toContain("Step 1 of 4");
-      expect(await allText(page)).not.toMatch(/\bYard\b/);
+      // Exact: the stepper's own label, not the org's name ("…Yard and Waste
+      // Services") in the header.
+      await expect(page.getByText("Yard", { exact: true })).toHaveCount(0);
       await measure(page, w, `/clients/new (dog walking) @${w}px`);
     });
 
@@ -140,7 +149,7 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
     test(`has the Yard step @${w}px`, async ({ page }) => {
       await open(page, "owner", PET_WASTE, "/clients/new", w, h);
       await expect.poll(() => allText(page), { timeout: 30_000 }).toContain("Step 1 of 5");
-      expect(await allText(page)).toMatch(/\bYard\b/);
+      await expect(page.getByText("Yard", { exact: true }).first()).toBeAttached();
     });
 
     test(`keeps the waste log in a tech's navigation @${w}px`, async ({ page }) => {
