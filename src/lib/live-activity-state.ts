@@ -171,10 +171,13 @@ export function buildRouteActivityState(
   const allDone = total > 0 && !stops.some((v) => OPEN.has(v.status));
   const position = next ? stops.indexOf(next) + 1 : total;
   const dest = allDone ? null : next ? stopDestination(next) : null;
-  // A stop under way needs Complete; one not started needs Start. Both only
-  // OPEN the app on that stop (src/lib/live-activity-links.ts): completing can
-  // need a photo, a checklist or a cash entry, and none of it is done from a
-  // lock screen.
+  // A stop under way needs Complete; one not started needs Start. On iOS 17
+  // and later Start runs from the lock screen itself, through an App Intent
+  // and the action token (src/lib/live-activity-action.ts). Complete opens
+  // the app on the stop, straight into its photo capture when a photo is
+  // what it needs (src/lib/live-activity-links.ts): completing can need a
+  // photo, a checklist or a cash entry, and none of it is done from a lock
+  // screen.
   const nextAction: RouteActivityState["nextAction"] =
     allDone || !next ? null : next.status === "in_progress" ? "complete" : "start";
   const hasDest = !!dest && (dest.lat != null || !!dest.address);

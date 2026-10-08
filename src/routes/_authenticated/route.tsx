@@ -27,6 +27,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { AccountMenu } from "@/components/AccountMenu";
 import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
+import { TimeClockSheetHost } from "@/components/TimeClock";
+import { RouteLockScreenHost } from "@/components/my-day/RouteLockScreen";
 import { sidebarDocksFrom, useTabletTier } from "@/hooks/useTabletTier";
 import { useMyRole } from "@/hooks/useMyRole";
 import { RoleGuard } from "@/components/RoleGuard";
@@ -499,6 +501,12 @@ function AppShell() {
           </main>
         </div>
         {headerPrefs.phoneNav === "bottom" && <MobileTabBar />}
+        {/* The one time-clock sheet, opened from the More sheet and the
+            sidebar (src/components/TimeClock.tsx). */}
+        <TimeClockSheetHost />
+        {/* The route on the iPhone lock screen, from whatever page is open:
+            it comes back by itself when the app does. Nothing off iOS. */}
+        <RouteLockScreenHost />
         <CommandPalette />
         <KeyboardShortcuts />
         <OnboardingTour />

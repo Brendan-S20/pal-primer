@@ -400,5 +400,28 @@ export async function signOutAndClearDevice(): Promise<void> {
   } catch {
     /* never let push bookkeeping hold up a sign-out */
   }
+  // The route on the iPhone lock screen is the signed-out person's, and its
+  // Start button holds an action token that would go on starting their stops
+  // for the rest of the day. End it, forget the token on this phone, and
+  // revoke it on the server while the session can still say whose it is.
+  // Bounded, like the push release above; a no-op off iOS.
+  try {
+    const la = await import("@/lib/live-activity");
+    if (la.liveActivityAvailable()) {
+      const ids = await la.endRouteActivity(undefined, "immediate");
+      await la.clearRouteActionToken();
+      const { endLiveActivityToken } = await import("@/lib/live-activity.functions");
+      await Promise.race([
+        Promise.all(
+          ids.map((activityId) =>
+            endLiveActivityToken({ data: { activityId, reason: "signed_out" } }).catch(() => {}),
+          ),
+        ),
+        new Promise((r) => setTimeout(r, 3_000)),
+      ]);
+    }
+  } catch {
+    /* never let the lock screen hold up a sign-out */
+  }
   await supabase.auth.signOut();
 }
