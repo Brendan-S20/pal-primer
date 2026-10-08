@@ -29,7 +29,7 @@
  * screen and speaks their language (tests/support/tech-screens.ts), and on a
  * one-truck business the person who routes is also the person on My Day.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -137,10 +137,10 @@ export function RoutingRunIndicator() {
       )}
       <span className="hidden min-w-0 truncate sm:inline">{label}</span>
       {fraction != null && (
-        <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-muted">
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
           <span
-            className="block h-full bg-primary transition-[width] duration-500"
-            style={{ width: `${Math.round(fraction * 100)}%` }}
+            className="hs-meter block h-full bg-primary"
+            style={{ "--hs-meter": `${Math.round(fraction * 100)}%` } as CSSProperties}
           />
         </span>
       )}

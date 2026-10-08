@@ -308,8 +308,11 @@ export function MobileTabBar() {
       {!isTech && <CreateSheet open={createOpen} onOpenChange={setCreateOpen} />}
 
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        {/* data-nav-chrome: a link in here is a tab switch, so it does not
+            slide (src/lib/motion/page-transitions.ts). */}
         <SheetContent
           side="bottom"
+          data-nav-chrome=""
           className={`max-h-[80dvh] overflow-y-auto rounded-t-xl p-0 pb-[env(safe-area-inset-bottom)] ${barHiddenFrom}`}
         >
           <SheetHeader className="border-b px-4 py-3 text-start">

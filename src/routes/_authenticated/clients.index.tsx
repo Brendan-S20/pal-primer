@@ -6,7 +6,7 @@ import { RowActions } from "@/components/RowActions";
 import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   bulkTagClients,
@@ -39,6 +39,7 @@ import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { titleHead } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
+import { useMotionList } from "@/lib/motion/use-motion-list";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => titleHead("Clients"),
@@ -86,6 +87,7 @@ function exportClientsCsv(rows: any[]) {
 }
 
 function ClientsList() {
+  const motionList = useMotionList<HTMLDivElement>();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const fn = useServerFn(listClients);
@@ -102,6 +104,11 @@ function ClientsList() {
   });
 
   const [q, setQ] = useState("");
+  // The box shows every keystroke at once; the list catches up at a lower
+  // priority. Filtering re-renders every row (both the cards and the table,
+  // hundreds on a real account), and doing that inside the keystroke is what
+  // made typing in this box lag behind the thumb on a phone.
+  const deferredQ = useDeferredValue(q);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
   const [tag, setTag] = useState<string>("all");
@@ -136,7 +143,7 @@ function ClientsList() {
   }, [clients]);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = deferredQ.trim().toLowerCase();
     return clients.filter((c: any) => {
       if (type !== "all" && c.account_type !== type) return false;
       if (
@@ -157,7 +164,7 @@ function ClientsList() {
         .toLowerCase();
       return hay.includes(needle);
     });
-  }, [clients, q, status, type, tag]);
+  }, [clients, deferredQ, status, type, tag]);
 
   // Multi-select over the currently filtered rows (desktop table). Selection
   // clears whenever a filter changes so a bulk action never hits hidden rows.
@@ -507,7 +514,7 @@ function ClientsList() {
       ) : (
         <>
           {/* Mobile: stacked cards */}
-          <div className="motion-list space-y-3 sm:hidden">
+          <div ref={motionList} className="motion-list space-y-3 sm:hidden">
             {filtered.map((c: any) => (
               <Link
                 key={c.id}

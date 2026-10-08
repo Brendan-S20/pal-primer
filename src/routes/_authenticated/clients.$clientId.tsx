@@ -5,7 +5,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ClientDetailSkeleton } from "@/components/PageSkeletons";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
@@ -16,19 +16,80 @@ import { getClientBillingSummary, getClientCredit } from "@/lib/invoices.functio
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ClientHeader } from "@/components/client-detail/ClientHeader";
-import { UnitsTab } from "@/components/client-detail/UnitsTab";
 import { EditClientDrawer } from "@/components/client-detail/EditClientDrawer";
 import { SummaryTab } from "@/components/client-detail/SummaryTab";
-import { PropertiesTab } from "@/components/client-detail/PropertiesTab";
-import { ServicesTab } from "@/components/client-detail/ServicesTab";
-import { VisitsTab } from "@/components/client-detail/VisitsTab";
-import { ActivityTab } from "@/components/client-detail/ActivityTab";
-import { AddonsPanel } from "@/components/client-detail/billing-panels";
-import { BillingTab } from "@/components/client-detail/BillingTab";
-import { StationsPanel } from "@/components/client-detail/stations-panel";
-import { CommunicationTab } from "@/components/client-detail/CommunicationTab";
-import { ReviewsReferralsTab } from "@/components/client-detail/ReviewsReferralsTab";
+import { Skeleton } from "@/components/ui/skeleton";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
+
+// ── EVERY TAB BUT THE FIRST IS ITS OWN CHUNK ─────────────────────────────
+//
+// This page was one 219KB chunk, plus a 71KB date picker, all of it parsed
+// before the Summary tab could draw, though a visit to a client opens on
+// Summary and most never leave it. On a phone that is the gap between the
+// tap on a client and the client: the slide had to wait for the parse.
+//
+// Now Summary and the header are the page, and each other tab is loaded
+// when it is first opened. They are all fetched as soon as the page is idle
+// (preloadClientTabs below), so by the time a thumb reaches the tab bar the
+// code is almost always already there and the switch is instant; the
+// fallback is for the tab opened straight from a link (?tab=billing).
+const tabLoaders = {
+  properties: () => import("@/components/client-detail/PropertiesTab"),
+  units: () => import("@/components/client-detail/UnitsTab"),
+  services: () => import("@/components/client-detail/ServicesTab"),
+  billingPanels: () => import("@/components/client-detail/billing-panels"),
+  stations: () => import("@/components/client-detail/stations-panel"),
+  visits: () => import("@/components/client-detail/VisitsTab"),
+  billing: () => import("@/components/client-detail/BillingTab"),
+  communication: () => import("@/components/client-detail/CommunicationTab"),
+  reviews: () => import("@/components/client-detail/ReviewsReferralsTab"),
+  activity: () => import("@/components/client-detail/ActivityTab"),
+};
+const PropertiesTab = lazy(() =>
+  tabLoaders.properties().then((m) => ({ default: m.PropertiesTab })),
+);
+const UnitsTab = lazy(() => tabLoaders.units().then((m) => ({ default: m.UnitsTab })));
+const ServicesTab = lazy(() => tabLoaders.services().then((m) => ({ default: m.ServicesTab })));
+const AddonsPanel = lazy(() =>
+  tabLoaders.billingPanels().then((m) => ({ default: m.AddonsPanel })),
+);
+const StationsPanel = lazy(() => tabLoaders.stations().then((m) => ({ default: m.StationsPanel })));
+const VisitsTab = lazy(() => tabLoaders.visits().then((m) => ({ default: m.VisitsTab })));
+const BillingTab = lazy(() => tabLoaders.billing().then((m) => ({ default: m.BillingTab })));
+const CommunicationTab = lazy(() =>
+  tabLoaders.communication().then((m) => ({ default: m.CommunicationTab })),
+);
+const ReviewsReferralsTab = lazy(() =>
+  tabLoaders.reviews().then((m) => ({ default: m.ReviewsReferralsTab })),
+);
+const ActivityTab = lazy(() => tabLoaders.activity().then((m) => ({ default: m.ActivityTab })));
+
+/** Fetch every tab's code once the page has drawn and the thread is free. */
+function preloadClientTabs() {
+  const run = () => {
+    for (const load of Object.values(tabLoaders)) load().catch(() => {});
+  };
+  const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+  if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(run);
+  else setTimeout(run, 300);
+}
+
+/** A tab whose code is still on its way: the shape of a tab, drawn only if
+ *  the wait is real (ui/skeleton.tsx). */
+function TabLoading({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-3 pt-2" aria-hidden="true">
+          <Skeleton className="h-24 rounded-lg" />
+          <Skeleton className="h-24 rounded-lg" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 const TABS = [
   "summary",
@@ -184,10 +245,18 @@ function ClientDetail() {
 
   const todayISO = useOrgToday();
 
+  // The other tabs' code, fetched while the client is read (see tabLoaders).
+  useEffect(() => {
+    preloadClientTabs();
+  }, []);
+
   // Drawn the same way loaded or not, so the one control on the screen while
   // the client loads does not move when it arrives.
   const backLink = (
-    <Link to="/clients" className="inline-flex items-center text-sm text-muted-foreground hover:underline touch:min-h-11">
+    <Link
+      to="/clients"
+      className="inline-flex items-center text-sm text-muted-foreground hover:underline touch:min-h-11"
+    >
       ← Clients
     </Link>
   );
@@ -209,9 +278,7 @@ function ClientDetail() {
   const visits = visitsData?.visits ?? [];
   const dogs = dogsData?.dogs ?? [];
 
-  const activeSubs = subs.filter(
-    (s: any) => s.status === "active" && !isServiceEnded(s, todayISO),
-  );
+  const activeSubs = subs.filter((s: any) => s.status === "active" && !isServiceEnded(s, todayISO));
   const isCommercial = client.account_type === "commercial";
   // Units exist for HOA/commercial portfolios: gate on the client's account
   // type or any commercial property (same signal as unit_count on services).
@@ -334,77 +401,93 @@ function ClientDetail() {
         </TabsContent>
 
         <TabsContent value="properties">
-          <PropertiesTab
-            clientId={clientId}
-            client={client}
-            subscriptions={subs}
-            zones={zones}
-            visits={visits}
-            canManagePricing={canManagePricing}
-            onGoToTab={setTab}
-            editPropertyId={pendingEditPropertyId}
-            onEditPropertyConsumed={() => setPendingEditPropertyId(null)}
-          />
+          <TabLoading>
+            <PropertiesTab
+              clientId={clientId}
+              client={client}
+              subscriptions={subs}
+              zones={zones}
+              visits={visits}
+              canManagePricing={canManagePricing}
+              onGoToTab={setTab}
+              editPropertyId={pendingEditPropertyId}
+              onEditPropertyConsumed={() => setPendingEditPropertyId(null)}
+            />
+          </TabLoading>
         </TabsContent>
 
         {hasCommercialProperty && (
           <TabsContent value="units">
-            <UnitsTab
-              clientId={clientId}
-              client={client}
-              properties={activeProperties}
-              canBill={canBill}
-              onGoToTab={setTab}
-            />
+            <TabLoading>
+              <UnitsTab
+                clientId={clientId}
+                client={client}
+                properties={activeProperties}
+                canBill={canBill}
+                onGoToTab={setTab}
+              />
+            </TabLoading>
           </TabsContent>
         )}
 
         <TabsContent value="services" className="space-y-6">
-          <ServicesTab
-            clientId={clientId}
-            client={client}
-            properties={activeProperties}
-            subscriptions={subs}
-            zones={zones}
-            visits={visits}
-            dogs={dogs}
-            canBill={canBill}
-            canManagePricing={canManagePricing}
-            editServiceId={pendingEditServiceId}
-            onEditServiceConsumed={() => setPendingEditServiceId(null)}
-            newServiceFromQuoteId={pendingFromQuoteId}
-            onNewServiceFromQuoteConsumed={() => setPendingFromQuoteId(null)}
-          />
-          {canBill && <AddonsPanel clientId={clientId} />}
-          {isCommercial && <StationsPanel clientId={clientId} properties={activeProperties} />}
+          <TabLoading>
+            <ServicesTab
+              clientId={clientId}
+              client={client}
+              properties={activeProperties}
+              subscriptions={subs}
+              zones={zones}
+              visits={visits}
+              dogs={dogs}
+              canBill={canBill}
+              canManagePricing={canManagePricing}
+              editServiceId={pendingEditServiceId}
+              onEditServiceConsumed={() => setPendingEditServiceId(null)}
+              newServiceFromQuoteId={pendingFromQuoteId}
+              onNewServiceFromQuoteConsumed={() => setPendingFromQuoteId(null)}
+            />
+            {canBill && <AddonsPanel clientId={clientId} />}
+            {isCommercial && <StationsPanel clientId={clientId} properties={activeProperties} />}
+          </TabLoading>
         </TabsContent>
 
         <TabsContent value="visits">
-          <VisitsTab
-            visits={visits}
-            isLoading={visitsLoading}
-            clientId={clientId}
-            subscriptions={subs}
-            canCorrect={canBill}
-          />
+          <TabLoading>
+            <VisitsTab
+              visits={visits}
+              isLoading={visitsLoading}
+              clientId={clientId}
+              subscriptions={subs}
+              canCorrect={canBill}
+            />
+          </TabLoading>
         </TabsContent>
 
         {canBill && (
           <TabsContent value="billing">
-            <BillingTab clientId={clientId} />
+            <TabLoading>
+              <BillingTab clientId={clientId} />
+            </TabLoading>
           </TabsContent>
         )}
 
         <TabsContent value="communication">
-          <CommunicationTab client={client} />
+          <TabLoading>
+            <CommunicationTab client={client} />
+          </TabLoading>
         </TabsContent>
 
         <TabsContent value="reviews">
-          <ReviewsReferralsTab client={client} clientId={clientId} canBill={canBill} />
+          <TabLoading>
+            <ReviewsReferralsTab client={client} clientId={clientId} canBill={canBill} />
+          </TabLoading>
         </TabsContent>
 
         <TabsContent value="activity">
-          <ActivityTab clientId={clientId} />
+          <TabLoading>
+            <ActivityTab clientId={clientId} />
+          </TabLoading>
         </TabsContent>
       </Tabs>
 
