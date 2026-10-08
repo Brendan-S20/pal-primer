@@ -1,6 +1,6 @@
 # Google Play submission: HoundStack for Android
 
-Rewritten 2026-10-03 as a checklist. **Nothing has been submitted, and no Play
+Rewritten 2026-10-03 as a checklist; listing copy updated 2026-10-07. **Nothing has been submitted, and no Play
 Console app exists yet.** Every code-side piece is now done and tested; what is
 left needs the owner's accounts, a key only the owner should hold, or a phone.
 
@@ -86,7 +86,7 @@ Each step says what it unblocks. Steps 1 to 4 can happen today.
    accounts must run a 14-day closed test with at least 12 testers before
    they can publish to production. *Unblocks everything.*
 
-2. **Create the app** in Play Console: name HoundStack, default language
+2. **Create the app** in Play Console: name `HoundStack: Pet Business App`, default language
    English (United States), App, Free. Accept the declarations.
 
 3. **Generate the upload key**, once, outside the repo directory:
@@ -158,15 +158,47 @@ Each step says what it unblocks. Steps 1 to 4 can happen today.
    - Camera on a visit photo, "locate me" on the route map, offline mode
      (airplane mode, complete a stop, reconnect, it syncs).
 
-9. **Store listing** (Grow users > Store presence > Main store listing):
-   - **App name:** HoundStack
-   - **Short description** (80 max): `Routes, stops and photos for pet waste
-     crews. Works offline, syncs later.` (73 characters)
-   - **Full description:** the iOS description in
-     `docs/app-store-submission.md` §2, with "ON iPad" retitled "ON TABLETS"
-     and the last line changed to "The app is free for members of an existing
-     HoundStack organization." Do not name a website to buy plans on: the same
-     no-steering rule as the in-app copy (`BILLING_MANAGED_OUTSIDE_APP`).
+9. **Store listing** (Grow users > Store presence > Main store listing). The
+   positioning is the iOS listing's (2026-10-07): the business system for pet
+   service companies that work a route, pet-waste removal first. Routing is
+   a feature, not the product.
+   - **App name** (30 max): `HoundStack: Pet Business App` (28 characters,
+     the same as iOS).
+   - **Short description** (80 max): `Schedule, route, invoice and get paid:
+     the business app for pet service crews.` (78 characters)
+   - **Full description** (4000 max). The iOS text minus what only iOS has:
+     no Lock Screen or Dynamic Island line (there is no Android counterpart
+     to the Live Activity), and "ON iPad" becomes "ON TABLETS". Do not name
+     a website to buy plans on: the same no-steering rule as the in-app copy
+     (`BILLING_MANAGED_OUTSIDE_APP`).
+
+     ```
+     Schedule the work, run the route, get paid. HoundStack runs the whole business for pet service companies that work a route, starting with pet-waste removal: scheduling and dispatch, the day in the field, invoicing and payments, the client portal and the numbers behind it, in one place. Sign in with your existing account and your business is on your phone.
+
+     FOR THE CREW
+     • Today's route, in order, with the drive between stops
+     • Start, complete or skip a stop in one tap
+     • Photos of finished work, gate conditions and anything that needs saying
+     • Gate codes, pet names and yard notes where you need them
+     • Clock in and out, and log expenses on the go
+     • A notification when your route changes or a stop is added to your day
+     • Works with no signal. Everything you do is saved on the phone and syncs itself when you have service again.
+     • In English, Spanish, Arabic and Chinese
+
+     FOR THE OFFICE
+     • Clients, properties, pets and service history
+     • Scheduling, dispatch and automatic route planning across your technicians
+     • An alert when a stop is skipped or a truck is running late
+     • Quotes, invoices, payments, autopay and account credits
+     • Timesheets, expenses and reports
+     • The customer portal your clients already use
+
+     ON TABLETS
+     Built for the bigger screen, so the office side has room to work.
+
+     REQUIREMENTS
+     HoundStack is for businesses with an existing HoundStack account and for the people they invite. The app is free to download.
+     ```
    - **App icon** 512x512 PNG: `public/pwa-512.png`.
    - **Feature graphic** 1024x500 PNG or JPEG: required, and not generated
      here. Make one (cream `#fdfaf1`, the hound-in-H, the wordmark).
@@ -244,11 +276,10 @@ it and can stop it), so the answer above is "not shared". To be conservative,
 mark Approximate location as **shared**, purpose App functionality; it costs
 nothing in review.
 
-**Correct the iOS notes while you are here:** `docs/app-store-submission.md`
-§3 tells App Review that location is "not shared with clients, not used for
-tracking". Live tracking (opt-in, per business) has since landed and the
-privacy policy describes it. That sentence should be updated before the next
-iOS submission.
+**The iOS notes already agree:** `docs/app-store-submission.md` §3 describes
+live tracking (opt-in per business, approximate, only while driving to that
+client) the same way the privacy policy does. An earlier version of this file
+asked for that correction; it was made before the 2026-10-07 listing update.
 
 ---
 

@@ -61,6 +61,8 @@ export async function countAutopayDecline(
   admin: object,
   args: { clientId: string; paymentIntentId: string | null; error: string | null },
 ): Promise<DeclineCount> {
+  // rpc-role: service. Both callers (the Stripe webhook, the nightly run) pass
+  // supabaseAdmin; the function is granted to service_role only.
   const { data, error } = await (admin as Admin).rpc("count_autopay_decline", {
     _client_id: args.clientId,
     _payment_intent_id: args.paymentIntentId,

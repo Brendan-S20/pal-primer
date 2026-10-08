@@ -1,6 +1,6 @@
 # App Store submission: HoundStack for iPhone and iPad
 
-Last updated 2026-10-04. **This repo records no App Review submission.** Builds
+Last updated 2026-10-07. **This repo records no App Review submission.** Builds
 reach TestFlight through Xcode Cloud (internal and external groups; see
 `docs/owner-actions-before-submission.md` §3). This is a draft for the owner to
 review, edit and submit.
@@ -51,43 +51,62 @@ directions and are mutation-checked.
 
 ---
 
-## 2. Metadata draft
+## 2. Metadata
 
-**App name** (30 char limit)
-```
-HoundStack
-```
+This is what is entered in App Store Connect, copied back from it on
+2026-10-07. Owner direction the same day: HoundStack is positioned as the
+business system for **pet service companies that work a route**, with
+pet-waste removal as the first and strongest fit. Routing is a feature, not
+the product, so no copy calls it "routing software". Nothing here claims a
+feature another trade would need and the app does not have yet (guideline
+2.3, accurate metadata).
 
-**Subtitle** (30 char limit)
+**App name** (30 char limit, saved 2026-10-07)
 ```
-Field ops for pet waste crews
+HoundStack: Pet Business App
 ```
-(29 characters.)
+(28 characters. Was `HoundStack`.)
+
+**Subtitle** (30 char limit, saved 2026-10-07)
+```
+Schedule, Route, Invoice, Pay
+```
+(29 characters. Was `Field ops for pet waste crews`, then `Run your pet
+service business`.)
 
 **Promotional text** (170 char limit, editable without review)
 ```
-Your routes, stops and photos on the truck. Works with no signal and syncs when you get it back.
+Schedule, dispatch, field work, invoices and payments for your pet service business, all on your phone. Works with no signal and syncs when you're back.
 ```
 
 **Description**
 
 ```
-HoundStack is the field app for pet-waste removal businesses that already run
-on HoundStack. Sign in with your existing account and your day is on your
-phone.
+Schedule the work, run the route, get paid. HoundStack runs the whole business
+for pet service companies that work a route, starting with pet-waste removal:
+scheduling and dispatch, the day in the field, invoicing and payments, the
+client portal and the numbers behind it, in one place. Sign in with your
+existing account and your business is on your phone.
 
 FOR THE CREW
 • Today's route, in order, with the drive between stops
+• Your route on the Lock Screen and in the Dynamic Island: the next stop, its
+  arrival window and how far through the day you are
 • Start, complete or skip a stop in one tap
 • Photos of finished work, gate conditions and anything that needs saying
-• Gate codes, dog names and yard notes where you need them
+• Gate codes, pet names and yard notes where you need them
+• Clock in and out, and log expenses on the go
+• A notification when your route changes or a stop is added to your day
 • Works with no signal. Everything you do is saved on the phone and syncs
   itself when you have service again.
+• In English, Spanish, Arabic and Chinese
 
 FOR THE OFFICE
-• Clients, properties and service history
-• Scheduling and dispatch across your technicians
-• Invoices, payments and account credits
+• Clients, properties, pets and service history
+• Scheduling, dispatch and automatic route planning across your technicians
+• An alert when a stop is skipped or a truck is running late
+• Quotes, invoices, payments, autopay and account credits
+• Timesheets, expenses and reports
 • The customer portal your clients already use
 
 ON iPad
@@ -95,16 +114,17 @@ Built for the bigger screen, including Split View, so the office side works
 next to whatever else you have open.
 
 REQUIREMENTS
-HoundStack is for businesses with an existing HoundStack organization and for
-the people they invite. The app is free. Plans are managed at
-app.houndstack.com.
+HoundStack is for businesses with an existing HoundStack account and for the
+people they invite. The app is free to download.
 ```
+(The App Store Connect copy is the same text without the hard wraps.)
 
 **Keywords** (100 char limit, comma separated, no spaces after commas)
 ```
-pooper scooper,dog waste,pet waste,field service,route,dispatch,scooper,kennel,yard cleanup,crew
+pet service,crm,dispatch,pooper scooper,dog walking,pet sitting,grooming,dog waste,crew,scooper
 ```
-(96 characters.)
+(95 characters. Words already in the name and subtitle are left out, because
+Apple indexes those separately.)
 
 **Category** (set in App Store Connect by the owner, 2026-09-15)
 - Primary: **Productivity**
@@ -122,7 +142,7 @@ pooper scooper,dog waste,pet waste,field service,route,dispatch,scooper,kennel,y
 > line: the first attempt against `/privacy` returned a transport failure and
 > passed on retry, so a single red result here is not proof of a broken page.
 
-**Copyright:** `2026 The North Consulting`
+**Copyright:** `2026 The North Consulting LLC`
 
 ---
 
@@ -133,16 +153,18 @@ Paste into App Review Information → Notes.
 ```
 WHAT THIS APP IS
 
-HoundStack is a business-to-business field-service app for pet-waste removal
-companies. It is a companion to our web product at app.houndstack.com. It is
-free, and it is only useful to someone whose company already has a HoundStack
-organization and who has been invited to it. There is no consumer signup in
-the app.
+HoundStack is a business-to-business operations system (scheduling, dispatch,
+field work, invoicing and payments) for pet service companies that work a
+route, starting with pet-waste removal. It is a companion to our web product at
+app.houndstack.com. It is free, and it is only useful to someone whose company
+already has a HoundStack organization and who has been invited to it. There is
+no consumer signup in the app.
 
 DEMO ACCOUNT
 
-A demo organization with realistic data is provided in the credentials fields.
-Signing in with it shows a full week of routes, clients and invoices.
+A demo organization with realistic data (metro Detroit) is provided in the
+credentials fields. Signing in with it shows a full week of routes, clients and
+invoices, from both the office side and the technician side.
 
 ABOUT PAYMENTS IN THIS APP
 
@@ -159,11 +181,10 @@ purchase.
    the business, not to us.
 
 2. PAYMENTS THE APP DOES NOT TAKE are subscriptions to HoundStack itself.
-   Our own SaaS plans are sold only on the web. Inside this app there is no
-   way to subscribe, upgrade, downgrade, buy an add-on, or add a payment
-   method for a HoundStack plan. The billing screen shows the organization's
-   current plan as read-only information and states that billing is managed on
-   the web. There is no purchase link.
+   Our own plans are sold only on the web. Inside this app there is no way to
+   subscribe, upgrade, downgrade, buy an add-on, or add a payment method for a
+   HoundStack plan. The billing screen shows the organization's current plan
+   as read-only information. There is no purchase link.
 
 No In-App Purchase products are configured for this app.
 
@@ -179,11 +200,13 @@ PERMISSIONS
   customer they are driving to, from the on-my-way message until the visit
   starts, for at most two hours and only while the app is open. Only the
   latest position is kept, and it is deleted when the visit starts. The
-  technician can stop it at any time. This matches the Info.plist string and
-  the privacy policy. It is not used for advertising or for tracking in
-  Apple's sense (linking with other companies' data).
-- Notifications: alerts staff to things that need them, such as a customer's
-  text that needs a reply or a gate marked do-not-enter. Never marketing.
+  technician can stop it at any time. It is not used for advertising or for
+  tracking in Apple's sense.
+- Notifications: alerts staff to things that need them, such as a route
+  change, a skipped stop or a truck running late. Never marketing.
+- Live Activity: the technician's route (next stop, arrival window, progress)
+  on the Lock Screen and in the Dynamic Island while they are working. The
+  technician can hide it from My Day or Preferences.
 
 OFFLINE
 
@@ -227,6 +250,12 @@ it does
   addresses and phone numbers appear on these screens; a QA finding earlier in
   this project was exactly this leak in a full-page screenshot.
 - No status-bar clutter: use a clean battery and signal.
+- Caption each shot with one outcome line in the subtitle's words (schedule,
+  route, invoice, pay), not a feature list. The first two frames are the ones
+  most people see in search, so they carry the business-system story: My Day
+  and the Lock Screen route on iPhone, scheduling and invoices on iPad.
+- Take them after the My Day layout change and the Lock Screen buttons land,
+  so the frames match the build under review.
 
 ---
 
