@@ -136,17 +136,24 @@ export function YardOutline({
   areaSqm,
   title,
   locale,
+  promptWhenMissing = true,
 }: {
   boundary: unknown;
   areaSqm?: number | null;
   /** The dialog's heading: the street, so it is clear which yard. */
   title: string;
   locale?: string;
+  /** Say "No yard outline yet" when there is none. Off for a business that
+   *  does not run pet waste (organizations.service_lines): a dog walker has
+   *  no use for a yard's area, so its absence is not news. An outline that
+   *  DOES exist is still drawn either way -- it is the customer's data. */
+  promptWhenMissing?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const path = outlinePath(boundary, 56);
   if (!path) {
+    if (!promptWhenMissing) return null;
     return (
       <div className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
         <LandPlot className="h-4 w-4 shrink-0" aria-hidden="true" />

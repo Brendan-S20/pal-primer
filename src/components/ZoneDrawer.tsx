@@ -28,7 +28,7 @@ import { getStandardPricing } from "@/lib/subscriptions.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useCommercialAccounts } from "@/components/CommercialOnly";
+import { useCommercialAccounts, useServiceLines } from "@/components/CommercialOnly";
 import {
   addTyped,
   applyShapeFill,
@@ -284,6 +284,15 @@ export function ZoneDrawer({
   // An EXISTING zone always shows what it is; this only chooses the default
   // for a zone being created.
   const { enabled: commercialEnabled } = useCommercialAccounts();
+  // Per-sq-ft and per-acre pricing price the YARD, which only a pet-waste
+  // business measures. Hidden from one that does not run pet waste, unless
+  // this zone already prices that way -- then it is what the zone charges and
+  // has to stay editable (PET_WASTE_MODULES.area_pricing).
+  const { petWaste } = useServiceLines();
+  const showAreaPricing = petWaste || (zone?.pricing_mode ?? "flat") !== "flat";
+  // The zone's first-cleanup fee, on the same terms: shown while it holds a
+  // price. Hidden, the drawer still saves the loaded value back unchanged.
+  const showInitialCleanup = petWaste || Number(zone?.initial_cleanup_cents ?? 0) > 0;
   const [zoneType, setZoneType] = useState<ZoneType>(
     (zone?.account_type as ZoneType) ?? (commercialEnabled ? "all" : "residential"),
   );
@@ -834,19 +843,22 @@ export function ZoneDrawer({
                 <Label htmlFor="zone-pd">Each additional dog</Label>
                 <MoneyInput id="zone-pd" value={perDog} onChange={mark(setPerDog)} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="zone-ic">Initial cleanup fee</Label>
-                <MoneyInput
-                  id="zone-ic"
-                  value={initialCleanup}
-                  onChange={mark(setInitialCleanup)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Charged when First cleanup on the Zones page is set to Flat price.
-                </p>
-              </div>
+              {showInitialCleanup && (
+                <div className="space-y-2">
+                  <Label htmlFor="zone-ic">Initial cleanup fee</Label>
+                  <MoneyInput
+                    id="zone-ic"
+                    value={initialCleanup}
+                    onChange={mark(setInitialCleanup)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Charged when First cleanup on the Zones page is set to Flat price.
+                  </p>
+                </div>
+              )}
             </div>
 
+            {showAreaPricing && (
             <div className="space-y-2 rounded-md border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-3">
                 <Label className="text-sm font-medium">Pricing mode</Label>
@@ -915,6 +927,7 @@ export function ZoneDrawer({
                 </>
               )}
             </div>
+            )}
           </div>
         )}
 

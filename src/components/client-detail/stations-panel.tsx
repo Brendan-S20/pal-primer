@@ -17,6 +17,7 @@ import { isValidLabel, stationDisplayName } from "@/lib/dna-linkage";
 import { focusFirstInvalid } from "@/lib/form-errors";
 import { formatDay } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 export const LINER_SIZES = [
   "Small (8-10 gal)",
@@ -46,6 +47,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   const delFn = useServerFn(deleteStation);
 
   const renumberFn = useServerFn(renumberStations);
+  const { petWaste, known } = useServiceLines();
   const { confirm, dialog } = useConfirmDialog();
 
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(properties[0]?.id ?? ""));
@@ -155,6 +157,11 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   }, [stations, properties]);
 
   if (properties.length === 0) return null;
+  // Waste stations are pet-waste equipment. A business that does not run pet
+  // waste is not offered a panel to start adding them -- but one that already
+  // has stations keeps it, because their service records live here
+  // (PET_WASTE_MODULES.stations_dna). Hiding only; nothing is refused.
+  if (!petWaste && known && data && stations.length === 0) return null;
 
   const startEdit = (s: any) => {
     setShowErrors(false);

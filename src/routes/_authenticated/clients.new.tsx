@@ -5,6 +5,8 @@ import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
+import { newClientWizardSteps, type NewClientStep } from "@/lib/service-lines";
+import { useServiceLines } from "@/components/CommercialOnly";
 import {
   firstCleanupDescription,
   firstCleanupPriceCents,
@@ -319,7 +321,9 @@ const FREQS = [
   { value: "one_time", label: "One-time" },
 ] as const;
 
-const STEPS = ["Contact", "Property", "Yard", "Dogs", "Plan"] as const;
+// The wizard's steps come from newClientWizardSteps (lib/service-lines): the
+// Yard step is pet-waste-only. Steps are addressed by NAME below, never by
+// position, so dropping one cannot move the Plan step's quote onto Dogs.
 
 /** The next calendar day after an org-calendar day (YYYY-MM-DD). */
 function tomorrowOf(day: string): string {
@@ -378,6 +382,11 @@ function NewClientWizard({
   const linkFn = useServerFn(linkLeadToExistingClient);
 
   const [step, setStep] = useState(0);
+  const { petWaste } = useServiceLines();
+  const steps = newClientWizardSteps(petWaste);
+  // Clamped: if the answer arrives while somebody is on the last step, the
+  // list can be one shorter than the index they were on.
+  const current: NewClientStep = steps[Math.min(step, steps.length - 1)];
   // Every step opened at the BOTTOM. Next and Back sit at the foot of the
   // card, the step is swapped in place, and the window keeps the scroll
   // offset the press was made at — so the new step started at its buttons
@@ -465,7 +474,7 @@ function NewClientWizard({
 
   // Best-effort geocode when entering the Yard step
   useEffect(() => {
-    if (step !== 2) return;
+    if (current !== "Yard") return;
     if (geo) return;
     const q = [street, city, region, postalCode].filter(Boolean).join(", ");
     if (q.length < 6) {
@@ -496,7 +505,7 @@ function NewClientWizard({
     return () => {
       cancelled = true;
     };
-  }, [step, street, city, region, postalCode, geo, geocodeFn]);
+  }, [current, street, city, region, postalCode, geo, geocodeFn]);
 
   // dogs
   const [dogs, setDogs] = useState<Dog[]>(() => prefill.dogs.map((d) => ({ ...d })));
@@ -542,7 +551,7 @@ function NewClientWizard({
 
   const quoteQ = useQuery({
     enabled:
-      step === 4 &&
+      current === "Plan" &&
       !skipPlan &&
       accountType === "residential" &&
       quoteKey.postalCode.length >= 3 &&
@@ -718,12 +727,12 @@ function NewClientWizard({
   });
 
   const canNext = (() => {
-    if (step === 0) return displayName.trim().length > 0;
+    if (current === "Contact") return displayName.trim().length > 0;
     // Region/State is required — the property is unusable downstream without it
     // (routing, zone pricing, geocoding all need it). Finding #13.
-    if (step === 1) return !!(street && city && region && postalCode);
-    if (step === 2) return true; // yard boundary optional
-    if (step === 3) return true;
+    if (current === "Property") return !!(street && city && region && postalCode);
+    if (current === "Yard") return true; // yard boundary optional
+    if (current === "Dogs") return true;
     return true;
   })();
 
@@ -812,7 +821,7 @@ function NewClientWizard({
           that column exists. */}
       <div>
         <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm">
-          {STEPS.map((label, i) => {
+          {steps.map((label, i) => {
             const state = i < step ? "done" : i === step ? "current" : "todo";
             return (
               <div key={label} className="flex shrink-0 items-center gap-2">
@@ -841,7 +850,7 @@ function NewClientWizard({
                 >
                   {label}
                 </span>
-                {i < STEPS.length - 1 && (
+                {i < steps.length - 1 && (
                   <ChevronRight className="mx-1 hidden h-4 w-4 shrink-0 text-muted-foreground lg:block" />
                 )}
               </div>
@@ -849,13 +858,13 @@ function NewClientWizard({
           })}
         </div>
         <p className="mt-2 truncate text-sm font-medium lg:hidden">
-          Step {step + 1} of {STEPS.length}: {STEPS[step]}
+          Step {step + 1} of {steps.length}: {current}
         </p>
       </div>
 
       <Card className="p-6">
         {/* STEP 0 — Contact */}
-        {step === 0 && (
+        {current === "Contact" && (
           <div className="space-y-5">
             <div className="space-y-2">
               {/* MEASURED 2026-08-19: as two radio dots these were 16.0px, the
@@ -916,7 +925,7 @@ function NewClientWizard({
         )}
 
         {/* STEP 1 — Property */}
-        {step === 1 && (
+        {current === "Property" && (
           <div className="space-y-5">
             {attempted && !(street && city && region && postalCode) && (
               <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1060,7 +1069,7 @@ function NewClientWizard({
         )}
 
         {/* STEP 2 — Yard (optional boundary sketch) */}
-        {step === 2 && (
+        {current === "Yard" && (
           <div className="space-y-4">
             <div>
               <h2 className="text-base font-medium">Sketch the yard (optional)</h2>
@@ -1093,7 +1102,7 @@ function NewClientWizard({
         )}
 
         {/* STEP 3 — Dogs */}
-        {step === 3 && (
+        {current === "Dogs" && (
           <div className="space-y-4">
             {accountType === "commercial" && (
               <p className="text-sm text-muted-foreground">
@@ -1196,7 +1205,7 @@ function NewClientWizard({
         )}
 
         {/* STEP 3 — Plan */}
-        {step === 4 && (
+        {current === "Plan" && (
           <div className="space-y-5">
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -1437,7 +1446,7 @@ function NewClientWizard({
           >
             {step === 0 ? "Cancel" : "Back"}
           </Button>
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <Button
               type="button"
               onClick={() => {

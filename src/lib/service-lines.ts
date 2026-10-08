@@ -138,6 +138,17 @@ export function showsPetWasteModule(_module: PetWasteModule, lines: readonly Ser
   return runsPetWaste(lines);
 }
 
+/** The new-client wizard's steps, in order. */
+export const NEW_CLIENT_STEPS = ["Contact", "Property", "Yard", "Dogs", "Plan"] as const;
+export type NewClientStep = (typeof NEW_CLIENT_STEPS)[number];
+
+/** "Yard" sketches the outline that area pricing and the waste-time estimate
+ *  read, so only a pet-waste business is asked for it. The outline can still
+ *  be drawn later from the client's property, by anybody who wants one. */
+export function newClientWizardSteps(petWaste: boolean): readonly NewClientStep[] {
+  return petWaste ? NEW_CLIENT_STEPS : NEW_CLIENT_STEPS.filter((s) => s !== "Yard");
+}
+
 // ── SEEDS: WHAT EACH LINE SUGGESTS ──────────────────────────────────────────
 //
 // Pure data. `pet_waste` produces EXACTLY today's values -- the checklist

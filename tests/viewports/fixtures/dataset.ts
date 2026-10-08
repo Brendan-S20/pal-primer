@@ -119,6 +119,10 @@ export const ORGANIZATION = {
   // to be, and one contains a word with no break in it, because at 320px the
   // question is whether the row wraps inside the card or widens the page.
   visit_checklist: VISIT_CHECKLIST,
+  // What the business runs (organizations.service_lines). Pet waste, said
+  // out loud rather than left to the fail-open; the app reads it through
+  // getMyOrgFeatures, whose stub says the same.
+  service_lines: ["pet_waste"],
   role: "owner",
 };
 
