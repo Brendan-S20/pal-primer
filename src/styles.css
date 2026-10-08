@@ -274,6 +274,21 @@
    */
   :root {
     --card-pad: 1rem;
+    /*
+     * ── THE TAB BAR'S HEIGHT, IN ONE PLACE ─────────────────────────────────
+     *
+     * The bottom tab bar's row, border included, NOT counting the home
+     * indicator's inset (which the bar pads by on top of this). MobileTabBar
+     * is drawn at exactly this height, and everything that has to sit on top
+     * of the bar (My Day's NEXT UP strip, the install banner, the auto-routing
+     * panel) offsets by `var(--tab-bar-h) + env(safe-area-inset-bottom)`.
+     *
+     * Before 2026-10-07 the offset was a literal 3.5rem in four places and the
+     * bar was whatever its contents came to: 8 + 20 + 2 + 14 + 6 + 1 = 51px.
+     * NEXT UP therefore floated 5px above the bar, and the stop list scrolled
+     * through the gap. The owner circled it on an iPhone 17 Pro.
+     */
+    --tab-bar-h: 3.5rem;
   }
   @media (width >= 40rem) {
     :root {

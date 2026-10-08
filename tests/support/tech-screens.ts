@@ -19,11 +19,13 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // The stop card's dogs, yard outline, stations and money lines, and the
   // form a tech records cash or a check with.
   { file: "src/components/my-day/StopFacts.tsx" },
-  // The card that shows or hides the route on the iPhone lock screen.
-  { file: "src/components/my-day/RouteLiveActivityCard.tsx" },
+  // The route on the iPhone lock screen: the icon in My Day's status row that
+  // shows or hides it, and the hook behind it, whose toasts a tech reads.
+  { file: "src/components/my-day/RouteLockScreen.tsx" },
   { file: "src/components/CloseOutOpenVisits.tsx" },
   { file: "src/components/EnRouteLocationChip.tsx" },
-  { file: "src/components/TimeClockCard.tsx" },
+  // The time clock chip in My Day's status row, and its Clock out sheet.
+  { file: "src/components/TimeClockChip.tsx" },
   { file: "src/components/VisitChecklistAnswers.tsx" },
   { file: "src/components/PushToggle.tsx" },
   { file: "src/components/PhotoLightbox.tsx" },
@@ -43,6 +45,8 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // "Notifications on this phone" on Preferences: the native app's only way
   // to bring up the iOS prompt, or to find the switch after a no.
   { file: "src/components/settings/NativePushCard.tsx" },
+  // "Route on the lock screen" on Preferences, beside it.
+  { file: "src/components/settings/RouteOnLockScreenCard.tsx" },
   { file: "src/routes/_authenticated/my-schedule.tsx" },
   { file: "src/routes/_authenticated/waste-log.tsx" },
   { file: "src/routes/_authenticated/notifications.tsx" },

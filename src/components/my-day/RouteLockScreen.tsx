@@ -1,37 +1,46 @@
 // The route on the lock screen: when it starts, what keeps it current, when
 // it ends, and the one control a tech has over it.
 //
-// iPhone app only. Everywhere else this renders nothing and does nothing
-// (src/lib/live-activity.ts is a no-op off iOS), and the whole card is
-// absent from a page that is not the tech's own today.
+// iPhone app only. Everywhere else this does nothing (src/lib/live-activity.ts
+// is a no-op off iOS), and nothing at all on a page that is not the tech's
+// own today.
+//
+// This was RouteLiveActivityCard, a full-width card on My Day that put the
+// first stop halfway down the screen. Its logic moved into the hook here
+// unchanged and its face became RouteLockScreenToggle below, an icon in the
+// status row; the owner's words were "the route on lock screen need a better home ... it's too
+// cluttered". The hook is called by My Day itself rather than by the toggle,
+// so the route keeps starting, updating and ending whether or not the status
+// row is drawn.
 //
 // STARTS when the tech's day does, which in My Day is either of two taps,
 // whichever comes first: Clock in, or Start on the first visit. Both are
 // read as TRANSITIONS seen on this screen, never as a state found on
 // opening it, so a tech who swiped the activity away is not handed it back
-// every time the app comes to the front. And by hand, from this card.
+// every time the app comes to the front. And by hand, from the toggle. Never
+// by itself on a phone whose "Route on the lock screen" preference is off
+// (lib/live-activity-pref.ts); hiding it from the toggle turns that off.
 //
 // UPDATES on every change to the day as worked: the visits My Day already
 // has, queued offline Completes and Skips included (withQueuedLifecycle), so
-// the lock screen moves the moment the card does, signal or not. The office's
+// the lock screen moves the moment the list does, signal or not. The office's
 // changes arrive by push instead (push-liveactivity.server.ts), which is why
 // the activity's token is saved.
 //
 // ENDS when nothing is left on the route (the last stop done or skipped; the
 // final state stays up for fifteen minutes), when the tech clocks out, or
-// when they press Hide.
+// when they hide it.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { PawPrint } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Smartphone } from "lucide-react";
 import { dirFor, languageFor, useIntlLocale } from "@/lib/i18n";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { getMyClock } from "@/lib/time-clock.functions";
-import { MY_CLOCK_QUERY_KEY } from "@/components/TimeClockCard";
+import { MY_CLOCK_QUERY_KEY } from "@/components/TimeClockChip";
 import { useQueuedClock } from "@/lib/offline/useQueuedClock";
 import { withQueuedClock } from "@/lib/offline/queued-clock-state";
 import {
@@ -47,6 +56,7 @@ import {
   startRouteActivity,
   updateRouteActivity,
 } from "@/lib/live-activity";
+import { useRouteOnLockScreen } from "@/lib/live-activity-pref";
 import { endLiveActivityToken, saveLiveActivityToken } from "@/lib/live-activity.functions";
 import { reportClientError } from "@/lib/monitoring/client";
 import { haptic } from "@/lib/haptics";
@@ -56,7 +66,19 @@ type EndReason = "dismissed" | "finished" | "clocked_out" | "hidden";
 /** A finished route stays on the lock screen this long, then iOS removes it. */
 const FINISHED_LINGERS_MS = 15 * 60 * 1000;
 
-export function RouteLiveActivityCard({
+export type RouteLiveActivity = {
+  /** Draw a control at all: the iPhone app, ActivityKit present, the tech's
+   *  own today, and either stops left to show or something showing. */
+  relevant: boolean;
+  /** Live Activities are switched on for the app in iPhone Settings. */
+  allowed: boolean;
+  showing: boolean;
+  busy: boolean;
+  /** Show it or hide it, with a toast that says which. */
+  toggle: () => void;
+};
+
+export function useRouteLiveActivity({
   visits,
   day,
   enabled,
@@ -67,7 +89,7 @@ export function RouteLiveActivityCard({
   day: string;
   /** Today, the tech's own day (not an office preview), and a staff record. */
   enabled: boolean;
-}) {
+}): RouteLiveActivity {
   const on = enabled && liveActivityAvailable();
   const { t, i18n } = useTranslation();
   const lang = languageFor(i18n.language) ?? "en";
@@ -75,6 +97,7 @@ export function RouteLiveActivityCard({
   const tz = useOrgTimezone();
   const saveFn = useServerFn(saveLiveActivityToken);
   const endFn = useServerFn(endLiveActivityToken);
+  const pref = useRouteOnLockScreen();
 
   const [support, setSupport] = useState<{ supported: boolean; enabled: boolean } | null>(null);
   const [showing, setShowing] = useState(false);
@@ -152,18 +175,19 @@ export function RouteLiveActivityCard({
 
   // ── start, stop ───────────────────────────────────────────────────────────
   const show = useCallback(
-    async (byHand: boolean) => {
+    async (byHand: boolean): Promise<boolean> => {
       setBusy(true);
       endingReason.current = null;
       const r = await startRouteActivity(day, t("liveActivity.title"), stateRef.current);
       setBusy(false);
       if (!r) {
         if (byHand) toast.error(t("liveActivity.failed"));
-        return;
+        return false;
       }
       setShowing(true);
       current.current = { id: r.id, token: r.pushToken };
       if (r.pushToken) void saveToken(r.id, r.pushToken);
+      return true;
     },
     [day, t, saveToken],
   );
@@ -222,8 +246,11 @@ export function RouteLiveActivityCard({
     enabled: on,
   });
   const taps = useQueuedClock(dataUpdatedAt);
-  const onClock: boolean | null = clock?.staff ? withQueuedClock(clock.entries, taps).open != null : null;
+  const onClock: boolean | null = clock?.staff
+    ? withQueuedClock(clock.entries, taps).open != null
+    : null;
   const begun = visits.filter((v) => v.status !== "scheduled" && v.status !== "canceled").length;
+  const wanted = pref.ready && pref.on;
 
   const seen = useRef<{ day: string; begun: number; onClock: boolean | null } | null>(null);
   useEffect(() => {
@@ -242,47 +269,95 @@ export function RouteLiveActivityCard({
     }
     const clockedIn = prev.onClock === false && onClock === true;
     const firstStart = prev.begun === 0 && begun > 0;
-    if ((clockedIn || firstStart) && stopsLeft && !showing && !busy) void show(false);
-  }, [can, day, begun, onClock, stopsLeft, showing, busy, show, stop]);
+    if ((clockedIn || firstStart) && wanted && stopsLeft && !showing && !busy) void show(false);
+  }, [can, day, begun, onClock, stopsLeft, showing, busy, show, stop, wanted]);
 
-  // ── the card ──────────────────────────────────────────────────────────────
-  if (!on || !support?.supported) return null;
-  if (!showing && !stopsLeft) return null;
+  // ── the preference changing under a mounted My Day ────────────────────────
+  // Off ends what is showing. On, with the day already under way, starts it:
+  // that is the tech asking for it, not the app handing it back unasked.
+  const lastWanted = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!can || !pref.ready) return;
+    const prev = lastWanted.current;
+    lastWanted.current = pref.on;
+    if (prev === null || prev === pref.on) return;
+    if (!pref.on && showing) void stop("hidden", false);
+    const underway = onClock === true || begun > 0;
+    if (pref.on && underway && stopsLeft && !showing && !busy) void show(false);
+    // Only the preference is the event here; the rest is read as it stands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [can, pref.ready, pref.on]);
 
+  // ── the control ───────────────────────────────────────────────────────────
+  const toggle = useCallback(() => {
+    if (busy) return;
+    haptic("tap");
+    if (!support?.enabled) {
+      // Switched off for the whole app in iPhone Settings: nothing this
+      // screen can start, so say where the switch is.
+      toast.message(t("liveActivity.cardDisabled"));
+      return;
+    }
+    if (showing) {
+      void stop("hidden", false).then(() => {
+        pref.set(false);
+        toast.success(t("liveActivity.hiddenToast"));
+      });
+    } else {
+      void show(true).then((ok) => {
+        if (!ok) return;
+        pref.set(true);
+        toast.success(t("liveActivity.cardOn"));
+      });
+    }
+  }, [busy, support?.enabled, showing, stop, show, pref, t]);
+
+  const relevant = on && !!support?.supported && (showing || stopsLeft);
+  return { relevant, allowed: !!support?.enabled, showing, busy, toggle };
+}
+
+// ── the toggle ──────────────────────────────────────────────────────────────
+//
+// The route on the lock screen, as one icon in My Day's status row.
+//
+// It was a full-width card ("Route on the lock screen / Showing on your lock
+// screen / Hide"), and with the time clock's card above it the first stop
+// started halfway down the phone. The route starts by itself on Clock in or
+// the first Start (useRouteLiveActivity), so all a tech needs from this
+// screen is a way to hide it or bring it back: a phone glyph, filled while
+// the route is on the lock screen, and a toast that says which way it went.
+//
+// iPhone app only, like the activity: renders nothing on the web and on
+// Android, nothing on a day that is not the tech's own today, and nothing
+// once the route is finished and gone.
+export function RouteLockScreenToggle({ activity }: { activity: RouteLiveActivity }) {
+  const { t } = useTranslation();
+  if (!activity.relevant) return null;
+  const { showing, allowed, busy, toggle } = activity;
   return (
-    <section
+    <button
+      type="button"
+      // The name is the feature; aria-pressed says whether it is on. A screen
+      // reader hears "Route on the lock screen, toggle button, pressed".
       aria-label={t("liveActivity.cardTitle")}
-      className="flex items-center gap-3 rounded-lg border bg-card p-3"
+      aria-pressed={showing}
+      title={
+        !allowed
+          ? t("liveActivity.cardDisabled")
+          : showing
+            ? t("liveActivity.cardOn")
+            : t("liveActivity.cardOff")
+      }
+      disabled={busy}
+      onClick={toggle}
+      data-route-lock-screen={showing ? "showing" : "hidden"}
+      className={`inline-flex size-11 shrink-0 items-center justify-center rounded-lg border transition-colors active:scale-95 disabled:opacity-60 ${
+        showing
+          ? "border-primary bg-primary text-primary-foreground"
+          : "bg-background text-muted-foreground hover:bg-muted"
+      }`}
     >
-      <PawPrint
-        className={`h-5 w-5 shrink-0 ${showing ? "text-primary" : "text-muted-foreground"}`}
-        aria-hidden="true"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{t("liveActivity.cardTitle")}</p>
-        <p className="text-xs text-muted-foreground">
-          {!support.enabled
-            ? t("liveActivity.cardDisabled")
-            : showing
-              ? t("liveActivity.cardOn")
-              : t("liveActivity.cardOff")}
-        </p>
-      </div>
-      {support.enabled && (
-        <Button
-          type="button"
-          variant={showing ? "outline" : "default"}
-          disabled={busy}
-          onClick={() => {
-            haptic("tap");
-            if (showing) void stop("hidden", false);
-            else void show(true);
-          }}
-          className="min-h-11 shrink-0 px-4"
-        >
-          {showing ? t("liveActivity.hide") : t("liveActivity.show")}
-        </Button>
-      )}
-    </section>
+      <Smartphone className="h-4 w-4 shrink-0" aria-hidden="true" />
+    </button>
   );
 }

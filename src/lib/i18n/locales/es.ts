@@ -364,9 +364,9 @@ const es: Translations = {
     clockedOutQueued: "Salida registrada. Guardada en este dispositivo hasta que tengas señal",
     unreachable: "No se pudo conectar con el reloj de trabajo",
     onTheClock: "En turno · {{duration}}",
-    offTheClock: "Fuera de turno",
-    since: "Desde {{time}}",
-    prompt: "Marca tu entrada cuando empiece tu día",
+    onSince: "En turno desde {{time}}",
+    thisShift: "Este turno",
+    todayTotal: "Hoy",
     clockInWaiting: "Entrada esperando sincronizar",
     clockOutWaiting: "Salida esperando sincronizar",
     clockIn: "Entrada",
@@ -752,8 +752,8 @@ const es: Translations = {
     cardOn: "Se muestra en tu pantalla de bloqueo",
     cardOff: "Ve tu próxima parada sin desbloquear",
     cardDisabled: "Activa las Actividades en vivo de HoundStack en Ajustes del iPhone",
-    show: "Mostrar",
-    hide: "Ocultar",
+    hiddenToast: "Oculta de tu pantalla de bloqueo",
+    prefDescription: "Tu próxima parada en la pantalla de bloqueo y en la Dynamic Island. Empieza sola cuando marcas tu entrada o inicias tu primera parada.",
     failed: "No se pudo mostrar la ruta en la pantalla de bloqueo",
     // The buttons on the lock screen and in the Dynamic Island. The same
     // words as the buttons on My Day they open.

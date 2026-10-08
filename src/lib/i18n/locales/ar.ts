@@ -404,9 +404,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     clockedOutQueued: "تم تسجيل الانصراف. محفوظ على هذا الجهاز حتى تتوفر الإشارة",
     unreachable: "تعذّر الوصول إلى ساعة الدوام",
     onTheClock: "في الدوام · {{duration}}",
-    offTheClock: "خارج الدوام",
-    since: "منذ {{time}}",
-    prompt: "سجّل حضورك عند بدء يومك",
+    onSince: "في الدوام منذ {{time}}",
+    thisShift: "هذه الوردية",
+    todayTotal: "اليوم",
     clockInWaiting: "الحضور بانتظار المزامنة",
     clockOutWaiting: "الانصراف بانتظار المزامنة",
     clockIn: "تسجيل الحضور",
@@ -832,8 +832,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     cardOn: "يظهر على شاشة القفل",
     cardOff: "شاهد محطتك التالية دون فتح القفل",
     cardDisabled: "فعّل الأنشطة المباشرة لتطبيق HoundStack في إعدادات iPhone",
-    show: "إظهار",
-    hide: "إخفاء",
+    hiddenToast: "أُخفي من شاشة القفل",
+    prefDescription: "محطتك التالية على شاشة القفل وفي Dynamic Island. يبدأ تلقائيًا عند تسجيل حضورك أو بدء أول محطة.",
     failed: "تعذّر إظهار المسار على شاشة القفل",
     // The buttons on the lock screen and in the Dynamic Island. The same
     // words as the buttons on My Day they open.

@@ -365,9 +365,9 @@ const en = {
     clockedOutQueued: "Clocked out. Saved on this device until you have signal",
     unreachable: "Could not reach the time clock",
     onTheClock: "On the clock · {{duration}}",
-    offTheClock: "Off the clock",
-    since: "Since {{time}}",
-    prompt: "Clock in when your day starts",
+    onSince: "On the clock since {{time}}",
+    thisShift: "This shift",
+    todayTotal: "Today",
     clockInWaiting: "Clock-in waiting to sync",
     clockOutWaiting: "Clock-out waiting to sync",
     clockIn: "Clock in",
@@ -738,7 +738,8 @@ const en = {
     weatherAria: "Show the weather button in the top bar",
   },
   // The route on the lock screen and in the Dynamic Island (a Live Activity),
-  // and the card on My Day that shows or hides it. The first group is sent to
+  // and its two controls: the toggle in My Day's status row and the switch on
+  // Preferences. The first group is sent to
   // the phone as finished text: the widget extension draws it as given.
   liveActivity: {
     title: "Today's route",
@@ -756,8 +757,8 @@ const en = {
     cardOn: "Showing on your lock screen",
     cardOff: "See your next stop without unlocking",
     cardDisabled: "Turn on Live Activities for HoundStack in iPhone Settings",
-    show: "Show",
-    hide: "Hide",
+    hiddenToast: "Hidden from your lock screen",
+    prefDescription: "Your next stop on the lock screen and in the Dynamic Island. It starts by itself when you clock in or start your first stop.",
     failed: "Couldn't show the route on the lock screen",
     // The buttons on the lock screen and in the Dynamic Island. The same
     // words as the buttons on My Day they open.

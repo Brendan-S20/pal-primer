@@ -1,6 +1,6 @@
 // Saving and ending the push token of the route on a tech's lock screen.
 //
-// Called by My Day on the iPhone (src/components/my-day/RouteLiveActivityCard
+// Called by My Day on the iPhone (src/components/my-day/RouteLockScreen
 // .tsx) when ActivityKit hands out a token, when it rotates one, and when the
 // activity ends. Written with the CALLER's client, so live_activity_tokens'
 // RLS decides what is allowed: a token in the caller's own name, in an org

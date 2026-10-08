@@ -294,7 +294,7 @@ xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liv
 | The Capacitor plugin | `ios/App/App/LiveActivity/RouteActivityPlugin.swift`, a local plugin (no npm package), registered in `ios/App/App/HSBridgeViewController.swift`, which Main.storyboard names instead of `CAPBridgeViewController` |
 | JS wrappers | `src/lib/live-activity.ts`, no-ops off iOS |
 | The content | `src/lib/live-activity-state.ts`, built in the tech's language, used by the phone and the server |
-| My Day | `src/components/my-day/RouteLiveActivityCard.tsx`: starts on Clock in or the first Start, follows every Complete and Skip (queued ones too), ends when nothing is left, on Clock out, or on Hide |
+| My Day | `src/components/my-day/RouteLockScreen.tsx` (`useRouteLiveActivity`): starts on Clock in or the first Start (unless the phone's "Route on the lock screen" preference is off), follows every Complete and Skip (queued ones too), ends when nothing is left, on Clock out, or when hidden. Its control is `RouteLockScreenToggle` in the same file, an icon in My Day's status row, and the preference is also a switch on Preferences (`src/components/settings/RouteOnLockScreenCard.tsx`, `src/lib/live-activity-pref.ts`) |
 | Office changes | `src/lib/push-liveactivity.server.ts`, called from the dispatch server functions in `src/lib/visits.functions.ts`; tokens in `live_activity_tokens` |
 
 The app's deployment target stays iOS 15.0. ActivityKit is weak-linked and

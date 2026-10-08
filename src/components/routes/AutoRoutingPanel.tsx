@@ -631,7 +631,7 @@ export function AutoRoutingPanel({
          on iOS it resolves to the LARGE viewport. It was not the cause of the
          fault above — measured, it resolved correctly — but it is the wrong
          unit beside a tab bar that moves. */
-      className="fixed inset-x-3 bottom-3 z-40 max-h-[min(32rem,calc(100dvh-6rem))] overflow-y-auto rounded-lg border bg-card shadow-xl max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.75rem)] max-md:max-h-[calc(100dvh-11rem)] sm:left-auto sm:right-4 sm:w-80"
+      className="fixed inset-x-3 bottom-3 z-40 max-h-[min(32rem,calc(100dvh-6rem))] overflow-y-auto rounded-lg border bg-card shadow-xl max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom)+0.75rem)] max-md:max-h-[calc(100dvh-11rem)] sm:left-auto sm:right-4 sm:w-80"
     >
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-1.5 text-sm font-semibold">
