@@ -7,15 +7,19 @@
  * tests/an-app-that-moves.test.ts; this file checks that the browser does
  * what the arithmetic says.
  *
- *   1. A navigation runs a view transition, in the direction it should, and
- *      in Arabic the incoming page comes from the other side. Under reduced
- *      motion there is no transition at all.
+ *   1. A navigation deeper or back runs a view transition, in the direction
+ *      it should, and in Arabic the incoming page comes from the other side.
+ *      A tab switch runs none, from the sidebar or from the tab bar, even off
+ *      a detail page. Under reduced motion there is no transition at all.
  *   2. The progress bar appears for a slow navigation and never for a fast
  *      one.
- *   3. A page waiting on its data draws a skeleton, and when the data lands
- *      nothing above it moves: compared by bounding box, not by eye.
+ *   3. A page waiting on its data draws a skeleton, but only once it has
+ *      waited 160ms, and when the data lands nothing above it moves:
+ *      compared by bounding box, not by eye. A list does not animate the
+ *      rows it first paints with, and does animate one added later.
  *   4. Pulling down at the top of a page refetches it, with touch events on a
- *      touch browser; a sideways drag does not.
+ *      touch browser; a sideways drag does not. The listener that can block
+ *      scrolling is only there while the page is at its top.
  *   5. A bottom sheet closes when swiped down.
  *
  * Signed in on the stubbed backend like every other spec here, so nothing
@@ -130,9 +134,7 @@ test.describe("page transitions", () => {
     // Wait for the START POSITION, not just the entry: the entry is pushed
     // when the transition starts and startX is filled in on `ready`, so on a
     // busy runner reading as soon as the entry exists read null (CI, #340).
-    await expect
-      .poll(async () => (await transitions(page))[0]?.startX ?? null)
-      .not.toBeNull();
+    await expect.poll(async () => (await transitions(page))[0]?.startX ?? null).not.toBeNull();
     const [into] = await transitions(page);
     expect(into.dir, "the direction on <html> when the transition started").toBe("forward");
     expect(into.types).toEqual(["hs-forward"]);
@@ -152,9 +154,7 @@ test.describe("page transitions", () => {
     // Wait for the START POSITION, not just the entry: the entry is pushed
     // when the transition starts and startX is filled in on `ready`, so on a
     // busy runner reading as soon as the entry exists read null (CI, #340).
-    await expect
-      .poll(async () => (await transitions(page))[0]?.startX ?? null)
-      .not.toBeNull();
+    await expect.poll(async () => (await transitions(page))[0]?.startX ?? null).not.toBeNull();
     const [back] = await transitions(page);
     expect(back.dir).toBe("back");
     expect(back.types).toEqual(["hs-back"]);
@@ -183,16 +183,16 @@ test.describe("page transitions", () => {
     // Wait for the START POSITION, not just the entry: the entry is pushed
     // when the transition starts and startX is filled in on `ready`, so on a
     // busy runner reading as soon as the entry exists read null (CI, #340).
-    await expect
-      .poll(async () => (await transitions(page))[0]?.startX ?? null)
-      .not.toBeNull();
+    await expect.poll(async () => (await transitions(page))[0]?.startX ?? null).not.toBeNull();
     const [into] = await transitions(page);
     expect(into.dir).toBe("forward");
     // The END edge of a right-to-left page is its left.
     expect(into.startX, "the incoming page starts to the left").toBeLessThan(0);
   });
 
-  test("switching tabs crossfades instead of sliding", async ({ page, context }) => {
+  test("switching tabs starts no transition at all", async ({ page, context }) => {
+    // It was a 160ms crossfade until 2026-10-08. A native app changes tab in
+    // place, and a view transition swallows taps for as long as it runs.
     await signIn(context);
     await recordViewTransitions(context);
     await openClients(page);
@@ -200,10 +200,13 @@ test.describe("page transitions", () => {
 
     await page.getByRole("link", { name: "Invoices", exact: true }).first().click();
     await expect(page).toHaveURL(/\/invoices$/);
-    await expect.poll(async () => (await transitions(page)).length).toBeGreaterThan(0);
-    const [tab] = await transitions(page);
-    expect(tab.dir).toBe("tab");
-    expect(tab.startX ?? 0, "a crossfade does not move sideways").toBe(0);
+    await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible({
+      timeout: FIRST_PAINT_MS,
+    });
+    await page.waitForTimeout(600);
+    expect(await transitions(page), "a tab switch started a view transition").toEqual([]);
+    // And nothing is left named for one.
+    expect(await page.evaluate(() => document.documentElement.dataset.navDir ?? null)).toBeNull();
   });
 
   test("under reduced motion there is no transition at all", async ({ page, context }) => {
@@ -217,6 +220,35 @@ test.describe("page transitions", () => {
     await expect(page).toHaveURL(/\/clients\/[0-9a-f-]+$/);
     await page.waitForTimeout(600);
     expect(await transitions(page)).toEqual([]);
+  });
+});
+
+test.describe("the tab bar is a tab switch from anywhere", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("from a client's page, Clients in the tab bar does not slide back", async ({
+    page,
+    context,
+  }) => {
+    await signIn(context);
+    await recordViewTransitions(context);
+    await openClients(page);
+    await clientLink(page).click();
+    await expect(page.getByRole("link", { name: "← Clients" })).toBeVisible({
+      timeout: FIRST_PAINT_MS,
+    });
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(500);
+    await page.evaluate(() => ((window as any).__vt = []));
+
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Clients", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/clients$/);
+    await expect(clientLink(page)).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await page.waitForTimeout(600);
+    expect(await transitions(page), "a tab bar tap slid like a back").toEqual([]);
   });
 });
 
@@ -394,7 +426,25 @@ test.describe("skeletons", () => {
       await expect(skeleton).toHaveAttribute("role", "status");
       expect(await page.getByText(FIRST_CLIENT).count(), "data is held back").toBe(0);
 
+      // Laid out at once, drawn only after its wait: every bone carries the
+      // 160ms hold (styles.css, SKELETONS). Read off the animation itself,
+      // not off a stopwatch, so a slow runner cannot make it pass or fail.
+      const hold = await skeleton.evaluate((region) => {
+        const bone = region.querySelector(".hs-skeleton");
+        const wait = bone
+          ?.getAnimations()
+          .find((a) => (a as CSSAnimation).animationName === "hs-skeleton-wait");
+        return wait ? Number(wait.effect?.getTiming().delay) : null;
+      });
+      expect(hold, "a skeleton bone without its wait").toBe(160);
+
       await page.waitForTimeout(300);
+      // ...and once the wait is real, it is drawn.
+      expect(
+        await skeleton.evaluate((region) =>
+          Number(getComputedStyle(region.querySelector(".hs-skeleton")!).opacity),
+        ),
+      ).toBeGreaterThan(0);
       const before = {
         heading: await heading.boundingBox(),
         list: await skeleton.boundingBox(),
@@ -430,6 +480,42 @@ test.describe("skeletons", () => {
       expect(Math.abs((after.list?.x ?? 0) - (before.list?.x ?? 0))).toBeLessThanOrEqual(1);
     });
   }
+});
+
+test.describe("list entrance", () => {
+  test.use({ viewport: { width: 360, height: 780 } });
+
+  test("a list paints its rows still, and animates a row added later", async ({
+    page,
+    context,
+  }) => {
+    await signIn(context);
+    await context.addInitScript(() => {
+      const w = window as any;
+      w.__rise = 0;
+      document.addEventListener(
+        "animationstart",
+        (e) => {
+          if ((e as AnimationEvent).animationName === "hs-rise") w.__rise++;
+        },
+        true,
+      );
+    });
+    await openClients(page);
+    const list = page.locator(".motion-list").first();
+    await expect(list).toHaveAttribute("data-motion-armed", "");
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => (window as any).__rise), "rows rose on first paint").toBe(0);
+
+    // A row arriving mid-session does rise.
+    const animated = await list.evaluate((el) => {
+      const row = document.createElement("div");
+      row.textContent = "new row";
+      el.prepend(row);
+      return row.getAnimations().map((a) => (a as CSSAnimation).animationName);
+    });
+    expect(animated).toEqual(["hs-rise"]);
+  });
 });
 
 test.describe("gestures", () => {
@@ -495,6 +581,27 @@ test.describe("gestures", () => {
     await expect.poll(() => listCalls, { timeout: 5000 }).toBeGreaterThan(settled);
     // And it puts itself away.
     await expect(page.locator("[data-pull-to-refresh]")).toHaveCount(0, { timeout: 3000 });
+  });
+
+  test("the listener that can hold up a scroll is only there at the top", async ({
+    page,
+    context,
+  }) => {
+    await signIn(context);
+    await openClients(page);
+    const cdp = await context.newCDPSession(page);
+    const blocking = async () => {
+      const { result } = await cdp.send("Runtime.evaluate", { expression: "document" });
+      const { listeners } = await cdp.send("DOMDebugger.getEventListeners", {
+        objectId: result.objectId!,
+      });
+      return listeners.filter((l) => l.type === "touchmove" && !l.passive).length;
+    };
+    expect(await blocking(), "at the top a pull can start, so it listens").toBe(1);
+    await page.evaluate(() => window.scrollTo(0, 400));
+    await expect.poll(blocking, { message: "scrolled, nothing may block a scroll" }).toBe(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(blocking).toBe(1);
   });
 
   test("pulling is not a refresh when the page is not at its top", async ({ page, context }) => {

@@ -65,6 +65,7 @@ import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-vi
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import {
   describeReadFreshness,
+  READ_REFRESH_GRACE_MS,
   cacheAgeParts,
   READ_CACHE_MAX_AGE_MS,
 } from "@/lib/offline/read-cache-policy";
@@ -360,10 +361,23 @@ function MyDay() {
   const nextUpClearOfSidebar =
     docksFrom === "lg" ? "lg:start-(--sidebar-width)" : "md:start-(--sidebar-width)";
 
-  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
+  const { data, isLoading, isError, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
+  // The first moments after opening, while a saved day's refresh is still
+  // out: the banner waits for it rather than flashing (refreshInFlight).
+  const [inLaunchGrace, setInLaunchGrace] = useState(
+    () => Date.now() - SESSION_STARTED_AT < READ_REFRESH_GRACE_MS,
+  );
+  useEffect(() => {
+    if (!inLaunchGrace) return;
+    const id = window.setTimeout(
+      () => setInLaunchGrace(false),
+      Math.max(0, READ_REFRESH_GRACE_MS - (Date.now() - SESSION_STARTED_AT)),
+    );
+    return () => window.clearTimeout(id);
+  }, [inLaunchGrace]);
 
   // Mobile Phase 3 offline hardening: this response is one of the few written
   // to the device (lib/offline/read-cache-policy.ts) and restored on launch, so
@@ -380,6 +394,7 @@ function MyDay() {
     // forceAgeRepaint above, for why a stored clock reading here produced a
     // red warning against correct data.
     sessionStartedAt: SESSION_STARTED_AT,
+    refreshInFlight: isFetching && inLaunchGrace,
   });
   const previewing = !!data?.previewing;
 
@@ -1533,9 +1548,17 @@ function PhotoThumb({
       className="block rounded border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={t("photo.open")}
     >
+      {/* A phone photo is 12 megapixels drawn 56px square. Sized, so the
+          card never reflows when it arrives; lazy, so a long day does not
+          decode every stop's photos up front; async, so decoding one never
+          holds up a frame. */}
       <img
         src={url}
         alt={t("photo.alt")}
+        width={56}
+        height={56}
+        loading="lazy"
+        decoding="async"
         className="h-14 w-14 rounded object-cover"
         onError={() => setImgFailed(true)}
       />
