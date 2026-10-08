@@ -90,6 +90,22 @@ const APPLE = process.env.APPLE_SIZES === "1";
  */
 test.use({ hasTouch: APPLE });
 
+// ── EVERY TEST HERE IS ITS OWN PAGE, SO THEY RUN SIDE BY SIDE ──────────────
+//
+// Playwright parallelises across FILES unless told otherwise, and this is one
+// file, so until 2026-10-08 the whole sweep ran on one worker however many
+// cores the runner had: "Running 200 tests using 1 worker" for the signed-in
+// sweep, "759 tests using 2 workers" for the Apple pass over both sweeps. On
+// the 16-core Windows runner that took the job past its 45-minute ceiling
+// with fourteen cores idle.
+//
+// Nothing here depends on order: every test takes a fresh context from the
+// fixture, installs its own session and stub, and measures one page at one
+// size. every-page-has-the-same-margins.spec.ts has run this way since it
+// landed. A test that genuinely needs another test's state does not belong in
+// a sweep.
+test.describe.configure({ mode: "parallel" });
+
 /**
  * One line per DISTINCT fault, with how many elements have it.
  *

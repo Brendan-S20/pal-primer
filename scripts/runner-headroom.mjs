@@ -32,9 +32,10 @@
 // rather than ENOMEM. "Built in 9.24s" followed by "Bus error: 10" is that.
 //
 // So swap is read per platform: `sysctl vm.swapusage` on darwin,
-// /proc/meminfo on linux, and on win32 the pagefile via `wmic`, falling back
-// to saying it could not be read. An unread number and a healthy one must not
-// look alike, which is the same rule this repo applies to its test tallies.
+// /proc/meminfo on linux, and on win32 the pagefile via `wmic` or, where wmic
+// has been removed, CIM through PowerShell -- falling back to saying it could
+// not be read. An unread number and a healthy one must not look alike, which
+// is the same rule this repo applies to its test tallies.
 //
 // It never fails the build. The condition is not caused by the diff, so
 // blocking the diff on it would add a failure mode to a machine that already
@@ -97,7 +98,24 @@ function swap() {
     const out = quiet("wmic", ["pagefile", "get", "AllocatedBaseSize,CurrentUsage", "/format:csv"]);
     const row = out?.split(/\r?\n/).find((l) => /,\d+,\d+\s*$/.test(l));
     const m = row && /,(\d+),(\d+)\s*$/.exec(row);
-    return m ? { usedMB: +m[2], totalMB: +m[1] } : null;
+    if (m) return { usedMB: +m[2], totalMB: +m[1] };
+    // And it HAS been removed on DESKTOP-JUC6SL1: its runs on 2026-10-08
+    // logged "swap could not be read on this platform". The same class
+    // through CIM, which is what replaced wmic. One line per pagefile,
+    // "allocatedMB,usedMB", summed.
+    const cim = quiet("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      'Get-CimInstance Win32_PageFileUsage | ForEach-Object { "$($_.AllocatedBaseSize),$($_.CurrentUsage)" }',
+    ]);
+    const rows = (cim ?? "")
+      .split(/\r?\n/)
+      .map((l) => /^(\d+),(\d+)$/.exec(l.trim()))
+      .filter(Boolean);
+    const totalMB = rows.reduce((n, r) => n + Number(r[1]), 0);
+    const usedMB = rows.reduce((n, r) => n + Number(r[2]), 0);
+    return totalMB > 0 ? { usedMB, totalMB } : null;
   }
   return null;
 }
