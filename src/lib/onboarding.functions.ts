@@ -1,8 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
 
 export type OnboardingStep = {
-  id: "verify_email" | "zones" | "staff" | "dump_site" | "clients" | "route" | "billing";
+  id:
+    | "verify_email"
+    | "zones"
+    | "staff"
+    | "dump_site"
+    | "day_end"
+    | "clients"
+    | "route"
+    | "billing";
   label: string;
   description: string;
   done: boolean;
@@ -30,7 +39,7 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
 
     const orgId = role.organization_id;
 
-    const [zones, staff, dumps, clients, visits, org] = await Promise.all([
+    const [zones, staff, dumps, clients, visits, org, lines, routeEnds] = await Promise.all([
       supabase
         .from("zones")
         .select("id", { count: "exact", head: true })
@@ -63,7 +72,18 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         .select("stripe_customer_id, onboarding_dismissed_at, email_verified_at")
         .eq("id", orgId)
         .single(),
+      // Its own read, so a database the service-lines migration has not
+      // reached fails this alone and falls open to pet waste.
+      supabase.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
+      // A technician with a pinned end-of-day address: what the route planner
+      // ends a day at when there is no dump site to end it at.
+      supabase
+        .from("staff")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .not("end_latitude", "is", null),
     ]);
+    const petWaste = runsPetWaste(serviceLinesOrDefault(lines.data?.service_lines));
 
     const dismissed = Boolean(org.data?.onboarding_dismissed_at);
 
@@ -148,7 +168,8 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         to: "/settings/users",
         cta: "Invite tech",
       },
-      {
+      petWaste
+        ? {
         // ── WHY THIS IS A SETUP STEP AND NOT A SETTING ──────────────────
         //
         // Routes are planned from where a technician STARTS and, since
@@ -175,7 +196,27 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         done: (dumps.count ?? 0) > 0,
         to: "/waste-log",
         cta: "Add dump site",
-      },
+      }
+        : {
+            // ── THE SAME QUESTION, FOR A BUSINESS WITH NO DUMP ──────────
+            //
+            // The dump site matters because the planner ends a day THERE
+            // (staff_end_point), and a day planned with no end is ordered as
+            // though the van evaporates at the last stop. A dog walker or a
+            // groomer has no dump, but their day still ends somewhere --
+            // home, the shop, the kennel -- and the planner reads that from
+            // each technician's own end address, set under Users & roles. So
+            // the step keeps its place and its reason, and asks the question
+            // that business can answer. Done when any technician has an end
+            // address the planner can use (geocoded, same rule as the dump).
+            id: "day_end",
+            label: "Where does your day end?",
+            description:
+              "Set where each tech finishes the day: home, the shop, wherever the van parks. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
+            done: (routeEnds.count ?? 0) > 0,
+            to: "/settings/users",
+            cta: "Set day's end",
+          },
       {
         id: "route",
         label: "Assign your first route",

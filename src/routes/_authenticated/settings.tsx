@@ -1,17 +1,24 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { getDeepCleanSettings } from "@/lib/subscriptions.functions";
 import { ChevronDown } from "lucide-react";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { titleHead } from "@/lib/page-title";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => titleHead("Settings"),
   component: SettingsLayout,
 });
 
-type Tab = { label: string; to: string; techVisible?: boolean };
+/** `petWasteOnly`: hidden from a business that does not run pet waste
+ *  (organizations.service_lines), like NavItem.petWasteOnly in the sidebar.
+ *  The page stays routable; only the signpost goes. */
+type Tab = { label: string; to: string; techVisible?: boolean; petWasteOnly?: boolean };
 type TabGroup = { title: string; tabs: Tab[] };
 
 // Grouped to match the main app sidebar's high-level buckets.
@@ -34,7 +41,7 @@ const TAB_GROUPS: TabGroup[] = [
       { label: "Skip rules", to: "/settings/skip-rules" },
       { label: "Blackouts", to: "/settings/blackouts" },
       { label: "Add-ons", to: "/settings/addons" },
-      { label: "Deep clean", to: "/settings/deep-clean" },
+      { label: "Deep clean", to: "/settings/deep-clean", petWasteOnly: true },
     ],
   },
   {
@@ -126,6 +133,21 @@ const TAB_GROUPS: TabGroup[] = [
 function SettingsLayout() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { role } = useMyRole();
+  const { petWaste } = useServiceLines();
+  // A pet-waste-only section stays signposted while it is still doing
+  // something. The seasonal deep clean adds a charge to real invoices when it
+  // is on, so a business that has switched pet waste off but left that on
+  // must still be able to find the switch. Asked only when it matters, and
+  // under the key the Deep clean page itself uses, so it is one fetch.
+  const deepCleanFn = useServerFn(getDeepCleanSettings);
+  const deepClean = useQuery({
+    queryKey: ["deep-clean"],
+    queryFn: () => deepCleanFn(),
+    enabled: !petWaste && role !== "tech" && canAccess(role, "/settings/deep-clean"),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const stillInUse = (to: string) => to === "/settings/deep-clean" && deepClean.data?.enabled === true;
   // Only the heading follows the interface language. A tech reaches exactly
   // one section, their own Preferences, which is translated; the section
   // picker below is office-only and stays in English with the screens it
@@ -135,7 +157,12 @@ function SettingsLayout() {
     ...g,
     // Hide tabs the role can't open — showing a link that bounces to the
     // dashboard with "You don't have access" reads as broken (P1.4).
-    tabs: g.tabs.filter((t) => (role !== "tech" || t.techVisible) && canAccess(role, t.to)),
+    tabs: g.tabs.filter(
+      (t) =>
+        (role !== "tech" || t.techVisible) &&
+        canAccess(role, t.to) &&
+        (!t.petWasteOnly || petWaste || stillInUse(t.to)),
+    ),
   })).filter((g) => g.tabs.length > 0);
   // Which tab is open, so the phone switcher can name it instead of making
   // somebody open a menu to find out where they already are.

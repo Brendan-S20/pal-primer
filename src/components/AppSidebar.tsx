@@ -57,7 +57,7 @@ import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
-import { useCommercialAccounts } from "@/components/CommercialOnly";
+import { useCommercialAccounts, useServiceLines } from "@/components/CommercialOnly";
 
 export type NavItem = {
   title: string;
@@ -66,6 +66,12 @@ export type NavItem = {
   /** Only meaningful for an org that serves HOAs, apartment complexes or dog
    *  parks. Hidden when the owner has said they do not — see CommercialOnly. */
   commercialOnly?: boolean;
+  /** Only meaningful for a business that runs pet waste removal
+   *  (organizations.service_lines). Hidden for a dog walker, a sitter or a
+   *  groomer; fails OPEN like commercialOnly, and reads as pet waste while
+   *  the answer is loading -- see useServiceLines. The gating table is
+   *  PET_WASTE_MODULES in lib/service-lines. */
+  petWasteOnly?: boolean;
   /** Only meaningful for a franchise PARENT — an org with `is_franchise_parent`
    *  set, or with children linked to it. For everyone else the screen behind it
    *  is a page about locations they do not have. Unlike `commercialOnly` this
@@ -159,14 +165,17 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // other item, and the tab bar's More sheet is built from this list, so
       // adding it here is also how a technician on a phone reaches it.
       { title: "My schedule", url: "/my-schedule", icon: CalendarDays },
-      { title: "Waste log", url: "/waste-log", icon: Trash2 },
+      // Pet-waste-only: dump trips and loads hauled. A dog walker's day has
+      // neither, and on the tech's tab bar this slot goes to My schedule.
+      { title: "Waste log", url: "/waste-log", icon: Trash2, petWasteOnly: true },
       { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
       // Commercial-only: /dna lists clients filtered to account_type
       // 'commercial', so for a residential-only business this entry opens a
       // permanently empty workspace. Hidden by commercialOnly below rather
       // than removed, because the orgs that do serve HOAs bill violation
-      // fines from it.
-      { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true },
+      // fines from it. And pet-waste-only: DNA-matching dropped waste back to
+      // a resident's dog means nothing to a business that does not pick it up.
+      { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true, petWasteOnly: true },
     ],
   },
   {
@@ -227,7 +236,12 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
  * it. Neither is a security boundary: the routes and their server functions
  * keep their own gates, and `/franchise` is owner-only in ROUTE_ROLES.
  */
-export type NavVisibility = { commercialEnabled: boolean; franchiseParent: boolean };
+export type NavVisibility = {
+  commercialEnabled: boolean;
+  franchiseParent: boolean;
+  /** organizations.service_lines includes pet_waste. */
+  petWaste: boolean;
+};
 
 /** A nav entry's name in the interface language: `nav.item.<url without the
  *  slash>`, falling back to the English title above. Keyed by URL rather than
@@ -245,6 +259,7 @@ export function navGroupLabel(t: TFunction, label: string): string {
 
 export function useNavVisibility(): NavVisibility {
   const { enabled: commercialEnabled } = useCommercialAccounts();
+  const { petWaste } = useServiceLines();
   const ctxFn = useServerFn(getFranchiseContext);
   // Same key the /franchise page uses, so the two share one fetch rather than
   // asking the same question twice on every navigation.
@@ -258,7 +273,7 @@ export function useNavVisibility(): NavVisibility {
   // that opted out of clutter. Here, falling open would put a Royalties entry
   // in front of every single-location business on a slow request — which is
   // precisely what hiding it was meant to prevent.
-  return { commercialEnabled, franchiseParent: ctx.data?.isParent === true };
+  return { commercialEnabled, franchiseParent: ctx.data?.isParent === true, petWaste };
 }
 
 export function isNavItemVisible(
@@ -269,6 +284,7 @@ export function isNavItemVisible(
   return (
     canAccess(role, it.url) &&
     (!it.commercialOnly || v.commercialEnabled) &&
+    (!it.petWasteOnly || v.petWaste) &&
     (!it.franchiseParentOnly || v.franchiseParent)
   );
 }

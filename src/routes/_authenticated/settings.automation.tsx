@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { pageTitle } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 const key = ["automation"] as const;
 
@@ -33,6 +34,13 @@ function AutomationPage() {
   // and saves it back unchanged, so a business that had a text turned on
   // still has it on the day texting arrives.
   const texting = useClientTexting();
+  // The seasonal deep clean is a pet-waste idea (a spring yard after a
+  // winter's accumulation). Hidden from a business that does not run pet
+  // waste -- unless it is ON, because then it is adding a charge to real
+  // invoices and the owner has to be able to find the switch. Hiding only:
+  // the form still saves the loaded value back unchanged.
+  const { petWaste } = useServiceLines();
+  const showSeasonal = petWaste || !!data.seasonal_deepclean_enabled;
 
   const [autoGen, setAutoGen] = useState(data.auto_generate_visits);
   const [days, setDays] = useState(data.auto_generate_days_ahead);
@@ -210,6 +218,7 @@ function AutomationPage() {
         </CardContent>
       </Card>
 
+      {showSeasonal && (
       <Card>
         <CardHeader><CardTitle>Seasonal deep-clean campaign</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -246,6 +255,7 @@ function AutomationPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle>On my way</CardTitle></CardHeader>

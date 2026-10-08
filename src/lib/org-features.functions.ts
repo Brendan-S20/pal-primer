@@ -11,6 +11,7 @@ import {
   parseChecklist,
   type ChecklistItem,
 } from "@/lib/visit-checklist";
+import { SERVICE_LINES, serviceLinesProblem, type ServiceLine } from "@/lib/service-lines";
 
 // What KIND of business this org is, for rendering.
 //
@@ -49,13 +50,17 @@ export type MyOrgFeatures = {
   visitChecklist: ChecklistItem[];
   /** Whether the completion email lists the items the tech checked. */
   emailVisitChecklist: boolean;
+  /** What the business runs (organizations.service_lines), raw. NULL when it
+   *  could not be read -- callers go through serviceLinesOrDefault, which
+   *  fails open to {pet_waste}. */
+  serviceLines: string[] | null;
 };
 
 export const getMyOrgFeatures = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<MyOrgFeatures> => {
     const { orgId } = await resolveCaller(context.supabase, context.userId);
-    const [{ data: org }, { data: hasData }] = await Promise.all([
+    const [{ data: org }, { data: hasData }, { data: lines }] = await Promise.all([
       context.supabase
         .from("organizations")
         .select(
@@ -64,6 +69,12 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
         .eq("id", orgId)
         .maybeSingle(),
       context.supabase.rpc("org_has_commercial_data", { _org_id: orgId }),
+      // Its own query, not a sixth column on the one above. If this build
+      // reaches a database the migration has not reached yet, the missing
+      // column fails THIS read alone -- service lines fall open to pet waste
+      // -- instead of nulling the whole row and taking commercial accounts,
+      // the photo rule and the checklist down with it.
+      context.supabase.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
     ]);
     return {
       commercialAccounts: !!(org as { commercial_accounts?: boolean } | null)?.commercial_accounts,
@@ -79,6 +90,7 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
       ),
       emailVisitChecklist: !!(org as { email_visit_checklist?: boolean } | null)
         ?.email_visit_checklist,
+      serviceLines: Array.isArray(lines?.service_lines) ? lines.service_lines : null,
     };
   });
 
@@ -171,4 +183,38 @@ export const setEmailVisitChecklist = createServerFn({ method: "POST" })
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { email_visit_checklist: data.enabled });
     return { ok: true, emailVisitChecklist: data.enabled };
+  });
+
+/** What the business runs. Written the way the photo rule and the checklist
+ *  are -- manage_settings, then a plain update through updateOwnOrg under the
+ *  "Settings managers update own org" policy -- so nothing is widened; the
+ *  CHECK on the column (service_lines_are_valid) holds the same rule as the
+ *  validator here, which exists so the owner reads a sentence rather than a
+ *  constraint name.
+ *
+ *  It never refuses a set because of the org's data. Unlike commercial
+ *  accounts, nothing hidden by dropping pet waste is billing anybody (the
+ *  modules that could -- a configured first cleanup, area pricing on a zone,
+ *  a seasonal campaign -- stay visible while they are configured), and the
+ *  rows themselves are untouched. */
+export const setServiceLines = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        lines: z
+          .array(z.enum(SERVICE_LINES as unknown as [ServiceLine, ...ServiceLine[]]))
+          .min(1)
+          .max(SERVICE_LINES.length),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const problem = serviceLinesProblem(data.lines);
+    if (problem) throw new Error(problem);
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
+    return { ok: true, serviceLines: data.lines };
   });

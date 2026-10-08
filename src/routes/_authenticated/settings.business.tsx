@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { useServiceLines } from "@/components/CommercialOnly";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
@@ -21,7 +24,14 @@ import {
   setCommercialAccounts,
   setRecleanWindowHours,
   setRequireCompletionPhoto,
+  setServiceLines,
 } from "@/lib/org-features.functions";
+import {
+  BOOKABLE_SERVICE_LINES,
+  OFFERED_SERVICE_LINES,
+  SERVICE_LINE_LABEL,
+  type ServiceLine,
+} from "@/lib/service-lines";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import { VisitChecklistEditor } from "@/components/VisitChecklistEditor";
 import type { ChecklistItem } from "@/lib/visit-checklist";
@@ -72,12 +82,13 @@ function BusinessDefaultsPage() {
           it. The server gates the write on manage_settings, so render it only
           for the people the server will listen to, like PricingBaselineCard. */}
       {canManageSettings && <TimeZoneCard />}
+      <ServiceLinesCard />
       <PricingBaselineCard />
       <CommercialAccountsCard />
       <CompletionPhotoCard />
       {/* Written by manage_settings only, so drawn for those roles only, like
           the time zone above: a promise to clients is not a tech's call. */}
-      {canManageSettings && <RecleanGuaranteeCard />}
+      {canManageSettings && <RecleanGuaranteeForPetWaste />}
       <DemoDataCard />
     </div>
   );
@@ -272,6 +283,16 @@ function CompletionPhotoCard() {
  * plus a number that means nothing while the switch is off. The database
  * caps it at a week (168); past that it is a second visit, not a re-clean.
  */
+/** The re-clean guarantee is a pet-waste promise ("missed a spot? we'll come
+ *  back"). A business that does not run pet waste does not see it, and the
+ *  portal stops offering the button to its customers (portal.functions reads
+ *  the same column); the stored window is untouched. */
+function RecleanGuaranteeForPetWaste() {
+  const { petWaste, known } = useServiceLines();
+  if (!known || !petWaste) return null;
+  return <RecleanGuaranteeCard />;
+}
+
 function RecleanGuaranteeCard() {
   const qc = useQueryClient();
   const getFn = useServerFn(getMyOrgFeatures);
@@ -421,6 +442,106 @@ function CommercialAccountsCard() {
             This can&apos;t be switched off while you have commercial clients, properties or waste
             stations on the books. Their units, service records and any DNA fines live on the
             screens it would hide. Move them to residential first if you no longer serve them.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * What do you run? organizations.service_lines.
+ *
+ * Today this is mostly a statement of direction: pet waste removal is the one
+ * line HoundStack can book end to end, and dog walking, pet sitting and mobile
+ * grooming are listed as "coming soon" and cannot be ticked, because the data
+ * model cannot yet book a 30-minute walk at 11:00 and another at 16:00 on the
+ * same day (docs/other-trades-service-catalog.md). Listing them anyway tells
+ * an owner who does both what is coming, and what the switch will do.
+ *
+ * Two rules keep it from ever stranding anybody:
+ *   - a line that is already ticked can always be unticked, even one that is
+ *     not offered yet (set some other way, or offered once and withdrawn);
+ *   - the last ticked line cannot be unticked: the database refuses an empty
+ *     set, and "runs nothing" is not a business.
+ *
+ * Office-only, and English, like the other cards on this page: a tech never
+ * reaches it.
+ */
+function ServiceLinesCard() {
+  const qc = useQueryClient();
+  const setFn = useServerFn(setServiceLines);
+  const { role } = useMyRole();
+  const { can } = usePermissions();
+  const canEdit = can("manage_settings");
+  const { lines, known } = useServiceLines();
+
+  const mut = useMutation({
+    mutationFn: (next: ServiceLine[]) => setFn({ data: { lines: next } }),
+    onSuccess: () => {
+      // Invalidate rather than set: the sidebar and the tab bar read the same
+      // key and should redraw from the server's answer.
+      qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      toast.success("Saved. Your screens now show the tools for what you run.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (role === "tech") return null;
+
+  const toggle = (line: ServiceLine, on: boolean) => {
+    const next = on
+      ? OFFERED_SERVICE_LINES.filter((l) => l === line || lines.includes(l))
+      : lines.filter((l) => l !== line);
+    if (next.length === 0) return;
+    mut.mutate(next);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">What do you run?</CardTitle>
+        <CardDescription>
+          HoundStack shows the tools for the services you run. Pet waste removal turns on the waste
+          log, dump sites, yard outlines, first cleanups and deep cleans. Nothing is deleted if you
+          change this; screens are only shown or hidden.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y rounded-md border">
+          {OFFERED_SERVICE_LINES.map((line) => {
+            const checked = lines.includes(line);
+            const bookable = BOOKABLE_SERVICE_LINES.includes(line);
+            const onlyOne = checked && lines.length === 1;
+            const disabled =
+              !canEdit || !known || mut.isPending || onlyOne || (!checked && !bookable);
+            const id = `service-line-${line}`;
+            return (
+              <li key={line}>
+                <label
+                  htmlFor={id}
+                  className={`flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm ${
+                    disabled ? "" : "cursor-pointer"
+                  }`}
+                >
+                  <Checkbox
+                    id={id}
+                    checked={checked}
+                    disabled={disabled}
+                    onCheckedChange={(c) => toggle(line, c === true)}
+                    className="shrink-0"
+                  />
+                  <span className="min-w-0 flex-1 font-medium">{SERVICE_LINE_LABEL[line]}</span>
+                  {!bookable && <ComingSoonBadge />}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+        {lines.length === 1 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            You need at least one. Dog walking, pet sitting and mobile grooming can be added when
+            booking them arrives.
           </p>
         )}
       </CardContent>

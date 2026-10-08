@@ -7,6 +7,7 @@ import { platformFeeCents } from "@/lib/platform-fee";
 import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
+import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -184,7 +185,15 @@ export const portalGetClient = createServerFn({ method: "GET" })
     // get a "Request a re-clean" button, and portal_request_reclean refuses
     // against this same column, so the button and the refusal cannot disagree
     // about which setting they read. 0 means the owner switched it off.
-    const [{ data: rule }, { data: org }] = await Promise.all([
+    //
+    // A re-clean is a pet-waste promise, so a business that does not run pet
+    // waste (organizations.service_lines) offers no button, whatever the
+    // stored window says. Read on its own so that, on a database the
+    // service-lines migration has not reached, the missing column fails this
+    // read alone and the answer falls OPEN to pet waste, as everywhere else.
+    // The window itself is untouched, and portal_request_reclean still
+    // answers: this hides an offer, it does not refuse one.
+    const [{ data: rule }, { data: org }, { data: lines }] = await Promise.all([
       sb
         .from("skip_billing_rules")
         .select("billable_pct")
@@ -196,11 +205,13 @@ export const portalGetClient = createServerFn({ method: "GET" })
         .select("reclean_window_hours")
         .eq("id", row.organization_id)
         .maybeSingle(),
+      sb.from("organizations").select("service_lines").eq("id", row.organization_id).maybeSingle(),
     ]);
+    const petWaste = runsPetWaste(serviceLinesOrDefault(lines?.service_lines));
     return {
       ...row,
       skip_billable_pct: rule?.billable_pct ?? 0,
-      reclean_window_hours: Number(org?.reclean_window_hours ?? 0),
+      reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
     };
   });
 
