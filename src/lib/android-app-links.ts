@@ -184,10 +184,15 @@ export function appLinkTarget(url: string): string | null {
 // fails every check anyway, and a 404 is unmistakable in the Play Console's
 // deep-link report where a malformed 200 reads as "almost working".
 
-/** The SHA-256 certificate fingerprints, uppercase hex with colons. Empty
- *  until the owner fills it in from Play Console; see above. */
+/** The SHA-256 certificate fingerprints, uppercase hex with colons. Read
+ *  from Play Console on 2026-10-07, the day the first bundle was uploaded. */
 export const ANDROID_CERT_SHA256_FINGERPRINTS: readonly string[] = [
-  // "AB:CD:...:EF",  <- REPLACE: Play Console > App integrity > App signing key certificate > SHA-256
+  // Google's app signing key (Play App Signing): every install from Play.
+  "C1:FA:C5:F8:DA:69:E4:B6:F8:DA:E2:19:10:F8:0C:27:EA:78:6A:54:5E:B5:7D:5B:77:ED:BD:50:0B:3B:19:CC",
+  // The upload key (~/keys/houndstack-upload.jks on the owner's Mac): a release
+  // build installed without Play, e.g. bundletool from a local .aab. Also what
+  // `keytool -printcert -jarfile app-release.aab` prints for a fresh bundle.
+  "DF:73:23:9B:DF:4A:4A:A3:3D:79:D3:33:22:E8:4C:DC:39:CD:21:76:2E:FC:42:B2:B5:90:99:0F:EC:52:21:F1",
 ];
 
 const FINGERPRINT = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;

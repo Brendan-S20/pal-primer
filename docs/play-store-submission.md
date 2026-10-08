@@ -135,7 +135,8 @@ Each step says what it unblocks. Steps 1 to 4 can happen today.
    **physical** Android phone. This is the Play analogue of TestFlight
    Internal.
 
-7. **App Links fingerprint**: Play Console > Test and release > App integrity >
+7. **App Links fingerprint**: done 2026-10-07. Both SHA-256s (Play's app signing key `C1:FA:…:19:CC` and the upload key `DF:73:…:21:F1`) are in
+   `ANDROID_CERT_SHA256_FINGERPRINTS`. What it took, for the record: Play Console > Test and release > App integrity >
    App signing > *App signing key certificate* > **SHA-256** (not the SHA-1
    beside it). Either paste it into `ANDROID_CERT_SHA256_FINGERPRINTS` in
    `src/lib/android-app-links.ts` (and update the one test that expects it
