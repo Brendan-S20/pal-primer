@@ -111,12 +111,12 @@ function OnboardingPage() {
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
             Your workspace is ready. Two minutes of setup gets you running: pick the plan that fits
             your crew (every tier has unlimited clients, jobs, routes and zones; you're billed per
-            employee), then explore your
-            dashboard. You can change or cancel the plan anytime in Settings → Plan &amp; billing.
+            employee), then set the business up: an address, a price, a first client. You can
+            change or cancel the plan anytime in Settings → Plan &amp; billing.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Button onClick={() => setStep("plan")}>Pick a plan</Button>
-            <Button variant="ghost" onClick={() => navigate({ to: "/dashboard" })}>
+            <Button variant="ghost" onClick={() => navigate({ to: "/setup" })}>
               Skip for now, start on the free trial
             </Button>
           </div>
@@ -150,7 +150,7 @@ function OnboardingPage() {
             <Button variant="ghost" onClick={() => setStep("welcome")}>
               Back
             </Button>
-            <Button variant="ghost" onClick={() => navigate({ to: "/dashboard" })}>
+            <Button variant="ghost" onClick={() => navigate({ to: "/setup" })}>
               Skip for now
             </Button>
           </div>
@@ -180,8 +180,10 @@ function OnboardingPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             Your plan is active. Manage it anytime in Settings → Plan &amp; billing.
           </p>
-          <Link to="/dashboard" className="mt-5 inline-block">
-            <Button>Go to your dashboard</Button>
+          {/* Onward to the guided setup, not an empty dashboard: a plan is
+              not a business until it has a price and a client. */}
+          <Link to="/setup" className="mt-5 inline-block">
+            <Button>Set up your business</Button>
           </Link>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, ChevronDown, ChevronUp, Circle, X } from "lucide-react";
@@ -7,6 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { canAccess, useMyRole } from "@/hooks/useMyRole";
 import { getOnboardingStatus, dismissOnboarding } from "@/lib/onboarding.functions";
+import {
+  SETUP_PATH,
+  canRunSetup,
+  openSetupGuide,
+  readRememberedStep,
+  startingStep,
+  stepsFor,
+  useSetupGuide,
+} from "@/lib/setup-guide";
 
 type Step = {
   id: string;
@@ -54,6 +63,8 @@ export function OnboardingChecklist() {
   const statusFn = useServerFn(getOnboardingStatus);
   const dismissFn = useServerFn(dismissOnboarding);
   const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
+  const guide = useSetupGuide();
 
   const { data } = useQuery({
     queryKey: ["onboarding-status"],
@@ -62,12 +73,30 @@ export function OnboardingChecklist() {
 
   if (!data) return null;
   if (data.dismissed) return null;
-  if (data.total === 0) return null;
+  // The same six steps the guided setup walks, and only the ones this role
+  // can do: a dispatcher was shown "Connect Stripe" and "Invite tech" with
+  // buttons into pages that turned them away. Nobody who cannot run setup
+  // gets the card at all.
+  if (!canRunSetup(role)) return null;
+  const steps = stepsFor(data.steps, role);
+  if (steps.length === 0) return null;
+  const completed = steps.filter((s) => s.done).length;
+  const total = steps.length;
 
-  const pct = Math.round((data.completed / data.total) * 100);
-  const allDone = data.completed === data.total;
-  const visibility = stepVisibility(data.steps, expanded);
-  const foldedAway = data.steps.filter((s) => visibility[s.id] !== "shown").length;
+  const pct = Math.round((completed / total) * 100);
+  const allDone = completed === total;
+  const visibility = stepVisibility(steps, expanded);
+  const foldedAway = steps.filter((s) => visibility[s.id] !== "shown").length;
+
+  /** The checklist is the guide's front door: "Guide me" opens it at the
+   *  step they were on, or the first one still open. */
+  const guideMe = () => {
+    openSetupGuide();
+    void navigate({
+      to: SETUP_PATH,
+      search: { step: startingStep(steps, readRememberedStep(guide.userId)) ?? undefined },
+    });
+  };
 
   const handleDismiss = async () => {
     await dismissFn();
@@ -82,7 +111,7 @@ export function OnboardingChecklist() {
           <p className="mt-0.5 text-sm text-muted-foreground">
             {allDone
               ? "Every setup step is complete. Dismiss this card to hide it."
-              : `${data.completed} of ${data.total} steps complete`}
+              : `${completed} of ${total} steps complete`}
           </p>
         </div>
         {/* Dismissing is for good (the server records it), so it says so in
@@ -104,8 +133,14 @@ export function OnboardingChecklist() {
         <Progress value={pct} />
       </div>
 
+      {!allDone && (
+        <Button className="mt-3" onClick={guideMe} data-testid="setup-guide-me">
+          {completed > 0 ? "Continue guided setup" : "Guide me through it"}
+        </Button>
+      )}
+
       <ul className="mt-4 space-y-3">
-        {data.steps.map((step) => (
+        {steps.map((step) => (
           <li
             key={step.id}
             data-step={step.id}
@@ -157,7 +192,13 @@ export function OnboardingChecklist() {
               // width is its longest WORD. The rule in CLAUDE.md bites when a
               // value has no space in it to break on, which no copy here does.
               <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                <Link to={step.to}>
+                {/* A step done on /setup opens the guide AT that step; the
+                    rest go to the page where they are done. */}
+                <Link
+                  to={step.to}
+                  search={step.to === SETUP_PATH ? { step: step.id } : undefined}
+                  onClick={step.to === SETUP_PATH ? openSetupGuide : undefined}
+                >
                   <Button size="sm" variant="outline">
                     {step.cta}
                   </Button>
@@ -188,7 +229,7 @@ export function OnboardingChecklist() {
             </>
           ) : (
             <>
-              Show all {data.total} steps{" "}
+              Show all {total} steps{" "}
               <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
             </>
           )}

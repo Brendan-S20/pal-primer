@@ -278,43 +278,34 @@ const BASE_STUBS: Record<string, Stub> = {
   // is the widest row this component can produce and the only one that can
   // push a control off a 360px screen.
   getOnboardingStatus: {
-    completed: 4,
-    total: 7,
+    completed: 3,
+    total: 6,
     dismissed: false,
+    emailVerified: true,
+    // The six steps of src/lib/onboarding.functions.ts, which the guided setup
+    // at /setup walks too. Mid-progress for the reason above, and the open
+    // steps are chosen: "clients" is the row with two buttons, "dump_site"
+    // and "payouts" are the steps the guide does in place and links out for.
     steps: [
       {
-        id: "verify_email",
-        label: "Verify your email",
+        id: "business",
+        label: "Your business details",
         description:
-          "Confirm your address to unlock payments (Stripe). Everything else works meanwhile.",
+          "Your business address and time zone. Routes start from the address, and the time zone decides what counts as today.",
         done: true,
-        to: "/payments",
-        cta: "Verify",
+        to: "/setup",
+        cta: "Add details",
+        gate: "/settings/business",
       },
       {
         id: "zones",
-        label: "Create service zones",
-        description: "Group properties by neighborhood or postal prefix so routes stay tight.",
-        done: true,
-        to: "/zones",
-        cta: "Add a zone",
-      },
-      {
-        id: "staff",
-        label: "Add your first tech",
-        description: "Invite at least one tech so visits can be assigned and dispatched.",
-        done: true,
-        to: "/settings/users",
-        cta: "Invite tech",
-      },
-      {
-        id: "dump_site",
-        label: "Add your dump site",
+        label: "Your service area and price",
         description:
-          "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
-        done: false,
-        to: "/waste-log",
-        cta: "Add dump site",
+          "Where you work and what you charge per visit. New clients in the area are quoted this price.",
+        done: true,
+        to: "/setup",
+        cta: "Set your price",
+        gate: "/zones",
       },
       {
         id: "clients",
@@ -323,24 +314,41 @@ const BASE_STUBS: Record<string, Stub> = {
         done: false,
         to: "/clients/new",
         cta: "Add client",
+        gate: "/clients",
         alt: { to: "/imports", cta: "Import CSV", gate: "/imports" },
       },
       {
-        id: "route",
-        label: "Assign your first route",
-        description: "Assign visits to a tech on the Schedule so the field crew has work loaded.",
-        done: false,
-        to: "/routes",
-        cta: "Open schedule",
+        id: "staff",
+        label: "Who runs the route",
+        description:
+          "Say if you run the route yourself, or invite a tech. Visits are only handed to people who run routes.",
+        done: true,
+        to: "/setup",
+        cta: "Choose",
+        gate: "/settings/users",
       },
       {
-        id: "billing",
-        label: "Connect Stripe (optional)",
-        description: "Bring your own Stripe key to collect payments and enable autopay.",
-        done: true,
-        to: "/settings/billing",
-        cta: "Set up billing",
+        id: "dump_site",
+        label: "Where the day ends",
+        description:
+          "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
+        done: false,
+        to: "/setup",
+        cta: "Add dump site",
+        gate: "/waste-log",
       },
+      {
+        id: "payouts",
+        label: "Get paid",
+        description:
+          "Connect Stripe so clients can pay by card and the money lands in your bank. Verify your email first. You can do this later.",
+        done: false,
+        to: "/payments",
+        cta: "Set up payouts",
+        gate: "/payments",
+      },
+    ],
+  },
     ],
   },
   listActiveAnnouncements: { rows: [] },
