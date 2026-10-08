@@ -97,19 +97,29 @@ test("a tech clocks in and out, and the office sees it and can fix it", async ({
       await expect(sheet).toBeVisible({ timeout: 10_000 });
       return sheet;
     };
+    // A successful tap closes the sheet once the clock has refetched
+    // (TimeClockSheetHost: `if (ok) setOpen(false)`), so each tap waits for
+    // that close and then reopens it rather than reading a sheet on its way out.
+    const tapAndWaitForClose = async (name: "Clock in" | "Clock out") => {
+      const sheet = await clockSheet();
+      await sheet.getByRole("button", { name }).click();
+      await expect(sheet, `the sheet closes after ${name}`).toBeHidden({ timeout: 20_000 });
+    };
     let card = await clockSheet();
     await expect(card).toContainText("You're off the clock");
-    await card.getByRole("button", { name: "Clock in" }).click();
+    await tapAndWaitForClose("Clock in");
+    await expect(page.locator("[data-time-clock-row]:visible").first()).toContainText("On the clock", {
+      timeout: 20_000,
+    });
     card = await clockSheet();
-    await expect(card).toContainText("On the clock since", { timeout: 20_000 });
+    await expect(card).toContainText("On the clock since");
 
     let rows = await entriesOf(a.staffId!);
     expect(rows, "one shift, opened by the tap").toHaveLength(1);
     expect(rows[0].clock_out).toBeNull();
     expect(rows[0].clock_in_source).toBe("tech_live");
 
-    card = await clockSheet();
-    await card.getByRole("button", { name: "Clock out" }).click();
+    await tapAndWaitForClose("Clock out");
     await expect(page.getByText("Clocked out", { exact: true })).toBeVisible({ timeout: 20_000 });
     card = await clockSheet();
     await expect(card).toContainText("You're off the clock");
