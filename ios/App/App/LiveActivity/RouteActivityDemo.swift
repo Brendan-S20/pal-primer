@@ -8,6 +8,12 @@
 //   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo
 //   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liveActivityDemoStep 12
 //   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liveActivityDemoLang ar
+//   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo -liveActivityDemoAction complete
+//
+// The stop carries coordinates and a visit id, so the buttons are drawn (iOS
+// 17+): Navigate, and Start, or Complete with -liveActivityDemoAction
+// complete. A tap on either opens what it would on a phone; there is no
+// session, so My Day lands on sign-in.
 //
 // And to prove the JS bridge reaches the plugin, without signing in:
 //
@@ -72,7 +78,8 @@ enum RouteActivityDemo {
         }
         let step = Int(value(after: "-liveActivityDemoStep", in: args) ?? "") ?? 5
         let lang = value(after: "-liveActivityDemoLang", in: args) ?? "en"
-        let state = sample(step: step, lang: lang)
+        let action = value(after: "-liveActivityDemoAction", in: args) == "complete" ? "complete" : "start"
+        let state = sample(step: step, lang: lang, action: action)
         let attrs = RouteActivityAttributes(
             routeDate: "2026-10-04",
             title: lang == "ar" ? "مسار اليوم" : lang == "es" ? "Ruta de hoy" : "Today's route"
@@ -114,33 +121,46 @@ enum RouteActivityDemo {
     }
 
     @available(iOS 16.1, *)
-    private static func sample(step: Int, lang: String) -> RouteActivityAttributes.ContentState {
+    private static func sample(step: Int, lang: String, action: String) -> RouteActivityAttributes.ContentState {
         let total = 12
         let skipped = step > 3 ? 1 : 0
         let allDone = step > total
         let done = max(0, min(total, step - 1) - skipped)
         let position = min(step, total)
+        let inProgress = action == "complete"
+        // A made-up stop: a fixture visit id and a point in Springfield, IL.
+        let visitId: String? = allDone ? nil : "0f8c2a51-6d3e-4b7a-9c1d-2e5f8a9b0c4d"
+        let lat: Double? = allDone ? nil : 39.7817
+        let lng: Double? = allDone ? nil : -89.6501
         if lang == "ar" {
             return .init(
                 stopLabel: allDone ? "انتهت كل المحطات" : "المحطة \(position) من \(total)",
-                nextLabel: allDone ? "انتهى اليوم" : "المحطة التالية",
+                nextLabel: allDone ? "انتهى اليوم" : inProgress ? "قيد التنفيذ" : "المحطة التالية",
                 nextStop: allDone ? nil : "412 Elm St",
                 window: allDone ? nil : "10:40 ص–11:00 ص",
                 doneLabel: "\(done) منجزة",
                 skippedLabel: "\(skipped) متخطاة",
                 done: done, skipped: skipped, total: total, position: position,
-                allDone: allDone, rtl: true
+                allDone: allDone, rtl: true,
+                visitId: visitId, destLat: lat, destLng: lng,
+                nextAction: allDone ? nil : action,
+                navigateLabel: allDone ? nil : "ملاحة",
+                actionLabel: allDone ? nil : inProgress ? "إنهاء" : "بدء"
             )
         }
         return .init(
             stopLabel: allDone ? "All stops done" : "Stop \(position) of \(total)",
-            nextLabel: allDone ? "Route finished" : "Next stop",
+            nextLabel: allDone ? "Route finished" : inProgress ? "In progress" : "Next stop",
             nextStop: allDone ? nil : "412 Elm St",
             window: allDone ? nil : "10:40–11:00 AM",
             doneLabel: "\(done) done",
             skippedLabel: "\(skipped) skipped",
             done: done, skipped: skipped, total: total, position: position,
-            allDone: allDone, rtl: false
+            allDone: allDone, rtl: false,
+            visitId: visitId, destLat: lat, destLng: lng,
+            nextAction: allDone ? nil : action,
+            navigateLabel: allDone ? nil : "Navigate",
+            actionLabel: allDone ? nil : inProgress ? "Complete" : "Start"
         )
     }
 }

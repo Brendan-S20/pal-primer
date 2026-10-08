@@ -755,6 +755,13 @@ const es: Translations = {
     show: "Mostrar",
     hide: "Ocultar",
     failed: "No se pudo mostrar la ruta en la pantalla de bloqueo",
+    // The buttons on the lock screen and in the Dynamic Island. The same
+    // words as the buttons on My Day they open.
+    action: {
+      navigate: "Navegar",
+      start: "Iniciar",
+      complete: "Completar",
+    },
   },
 };
 

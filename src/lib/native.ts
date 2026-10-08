@@ -660,6 +660,11 @@ export async function initBackButton(): Promise<() => void> {
  * the app (AndroidManifest.xml, verified by /.well-known/assetlinks.json) and
  * arrives here as `appUrlOpen`. Navigate to the same path inside the bundle.
  *
+ * And the iPhone's lock screen: the route's Live Activity opens the app with
+ * consulting.thenorth.houndstack://open/my-day?..., which arrives the same
+ * way. src/lib/live-activity-links.ts rebuilds it into a /my-day path from
+ * validated parts, or refuses it.
+ *
  * Cold start is covered by the same listener: Capacitor's App plugin retains
  * the launch URL event until a listener attaches, so this must not ALSO read
  * getLaunchUrl(), or a cold-start link would navigate twice.
@@ -669,12 +674,13 @@ export async function initBackButton(): Promise<() => void> {
  */
 export async function initAppLinks(onNavigate: (path: string) => void): Promise<() => void> {
   if (!isNative()) return () => {};
-  const [{ App }, { appLinkTarget }] = await Promise.all([
+  const [{ App }, { appLinkTarget }, { liveActivityLinkTarget }] = await Promise.all([
     import("@capacitor/app"),
     import("@/lib/android-app-links"),
+    import("@/lib/live-activity-links"),
   ]);
   const handle = await App.addListener("appUrlOpen", ({ url }) => {
-    const path = appLinkTarget(url);
+    const path = appLinkTarget(url) ?? liveActivityLinkTarget(url);
     if (path) onNavigate(path);
   });
   return () => {

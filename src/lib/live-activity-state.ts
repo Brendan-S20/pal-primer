@@ -32,6 +32,27 @@ export type RouteActivityState = {
   position: number;
   allDone: boolean;
   rtl: boolean;
+  // ── The buttons (2026-10-07). Every one of these is null when the route is
+  // finished, and every one is a plain value, never an object: the "skip
+  // unchanged state" check in routeChangePriority compares field by field
+  // with !==, and an object would differ from its own copy every time.
+  //
+  // An older app build ignores these keys and an older state (one saved in
+  // live_activity_tokens.last_state, or sent before this) has none of them;
+  // RouteActivityAttributes.swift decodes a missing one as nil, and the card
+  // then draws no buttons. ──
+  /** The stop on the card, for the deep links back into My Day. */
+  visitId: string | null;
+  /** Where Navigate sends the maps app: the property's coordinates... */
+  destLat: number | null;
+  destLng: number | null;
+  /** ...or, only when it has none, its address, as My Day's Navigate uses. */
+  destAddress: string | null;
+  /** Which of My Day's buttons that stop needs next. */
+  nextAction: "start" | "complete" | null;
+  navigateLabel: string | null;
+  /** The label for nextAction, in the tech's language. */
+  actionLabel: string | null;
 };
 
 export type RouteActivityVisit = {
@@ -42,6 +63,10 @@ export type RouteActivityVisit = {
   properties?: {
     label?: string | null;
     street?: string | null;
+    city?: string | null;
+    postal_code?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     earliest_service_time?: string | null;
     latest_service_time?: string | null;
   } | null;
@@ -73,6 +98,34 @@ export function stopName(v: RouteActivityVisit | undefined): string | null {
   if (label) return label;
   const street = p?.street?.trim();
   return street || null;
+}
+
+/** Where Navigate goes: the property's coordinates when it has them, else
+ *  "412 Elm St, Springfield, 62704", the string My Day's own Navigate button
+ *  hands the maps app. The address is sent only when there are no
+ *  coordinates, so the payload carries no more of it than it has to. */
+export function stopDestination(
+  v: RouteActivityVisit | undefined,
+): { lat: number; lng: number; address: null } | { lat: null; lng: null; address: string | null } {
+  const p = v?.properties;
+  const lat = Number(p?.latitude);
+  const lng = Number(p?.longitude);
+  if (
+    p?.latitude != null &&
+    p?.longitude != null &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(lat === 0 && lng === 0)
+  ) {
+    return { lat, lng, address: null };
+  }
+  const address = [p?.street, p?.city, p?.postal_code]
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean)
+    .join(", ");
+  return { lat: null, lng: null, address: address || null };
 }
 
 /** "10:40–11:00": the routed ETA if there is one, else the property's own
@@ -117,6 +170,14 @@ export function buildRouteActivityState(
   const next = active ?? stops.find((v) => v.status === "scheduled");
   const allDone = total > 0 && !stops.some((v) => OPEN.has(v.status));
   const position = next ? stops.indexOf(next) + 1 : total;
+  const dest = allDone ? null : next ? stopDestination(next) : null;
+  // A stop under way needs Complete; one not started needs Start. Both only
+  // OPEN the app on that stop (src/lib/live-activity-links.ts): completing can
+  // need a photo, a checklist or a cash entry, and none of it is done from a
+  // lock screen.
+  const nextAction: RouteActivityState["nextAction"] =
+    allDone || !next ? null : next.status === "in_progress" ? "complete" : "start";
+  const hasDest = !!dest && (dest.lat != null || !!dest.address);
 
   return {
     stopLabel: allDone
@@ -137,6 +198,18 @@ export function buildRouteActivityState(
     position,
     allDone,
     rtl: ctx.rtl,
+    visitId: allDone || !next ? null : next.id,
+    destLat: dest?.lat ?? null,
+    destLng: dest?.lng ?? null,
+    destAddress: dest?.address ?? null,
+    nextAction,
+    navigateLabel: hasDest ? t("liveActivity.action.navigate") : null,
+    actionLabel:
+      nextAction === "complete"
+        ? t("liveActivity.action.complete")
+        : nextAction === "start"
+          ? t("liveActivity.action.start")
+          : null,
   };
 }
 

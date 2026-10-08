@@ -39,6 +39,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        #if canImport(ActivityKit)
+        // Navigate on the route's lock-screen card. iOS hands the card's
+        // Google Maps link to this app rather than opening it, so pass it
+        // on (RouteLinks.directionsHandOff says why, and what it accepts).
+        // Not forwarded to Capacitor: the web view has nothing to do with it.
+        if #available(iOS 16.1, *), let maps = RouteLinks.directionsHandOff(url) {
+            DispatchQueue.main.async { app.open(maps) }
+            return true
+        }
+        #endif
         // Called when the app was launched with a url. Feel free to add additional processing here,
         // but if you want the App API to support tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
