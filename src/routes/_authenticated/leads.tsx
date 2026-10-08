@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listLeads, updateLeadStatus, getLeadFormConfig } from "@/lib/leads.functions";
 import { leadConversionState } from "@/lib/lead-conversion";
+import { leadOriginLabel, type LeadSignupState } from "@/lib/new-customer-form";
 import { Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -96,7 +97,7 @@ function LeadsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Leads</h1>
           <p className="text-sm text-muted-foreground">
-            Prospects submitted through the public contact form.
+            Quote requests and signups from your signup &amp; quote form, in one list.
           </p>
         </div>
         {/* MEASURED 2026-09-28 at 360px: Preview form, Edit form and a fixed
@@ -110,13 +111,13 @@ function LeadsPage() {
           {/* The form these leads come from: see it as a prospect would, or
               jump straight into editing it (Brendan, 2026-07-14). */}
           {formSlug && (
-            <a href={`/lead/${formSlug}`} target="_blank" rel="noreferrer">
+            <a href={`/signup/${formSlug}`} target="_blank" rel="noreferrer">
               <Button variant="outline">
                 <Eye className="mr-1 h-4 w-4 shrink-0" /> Preview form
               </Button>
             </a>
           )}
-          <Link to="/settings/lead-form">
+          <Link to="/settings/online-signup">
             <Button variant="outline">
               <Pencil className="mr-1 h-4 w-4 shrink-0" /> Edit form
             </Button>
@@ -143,7 +144,7 @@ function LeadsPage() {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : leads.length === 0 ? (
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-          No leads yet. The contact form on your marketing site will land here.
+          No leads yet. Quote requests and online signups from your form will land here.
         </div>
       ) : (
         <div className="space-y-3">
@@ -212,6 +213,16 @@ function LeadsPage() {
 
           {leads.map((l) => {
             const conversion = leadConversionState(l);
+            // The signup this lead started, if it is a signup: the newest one,
+            // since a visitor who went back and changed their dogs started two.
+            const signups = ((l as any).signup_requests ?? []) as Array<
+              NonNullable<LeadSignupState> & { created_at?: string }
+            >;
+            const signup =
+              [...signups].sort((a, b) =>
+                String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+              )[0] ?? null;
+            const origin = leadOriginLabel(l.source, signup);
             return (
             <div key={l.id} className="rounded-lg border bg-card p-4">
               {/* MEASURED 2026-09-28 at 390px: the action column sat BESIDE
@@ -231,6 +242,10 @@ function LeadsPage() {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <div className="min-w-0 break-words font-medium">{l.name}</div>
                     <Badge variant="outline">{humanizeEnum(l.status)}</Badge>
+                    {/* Where it came from, said plainly: a quote request to
+                        answer, a signup that paid, or one that stopped at the
+                        card form, which is the one most worth a call. */}
+                    <Badge variant="secondary">{origin}</Badge>
                     {l.company ? (
                       <span className="min-w-0 break-words text-sm text-muted-foreground">
                         · {l.company}
@@ -267,7 +282,7 @@ function LeadsPage() {
                     </p>
                   ) : null}
                   <div className="mt-2 text-xs text-muted-foreground">
-                    {formatDateTime(l.created_at)} · source: {humanizeEnum(l.source)}
+                    {formatDateTime(l.created_at)}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 sm:w-40 sm:shrink-0">

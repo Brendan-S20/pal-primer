@@ -7,6 +7,8 @@ import {
   findSilentlyClippedText,
   findControlsUnder44px,
 } from "./rules";
+import { installStubBackend } from "./fixtures/stub-backend";
+import { PORTAL_SLUG, QUOTE_ONLY_HEADLINE, QUOTE_ONLY_SLUG } from "./fixtures/portal-dataset";
 
 // The four widths named in CLAUDE.md, and the four measurements themselves,
 // now live in `./rules.ts` — because there is a second sweep,
@@ -21,7 +23,7 @@ import {
 // Public routes only. Everything behind /_authenticated needs a session, which
 // the sibling spec mints without one — see `fixtures/session.ts` there. Listed
 // explicitly rather than crawled so that a route going missing is a failure here.
-const ROUTES = [
+const UNSTUBBED = [
   "/auth",
   "/get-started",
   "/no-workspace",
@@ -29,6 +31,31 @@ const ROUTES = [
   "/legal/terms",
   "/legal/sms",
 ] as const;
+
+// A business's one public form, /signup/{slug}: the lead form and the online
+// signup merged into it on 2026-10-08, and /lead/{slug} now forwards here.
+// Its lookup is a server function that would otherwise reach a real
+// database, so these two answer from the stub backend (which also fences the
+// network and answers the quote request's POST), and each proves it rendered
+// with text only its fixture puts on the page: a blank page, or the
+// "This page isn't available" card, would otherwise clear the size guard.
+// Two states: a business that sells online (price and card on offer) and one
+// that only takes quote requests.
+const STUBBED: Record<string, string> = {
+  [`/signup/${PORTAL_SLUG}`]: "Get instant price",
+  [`/signup/${QUOTE_ONLY_SLUG}`]: QUOTE_ONLY_HEADLINE,
+};
+
+const ROUTES = [...UNSTUBBED, ...Object.keys(STUBBED)];
+
+const stubbed = new WeakSet<Page>();
+async function open(page: Page, route: string) {
+  if (route in STUBBED && !stubbed.has(page)) {
+    await installStubBackend(page as any, { portal: true });
+    stubbed.add(page);
+  }
+  await page.goto(route);
+}
 
 /**
  * Wait for fonts and entry animation, then REFUSE TO MEASURE A PAGE THAT DID
@@ -68,6 +95,11 @@ async function settle(page: Page, route: string) {
     overlay: Boolean(document.querySelector("vite-error-overlay")),
   }));
   expect(health.overlay, `${route} rendered a Vite error overlay`).toBe(false);
+  if (route in STUBBED) {
+    await expect(page.getByText(STUBBED[route]).first(), `${route} did not draw its fixture`).toBeVisible({
+      timeout: 30_000,
+    });
+  }
   expect(
     health.els,
     `${route} rendered only ${health.els} elements — the page did not render, so every assertion about it would pass vacuously`,
@@ -92,7 +124,7 @@ for (const { w, h, label } of SIZES) {
     for (const route of ROUTES) {
       test(`${route} does not scroll the page sideways`, async ({ page }) => {
         await page.setViewportSize({ width: w, height: h });
-        await page.goto(route);
+        await open(page, route);
         await settle(page, route);
 
         // THE rule, stated first in the working agreement: "No horizontal page
@@ -108,7 +140,7 @@ for (const { w, h, label } of SIZES) {
 
       test(`${route} keeps every control on the page`, async ({ page }) => {
         await page.setViewportSize({ width: w, height: h });
-        await page.goto(route);
+        await open(page, route);
         await settle(page, route);
 
         const escaped = await findControlsOffTheSide(page);
@@ -127,7 +159,7 @@ test.describe("nothing is cut off with no way to read it", () => {
       await page.setViewportSize({ width: w, height: h });
       const found: string[] = [];
       for (const route of ROUTES) {
-        await page.goto(route);
+        await open(page, route);
         await settle(page, route);
         for (const c of await findSilentlyClippedText(page)) found.push(`${route}  ${c}`);
       }
@@ -159,7 +191,7 @@ test.describe("touch targets", () => {
     for (const route of ROUTES) {
       test(`${route} has no control under 44px at ${label}`, async ({ page }) => {
         await page.setViewportSize({ width: w, height: h });
-        await page.goto(route);
+        await open(page, route);
         await settle(page, route);
 
         const small = await findControlsUnder44px(page);

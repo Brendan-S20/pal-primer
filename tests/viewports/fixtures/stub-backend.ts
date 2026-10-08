@@ -1310,6 +1310,11 @@ export type StubReport = {
   unstubbed: string[];
   /** Hosts the page tried to reach that the fence turned back. */
   blockedHosts: string[];
+  /** Bodies POSTed to /api/public/leads, the quote request's endpoint. It is
+   *  a server ROUTE on the dev server, not a server function, so the fence
+   *  would pass it through to a handler that writes to whichever database
+   *  the dev server points at. Answered here instead, and kept. */
+  leadPosts: unknown[];
 };
 
 /**
@@ -1399,8 +1404,16 @@ const PORTAL_STUBS: Record<string, Stub> = {
   getPublicTracking: (a) => pfx.PUBLIC_TRACKING[a.token as string] ?? { found: false },
   // /signup/:slug with first-cleanup tiers: the question in the service card,
   // and the quote priced for whichever answer the sweep picked.
-  getSignupOrg: pfx.SIGNUP_ORG,
-  getSignupQuote: (a) => pfx.signupQuote(a.last_cleaned as string | undefined),
+  // Keyed by slug since the lead form and the signup became one page: the
+  // same form for a business that sells online and one that only takes
+  // quote requests. A ZIP outside every zone answers the way public_quote
+  // does, with no row.
+  getPublicSignupForm: (a) =>
+    a.slug === pfx.QUOTE_ONLY_SLUG ? pfx.SIGNUP_FORM_QUOTE_ONLY : pfx.SIGNUP_FORM,
+  getSignupQuote: (a) =>
+    a.postal_code === pfx.NO_ZONE_ZIP
+      ? { available: false }
+      : pfx.signupQuote(a.last_cleaned as string | undefined),
   portalSelfServeOptions: {
     allow_self_reschedule: true,
     allow_vacation_hold: true,
@@ -1413,7 +1426,7 @@ export async function installStubBackend(
   context: BrowserContext,
   options: { role?: SweepRole; portal?: boolean } = {},
 ): Promise<StubReport> {
-  const report: StubReport = { unstubbed: [], blockedHosts: [] };
+  const report: StubReport = { unstubbed: [], blockedHosts: [], leadPosts: [] };
   const user = sweepUser();
   const role: SweepRole = options.role ?? "owner";
 
@@ -1498,6 +1511,20 @@ export async function installStubBackend(
       });
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+
+  // The quote request. See `leadPosts` above.
+  await context.route("**/api/public/leads", async (route) => {
+    try {
+      report.leadPosts.push(route.request().postDataJSON());
+    } catch {
+      report.leadPosts.push(route.request().postData());
+    }
+    return route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    });
   });
 
   await context.route("**/_serverFn/**", async (route) => {

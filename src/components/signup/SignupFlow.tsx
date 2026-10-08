@@ -1,18 +1,33 @@
-// The signup machine: instant quote, details, card payment. ONE copy.
+// The one form a stranger meets: price the yard, then start service or ask for
+// a quote. ONE copy.
 //
-// This used to live inline in routes/signup.$slug.tsx, where only a prospect
-// with the public link could reach it. Canvassing walk mode needs the same
-// flow at somebody's front door: the tech taps "Sign up" and hands the phone
-// over, and pressing that button must start a real signup rather than record
-// a hope. Two surfaces, one machine — the pricing copy, the step gating and
-// the payment handling drift the moment there are two copies, which is the
-// standing failure this repo keeps writing tests about.
+// Two jobs used to be two pages. /signup/{slug} ran this machine (instant
+// quote, details, card payment); /lead/{slug} was a separate form that asked
+// most of the same questions and wrote a lead. Since 2026-10-08 they are one
+// page, and this is its machine (rules in lib/new-customer-form.ts):
+//
+//   1. ZIP, dogs, how often. Where the business sells online and prices that
+//      ZIP, "Get instant price" shows the price.
+//   2. Name, email, phone, address, a note.
+//   3. The visitor chooses. "Start service" is the signup it always was: card
+//      here, client + property + subscription from the webhook. "Just send me
+//      a quote" writes a lead the office follows up. Where there is no price
+//      (instant start switched off, a ZIP outside every zone, payments not
+//      ready) the quote request is the only button, so nobody hits a wall.
+//
+// It also runs in canvassing walk mode at a prospect's front door: the tech
+// taps "Sign up" and hands the phone over, and pressing that button must
+// start a real signup rather than record a hope. Two surfaces, one machine:
+// the pricing copy, the step gating and the payment handling drift the moment
+// there are two copies, which is the standing failure this repo keeps writing
+// tests about.
 //
 // `variant` changes LAYOUT only: "page" is the public two-column with the
-// sticky quote aside, exactly as the route always rendered it; "sheet" stacks
-// the same sections for a phone-width drawer. `onPaid` is the seam the two
-// callers genuinely differ on — the public page navigates to the success
-// screen, the walk-mode sheet stays put and marks the door.
+// sticky quote aside; "sheet" stacks the same sections for a phone-width
+// drawer. `onPaid` is the seam the two callers genuinely differ on: the public
+// page navigates to the success screen, the walk-mode sheet stays put and
+// marks the door. `offerQuoteRequest` is off in walk mode, which has its own
+// fallback (mark the door, the office finishes it).
 import { appUrl } from "@/lib/app-origin";
 import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import { useState } from "react";
@@ -21,10 +36,11 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -32,9 +48,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getSignupOrg, getSignupQuote, createSignupPaymentIntent } from "@/lib/signup.functions";
+import {
+  getPublicSignupForm,
+  getSignupQuote,
+  createSignupPaymentIntent,
+} from "@/lib/signup.functions";
 import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
 import { stripeAppearance } from "@/lib/stripe-appearance";
+import {
+  QUOTE_REQUEST_DISCLOSURE,
+  askedFields,
+  decideFormBranch,
+  formCopy,
+  leadBodyFromForm,
+  type FormFields,
+} from "@/lib/new-customer-form";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
 // (Connect direct charges must be scoped to the tenant's account).
@@ -49,7 +77,7 @@ function getStripe(pk: string, stripeAccount?: string) {
   return p;
 }
 
-// Canonical labels for the portal-selectable cadences (I3 shared map) — the
+// Canonical labels for the portal-selectable cadences (I3 shared map): the
 // public signup page uses the same wording as the portal and office.
 const FREQ_LABELS: Record<string, string> = Object.fromEntries(
   PORTAL_FREQUENCY_VALUES.map((v) => [v, frequencyLabel(v)]),
@@ -71,37 +99,54 @@ export type SignupPrefill = Partial<{
   phone: string;
 }>;
 
+const EMAIL_RE = /.+@.+\..+/;
+
 export function SignupFlow({
   slug,
   variant = "page",
   prefill,
   onPaid,
+  offerQuoteRequest = true,
+  channel = "page",
 }: {
   slug: string;
   variant?: "page" | "sheet";
   prefill?: SignupPrefill;
   /** Called after the card is confirmed WITHOUT a redirect. When absent, the
    *  flow navigates to /signup/success, which is what the public page wants.
-   *  A redirect-based payment method still leaves the page either way — the
+   *  A redirect-based payment method still leaves the page either way: the
    *  return_url lands on the success screen, so nothing is lost, only the
    *  caller's chance to react in place. */
   onPaid?: (signupRequestId: string) => void;
+  /** Offer "Just send me a quote". Off in walk mode, which has its own
+   *  fallback for a prospect who will not pay at the door. */
+  offerQuoteRequest?: boolean;
+  /** Where this signup happens, for the label on the lead it writes. */
+  channel?: "page" | "door";
 }) {
   const getQuote = useServerFn(getSignupQuote);
   const createIntent = useServerFn(createSignupPaymentIntent);
-  const getOrg = useServerFn(getSignupOrg);
+  const getForm = useServerFn(getPublicSignupForm);
 
-  // Whether the business prices the first cleanup by when the yard was last
-  // cleaned, and the answers it offers. Same query key as the public route,
-  // so on /signup/{slug} this is the lookup the page already made.
-  const orgQ = useQuery({
-    queryKey: ["signup-org", slug],
-    queryFn: () => getOrg({ data: { slug } }),
+  // Who the business is, what its form asks, whether it sells online, and
+  // the first-cleanup answers. Same query key as the public route, so on
+  // /signup/{slug} this is the lookup the page already made.
+  const formQ = useQuery({
+    queryKey: ["signup-form", slug],
+    queryFn: () => getForm({ data: { slug } }),
     retry: false,
   });
+  const instantStart = !!formQ.data?.instantStart;
   const tiers =
-    orgQ.data?.firstCleanup?.mode === "by_last_cleaned" ? orgQ.data.firstCleanup.tiers : [];
+    instantStart && formQ.data?.firstCleanup?.mode === "by_last_cleaned"
+      ? formQ.data.firstCleanup.tiers
+      : [];
   const asksLastCleaned = tiers.length > 0;
+  const fields: FormFields = askedFields(
+    formQ.data?.form?.fields ?? { phone: true, location: true, dogCount: true, message: true },
+    instantStart,
+  );
+  const copy = formQ.data ? formCopy(formQ.data.form, instantStart) : null;
 
   const [form, setForm] = useState({
     postal_code: prefill?.postal_code ?? "",
@@ -114,6 +159,7 @@ export function SignupFlow({
     city: prefill?.city ?? "",
     region: prefill?.region ?? "",
     last_cleaned: "",
+    message: "",
   });
 
   const quoteMut = useMutation({
@@ -156,13 +202,38 @@ export function SignupFlow({
           street: form.street,
           city: form.city,
           region: form.region,
+          message: form.message,
+          channel,
         },
       }),
     onSuccess: (r) => setIntent(r),
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const quote = quoteMut.data && quoteMut.data.available ? quoteMut.data.quote : null;
+  // "Just send me a quote": the hosted lead form's own endpoint, unchanged,
+  // so a quote request is exactly the `leads` row it always was.
+  const [sent, setSent] = useState(false);
+  const leadMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/public/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(leadBodyFromForm(slug, form)),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error((b as any).error || "Something went wrong. Please try again.");
+      }
+    },
+    onSuccess: () => setSent(true),
+  });
+
+  const branch = decideFormBranch({
+    instantStart,
+    answer: quoteMut.data ?? null,
+    offerQuoteRequest,
+  });
+  const quote = branch.quote;
 
   const canQuote =
     form.postal_code.trim().length >= 3 &&
@@ -181,39 +252,72 @@ export function SignupFlow({
       ? (pickedOption?.priceCents ?? null)
       : (quote.initial_cleanup_cents ?? 0);
 
+  const hasContact = form.name.trim().length > 0 && EMAIL_RE.test(form.email.trim());
   const canCheckout =
-    !!quote &&
-    firstCleanupCents != null &&
-    form.name.trim() &&
-    form.email.trim() &&
-    form.street.trim();
+    branch.canStartService && firstCleanupCents != null && hasContact && !!form.street.trim();
+
+  if (formQ.isLoading) {
+    return <p className="py-6 text-sm text-muted-foreground">Loading…</p>;
+  }
+  if (formQ.error || !formQ.data) {
+    return <p className="py-6 text-sm text-destructive">This page isn't available.</p>;
+  }
+
+  // Walk mode with nothing to hand over: the business sells online but a card
+  // cannot be taken right now (Stripe not ready, or the plan has lapsed). The
+  // sheet's own "just mark the door" button sits under this.
+  if (!instantStart && !offerQuoteRequest) {
+    return (
+      <p className="py-2 text-sm text-muted-foreground">
+        Online signup can't take a card for this business right now. Mark the door and the office
+        will finish the signup.
+      </p>
+    );
+  }
+
+  if (sent) {
+    return (
+      <div className="mx-auto max-w-md rounded-2xl border bg-card p-8 text-center">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <Check className="h-6 w-6 shrink-0" aria-hidden="true" />
+        </div>
+        <h2 className="text-xl font-semibold">Thanks, we got your request!</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{copy?.confirmation}</p>
+      </div>
+    );
+  }
 
   const serviceCard = (
     <div className="rounded-2xl border bg-card p-(--card-pad)">
       <h2 className="text-base font-semibold">1. Your service</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="postal_code">ZIP code</Label>
-          <Input
-            id="postal_code"
-            inputMode="numeric"
-            maxLength={12}
-            value={form.postal_code}
-            onChange={(e) => setFormField({ ...form, postal_code: e.target.value })}
-            placeholder="e.g. 78704"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="dog_count">Dogs</Label>
-          <Input
-            id="dog_count"
-            type="number"
-            min={1}
-            max={20}
-            value={form.dog_count}
-            onChange={(e) => setFormField({ ...form, dog_count: e.target.value })}
-          />
-        </div>
+        {fields.location && (
+          <div className="space-y-1.5">
+            <Label htmlFor="postal_code">ZIP code</Label>
+            <Input
+              id="postal_code"
+              inputMode="numeric"
+              autoComplete="postal-code"
+              maxLength={12}
+              value={form.postal_code}
+              onChange={(e) => setFormField({ ...form, postal_code: e.target.value })}
+              placeholder="e.g. 78704"
+            />
+          </div>
+        )}
+        {fields.dogCount && (
+          <div className="space-y-1.5">
+            <Label htmlFor="dog_count">Dogs</Label>
+            <Input
+              id="dog_count"
+              type="number"
+              min={1}
+              max={20}
+              value={form.dog_count}
+              onChange={(e) => setFormField({ ...form, dog_count: e.target.value })}
+            />
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label htmlFor="frequency">Frequency</Label>
           <Select value={form.frequency} onValueChange={(v) => setFormField({ ...form, frequency: v })}>
@@ -254,17 +358,22 @@ export function SignupFlow({
           </div>
         )}
       </div>
-      <div className="mt-4">
-        <Button
-          onClick={() => quoteMut.mutate()}
-          disabled={!canQuote || quoteMut.isPending}
-          variant="secondary"
-        >
-          {quoteMut.isPending ? "Pricing…" : "Get instant price"}
-        </Button>
-      </div>
-      {quoteMut.data && !quoteMut.data.available ? (
-        <p className="mt-3 text-sm text-destructive">We don't serve that ZIP yet. Check back soon.</p>
+      {instantStart && (
+        <div className="mt-4">
+          <Button
+            onClick={() => quoteMut.mutate()}
+            disabled={!canQuote || quoteMut.isPending}
+            variant="secondary"
+          >
+            {quoteMut.isPending ? "Pricing…" : "Get instant price"}
+          </Button>
+        </div>
+      )}
+      {branch.reason === "no-zone" ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          We don't have online pricing for that ZIP yet.
+          {branch.canRequestQuote ? " Add your details and we'll send you a quote." : ""}
+        </p>
       ) : null}
     </div>
   );
@@ -277,6 +386,7 @@ export function SignupFlow({
           <Label htmlFor="name">Full name *</Label>
           <Input
             id="name"
+            autoComplete="name"
             value={form.name}
             onChange={(e) => setFormField({ ...form, name: e.target.value })}
           />
@@ -286,19 +396,23 @@ export function SignupFlow({
           <Input
             id="email"
             type="email"
+            autoComplete="email"
             value={form.email}
             onChange={(e) => setFormField({ ...form, email: e.target.value })}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="phone">Phone</Label>
-          <Input
-            id="phone"
-            type="tel"
-            value={form.phone}
-            onChange={(e) => setFormField({ ...form, phone: e.target.value })}
-          />
-        </div>
+        {fields.phone && (
+          <div className="space-y-1.5">
+            <Label htmlFor="phone">Phone</Label>
+            <Input
+              id="phone"
+              type="tel"
+              autoComplete="tel"
+              value={form.phone}
+              onChange={(e) => setFormField({ ...form, phone: e.target.value })}
+            />
+          </div>
+        )}
         {/* DELIBERATELY a plain input, not AddressAutocomplete.
             The public route has no Supabase session and all three address
             server functions sit behind `requireSupabaseAuth`
@@ -313,47 +427,104 @@ export function SignupFlow({
             provider is chosen. (Walk mode prefills this field from the door
             instead, which is the one case where the address is already
             known.) */}
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="street">Street address *</Label>
-          <Input
-            id="street"
-            value={form.street}
-            onChange={(e) => setFormField({ ...form, street: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="city">City</Label>
-          <Input
-            id="city"
-            value={form.city}
-            onChange={(e) => setFormField({ ...form, city: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="region">State</Label>
-          <Input
-            id="region"
-            value={form.region}
-            onChange={(e) => setFormField({ ...form, region: e.target.value })}
-          />
-        </div>
+        {fields.location && (
+          <>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="street">Street address{instantStart ? " *" : ""}</Label>
+              <Input
+                id="street"
+                autoComplete="street-address"
+                value={form.street}
+                onChange={(e) => setFormField({ ...form, street: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="city">City</Label>
+              <Input
+                id="city"
+                autoComplete="address-level2"
+                value={form.city}
+                onChange={(e) => setFormField({ ...form, city: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="region">State</Label>
+              <Input
+                id="region"
+                autoComplete="address-level1"
+                value={form.region}
+                onChange={(e) => setFormField({ ...form, region: e.target.value })}
+              />
+            </div>
+          </>
+        )}
+        {fields.message && (
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="message">
+              Anything else? <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <Textarea
+              id="message"
+              rows={3}
+              maxLength={2000}
+              placeholder="Gate code, dog names, preferred days…"
+              value={form.message}
+              onChange={(e) => setFormField({ ...form, message: e.target.value })}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
+
+  const quoteRequestButton = branch.canRequestQuote ? (
+    <div className="space-y-2">
+      <Button
+        className="w-full"
+        variant={branch.canStartService ? "outline" : "default"}
+        disabled={!hasContact || leadMut.isPending}
+        onClick={() => leadMut.mutate()}
+      >
+        {leadMut.isPending
+          ? "Sending…"
+          : branch.canStartService || branch.reason === "not-priced-yet"
+            ? "Just send me a quote"
+            : "Request a quote"}
+      </Button>
+      {!hasContact && (
+        <p className="text-xs text-muted-foreground">Add your name and email to send it.</p>
+      )}
+      {leadMut.error ? (
+        <p className="text-sm text-destructive">{(leadMut.error as Error).message}</p>
+      ) : null}
+      <p className="text-center text-2xs text-muted-foreground">{QUOTE_REQUEST_DISCLOSURE}</p>
+    </div>
+  ) : null;
 
   const quotePanel = (
     <aside
       className={
         variant === "page"
-          ? "h-fit rounded-2xl border bg-card p-6 lg:sticky lg:top-24"
-          : "rounded-2xl border bg-card p-6"
+          ? "h-fit min-w-0 rounded-2xl border bg-card p-6 lg:sticky lg:top-24"
+          : "min-w-0 rounded-2xl border bg-card p-6"
       }
     >
       <h2 className="text-base font-semibold">Your quote</h2>
       {!quote ? (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Enter your ZIP and dogs, then hit <em>Get instant price</em>.
-        </p>
+        <div className="mt-3 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {branch.reason === "not-priced-yet" ? (
+              <>
+                Enter your ZIP and dogs, then hit <em>Get instant price</em>.
+              </>
+            ) : branch.reason === "no-zone" ? (
+              <>We'll price your yard ourselves and get back to you.</>
+            ) : (
+              <>Tell us about your yard and we'll get back to you with a price.</>
+            )}
+          </p>
+          {quoteRequestButton}
+        </div>
       ) : (
         <div className="mt-4 space-y-4">
           <div className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -381,7 +552,7 @@ export function SignupFlow({
             {/* PER VISIT, not per month. `public_quote` returns
                 `round(base_visit_cents × frequency_multiplier)`, and
                 pricing.ts documents it as "Per-visit price after the
-                frequency multiplier" — the multipliers price LESS frequent
+                frequency multiplier": the multipliers price LESS frequent
                 visits HIGHER (weekly 1.0, biweekly 1.7, monthly 3.2), which
                 only makes sense per visit. Every other surface says /visit;
                 this one said /mo and the line below sold "a prepaid first
@@ -396,7 +567,7 @@ export function SignupFlow({
               <>Tell us when your yard was last cleaned to see today's total.</>
             ) : (
               <>
-                Charged today:{" "}
+                Charged today if you start service:{" "}
                 <strong className="text-foreground">
                   {money(firstCleanupCents + quote.recurring_price_cents, quote.currency)}
                 </strong>
@@ -423,14 +594,22 @@ export function SignupFlow({
               />
             </Elements>
           ) : (
-            <Button
-              className="w-full"
-              disabled={!canCheckout || checkoutMut.isPending}
-              onClick={() => checkoutMut.mutate()}
-            >
-              {checkoutMut.isPending ? "Preparing payment…" : "Continue to payment"}
-            </Button>
+            <div className="space-y-2">
+              <Button
+                className="w-full"
+                disabled={!canCheckout || checkoutMut.isPending}
+                onClick={() => checkoutMut.mutate()}
+              >
+                {checkoutMut.isPending ? "Preparing payment…" : "Start service"}
+              </Button>
+              {!canCheckout && firstCleanupCents != null && (
+                <p className="text-xs text-muted-foreground">
+                  Add your name, email and street address to start.
+                </p>
+              )}
+            </div>
           )}
+          {!intent && quoteRequestButton}
         </div>
       )}
     </aside>
@@ -447,8 +626,8 @@ export function SignupFlow({
   }
 
   return (
-    <div className="grid gap-10 lg:grid-cols-[1fr_360px]">
-      <div className="space-y-8">
+    <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0 space-y-8">
         {serviceCard}
         {detailsCard}
       </div>

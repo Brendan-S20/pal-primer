@@ -324,8 +324,10 @@ describe("an owner can find, turn on and copy their signup link", () => {
   const fns = read("src/lib/signup.functions.ts");
 
   it("the settings page exists and is registered in the nav", () => {
+    // One entry since the lead form and the signup became one form
+    // (2026-10-08): "Signup & quote form", at the signup page's address.
     expect(read("src/routes/_authenticated/settings.tsx")).toMatch(
-      /\{ label: "Online signup", to: "\/settings\/online-signup" \}/,
+      /\{ label: "Signup & quote form", to: "\/settings\/online-signup" \}/,
     );
   });
 
@@ -383,11 +385,16 @@ describe("a tenant's prospect sees the tenant", () => {
   });
 
   it("branding comes from the one lookup the page already makes", () => {
-    // The lead form solves this by reading lead_form_config; signup has no such
-    // config, so public_get_org_by_slug returns the org's own logo and colour.
-    const sql = read(join("supabase", "migrations", MIGRATION!));
-    expect(sql).toMatch(/o\.logo_url, o\.brand_color/);
-    expect(signup).toMatch(/logoUrl=\{org\.logo_url\} brandColor=\{org\.brand_color\}/);
+    // Since the lead form and the signup merged, that lookup is
+    // getPublicSignupForm: the form's own colour and logo (lead_form_config)
+    // when the owner set them, else the organization's.
+    const fns = read("src/lib/signup.functions.ts");
+    const lookup = fns.slice(fns.indexOf("export const getPublicSignupForm"));
+    expect(lookup).toMatch(/logo_url, brand_color/);
+    expect(lookup).toMatch(/form\.logoUrl \?\? \(org\?\.logo_url/);
+    expect(lookup).toMatch(/form\.brandColor \?\? \(org\?\.brand_color/);
+    expect(signup).toMatch(/logoUrl=\{org\.logoUrl\}/);
+    expect(signup).toMatch(/brandColor=\{org\.brandColor\}/);
   });
 
   it("and the shell carries nothing of ours", () => {
@@ -422,7 +429,8 @@ describe("a tenant's prospect sees the tenant", () => {
 });
 
 describe("the lead form stops calling itself broken", () => {
-  const page = read("src/routes/_authenticated/settings.lead-form.tsx");
+  // Settings → Lead form is part of Settings → Signup & quote form now.
+  const page = read("src/routes/_authenticated/settings.online-signup.tsx");
 
   it("the claim that submissions are blocked is gone", () => {
     expect(codeOnly(page)).not.toMatch(/won't accept submissions/);
@@ -440,7 +448,11 @@ describe("the lead form stops calling itself broken", () => {
   });
 
   it("and what replaced it says the true thing", () => {
-    expect(page).toMatch(/collects leads whether or not you take signups online/);
-    expect(page).toMatch(/to="\/settings\/online-signup"/);
+    // The switch decides whether a price and a card are on offer, and the
+    // form takes quote requests either way.
+    expect(page).toMatch(/Off: the form only takes quote\s+requests/);
+    expect(read("src/routes/_authenticated/settings.lead-form.tsx")).toMatch(
+      /redirect\(\{ to: "\/settings\/online-signup"/,
+    );
   });
 });

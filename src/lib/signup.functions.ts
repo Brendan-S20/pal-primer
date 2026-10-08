@@ -162,6 +162,10 @@ export const signupCheckoutSchema = quoteSchema.extend({
   // tech's phone handed over in walk mode. A label only; nothing is priced,
   // gated or trusted on it.
   channel: z.enum(["page", "door"]).optional(),
+  // "Anything else?" from the form (a gate code, the dogs' names). There is
+  // nowhere on a signup request for it, so it goes on the lead the signup
+  // writes, where the office reads it beside the quote requests' notes.
+  message: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
 /** In-app signup prepay (Payment Element): records the signup request and
@@ -250,6 +254,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         .join(", "),
       dogCount: data.dog_count,
       frequency: data.frequency,
+      message: data.message || null,
     });
 
     const { data: sr, error: srErr } = await supabaseAdmin
@@ -343,6 +348,7 @@ async function recordSignupLead(
     location: string;
     dogCount: number;
     frequency: string;
+    message: string | null;
   },
 ): Promise<string | null> {
   try {
@@ -353,6 +359,7 @@ async function recordSignupLead(
       location: lead.location || null,
       dog_count: lead.dogCount,
       frequency: lead.frequency,
+      message: lead.message,
     };
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: existing } = await admin
