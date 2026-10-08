@@ -2141,10 +2141,14 @@ function VisitCard({
       {needsCompletionPhoto && photoKind === "completion" ? (
         // The one thing this stop needs: the photo, and then Complete by
         // itself. Primary, because it is the next tap.
+        // A row of its own, and a label that may wrap: "Take photo to
+        // complete" in Spanish or Arabic does not fit beside the kind picker
+        // at 320px, and a nowrap label there widened the whole page by a
+        // pixel (my-day-gets-its-room-back at iPhone SE).
         <Button
           type="button"
           size="default"
-          className="h-11 min-w-0 flex-1"
+          className="h-auto min-h-11 w-full min-w-0 basis-full whitespace-normal py-2"
           disabled={uploading || photoFlowBusy}
           data-take-photo-to-complete=""
           onClick={() => {
