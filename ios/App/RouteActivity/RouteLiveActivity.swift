@@ -102,7 +102,11 @@ struct RouteLiveActivity: Widget {
                         }
                     }
                     .environment(\.layoutDirection, dir)
-                    .padding(.horizontal, 4)
+                    // Wider with the buttons: the island's corners curve in
+                    // at the bottom, and at 4 the trailing button's corner
+                    // met the curve (simulator, 2026-10-07).
+                    .padding(.horizontal, showsButtons(s, routeDate: routeDate) ? 10 : 4)
+                    .padding(.bottom, showsButtons(s, routeDate: routeDate) ? 4 : 0)
                 }
             } compactLeading: {
                 Image(systemName: Brand.glyph)
