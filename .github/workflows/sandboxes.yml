@@ -711,6 +711,31 @@ jobs:
     # start finished in 39m07s of the 45m ceiling. Strip the cold start and
     # the same job is about 19 minutes. The ceiling is not the thing under
     # pressure.
+    #
+    # ── MEASURED ON THE WINDOWS RUNNER, 2026-10-08 ────────────────────────
+    #
+    # It was under pressure again by October: 40-43 minutes on the Mac, and
+    # cancelled at 45 more than once. Moving the job to DESKTOP-JUC6SL1 did
+    # NOT fix that on its own -- the first run there was cancelled at 45m
+    # inside the Apple step. The log said why: "58 tests using 1 worker",
+    # "200 tests using 1 worker", "759 tests using 2 workers". Playwright
+    # parallelises by FILE, each sweep is one file, so a 16-core machine ran
+    # them on one core and lost to the Mac per core. The Mac had the same
+    # limit and was merely slow rather than over the line. Both sweep specs
+    # now say `mode: "parallel"`.
+    #
+    #                      Mac, 4 runs        Windows, 8 workers
+    #   checkout + npm ci  ~20s               45s + 3m05s  (no warm npm tree)
+    #   public sweep       1m40s - 2m20s      1m20s
+    #   signed-in sweep    7m24s - 8m48s      3m59s
+    #   Apple sweeps       19m52s - 25m05s    10m49s
+    #   one-off cases      11m05s - 11m30s    14m25s  (file-parallel already;
+    #                                                  the single dev server
+    #                                                  is the limit there)
+    #   whole job          40m - 43m          34m45s
+    #
+    # So the ceiling stays 45 with about ten minutes of margin, and the Mac
+    # is free for the database job at the same time.
     timeout-minutes: 45
     steps:
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT (Windows only) ──────

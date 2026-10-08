@@ -219,7 +219,9 @@ describe("every viewport spec is run by something", () => {
   });
 
   it("turns the leading NAME=value arguments into the environment, and passes the rest on", () => {
-    expect(splitAssignments(["APPLE_SIZES=1", "test", "every-public-page", "every-signed-in-page"])).toEqual({
+    expect(
+      splitAssignments(["APPLE_SIZES=1", "test", "every-public-page", "every-signed-in-page"]),
+    ).toEqual({
       env: { APPLE_SIZES: "1" },
       args: ["test", "every-public-page", "every-signed-in-page"],
     });

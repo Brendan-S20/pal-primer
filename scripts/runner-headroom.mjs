@@ -152,7 +152,9 @@ const flag = process.argv.indexOf("--need-disk-gib");
 if (flag !== -1) {
   const need = Number(process.argv[flag + 1]);
   if (!Number.isFinite(need) || need <= 0) {
-    console.log(`::error title=Runner headroom::--need-disk-gib needs a positive number, got "${process.argv[flag + 1]}"`);
+    console.log(
+      `::error title=Runner headroom::--need-disk-gib needs a positive number, got "${process.argv[flag + 1]}"`,
+    );
     process.exit(1);
   }
   let freeGiB;
@@ -164,7 +166,9 @@ if (flag !== -1) {
   } catch (err) {
     // Unread is not the same as enough. Fail, naming why, rather than let a
     // half-downloaded browser report itself as a layout fault later.
-    console.log(`::error title=Runner headroom::could not read free disk space here (${err.message}), so this job cannot tell whether it has the ${need} GiB it needs`);
+    console.log(
+      `::error title=Runner headroom::could not read free disk space here (${err.message}), so this job cannot tell whether it has the ${need} GiB it needs`,
+    );
     process.exit(1);
   }
   if (freeGiB < need) {
