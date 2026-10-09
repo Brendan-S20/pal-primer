@@ -9,16 +9,28 @@
 //
 // Buttons, on iOS 17 and later, on the lock screen and in the expanded
 // Dynamic Island: Navigate, and Start or Complete for the stop on the card.
-// Each is a plain `Link`, nothing runs in the extension. Navigate opens the
-// maps app: iOS gives a link tapped on a Live Activity to the app that owns
-// it, whatever its URL, so AppDelegate passes the directions link on
-// (RouteLinks.directionsHandOff). Start and Complete open My Day on that stop
-// with the button in hand (src/lib/live-activity-links.ts), and never press
-// it. A tap anywhere
-// else on the card opens My Day on the stop (`widgetURL`), on 16.2 too. On
-// 16.2 to 16.x the card is drawn exactly as before, without the buttons.
+//
+//   Navigate is a plain `Link` to the maps app: iOS gives a link tapped on a
+//   Live Activity to the app that owns it, whatever its URL, so AppDelegate
+//   passes the directions link on (RouteLinks.directionsHandOff).
+//
+//   Start STARTS the stop, from the lock screen, without opening the app
+//   (2026-10-08): a `Button(intent:)` running StartStopIntent
+//   (ios/App/App/LiveActivity/RouteActivityIntents.swift), which iOS runs in
+//   the app's process with the action token the app keeps in its keychain.
+//   Nothing runs in this extension. When it cannot (no token, no signal), the
+//   intent opens My Day on the stop with Start in hand, as the link did.
+//
+//   Complete is a `Link`: it opens My Day on the stop and straight into its
+//   completion photo when the visit needs one (src/lib/live-activity-links
+//   .ts). A completion is never made from a pocket.
+//
+// A tap anywhere else on the card opens My Day on the stop (`widgetURL`), on
+// 16.2 too. On 16.2 to 16.x the card is drawn exactly as before, without the
+// buttons.
 
 import ActivityKit
+import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -224,13 +236,39 @@ private struct ActionButtons: View {
                 }
             }
             if let url = state.actionURL(routeDate: routeDate), let label = state.actionLabel {
-                Link(destination: url) {
-                    ActionLabel(
-                        text: label,
-                        systemImage: state.nextAction == "complete" ? "checkmark.circle.fill" : "play.circle.fill",
-                        filled: false
-                    )
+                if #available(iOS 17.0, *) {
+                    StopActionButton(routeDate: routeDate, state: state, url: url, label: label)
+                } else {
+                    Link(destination: url) {
+                        ActionLabel(text: label, systemImage: "play.circle.fill", filled: false)
+                    }
                 }
+            }
+        }
+    }
+}
+
+/// Start runs where it is pressed; Complete opens the app. Both look alike.
+@available(iOS 17.0, *)
+private struct StopActionButton: View {
+    let routeDate: String
+    let state: RouteActivityAttributes.ContentState
+    let url: URL
+    let label: String
+
+    var body: some View {
+        if state.nextAction == "start", let visitId = state.visitId {
+            Button(intent: StartStopIntent(visitId: visitId, routeDate: routeDate)) {
+                ActionLabel(text: label, systemImage: "play.circle.fill", filled: false)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Link(destination: url) {
+                ActionLabel(
+                    text: label,
+                    systemImage: state.nextAction == "complete" ? "checkmark.circle.fill" : "play.circle.fill",
+                    filled: false
+                )
             }
         }
     }
