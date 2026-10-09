@@ -1,4 +1,5 @@
-// Saving and ending the push token of the route on a tech's lock screen.
+// Saving and ending the push token of the route on a tech's lock screen, and
+// minting the action token its Start button presses with.
 //
 // Called by My Day on the iPhone (src/components/my-day/RouteLockScreen
 // .tsx) when ActivityKit hands out a token, when it rotates one, and when the
@@ -71,23 +72,103 @@ export const saveLiveActivityToken = createServerFn({ method: "POST" })
     return { saved: true };
   });
 
+/**
+ * The action token for Start on the lock screen (src/lib/live-activity-action
+ * .ts). Minted by the signed-in app when the route goes on the lock screen,
+ * handed to the native plugin, which keeps it in the keychain for the App
+ * Intent, and returned to the caller exactly once: only its SHA-256 is
+ * stored. Minting a new one revokes every other the caller holds, so a phone
+ * has one live token at a time and a replaced phone's stops working.
+ *
+ * Only for the caller's own active staff record, and only for the org's
+ * today: a token for another day would start nothing, and minting one is a
+ * sign something is wrong.
+ */
+export const mintLiveActivityActionToken = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        routeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        language: z.enum(["en", "es", "ar", "zh"]).default("en"),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // Read with the CALLER's client: RLS decides whose staff row this is.
+    const { data: staff, error: staffErr } = await supabase
+      .from("staff")
+      .select("id, organization_id, active")
+      .eq("user_id", userId)
+      .eq("active", true)
+      .maybeSingle();
+    if (staffErr) throw new Error(staffErr.message);
+    if (!staff?.organization_id) return { minted: false as const };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const db = supabaseAdmin as unknown as { from: (t: string) => any };
+    const { data: org } = await db
+      .from("organizations")
+      .select("timezone, workday_end")
+      .eq("id", staff.organization_id)
+      .maybeSingle();
+    const { DEFAULT_ORG_TIMEZONE, orgToday } = await import("@/lib/org-day");
+    const tz = (org?.timezone as string | null) || DEFAULT_ORG_TIMEZONE;
+    if (data.routeDate !== orgToday(tz)) return { minted: false as const };
+
+    const { actionTokenExpiry } = await import("@/lib/live-activity-action");
+    const { newActionToken, hashActionToken } = await import("@/lib/live-activity-action.server");
+    const now = new Date();
+    const expiresAt = actionTokenExpiry({
+      now,
+      routeDate: data.routeDate,
+      tz,
+      workdayEnd: org?.workday_end as string | null,
+    });
+    const token = newActionToken();
+
+    await db
+      .from("live_activity_action_tokens")
+      .update({ revoked_at: now.toISOString(), revoke_reason: "superseded" })
+      .eq("user_id", userId)
+      .is("revoked_at", null);
+    const { error } = await db.from("live_activity_action_tokens").insert({
+      user_id: userId,
+      organization_id: staff.organization_id,
+      staff_id: staff.id,
+      route_date: data.routeDate,
+      token_hash: hashActionToken(token),
+      locale: data.language,
+      expires_at: expiresAt.toISOString(),
+      created_at: now.toISOString(),
+    });
+    if (error) throw new Error(error.message);
+    return { minted: true as const, token, expiresAt: expiresAt.toISOString() };
+  });
+
 export const endLiveActivityToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
     z
       .object({
         activityId,
-        reason: z.enum(["dismissed", "finished", "clocked_out", "hidden"]),
+        reason: z.enum(["dismissed", "finished", "clocked_out", "hidden", "signed_out"]),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const now = new Date().toISOString();
     const { error } = await context.supabase
       .from("live_activity_tokens")
-      .update({ ended_at: new Date().toISOString(), end_reason: data.reason })
+      .update({ ended_at: now, end_reason: data.reason })
       .eq("user_id", context.userId)
       .eq("activity_id", data.activityId)
       .is("ended_at", null);
     if (error) throw new Error(error.message);
+    // The route is off the lock screen, so its Start button is gone, and so
+    // is anything that could press it: revoke the caller's action tokens.
+    const { revokeActionTokens } = await import("@/lib/live-activity-action.server");
+    await revokeActionTokens(context.userId, data.reason);
     return { ok: true };
   });

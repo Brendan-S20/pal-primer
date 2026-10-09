@@ -32,6 +32,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { TimeClockMoreRow } from "@/components/TimeClock";
 
 /**
  * Asks My Day to scroll to and focus its seven-day strip. My Day listens.
@@ -342,6 +343,13 @@ export function MobileTabBar() {
               </span>
             </span>
           </Link>
+          {/* The time clock, right under who you are (2026-10-08). It left My
+              Day, which is the route; a person's own things are in this
+              sheet. Opens the one clock sheet the layout mounts, which stays
+              up as this one closes. Nothing for an account with no clock. */}
+          <div className="border-b p-2 empty:hidden">
+            <TimeClockMoreRow onSelect={() => setMoreOpen(false)} />
+          </div>
           <nav aria-label={t("nav.allSections")} className="p-2">
             {moreGroups.map((group) => (
               <div key={group.label} className="py-1">

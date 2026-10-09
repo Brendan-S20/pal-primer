@@ -35,6 +35,7 @@ import {
   FileSignature,
 } from "lucide-react";
 import { Megaphone } from "lucide-react";
+import { openTimeClock, useMyClock } from "@/components/TimeClock";
 import { REPORT_PATHS } from "@/components/ReportsNav";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -273,6 +274,32 @@ export function isNavItemVisible(
   );
 }
 
+function TimeClockSidebarItem({ collapsed }: { collapsed: boolean }) {
+  const clock = useMyClock();
+  const { t } = useTranslation();
+  if (!clock.staff) return null;
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        tooltip={`${t("clock.label")} · ${clock.status}`}
+        onClick={openTimeClock}
+        data-time-clock-row=""
+      >
+        <Timer
+          className={`h-4 w-4 shrink-0 ${clock.open ? "text-emerald-600 dark:text-emerald-400" : ""}`}
+          aria-hidden="true"
+        />
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 truncate">{t("clock.label")}</span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{clock.status}</span>
+          </>
+        )}
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
@@ -425,6 +452,10 @@ export function AppSidebar() {
           of the icon rail so it lines up with the nav icons above it. */}
       <SidebarFooter>
         <SidebarMenu>
+          {/* The time clock, for whoever has one (a staff record). Its row in
+              the More sheet is the phone's way in; this is the way in
+              wherever the sidebar is the menu. Opens the same sheet. */}
+          {me && <TimeClockSidebarItem collapsed={collapsed} />}
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild

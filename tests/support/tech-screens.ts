@@ -19,13 +19,15 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // The stop card's dogs, yard outline, stations and money lines, and the
   // form a tech records cash or a check with.
   { file: "src/components/my-day/StopFacts.tsx" },
-  // The route on the iPhone lock screen: the icon in My Day's status row that
-  // shows or hides it, and the hook behind it, whose toasts a tech reads.
-  { file: "src/components/my-day/RouteLockScreen.tsx" },
+  // (src/components/my-day/RouteLockScreen.tsx left this list on 2026-10-08:
+  // its toggle and toasts are gone, and what remains draws nothing. The
+  // card's words are built in the tech's language by live-activity-state.ts,
+  // which buttons-on-the-lock-screen.test.ts checks in all four.)
   { file: "src/components/CloseOutOpenVisits.tsx" },
   { file: "src/components/EnRouteLocationChip.tsx" },
-  // The time clock chip in My Day's status row, and its Clock out sheet.
-  { file: "src/components/TimeClockChip.tsx" },
+  // The time clock: its sheet, its row in the More sheet and the sidebar, and
+  // the "You're off the clock" reminder on My Day.
+  { file: "src/components/TimeClock.tsx" },
   { file: "src/components/VisitChecklistAnswers.tsx" },
   { file: "src/components/PushToggle.tsx" },
   { file: "src/components/PhotoLightbox.tsx" },

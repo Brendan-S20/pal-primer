@@ -111,11 +111,7 @@ import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
-import { TimeClockChip } from "@/components/TimeClockChip";
-import {
-  RouteLockScreenToggle,
-  useRouteLiveActivity,
-} from "@/components/my-day/RouteLockScreen";
+import { OffTheClockBanner } from "@/components/TimeClock";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
@@ -130,6 +126,19 @@ import {
 } from "@/components/my-day/StopFacts";
 import { createExpense } from "@/lib/expenses.functions";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  checklistReady,
+  photoThenComplete,
+  startOpensCamera,
+} from "@/lib/start-photo-complete";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
@@ -611,16 +620,10 @@ function MyDay() {
   // one) live in lib/my-day-progress.ts, where they are tested.
   const { completedCount, skippedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
 
-  // The route on the iPhone lock screen. Called here, above every early
-  // return, rather than inside the control that shows it: the route has to
-  // start on Clock in, follow every Complete and end with the day whether or
-  // not the status row is drawn. Does nothing off iOS, and nothing on any day
-  // but the tech's own today.
-  const lockScreen = useRouteLiveActivity({
-    visits,
-    day,
-    enabled: day === orgTodayIso && !previewing && !!staff,
-  });
+  // The route on the iPhone lock screen is not driven from here any more: the
+  // signed-in layout runs it (RouteLockScreenHost, my-day/RouteLockScreen
+  // .tsx) from the same query this page reads for today, so it comes back
+  // whichever page the app opens on.
 
   // ...and bring it back on screen without the tech hunting for it. Scrolls
   // once per open visit, not on every render, so it never fights a tech who has
@@ -659,12 +662,21 @@ function MyDay() {
       cancelAnimationFrame(second);
     };
   }, [visitParam, visitOnPage]);
-  // ...and from the lock screen's Start or Complete, onto that button.
+  // ...and from the lock screen's Start or Complete: Complete straight into
+  // that stop's completion photo, Start onto its button.
+  const [captureAsk, setCaptureAsk] = useState<{ id: string; n: number } | null>(null);
   useLiveActivityAction({
     visitId: visitParam,
     action: actionParam,
     ready: visitOnPage,
     labels: { start: t("myDay.start"), complete: t("myDay.complete") },
+    openCapture: (id) => {
+      if (previewing) return false;
+      // The card is what opens the camera, so it has to be on the page.
+      if (view !== "list") setView("list");
+      setCaptureAsk((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
+      return true;
+    },
     onHandled: () =>
       navigate({
         search: (prev: Record<string, unknown>) => ({ ...prev, action: undefined }),
@@ -890,116 +902,78 @@ function MyDay() {
           </div>
 
           {/* ── THE STATUS ROW ───────────────────────────────────────────
-              Progress, the time clock, the route on the lock screen, and the
-              view. The clock and the lock-screen control used to be two
-              full-width cards under this header, and on the owner's iPhone
-              the first stop started halfway down the screen. They are a chip
-              and an icon now, and the list starts right under this row.
+              Progress and the view: the date is in the row above. That is
+              all, again (2026-10-08). The time clock and the lock-screen
+              switch spent a day here as a chip and an icon, after two
+              full-width cards before that; the owner took both off My Day.
+              The clock is in the More sheet and the sidebar (TimeClock.tsx),
+              with a slim reminder below when there is work today and nobody
+              is on the clock, and the route on the lock screen is switched
+              in Preferences and comes back by itself.
 
-              One row wherever it fits, which is from a 32rem column: a phone
-              on its side, an iPad, a laptop. Below that the clock and the
-              lock-screen icon take a slim row of their own directly under the
-              progress, and the row above stays exactly the one the-top-bar-a-
-              technician-reads-between-driveways measures: at 320px, progress,
-              a clock chip, an icon and List/Map are about 460px of controls.
-              Not a pixel later than it has to: this header is sticky, and on
-              an 844x390 phone on its side with the sidebar docked, a second
-              row left 90px of screen between it and NEXT UP, too little for a
-              card's More options to be reached (the Apple sweep's "log an
-              expense" case found it). Keyed on the COLUMN's width (a container
-              query), not the screen's, because the sidebar takes a different
-              share of the screen at every tier. The time clock is about NOW, whichever day the list shows,
-              so it is drawn on every day, but never while previewing somebody
-              else's: the taps would be the viewer's own. */}
-          {(total > 0 || !previewing) && (
-            <div className="@container">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 @lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-                {total > 0 && (
-                  <>
-                    {/* PROGRESS LEFT, VIEW RIGHT.
-                        The toggle used to lead the row and the progress followed it,
-                        which put the control first and the fact second. The number
-                        is what a technician reads at a glance between driveways; the
-                        toggle is pressed a few times a day. min-w-0 so the pill
-                        yields to the toggle rather than pushing it off the edge. */}
-                    <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
-                      <div className="min-w-0 shrink-0 truncate text-xs font-medium">
-                        {completedCount} {t("common.of")} {total} {t("common.done")}
-                        {skippedCount > 0 && (
-                          <span className="ms-1 font-normal text-muted-foreground">
-                            · {t("myDay.skippedCount", { count: skippedCount })}
-                          </span>
-                        )}
-                      </div>
-                      {/* The bar is the one thing here allowed to give up width, so
-                          it is the only flex item without shrink-0. At 320px it
-                          narrows to a sliver and the two numbers stay readable,
-                          which is the right way round: the bar restates the
-                          percentage, the percentage does not restate the bar. */}
-                      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted-foreground/20">
-                        {/* hs-meter: slides on transform, not width (styles.css). */}
-                        <div
-                          className="hs-meter h-full rounded-full bg-primary"
-                          style={{ "--hs-meter": `${pct}%` } as CSSProperties}
-                        />
-                      </div>
-                      <div className="shrink-0 text-xs font-medium text-muted-foreground">{pct}%</div>
-                    </div>
-
-                    {/* Labelled, not icon-only. "List" and "Map" next to the glyph
-                        cost about 60px and remove the guess; the icons alone were a
-                        list and a folded map, which are not far apart at 16px. Still
-                        44px tall -- the height is now the padding plus the label
-                        rather than a fixed square, so min-h-11 states it outright. */}
-                    <div
-                      className="col-start-2 row-start-1 flex shrink-0 rounded-lg border p-0.5 @lg:col-start-3"
-                      role="group"
-                      aria-label={t("myDay.view")}
-                    >
-                      {(["list", "map"] as const).map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          aria-pressed={view === v}
-                          onClick={() => {
-                            haptic("tap");
-                            setView(v);
-                          }}
-                          className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors ${
-                            view === v
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:bg-muted"
-                          }`}
-                        >
-                          {v === "list" ? (
-                            <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                          ) : (
-                            <MapIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                          )}
-                          {v === "list" ? t("myDay.viewList") : t("myDay.viewMap")}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {/* `empty:hidden`: an account with no staff row has no clock,
-                    and off iOS there is no lock-screen icon; a row with
-                    nothing in it must not leave its gap behind. */}
-                <div
-                  data-my-day-tools=""
-                  className={`flex min-w-0 items-center gap-2 empty:hidden ${
-                    total > 0
-                      ? "col-span-2 row-start-2 @lg:col-span-1 @lg:col-start-2 @lg:row-start-1"
-                      : "col-span-2 row-start-1"
-                  }`}
-                >
-                  {!previewing && (
-                    <TimeClockChip
-                      visitsCompletedToday={day === orgTodayIso ? completedCount : null}
-                    />
+              One row at every width: progress left, List/Map right. At 320px
+              the pill gives up width to the toggle, never the other way. */}
+          {total > 0 && (
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+              {/* PROGRESS LEFT, VIEW RIGHT.
+                  The toggle used to lead the row and the progress followed it,
+                  which put the control first and the fact second. The number
+                  is what a technician reads at a glance between driveways; the
+                  toggle is pressed a few times a day. min-w-0 so the pill
+                  yields to the toggle rather than pushing it off the edge. */}
+              <div className="flex min-w-0 items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
+                <div className="min-w-0 shrink-0 truncate text-xs font-medium">
+                  {completedCount} {t("common.of")} {total} {t("common.done")}
+                  {skippedCount > 0 && (
+                    <span className="ms-1 font-normal text-muted-foreground">
+                      · {t("myDay.skippedCount", { count: skippedCount })}
+                    </span>
                   )}
-                  <RouteLockScreenToggle activity={lockScreen} />
                 </div>
+                {/* The bar is the one thing here allowed to give up width, so
+                    it is the only flex item without shrink-0. At 320px it
+                    narrows to a sliver and the two numbers stay readable,
+                    which is the right way round: the bar restates the
+                    percentage, the percentage does not restate the bar. */}
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted-foreground/20">
+                  {/* hs-meter: slides on transform, not width (styles.css). */}
+                  <div
+                    className="hs-meter h-full rounded-full bg-primary"
+                    style={{ "--hs-meter": `${pct}%` } as CSSProperties}
+                  />
+                </div>
+                <div className="shrink-0 text-xs font-medium text-muted-foreground">{pct}%</div>
+              </div>
+
+              {/* Labelled, not icon-only. "List" and "Map" next to the glyph
+                  cost about 60px and remove the guess; the icons alone were a
+                  list and a folded map, which are not far apart at 16px. Still
+                  44px tall -- the height is now the padding plus the label
+                  rather than a fixed square, so min-h-11 states it outright. */}
+              <div className="flex shrink-0 rounded-lg border p-0.5" role="group" aria-label={t("myDay.view")}>
+                {(["list", "map"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => {
+                      haptic("tap");
+                      setView(v);
+                    }}
+                    className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors ${
+                      view === v
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {v === "list" ? (
+                      <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <MapIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    )}
+                    {v === "list" ? t("myDay.viewList") : t("myDay.viewMap")}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -1050,9 +1024,13 @@ function MyDay() {
       </div>
 
       <div className="space-y-3 pt-4">
-        {/* No cards above the first stop. The time clock and the route on
-            the lock screen were two of them, and are now a chip and an icon
-            in the status row above; the list starts right under it. */}
+        {/* No cards above the first stop, with one exception that earns its
+            place: work today and nobody on the clock. "You're off the clock"
+            and Clock in, one tap, queued with no signal. On the clock, or on
+            any other day, it is not drawn and the list starts right here. */}
+        {staff && !previewing && day === orgTodayIso && (
+          <OffTheClockBanner visitsToday={total} />
+        )}
         {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}
@@ -1114,6 +1092,7 @@ function MyDay() {
                 preview={previewing}
                 canText={data?.canText === true}
                 onLogExpense={previewing ? undefined : () => setExpenseOpen(true)}
+                captureRequest={captureAsk && captureAsk.id === v.id ? captureAsk.n : 0}
               />
             ))}
           </ol>
@@ -1644,6 +1623,7 @@ function VisitCard({
   preview = false,
   canText = false,
   onLogExpense,
+  captureRequest = 0,
 }: {
   visit: any;
   index: number;
@@ -1654,6 +1634,10 @@ function VisitCard({
   canText?: boolean;
   /** Opens the page's one "Log an expense" sheet. Absent while previewing. */
   onLogExpense?: () => void;
+  /** Bumped when the lock screen's Complete asked for this stop: open the
+   *  completion photo when that is what the visit needs, else put the tech's
+   *  thumb on Complete. 0 is "never asked". */
+  captureRequest?: number;
 }) {
   const qc = useQueryClient();
   const { t } = useTranslation();
@@ -1847,6 +1831,17 @@ function VisitCard({
       haptic("select");
       toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
       if (!r.queued) invalidate();
+      // Start leads straight into the completion photo where the business
+      // requires one (src/lib/start-photo-complete.ts). Started either way.
+      if (
+        startOpensCamera({
+          requireCompletionPhoto,
+          photoOnFile,
+          canPerform: canPerformVisit,
+        })
+      ) {
+        void runPhotoToComplete("after_start");
+      }
     },
     onError: (e: Error) => {
       haptic("error");
@@ -1854,7 +1849,9 @@ function VisitCard({
     },
   });
   const complete = useMutation({
-    mutationFn: () =>
+    // `ticked` is the checklist as answered on the sheet the photo flow shows,
+    // which may be newer than this render's checkedItems.
+    mutationFn: (ticked?: string[] | void) =>
       actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
@@ -1862,7 +1859,7 @@ function VisitCard({
         // the owner has since removed means nothing to complete_visit.
         checkedItems:
           checklist.length > 0
-            ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
+            ? (ticked ?? checkedItems).filter((id) => checklist.some((i) => i.id === id))
             : undefined,
       }),
     onSuccess: (r) => {
@@ -1936,14 +1933,15 @@ function VisitCard({
     },
   });
 
-  const uploadPhoto = async (file: File) => {
+  const uploadPhoto = async (file: File, kindOverride?: PhotoKind): Promise<boolean> => {
+    const photoKind_ = kindOverride ?? photoKind;
     setUploading(true);
     try {
-      const r = await actions.uploadPhoto(file, photoKind);
+      const r = await actions.uploadPhoto(file, photoKind_);
       haptic("tap");
       // The kind in the picker's own words ("Gate latched", "Terminado"), so
       // the toast names the photo the way the tech just chose it.
-      const kind = t(`photoKind.${photoKind}`, { defaultValue: photoKindLabel(photoKind) });
+      const kind = t(`photoKind.${photoKind_}`, { defaultValue: photoKindLabel(photoKind_) });
       toast.success(
         r.queued ? t("photo.queuedToast", { kind }) : t("photo.uploadedToast", { kind }),
       );
@@ -1955,9 +1953,11 @@ function VisitCard({
       // kept asking for a completion photo, and the only clue that anything
       // was wrong was the word "Before" in a toast that had already gone.
       setPhotoKind("completion");
+      return true;
     } catch (e: any) {
       haptic("error");
       toast.error(e.message ?? t("photo.uploadFailed"));
+      return false;
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -2000,6 +2000,151 @@ function VisitCard({
   const hasStations = p?.account_type === "commercial" || !!p?.has_units;
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
 
+  // ── Start, the photo, Complete: one motion (src/lib/start-photo-complete.ts)
+  //
+  // Where the business requires a completion photo and none is on file, a
+  // stop under way needs exactly one thing, so the card says so: "Take photo
+  // to complete". Start runs the same thing on its own once the visit has
+  // started, and the lock screen's Complete runs it when the app opens on
+  // this stop. The photo saved, the checklist (if the business has one)
+  // comes up, and Complete follows. Cancel the camera and the visit simply
+  // stays started, with that button waiting.
+  const needsCompletionPhoto =
+    (inProg || missed) && canPerformVisit && requireCompletionPhoto && !photoOnFile;
+  const [photoFlowBusy, setPhotoFlowBusy] = useState(false);
+  const [checklistAsk, setChecklistAsk] = useState(false);
+  const checklistAnswer = useRef<((ids: string[] | null) => void) | null>(null);
+  const checkedNow = useRef(checkedItems);
+  checkedNow.current = checkedItems;
+  // The web's camera is the file input below; this is who is waiting on it.
+  const webCapture = useRef<((f: File | null) => void) | null>(null);
+
+  const captureCompletionFile = async (afterStart: boolean): Promise<File | null> => {
+    try {
+      const { isNative, takePhotoNative } = await import("@/lib/native");
+      if (isNative()) {
+        try {
+          const blob = await takePhotoNative();
+          return blob
+            ? new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" })
+            : null;
+        } catch (e) {
+          // Capacitor rejects a cancelled camera ("User cancelled photos
+          // app"); that is a no, not a reason to open a second picker.
+          if (/cancel/i.test(String((e as { message?: string })?.message ?? e))) return null;
+        }
+      }
+    } catch {
+      /* the web input below */
+    }
+    // A browser opens the file picker only from a tap. After Start the tap
+    // may have been spent on the network round trip, and a picker that
+    // silently refuses to open would leave this waiting for ever; the card's
+    // "Take photo to complete" is the way in then.
+    const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } })
+      .userActivation;
+    if (afterStart && activation && !activation.isActive) return null;
+    return new Promise<File | null>((resolve) => {
+      webCapture.current?.(null);
+      webCapture.current = resolve;
+      fileInput.current?.click();
+    });
+  };
+
+  const runPhotoToComplete = async (why: "after_start" | "button" | "lock_screen") => {
+    if (photoFlowBusy) return;
+    setPhotoFlowBusy(true);
+    setPhotoKind("completion");
+    try {
+      const outcome = await photoThenComplete({
+        capture: () => captureCompletionFile(why === "after_start"),
+        upload: async (file) => {
+          if (!(await uploadPhoto(file, "completion"))) throw new Error("upload");
+          return { queued: false };
+        },
+        checklist,
+        askChecklist: () =>
+          new Promise<string[] | null>((resolve) => {
+            checklistAnswer.current = resolve;
+            setChecklistAsk(true);
+          }),
+        complete: (ticked) => complete.mutateAsync(ticked),
+      });
+      if (outcome === "awaiting_photo" && why !== "button") {
+        // Said once, so a camera that closed is not mistaken for a photo taken.
+        toast.message(t("visit.photoStillNeeded"));
+      }
+    } catch {
+      // Complete's own onError has already said why.
+    } finally {
+      setPhotoFlowBusy(false);
+    }
+  };
+
+  // The lock screen's Complete, for this stop.
+  const lastCaptureRequest = useRef(0);
+  useEffect(() => {
+    if (!captureRequest || captureRequest === lastCaptureRequest.current) return;
+    lastCaptureRequest.current = captureRequest;
+    if (needsCompletionPhoto) {
+      void runPhotoToComplete("lock_screen");
+      return;
+    }
+    // Nothing to photograph: the Complete button, in hand, not pressed.
+    const button = document
+      .getElementById(`visit-${visit.id}`)
+      ?.querySelector<HTMLButtonElement>("button[data-complete-visit]");
+    if (button) {
+      button.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (!button.disabled) button.focus({ preventScroll: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureRequest]);
+
+  const answerChecklist = (ids: string[] | null) => {
+    const resolve = checklistAnswer.current;
+    checklistAnswer.current = null;
+    setChecklistAsk(false);
+    resolve?.(ids);
+  };
+
+  // The owner's checklist, as rows: on the card wherever Complete is, and on
+  // the sheet the photo flow shows. One copy, so the two cannot drift. Each
+  // row is the label AND the box, 44px tall at every width, so a gloved thumb
+  // anywhere on the line ticks it -- the box alone is 16px. The label wraps
+  // rather than truncates: it is a sentence the owner wrote to be read, and
+  // at 320px a long one has to stay inside the card.
+  const checklistRows = (where: "card" | "sheet") =>
+    checklist.map((item) => {
+      const id = `checklist-${where}-${visit.id}-${item.id}`;
+      const on = checkedItems.includes(item.id);
+      return (
+        <label
+          key={item.id}
+          htmlFor={id}
+          className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 active:bg-accent"
+        >
+          <Checkbox
+            id={id}
+            checked={on}
+            onCheckedChange={(v) =>
+              setCheckedItems((prev) =>
+                v === true
+                  ? [...prev.filter((x) => x !== item.id), item.id]
+                  : prev.filter((x) => x !== item.id),
+              )
+            }
+          />
+          <span className="min-w-0 flex-1 text-sm leading-snug [overflow-wrap:anywhere]">
+            <bdi>{item.label}</bdi>
+            {item.required && (
+              <span className="text-xs text-muted-foreground"> · {t("visit.required")}</span>
+            )}
+          </span>
+        </label>
+      );
+    });
+
   // The photo control appears in two places — primary once the visit is under
   // way, behind More before that — so it is written once. A FUNCTION and not a
   // component: an inline component is a new type on every render, which would
@@ -2020,6 +2165,28 @@ function VisitCard({
           </option>
         ))}
       </select>
+      {needsCompletionPhoto && photoKind === "completion" ? (
+        // The one thing this stop needs: the photo, and then Complete by
+        // itself. Primary, because it is the next tap.
+        // A row of its own, and a label that may wrap: "Take photo to
+        // complete" in Spanish or Arabic does not fit beside the kind picker
+        // at 320px, and a nowrap label there widened the whole page by a
+        // pixel (my-day-gets-its-room-back at iPhone SE).
+        <Button
+          type="button"
+          size="default"
+          className="h-auto min-h-11 w-full min-w-0 basis-full whitespace-normal py-2"
+          disabled={uploading || photoFlowBusy}
+          data-take-photo-to-complete=""
+          onClick={() => {
+            haptic("tap");
+            void runPhotoToComplete("button");
+          }}
+        >
+          <Camera className="me-1.5 h-4 w-4 shrink-0" />
+          {uploading ? t("photo.uploading") : t("visit.takePhotoToComplete")}
+        </Button>
+      ) : (
       <Button
         type="button"
         variant="outline"
@@ -2040,8 +2207,10 @@ function VisitCard({
                 return;
               }
             }
-          } catch {
-            /* fall through to web input */
+          } catch (e) {
+            // A cancelled camera is a no; anything else falls through to
+            // the web input.
+            if (/cancel/i.test(String((e as { message?: string })?.message ?? e))) return;
           }
           fileInput.current?.click();
         }}
@@ -2049,6 +2218,7 @@ function VisitCard({
         <Camera className="me-1.5 h-4 w-4 shrink-0" />
         {uploading ? t("photo.uploading") : t("photo.take")}
       </Button>
+      )}
     </div>
   );
   const [collapsed, setCollapsed] = useState(finalStatus);
@@ -2383,14 +2553,32 @@ function VisitCard({
               it looks pressable, it is not, and the sentence explaining why
               only appears once you have started. */}
           <input
-            ref={fileInput}
             type="file"
             accept="image/*"
             capture="environment"
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0];
+              const f = e.target.files?.[0] ?? null;
+              // The photo flow is waiting on this picker: hand it the file
+              // (or the cancel) and let it upload and complete.
+              const waiting = webCapture.current;
+              if (waiting) {
+                webCapture.current = null;
+                waiting(f);
+                return;
+              }
               if (f) uploadPhoto(f);
+            }}
+            ref={(el) => {
+              fileInput.current = el;
+              if (el && !el.dataset.cancelWired) {
+                el.dataset.cancelWired = "1";
+                el.addEventListener("cancel", () => {
+                  const waiting = webCapture.current;
+                  webCapture.current = null;
+                  waiting?.(null);
+                });
+              }
             }}
           />
 
@@ -2426,38 +2614,7 @@ function VisitCard({
               <legend className="px-1.5 text-xs font-semibold uppercase text-muted-foreground">
                 {t("visit.checklist")}
               </legend>
-              {checklist.map((item) => {
-                const id = `checklist-${visit.id}-${item.id}`;
-                const on = checkedItems.includes(item.id);
-                return (
-                  <label
-                    key={item.id}
-                    htmlFor={id}
-                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 active:bg-accent"
-                  >
-                    <Checkbox
-                      id={id}
-                      checked={on}
-                      onCheckedChange={(v) =>
-                        setCheckedItems((prev) =>
-                          v === true
-                            ? [...prev.filter((x) => x !== item.id), item.id]
-                            : prev.filter((x) => x !== item.id),
-                        )
-                      }
-                    />
-                    <span className="min-w-0 flex-1 text-sm leading-snug [overflow-wrap:anywhere]">
-                      <bdi>{item.label}</bdi>
-                      {item.required && (
-                        <span className="text-xs text-muted-foreground">
-                          {" "}
-                          · {t("visit.required")}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                );
-              })}
+              {checklistRows("card")}
             </fieldset>
           )}
 
@@ -2514,6 +2671,7 @@ function VisitCard({
               onClick={() =>
                 canPerformVisit ? complete.mutate() : toast.error(t("visit.notAuthorizedComplete"))
               }
+              data-complete-visit=""
               title={
                 !canPerformVisit
                   ? t("visit.notAuthorizedCompleteTitle")
@@ -2873,6 +3031,47 @@ function VisitCard({
           )}
           {showStations && <StationsSubpanel visitId={visit.id} readOnly={preview} />}
         </div>
+      )}
+      {/* The checklist, between the completion photo and Complete, when the
+          photo flow is what got here. Put away, it leaves the visit started
+          with its photo, and the same list and Complete wait on the card. */}
+      {checklist.length > 0 && (
+        <Sheet open={checklistAsk} onOpenChange={(open) => !open && answerChecklist(null)}>
+          <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-xl">
+            <div className="mx-auto w-full max-w-md space-y-3">
+              <SheetHeader className="text-start">
+                <SheetTitle>{t("visit.checklist")}</SheetTitle>
+                <SheetDescription>{t("visit.checklistBeforeComplete")}</SheetDescription>
+              </SheetHeader>
+              {/* Named by aria-label rather than an sr-only legend: this
+                  sheet scrolls, and an sr-only inside a scroller escapes it
+                  (an-sr-only-span-scrolled-the-page-sideways). */}
+              <fieldset
+                aria-label={t("visit.checklist")}
+                className="space-y-0.5 rounded-lg border p-1.5"
+              >
+                {checklistRows("sheet")}
+              </fieldset>
+              {!checklistReady(checklist, checkedItems) && (
+                <p className="text-center text-xs text-muted-foreground">
+                  {t("visit.tickRequired", {
+                    count: missingRequired(checklist, checkedItems).length,
+                  })}
+                </p>
+              )}
+              <SheetFooter>
+                <Button
+                  type="button"
+                  className="h-12 w-full text-base"
+                  disabled={!checklistReady(checklist, checkedItems)}
+                  onClick={() => answerChecklist(checkedNow.current)}
+                >
+                  {t("myDay.complete")}
+                </Button>
+              </SheetFooter>
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
     </li>
   );

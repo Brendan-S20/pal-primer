@@ -13,10 +13,15 @@
 //   3. the links back into the app: only consulting.thenorth.houndstack://
 //      open/my-day, rebuilt from validated parts, with `action` on an
 //      allowlist; anything else, and every foreign origin, is refused;
-//   4. the widget side: plain Links (no App Intent, no network, no session),
-//      behind iOS 17, 44pt tall, built from the same scheme and host the JS
-//      accepts, and Navigate opening the URL My Day's own Navigate opens;
-//   5. My Day takes the tech to the button and does not press it.
+//   4. the widget side: Navigate and Complete are plain Links, and nothing
+//      runs in the extension (no network, no session); Start is an App
+//      Intent since 2026-10-08, which runs in the APP, and is pinned in
+//      tests/the-lock-screen-starts-the-stop.test.ts; all behind iOS 17,
+//      44pt tall, built from the same scheme and host the JS accepts, and
+//      Navigate opening the URL My Day's own Navigate opens;
+//   5. My Day takes the tech to Start and does not press it (the lock screen
+//      could not start it, so the app opened); Complete opens the stop's
+//      photo capture, through the card.
 //
 // What it cannot: that iOS draws and opens them. The simulator screenshots
 // in the PR do that.
@@ -213,7 +218,7 @@ describe("the state carries what the buttons need", () => {
   it("the server reads the columns Navigate needs, with the same builder", () => {
     const src = read("src/lib/push-liveactivity.server.ts");
     expect(src).toMatch(/properties\(label, street, city, postal_code, latitude, longitude,/);
-    expect(src).toMatch(/buildRouteActivityState\(visits,/);
+    expect(src).toMatch(/buildRouteActivityState\(route\.visits,/);
     expect(read("src/lib/my-day.functions.ts")).toMatch(
       /properties\(label, street, city, postal_code, latitude, longitude,/,
     );
@@ -405,14 +410,16 @@ describe("the widget's buttons", () => {
     expect(fn).toMatch(/return directions\(lat: nil, lng: nil, address: destination\)/);
   });
 
-  it("are plain Links: no App Intent, no network, no session", () => {
+  it("Navigate and Complete are plain Links, and nothing runs in the extension", () => {
     expect(extensionCode).toMatch(/Link\(destination: url\)/);
-    expect(extensionCode).not.toMatch(/AppIntent|LiveActivityIntent|URLSession|fetch|Authorization|api\.houndstack|supabase/i);
+    // Start's intent is a type the view names; its work happens in the app
+    // (RouteActivityIntents.swift, perform() is empty under
+    // ROUTE_ACTIVITY_EXTENSION). The view itself makes no request.
+    expect(extensionCode).not.toMatch(/URLSession|fetch|Authorization|api\.houndstack|supabase|Keychain|SecItem/i);
     expect(codeOnly(attrs)).not.toMatch(/URLSession|Authorization|api\.houndstack|supabase|token/i);
-    // And nothing new was added to the project: no intent file, no target.
+    // Still one extension target; the intent file is shared, not a target.
     const pbx = read("ios/App/App.xcodeproj/project.pbxproj");
     expect(pbx.match(/productType = "com\.apple\.product-type\.app-extension";/g)).toHaveLength(1);
-    expect(pbx).not.toMatch(/Intent\.swift/);
   });
 
   it("are drawn on iOS 17 and later only, and a tap on the card opens My Day on every version", () => {
@@ -434,7 +441,7 @@ describe("the widget's buttons", () => {
   });
 });
 
-// ── 5. My Day hands over the button and does not press it ─────────────────
+// ── 5. My Day hands over Start and does not press it ──────────────────────
 
 describe("My Day on a lock-screen link", () => {
   const labels = { start: "Start", complete: "Complete" };
@@ -454,10 +461,11 @@ describe("My Day on a lock-screen link", () => {
     expect(findActionButton(card("More").node, "complete", labels)).toBeNull();
   });
 
-  it("focuses the button and never clicks it, and takes action out of the URL", () => {
+  it("focuses Start and never clicks it, hands Complete to the card, and takes action out of the URL", () => {
     const hook = codeOnly(read("src/components/my-day/use-live-activity-action.ts"));
     expect(hook).toMatch(/\.focus\(/);
     expect(hook).not.toMatch(/\.click\(|dispatchEvent|mutate|actions\.(start|complete)/);
+    expect(hook).toMatch(/if \(action === "complete" && capture\.current\?\.\(visitId\)\)/);
     const myDay = read("src/routes/_authenticated/my-day.tsx");
     expect(myDay).toMatch(/if \(out\.visit && isLiveActivityAction\(search\.action\)\) out\.action = search\.action;/);
     expect(myDay).toMatch(/useLiveActivityAction\(\{[\s\S]*?action: undefined[\s\S]*?replace: true/);
