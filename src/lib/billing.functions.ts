@@ -5,12 +5,12 @@ import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.serve
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
 import { addonLookupKey, planLookupKey } from "@/lib/stripe-lookup-keys";
-import { FOUNDING_CODE, isFoundingCode, placesLeft } from "@/lib/founding-offer";
 import {
   loadPriceCatalog,
   resolvePriceId,
   resolvePriceIdSet,
 } from "@/lib/stripe-price-catalog.server";
+import { FOUNDING_CODE, isFoundingCode, placesLeft } from "@/lib/founding-offer";
 
 // Nothing imports this. $59 is not a price in the current per-employee
 // catalog either — plans come from `platform_plans`, which is the only place
