@@ -79,6 +79,7 @@ const NO_TITLE_NEEDED: Record<string, string> = {
   "src/routes/_authenticated/ai-tools.tsx": "redirects to /dashboard before painting",
   "src/routes/_authenticated/settings.index.tsx": "redirects to /settings/preferences",
   "src/routes/_authenticated/settings.payments.tsx": "redirects to /payments",
+  "src/routes/_authenticated/settings.lead-form.tsx": "redirects to /settings/online-signup",
   "src/routes/index.tsx": "redirects to /auth",
   "src/routes/platform.index.tsx": "redirects to /platform/overview",
   "src/routes/portal.$slug.tsx": "resolves the business and redirects",
