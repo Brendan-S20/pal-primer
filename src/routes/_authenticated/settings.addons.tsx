@@ -77,11 +77,11 @@ function AddonsCatalog() {
         >
           <div className="sm:col-span-2">
             <Label>Code</Label>
-            <Input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} placeholder="deodorize" />
+            <Input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} placeholder="extra_visit" />
           </div>
           <div className="sm:col-span-3">
             <Label>Name</Label>
-            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Yard deodorize" />
+            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Extra visit" />
           </div>
           <div className="sm:col-span-1">
             <Label>Price ($)</Label>
