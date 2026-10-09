@@ -74,6 +74,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/billing": ["owner"],
   "/payments": ["owner"],
   "/onboarding": ["owner"],
+  // The guided setup (src/lib/setup-guide.ts). The people who can set a
+  // business up: every step's own server gate admits both, except payouts,
+  // which the page filters out for an office manager by its own gate.
+  "/setup": ["owner", "office_manager"],
   // Must precede the "/settings" prefix entry — canAccess takes the first match.
   "/settings/billing": ["owner"],
   // Outbound webhooks send the tenant's events to a third party: the same

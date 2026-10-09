@@ -16,6 +16,14 @@ export type Database = {
     Tables: {
       accounting_connections: {
         Row: {
+          status: string
+          status_reason: string | null
+          status_changed_at: string | null
+          disconnected_at: string | null
+          refresh_token_expires_at: string | null
+          service_item_id: string | null
+          sales_tax_item_id: string | null
+          deposit_account_id: string | null
           default_sales_tax_account: string | null
           access_token: string | null
           auto_sync: boolean
@@ -35,6 +43,14 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          status?: string
+          status_reason?: string | null
+          status_changed_at?: string | null
+          disconnected_at?: string | null
+          refresh_token_expires_at?: string | null
+          service_item_id?: string | null
+          sales_tax_item_id?: string | null
+          deposit_account_id?: string | null
           default_sales_tax_account?: string | null
           access_token?: string | null
           auto_sync?: boolean
@@ -54,6 +70,14 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          status?: string
+          status_reason?: string | null
+          status_changed_at?: string | null
+          disconnected_at?: string | null
+          refresh_token_expires_at?: string | null
+          service_item_id?: string | null
+          sales_tax_item_id?: string | null
+          deposit_account_id?: string | null
           default_sales_tax_account?: string | null
           access_token?: string | null
           auto_sync?: boolean
@@ -84,6 +108,10 @@ export type Database = {
       }
       accounting_sync_log: {
         Row: {
+          attempts: number | null
+          error_code: string | null
+          http_status: number | null
+          intuit_tid: string | null
           connection_id: string | null
           created_at: string
           direction: Database["public"]["Enums"]["accounting_sync_direction"]
@@ -97,6 +125,10 @@ export type Database = {
           status: Database["public"]["Enums"]["accounting_sync_status"]
         }
         Insert: {
+          attempts?: number | null
+          error_code?: string | null
+          http_status?: number | null
+          intuit_tid?: string | null
           connection_id?: string | null
           created_at?: string
           direction: Database["public"]["Enums"]["accounting_sync_direction"]
@@ -110,6 +142,10 @@ export type Database = {
           status: Database["public"]["Enums"]["accounting_sync_status"]
         }
         Update: {
+          attempts?: number | null
+          error_code?: string | null
+          http_status?: number | null
+          intuit_tid?: string | null
           connection_id?: string | null
           created_at?: string
           direction?: Database["public"]["Enums"]["accounting_sync_direction"]
@@ -5404,6 +5440,7 @@ export type Database = {
           frequency: string
           id: string
           initial_cleanup_cents: number
+          lead_id: string | null
           name: string
           organization_id: string
           phone: string | null
@@ -5433,6 +5470,7 @@ export type Database = {
           frequency: string
           id?: string
           initial_cleanup_cents: number
+          lead_id?: string | null
           name: string
           organization_id: string
           phone?: string | null
@@ -5462,6 +5500,7 @@ export type Database = {
           frequency?: string
           id?: string
           initial_cleanup_cents?: number
+          lead_id?: string | null
           name?: string
           organization_id?: string
           phone?: string | null
@@ -5480,6 +5519,13 @@ export type Database = {
           zone_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "signup_requests_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "signup_requests_organization_id_fkey"
             columns: ["organization_id"]
@@ -8071,7 +8117,7 @@ export type Database = {
     }
     Enums: {
       account_type: "residential" | "commercial"
-      accounting_entity_type: "invoice" | "payment" | "client"
+      accounting_entity_type: "invoice" | "payment" | "client" | "connection"
       accounting_provider: "quickbooks" | "xero"
       accounting_sync_direction: "push" | "pull"
       accounting_sync_status: "pending" | "success" | "error"
@@ -8279,7 +8325,7 @@ export const Constants = {
   public: {
     Enums: {
       account_type: ["residential", "commercial"],
-      accounting_entity_type: ["invoice", "payment", "client"],
+      accounting_entity_type: ["invoice", "payment", "client", "connection"],
       accounting_provider: ["quickbooks", "xero"],
       accounting_sync_direction: ["push", "pull"],
       accounting_sync_status: ["pending", "success", "error"],

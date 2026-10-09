@@ -306,6 +306,13 @@ function NeighborsPage() {
                 <SignupFlow
                   slug={targetQ.data.effectiveSlug}
                   variant="sheet"
+                  // A tech's walk has its own fallback for a door that will
+                  // not pay today (mark it, the office finishes), so the
+                  // public form's "Just send me a quote" stays off here. The
+                  // channel labels the lead the signup writes, so the office
+                  // sees "Started service at the door" in Leads.
+                  offerQuoteRequest={false}
+                  channel="door"
                   prefill={splitCanvassAddress(signupDoor.address_line)}
                   onPaid={() => {
                     toast.success("Signed up and paid", {

@@ -79,6 +79,9 @@ export const APP_LINK_PATH_PREFIXES: readonly string[] = [
   "/reports",
   "/review",
   "/routes",
+  // The guided setup. An owner's page: it sets the business up and sells
+  // nothing, so a link to it from a "finish setting up" email opens the app.
+  "/setup",
   "/tax-reports",
   "/timesheets",
   "/waste-log",

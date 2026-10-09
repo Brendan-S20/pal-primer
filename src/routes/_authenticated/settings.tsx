@@ -52,12 +52,12 @@ const TAB_GROUPS: TabGroup[] = [
       // 2026-08-28, which is where a reader looking for a brand colour would
       // never have thought to go.
       { label: "Client portal", to: "/settings/client-portal" },
-      { label: "Lead form", to: "/settings/lead-form" },
-      // The two gates on /signup/{slug} had no UI at all, which is why the
-      // whole public signup flow shipped unreachable. Sits next to Lead form
-      // because they are the same decision seen from two sides: capture the
-      // stranger's details, or let the stranger buy.
-      { label: "Online signup", to: "/settings/online-signup" },
+      // ONE entry since 2026-10-08. "Lead form" and "Online signup" were two
+      // settings pages for two public forms that asked a stranger the same
+      // questions; the forms are one now (/signup/{slug}, which prices the
+      // yard and lets the visitor start service or ask for a quote) and so
+      // are their settings. /settings/lead-form forwards here.
+      { label: "Signup & quote form", to: "/settings/online-signup" },
       { label: "Promotions", to: "/settings/promotions" },
       // Moved from Communications (launch pass, 2026-10). The page is
       // "Reviews & referrals": the Google review link customers are sent to

@@ -51,6 +51,7 @@ import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
 import { Route as AuthenticatedTimesheetsRouteImport } from './routes/_authenticated/timesheets'
 import { Route as AuthenticatedTaxReportsRouteImport } from './routes/_authenticated/tax-reports'
+import { Route as AuthenticatedSetupRouteImport } from './routes/_authenticated/setup'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
@@ -143,7 +144,6 @@ import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$sl
 import { Route as PortalSlugTokenPropertyRouteImport } from './routes/portal.$slug.$token.property'
 import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
 import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
-import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/public/hooks/xero-callback'
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
 import { Route as ApiPublicHooksWebhookDeliveriesRouteImport } from './routes/api/public/hooks/webhook-deliveries'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
@@ -366,6 +366,11 @@ const AuthenticatedTimesheetsRoute = AuthenticatedTimesheetsRouteImport.update({
 const AuthenticatedTaxReportsRoute = AuthenticatedTaxReportsRouteImport.update({
   id: '/tax-reports',
   path: '/tax-reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSetupRoute = AuthenticatedSetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
@@ -870,12 +875,6 @@ const PortalSlugTokenAccountRoute = PortalSlugTokenAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => PortalSlugTokenRoute,
 } as any)
-const ApiPublicHooksXeroCallbackRoute =
-  ApiPublicHooksXeroCallbackRouteImport.update({
-    id: '/api/public/hooks/xero-callback',
-    path: '/api/public/hooks/xero-callback',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiPublicHooksWeeklyDigestRoute =
   ApiPublicHooksWeeklyDigestRouteImport.update({
     id: '/api/public/hooks/weekly-digest',
@@ -999,6 +998,7 @@ export interface FileRoutesByFullPath {
   '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/setup': typeof AuthenticatedSetupRoute
   '/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/timesheets': typeof AuthenticatedTimesheetsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
@@ -1097,7 +1097,6 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1142,6 +1141,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/setup': typeof AuthenticatedSetupRoute
   '/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/timesheets': typeof AuthenticatedTimesheetsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
@@ -1238,7 +1238,6 @@ export interface FileRoutesByTo {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1292,6 +1291,7 @@ export interface FileRoutesById {
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/_authenticated/setup': typeof AuthenticatedSetupRoute
   '/_authenticated/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/_authenticated/timesheets': typeof AuthenticatedTimesheetsRoute
   '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
@@ -1390,7 +1390,6 @@ export interface FileRoutesById {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1444,6 +1443,7 @@ export interface FileRouteTypes {
     | '/review'
     | '/routes'
     | '/settings'
+    | '/setup'
     | '/tax-reports'
     | '/timesheets'
     | '/waste-log'
@@ -1542,7 +1542,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1587,6 +1586,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/review'
     | '/routes'
+    | '/setup'
     | '/tax-reports'
     | '/timesheets'
     | '/waste-log'
@@ -1683,7 +1683,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1736,6 +1735,7 @@ export interface FileRouteTypes {
     | '/_authenticated/review'
     | '/_authenticated/routes'
     | '/_authenticated/settings'
+    | '/_authenticated/setup'
     | '/_authenticated/tax-reports'
     | '/_authenticated/timesheets'
     | '/_authenticated/waste-log'
@@ -1834,7 +1834,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1892,7 +1891,6 @@ export interface RootRouteChildren {
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWebhookDeliveriesRoute: typeof ApiPublicHooksWebhookDeliveriesRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
-  ApiPublicHooksXeroCallbackRoute: typeof ApiPublicHooksXeroCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2189,6 +2187,13 @@ declare module '@tanstack/react-router' {
       path: '/tax-reports'
       fullPath: '/tax-reports'
       preLoaderRoute: typeof AuthenticatedTaxReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/setup': {
+      id: '/_authenticated/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof AuthenticatedSetupRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings': {
@@ -2835,13 +2840,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalSlugTokenAccountRouteImport
       parentRoute: typeof PortalSlugTokenRoute
     }
-    '/api/public/hooks/xero-callback': {
-      id: '/api/public/hooks/xero-callback'
-      path: '/api/public/hooks/xero-callback'
-      fullPath: '/api/public/hooks/xero-callback'
-      preLoaderRoute: typeof ApiPublicHooksXeroCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/hooks/weekly-digest': {
       id: '/api/public/hooks/weekly-digest'
       path: '/api/public/hooks/weekly-digest'
@@ -3119,6 +3117,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
+  AuthenticatedSetupRoute: typeof AuthenticatedSetupRoute
   AuthenticatedTaxReportsRoute: typeof AuthenticatedTaxReportsRoute
   AuthenticatedTimesheetsRoute: typeof AuthenticatedTimesheetsRoute
   AuthenticatedWasteLogRoute: typeof AuthenticatedWasteLogRoute
@@ -3159,6 +3158,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
+  AuthenticatedSetupRoute: AuthenticatedSetupRoute,
   AuthenticatedTaxReportsRoute: AuthenticatedTaxReportsRoute,
   AuthenticatedTimesheetsRoute: AuthenticatedTimesheetsRoute,
   AuthenticatedWasteLogRoute: AuthenticatedWasteLogRoute,
@@ -3300,7 +3300,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWebhookDeliveriesRoute: ApiPublicHooksWebhookDeliveriesRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
-  ApiPublicHooksXeroCallbackRoute: ApiPublicHooksXeroCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

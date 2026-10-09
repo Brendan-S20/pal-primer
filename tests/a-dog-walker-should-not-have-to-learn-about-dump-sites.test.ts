@@ -190,7 +190,7 @@ describe("the gating table: what each set of lines shows", () => {
       waste_log: ["src/components/MobileTabBar.tsx", /techSecondTab\(navVisibility\.petWaste\)/],
       dump_site_step: [
         "src/lib/onboarding.functions.ts",
-        /petWaste\s*\?\s*\{[\s\S]*?id: "dump_site"[\s\S]*?id: "day_end"/,
+        /const endOfDay = petWaste\s*\?[\s\S]*?id: "dump_site",\s*label: endOfDay\.label/,
       ],
       stations_dna: [
         "src/components/client-detail/stations-panel.tsx",
@@ -213,6 +213,32 @@ describe("the gating table: what each set of lines shows", () => {
     for (const [mod, [file, re]] of Object.entries(wiring)) {
       expect(codeOnly(read(file)), `${mod} in ${file}`).toMatch(re);
     }
+  });
+});
+
+// ── The end-of-day step, on the checklist and on /setup ───────────────────
+//
+// /setup walks the step ids, so the step stays "dump_site" for every
+// business; what changes is the question. A business without pet waste must
+// not read the words "dump site" anywhere in it: not in the wording the
+// server sends, and not in the panel /setup draws for it.
+describe("a business without pet waste is asked where its day ends", () => {
+  const status = codeOnly(read("src/lib/onboarding.functions.ts"));
+
+  it("the server words the step from the column, in both branches", () => {
+    const branches = status.match(/const endOfDay = petWaste\s*\?([\s\S]*?)\n\s*:([\s\S]*?);\n/);
+    expect(branches, "endOfDay = petWaste ? {…} : {…} not found").toBeTruthy();
+    const [, pet, other] = branches!;
+    expect(pet).toMatch(/dump site/i);
+    expect(other).toMatch(/Where does your day end\?/);
+    expect(other).not.toMatch(/dump/i);
+  });
+
+  it("/setup draws the dump-site panel only for a pet-waste business", () => {
+    const page = codeOnly(read("src/routes/_authenticated/setup.tsx"));
+    expect(page).toMatch(/case "dump_site":\s*return <EndOfDayPanel /);
+    expect(page).toMatch(/return petWaste \? \(\s*<DumpSitePanel[\s\S]*?\) : \(\s*<DayEndPanel/);
+    expect(codeOnly(read("src/components/SetupDayEndPanel.tsx"))).not.toMatch(/dump/i);
   });
 });
 

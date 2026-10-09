@@ -149,11 +149,13 @@ the list rather than by anyone noticing.
 - [ ] **Profile** (`/profile`). Photo upload, including a HEIC off a recent
       iPhone — the header says that is the case it was built for.
       *Machine:* renders only. *Person:* the HEIC upload.
-- [ ] **Settings: scheduling, client portal, online signup, franchise.** Four
+- [ ] **Settings: scheduling, client portal, signup & quote form, franchise.** Four
       new settings screens. For each: change one value, refresh, confirm it
       stuck. `settings/franchise` also has "Join a franchise", which is the one
       with consequences. *Machine:* scheduling (`a-setting-survives-a-refresh`),
       client portal and online signup (`three-more-settings-survive-a-refresh`).
+      The lead form's settings live on the signup page since the two public
+      forms merged (2026-10-08); `/settings/lead-form` forwards there.
       *Person:* franchise, on a disposable org.
 
 **Two of these are worth doing on a phone as well as a laptop**, because they

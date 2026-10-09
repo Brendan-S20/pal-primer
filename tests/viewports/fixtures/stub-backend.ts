@@ -74,27 +74,16 @@ type Stub = unknown | ((args: Record<string, any>) => unknown);
 
 const ok = { ok: true };
 
-/** The setup checklist's end-of-day step for a business that hauls waste... */
-const DUMP_SITE_STEP = {
-  id: "dump_site",
-  label: "Add your dump site",
-  description:
-    "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
-  done: false,
-  to: "/waste-log",
-  cta: "Add dump site",
-};
-
-/** ...and the same step for one that does not (onboarding.functions.ts asks
- *  "Where does your day end?" when service_lines has no pet_waste). Open, so
- *  its button is drawn and measured. */
-const DAY_END_STEP = {
-  id: "day_end",
+/** The end-of-day step's wording for a business that does not run pet waste
+ *  (onboarding.functions.ts asks "Where does your day end?" instead of for a
+ *  dump site). Same id, place and gate as the pet-waste step in BASE_STUBS,
+ *  as on the server, because /setup walks the ids. Open, so its panel is
+ *  drawn and measured. */
+const DAY_END_WORDING = {
   label: "Where does your day end?",
   description:
     "Set where each tech finishes the day: home, the shop, wherever the van parks. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
   done: false,
-  to: "/settings/users",
   cta: "Set day's end",
 };
 
@@ -311,36 +300,35 @@ const BASE_STUBS: Record<string, Stub> = {
   // is the widest row this component can produce and the only one that can
   // push a control off a 360px screen.
   getOnboardingStatus: {
-    completed: 4,
-    total: 7,
+    completed: 3,
+    total: 6,
     dismissed: false,
+    emailVerified: true,
+    // The six steps of src/lib/onboarding.functions.ts, which the guided setup
+    // at /setup walks too. Mid-progress for the reason above, and the open
+    // steps are chosen: "clients" is the row with two buttons, "dump_site"
+    // and "payouts" are the steps the guide does in place and links out for.
     steps: [
       {
-        id: "verify_email",
-        label: "Verify your email",
+        id: "business",
+        label: "Your business details",
         description:
-          "Confirm your address to unlock payments (Stripe). Everything else works meanwhile.",
+          "Your business address and time zone. Routes start from the address, and the time zone decides what counts as today.",
         done: true,
-        to: "/payments",
-        cta: "Verify",
+        to: "/setup",
+        cta: "Add details",
+        gate: "/settings/business",
       },
       {
         id: "zones",
-        label: "Create service zones",
-        description: "Group properties by neighborhood or postal prefix so routes stay tight.",
+        label: "Your service area and price",
+        description:
+          "Where you work and what you charge per visit. New clients in the area are quoted this price.",
         done: true,
-        to: "/zones",
-        cta: "Add a zone",
+        to: "/setup",
+        cta: "Set your price",
+        gate: "/zones",
       },
-      {
-        id: "staff",
-        label: "Add your first tech",
-        description: "Invite at least one tech so visits can be assigned and dispatched.",
-        done: true,
-        to: "/settings/users",
-        cta: "Invite tech",
-      },
-      DUMP_SITE_STEP,
       {
         id: "clients",
         label: "Add or import clients",
@@ -348,23 +336,38 @@ const BASE_STUBS: Record<string, Stub> = {
         done: false,
         to: "/clients/new",
         cta: "Add client",
+        gate: "/clients",
         alt: { to: "/imports", cta: "Import CSV", gate: "/imports" },
       },
       {
-        id: "route",
-        label: "Assign your first route",
-        description: "Assign visits to a tech on the Schedule so the field crew has work loaded.",
-        done: false,
-        to: "/routes",
-        cta: "Open schedule",
+        id: "staff",
+        label: "Who runs the route",
+        description:
+          "Say if you run the route yourself, or invite a tech. Visits are only handed to people who run routes.",
+        done: true,
+        to: "/setup",
+        cta: "Choose",
+        gate: "/settings/users",
       },
       {
-        id: "billing",
-        label: "Connect Stripe (optional)",
-        description: "Bring your own Stripe key to collect payments and enable autopay.",
-        done: true,
-        to: "/settings/billing",
-        cta: "Set up billing",
+        id: "dump_site",
+        label: "Where the day ends",
+        description:
+          "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
+        done: false,
+        to: "/setup",
+        cta: "Add dump site",
+        gate: "/settings/users",
+      },
+      {
+        id: "payouts",
+        label: "Get paid",
+        description:
+          "Connect Stripe so clients can pay by card and the money lands in your bank. Verify your email first. You can do this later.",
+        done: false,
+        to: "/payments",
+        cta: "Set up payouts",
+        gate: "/payments",
       },
     ],
   },
@@ -963,8 +966,27 @@ const BASE_STUBS: Record<string, Stub> = {
   },
 
   // ── Settings ────────────────────────────────────────────────────────────
+  // The shape getOrgBranding actually returns: the organizations row. It was
+  // `{ branding: { company_name, ... } }`, a shape nothing reads, so the
+  // client-portal branding card and the setup guide's business step were both
+  // measured with every field empty -- the narrowest version of a form whose
+  // fault would be the 46-character name in it. Found by the guided setup's
+  // walk, whose business step drew a blank name for a business that has one.
   getOrgBranding: {
-    branding: { logo_path: null, accent_hex: "#2563eb", company_name: fx.ORG_NAME },
+    id: fx.ORG_ID,
+    name: fx.ORG_NAME,
+    brand_color: "#2563eb",
+    logo_url: null,
+    contact_phone: "+1 (312) 555-0142",
+    contact_email: "office@whitfield-ramirez-yard-and-waste-services.example",
+    contact_address: "4413 North Ravenswood Manor Terrace, Chicago, IL 60611",
+    latitude: 41.9632,
+    longitude: -87.6745,
+    portal_reschedule_cutoff_hours: 24,
+    portal_allow_self_reschedule: true,
+    portal_allow_vacation_hold: true,
+    portal_allow_frequency_change: true,
+    portal_auto_apply_changes: false,
   },
   getStandardPricing: { pricing: [] },
   getSignupSettings: {
@@ -1339,6 +1361,11 @@ export type StubReport = {
   unstubbed: string[];
   /** Hosts the page tried to reach that the fence turned back. */
   blockedHosts: string[];
+  /** Bodies POSTed to /api/public/leads, the quote request's endpoint. It is
+   *  a server ROUTE on the dev server, not a server function, so the fence
+   *  would pass it through to a handler that writes to whichever database
+   *  the dev server points at. Answered here instead, and kept. */
+  leadPosts: unknown[];
 };
 
 /**
@@ -1428,8 +1455,16 @@ const PORTAL_STUBS: Record<string, Stub> = {
   getPublicTracking: (a) => pfx.PUBLIC_TRACKING[a.token as string] ?? { found: false },
   // /signup/:slug with first-cleanup tiers: the question in the service card,
   // and the quote priced for whichever answer the sweep picked.
-  getSignupOrg: pfx.SIGNUP_ORG,
-  getSignupQuote: (a) => pfx.signupQuote(a.last_cleaned as string | undefined),
+  // Keyed by slug since the lead form and the signup became one page: the
+  // same form for a business that sells online and one that only takes
+  // quote requests. A ZIP outside every zone answers the way public_quote
+  // does, with no row.
+  getPublicSignupForm: (a) =>
+    a.slug === pfx.QUOTE_ONLY_SLUG ? pfx.SIGNUP_FORM_QUOTE_ONLY : pfx.SIGNUP_FORM,
+  getSignupQuote: (a) =>
+    a.postal_code === pfx.NO_ZONE_ZIP
+      ? { available: false }
+      : pfx.signupQuote(a.last_cleaned as string | undefined),
   portalSelfServeOptions: {
     allow_self_reschedule: true,
     allow_vacation_hold: true,
@@ -1448,7 +1483,7 @@ export async function installStubBackend(
     serviceLines?: string[];
   } = {},
 ): Promise<StubReport> {
-  const report: StubReport = { unstubbed: [], blockedHosts: [] };
+  const report: StubReport = { unstubbed: [], blockedHosts: [], leadPosts: [] };
   const user = sweepUser();
   const role: SweepRole = options.role ?? "owner";
 
@@ -1479,7 +1514,7 @@ export async function installStubBackend(
     STUBS.getOnboardingStatus = {
       ...onboarding,
       steps: onboarding.steps.map((st) =>
-        st.id === "dump_site" && !lines.includes("pet_waste") ? DAY_END_STEP : st,
+        st.id === "dump_site" && !lines.includes("pet_waste") ? { ...st, ...DAY_END_WORDING } : st,
       ),
     };
   }
@@ -1551,6 +1586,20 @@ export async function installStubBackend(
       });
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+
+  // The quote request. See `leadPosts` above.
+  await context.route("**/api/public/leads", async (route) => {
+    try {
+      report.leadPosts.push(route.request().postDataJSON());
+    } catch {
+      report.leadPosts.push(route.request().postData());
+    }
+    return route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    });
   });
 
   await context.route("**/_serverFn/**", async (route) => {

@@ -82,6 +82,7 @@
                 <data android:pathPrefix="/reports" />
                 <data android:pathPrefix="/review" />
                 <data android:pathPrefix="/routes" />
+                <data android:pathPrefix="/setup" />
                 <data android:pathPrefix="/tax-reports" />
                 <data android:pathPrefix="/timesheets" />
                 <data android:pathPrefix="/waste-log" />

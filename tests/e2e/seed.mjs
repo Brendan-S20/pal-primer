@@ -198,6 +198,8 @@ await ensureFieldTech(userId, orgId);
 // auth user_metadata.tour_seen_at, so stamping it here is the product's own
 // "seen on another device" path rather than a test-side hack — and a spec
 // that wants to test the tour itself should create its own fresh user.
+// (2026-10-08: the tour is now the guided setup, src/lib/setup-guide.ts. Same
+// record, and no overlay: its first-run prompt is a banner in the flow.)
 {
   const { error } = await db.auth.admin.updateUserById(userId, {
     user_metadata: { tour_seen_at: new Date().toISOString() },

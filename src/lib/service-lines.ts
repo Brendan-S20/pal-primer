@@ -119,7 +119,7 @@ export const PET_WASTE_MODULES: Record<PetWasteModule, string> = {
   waste_log:
     "Waste log: the tech's second tab (My schedule takes the slot), and the sidebar / More entry",
   dump_site_step:
-    'Get-started step "Add your dump site" (becomes "Where does your day end?", pointing at each tech\'s route end)',
+    'The setup step "Where the day ends" asks for a dump site (becomes "Where does your day end?", saved as each tech\'s route end)',
   stations_dna: "DNA compliance (also commercialOnly) and waste stations",
   yard_step: 'The "Yard" step of the new-client wizard (outline sketch)',
   yard_outline_prompt: 'My Day\'s "No yard outline yet" line (an outline that exists still shows)',

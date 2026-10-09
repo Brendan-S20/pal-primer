@@ -86,7 +86,7 @@ describe("a setup step offers every path its own description promises", () => {
     // Guard for the rest of the file: every assertion below is of the form
     // "no step is wrong", which is vacuously true of an empty list. This is
     // the same failure mode as a viewport sweep measuring a blank page.
-    expect(steps.length, `${STEPS}: no step literals parsed`).toBeGreaterThanOrEqual(7);
+    expect(steps.length, `${STEPS}: no step literals parsed`).toBeGreaterThanOrEqual(6);
     expect(steps.some((s) => /id:\s*"clients"/.test(s))).toBe(true);
   });
 

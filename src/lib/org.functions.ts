@@ -266,7 +266,9 @@ export const getOrgBranding = createServerFn({ method: "GET" })
     if (!role) throw new Error("No org");
     const { data, error } = await (supabase.from("organizations") as any)
       .select(
-        "id, name, brand_color, logo_url, contact_phone, contact_email, contact_address, portal_reschedule_cutoff_hours, portal_allow_self_reschedule, portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
+        // latitude/longitude: the point updateOrgBranding geocodes the address
+        // to. The setup guide centres the first service area on it.
+        "id, name, brand_color, logo_url, contact_phone, contact_email, contact_address, latitude, longitude, portal_reschedule_cutoff_hours, portal_allow_self_reschedule, portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
       )
       .eq("id", role.organization_id)
       .single();
@@ -279,6 +281,8 @@ export const getOrgBranding = createServerFn({ method: "GET" })
       contact_phone: string | null;
       contact_email: string | null;
       contact_address: string | null;
+      latitude: number | null;
+      longitude: number | null;
       portal_reschedule_cutoff_hours: number;
       portal_allow_self_reschedule: boolean;
       portal_allow_vacation_hold: boolean;

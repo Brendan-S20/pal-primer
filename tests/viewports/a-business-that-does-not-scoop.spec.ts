@@ -85,8 +85,18 @@ for (const { w, h, label } of WIDTHS) {
       await expect(page.getByText("Where does your day end?").first()).toBeVisible({
         timeout: 30_000,
       });
-      await expect(page.getByText("Add your dump site")).toHaveCount(0);
+      await expect(page.getByText("Add dump site")).toHaveCount(0);
       await measure(page, w, `/dashboard (dog walking) @${w}px`);
+    });
+
+    test(`/setup's end-of-day step never mentions a dump site @${w}px`, async ({ page }) => {
+      await open(page, "owner", DOG_WALKING, "/setup?step=dump_site", w, h);
+      await expect(page.getByRole("heading", { name: "Where does your day end?" })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.locator("[data-setup-step=dump_site]")).toBeVisible();
+      await expect(page.getByText(/dump site/i)).toHaveCount(0);
+      await measure(page, w, `/setup end of day (dog walking) @${w}px`);
     });
 
     test(`the new-client wizard has no Yard step @${w}px`, async ({ page }) => {
@@ -142,7 +152,13 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
   test.describe(`control: a pet-waste business, ${label}`, () => {
     test(`asks for the dump site @${w}px`, async ({ page }) => {
       await open(page, "owner", PET_WASTE, "/dashboard", w, h);
-      await expect(page.getByText("Add your dump site").first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("Add dump site").first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("Where does your day end?")).toHaveCount(0);
+    });
+
+    test(`/setup's end-of-day step asks for the dump site @${w}px`, async ({ page }) => {
+      await open(page, "owner", PET_WASTE, "/setup?step=dump_site", w, h);
+      await expect(page.getByLabel("Dump site address")).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText("Where does your day end?")).toHaveCount(0);
     });
 

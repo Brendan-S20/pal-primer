@@ -96,7 +96,14 @@ import {
 
 /** Routes that redirect somewhere else, so have no layout of their own. Same
  *  list, same reason, as the unlisted-route sweep. */
-const REDIRECTS = new Set(["settings", "settings/payments", "ai-tools", "billing"]);
+const REDIRECTS = new Set([
+  "settings",
+  "settings/payments",
+  "ai-tools",
+  "billing",
+  // Forwards to settings/online-signup since the two public forms became one.
+  "settings/lead-form",
+]);
 
 const LEAF_PAGES = readdirSync(join(import.meta.dirname, "../../src/routes/_authenticated"))
   .filter((f) => f.endsWith(".tsx"))
