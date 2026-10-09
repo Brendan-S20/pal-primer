@@ -11,20 +11,32 @@
 -- in" again. What is needed is a sighting recorded while somebody is actually
 -- USING the app, and that is what this file adds.
 --
+-- ── HOW IT IS BILLED (owner, 2026-10-09) ──────────────────────────────────
+--
+-- Seats are billed AFTER each seat period closes, as their own invoice line
+-- dated for the period they cover ("Extra active employees, Sep 9 – Oct 8").
+-- A seat period is one month, on monthly and yearly plans alike: a yearly
+-- plan's extra seats are counted and billed month by month. The final period
+-- of a cancelled subscription is billed once, when it ends. A period that was
+-- already prepaid under the old headcount rule stays paid; the new rule starts
+-- with the next one. The Stripe side is src/lib/seat-charges.server.ts.
+--
 -- ── WHAT IS HERE ──────────────────────────────────────────────────────────
 --
 --   staff_seen_days   one row per person per UTC day they used the app. The
 --                     ledger the seat count is read from, and the answer to
 --                     "who did I pay for in September?" long after.
---   org_seat_periods  the Stripe period an org's seat line was last
---                     reconciled for, written by the seat sync (service
---                     role). It lets a sighting say "this person is new this
---                     period, reconcile now" without asking Stripe.
---   note_staff_seen() the only writer of the ledger. Called with the
+--   org_seat_periods  the seat period an org is in now. Lets a sighting tell
+--                     that a new period began earlier today.
+--   seat_charges      one row per subscription per seat period: what was
+--                     counted and what was charged. Its unique key is what
+--                     makes every period billed EXACTLY once.
+--   note_staff_seen() the only writer of the sightings. Called with the
 --                     caller's own JWT; it can only ever stamp the caller.
---   billable_seat_count(org, since)
---                     distinct people seen in the org since a moment. Service
---                     role only: it is what Stripe is told.
+--   billable_seat_count(org, from, to)
+--                     distinct people seen in the org in [from, to).
+--   claim_seat_charge(...)
+--                     claims a period for billing, or says why not.
 --
 -- ── WHY A LEDGER AND NOT staff.last_seen_at ───────────────────────────────
 --
@@ -50,15 +62,16 @@
 --   * A password-only session of somebody who has two-step sign-in on is not
 --     a sighting: they have not got into the app yet.
 --   * The demo org is stamped like any org (harmless, and it keeps the ledger
---     honest), but it is never billed: seat-sync.server.ts skips it before
---     touching Stripe.
+--     honest), but it is never billed: seat-charges.server.ts skips it, and
+--     every comped org, before touching Stripe.
 --   * An offline tech is counted when their queued work reaches the server,
 --     in the period it lands in. One period, never zero, never two.
 --
--- Replays into an empty database: two tables, their policies, two functions.
--- The check block asserts only what this file establishes and needs no row.
+-- Replays into an empty database: three tables, their policies, three
+-- functions. The check block asserts only what this file establishes and
+-- needs no row.
 
--- ── 1. THE LEDGER ─────────────────────────────────────────────────────────
+-- ── 1. THE SIGHTINGS ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.staff_seen_days (
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   -- Deliberately NOT a foreign key to staff: a staff row deleted after its
@@ -68,17 +81,17 @@ CREATE TABLE IF NOT EXISTS public.staff_seen_days (
   seen_on date NOT NULL,
   first_seen_at timestamptz NOT NULL DEFAULT now(),
   -- The latest STAMP that day (not the latest request). Re-stamped the same
-  -- day only when a billing period has begun since the last stamp, so a
-  -- person who used the app either side of a renewal counts on both sides.
+  -- day only when a seat period has begun since the last stamp, so a person
+  -- who used the app either side of a period boundary counts on both sides.
   last_seen_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (staff_id, seen_on),
   CONSTRAINT staff_seen_days_order CHECK (last_seen_at >= first_seen_at)
 );
 
 COMMENT ON TABLE public.staff_seen_days IS
-  'One row per staff member per UTC day they used the app. The seat count Stripe bills is read from here (billable_seat_count). Written only by note_staff_seen(); never by a client directly.';
+  'One row per staff member per UTC day they used the app. Seat charges are counted from here (billable_seat_count). Written only by note_staff_seen(); never by a client directly.';
 
--- The count: one org, everything since a moment.
+-- The count: one org, a window of time.
 CREATE INDEX IF NOT EXISTS staff_seen_days_org_last_seen
   ON public.staff_seen_days (organization_id, last_seen_at);
 
@@ -99,22 +112,17 @@ CREATE POLICY "staff seen days: owners and office managers (select)" ON public.s
     OR public.has_role((SELECT auth.uid()), organization_id, 'office_manager'::public.app_role)
   );
 
--- ── 2. THE PERIOD THE SEAT LINE WAS LAST RECONCILED FOR ───────────────────
+-- ── 2. THE SEAT PERIOD AN ORG IS IN NOW ───────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.org_seat_periods (
   organization_id uuid PRIMARY KEY REFERENCES public.organizations(id) ON DELETE CASCADE,
   period_start timestamptz NOT NULL,
   period_end timestamptz NOT NULL,
-  -- People seen in [period_start, synced_at], and the overage quantity Stripe
-  -- was left holding. Null quantity: not a per-employee plan.
-  billable_seats integer NOT NULL DEFAULT 0,
-  seat_quantity integer,
-  synced_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT org_seat_periods_order CHECK (period_end > period_start),
-  CONSTRAINT org_seat_periods_counts CHECK (billable_seats >= 0 AND (seat_quantity IS NULL OR seat_quantity >= 0))
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT org_seat_periods_order CHECK (period_end > period_start)
 );
 
 COMMENT ON TABLE public.org_seat_periods IS
-  'The Stripe billing period an org''s seat line was last reconciled for. Written by syncOrgSeatQuantity on the service role; read by note_staff_seen() to know when a sighting changes the count.';
+  'The one-month seat period an org is in now. Written by the seat billing on the service role; read by note_staff_seen() so a sighting after a period boundary is recorded for the new period.';
 
 ALTER TABLE public.org_seat_periods ENABLE ROW LEVEL SECURITY;
 SELECT public.require_mfa_policy('public.org_seat_periods');
@@ -131,13 +139,66 @@ CREATE POLICY "org seat periods: owners and office managers (select)" ON public.
     OR public.has_role((SELECT auth.uid()), organization_id, 'office_manager'::public.app_role)
   );
 
--- ── 3. THE SIGHTING ───────────────────────────────────────────────────────
--- Returns what happened, so the server can decide whether Stripe needs
--- reconciling now:
---   { stamped: bool, why?: text, organization_id?: uuid, needs_seat_sync?: bool }
--- `needs_seat_sync` is true when this stamp can have changed the count for
--- the period the seat line was last reconciled for -- the person's first
--- sighting in it -- or when that period is over or was never recorded.
+-- ── 3. WHAT WAS CHARGED, ONCE PER PERIOD ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.seat_charges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  stripe_subscription_id text NOT NULL,
+  period_start timestamptz NOT NULL,
+  period_end timestamptz NOT NULL,
+  -- period_close: a month closed mid-subscription (yearly plans);
+  -- renewal: added to the renewal invoice; cancellation: the final period.
+  reason text NOT NULL,
+  -- claimed: being billed now. billed: on an invoice. nothing_to_bill: nobody
+  -- past the allowance used it. failed: Stripe refused; the next run retries.
+  status text NOT NULL DEFAULT 'claimed',
+  seats_seen integer,
+  included_seats integer,
+  billed_seats integer,
+  unit_amount_cents integer,
+  amount_cents integer,
+  currency text,
+  stripe_invoice_item_id text,
+  stripe_invoice_id text,
+  error text,
+  attempts integer NOT NULL DEFAULT 1,
+  claimed_at timestamptz NOT NULL DEFAULT now(),
+  billed_at timestamptz,
+  CONSTRAINT seat_charges_once UNIQUE (stripe_subscription_id, period_start),
+  CONSTRAINT seat_charges_order CHECK (period_end > period_start),
+  CONSTRAINT seat_charges_reason CHECK (reason IN ('period_close', 'renewal', 'cancellation')),
+  CONSTRAINT seat_charges_status CHECK (status IN ('claimed', 'billed', 'nothing_to_bill', 'failed')),
+  CONSTRAINT seat_charges_counts CHECK (
+    (seats_seen IS NULL OR seats_seen >= 0)
+    AND (billed_seats IS NULL OR billed_seats >= 0)
+    AND (amount_cents IS NULL OR amount_cents >= 0)
+  ),
+  CONSTRAINT seat_charges_error_length CHECK (error IS NULL OR char_length(error) <= 1000)
+);
+
+COMMENT ON TABLE public.seat_charges IS
+  'One row per subscription per seat period: the people counted and what was charged. UNIQUE (stripe_subscription_id, period_start) is what bills each period exactly once. Written by seat-charges.server.ts on the service role through claim_seat_charge().';
+
+CREATE INDEX IF NOT EXISTS seat_charges_organization_id
+  ON public.seat_charges (organization_id, period_start);
+
+ALTER TABLE public.seat_charges ENABLE ROW LEVEL SECURITY;
+SELECT public.require_mfa_policy('public.seat_charges');
+
+REVOKE ALL ON public.seat_charges FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.seat_charges TO authenticated;
+GRANT ALL ON public.seat_charges TO service_role;
+
+DROP POLICY IF EXISTS "seat charges: owners and office managers (select)" ON public.seat_charges;
+CREATE POLICY "seat charges: owners and office managers (select)" ON public.seat_charges
+  FOR SELECT TO authenticated
+  USING (
+    public.has_role((SELECT auth.uid()), organization_id, 'owner'::public.app_role)
+    OR public.has_role((SELECT auth.uid()), organization_id, 'office_manager'::public.app_role)
+  );
+
+-- ── 4. THE SIGHTING ───────────────────────────────────────────────────────
+-- Returns what happened: { stamped: bool, why?: text, organization_id?: uuid }.
 CREATE OR REPLACE FUNCTION public.note_staff_seen()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -150,11 +211,8 @@ DECLARE
   _today date := (now() AT TIME ZONE 'UTC')::date;
   _staff_id uuid;
   _org_id uuid;
-  _has_sub boolean;
   _p_start timestamptz;
-  _p_end timestamptz;
   _today_last timestamptz;
-  _prev timestamptz;
 BEGIN
   IF _uid IS NULL THEN
     RETURN jsonb_build_object('stamped', false, 'why', 'signed_out');
@@ -190,50 +248,41 @@ BEGIN
     RETURN jsonb_build_object('stamped', false, 'why', 'not_active_staff');
   END IF;
 
-  SELECT p.period_start, p.period_end INTO _p_start, _p_end
+  SELECT p.period_start INTO _p_start
     FROM public.org_seat_periods p WHERE p.organization_id = _org_id;
 
-  -- The throttle, read-only: already stamped today, and since the period
-  -- began. Ninety-nine calls in a hundred end here.
+  -- The throttle, read-only: already stamped today, and since the current
+  -- seat period began. Ninety-nine calls in a hundred end here.
   SELECT d.last_seen_at INTO _today_last
     FROM public.staff_seen_days d WHERE d.staff_id = _staff_id AND d.seen_on = _today;
   IF _today_last IS NOT NULL AND (_p_start IS NULL OR _today_last >= _p_start) THEN
     RETURN jsonb_build_object('stamped', false, 'why', 'already_today', 'organization_id', _org_id);
   END IF;
 
-  SELECT max(d.last_seen_at) INTO _prev FROM public.staff_seen_days d WHERE d.staff_id = _staff_id;
-
   INSERT INTO public.staff_seen_days (organization_id, staff_id, seen_on)
   VALUES (_org_id, _staff_id, _today)
   ON CONFLICT (staff_id, seen_on) DO UPDATE SET last_seen_at = now();
 
-  SELECT o.stripe_subscription_id IS NOT NULL INTO _has_sub
-    FROM public.organizations o WHERE o.id = _org_id;
-
-  RETURN jsonb_build_object(
-    'stamped', true,
-    'organization_id', _org_id,
-    'needs_seat_sync', COALESCE(_has_sub, false) AND (
-      _p_start IS NULL
-      OR now() >= _p_end
-      OR _prev IS NULL
-      OR _prev < _p_start
-    )
-  );
+  RETURN jsonb_build_object('stamped', true, 'organization_id', _org_id);
 END;
 $fn$;
 
 COMMENT ON FUNCTION public.note_staff_seen() IS
-  'Records that the CALLER used the app today (staff_seen_days). Refuses impersonation sessions, platform admins, password-only two-step sessions and inactive staff. At most one write per person per UTC day.';
+  'Records that the CALLER used the app today (staff_seen_days). Refuses impersonation sessions, platform admins, password-only two-step sessions and inactive staff. At most one write per person per UTC day, plus one after a seat period boundary.';
 
 REVOKE ALL ON FUNCTION public.note_staff_seen() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.note_staff_seen() TO authenticated;
 
--- ── 4. THE COUNT ──────────────────────────────────────────────────────────
--- Distinct people seen in the org since a moment (the start of the Stripe
--- period). Not filtered on staff.active, on purpose: somebody who worked this
--- period and left still worked this period.
-CREATE OR REPLACE FUNCTION public.billable_seat_count(_org_id uuid, _since timestamptz)
+-- ── 5. THE COUNT ──────────────────────────────────────────────────────────
+-- Distinct people seen in the org in [_from, _to). A day's row is evidence of
+-- use from its first stamp to its last, so it counts in every period that
+-- span touches. Not filtered on staff.active, on purpose: somebody who worked
+-- this period and left still worked this period.
+CREATE OR REPLACE FUNCTION public.billable_seat_count(
+  _org_id uuid,
+  _from timestamptz,
+  _to timestamptz DEFAULT 'infinity'
+)
 RETURNS integer
 LANGUAGE sql
 STABLE
@@ -242,21 +291,87 @@ AS $fn$
   SELECT count(DISTINCT d.staff_id)::integer
     FROM public.staff_seen_days d
    WHERE d.organization_id = _org_id
-     AND d.last_seen_at >= _since;
+     AND d.last_seen_at >= _from
+     AND d.first_seen_at < _to;
 $fn$;
 
-COMMENT ON FUNCTION public.billable_seat_count(uuid, timestamptz) IS
-  'People who used their login in the org since _since: the seat count Stripe is told. Service role only.';
+COMMENT ON FUNCTION public.billable_seat_count(uuid, timestamptz, timestamptz) IS
+  'People who used their login in the org in [_from, _to): the seat count a period is charged for. Service role only.';
 
-REVOKE ALL ON FUNCTION public.billable_seat_count(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.billable_seat_count(uuid, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.billable_seat_count(uuid, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.billable_seat_count(uuid, timestamptz, timestamptz) TO service_role;
 
--- ── 5. WHAT THIS FILE ESTABLISHES ─────────────────────────────────────────
+-- ── 6. THE CLAIM ──────────────────────────────────────────────────────────
+-- Claims one subscription's seat period for billing, BEFORE Stripe is called,
+-- so two runs (the renewal webhook and the nightly sweep, say) cannot both
+-- charge it. Returns { claimed: bool, id, status, retry: bool }:
+--
+--   new period                    -> claimed
+--   failed earlier                -> claimed again (retry: true)
+--   claimed > 30 min, < 23 h ago  -> claimed again (retry: true): the run that
+--                                    claimed it died; the caller looks for its
+--                                    invoice item in Stripe before making one,
+--                                    and Stripe's 24 h idempotency covers the rest
+--   anything else                 -> not claimed (billed, nothing to bill,
+--                                    in progress, or stuck past 23 h for a person)
+CREATE OR REPLACE FUNCTION public.claim_seat_charge(
+  _org_id uuid,
+  _subscription_id text,
+  _period_start timestamptz,
+  _period_end timestamptz,
+  _reason text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+DECLARE
+  _row public.seat_charges;
+BEGIN
+  INSERT INTO public.seat_charges (organization_id, stripe_subscription_id, period_start, period_end, reason)
+  VALUES (_org_id, _subscription_id, _period_start, _period_end, _reason)
+  ON CONFLICT (stripe_subscription_id, period_start) DO NOTHING
+  RETURNING * INTO _row;
+  IF _row.id IS NOT NULL THEN
+    RETURN jsonb_build_object('claimed', true, 'id', _row.id, 'status', 'claimed', 'retry', false);
+  END IF;
+
+  UPDATE public.seat_charges c
+     SET status = 'claimed', claimed_at = now(), attempts = c.attempts + 1, error = NULL,
+         -- A cancellation can end the final period early; never lengthen one.
+         period_end = LEAST(c.period_end, _period_end)
+   WHERE c.stripe_subscription_id = _subscription_id
+     AND c.period_start = _period_start
+     AND (
+       c.status = 'failed'
+       OR (c.status = 'claimed'
+           AND c.claimed_at < now() - interval '30 minutes'
+           AND c.claimed_at > now() - interval '23 hours')
+     )
+  RETURNING * INTO _row;
+  IF _row.id IS NOT NULL THEN
+    RETURN jsonb_build_object('claimed', true, 'id', _row.id, 'status', 'claimed', 'retry', true);
+  END IF;
+
+  SELECT * INTO _row FROM public.seat_charges c
+   WHERE c.stripe_subscription_id = _subscription_id AND c.period_start = _period_start;
+  RETURN jsonb_build_object('claimed', false, 'id', _row.id, 'status', _row.status, 'retry', false);
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.claim_seat_charge(uuid, text, timestamptz, timestamptz, text) IS
+  'Claims a subscription''s seat period for billing before Stripe is called, so it is charged exactly once. Service role only.';
+
+REVOKE ALL ON FUNCTION public.claim_seat_charge(uuid, text, timestamptz, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_seat_charge(uuid, text, timestamptz, timestamptz, text) TO service_role;
+
+-- ── 7. WHAT THIS FILE ESTABLISHES ─────────────────────────────────────────
 DO $check$
 DECLARE
   _t text;
+  _f text;
 BEGIN
-  FOREACH _t IN ARRAY ARRAY['staff_seen_days', 'org_seat_periods'] LOOP
+  FOREACH _t IN ARRAY ARRAY['staff_seen_days', 'org_seat_periods', 'seat_charges'] LOOP
     IF to_regclass('public.' || _t) IS NULL THEN
       RAISE EXCEPTION '% was not created', _t;
     END IF;
@@ -271,7 +386,8 @@ BEGIN
       RAISE EXCEPTION '% has no two-step sign-in policy', _t;
     END IF;
     -- Read-only to the API roles. A client that could write a sighting could
-    -- write somebody else's, or delete its own and drop off the bill.
+    -- write somebody else's, or delete its own and drop off the bill; one that
+    -- could write a charge row could mark a period billed that never was.
     IF has_table_privilege('anon', 'public.' || _t, 'SELECT')
        OR has_table_privilege('anon', 'public.' || _t, 'INSERT') THEN
       RAISE EXCEPTION 'anon holds a privilege on %', _t;
@@ -291,15 +407,27 @@ BEGIN
     END IF;
   END LOOP;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.seat_charges'::regclass AND conname = 'seat_charges_once' AND contype = 'u'
+  ) THEN
+    RAISE EXCEPTION 'seat_charges has no (subscription, period) unique key, so a period could be charged twice';
+  END IF;
+
   IF has_function_privilege('anon', 'public.note_staff_seen()', 'EXECUTE') THEN
     RAISE EXCEPTION 'anon can call note_staff_seen()';
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.note_staff_seen()', 'EXECUTE') THEN
     RAISE EXCEPTION 'a signed-in user cannot record their own sighting';
   END IF;
-  IF has_function_privilege('authenticated', 'public.billable_seat_count(uuid, timestamptz)', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.billable_seat_count(uuid, timestamptz)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'billable_seat_count is callable from the API; it is service role only';
-  END IF;
+  FOREACH _f IN ARRAY ARRAY[
+    'public.billable_seat_count(uuid, timestamptz, timestamptz)',
+    'public.claim_seat_charge(uuid, text, timestamptz, timestamptz, text)'
+  ] LOOP
+    IF has_function_privilege('authenticated', _f, 'EXECUTE')
+       OR has_function_privilege('anon', _f, 'EXECUTE') THEN
+      RAISE EXCEPTION '% is callable from the API; it is service role only', _f;
+    END IF;
+  END LOOP;
 END
 $check$;

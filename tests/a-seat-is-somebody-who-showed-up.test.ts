@@ -8,6 +8,10 @@
 // techs, a leaver, a never-signed-in hire, an impersonation session, a
 // platform admin and a half-signed-in two-step user, then rolls it all back.
 //
+// It also proves the claim that bills each subscription period exactly once
+// (seat_charges), which the renewal webhook, the nightly sweep and a
+// cancellation all go through.
+//
 // It was mutation-tested when it landed: dropping the impersonation check, or
 // filtering the count on `staff.active` (which would let a leaver drop off the
 // bill for a period they worked), each fails it.
@@ -101,8 +105,8 @@ describe.skipIf(!reachable)("who counts as a seat, in a real database", () => {
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
-    // Fourteen groups, each announcing itself only when it passed.
-    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(14);
+    // Thirteen groups, each announcing itself only when it passed.
+    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(13);
     expect(out).toMatch(/ALL SEAT PROOFS PASSED/);
 
     const left = spawnSync(

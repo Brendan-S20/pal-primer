@@ -113,16 +113,12 @@ BEGIN
   IF _r->>'organization_id' <> '0a500000-0000-4000-8000-0000000000aa' THEN
     RAISE EXCEPTION 'PROOF FAILED [seen]: recorded against the wrong org: %', _r;
   END IF;
-  -- On a subscription, never reconciled: the seat line needs looking at.
-  IF NOT (_r->>'needs_seat_sync')::boolean THEN
-    RAISE EXCEPTION 'PROOF FAILED [seen]: a first sighting on a subscribed org asked for no reconcile: %', _r;
-  END IF;
 
   _r := pg_temp.seen('a5000000-0000-4000-8000-00000000a002');
   IF (_r->>'stamped')::boolean OR _r->>'why' <> 'already_today' THEN
     RAISE EXCEPTION 'PROOF FAILED [once a day]: the second call wrote again: %', _r;
   END IF;
-  RAISE NOTICE 'ok: somebody using the app is recorded once a day, and asks for a reconcile';
+  RAISE NOTICE 'ok: somebody using the app is recorded once a day';
 END $$;
 RESET ROLE;
 
@@ -240,16 +236,16 @@ BEGIN
   RAISE NOTICE 'ok: the count is the people who used their login since the period began, leavers included';
 END $$;
 
--- An org with no subscription is seen, and asks for no reconcile.
+-- Org B's tech uses the app.
 SET LOCAL ROLE authenticated;
 DO $$
 DECLARE _r jsonb;
 BEGIN
   _r := pg_temp.seen('b5000000-0000-4000-8000-00000000b001');
-  IF NOT (_r->>'stamped')::boolean OR (_r->>'needs_seat_sync')::boolean THEN
-    RAISE EXCEPTION 'PROOF FAILED [trial]: %', _r;
+  IF NOT (_r->>'stamped')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [org B]: %', _r;
   END IF;
-  RAISE NOTICE 'ok: an org with no subscription is recorded and asks Stripe nothing';
+  RAISE NOTICE 'ok: an org with no subscription is recorded too';
 END $$;
 RESET ROLE;
 DO $$
@@ -261,97 +257,128 @@ BEGIN
   RAISE NOTICE 'ok: each org counts only its own people';
 END $$;
 
--- ── 7. The period ───────────────────────────────────────────────────────────
--- The seat line was last reconciled for a period that began ten days ago.
-INSERT INTO public.org_seat_periods (organization_id, period_start, period_end, billable_seats, seat_quantity)
-VALUES ('0a500000-0000-4000-8000-0000000000aa', now() - interval '10 days', now() + interval '20 days', 2, 0);
--- Tia last used the app fifteen days ago, in the period before.
-INSERT INTO public.staff_seen_days (organization_id, staff_id, seen_on, first_seen_at, last_seen_at)
-VALUES ('0a500000-0000-4000-8000-0000000000aa', '5a000000-0000-4000-8000-00000000a005',
-        (now() AT TIME ZONE 'UTC')::date - 15, now() - interval '15 days', now() - interval '15 days');
+-- ── 7. A period is a window, closed at both ends ───────────────────────────
+-- Tia used the app fifteen days ago and not since; Vic five days ago.
+INSERT INTO public.staff_seen_days (organization_id, staff_id, seen_on, first_seen_at, last_seen_at) VALUES
+  ('0a500000-0000-4000-8000-0000000000aa', '5a000000-0000-4000-8000-00000000a005',
+   (now() AT TIME ZONE 'UTC')::date - 15, now() - interval '15 days', now() - interval '15 days'),
+  ('0a500000-0000-4000-8000-0000000000aa', '5a000000-0000-4000-8000-00000000a006',
+   (now() AT TIME ZONE 'UTC')::date - 5, now() - interval '5 days', now() - interval '5 days');
 DO $$
+DECLARE _n integer;
 BEGIN
-  IF public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '10 days') <> 3 THEN
-    RAISE EXCEPTION 'PROOF FAILED [period]: last period''s sighting counted in this one';
-  END IF;
-END $$;
-SET LOCAL ROLE authenticated;
-DO $$
-DECLARE _r jsonb;
-BEGIN
-  _r := pg_temp.seen('a5000000-0000-4000-8000-00000000a005');
-  IF NOT (_r->>'stamped')::boolean OR NOT (_r->>'needs_seat_sync')::boolean THEN
-    RAISE EXCEPTION 'PROOF FAILED [period]: Tia''s first sighting this period asked for no reconcile: %', _r;
-  END IF;
-  RAISE NOTICE 'ok: a person''s first sighting in the period asks for a reconcile';
-END $$;
-RESET ROLE;
-DO $$
-BEGIN
-  IF public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '10 days') <> 4 THEN
-    RAISE EXCEPTION 'PROOF FAILED [period]: Tia was not counted after using the app this period';
-  END IF;
+  -- A closed month twenty days ago to ten days ago: Tia only.
+  _n := public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '20 days', now() - interval '10 days');
+  IF _n <> 1 THEN RAISE EXCEPTION 'PROOF FAILED [window]: the closed period counts %, expected 1 (Tia)', _n; END IF;
+  -- The ten days since: Vic, Priya, Sam, Olive. Not Tia.
+  _n := public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '10 days', now() + interval '1 day');
+  IF _n <> 4 THEN RAISE EXCEPTION 'PROOF FAILED [window]: the open period counts %, expected 4', _n; END IF;
+  -- A window that ends before somebody's use does not count it.
+  _n := public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '10 days', now() - interval '6 days');
+  IF _n <> 0 THEN RAISE EXCEPTION 'PROOF FAILED [window]: counted % people outside the window', _n; END IF;
+  RAISE NOTICE 'ok: a period counts the people who used it inside that period and nobody else';
 END $$;
 
--- A person already seen this period, seen again on a new day: no reconcile,
--- the count cannot have moved.
-INSERT INTO public.staff_seen_days (organization_id, staff_id, seen_on, first_seen_at, last_seen_at)
-VALUES ('0a500000-0000-4000-8000-0000000000aa', '5a000000-0000-4000-8000-00000000a006',
-        (now() AT TIME ZONE 'UTC')::date - 3, now() - interval '3 days', now() - interval '3 days');
-SET LOCAL ROLE authenticated;
-DO $$
-DECLARE _r jsonb;
-BEGIN
-  _r := pg_temp.seen('a5000000-0000-4000-8000-00000000a006');
-  IF NOT (_r->>'stamped')::boolean OR (_r->>'needs_seat_sync')::boolean THEN
-    RAISE EXCEPTION 'PROOF FAILED [period]: Vic, already counted, asked for a reconcile: %', _r;
-  END IF;
-  RAISE NOTICE 'ok: somebody already counted this period does not ask Stripe again';
-END $$;
-RESET ROLE;
-
--- A renewal on the same day: Sam was stamped an hour ago, and a new period
--- began half an hour ago. Using the app again re-stamps him for the new one.
+-- A boundary on the same day: Sam was stamped an hour ago, and a new seat
+-- period began half an hour ago. Using the app again re-stamps him, so he
+-- counts on both sides.
 UPDATE public.staff_seen_days SET first_seen_at = now() - interval '1 hour', last_seen_at = now() - interval '1 hour'
  WHERE staff_id = '5a000000-0000-4000-8000-00000000a002';
-UPDATE public.org_seat_periods SET period_start = now() - interval '30 minutes', period_end = now() + interval '30 days'
- WHERE organization_id = '0a500000-0000-4000-8000-0000000000aa';
+INSERT INTO public.org_seat_periods (organization_id, period_start, period_end)
+VALUES ('0a500000-0000-4000-8000-0000000000aa', now() - interval '30 minutes', now() + interval '30 days');
+DO $$
+BEGIN
+  -- Before he uses it again: only Olive (stamped just now) is in the new period.
+  IF public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '30 minutes') <> 1 THEN
+    RAISE EXCEPTION 'PROOF FAILED [boundary]: fixture should start the new period with Olive alone';
+  END IF;
+END $$;
 SET LOCAL ROLE authenticated;
 DO $$
 DECLARE _r jsonb;
 BEGIN
   _r := pg_temp.seen('a5000000-0000-4000-8000-00000000a002');
-  IF NOT (_r->>'stamped')::boolean OR NOT (_r->>'needs_seat_sync')::boolean THEN
-    RAISE EXCEPTION 'PROOF FAILED [renewal day]: Sam on both sides of a renewal was not re-stamped: %', _r;
+  IF NOT (_r->>'stamped')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [boundary]: Sam on both sides of a period boundary was not re-stamped: %', _r;
   END IF;
-  RAISE NOTICE 'ok: using the app either side of a renewal counts on both sides';
+  _r := pg_temp.seen('a5000000-0000-4000-8000-00000000a002');
+  IF (_r->>'stamped')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [boundary]: re-stamped twice: %', _r;
+  END IF;
 END $$;
 RESET ROLE;
 DO $$
 BEGIN
-  IF public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '30 minutes') < 1 THEN
-    RAISE EXCEPTION 'PROOF FAILED [renewal day]: the new period does not count Sam';
+  IF public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '2 hours', now() - interval '30 minutes') <> 1
+     OR public.billable_seat_count('0a500000-0000-4000-8000-0000000000aa', now() - interval '30 minutes') <> 2 THEN
+    RAISE EXCEPTION 'PROOF FAILED [boundary]: Sam is not counted on both sides';
   END IF;
+  RAISE NOTICE 'ok: using the app either side of a period boundary counts on both sides';
 END $$;
 
--- The recorded period is over: the next sighting asks for a reconcile even
--- from somebody already counted, so the seat line rolls over.
-UPDATE public.org_seat_periods SET period_start = now() - interval '31 days', period_end = now() - interval '1 second'
- WHERE organization_id = '0a500000-0000-4000-8000-0000000000aa';
-DELETE FROM public.staff_seen_days WHERE staff_id = '5a000000-0000-4000-8000-00000000a006' AND seen_on = (now() AT TIME ZONE 'UTC')::date;
-SET LOCAL ROLE authenticated;
+-- ── 8. Each period is charged exactly once ──────────────────────────────────
 DO $$
-DECLARE _r jsonb;
+DECLARE _c jsonb; _id uuid;
 BEGIN
-  _r := pg_temp.seen('a5000000-0000-4000-8000-00000000a006');
-  IF NOT (_r->>'stamped')::boolean OR NOT (_r->>'needs_seat_sync')::boolean THEN
-    RAISE EXCEPTION 'PROOF FAILED [rollover]: a sighting after the period ended asked for no reconcile: %', _r;
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '40 days', now() - interval '10 days', 'renewal');
+  IF NOT (_c->>'claimed')::boolean OR (_c->>'retry')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [claim]: a new period was not claimed: %', _c;
   END IF;
-  RAISE NOTICE 'ok: the first sighting after a period ends asks for a reconcile';
-END $$;
-RESET ROLE;
+  _id := (_c->>'id')::uuid;
 
--- ── 8. Who can read it, and nobody can write it ─────────────────────────────
+  -- The nightly sweep arriving for the same period while the webhook bills it.
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '40 days', now() - interval '10 days', 'period_close');
+  IF (_c->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [claim]: a period in progress was claimed twice: %', _c;
+  END IF;
+
+  -- Stripe refused: the next run may try again.
+  UPDATE public.seat_charges SET status = 'failed', error = 'card_declined' WHERE id = _id;
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '40 days', now() - interval '10 days', 'period_close');
+  IF NOT (_c->>'claimed')::boolean OR NOT (_c->>'retry')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [claim]: a failed period could not be retried: %', _c;
+  END IF;
+
+  -- The run that claimed it died an hour ago: retried, as a retry.
+  UPDATE public.seat_charges SET claimed_at = now() - interval '1 hour' WHERE id = _id;
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '40 days', now() - interval '10 days', 'period_close');
+  IF NOT (_c->>'claimed')::boolean OR NOT (_c->>'retry')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [claim]: a stale claim was not retried: %', _c;
+  END IF;
+
+  -- Older than Stripe's idempotency window: left for a person.
+  UPDATE public.seat_charges SET claimed_at = now() - interval '2 days' WHERE id = _id;
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '40 days', now() - interval '10 days', 'period_close');
+  IF (_c->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'PROOF FAILED [claim]: a claim past the idempotency window was retried blind: %', _c;
+  END IF;
+
+  -- Billed is final.
+  UPDATE public.seat_charges SET status = 'billed', billed_at = now() WHERE id = _id;
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '40 days', now() - interval '10 days', 'cancellation');
+  IF (_c->>'claimed')::boolean OR _c->>'status' <> 'billed' THEN
+    RAISE EXCEPTION 'PROOF FAILED [claim]: a billed period was claimed again: %', _c;
+  END IF;
+
+  -- A cancellation that ends the final period early shortens it, never lengthens.
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '10 days', now() + interval '20 days', 'renewal');
+  UPDATE public.seat_charges SET status = 'failed' WHERE id = (_c->>'id')::uuid;
+  _c := public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_seatsproofA1',
+          now() - interval '10 days', now() - interval '1 day', 'cancellation');
+  IF NOT EXISTS (SELECT 1 FROM public.seat_charges WHERE id = (_c->>'id')::uuid AND period_end = now() - interval '1 day') THEN
+    RAISE EXCEPTION 'PROOF FAILED [claim]: the cancelled period did not end when the subscription did';
+  END IF;
+  RAISE NOTICE 'ok: each subscription period is claimed for billing exactly once';
+END $$;
+
+-- ── 9. Who can read it, and nobody can write it ─────────────────────────────
 SET LOCAL ROLE authenticated;
 DO $$
 DECLARE _n integer;
@@ -362,6 +389,8 @@ BEGIN
   IF _n <> 0 THEN RAISE EXCEPTION 'PROOF FAILED [read]: a tech reads % ledger rows', _n; END IF;
   SELECT count(*) INTO _n FROM public.org_seat_periods;
   IF _n <> 0 THEN RAISE EXCEPTION 'PROOF FAILED [read]: a tech reads the seat period'; END IF;
+  SELECT count(*) INTO _n FROM public.seat_charges;
+  IF _n <> 0 THEN RAISE EXCEPTION 'PROOF FAILED [read]: a tech reads the seat charges'; END IF;
 
   -- The owner sees her own org's ledger and nobody else's.
   PERFORM pg_temp.as_user('a5000000-0000-4000-8000-00000000a001');
@@ -392,6 +421,18 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [count]: a signed-in user could call billable_seat_count';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
+  BEGIN
+    PERFORM public.claim_seat_charge('0a500000-0000-4000-8000-0000000000aa', 'sub_x', now(), now() + interval '1 day', 'renewal');
+    RAISE EXCEPTION 'PROOF FAILED [claim]: a signed-in user could claim a seat charge';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    UPDATE public.seat_charges SET status = 'billed';
+    RAISE EXCEPTION 'PROOF FAILED [write]: the owner could mark a period billed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  SELECT count(*) INTO _n FROM public.seat_charges;
+  IF _n = 0 THEN RAISE EXCEPTION 'PROOF FAILED [read]: the owner cannot see what she was charged'; END IF;
   RAISE NOTICE 'ok: the owner reads her own ledger, a tech reads none, and nobody writes it';
 END $$;
 RESET ROLE;
