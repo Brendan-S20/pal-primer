@@ -177,7 +177,10 @@ function InvoiceDetail() {
   const syncM = useMutation({
     mutationFn: async () => syncFn({ data: { invoice_id: invoiceId } }),
     onSuccess: (r) => {
-      toast.success(`Synced to accounting (id ${r.remote_id})`);
+      toast.success(
+        `Sent to QuickBooks (invoice #${r.remote_id}${r.payments ? `, ${r.payments} payment${r.payments === 1 ? "" : "s"}` : ""})`,
+      );
+      for (const e of r.payment_errors) toast.error(e);
       qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -415,9 +418,15 @@ function InvoiceDetail() {
             )}
           </>
         )}
-        {invoice.status === "paid" && !(invoice as any).accounting_remote_id && (
+        {/* Repeatable: a second send updates the QuickBooks invoice and adds
+            any payment recorded since, rather than creating anything twice. */}
+        {invoice.status === "paid" && (
           <Button variant="outline" onClick={() => syncM.mutate()} disabled={syncM.isPending}>
-            {syncM.isPending ? "Syncing…" : "Sync to accounting"}
+            {syncM.isPending
+              ? "Sending…"
+              : (invoice as any).accounting_remote_id
+                ? "Update in QuickBooks"
+                : "Send to QuickBooks"}
           </Button>
         )}
         {/* A real PDF, made on the server: what a bookkeeper files. "Print"
@@ -447,7 +456,7 @@ function InvoiceDetail() {
         )}
         {(invoice as any).accounting_remote_id && (
           <span className="self-center text-xs text-muted-foreground">
-            Synced · {(invoice as any).accounting_remote_id}
+            In QuickBooks · #{(invoice as any).accounting_remote_id}
           </span>
         )}
       </div>
