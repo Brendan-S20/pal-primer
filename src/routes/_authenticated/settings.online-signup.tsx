@@ -86,7 +86,7 @@ function OnlineSignupSettings() {
       <div>
         <h2 className="text-lg font-semibold">Online signup</h2>
         <p className="text-sm text-muted-foreground">
-          Let homeowners price their yard, enter their details and pay their first invoice without
+          Let new clients get their price, enter their details and pay their first invoice without
           calling you. New clients arrive already scheduled.
         </p>
       </div>
