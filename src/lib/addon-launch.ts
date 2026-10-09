@@ -32,15 +32,20 @@
  *
  * Turning one on is this map plus that row's `status`.
  */
-export const ADDON_LAUNCHED = {
+export type HeldAddonSlug =
+  | "ai-receptionist"
+  | "managed-sms"
+  | "white-label"
+  | "white-label-portal"
+  | "white-label-emails";
+
+export const ADDON_LAUNCHED: Readonly<Record<HeldAddonSlug, boolean>> = {
   "ai-receptionist": false,
   "managed-sms": false,
   "white-label": false,
   "white-label-portal": false,
   "white-label-emails": false,
-} as const satisfies Record<string, boolean>;
-
-export type HeldAddonSlug = keyof typeof ADDON_LAUNCHED;
+};
 
 export const HELD_ADDON_SLUGS = Object.keys(ADDON_LAUNCHED) as HeldAddonSlug[];
 
