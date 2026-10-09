@@ -216,8 +216,8 @@ function AccountingSettings() {
         <h2 className="text-lg font-semibold">QuickBooks Online</h2>
         <p className="text-sm text-muted-foreground">
           Send paid invoices, and the payments that paid them, to your QuickBooks Online company. Each
-          one is sent once and updated in place after that, and every client becomes one QuickBooks
-          customer.
+          one is sent once and updated in place after that, and each client is added to QuickBooks
+          only once.
         </p>
       </div>
 
