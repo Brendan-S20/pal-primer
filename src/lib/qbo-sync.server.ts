@@ -12,6 +12,7 @@
 
 import {
   findOrCreateQboCustomer,
+  qboInvoiceBody,
   SyncValidationError,
   upsertQboInvoice,
   upsertQboPayment,
@@ -82,6 +83,10 @@ export async function syncInvoiceToQbo(
   let invoiceCreated: boolean;
   let customerId: string;
   try {
+    // Everything that can be refused locally (no item chosen, a taxed
+    // invoice with no sales-tax item, lines that do not make the total) is
+    // refused BEFORE anything is created in QuickBooks, customer included.
+    qboInvoiceBody(mapping, invoice, "validation-only");
     const customer = await findOrCreateQboCustomer(qbo, invoice.client, newRequestId());
     customerId = customer.id;
     if (customer.store) {

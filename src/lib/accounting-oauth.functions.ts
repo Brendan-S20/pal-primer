@@ -34,7 +34,7 @@ export const startAccountingOAuth = createServerFn({ method: "POST" })
     const credentials = qboCredentials();
     if (!credentials) {
       // The env var names belong in the server log, not on a user's screen.
-      console.error("qbo: QBO_CLIENT_ID / QBO_CLIENT_SECRET are not configured");
+      console.error("qbo: the Intuit client id and secret are not configured (see .env.example)");
       throw new Error("QuickBooks isn't set up on this server yet. Contact support.");
     }
     const { appOrigin } = await import("@/lib/app-origin");

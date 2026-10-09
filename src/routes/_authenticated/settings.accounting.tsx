@@ -36,9 +36,6 @@ export const Route = createFileRoute("/_authenticated/settings/accounting")({
 });
 
 const SUPPORT_EMAIL = "support@houndstack.com";
-const primaryBtn =
-  "rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11";
-const outlineBtn = "rounded border px-3 py-2 text-sm disabled:opacity-60 touch:min-h-11";
 
 type Banner = { tone: "ok" | "warn" | "error"; text: string };
 
@@ -234,7 +231,7 @@ function AccountingSettings() {
               QuickBooks needs to be reconnected. Nothing is syncing until it is. Your choices below are kept.
             </span>
           </div>
-          <button type="button" onClick={connect} disabled={busy} className={`${primaryBtn} shrink-0`}>
+          <button type="button" onClick={connect} disabled={busy} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11 shrink-0">
             Reconnect QuickBooks
           </button>
         </div>
@@ -244,7 +241,7 @@ function AccountingSettings() {
         <h2 className="mb-3 font-medium">Connection</h2>
         {!roleLoading && !canManage ? (
           <div className="space-y-2">
-            <button type="button" disabled className={primaryBtn}>
+            <button type="button" disabled className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11">
               Connect to QuickBooks
             </button>
             <p className="text-xs text-muted-foreground">Only an owner or office manager can connect QuickBooks.</p>
@@ -272,7 +269,7 @@ function AccountingSettings() {
                 {conn?.last_sync_at && ` · last sync ${formatDateTime(conn.last_sync_at)}`}
               </div>
             </div>
-            <button type="button" onClick={onDisconnect} disabled={busy} className={`${outlineBtn} shrink-0 text-red-600`}>
+            <button type="button" onClick={onDisconnect} disabled={busy} className="rounded border px-3 py-2 text-sm disabled:opacity-60 touch:min-h-11 shrink-0 text-red-600">
               Disconnect
             </button>
           </div>
@@ -280,7 +277,7 @@ function AccountingSettings() {
           <p className="text-sm text-muted-foreground">Reconnect QuickBooks with the button above.</p>
         ) : (
           <div className="space-y-2">
-            <button type="button" onClick={connect} disabled={busy} className={primaryBtn}>
+            <button type="button" onClick={connect} disabled={busy} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11">
               Connect to QuickBooks
             </button>
             <p className="text-xs text-muted-foreground">
@@ -322,7 +319,7 @@ function AccountingSettings() {
               empty="Undeposited Funds"
             />
           </div>
-          <button disabled={busy || choices.isLoading} className={primaryBtn}>
+          <button disabled={busy || choices.isLoading} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11">
             {busy ? "Saving…" : "Save"}
           </button>
         </form>
@@ -335,7 +332,7 @@ function AccountingSettings() {
             Sends up to 50 paid invoices that aren't in QuickBooks yet, with their payments, and any
             new payment on an invoice already there. A single invoice can also be sent from its own page.
           </p>
-          <button type="button" onClick={runSync} disabled={busy || !conn?.service_item_id} className={primaryBtn}>
+          <button type="button" onClick={runSync} disabled={busy || !conn?.service_item_id} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11">
             {busy ? "Sending…" : "Send paid invoices and payments now"}
           </button>
           {!conn?.service_item_id && (
