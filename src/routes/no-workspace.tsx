@@ -57,6 +57,8 @@ import { pageTitle } from "@/lib/page-title";
 // arrive, getting that backwards would stand a new trap where the old one was.
 export const Route = createFileRoute("/no-workspace")({
   ssr: false,
+  // No hydration timer for a client-only route; see _authenticated/route.tsx.
+  pendingMinMs: 0,
   head: () => ({
     meta: [{ title: pageTitle("No workspace") }, { name: "robots", content: "noindex" }],
   }),

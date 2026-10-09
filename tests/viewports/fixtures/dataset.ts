@@ -24,6 +24,7 @@
  */
 
 import { zonedTimeToUtc } from "../../../src/lib/route-window";
+import { orgToday } from "../../../src/lib/org-day";
 
 export const ORG_ID = "aaaaaaaa-0000-4000-8000-00000000a001";
 export const TENANT_B_ID = "aaaaaaaa-0000-4000-8000-00000000a002";
@@ -66,14 +67,35 @@ export const FIRST_CLEANUP_PRICING = {
 };
 
 const iso = (d: Date) => d.toISOString();
+
+/** The fixture organization's timezone, and the one `playwright.config.ts`
+ *  pins the browser to. Every "today" in this file is a day on THIS clock. */
+export const FIXTURE_TIMEZONE = "America/Chicago";
+
 /** A date `offset` days from today, org-local, as YYYY-MM-DD. Exported since
  *  2026-09-14 so a fixture can place a day AFTER today without recomputing the
- *  arithmetic and drifting from TODAY. */
-export const day = (offset: number) => {
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().slice(0, 10);
+ *  arithmetic and drifting from TODAY.
+ *
+ *  ── ORG-LOCAL, NOT MACHINE-LOCAL (2026-10-09) ─────────────────────────────
+ *
+ *  This said "org-local" and was not. It took the date from the TEST RUNNER's
+ *  own clock — `new Date()`, `setHours`, `getDate` are all the host's zone —
+ *  while every page it feeds asks `useOrgToday()`, which is the date in
+ *  America/Chicago. Those are the same day only while the host's zone and
+ *  Chicago agree on the date. The runner is a Mac and a Windows box in US
+ *  Eastern, so for one hour a night (00:00-01:00 Eastern) the fixture's
+ *  TODAY was Chicago's TOMORROW; a runner in UTC would have had it for five
+ *  (00:00-05:00 UTC, i.e. 19:00-24:00 in Chicago). In that window a row dated
+ *  TODAY is not today to the page: no "Today"/"Hoy" badge on /my-schedule, a
+ *  My Day link that carries `?date=` when it should not, and a
+ *  `useOrgToday()` comparison anywhere that silently takes its other branch.
+ *  Now it reads the date on the org's clock and does the offset in UTC, so
+ *  the host's zone (and its DST changes) cannot reach it.
+ *  `tests/the-fixture-today-is-the-orgs-today.test.ts` pins it at the
+ *  boundary hours, under several host zones. */
+export const day = (offset: number, now: Date = new Date()) => {
+  const [y, m, d] = orgToday(FIXTURE_TIMEZONE, now).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + offset)).toISOString().slice(0, 10);
 };
 
 export const TODAY = day(0);
@@ -100,7 +122,7 @@ export const ORGANIZATION = {
   id: ORG_ID,
   name: ORG_NAME,
   portal_slug: "whitfield-ramirez-yard-and-waste-services",
-  timezone: "America/Chicago",
+  timezone: FIXTURE_TIMEZONE,
   active_client_count: 214,
   billing_tier: "pro",
   plan_status: "active",
@@ -221,7 +243,9 @@ export function visitsBetween(from: string, to: string) {
   const start = new Date(`${from}T12:00:00Z`);
   const end = new Date(`${to}T12:00:00Z`);
   let n = 0;
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+  // setUTCDate, not setDate: the walk is over UTC noons, and stepping it on
+  // the host's local calendar moves the hour across a DST change.
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
     const on = d.toISOString().slice(0, 10);
     const perDay = 8;
     for (let i = 0; i < perDay; i++, n++) {

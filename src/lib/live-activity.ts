@@ -37,6 +37,13 @@ interface RouteActivityPlugin {
     dismissalPolicy: "immediate" | "default" | "after";
     dismissAt?: number;
   }): Promise<{ ended: number; ids?: string[] }>;
+  setActionToken(options: {
+    token: string;
+    endpoint: string;
+    routeDate: string;
+    expiresAt: number;
+  }): Promise<{ saved: boolean }>;
+  clearActionToken(): Promise<void>;
   addListener(event: "pushToken", fn: (e: TokenEvent) => void): Promise<PluginListenerHandle>;
   addListener(event: "ended", fn: (e: EndedEvent) => void): Promise<PluginListenerHandle>;
 }
@@ -139,6 +146,46 @@ export async function endRouteActivity(
   } catch (e) {
     report("end", e);
     return [];
+  }
+}
+
+/**
+ * Hand the lock screen's Start button its action token
+ * (src/lib/live-activity-action.ts). The plugin keeps it in the iPhone
+ * keychain, readable after first unlock, where the App Intent that runs the
+ * button finds it; nothing else is written there, and never a session.
+ * `endpoint` is the absolute URL the intent posts to. False when it could not
+ * be kept, which leaves Start opening the app as it did before.
+ */
+export async function saveRouteActionToken(opts: {
+  token: string;
+  endpoint: string;
+  routeDate: string;
+  expiresAt: Date;
+}): Promise<boolean> {
+  if (!liveActivityAvailable()) return false;
+  try {
+    const r = await native().setActionToken({
+      token: opts.token,
+      endpoint: opts.endpoint,
+      routeDate: opts.routeDate,
+      expiresAt: opts.expiresAt.getTime(),
+    });
+    return !!r?.saved;
+  } catch (e) {
+    report("action_token", e);
+    return false;
+  }
+}
+
+/** Forget the action token: the route left the lock screen, or the tech
+ *  signed out. Safe to call when there is none. */
+export async function clearRouteActionToken(): Promise<void> {
+  if (!liveActivityAvailable()) return;
+  try {
+    await native().clearActionToken();
+  } catch (e) {
+    report("clear_action_token", e);
   }
 }
 

@@ -9,6 +9,8 @@ import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/reset-password")({
   ssr: false,
+  // No hydration timer for a client-only route; see _authenticated/route.tsx.
+  pendingMinMs: 0,
   head: () => ({
     meta: [
       { title: pageTitle("Reset your password") },

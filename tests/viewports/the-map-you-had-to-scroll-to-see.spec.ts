@@ -173,7 +173,8 @@ test("a stop in progress asks for the next thing instead", async ({ page, contex
       .filter(Boolean),
   );
 
-  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Take photo");
+  // "Take photo to complete" since #357, where Start leads into the photo.
+  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Take photo to complete");
   expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Complete");
   expect(ctl, "Start is still offered on a visit that has already started").not.toContain("Start");
   // Still folded, not deleted — the same both-ends check as the scheduled card.

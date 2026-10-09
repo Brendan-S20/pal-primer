@@ -224,30 +224,9 @@ export const startVisit = createServerFn({ method: "POST" })
       _started_at: data.startedAt ?? undefined,
     });
     if (error) throw new Error(error.message);
-    try {
-      const { data: v } = await context.supabase
-        .from("visits")
-        .select("organization_id, client_id, property_id, scheduled_on")
-        .eq("id", data.visitId)
-        .single();
-      if (v) {
-        const { logActivity } = await import("@/lib/activity.server");
-        await logActivity(context.supabase, {
-          orgId: v.organization_id,
-          clientId: v.client_id,
-          propertyId: v.property_id,
-          actorUserId: context.userId,
-          kind: "visit.started",
-          summary: `Started the visit scheduled for ${v.scheduled_on}`,
-        });
-      }
-    } catch (e) {
-      // Best-effort: the visit already started (the rpc above throws on
-      // failure), and a broken activity log must not fail the tech's tap. But
-      // it was `catch {}` — so activity logging could stop working for every
-      // visit in every org and leave no trace anywhere to find it by.
-      console.warn("visit.started activity log failed", data.visitId, e);
-    }
+    // The same line the lock screen's Start writes (visit-activity.server.ts).
+    const { logVisitStarted } = await import("@/lib/visit-activity.server");
+    await logVisitStarted(context.supabase, { visitId: data.visitId, actorUserId: context.userId });
     return { ok: true };
   });
 

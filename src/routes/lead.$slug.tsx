@@ -10,6 +10,8 @@ import { customerTitle } from "@/lib/page-title";
 // Branding + which optional fields to collect are configured per tenant.
 export const Route = createFileRoute("/lead/$slug")({
   ssr: false,
+  // No hydration timer for a client-only route; see _authenticated/route.tsx.
+  pendingMinMs: 0,
   head: () => ({ meta: [{ title: customerTitle("Request a quote") }, { name: "robots", content: "noindex" }] }),
   component: LeadForm,
 });
