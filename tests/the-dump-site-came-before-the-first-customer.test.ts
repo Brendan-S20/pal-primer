@@ -51,7 +51,7 @@ describe("the setup checklist asks for a customer before a dump site", () => {
     // Every assertion below is an index comparison, and indexOf returns -1 on
     // an empty list — which compares "correctly" against another -1 and proves
     // nothing. This is the guard against that.
-    expect(ids.length, `${STEPS}: no steps parsed`).toBeGreaterThanOrEqual(7);
+    expect(ids.length, `${STEPS}: no steps parsed`).toBeGreaterThanOrEqual(6);
     expect(new Set(ids).size, `${STEPS}: duplicate step ids`).toBe(ids.length);
   });
 
@@ -62,35 +62,39 @@ describe("the setup checklist asks for a customer before a dump site", () => {
     expect(dump, "the dump_site step is gone").toBeGreaterThan(-1);
     expect(
       clients,
-      `"Add or import clients" is step ${clients + 1} and "Add your dump site" is step ` +
+      `"Add or import clients" is step ${clients + 1} and the dump site is step ` +
         `${dump + 1}. A four-minute-old signup is being asked where they unload before ` +
         "they have been asked for a single customer.",
     ).toBeLessThan(dump);
   });
 
-  it("puts clients before everything except verifying the email", () => {
-    // Not merely "before the dump site": zones, staff and billing are all
-    // arrangement of a thing you have not put in yet, and the checklist is
-    // worked top to bottom. verify_email stays first because it is 85 seconds
-    // and it gates Stripe.
-    expect(ids[0], "verify_email should still lead").toBe("verify_email");
+  it("puts nothing ahead of clients but what it takes to price one", () => {
+    // CHANGED 2026-10-08, with the guided setup. Clients was second, behind
+    // only verifying the email. Verifying is now folded into payouts, the one
+    // thing it gates. Ahead of clients there are now exactly two steps, and
+    // both are there because the first client NEEDS them: the business
+    // address and time zone (thirty seconds, and where every route starts),
+    // and the service area, because a client's plan is quoted from the zone
+    // their address falls in and with no zone the new-client form has no
+    // price to offer. Anything else ahead of clients is the old fault back.
+    const clients = ids.indexOf("clients");
+    expect(clients).toBeGreaterThan(-1);
     expect(
-      ids[1],
-      `step 2 is "${ids[1]}" — clients is what makes every other screen in the ` +
-        "product do something, so nothing but the email check goes ahead of it.",
-    ).toBe("clients");
+      ids.slice(0, clients),
+      `ahead of clients: ${ids.slice(0, clients).join(", ")}. Only what prices a client may ` +
+        "go first; clients is what makes every other screen in the product do something.",
+    ).toEqual(["business", "zones"]);
   });
 
-  it("still asks for the dump site before the first route", () => {
+  it("asks who runs the route before where the route ends", () => {
     // The other half of the ordering, and the reason dump_site did not simply
-    // move to the end: the planner routes TO it, so a first route planned
-    // without one is the 116-minute version of a 22-minute day.
+    // move to the end: the planner routes a technician TO it, so it is asked
+    // once there is somebody whose route it improves. (It used to be pinned
+    // before "Assign your first route", a step that is gone: auto-assign hands
+    // visits to the field techs the staff step creates.)
+    const staff = ids.indexOf("staff");
     const dump = ids.indexOf("dump_site");
-    const route = ids.indexOf("route");
-    expect(route).toBeGreaterThan(-1);
-    expect(
-      dump,
-      "the dump site must still come before the first route — that is where it pays",
-    ).toBeLessThan(route);
+    expect(staff).toBeGreaterThan(-1);
+    expect(staff, "who runs the route must come before where it ends").toBeLessThan(dump);
   });
 });

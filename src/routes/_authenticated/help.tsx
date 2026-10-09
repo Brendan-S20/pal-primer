@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowRight, BookOpen, ExternalLink, Search } from "lucide-react";
 import { HELP_ARTICLES, HELP_SECTIONS, getArticle } from "@/lib/help-content";
 import { helpMatchScore } from "@/lib/help-search";
-import { restartTour } from "@/components/OnboardingTour";
+import { SetupGuideCard } from "@/components/SetupGuideCard";
 import { APP_NAME } from "@/lib/scoop";
 import { titleHead } from "@/lib/page-title";
 
@@ -142,17 +142,10 @@ function HelpPage() {
               </p>
             )}
           </nav>
-          <div className="rounded-lg border bg-card p-3">
-            <p className="text-xs text-muted-foreground">New here, or new teammates joining?</p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-2 w-full"
-              onClick={() => restartTour()}
-            >
-              Show me the tour again
-            </Button>
-          </div>
+          {/* Was "Show me the tour again", which replayed a spotlight tour
+              of the menu. The guide it re-opens now sets the business up,
+              so it is offered to the people who can do that. */}
+          <SetupGuideCard />
         </div>
 
         <div>
