@@ -49,6 +49,37 @@ const readRows = (page: Page) =>
     });
   });
 
+/**
+ * The rows, once the page has DRAWN them.
+ *
+ * ── WHY THIS WAITS, AND WHAT IT WAITS FOR (2026-10-09) ───────────────────
+ *
+ * The heading is on screen before the data is. /my-schedule renders its title
+ * and an empty `<ul aria-label="Your upcoming days">` at once, shows a skeleton
+ * while `getMyUpcomingDays` is in flight, and only then fills the list. This
+ * file used to read the list the moment the heading was visible, which is a
+ * race against one server-function round trip — usually won, because the stub
+ * answers in a few milliseconds, and lost on the Windows runner at 01:13 UTC
+ * on 2026-10-09 with eight workers sharing one dev server: "no day rows
+ * rendered", Received 0, while the 360px case and the day-off case in the same
+ * file, against the same fixture at the same minute, both passed. The clock
+ * was a coincidence; a 1.5s delay on that one stub reply reproduces it at any
+ * hour.
+ *
+ * So it waits for the count it expects. A fixture that really put nothing on
+ * the page still fails here, with the same message, after the timeout rather
+ * than before the reply.
+ */
+async function rowsOnceDrawn(page: Page, expected: number) {
+  await expect
+    .poll(async () => (await readRows(page)).length, {
+      message: "no day rows rendered — the fixture put nothing on the page",
+      timeout: FIRST_PAINT_MS,
+    })
+    .toBe(expected);
+  return readRows(page);
+}
+
 for (const { w, h, label } of [
   { w: 360, h: 800, label: "360x800 · a small phone" },
   { w: 430, h: 932, label: "430x932 · iPhone Pro Max" },
@@ -68,8 +99,7 @@ for (const { w, h, label } of [
       "/my-schedule",
     );
 
-    const rows = await readRows(page);
-    expect(rows.length, "no day rows rendered — the fixture put nothing on the page").toBe(3);
+    const rows = await rowsOnceDrawn(page, 3);
 
     for (const row of rows) {
       expect(row.right, `a day row runs ${row.right - w}px off the right edge`).toBeLessThanOrEqual(w);
@@ -81,6 +111,14 @@ for (const { w, h, label } of [
     // rather than trusting that something rendered.
     expect(rows[0].text, "the first day should carry its stop count").toContain("12");
     expect(rows[0].text, "a partly-worked day should say how many are left").toContain("7 left");
+    // The fixture's TODAY has to be the page's today — the org's date in
+    // America/Chicago — or the first row is just a date. Until 2026-10-09 the
+    // fixture took its date from the runner's clock, and for the hour after
+    // midnight Eastern this row lost its badge. The fixture's half of that is
+    // pinned at every hour by tests/the-fixture-today-is-the-orgs-today.test.ts;
+    // this is the page agreeing with it.
+    // (A regex because the badge is `uppercase`, and innerText says TODAY.)
+    expect(rows[0].text, "the fixture's first day is not the page's today").toMatch(/\btoday\b/i);
   });
 }
 
@@ -95,8 +133,7 @@ test("a day with nothing assigned is absent, not a zero", async ({ page }) => {
     timeout: FIRST_PAINT_MS,
   });
 
-  const rows = await readRows(page);
-  expect(rows.length).toBe(3);
+  const rows = await rowsOnceDrawn(page, 3);
   for (const r of rows) {
     expect(r.text, `a day off is being listed as empty: ${r.text}`).not.toMatch(/\b0 stops?\b/);
   }

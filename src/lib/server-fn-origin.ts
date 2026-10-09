@@ -46,3 +46,15 @@ export const fetchFromNativeApiOrigin: typeof fetch = (input, init) => {
   }
   return fetch(input, init);
 };
+
+/**
+ * An absolute URL on the API origin, for something outside the web view that
+ * has to call the server: the lock screen's Start button, whose App Intent
+ * runs in the app's process with no document to be relative to. The native
+ * build's API origin when there is one; else this page's own origin, which is
+ * the API on the web and on a live-reload dev build.
+ */
+export function apiUrl(path: string): string {
+  const origin = NATIVE_API_ORIGIN || (typeof window !== "undefined" ? window.location.origin : "");
+  return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
+}

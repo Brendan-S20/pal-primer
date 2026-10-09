@@ -57,3 +57,27 @@ export async function e2eOrgId(db: SupabaseClient): Promise<string> {
   }
   return data.id;
 }
+
+/**
+ * Today, as the seeded business counts it: the date in the org's own time
+ * zone, never the runner's and never UTC.
+ *
+ * Every page and server function decides "today" with `orgToday(tz)`. A spec
+ * that decides it with `new Date().toISOString().slice(0, 10)` agrees with
+ * them only while UTC and the org are on the same date — not from 19:00 to
+ * midnight in Chicago, five hours of every day — and one that uses the
+ * runner's local date disagrees for the hour after midnight Eastern. The
+ * board spec found the second on 2026-10-02 (0 received, 1 expected, at
+ * 12:08 a.m.); this is that fix, shared, so the next spec does not re-learn it.
+ */
+export async function businessToday(db: SupabaseClient, orgId: string): Promise<string> {
+  const { data, error } = await db
+    .from("organizations")
+    .select("timezone")
+    .eq("id", orgId)
+    .single();
+  if (error) throw new Error(`reading the org's time zone: ${error.message}`);
+  return new Date().toLocaleDateString("en-CA", {
+    timeZone: (data?.timezone as string | null) ?? "America/Chicago",
+  });
+}

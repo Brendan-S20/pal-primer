@@ -209,6 +209,28 @@ test.describe("Schedule lanes at tablet width", () => {
           timeout: FIRST_PAINT_MS,
         });
         await expect(page.locator("[data-lane-title]:visible").first()).toBeVisible();
+        // ── WAIT FOR THE SECOND LANE, NOT JUST THE FIRST ─────────────────
+        //
+        // "Unassigned" is a lane too and can paint before the crew query
+        // answers, so the line above can pass with one lane on the page.
+        // On 2026-10-08, the first time this ran beside seven other workers
+        // (PR #359, Windows runner), it measured in exactly that frame:
+        // `expected 1 to be greater than 1`, with a failure screenshot that
+        // shows Unassigned AND Alejandro's lane. This waits for what the
+        // assertion below needs, by the same visibility test it uses; a
+        // board that never draws a second lane still fails, on a timeout
+        // that names the count.
+        await expect
+          .poll(
+            () =>
+              page
+                .locator("[data-lane-title]")
+                .evaluateAll(
+                  (els) => els.filter((el) => (el as HTMLElement).offsetParent !== null).length,
+                ),
+            { timeout: 15_000, message: `${s.label}: the board drew fewer than two lanes` },
+          )
+          .toBeGreaterThan(1);
         const lanes = await page.evaluate(() =>
           [...document.querySelectorAll<HTMLElement>("[data-lane-title]")]
             .filter((el) => el.offsetParent !== null)

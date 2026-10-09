@@ -153,6 +153,7 @@ import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/ho
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
+import { Route as ApiPublicHooksLiveActivityActionRouteImport } from './routes/api/public/hooks/live-activity-action'
 import { Route as ApiPublicHooksLateCheckRouteImport } from './routes/api/public/hooks/late-check'
 import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
 import { Route as ApiPublicCalendarTokenRouteImport } from './routes/api/public/calendar.$token'
@@ -926,6 +927,12 @@ const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
   path: '/api/public/hooks/nightly',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksLiveActivityActionRoute =
+  ApiPublicHooksLiveActivityActionRouteImport.update({
+    id: '/api/public/hooks/live-activity-action',
+    path: '/api/public/hooks/live-activity-action',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksLateCheckRoute = ApiPublicHooksLateCheckRouteImport.update({
   id: '/api/public/hooks/late-check',
   path: '/api/public/hooks/late-check',
@@ -1088,6 +1095,7 @@ export interface FileRoutesByFullPath {
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
+  '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -1229,6 +1237,7 @@ export interface FileRoutesByTo {
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
+  '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -1381,6 +1390,7 @@ export interface FileRoutesById {
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
+  '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -1533,6 +1543,7 @@ export interface FileRouteTypes {
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
+    | '/api/public/hooks/live-activity-action'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
@@ -1674,6 +1685,7 @@ export interface FileRouteTypes {
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
+    | '/api/public/hooks/live-activity-action'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
@@ -1825,6 +1837,7 @@ export interface FileRouteTypes {
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
+    | '/api/public/hooks/live-activity-action'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
@@ -1882,6 +1895,7 @@ export interface RootRouteChildren {
   ApiPublicCalendarTokenRoute: typeof ApiPublicCalendarTokenRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksLateCheckRoute: typeof ApiPublicHooksLateCheckRoute
+  ApiPublicHooksLiveActivityActionRoute: typeof ApiPublicHooksLiveActivityActionRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
@@ -2903,6 +2917,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksNightlyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/live-activity-action': {
+      id: '/api/public/hooks/live-activity-action'
+      path: '/api/public/hooks/live-activity-action'
+      fullPath: '/api/public/hooks/live-activity-action'
+      preLoaderRoute: typeof ApiPublicHooksLiveActivityActionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/late-check': {
       id: '/api/public/hooks/late-check'
       path: '/api/public/hooks/late-check'
@@ -3291,6 +3312,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCalendarTokenRoute: ApiPublicCalendarTokenRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksLateCheckRoute: ApiPublicHooksLateCheckRoute,
+  ApiPublicHooksLiveActivityActionRoute: ApiPublicHooksLiveActivityActionRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,

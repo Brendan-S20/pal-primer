@@ -27,6 +27,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { AccountMenu } from "@/components/AccountMenu";
 import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
+import { TimeClockSheetHost } from "@/components/TimeClock";
+import { RouteLockScreenHost } from "@/components/my-day/RouteLockScreen";
 import { sidebarDocksFrom, useTabletTier } from "@/hooks/useTabletTier";
 import { useMyRole } from "@/hooks/useMyRole";
 import { RoleGuard } from "@/components/RoleGuard";
@@ -135,6 +137,16 @@ export const Route = createFileRoute("/_authenticated")({
   // URL and what a cold native launch paints while beforeLoad decides who
   // is signed in. See ShellPending.
   pendingComponent: ShellPending,
+  // No minimum. On hydration the router gives the first `ssr: false` match a
+  // timer of `pendingMinMs` (router-core ssr-client, setMatchForcePending),
+  // and when it fires it calls router.startTransition, whose setState belongs
+  // to a Transitioner that may not have committed yet: on a loaded machine
+  // the route chunks take longer than 400ms and React logs "Can't perform a
+  // React state update on a component that hasn't mounted yet". That was
+  // the QA list's intermittent /invoices and /tax-reports failure.
+  // Navigations keep the router default: this is the layout's own match.
+  // → tests/a-timer-that-beat-the-first-render.test.ts
+  pendingMinMs: 0,
 });
 
 function openPalette() {
@@ -502,6 +514,12 @@ function AppShell() {
           </main>
         </div>
         {headerPrefs.phoneNav === "bottom" && <MobileTabBar />}
+        {/* The one time-clock sheet, opened from the More sheet and the
+            sidebar (src/components/TimeClock.tsx). */}
+        <TimeClockSheetHost />
+        {/* The route on the iPhone lock screen, from whatever page is open:
+            it comes back by itself when the app does. Nothing off iOS. */}
+        <RouteLockScreenHost />
         <CommandPalette />
         <KeyboardShortcuts />
         <InstallBanner />

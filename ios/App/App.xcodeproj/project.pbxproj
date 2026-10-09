@@ -22,6 +22,9 @@
 		7A5E1C0D2EA0000000000105 /* RouteActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */; };
 		7A5E1C0D2EA0000000000106 /* RouteActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000005 /* RouteActivityBundle.swift */; };
 		7A5E1C0D2EA0000000000107 /* RouteLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000006 /* RouteLiveActivity.swift */; };
+		7A5E1C0D2EA000000000010C /* RouteActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA000000000000C /* RouteActivityIntents.swift */; };
+		7A5E1C0D2EA000000000010D /* RouteActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA000000000000C /* RouteActivityIntents.swift */; };
+		7A5E1C0D2EA000000000010E /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA000000000000D /* AppIntents.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		7A5E1C0D2EA0000000000108 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000009 /* ActivityKit.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		7A5E1C0D2EA0000000000109 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA000000000000A /* WidgetKit.framework */; };
 		7A5E1C0D2EA000000000010A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA000000000000B /* SwiftUI.framework */; };
@@ -73,6 +76,8 @@
 		7A5E1C0D2EA0000000000008 /* RouteActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RouteActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A5E1C0D2EA0000000000009 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
 		7A5E1C0D2EA000000000000A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		7A5E1C0D2EA000000000000C /* RouteActivityIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityIntents.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA000000000000D /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 		7A5E1C0D2EA000000000000B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -83,6 +88,7 @@
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
 				7A5E1C0D2EA0000000000108 /* ActivityKit.framework in Frameworks */,
+				7A5E1C0D2EA000000000010E /* AppIntents.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -141,6 +147,7 @@
 				7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */,
 				7A5E1C0D2EA0000000000003 /* RouteActivityPlugin.swift */,
 				7A5E1C0D2EA0000000000004 /* RouteActivityDemo.swift */,
+				7A5E1C0D2EA000000000000C /* RouteActivityIntents.swift */,
 			);
 			path = LiveActivity;
 			sourceTree = "<group>";
@@ -161,6 +168,7 @@
 				7A5E1C0D2EA0000000000009 /* ActivityKit.framework */,
 				7A5E1C0D2EA000000000000A /* WidgetKit.framework */,
 				7A5E1C0D2EA000000000000B /* SwiftUI.framework */,
+				7A5E1C0D2EA000000000000D /* AppIntents.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -283,6 +291,7 @@
 				7A5E1C0D2EA0000000000102 /* RouteActivityAttributes.swift in Sources */,
 				7A5E1C0D2EA0000000000103 /* RouteActivityPlugin.swift in Sources */,
 				7A5E1C0D2EA0000000000104 /* RouteActivityDemo.swift in Sources */,
+				7A5E1C0D2EA000000000010C /* RouteActivityIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -293,6 +302,7 @@
 				7A5E1C0D2EA0000000000105 /* RouteActivityAttributes.swift in Sources */,
 				7A5E1C0D2EA0000000000106 /* RouteActivityBundle.swift in Sources */,
 				7A5E1C0D2EA0000000000107 /* RouteLiveActivity.swift in Sources */,
+				7A5E1C0D2EA000000000010D /* RouteActivityIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -515,7 +525,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.houndstack.RouteActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG ROUTE_ACTIVITY_EXTENSION";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -540,7 +550,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.houndstack.RouteActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = ROUTE_ACTIVITY_EXTENSION;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

@@ -12,8 +12,13 @@
 //
 // The stop carries coordinates and a visit id, so the buttons are drawn (iOS
 // 17+): Navigate, and Start, or Complete with -liveActivityDemoAction
-// complete. A tap on either opens what it would on a phone; there is no
-// session, so My Day lands on sign-in.
+// complete. Navigate and Complete open what they would on a phone; there is
+// no session, so My Day lands on sign-in. Start runs its App Intent, which
+// with no action token opens the app on the stop. To watch it START instead,
+// give it a token and somewhere to post it, a stub on this Mac:
+//
+//   xcrun simctl launch booted consulting.thenorth.houndstack -liveActivityDemo \
+//     -liveActivityDemoActionEndpoint http://127.0.0.1:8787/api/public/hooks/live-activity-action
 //
 // And to prove the JS bridge reaches the plugin, without signing in:
 //
@@ -80,6 +85,19 @@ enum RouteActivityDemo {
         let lang = value(after: "-liveActivityDemoLang", in: args) ?? "en"
         let action = value(after: "-liveActivityDemoAction", in: args) == "complete" ? "complete" : "start"
         let state = sample(step: step, lang: lang, action: action)
+        if #available(iOS 17.0, *),
+           let endpoint = value(after: "-liveActivityDemoActionEndpoint", in: args) {
+            // A fixture token (43 characters, the shape of a real one) for the
+            // demo's day, an hour long. Debug builds only accept http to this
+            // machine; a real token only ever reaches https.
+            let saved = RouteActionStore.save(.init(
+                token: String(repeating: "d", count: 43),
+                endpoint: endpoint,
+                routeDate: "2026-10-04",
+                expiresAt: (Date().timeIntervalSince1970 + 3600) * 1000
+            ))
+            NSLog("[RouteActivityDemo] action token for Start \(saved ? "saved" : "NOT saved") -> \(endpoint)")
+        }
         let attrs = RouteActivityAttributes(
             routeDate: "2026-10-04",
             title: lang == "ar" ? "مسار اليوم" : lang == "es" ? "Ruta de hoy" : "Today's route"
