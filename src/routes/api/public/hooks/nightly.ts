@@ -340,6 +340,20 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           aiOverage = { error: (e as Error).message };
         }
 
+        // Seats are billed in arrears: Stripe invoices whatever the seat line
+        // holds at renewal (seat-rule.ts). A first sighting each period already
+        // reconciles it, best-effort; this catches any that was lost, for every
+        // org renewing in the next two days. Outside the per-org loop for the
+        // same reasons as ai_overage.
+        let seats: Record<string, unknown>;
+        try {
+          const { reconcileSeatsBeforeRenewal } = await import("@/lib/seat-reconcile.server");
+          seats = await reconcileSeatsBeforeRenewal();
+        } catch (e) {
+          console.error("[nightly] seat reconcile failed", e);
+          seats = { error: (e as Error).message };
+        }
+
         // ── Coordinates for the two routing anchors ────────────────────────
         //
         // staff_start_point (20260815180000) falls back to the business
@@ -472,6 +486,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           ran_at: new Date().toISOString(),
           orgs: summary,
           ai_overage: aiOverage,
+          seats,
           trial_notices: trialNotices,
           routing_anchors: anchors,
           live_locations: liveLocations,

@@ -127,6 +127,7 @@ import {
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
 import { createExpense } from "@/lib/expenses.functions";
+import { noteMySighting } from "@/lib/seat-sightings.functions";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -403,6 +404,8 @@ function MyDay() {
   const collectionFn = useServerFn(recordFieldCollection);
   // And an expense logged from the field, with its receipt.
   const expenseFn = useServerFn(createExpense);
+  // Work that lands is the tech having used the app: a billing seat.
+  const noteSeenFn = useServerFn(noteMySighting);
   const callers = useMemo(
     () => ({
       startVisit: startFn,
@@ -414,6 +417,7 @@ function MyDay() {
       clockOut: clockOutFn,
       recordFieldCollection: collectionFn,
       createExpense: expenseFn,
+      noteSeen: () => noteSeenFn(),
     }),
     [
       startFn,
@@ -425,6 +429,7 @@ function MyDay() {
       clockOutFn,
       collectionFn,
       expenseFn,
+      noteSeenFn,
     ],
   );
 

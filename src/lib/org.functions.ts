@@ -172,6 +172,16 @@ export const getMyOrg = createServerFn({ method: "GET" })
     if (roleErr) throw new Error(roleErr.message);
     if (!role) return { organization: null as null };
 
+    // A billing seat is anybody who used their login this period (seat-rule.ts),
+    // and this is the call every working session makes -- the signed-in
+    // layout's beforeLoad and useMyRole(), on web and native, on launch and
+    // every minute or so after. So the sighting is recorded here. In the
+    // background: it never delays or fails this read, and the database writes
+    // at most once per person per day. note_staff_seen() refuses impersonation
+    // and platform-admin sessions itself.
+    const { noteStaffSeenInBackground } = await import("@/lib/seat-sightings.server");
+    noteStaffSeenInBackground(supabase, userId);
+
     const { data: org, error: orgErr } = await (supabase as any)
       .from("organizations")
       .select(

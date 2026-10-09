@@ -5,14 +5,31 @@ import {
   resolvePriceId,
   resolvePriceIdSet,
 } from "@/lib/stripe-price-catalog.server";
-// Ongoing seat-count → Stripe sync for the per-employee plan model (finding #6
-// follow-through). Checkout sets the initial seat-overage quantity; this keeps
-// it reconciled as active employees come and go.
+import { isDemoOrganization } from "@/lib/demo-org";
+import { periodBoundaryIso, seatTarget, subscriptionPeriod } from "@/lib/seat-rule";
+// Seat-count → Stripe sync for the per-employee plan model.
 //
-// Truth is read from Stripe (the subscription's own line items) so we never
-// depend on organizations.plan_id being maintained: we find whichever base
-// price on the subscription maps to a per-employee plan in platform_plans,
-// then set the seat-overage item quantity to max(0, activeStaff - included).
+// WHAT A SEAT IS, AND WHICH PERIOD THE NUMBER PAYS FOR, is written down in
+// `seat-rule.ts` and nowhere else; read that first. In one line: a seat is
+// anybody who used their login during the billing period, and the seat line
+// is billed in ARREARS -- it holds "people seen this period so far, past the
+// allowance", changed with no proration, and Stripe invoices it at renewal.
+//
+// It used to count `staff.active = true` at the moment this ran, prorated
+// every change, and was billed in advance: a snapshot that charged for people
+// who never opened the app and missed somebody who worked half the period and
+// left.
+//
+// Truth about the PLAN and the PERIOD is read from Stripe (the subscription's
+// own line items and dates) so we never depend on organizations.plan_id being
+// maintained: we find whichever base price on the subscription maps to a
+// per-employee plan in platform_plans. Truth about WHO WAS SEEN is read from
+// the staff_seen_days ledger through billable_seat_count().
+//
+// Called from: setStaffActive and resyncMySeats (users.functions.ts),
+// refreshBillingStatus (billing.functions.ts), a person's first sighting in
+// the period (seat-sightings.server.ts), and the nightly run for every org
+// within two days of renewal (seat-reconcile.server.ts).
 //
 // Runs with the service role (no user context) and is deliberately best-effort
 // at every call site — a Stripe hiccup must never block a staff toggle.
@@ -28,10 +45,11 @@ function priceIdOf(item: { price: string | { id: string } }): string {
 }
 
 /**
- * Reconcile the seat-overage subscription item for one org to its current
- * active-employee count. Safe no-op when the org has no live subscription or
- * isn't on a per-employee plan. Never throws for "nothing to do" — only a real
- * Stripe/DB failure propagates (callers wrap in try/catch).
+ * Reconcile the seat-overage subscription item for one org to the people who
+ * have used their login this billing period. Safe no-op when the org has no
+ * live subscription, isn't on a per-employee plan, or is the demo org. Never
+ * throws for "nothing to do" — only a real Stripe/DB failure propagates
+ * (callers wrap in try/catch).
  */
 export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult> {
   const secret = process.env.PLATFORM_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
@@ -41,15 +59,25 @@ export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult
 
   const { data: org } = await supabaseAdmin
     .from("organizations")
-    .select("stripe_subscription_id")
+    .select("stripe_subscription_id, slug, is_comped")
     .eq("id", orgId)
     .maybeSingle();
+  // The demo org (and any comped org -- one definition, demo-org.ts) is never
+  // billed for seats, whatever its subscription id looks like.
+  if (isDemoOrganization(org as { slug?: string | null; is_comped?: boolean | null } | null)) {
+    return { skipped: "demo_org" };
+  }
   const subId = (org as any)?.stripe_subscription_id as string | null | undefined;
   if (!subId || !SUB_RE.test(subId) || subId.includes("demo")) return { skipped: "no_subscription" };
 
   const stripe = await makeStripe(secret);
   const sub = await stripe.subscriptions.retrieve(subId, { expand: ["items.data.price"] });
   if (sub.status === "canceled" || sub.status === "incomplete_expired") return { skipped: `status_${sub.status}` };
+
+  // The count is "people seen since this period began", so without a period
+  // there is no count. Guessing one would bill the wrong people.
+  const period = subscriptionPeriod(sub);
+  if (!period) return { skipped: "no_period" };
 
   const priceIds = sub.items.data.map((i) => priceIdOf(i as any));
   if (!priceIds.length) return { skipped: "no_items" };
@@ -119,24 +147,48 @@ export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult
     );
     break;
   }
-  if (includedSeats == null || seatItemIds.size === 0) return { skipped: "not_per_employee_plan" };
 
-  const { count } = await supabaseAdmin
-    .from("staff")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", orgId)
-    .eq("active", true);
-  const overage = Math.max(0, (count ?? 0) - includedSeats);
+  const billable = await billableSeatsSince(supabaseAdmin, orgId, period.start);
+
+  if (includedSeats == null || seatItemIds.size === 0) {
+    // Recorded anyway: a sighting checks this row before asking for a
+    // reconcile, and without it every person's first visit each day would
+    // send this org's subscription back to Stripe to learn the same thing.
+    await recordSeatPeriod(supabaseAdmin, orgId, period, billable, null);
+    return { skipped: "not_per_employee_plan" };
+  }
+
+  const target = seatTarget({
+    period,
+    metadata: (sub.metadata ?? {}) as Record<string, string>,
+    billableSeats: billable,
+    includedSeats,
+  });
+  // A subscription from before this change: say on the subscription itself
+  // that its seats are in arrears from the next period. Stripe merges
+  // metadata keys, so nothing else on it is touched.
+  if (target.markWith) {
+    await stripe.subscriptions.update(subId, { metadata: target.markWith });
+  }
+  const overage = target.quantity;
 
   const existing = sub.items.data.find((i) => seatItemIds.has(priceIdOf(i as any)));
 
+  // proration_behavior "none" on every change, both directions. In arrears the
+  // quantity is only invoiced at renewal; a proration would charge (or credit)
+  // a fraction of a seat now for a period the renewal is about to bill whole.
+  let result: SeatSyncResult;
   if (overage > 0) {
     if (existing) {
-      if ((existing.quantity ?? 0) === overage) return { synced: true, quantity: overage, changed: false };
-      await stripe.subscriptionItems.update(existing.id, {
-        quantity: overage,
-        proration_behavior: "create_prorations",
-      });
+      if ((existing.quantity ?? 0) === overage) {
+        result = { synced: true, quantity: overage, changed: false };
+      } else {
+        await stripe.subscriptionItems.update(existing.id, {
+          quantity: overage,
+          proration_behavior: "none",
+        });
+        result = { synced: true, quantity: overage, changed: true };
+      }
     } else {
       // Nothing to add the seats to and no price in this account to mint one
       // from. Better to report it than to send Stripe an id it will reject.
@@ -145,16 +197,62 @@ export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult
         subscription: subId,
         price: seatPriceToCreate,
         quantity: overage,
-        proration_behavior: "create_prorations",
+        proration_behavior: "none",
       });
+      result = { synced: true, quantity: overage, changed: true };
     }
-    return { synced: true, quantity: overage, changed: true };
+  } else if (existing) {
+    // No overage: remove the seat item if it's still there.
+    await stripe.subscriptionItems.del(existing.id, { proration_behavior: "none" });
+    result = { synced: true, quantity: 0, changed: true };
+  } else {
+    result = { synced: true, quantity: 0, changed: false };
   }
 
-  // No overage: remove the seat item if it's still there.
-  if (existing) {
-    await stripe.subscriptionItems.del(existing.id, { proration_behavior: "create_prorations" });
-    return { synced: true, quantity: 0, changed: true };
+  await recordSeatPeriod(supabaseAdmin, orgId, period, billable, overage);
+  return result;
+}
+
+/** People seen in the org since the period began (staff_seen_days). */
+async function billableSeatsSince(admin: unknown, orgId: string, periodStart: number): Promise<number> {
+  const { data, error } = await (admin as any).rpc("billable_seat_count", {
+    _org_id: orgId,
+    _since: periodBoundaryIso(periodStart),
+  });
+  // A failed count must not be read as zero: zero would remove the seat
+  // line and the renewal would bill nobody. Throw, and the caller's
+  // best-effort catch reports `failed`.
+  if (error) throw new Error(`billable_seat_count: ${error.message}`);
+  const n = Number(data);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Remember which period the seat line was reconciled for. Best-effort: the
+ * Stripe quantity is already right, and this row only decides how soon the
+ * next sighting asks for another reconcile.
+ */
+async function recordSeatPeriod(
+  admin: unknown,
+  orgId: string,
+  period: { start: number; end: number },
+  billable: number,
+  quantity: number | null,
+): Promise<void> {
+  try {
+    const { error } = await (admin as any).from("org_seat_periods").upsert(
+      {
+        organization_id: orgId,
+        period_start: periodBoundaryIso(period.start),
+        period_end: periodBoundaryIso(period.end),
+        billable_seats: billable,
+        seat_quantity: quantity,
+        synced_at: new Date().toISOString(),
+      },
+      { onConflict: "organization_id" },
+    );
+    if (error) console.error("org_seat_periods write failed", orgId, error.message);
+  } catch (e) {
+    console.error("org_seat_periods write failed", orgId, (e as Error).message);
   }
-  return { synced: true, quantity: 0, changed: false };
 }

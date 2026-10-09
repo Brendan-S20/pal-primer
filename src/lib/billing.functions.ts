@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.server";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
+import { newSubscriptionSeatMarker } from "@/lib/seat-rule";
 import { addonLookupKey, planLookupKey } from "@/lib/stripe-lookup-keys";
 import {
   loadPriceCatalog,
@@ -133,12 +134,18 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       throw new Error("Embedded billing needs STRIPE_PUBLISHABLE_KEY set. Contact support.");
     }
 
-    const { count: activeStaff } = await supabaseAdmin
-      .from("staff")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId)
-      .eq("active", true);
-    const seats = activeStaff ?? 0;
+    // Only used to SUGGEST a plan when the caller named none. A seat is anybody
+    // who used their login in the period (seat-rule.ts), so the suggestion
+    // reads the last 30 days of that, not the staff list. It charges nothing:
+    // what Stripe is told is decided below and by syncOrgSeatQuantity.
+    let seats = 0;
+    {
+      const { data: seen, error: seenErr } = await (supabaseAdmin as any).rpc("billable_seat_count", {
+        _org_id: orgId,
+        _since: new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(),
+      });
+      if (!seenErr && Number.isFinite(Number(seen))) seats = Number(seen);
+    }
 
     const { data: planRows } = await (supabaseAdmin as any)
       .from("platform_plans")
@@ -212,9 +219,19 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     }
 
     // The plan bills a flat base that covers the tier's included employees,
-    // plus a per-seat overage price for each active employee beyond that.
-    // Ongoing seat changes are reconciled by syncOrgSeatQuantity (#6).
-    const overage = Math.max(0, seats - targetPlan.included_seats);
+    // plus a per-seat price for each person past that who used their login in
+    // the period, billed IN ARREARS at renewal (seat-rule.ts). The quantity is
+    // owned by syncOrgSeatQuantity; this function only decides what the seat
+    // line starts at:
+    //
+    //   a NEW subscription starts with no seat line. Nobody has used the app
+    //     in a period that has not begun, and the first period's seats are
+    //     billed at the first renewal. Billing them now as well would charge
+    //     them twice.
+    //   a PLAN SWITCH carries the current seat quantity across unchanged (see
+    //     below), and the reconcile after it applies the new plan's allowance
+    //     with no proration.
+    let overage = 0;
 
     // ── In-place plan switch ────────────────────────────────────────────────
     // An org with a LIVE subscription must never get a second one stacked on
@@ -293,6 +310,16 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         const currentPlanItem = existingItems.find(
           (it) => it.price?.id && planPriceIds.has(it.price.id),
         );
+        // Carry the seat quantity across the switch as it stands. Stripe applies
+        // one proration setting to a whole update, so a seat line whose quantity
+        // changed here would be prorated along with the plan -- charging or
+        // crediting a fraction of a seat the renewal is about to bill whole.
+        // With the quantity unchanged and every plan's seat at the same price,
+        // the old seat line's credit and the new one's charge cancel. The
+        // reconcile after the update sets the new plan's number, unprorated.
+        overage = existingItems
+          .filter((it) => it.price?.id && seatPriceIds.has(it.price.id))
+          .reduce((n, it) => n + (it.quantity ?? 0), 0);
         const currentInterval: "month" | "year" =
           currentPlanItem?.price?.recurring?.interval === "year" ? "year" : "month";
         const intervalChanged = currentInterval !== targetInterval;
@@ -458,6 +485,17 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
           } catch (e) {
             console.error("addon item re-mapping after interval switch failed", (e as Error).message);
           }
+        }
+
+        // The seat line came across at its old quantity; now give it the new
+        // plan's allowance, with no proration. Best-effort, like every seat
+        // reconcile: the switch itself has succeeded and the nightly run
+        // before renewal is the backstop.
+        try {
+          const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
+          await syncOrgSeatQuantity(orgId);
+        } catch (e) {
+          console.error("seat sync after plan switch failed", (e as Error).message);
         }
 
         // Reflect the new plan identity immediately (don't wait for the
@@ -629,6 +667,9 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         plan_id: targetPlan.id,
         kind: "org_saas",
         interval: targetInterval,
+        // Seats in arrears from the first period (seat-rule.ts), so the
+        // reconcile never mistakes this for a subscription that prepaid them.
+        ...newSubscriptionSeatMarker(),
         ...(promoCoupon ? { promo_code: promoCoupon.code } : {}),
       },
       expand: ["latest_invoice.confirmation_secret"],

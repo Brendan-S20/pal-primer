@@ -61,20 +61,23 @@ export const setStaffActive = createServerFn({ method: "POST" })
       _active: data.active,
     });
     if (error) throw new Error(error.message);
-    // Activating/deactivating an employee changes the billable seat count, so
-    // the Stripe seat-overage quantity is reconciled here. Best-effort, and
-    // that does not change: never block a staff toggle because billing is not
-    // configured or Stripe hiccupped.
+    // A seat is anybody who used their login this billing period (seat-rule.ts),
+    // so deactivating somebody does NOT take them off this period's bill if they
+    // worked in it, and activating somebody adds nothing until they use the
+    // app. The reconcile still runs here, because it is also how a drifted seat
+    // line heals. Best-effort, and that does not change: never block a staff
+    // toggle because billing is not configured or Stripe hiccupped.
     //
     // WHAT CHANGED IS THAT A FAILURE IS NO LONGER SILENT. syncOrgSeatQuantity
     // already returns a discriminated result and all three call sites threw it
-    // away. Nothing reconciles seats on a schedule -- not the nightly run, not
-    // a cron -- so the only healing is the next staff toggle, the next invite
-    // accepted, or somebody opening the billing page. An organization that
-    // does none of those keeps the drifted quantity indefinitely.
+    // away. Until 2026-10-09 nothing reconciled seats on a schedule, so a lost
+    // sync sat until the next toggle, invite or billing-page visit. Now a
+    // person's first sighting each period reconciles, and the nightly run
+    // reconciles every org within two days of renewal
+    // (seat-reconcile.server.ts) -- the moment the seat line is invoiced.
     //
-    // The direction that matters: deactivating an employee and losing the sync
-    // means we go on charging for a seat the customer no longer has. The
+    // The direction that matters: losing a sync that should have LOWERED the
+    // line means we charge for a seat the customer did not use. The
     // opposite direction only costs us money, which is our problem rather
     // than theirs.
     let seats: SeatOutcome = { state: "unknown" };
@@ -90,8 +93,9 @@ export const setStaffActive = createServerFn({ method: "POST" })
     return { ok: true, seats };
   });
 
-// Reconcile the caller org's Stripe seat-overage quantity to its current active
-// employee count. Called after invite acceptance (a new employee just joined)
+// Reconcile the caller org's Stripe seat-overage quantity to the people who have
+// used their login this billing period (seat-rule.ts). Called after invite
+// acceptance (a new employee just joined, and is about to be seen)
 // so billing catches up without waiting for the next staff toggle. Best-effort:
 // returns { ok: true } even when there's nothing to sync.
 export const resyncMySeats = createServerFn({ method: "POST" })

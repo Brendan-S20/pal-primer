@@ -68,7 +68,17 @@ export interface SyncCallers {
       fields: QueuedExpenseFields & { receiptPath?: string | null };
     };
   }) => Promise<unknown>;
+  /** "This person used the app": a billing seat is anybody who used their
+   *  login this period (seat-rule.ts). Called once after a replay that landed
+   *  something, so a tech who worked all day in a dead zone is counted when
+   *  the work reaches the server. Optional: a caller without it simply does
+   *  not record one here (getMyOrg records the same sighting on its own). */
+  noteSeen?: () => Promise<unknown>;
 }
+
+/** A sighting is bookkeeping, not the tech's work: it gets a short deadline
+ *  and its failure is never reported as a failed sync. */
+export const SIGHTING_DEADLINE_MS = 10_000;
 
 async function runOne(action: PendingAction, callers: SyncCallers): Promise<void> {
   switch (action.kind) {
@@ -393,6 +403,13 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
     }
   } finally {
     running = false;
+  }
+  if (result.succeeded > 0 && callers.noteSeen) {
+    try {
+      await withDeadline(callers.noteSeen(), SIGHTING_DEADLINE_MS, "note sighting");
+    } catch (e) {
+      console.warn("recording the sighting after a replay failed", e);
+    }
   }
   const isVisitId = (id: string | undefined): id is string => typeof id === "string";
   result.deadLetteredVisitIds = [...deadLetteredVisits].filter(isVisitId);
