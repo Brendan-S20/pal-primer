@@ -13,6 +13,8 @@ import { pageTitle } from "@/lib/page-title";
 // localStorage session in any other tab.
 export const Route = createFileRoute("/impersonate")({
   ssr: false,
+  // No hydration timer for a client-only route; see _authenticated/route.tsx.
+  pendingMinMs: 0,
   head: () => ({
     meta: [
       { title: pageTitle("Starting impersonation…") },

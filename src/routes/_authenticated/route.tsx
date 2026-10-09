@@ -135,6 +135,16 @@ export const Route = createFileRoute("/_authenticated")({
   // URL and what a cold native launch paints while beforeLoad decides who
   // is signed in. See ShellPending.
   pendingComponent: ShellPending,
+  // No minimum. On hydration the router gives the first `ssr: false` match a
+  // timer of `pendingMinMs` (router-core ssr-client, setMatchForcePending),
+  // and when it fires it calls router.startTransition, whose setState belongs
+  // to a Transitioner that may not have committed yet: on a loaded machine
+  // the route chunks take longer than 400ms and React logs "Can't perform a
+  // React state update on a component that hasn't mounted yet". That was
+  // the QA list's intermittent /invoices and /tax-reports failure.
+  // Navigations keep the router default: this is the layout's own match.
+  // → tests/a-timer-that-beat-the-first-render.test.ts
+  pendingMinMs: 0,
 });
 
 function openPalette() {
