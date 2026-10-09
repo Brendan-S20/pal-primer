@@ -11,7 +11,7 @@
 import { expect, test } from "@playwright/test";
 
 import { pointTheBrowserAtTheLocalDatabase } from "./point-the-browser-at-the-local-database";
-import { e2eOrgId, serviceDb } from "./service-db";
+import { businessToday as sharedBusinessToday, e2eOrgId, serviceDb } from "./service-db";
 import { signIn } from "./sign-in";
 
 test.beforeEach(async ({ context }) => {
@@ -26,15 +26,8 @@ test.beforeEach(async ({ context }) => {
 // a local date put this spec on tomorrow for the hour after midnight Eastern:
 // the board completed one of today's visits and the count of tomorrow's never
 // moved (0 received, 1 expected, at 12:08 a.m. on 2026-10-02).
-async function businessToday(orgId: string) {
-  const { data, error } = await serviceDb()
-    .from("organizations")
-    .select("timezone")
-    .eq("id", orgId)
-    .single();
-  if (error) throw new Error(`reading the org's time zone: ${error.message}`);
-  return new Date().toLocaleDateString("en-CA", { timeZone: data.timezone ?? "America/Chicago" });
-}
+// The helper now lives in service-db.ts, shared with every spec that asks.
+const businessToday = (orgId: string) => sharedBusinessToday(serviceDb(), orgId);
 
 async function completedToday(orgId: string) {
   const db = serviceDb();

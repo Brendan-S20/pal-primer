@@ -270,7 +270,9 @@ extension RouteActivityAttributes.ContentState {
     }
 
     /// Start or Complete: opens My Day on the stop with that button in hand.
-    /// Never performs it.
+    /// On iOS 17 Start is drawn as a button that starts the stop instead
+    /// (StartStopIntent), and this is where it sends the tech when it cannot;
+    /// Complete opens the stop's completion photo when the visit needs one.
     public func actionURL(routeDate: String) -> URL? {
         guard !allDone, let visitId = visitId, let action = nextAction,
               RouteLinks.actions.contains(action), actionLabel != nil else { return nil }
