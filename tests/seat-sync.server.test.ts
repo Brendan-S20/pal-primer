@@ -132,7 +132,9 @@ describe("the changeover", () => {
     });
     // Then removed. No proration in either direction: no credit for the
     // prepaid period (owner's decision), and no charge.
-    expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", { proration_behavior: "none" });
+    expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", {
+      proration_behavior: "none",
+    });
     expect(h.stripe.subscriptions.update.mock.invocationCallOrder[0]).toBeLessThan(
       h.stripe.subscriptionItems.del.mock.invocationCallOrder[0],
     );
@@ -171,8 +173,14 @@ describe("the changeover", () => {
 
   it("a renewal invoice that already charged the new period in advance pushes the marker past it", async () => {
     const stripe = h.stripe as any;
-    const plan = await resolveSeatPlan(stripe, WITH_SEAT_LINE(), (await import("@/integrations/supabase/client.server")).supabaseAdmin);
-    const r = await prepareSeatBilling(stripe, WITH_SEAT_LINE(), plan!, { prepaidThrough: PERIOD_END + 100 });
+    const plan = await resolveSeatPlan(
+      stripe,
+      WITH_SEAT_LINE(),
+      (await import("@/integrations/supabase/client.server")).supabaseAdmin,
+    );
+    const r = await prepareSeatBilling(stripe, WITH_SEAT_LINE(), plan!, {
+      prepaidThrough: PERIOD_END + 100,
+    });
     expect(r.markedFrom).toBe(PERIOD_END + 100);
   });
 
@@ -182,7 +190,11 @@ describe("the changeover", () => {
       seat_billing: "arrears",
       seat_arrears_from: String(PERIOD_END + 999),
     });
-    const plan = await resolveSeatPlan(stripe, s, (await import("@/integrations/supabase/client.server")).supabaseAdmin);
+    const plan = await resolveSeatPlan(
+      stripe,
+      s,
+      (await import("@/integrations/supabase/client.server")).supabaseAdmin,
+    );
     const r = await prepareSeatBilling(stripe, s, plan!, { prepaidThrough: PERIOD_START });
     expect(r).toEqual({ markedFrom: PERIOD_END + 999, removed: 0, changed: false });
   });
@@ -208,7 +220,9 @@ describe("who is left alone", () => {
   it("the demo org, and any comped org, whatever its subscription id looks like", async () => {
     h.results.organizations = { data: { stripe_subscription_id: "sub_abc123456", slug: "demo" } };
     expect(await syncOrgSeatQuantity(ORG)).toEqual({ skipped: "demo_org" });
-    h.results.organizations = { data: { stripe_subscription_id: "sub_abc123456", is_comped: true } };
+    h.results.organizations = {
+      data: { stripe_subscription_id: "sub_abc123456", is_comped: true },
+    };
     expect(await syncOrgSeatQuantity(ORG)).toEqual({ skipped: "demo_org" });
     h.results.organizations = { data: { stripe_subscription_id: "sub_demo_seed" } };
     expect(await syncOrgSeatQuantity(ORG)).toEqual({ skipped: "no_subscription" });
@@ -222,7 +236,9 @@ describe("who is left alone", () => {
   });
 
   it("a canceled subscription", async () => {
-    h.stripe.subscriptions.retrieve.mockResolvedValue(sub([{ id: "si_base", price: "price_base" }], {}, "canceled"));
+    h.stripe.subscriptions.retrieve.mockResolvedValue(
+      sub([{ id: "si_base", price: "price_base" }], {}, "canceled"),
+    );
     expect(await syncOrgSeatQuantity(ORG)).toEqual({ skipped: "status_canceled" });
   });
 

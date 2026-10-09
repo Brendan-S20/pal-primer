@@ -905,8 +905,8 @@ function NextInvoice({
                       period it paid for stays paid. */}
                   {i.kind === "seat" && (
                     <p className="text-xs text-muted-foreground">
-                      Paid in advance for this period. From the next one, extra active employees
-                      are charged after each month closes.
+                      Paid in advance for this period. From the next one, extra active employees are
+                      charged after each month closes.
                     </p>
                   )}
                 </div>

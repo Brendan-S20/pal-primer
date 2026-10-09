@@ -37,8 +37,7 @@ import type Stripe from "stripe";
 // maintained. Runs with the service role and is best-effort at every call site.
 
 export type SeatSyncResult =
-  | { synced: true; quantity: number; changed: boolean }
-  | { skipped: string };
+  { synced: true; quantity: number; changed: boolean } | { skipped: string };
 
 const SUB_RE = /^sub_[A-Za-z0-9]{6,}/;
 
@@ -209,7 +208,8 @@ export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult
     return { skipped: "demo_org" };
   }
   const subId = (org as { stripe_subscription_id?: string | null } | null)?.stripe_subscription_id;
-  if (!subId || !SUB_RE.test(subId) || subId.includes("demo")) return { skipped: "no_subscription" };
+  if (!subId || !SUB_RE.test(subId) || subId.includes("demo"))
+    return { skipped: "no_subscription" };
 
   const stripe = await makeStripe(secret);
   const sub = await stripe.subscriptions.retrieve(subId, { expand: ["items.data.price"] });

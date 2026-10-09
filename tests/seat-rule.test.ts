@@ -98,7 +98,11 @@ describe("which periods are charged", () => {
   it("a yearly plan is charged month by month: three closed months, three charges", () => {
     // Anchored on Jan 9; the yearly invoice is next January, but the months
     // close every month and each is charged on its own.
-    const due = closedSeatPeriods({ anchor: ANCHOR, from: ANCHOR, until: at("2026-04-20T00:00:00Z") });
+    const due = closedSeatPeriods({
+      anchor: ANCHOR,
+      from: ANCHOR,
+      until: at("2026-04-20T00:00:00Z"),
+    });
     expect(due.map((p) => iso(p.start))).toEqual([
       "2026-01-09T15:00:00.000Z",
       "2026-02-09T15:00:00.000Z",
@@ -109,9 +113,11 @@ describe("which periods are charged", () => {
   it("a seasonal helper who only worked in March costs only March", () => {
     // The months are separate charges; a month nobody extra used charges 0.
     const used = new Map([[at("2026-03-09T15:00:00Z"), 4]]); // 4 people in March, 3 otherwise
-    const charges = closedSeatPeriods({ anchor: ANCHOR, from: ANCHOR, until: at("2026-04-20T00:00:00Z") }).map(
-      (p) => seatOverage(used.get(p.start) ?? 3, 3),
-    );
+    const charges = closedSeatPeriods({
+      anchor: ANCHOR,
+      from: ANCHOR,
+      until: at("2026-04-20T00:00:00Z"),
+    }).map((p) => seatOverage(used.get(p.start) ?? 3, 3));
     expect(charges).toEqual([0, 0, 1]);
   });
 
@@ -129,7 +135,12 @@ describe("which periods are charged", () => {
   it("a cancellation at period end charges that whole period, and nothing after", () => {
     const ended = at("2026-04-09T15:00:00Z");
     expect(
-      closedSeatPeriods({ anchor: ANCHOR, from: at("2026-03-09T15:00:00Z"), until: ended, endedAt: ended }),
+      closedSeatPeriods({
+        anchor: ANCHOR,
+        from: at("2026-03-09T15:00:00Z"),
+        until: ended,
+        endedAt: ended,
+      }),
     ).toEqual([{ start: at("2026-03-09T15:00:00Z"), end: ended }]);
   });
 
@@ -143,12 +154,22 @@ describe("which periods are charged", () => {
     expect(due.map((p) => iso(p.start))).toEqual(["2026-04-09T15:00:00.000Z"]);
     // A floor that falls mid-month skips that month entirely.
     expect(
-      closedSeatPeriods({ anchor: ANCHOR, from: at("2026-03-15T00:00:00Z"), until: at("2026-04-10T00:00:00Z") }),
+      closedSeatPeriods({
+        anchor: ANCHOR,
+        from: at("2026-03-15T00:00:00Z"),
+        until: at("2026-04-10T00:00:00Z"),
+      }),
     ).toEqual([]);
   });
 
   it("nothing when the floor is infinite (a subscription still on the old rule)", () => {
-    expect(closedSeatPeriods({ anchor: ANCHOR, from: Number.POSITIVE_INFINITY, until: at("2027-01-01T00:00:00Z") })).toEqual([]);
+    expect(
+      closedSeatPeriods({
+        anchor: ANCHOR,
+        from: Number.POSITIVE_INFINITY,
+        until: at("2027-01-01T00:00:00Z"),
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -156,17 +177,22 @@ describe("the invoice line", () => {
   it("is dated for the period it covers, in the business's time zone, last day inclusive", () => {
     const sep = { start: at("2026-09-01T05:00:00Z"), end: at("2026-10-01T05:00:00Z") };
     expect(seatPeriodLabel(sep, "America/Chicago")).toBe("Sep 1–30");
-    expect(seatPeriodLabel({ start: at("2026-09-09T15:00:00Z"), end: at("2026-10-09T15:00:00Z") })).toBe(
-      "Sep 9 – Oct 9",
-    );
     expect(
-      seatPeriodLabel({ start: at("2026-12-09T15:00:00Z"), end: at("2027-01-09T15:00:00Z") }, "UTC"),
+      seatPeriodLabel({ start: at("2026-09-09T15:00:00Z"), end: at("2026-10-09T15:00:00Z") }),
+    ).toBe("Sep 9 – Oct 9");
+    expect(
+      seatPeriodLabel(
+        { start: at("2026-12-09T15:00:00Z"), end: at("2027-01-09T15:00:00Z") },
+        "UTC",
+      ),
     ).toBe("Dec 9, 2026 – Jan 9, 2027");
   });
 
   it("says what it is, how many and at what price, and charges seats × price", () => {
     const sep = { start: at("2026-09-01T05:00:00Z"), end: at("2026-10-01T05:00:00Z") };
-    expect(seatChargeLine({ period: sep, seats: 2, unitAmountCents: 1000, timeZone: "America/Chicago" })).toEqual({
+    expect(
+      seatChargeLine({ period: sep, seats: 2, unitAmountCents: 1000, timeZone: "America/Chicago" }),
+    ).toEqual({
       description: "Extra active employees, Sep 1–30 (2 × $10.00)",
       amountCents: 2000,
     });
@@ -179,7 +205,9 @@ describe("the changeover marker", () => {
   });
 
   it("an old subscription's marker starts the new rule when its prepaid period ends", () => {
-    expect(arrearsFrom(changeoverMarker(at("2026-11-09T15:00:00Z")))).toBe(at("2026-11-09T15:00:00Z"));
+    expect(arrearsFrom(changeoverMarker(at("2026-11-09T15:00:00Z")))).toBe(
+      at("2026-11-09T15:00:00Z"),
+    );
   });
 
   it("a marker it cannot read is no marker -- never 'charge from the start'", () => {
@@ -203,7 +231,9 @@ describe("subscriptionPeriod", () => {
   it("is null rather than a guess when Stripe gave nothing usable", () => {
     expect(subscriptionPeriod(null)).toBeNull();
     expect(subscriptionPeriod({ items: { data: [{ current_period_end: P.end }] } })).toBeNull();
-    expect(subscriptionPeriod({ current_period_start: P.end, current_period_end: P.start })).toBeNull();
+    expect(
+      subscriptionPeriod({ current_period_start: P.end, current_period_end: P.start }),
+    ).toBeNull();
   });
 });
 

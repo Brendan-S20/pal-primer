@@ -20,12 +20,7 @@
 import type Stripe from "stripe";
 import { isDemoOrganization } from "@/lib/demo-org";
 import { makeStripe } from "@/lib/stripe-client.server";
-import {
-  arrearsFrom,
-  closedSeatPeriods,
-  seatPeriodAt,
-  type SeatPeriod,
-} from "@/lib/seat-rule";
+import { arrearsFrom, closedSeatPeriods, seatPeriodAt, type SeatPeriod } from "@/lib/seat-rule";
 import {
   prepareSeatBilling,
   recordSeatPeriod,
@@ -78,11 +73,7 @@ export function chargeFloor(args: {
 
 type Loaded = { ctx: SeatChargeContext; plan: SeatPlan } | { skipped: string };
 
-async function load(
-  stripe: Stripe,
-  admin: unknown,
-  sub: Stripe.Subscription,
-): Promise<Loaded> {
+async function load(stripe: Stripe, admin: unknown, sub: Stripe.Subscription): Promise<Loaded> {
   const customer = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   const { data } = await (admin as OrgsDb)
     .from("organizations")
@@ -120,7 +111,9 @@ async function admin(): Promise<unknown> {
 export function invoiceSubscriptionId(inv: unknown): string | null {
   const i = inv as {
     subscription?: string | { id: string } | null;
-    parent?: { subscription_details?: { subscription?: string | { id: string } | null } | null } | null;
+    parent?: {
+      subscription_details?: { subscription?: string | { id: string } | null } | null;
+    } | null;
   };
   const s = i.parent?.subscription_details?.subscription ?? i.subscription ?? null;
   if (!s) return null;
@@ -135,16 +128,18 @@ export function invoiceSubscriptionId(inv: unknown): string | null {
  */
 export function prepaidThroughOnInvoice(inv: unknown, seatPriceIds: Set<string>): number | null {
   const lines =
-    (inv as {
-      lines?: {
-        data?: Array<{
-          quantity?: number | null;
-          period?: { end?: number | null } | null;
-          price?: { id?: string } | string | null;
-          pricing?: { price_details?: { price?: string | { id: string } | null } | null } | null;
-        }>;
-      };
-    }).lines?.data ?? [];
+    (
+      inv as {
+        lines?: {
+          data?: Array<{
+            quantity?: number | null;
+            period?: { end?: number | null } | null;
+            price?: { id?: string } | string | null;
+            pricing?: { price_details?: { price?: string | { id: string } | null } | null } | null;
+          }>;
+        };
+      }
+    ).lines?.data ?? [];
   let through: number | null = null;
   for (const l of lines) {
     const raw = l.pricing?.price_details?.price ?? l.price ?? null;
@@ -156,9 +151,7 @@ export function prepaidThroughOnInvoice(inv: unknown, seatPriceIds: Set<string>)
   return through;
 }
 
-export type RenewalSummary =
-  | { skipped: string }
-  | { charged: SeatChargeOutcome[] };
+export type RenewalSummary = { skipped: string } | { charged: SeatChargeOutcome[] };
 
 /**
  * invoice.created. On a subscription's renewal, while the invoice is still a
@@ -278,7 +271,11 @@ async function sweepOne(
   now: number,
 ): Promise<SeatChargeOutcome[] | { skipped: string }> {
   const sub = await stripe.subscriptions.retrieve(subId, { expand: ["items.data.price"] });
-  if (sub.status === "canceled" || sub.status === "incomplete_expired" || sub.status === "incomplete") {
+  if (
+    sub.status === "canceled" ||
+    sub.status === "incomplete_expired" ||
+    sub.status === "incomplete"
+  ) {
     return { skipped: `status_${sub.status}` };
   }
   const loaded = await load(stripe, db, sub);
@@ -414,7 +411,11 @@ async function retryUnfinishedCharges(
       else if (o.status === "failed") summary.failed++;
     } catch (e) {
       summary.failed++;
-      console.error("[nightly] seat charge retry failed", row.stripe_subscription_id, (e as Error).message);
+      console.error(
+        "[nightly] seat charge retry failed",
+        row.stripe_subscription_id,
+        (e as Error).message,
+      );
     }
   }
 }
@@ -423,7 +424,10 @@ type RetryDb = {
   from: (t: "seat_charges") => {
     select: (c: string) => {
       or: (f: string) => {
-        lt: (k: string, v: number) => { limit: (n: number) => PromiseLike<{ data: unknown[] | null }> };
+        lt: (
+          k: string,
+          v: number,
+        ) => { limit: (n: number) => PromiseLike<{ data: unknown[] | null }> };
       };
     };
   };

@@ -27,7 +27,8 @@ import { seatChargeLine, seatOverage, periodBoundaryIso, type SeatPeriod } from 
 import { billableSeatsBetween, type SeatPlan } from "@/lib/seat-sync.server";
 
 export type SeatChargeReason = "renewal" | "period_close" | "cancellation";
-export type SeatChargeTarget = { kind: "renewal_invoice"; invoiceId: string } | { kind: "own_invoice" };
+export type SeatChargeTarget =
+  { kind: "renewal_invoice"; invoiceId: string } | { kind: "own_invoice" };
 
 export type SeatChargeOutcome =
   | {
@@ -145,7 +146,12 @@ export async function chargeSeatPeriod(
       unit_amount_cents: plan.unitAmountCents,
     };
     if (seats === 0 || plan.unitAmountCents <= 0) {
-      await mark(admin, claim.id, { ...counts, amount_cents: 0, status: "nothing_to_bill", billed_at: new Date().toISOString() });
+      await mark(admin, claim.id, {
+        ...counts,
+        amount_cents: 0,
+        status: "nothing_to_bill",
+        billed_at: new Date().toISOString(),
+      });
       return { status: "nothing_to_bill", period, seen };
     }
 
@@ -170,7 +176,14 @@ export async function chargeSeatPeriod(
         stripe_invoice_id: invoiceId,
         billed_at: new Date().toISOString(),
       });
-      return { status: "billed", period, seats, amountCents: line.amountCents, invoiceItemId: item.id, invoiceId };
+      return {
+        status: "billed",
+        period,
+        seats,
+        amountCents: line.amountCents,
+        invoiceItemId: item.id,
+        invoiceId,
+      };
     };
 
     if (claim.retry) {
@@ -206,7 +219,10 @@ export async function chargeSeatPeriod(
       } catch (e) {
         // The draft finalized before we got to it, most likely. The period is
         // still ours to charge, on an invoice of its own.
-        console.warn("seat line could not go on the renewal invoice; invoicing it alone", (e as Error).message);
+        console.warn(
+          "seat line could not go on the renewal invoice; invoicing it alone",
+          (e as Error).message,
+        );
       }
     }
 

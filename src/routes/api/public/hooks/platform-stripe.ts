@@ -241,10 +241,14 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               // invoice of its own if this did not.
               if (event.type === "invoice.created" && orgId) {
                 try {
-                  const { chargeSeatsOnRenewalInvoice } = await import("@/lib/seat-reconcile.server");
+                  const { chargeSeatsOnRenewalInvoice } =
+                    await import("@/lib/seat-reconcile.server");
                   await chargeSeatsOnRenewalInvoice(inv);
                 } catch (e) {
-                  console.error(`platform invoice ${inv.id}: seat charge failed`, (e as Error).message);
+                  console.error(
+                    `platform invoice ${inv.id}: seat charge failed`,
+                    (e as Error).message,
+                  );
                 }
               }
 
@@ -333,7 +337,10 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   const { chargeFinalSeatPeriods } = await import("@/lib/seat-reconcile.server");
                   await chargeFinalSeatPeriods(sub);
                 } catch (e) {
-                  console.error(`subscription ${sub.id}: final seat charge failed`, (e as Error).message);
+                  console.error(
+                    `subscription ${sub.id}: final seat charge failed`,
+                    (e as Error).message,
+                  );
                 }
               }
               if (orgId) {

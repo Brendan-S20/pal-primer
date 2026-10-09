@@ -463,9 +463,8 @@ export function EmbeddedPlanCheckout({
               {ACTIVE_EMPLOYEE_DEFINITION}
             </>
           ) : null}{" "}
-          Both are billed on your next invoice after the month they are used in, never in
-          advance. Cancel anytime in Settings → Plan &amp; billing.
-          Payments are processed securely.
+          Both are billed on your next invoice after the month they are used in, never in advance.
+          Cancel anytime in Settings → Plan &amp; billing. Payments are processed securely.
         </p>
         <div className="mt-4">
           <Elements

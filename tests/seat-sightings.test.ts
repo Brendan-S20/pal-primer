@@ -87,7 +87,9 @@ describe("noteStaffSeen", () => {
     await noteStaffSeen(client({ stamped: true, organization_id: "org-1" }), "user-1");
     await settle();
     expect(h.sync).not.toHaveBeenCalled();
-    expect(read("src/lib/seat-sightings.server.ts")).not.toMatch(/seat-sync|makeStripe|from "stripe"/);
+    expect(read("src/lib/seat-sightings.server.ts")).not.toMatch(
+      /seat-sync|makeStripe|from "stripe"/,
+    );
   });
 });
 

@@ -48,7 +48,10 @@ const admin = {
         return Promise.resolve({ error: null });
       },
       then: (res: any, rej: any) =>
-        Promise.resolve(table === "platform_plans" ? { data: h.plans } : { data: [] }).then(res, rej),
+        Promise.resolve(table === "platform_plans" ? { data: h.plans } : { data: [] }).then(
+          res,
+          rej,
+        ),
     };
     return q;
   },
@@ -69,7 +72,12 @@ import {
 
 const at = (iso: string) => Date.parse(iso) / 1000;
 const SEP = { start: at("2026-09-01T05:00:00Z"), end: at("2026-10-01T05:00:00Z") };
-const PLAN = { slug: "launch", includedSeats: 3, unitAmountCents: 1000, seatPriceIds: new Set(["price_seat"]) };
+const PLAN = {
+  slug: "launch",
+  includedSeats: 3,
+  unitAmountCents: 1000,
+  seatPriceIds: new Set(["price_seat"]),
+};
 
 function subscription(over: Record<string, unknown> = {}) {
   return {
@@ -111,7 +119,8 @@ function ctx(over: Partial<SeatChargeContext> = {}): SeatChargeContext {
 
 beforeEach(() => {
   process.env.STRIPE_SECRET_KEY = "sk_test_seats";
-  for (const group of Object.values(h.stripe)) for (const f of Object.values(group)) (f as any).mockReset();
+  for (const group of Object.values(h.stripe))
+    for (const f of Object.values(group)) (f as any).mockReset();
   h.claim.mockReset();
   h.count.mockReset();
   h.updates.length = 0;
@@ -128,18 +137,32 @@ beforeEach(() => {
       stripe_annual_seat_price_id: null,
     },
   ];
-  h.claim.mockReturnValue({ data: { claimed: true, id: "charge-1", status: "claimed", retry: false }, error: null });
+  h.claim.mockReturnValue({
+    data: { claimed: true, id: "charge-1", status: "claimed", retry: false },
+    error: null,
+  });
   h.count.mockReturnValue({ data: 5, error: null });
   h.stripe.prices.list.mockResolvedValue({ data: [], has_more: false });
-  h.stripe.invoiceItems.create.mockImplementation(async (p: any) => ({ id: "ii_1", invoice: p.invoice ?? null }));
+  h.stripe.invoiceItems.create.mockImplementation(async (p: any) => ({
+    id: "ii_1",
+    invoice: p.invoice ?? null,
+  }));
   h.stripe.invoices.create.mockResolvedValue({ id: "in_own" });
   h.stripe.invoiceItems.list.mockResolvedValue({ data: [] });
 });
 
 describe("one period, charged once", () => {
   it("puts its own line on the renewal invoice, dated for the period it covers", async () => {
-    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", { kind: "renewal_invoice", invoiceId: "in_renewal" });
-    expect(o).toMatchObject({ status: "billed", seats: 2, amountCents: 2000, invoiceId: "in_renewal" });
+    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", {
+      kind: "renewal_invoice",
+      invoiceId: "in_renewal",
+    });
+    expect(o).toMatchObject({
+      status: "billed",
+      seats: 2,
+      amountCents: 2000,
+      invoiceId: "in_renewal",
+    });
     expect(h.stripe.invoiceItems.create).toHaveBeenCalledWith(
       expect.objectContaining({
         customer: "cus_abc123456",
@@ -164,7 +187,10 @@ describe("one period, charged once", () => {
   });
 
   it("counts the people seen INSIDE the period, not since it began", async () => {
-    await chargeSeatPeriod(ctx(), SEP, "renewal", { kind: "renewal_invoice", invoiceId: "in_renewal" });
+    await chargeSeatPeriod(ctx(), SEP, "renewal", {
+      kind: "renewal_invoice",
+      invoiceId: "in_renewal",
+    });
     expect(h.count).toHaveBeenCalledWith({
       _org_id: "org-1",
       _from: new Date(SEP.start * 1000).toISOString(),
@@ -173,7 +199,10 @@ describe("one period, charged once", () => {
   });
 
   it("calls Stripe not at all for a period somebody else claimed or already charged", async () => {
-    h.claim.mockReturnValue({ data: { claimed: false, id: "charge-1", status: "billed", retry: false }, error: null });
+    h.claim.mockReturnValue({
+      data: { claimed: false, id: "charge-1", status: "billed", retry: false },
+      error: null,
+    });
     const o = await chargeSeatPeriod(ctx(), SEP, "period_close", { kind: "own_invoice" });
     expect(o).toEqual({ status: "not_claimed", period: SEP, why: "billed" });
     expect(h.count).not.toHaveBeenCalled();
@@ -183,7 +212,10 @@ describe("one period, charged once", () => {
 
   it("nobody past the allowance used it: recorded, and nothing sent to Stripe", async () => {
     h.count.mockReturnValue({ data: 3, error: null });
-    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", { kind: "renewal_invoice", invoiceId: "in_renewal" });
+    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", {
+      kind: "renewal_invoice",
+      invoiceId: "in_renewal",
+    });
     expect(o).toEqual({ status: "nothing_to_bill", period: SEP, seen: 3 });
     expect(h.stripe.invoiceItems.create).not.toHaveBeenCalled();
     expect(h.updates.at(-1)?.row).toMatchObject({ status: "nothing_to_bill", amount_cents: 0 });
@@ -205,7 +237,9 @@ describe("one period, charged once", () => {
       expect.objectContaining({ invoice: "in_own", amount: 2000 }),
       expect.anything(),
     );
-    expect(h.stripe.invoices.finalizeInvoice).toHaveBeenCalledWith("in_own", { auto_advance: true });
+    expect(h.stripe.invoices.finalizeInvoice).toHaveBeenCalledWith("in_own", {
+      auto_advance: true,
+    });
   });
 
   it("a renewal that finalized before we got to it: the period goes on an invoice of its own", async () => {
@@ -213,21 +247,35 @@ describe("one period, charged once", () => {
     h.stripe.invoiceItems.create.mockImplementationOnce(async () => {
       throw new Error("You can only add invoice items to draft invoices.");
     });
-    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", { kind: "renewal_invoice", invoiceId: "in_renewal" });
+    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", {
+      kind: "renewal_invoice",
+      invoiceId: "in_renewal",
+    });
     expect(o).toMatchObject({ status: "billed", invoiceId: "in_own" });
     expect(h.stripe.invoices.create).toHaveBeenCalledTimes(1);
   });
 
   it("a retry first looks for the line a dead run already made, and makes no second one", async () => {
-    h.claim.mockReturnValue({ data: { claimed: true, id: "charge-1", status: "claimed", retry: true }, error: null });
+    h.claim.mockReturnValue({
+      data: { claimed: true, id: "charge-1", status: "claimed", retry: true },
+      error: null,
+    });
     h.stripe.invoiceItems.list.mockResolvedValue({
       data: [
         { id: "ii_other", metadata: { seat_charge_key: "something-else" } },
-        { id: "ii_made", invoice: "in_renewal", metadata: { seat_charge_key: seatChargeKey("sub_abc123456", SEP) } },
+        {
+          id: "ii_made",
+          invoice: "in_renewal",
+          metadata: { seat_charge_key: seatChargeKey("sub_abc123456", SEP) },
+        },
       ],
     });
     const o = await chargeSeatPeriod(ctx(), SEP, "period_close", { kind: "own_invoice" });
-    expect(o).toMatchObject({ status: "billed", invoiceItemId: "ii_made", invoiceId: "in_renewal" });
+    expect(o).toMatchObject({
+      status: "billed",
+      invoiceItemId: "ii_made",
+      invoiceId: "in_renewal",
+    });
     expect(h.stripe.invoiceItems.create).not.toHaveBeenCalled();
     expect(h.stripe.invoices.create).not.toHaveBeenCalled();
   });
@@ -241,7 +289,10 @@ describe("one period, charged once", () => {
 
   it("a count that could not be read is a failure, not zero", async () => {
     h.count.mockReturnValue({ data: null, error: { message: "boom" } });
-    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", { kind: "renewal_invoice", invoiceId: "in_renewal" });
+    const o = await chargeSeatPeriod(ctx(), SEP, "renewal", {
+      kind: "renewal_invoice",
+      invoiceId: "in_renewal",
+    });
     expect(o.status).toBe("failed");
     expect(h.updates.at(-1)?.row.status).toBe("failed");
   });
@@ -259,10 +310,14 @@ describe("the renewal webhook", () => {
     }) as any;
 
   it("only a subscription's own renewal draft", async () => {
-    expect(await chargeSeatsOnRenewalInvoice(draft({ billing_reason: "subscription_update" }))).toEqual({
+    expect(
+      await chargeSeatsOnRenewalInvoice(draft({ billing_reason: "subscription_update" })),
+    ).toEqual({
       skipped: "not_a_renewal",
     });
-    expect(await chargeSeatsOnRenewalInvoice(draft({ status: "open" }))).toEqual({ skipped: "not_a_draft" });
+    expect(await chargeSeatsOnRenewalInvoice(draft({ status: "open" }))).toEqual({
+      skipped: "not_a_draft",
+    });
     expect(h.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
   });
 
@@ -271,7 +326,10 @@ describe("the renewal webhook", () => {
     vi.setSystemTime(new Date("2026-10-01T05:00:30Z"));
     try {
       h.stripe.subscriptions.retrieve.mockResolvedValue(
-        subscription({ start_date: at("2026-09-01T05:00:00Z"), billing_cycle_anchor: at("2026-09-01T05:00:00Z") }),
+        subscription({
+          start_date: at("2026-09-01T05:00:00Z"),
+          billing_cycle_anchor: at("2026-09-01T05:00:00Z"),
+        }),
       );
       const r = await chargeSeatsOnRenewalInvoice(draft());
       expect("charged" in r && r.charged.map((c) => c.status)).toEqual(["billed"]);
@@ -310,8 +368,16 @@ describe("the renewal webhook", () => {
     const inv = {
       lines: {
         data: [
-          { quantity: 1, period: { end: 200 }, pricing: { price_details: { price: "price_base" } } },
-          { quantity: 3, period: { end: 300 }, pricing: { price_details: { price: "price_seat" } } },
+          {
+            quantity: 1,
+            period: { end: 200 },
+            pricing: { price_details: { price: "price_base" } },
+          },
+          {
+            quantity: 3,
+            period: { end: 300 },
+            pricing: { price_details: { price: "price_seat" } },
+          },
           { quantity: 0, period: { end: 900 }, price: { id: "price_seat" } },
         ],
       },
@@ -325,17 +391,29 @@ describe("a cancellation", () => {
   it("charges the final period once, from its start to the moment it ended", async () => {
     const ended = at("2026-10-20T12:00:00Z");
     h.stripe.subscriptions.retrieve.mockResolvedValue(
-      subscription({ status: "canceled", ended_at: ended, billing_cycle_anchor: at("2026-01-01T05:00:00Z") }),
+      subscription({
+        status: "canceled",
+        ended_at: ended,
+        billing_cycle_anchor: at("2026-01-01T05:00:00Z"),
+      }),
     );
     // Earlier months were charged already; the claim says so.
     h.claim.mockImplementation((args: any) =>
       args._period_start === "2026-10-01T05:00:00.000Z"
-        ? { data: { claimed: true, id: "charge-final", status: "claimed", retry: false }, error: null }
+        ? {
+            data: { claimed: true, id: "charge-final", status: "claimed", retry: false },
+            error: null,
+          }
         : { data: { claimed: false, id: "x", status: "billed", retry: false }, error: null },
     );
     const r = await chargeFinalSeatPeriods(subscription({ status: "canceled", ended_at: ended }));
-    const final = h.claim.mock.calls.map((c) => c[0]).find((a: any) => a._period_start === "2026-10-01T05:00:00.000Z");
-    expect(final).toMatchObject({ _period_end: "2026-10-20T12:00:00.000Z", _reason: "cancellation" });
+    const final = h.claim.mock.calls
+      .map((c) => c[0])
+      .find((a: any) => a._period_start === "2026-10-01T05:00:00.000Z");
+    expect(final).toMatchObject({
+      _period_end: "2026-10-20T12:00:00.000Z",
+      _reason: "cancellation",
+    });
     expect("charged" in r && r.charged.filter((c) => c.status === "billed")).toHaveLength(1);
     expect(h.stripe.invoices.create).toHaveBeenCalledTimes(1);
   });
@@ -345,7 +423,9 @@ describe("a cancellation", () => {
     h.stripe.subscriptions.retrieve.mockResolvedValue(
       subscription({ status: "canceled", ended_at: ended, metadata: {} }),
     );
-    const r = await chargeFinalSeatPeriods(subscription({ status: "canceled", ended_at: ended, metadata: {} }));
+    const r = await chargeFinalSeatPeriods(
+      subscription({ status: "canceled", ended_at: ended, metadata: {} }),
+    );
     expect(r).toEqual({ charged: [] });
     expect(h.claim).not.toHaveBeenCalled();
   });

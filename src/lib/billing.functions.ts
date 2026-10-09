@@ -141,7 +141,11 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     let seats = 0;
     try {
       const { billableSeatsBetween } = await import("@/lib/seat-sync.server");
-      seats = await billableSeatsBetween(supabaseAdmin, orgId, Date.now() / 1000 - 30 * 24 * 60 * 60);
+      seats = await billableSeatsBetween(
+        supabaseAdmin,
+        orgId,
+        Date.now() / 1000 - 30 * 24 * 60 * 60,
+      );
     } catch (e) {
       // A suggestion, not a charge: the smallest plan is a fine default.
       console.error("seat count for the plan suggestion failed", (e as Error).message);
@@ -914,7 +918,8 @@ async function seatsThisPeriod(
 ) {
   try {
     const { resolveSeatPlan, billableSeatsBetween } = await import("@/lib/seat-sync.server");
-    const { arrearsFrom, seatOverage, seatPeriodAt, seatPeriodLabel } = await import("@/lib/seat-rule");
+    const { arrearsFrom, seatOverage, seatPeriodAt, seatPeriodLabel } =
+      await import("@/lib/seat-rule");
     if (typeof sub.billing_cycle_anchor !== "number") return null;
     const plan = await resolveSeatPlan(stripe, sub, admin);
     if (!plan) return null;
