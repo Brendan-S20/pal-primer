@@ -265,6 +265,7 @@ function BillingPage() {
                 : data.monthlyEstimateCents != null
                   ? `${formatUsd(data.monthlyEstimateCents)}/month`
                   : "No charge"}
+              {data.teamSizeRange && ` · For teams of ${data.teamSizeRange}`}
               {data.includedSeats != null &&
                 ` · Includes ${data.includedSeats} employee${data.includedSeats === 1 ? "" : "s"}`}
             </p>
