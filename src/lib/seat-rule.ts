@@ -86,7 +86,9 @@ type MaybeSubscription = {
 export function subscriptionPeriod(sub: unknown): SubscriptionPeriod | null {
   const s = (sub ?? {}) as MaybeSubscription;
   if (isPositive(s.current_period_start) && isPositive(s.current_period_end)) {
-    return { start: s.current_period_start, end: s.current_period_end };
+    return s.current_period_end > s.current_period_start
+      ? { start: s.current_period_start, end: s.current_period_end }
+      : null;
   }
   let best: SubscriptionPeriod | null = null;
   for (const i of s.items?.data ?? []) {

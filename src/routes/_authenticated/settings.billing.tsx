@@ -39,6 +39,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { appUrl } from "@/lib/app-origin";
 import { titleHead } from "@/lib/page-title";
+import { ACTIVE_EMPLOYEE_DEFINITION } from "@/lib/seat-rule";
 
 // Moved into Settings (punch list #9): this is HoundStack's own subscription
 // (the CRM plan), which is configuration - the tenant-facing Stripe money view
@@ -266,8 +267,11 @@ function BillingPage() {
                   ? `${formatUsd(data.monthlyEstimateCents)}/month`
                   : "No charge"}
               {data.includedSeats != null &&
-                ` · Includes ${data.includedSeats} employee${data.includedSeats === 1 ? "" : "s"}`}
+                ` · Includes ${data.includedSeats} active employee${data.includedSeats === 1 ? "" : "s"}`}
             </p>
+            {data.includedSeats != null && (
+              <p className="mt-1 text-xs text-muted-foreground">{ACTIVE_EMPLOYEE_DEFINITION}</p>
+            )}
             {data.isPaidTier && periodEnd && (
               <p className="mt-1 text-sm text-muted-foreground">
                 {cancelPending
@@ -880,6 +884,14 @@ function NextInvoice({
                   </div>
                   {i.kind !== "seat" && i.description && (
                     <p className="text-xs text-muted-foreground">{i.description}</p>
+                  )}
+                  {/* Billed in arrears (seat-rule.ts): the number grows as people
+                      use the app this period and is charged on this invoice. */}
+                  {i.kind === "seat" && (
+                    <p className="text-xs text-muted-foreground">
+                      Everyone past your plan&apos;s allowance who has used their login this
+                      billing period so far.
+                    </p>
                   )}
                 </div>
                 <p className="whitespace-nowrap text-right text-sm">{lineAmount(i)}</p>

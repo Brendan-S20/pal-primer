@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { saasPurchaseAllowed, BILLING_MANAGED_OUTSIDE_APP } from "@/lib/app-store-billing";
 import { platform } from "@/lib/native";
+import { ACTIVE_EMPLOYEE_DEFINITION } from "@/lib/seat-rule";
 import {
   listPlatformPlans,
   createPlanSubscription,
@@ -222,7 +223,7 @@ export function PlanPicker({
                   spend on. The charge itself is still disclosed where the money
                   is decided, in the paragraph above the card field below. */}
               <p className="mt-1 text-xs text-muted-foreground">
-                Includes {p.included_seats} employee{p.included_seats === 1 ? "" : "s"}
+                Includes {p.included_seats} active employee{p.included_seats === 1 ? "" : "s"}
                 {p.price_per_seat_cents
                   ? isAnnualCard
                     ? ` · ${money(p.price_per_seat_cents * 10)}/yr per extra`
@@ -261,6 +262,12 @@ export function PlanPicker({
           );
         })}
       </div>
+      {/* What "active employee" means on the cards above. The owner's rule
+          (2026-10-09), in the one sentence seat-rule.ts keeps for every
+          screen that talks about seats. */}
+      <p className="text-xs text-muted-foreground">
+        {ACTIVE_EMPLOYEE_DEFINITION} Anyone on your team who didn&apos;t use it costs nothing.
+      </p>
     </div>
   );
 }
@@ -444,12 +451,12 @@ export function EmbeddedPlanCheckout({
           {session.includedSeats != null && session.seatOverageCents ? (
             <>
               {" "}
-              {session.aiActionsIncluded != null ? "Employees past " : "This plan includes "}
+              {session.aiActionsIncluded != null ? "Active employees past " : "This plan includes "}
               {session.aiActionsIncluded != null
                 ? `the first ${session.includedSeats}`
-                : `${session.includedSeats} employees; each extra`}{" "}
+                : `${session.includedSeats} active employees; each extra`}{" "}
               {session.aiActionsIncluded != null ? "are" : "is"} {money(session.seatOverageCents)}{" "}
-              each a month.
+              each a month. {ACTIVE_EMPLOYEE_DEFINITION}
             </>
           ) : null}{" "}
           Both are billed on your next invoice. Cancel anytime in Settings → Plan &amp; billing.

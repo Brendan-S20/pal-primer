@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Shared spy/state holders (hoisted so the vi.mock factories can see them).
 const h = vi.hoisted(() => ({
   stripe: {
-    subscriptions: { retrieve: vi.fn() },
+    subscriptions: { retrieve: vi.fn(), update: vi.fn() },
     subscriptionItems: { update: vi.fn(), create: vi.fn(), del: vi.fn() },
     prices: { list: vi.fn() },
   },
   results: {} as Record<string, any>,
+  rpc: vi.fn(),
+  upserts: [] as Array<{ table: string; row: any }>,
 }));
 
 vi.mock("stripe", () => ({
@@ -27,22 +29,50 @@ vi.mock("@/integrations/supabase/client.server", () => {
       or: () => p,
       not: () => p,
       maybeSingle: () => Promise.resolve(h.results[table]),
+      upsert: (row: any) => {
+        h.upserts.push({ table, row });
+        return Promise.resolve({ error: null });
+      },
       then: (res: any, rej: any) => Promise.resolve(h.results[table]).then(res, rej),
     };
     return p;
   }
-  return { supabaseAdmin: { from: (t: string) => chain(t) } };
+  return { supabaseAdmin: { from: (t: string) => chain(t), rpc: h.rpc } };
 });
 
 import { syncOrgSeatQuantity } from "@/lib/seat-sync.server";
 
 const ORG = "342d4d1e-56f7-4b6e-ad40-524d370e1a36";
 
-function sub(items: { id: string; price: string; quantity?: number }[], status = "active") {
+// The current billing period, on the items, as API versions since 2025 put it.
+const PERIOD_START = 1_759_968_000; // 2025-10-09T00:00:00Z
+const PERIOD_END = 1_762_646_400; // 2025-11-09T00:00:00Z
+// A subscription created by this code: seats in arrears from the first period.
+const ARREARS = { seat_billing: "arrears", seat_arrears_from: "0" };
+
+function sub(
+  items: { id: string; price: string; quantity?: number }[],
+  status = "active",
+  metadata: Record<string, string> = ARREARS,
+) {
   return {
     status,
-    items: { data: items.map((i) => ({ id: i.id, price: { id: i.price }, quantity: i.quantity })) },
+    metadata,
+    items: {
+      data: items.map((i) => ({
+        id: i.id,
+        price: { id: i.price },
+        quantity: i.quantity,
+        current_period_start: PERIOD_START,
+        current_period_end: PERIOD_END,
+      })),
+    },
   };
+}
+
+/** People who used their login this period, as billable_seat_count answers. */
+function seen(n: number) {
+  h.rpc.mockResolvedValue({ data: n, error: null });
 }
 
 beforeEach(() => {
@@ -53,6 +83,9 @@ beforeEach(() => {
   h.stripe.subscriptionItems.create.mockReset();
   h.stripe.subscriptionItems.del.mockReset();
   h.stripe.prices.list.mockReset();
+  h.stripe.subscriptions.update.mockReset();
+  h.rpc.mockReset();
+  h.upserts.length = 0;
   // The live account, before anything was named: it holds the prices the
   // database points at, and none of them carry a lookup key yet. These cases
   // therefore exercise the stored-id fallback — exactly what shipped before.
@@ -77,7 +110,7 @@ beforeEach(() => {
       },
     ],
   };
-  h.results.staff = { count: 13 };
+  seen(13);
   h.stripe.subscriptions.retrieve.mockResolvedValue(
     sub([
       { id: "si_base", price: "price_base", quantity: 1 },
@@ -91,17 +124,17 @@ afterEach(() => {
 });
 
 describe("syncOrgSeatQuantity", () => {
-  it("raises the seat quantity to the current overage", async () => {
+  it("raises the seat quantity to the people seen this period past the allowance", async () => {
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ synced: true, quantity: 3, changed: true });
     expect(h.stripe.subscriptionItems.update).toHaveBeenCalledWith("si_seat", {
       quantity: 3,
-      proration_behavior: "create_prorations",
+      proration_behavior: "none",
     });
   });
 
   it("creates the seat item when the subscription doesn't have one yet", async () => {
-    h.results.staff = { count: 12 };
+    seen(12);
     h.stripe.subscriptions.retrieve.mockResolvedValue(
       sub([{ id: "si_base", price: "price_base", quantity: 1 }]),
     );
@@ -111,16 +144,16 @@ describe("syncOrgSeatQuantity", () => {
       subscription: "sub_abc123456",
       price: "price_seat",
       quantity: 2,
-      proration_behavior: "create_prorations",
+      proration_behavior: "none",
     });
   });
 
   it("removes the seat item when the org drops to/under included seats", async () => {
-    h.results.staff = { count: 8 };
+    seen(8);
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ synced: true, quantity: 0, changed: true });
     expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", {
-      proration_behavior: "create_prorations",
+      proration_behavior: "none",
     });
   });
 
@@ -193,7 +226,7 @@ describe("syncOrgSeatQuantity", () => {
       subscription: "sub_abc123456",
       price: "price_sandbox_seat",
       quantity: 3,
-      proration_behavior: "create_prorations",
+      proration_behavior: "none",
     });
   });
 
@@ -270,7 +303,7 @@ describe("syncOrgSeatQuantity", () => {
     expect(r).toEqual({ synced: true, quantity: 3, changed: true });
     expect(h.stripe.subscriptionItems.update).toHaveBeenCalledWith("si_seat", {
       quantity: 3,
-      proration_behavior: "create_prorations",
+      proration_behavior: "none",
     });
   });
 
@@ -279,7 +312,7 @@ describe("syncOrgSeatQuantity", () => {
     // id belongs to a different account, so the only options are "say so" and
     // "send Stripe an id it rejects". A named skip is the honest one.
     h.stripe.prices.list.mockResolvedValue({ data: [], has_more: false });
-    h.results.staff = { count: 12 };
+    seen(12);
     h.stripe.subscriptions.retrieve.mockResolvedValue(
       sub([{ id: "si_base", price: "price_base", quantity: 1 }]),
     );
@@ -292,5 +325,134 @@ describe("syncOrgSeatQuantity", () => {
     delete process.env.STRIPE_SECRET_KEY;
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ skipped: "stripe_not_configured" });
+  });
+});
+
+// ── A seat is somebody who used their login this period (2026-10-09) ───────
+describe("what the seat line is told", () => {
+  it("counts the people seen since THIS Stripe period began, not the staff list", async () => {
+    await syncOrgSeatQuantity(ORG);
+    expect(h.rpc).toHaveBeenCalledWith("billable_seat_count", {
+      _org_id: ORG,
+      _since: new Date(PERIOD_START * 1000).toISOString(),
+    });
+  });
+
+  it("never prorates, in either direction: the renewal bills the period whole", async () => {
+    seen(14);
+    await syncOrgSeatQuantity(ORG);
+    seen(8);
+    await syncOrgSeatQuantity(ORG);
+    const sends = [
+      ...h.stripe.subscriptionItems.update.mock.calls.map((c) => c[1]),
+      ...h.stripe.subscriptionItems.create.mock.calls.map((c) => c[0]),
+      ...h.stripe.subscriptionItems.del.mock.calls.map((c) => c[1]),
+    ];
+    expect(sends.length).toBeGreaterThan(0);
+    for (const s of sends) expect(s.proration_behavior).toBe("none");
+  });
+
+  it("nobody past the allowance used it: no seat line, so the renewal bills no seats", async () => {
+    // Thirteen people on the team, two of whom opened the app this period.
+    seen(2);
+    const r = await syncOrgSeatQuantity(ORG);
+    expect(r).toEqual({ synced: true, quantity: 0, changed: true });
+    expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", { proration_behavior: "none" });
+  });
+
+  it("records which period it reconciled, so a sighting knows when to ask again", async () => {
+    await syncOrgSeatQuantity(ORG);
+    expect(h.upserts).toEqual([
+      {
+        table: "org_seat_periods",
+        row: expect.objectContaining({
+          organization_id: ORG,
+          period_start: new Date(PERIOD_START * 1000).toISOString(),
+          period_end: new Date(PERIOD_END * 1000).toISOString(),
+          billable_seats: 13,
+          seat_quantity: 3,
+        }),
+      },
+    ]);
+  });
+
+  it("refuses to guess when the count could not be read", async () => {
+    // Zero would delete the seat line and the renewal would bill nobody.
+    h.rpc.mockResolvedValue({ data: null, error: { message: "boom" } });
+    await expect(syncOrgSeatQuantity(ORG)).rejects.toThrow(/billable_seat_count/);
+    expect(h.stripe.subscriptionItems.del).not.toHaveBeenCalled();
+    expect(h.stripe.subscriptionItems.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses to guess when Stripe gave no period", async () => {
+    h.stripe.subscriptions.retrieve.mockResolvedValue({
+      status: "active",
+      metadata: ARREARS,
+      items: { data: [{ id: "si_base", price: { id: "price_base" }, quantity: 1 }] },
+    });
+    const r = await syncOrgSeatQuantity(ORG);
+    expect(r).toEqual({ skipped: "no_period" });
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("never bills the demo org, whatever its subscription id looks like", async () => {
+    h.results.organizations = { data: { stripe_subscription_id: "sub_abc123456", slug: "demo" } };
+    expect(await syncOrgSeatQuantity(ORG)).toEqual({ skipped: "demo_org" });
+    h.results.organizations = { data: { stripe_subscription_id: "sub_abc123456", is_comped: true } };
+    expect(await syncOrgSeatQuantity(ORG)).toEqual({ skipped: "demo_org" });
+    expect(h.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+});
+
+describe("the changeover from seats billed in advance", () => {
+  it("a subscription from before this change: its period was prepaid, so nothing more is billed for it", async () => {
+    // Billed under the old rule, the seat line was charged at this period's
+    // start for the period ahead. Leaving 3 there would bill this period's
+    // seats a second time at renewal.
+    h.stripe.subscriptions.retrieve.mockResolvedValue(
+      sub(
+        [
+          { id: "si_base", price: "price_base", quantity: 1 },
+          { id: "si_seat", price: "price_seat", quantity: 3 },
+        ],
+        "active",
+        {},
+      ),
+    );
+    const r = await syncOrgSeatQuantity(ORG);
+    expect(r).toEqual({ synced: true, quantity: 0, changed: true });
+    expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", { proration_behavior: "none" });
+    // ...and it is marked: arrears start with the next period.
+    expect(h.stripe.subscriptions.update).toHaveBeenCalledWith("sub_abc123456", {
+      metadata: { seat_billing: "arrears", seat_arrears_from: String(PERIOD_END) },
+    });
+  });
+
+  it("the next period, once marked, is billed in arrears", async () => {
+    h.stripe.subscriptions.retrieve.mockResolvedValue(
+      sub(
+        [
+          { id: "si_base", price: "price_base", quantity: 1 },
+          { id: "si_seat", price: "price_seat", quantity: 0 },
+        ],
+        "active",
+        { seat_billing: "arrears", seat_arrears_from: String(PERIOD_START) },
+      ),
+    );
+    const r = await syncOrgSeatQuantity(ORG);
+    expect(r).toEqual({ synced: true, quantity: 3, changed: true });
+    expect(h.stripe.subscriptions.update).not.toHaveBeenCalled();
+  });
+
+  it("a marked subscription still inside its prepaid period stays at zero", async () => {
+    h.stripe.subscriptions.retrieve.mockResolvedValue(
+      sub([{ id: "si_base", price: "price_base", quantity: 1 }], "active", {
+        seat_billing: "arrears",
+        seat_arrears_from: String(PERIOD_END),
+      }),
+    );
+    const r = await syncOrgSeatQuantity(ORG);
+    expect(r).toEqual({ synced: true, quantity: 0, changed: false });
+    expect(h.stripe.subscriptionItems.create).not.toHaveBeenCalled();
   });
 });
