@@ -428,7 +428,6 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "[My Day](/my-day) lists the visits assigned to you for the day, in route order, with one-tap directions, start/complete buttons, photo capture, skip (with a [reason](article:skip-rules)), and [add-on billing](article:add-ons).",
       "Complete visits as you finish them; completed visits are what [invoicing](article:getting-paid) runs on. A visit left in progress overnight shows up in the office's stuck-visit count.",
-      "Works offline: actions queue when you lose signal and sync when you're back.",
     ],
     appLink: { to: "/my-day", label: "Open My Day" },
     related: ["time-clock", "waste-log", "skip-rules", "add-ons"],
