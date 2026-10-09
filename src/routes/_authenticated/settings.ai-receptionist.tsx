@@ -20,7 +20,7 @@ export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")
 });
 
 const DEFAULT_PERSONA =
-  "You are a friendly, concise SMS receptionist for a pet-waste cleanup company. Answer in 1-2 short sentences. Never invent prices. Use the get_pricing_quote tool. Offer to have a human follow up when unsure.";
+  "You are a friendly, concise SMS receptionist for a pet service company. Answer in 1-2 short sentences. Never invent prices. Use the get_pricing_quote tool. Offer to have a human follow up when unsure.";
 
 function Page() {
   const qc = useQueryClient();
@@ -146,7 +146,7 @@ function Page() {
             <input
               value={voiceGreeting}
               onChange={(e) => setVoiceGreeting(e.target.value)}
-              placeholder="Hi, thanks for calling Acme Pet Waste. How can I help?"
+              placeholder="Hi, thanks for calling Acme. How can I help?"
               className="block w-full rounded border bg-background px-3 py-2 text-sm"
             />
           </label>
