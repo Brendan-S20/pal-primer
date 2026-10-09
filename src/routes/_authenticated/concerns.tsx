@@ -147,7 +147,7 @@ function OneOffRow({
           ? `Booked for ${formatDay(booked.scheduled_on)}.`
           : status === "resolved"
             ? `Asked for ${formatDay(concern.requested_on)}. Not booked.`
-            : `Asked for an extra cleanup on ${formatDay(concern.requested_on)}${
+            : `Asked for an extra visit on ${formatDay(concern.requested_on)}${
                 where ? ` at ${where}` : ""
               }.`}
       </span>
@@ -300,7 +300,7 @@ function ConcernsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Concerns</h1>
         <p className="text-sm text-muted-foreground">
-          Issues clients submit from their portal, including re-clean requests and extra cleanups
+          Issues clients submit from their portal, including re-clean requests and extra visits
           they ask for. Triage and resolve them here.
         </p>
       </div>

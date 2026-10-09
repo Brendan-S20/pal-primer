@@ -41,7 +41,7 @@ export const CONCERN_CATEGORY_LABELS: Record<string, string> = {
   wrong_yard: "Wrong yard",
   other: "Other",
   reclean_request: "Re-clean request",
-  one_off_request: "Extra cleanup request",
+  one_off_request: "Extra visit request",
 };
 
 export const listConcerns = createServerFn({ method: "GET" })

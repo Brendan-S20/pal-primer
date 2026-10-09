@@ -567,8 +567,8 @@ export const SURFACES: Surface[] = [
     open: async (p) => {
       await p.getByRole("button", { name: "Book it", exact: true }).first().click();
     },
-    opened: (p) => p.getByRole("dialog", { name: "Book the extra cleanup" }),
-    openedLabel: "the Book the extra cleanup dialog",
+    opened: (p) => p.getByRole("dialog", { name: "Book the extra visit" }),
+    openedLabel: "the Book the extra visit dialog",
   },
   {
     // Added 2026-09-29. The page was only reached by the unlisted sweep and a
