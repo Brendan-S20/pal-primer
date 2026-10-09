@@ -638,7 +638,7 @@ const zh: TranslationsWithPlurals<"other"> = {
   expenseCategory: {
     fuel: "油费",
     disposal: "倾倒费",
-    supplies: "袋子和耗材",
+    supplies: "耗材",
     equipment: "设备",
     vehicle_maintenance: "车辆保养",
     mileage: "里程",

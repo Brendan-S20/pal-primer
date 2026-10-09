@@ -754,7 +754,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
   expenseCategory: {
     fuel: "وقود",
     disposal: "رسوم التخلص",
-    supplies: "أكياس ومستلزمات",
+    supplies: "مستلزمات",
     equipment: "معدات",
     vehicle_maintenance: "صيانة المركبة",
     mileage: "المسافة المقطوعة",

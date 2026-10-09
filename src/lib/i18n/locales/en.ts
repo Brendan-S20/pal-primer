@@ -674,7 +674,7 @@ const en = {
   expenseCategory: {
     fuel: "Fuel",
     disposal: "Disposal fees",
-    supplies: "Bags & supplies",
+    supplies: "Supplies",
     equipment: "Equipment",
     vehicle_maintenance: "Vehicle maintenance",
     mileage: "Mileage",

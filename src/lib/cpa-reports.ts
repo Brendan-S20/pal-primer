@@ -283,13 +283,13 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
     id: "expenses_by_category",
     title: "Expenses by category, by month",
     purpose:
-      "What the business logged as spent each month: fuel, disposal fees, bags and supplies, equipment, vehicle maintenance, mileage and other. Supports the expense lines of a Schedule C.",
+      "What the business logged as spent each month: fuel, disposal fees, supplies, equipment, vehicle maintenance, mileage and other. Supports the expense lines of a Schedule C.",
     basis: "cash",
     columns: [
       text("month", "Month"),
       money("fuelCents", "Fuel"),
       money("disposalCents", "Disposal fees"),
-      money("suppliesCents", "Bags & supplies"),
+      money("suppliesCents", "Supplies"),
       money("equipmentCents", "Equipment"),
       money("vehicleMaintenanceCents", "Vehicle maintenance"),
       money("mileageCents", "Mileage"),

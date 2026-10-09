@@ -673,7 +673,7 @@ const es: Translations = {
   expenseCategory: {
     fuel: "Combustible",
     disposal: "Tarifas de desecho",
-    supplies: "Bolsas y suministros",
+    supplies: "Suministros",
     equipment: "Equipo",
     vehicle_maintenance: "Mantenimiento del vehículo",
     mileage: "Millaje",

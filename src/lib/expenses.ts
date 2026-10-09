@@ -31,7 +31,7 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   fuel: "Fuel",
   disposal: "Disposal fees",
-  supplies: "Bags & supplies",
+  supplies: "Supplies",
   equipment: "Equipment",
   vehicle_maintenance: "Vehicle maintenance",
   mileage: "Mileage",
