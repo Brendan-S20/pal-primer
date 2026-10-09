@@ -89,6 +89,17 @@ for (const { w, h, label } of WIDTHS) {
       await measure(page, w, `/dashboard (dog walking) @${w}px`);
     });
 
+    test(`/setup asks what the business runs, first in step 1 @${w}px`, async ({ page }) => {
+      await open(page, "owner", DOG_WALKING, "/setup?step=business", w, h);
+      await expect(page.getByText("What do you run?").first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("checkbox", { name: "Dog walking" })).toBeChecked();
+      await expect(page.getByRole("checkbox", { name: "Pet waste removal" })).not.toBeChecked();
+      // Not bookable yet: shown, marked, and not selectable.
+      await expect(page.getByRole("checkbox", { name: "Pet sitting" })).toBeDisabled();
+      await expect(page.getByText("Coming soon").first()).toBeVisible();
+      await measure(page, w, `/setup step 1 (dog walking) @${w}px`);
+    });
+
     test(`/setup's end-of-day step never mentions a dump site @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/setup?step=dump_site", w, h);
       await expect(page.getByRole("heading", { name: "Where does your day end?" })).toBeVisible({

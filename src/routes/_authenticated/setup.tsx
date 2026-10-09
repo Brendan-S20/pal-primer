@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
-import { useMyRole } from "@/hooks/useMyRole";
+import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import {
   getOnboardingStatus,
@@ -20,6 +21,8 @@ import {
   type OnboardingStepId,
 } from "@/lib/onboarding.functions";
 import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
+import { setServiceLines } from "@/lib/org-features.functions";
+import type { ServiceLine } from "@/lib/service-lines";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
@@ -301,7 +304,15 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
   const saveDispatchFn = useServerFn(updateDispatchSettings);
   const brandingQ = useQuery({ queryKey: ["org-branding"], queryFn: () => brandingFn() });
   const dispatchQ = useQuery({ queryKey: ["dispatch-settings"], queryFn: () => dispatchFn() });
+  const saveLinesFn = useServerFn(setServiceLines);
+  const { can } = usePermissions();
+  const { lines: savedLines, known: linesKnown } = useServiceLines();
 
+  // null until the owner touches it: the rows show what is stored (pet waste
+  // removal for a new business, the column's default), and only a CHANGE is
+  // written. Saving an untouched answer could write the fail-open default
+  // over a real one whose read merely failed.
+  const [lines, setLines] = useState<ServiceLine[] | null>(null);
   const [name, setName] = useState<string | null>(null);
   const [phone, setPhone] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
@@ -313,9 +324,17 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
   const addressVal = address ?? b?.contact_address ?? "";
   const savedTz = (dispatchQ.data?.settings as { timezone?: string | null } | undefined)?.timezone;
   const tzVal = tz ?? savedTz ?? DEFAULT_TIMEZONE;
+  const linesVal = lines ?? savedLines;
+  const linesChanged =
+    lines !== null &&
+    (lines.length !== savedLines.length || lines.some((l) => !savedLines.includes(l)));
 
   const m = useMutation({
     mutationFn: async () => {
+      // First, because it decides what the later steps ask: a business that
+      // does not run pet waste is asked where its day ends, not for a dump
+      // site.
+      if (linesChanged) await saveLinesFn({ data: { lines: linesVal } });
       await saveBrandingFn({
         data: {
           name: nameVal.trim() || undefined,
@@ -330,6 +349,10 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
       qc.invalidateQueries({ queryKey: ["org-branding"] });
       qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
+      if (linesChanged) {
+        setLines(null);
+        qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      }
       onSaved();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -347,14 +370,26 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
         m.mutate();
       }}
     >
-      {/* SERVICE LINES HOOK (PR #358, "What do you run?").
-          When organizations.service_lines and setServiceLines land on main,
-          the question goes HERE, first in this form: pet waste removal
-          preselected, dog walking, pet sitting and mobile grooming shown as
-          "Coming soon" and not selectable, exactly as the Business defaults
-          card in that PR draws them. It belongs in this step rather than a
-          seventh one, because it changes what the later steps ask (a dog
-          walker's "where the day ends" is not a dump site). */}
+      {/* "What do you run?" (organizations.service_lines), first in this
+          form: pet waste removal preselected (the column's default), and dog
+          walking, pet sitting and mobile grooming listed as "Coming soon" and
+          not selectable, by the same component Settings → Business defaults
+          draws. It belongs in this step rather than a seventh one, because it
+          changes what the later steps ask: a dog walker's "where the day
+          ends" is not a dump site. */}
+      <fieldset className={fieldClass}>
+        <legend className="text-sm font-medium">What do you run?</legend>
+        <p className="pb-1.5 text-xs text-muted-foreground">
+          {APP_NAME} shows the tools for the services you run. You can change this later in
+          Settings.
+        </p>
+        <ServiceLinesChoices
+          idPrefix="setup-service-line"
+          lines={linesVal}
+          onChange={setLines}
+          disabled={!linesKnown || !can("manage_settings") || m.isPending}
+        />
+      </fieldset>
       <div className={fieldClass}>
         <Label htmlFor="setup-name">Business name</Label>
         <Input

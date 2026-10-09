@@ -7,8 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
@@ -26,12 +25,7 @@ import {
   setRequireCompletionPhoto,
   setServiceLines,
 } from "@/lib/org-features.functions";
-import {
-  BOOKABLE_SERVICE_LINES,
-  OFFERED_SERVICE_LINES,
-  SERVICE_LINE_LABEL,
-  type ServiceLine,
-} from "@/lib/service-lines";
+import type { ServiceLine } from "@/lib/service-lines";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import { VisitChecklistEditor } from "@/components/VisitChecklistEditor";
 import type { ChecklistItem } from "@/lib/visit-checklist";
@@ -459,11 +453,8 @@ function CommercialAccountsCard() {
  * same day (docs/other-trades-service-catalog.md). Listing them anyway tells
  * an owner who does both what is coming, and what the switch will do.
  *
- * Two rules keep it from ever stranding anybody:
- *   - a line that is already ticked can always be unticked, even one that is
- *     not offered yet (set some other way, or offered once and withdrawn);
- *   - the last ticked line cannot be unticked: the database refuses an empty
- *     set, and "runs nothing" is not a business.
+ * The rows, and the rules about which can be ticked, are ServiceLinesChoices,
+ * which the first step of /setup draws too.
  *
  * Office-only, and English, like the other cards on this page: a tech never
  * reaches it.
@@ -482,20 +473,14 @@ function ServiceLinesCard() {
       // Invalidate rather than set: the sidebar and the tab bar read the same
       // key and should redraw from the server's answer.
       qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      // The setup checklist words its end-of-day step from the same column.
+      qc.invalidateQueries({ queryKey: ["onboarding-status"] });
       toast.success("Saved. Your screens now show the tools for what you run.");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   if (role === "tech") return null;
-
-  const toggle = (line: ServiceLine, on: boolean) => {
-    const next = on
-      ? OFFERED_SERVICE_LINES.filter((l) => l === line || lines.includes(l))
-      : lines.filter((l) => l !== line);
-    if (next.length === 0) return;
-    mut.mutate(next);
-  };
 
   return (
     <Card>
@@ -508,42 +493,11 @@ function ServiceLinesCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="divide-y rounded-md border">
-          {OFFERED_SERVICE_LINES.map((line) => {
-            const checked = lines.includes(line);
-            const bookable = BOOKABLE_SERVICE_LINES.includes(line);
-            const onlyOne = checked && lines.length === 1;
-            const disabled =
-              !canEdit || !known || mut.isPending || onlyOne || (!checked && !bookable);
-            const id = `service-line-${line}`;
-            return (
-              <li key={line}>
-                <label
-                  htmlFor={id}
-                  className={`flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm ${
-                    disabled ? "" : "cursor-pointer"
-                  }`}
-                >
-                  <Checkbox
-                    id={id}
-                    checked={checked}
-                    disabled={disabled}
-                    onCheckedChange={(c) => toggle(line, c === true)}
-                    className="shrink-0"
-                  />
-                  <span className="min-w-0 flex-1 font-medium">{SERVICE_LINE_LABEL[line]}</span>
-                  {!bookable && <ComingSoonBadge />}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-        {lines.length === 1 && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            You need at least one. Dog walking, pet sitting and mobile grooming can be added when
-            booking them arrives.
-          </p>
-        )}
+        <ServiceLinesChoices
+          lines={lines}
+          onChange={(next) => mut.mutate(next)}
+          disabled={!canEdit || !known || mut.isPending}
+        />
       </CardContent>
     </Card>
   );

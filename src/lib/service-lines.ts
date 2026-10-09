@@ -92,6 +92,23 @@ export function runsPetWaste(lines: readonly ServiceLine[]): boolean {
   return lines.includes("pet_waste");
 }
 
+/**
+ * The set after ticking or unticking one line, in the order the screens list
+ * them, or null when the change would leave nothing ticked: the database
+ * refuses an empty set, and "runs nothing" is not a business. One copy for
+ * Settings → Business defaults and the first step of /setup.
+ */
+export function toggledServiceLines(
+  lines: readonly ServiceLine[],
+  line: ServiceLine,
+  on: boolean,
+): ServiceLine[] | null {
+  const next = on
+    ? OFFERED_SERVICE_LINES.filter((l) => l === line || lines.includes(l))
+    : lines.filter((l) => l !== line);
+  return next.length > 0 ? next : null;
+}
+
 // ── THE GATING TABLE ────────────────────────────────────────────────────────
 //
 // Every module that only means something to a pet-waste business, and where

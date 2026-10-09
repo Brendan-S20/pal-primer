@@ -56,6 +56,7 @@ import {
   serviceLinesOrDefault,
   serviceLinesProblem,
   suggestedChecklistFor,
+  toggledServiceLines,
   type ServiceLine,
 } from "@/lib/service-lines";
 import { SUGGESTED_CHECKLIST } from "@/lib/visit-checklist";
@@ -240,6 +241,23 @@ describe("a business without pet waste is asked where its day ends", () => {
     expect(page).toMatch(/return petWaste \? \(\s*<DumpSitePanel[\s\S]*?\) : \(\s*<DayEndPanel/);
     expect(codeOnly(read("src/components/SetupDayEndPanel.tsx"))).not.toMatch(/dump/i);
   });
+
+  it("/setup's first step asks what the business runs, with the Settings component", () => {
+    const page = codeOnly(read("src/routes/_authenticated/setup.tsx"));
+    const business = page.slice(
+      page.indexOf("function BusinessPanel"),
+      page.indexOf("function ServiceAreaPanel"),
+    );
+    // First in the form: before the business name.
+    expect(business.indexOf("<ServiceLinesChoices")).toBeGreaterThan(-1);
+    expect(business.indexOf("<ServiceLinesChoices")).toBeLessThan(
+      business.indexOf('htmlFor="setup-name"'),
+    );
+    expect(business).toMatch(/saveLinesFn\(\{ data: \{ lines: linesVal \} \}\)/);
+    expect(codeOnly(read("src/routes/_authenticated/settings.business.tsx"))).toMatch(
+      /<ServiceLinesChoices/,
+    );
+  });
 });
 
 // ── Fail open ─────────────────────────────────────────────────────────────
@@ -396,9 +414,21 @@ describe("what an owner can choose", () => {
 
   it("the card is office-only and never offers an empty set", () => {
     const card = codeOnly(read("src/routes/_authenticated/settings.business.tsx"));
-    expect(card).toMatch(/if \(role === "tech"\) return null;[\s\S]{0,400}const toggle/);
-    expect(card).toMatch(/if \(next\.length === 0\) return;/);
-    expect(card).toMatch(/onlyOne \|\| \(!checked && !bookable\)/);
+    expect(card).toMatch(/if \(role === "tech"\) return null;[\s\S]{0,900}<ServiceLinesChoices/);
+    // The rows (Settings and /setup draw the same component).
+    const rows = codeOnly(read("src/components/ServiceLinesChoices.tsx"));
+    expect(rows).toMatch(/onlyOne \|\| \(!checked && !bookable\)/);
+    expect(rows).toMatch(/if \(next\) onChange\(next\);/);
+    // And the rule itself: never empty, a ticked line can always go, and a
+    // tick keeps the order the screens list them in.
+    expect(toggledServiceLines(["pet_waste"], "pet_waste", false)).toBeNull();
+    expect(toggledServiceLines(["pet_waste", "dog_walking"], "pet_waste", false)).toEqual([
+      "dog_walking",
+    ]);
+    expect(toggledServiceLines(["dog_walking"], "pet_waste", true)).toEqual([
+      "pet_waste",
+      "dog_walking",
+    ]);
   });
 
   it("is not on /get-started (the Twilio-reviewed signup)", () => {
