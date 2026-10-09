@@ -149,7 +149,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     unknown: "性情未知",
   },
   yard: {
-    label: "{{size}}院子",
+    label: "{{size}}地块",
     small: "小",
     medium: "中等",
     large: "大",

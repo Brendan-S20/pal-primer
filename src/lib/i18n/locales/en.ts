@@ -158,7 +158,7 @@ const en = {
     unknown: "temperament unknown",
   },
   yard: {
-    label: "{{size}} yard",
+    label: "{{size}} property",
     small: "Small",
     medium: "Medium",
     large: "Large",

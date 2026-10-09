@@ -152,9 +152,9 @@ const es: Translations = {
     unknown: "carácter desconocido",
   },
   yard: {
-    label: "Patio {{size}}",
-    small: "pequeño",
-    medium: "mediano",
+    label: "Propiedad {{size}}",
+    small: "pequeña",
+    medium: "mediana",
     large: "grande",
     xlarge: "extra grande",
   },

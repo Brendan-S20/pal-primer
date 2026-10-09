@@ -191,7 +191,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     unknown: "الطبع غير معروف",
   },
   yard: {
-    label: "فناء {{size}}",
+    label: "عقار {{size}}",
     small: "صغير",
     medium: "متوسط",
     large: "كبير",
