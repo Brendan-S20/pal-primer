@@ -39,6 +39,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { appUrl } from "@/lib/app-origin";
 import { titleHead } from "@/lib/page-title";
+import { ExportDataCard } from "@/components/billing/ExportDataCard";
 
 // Moved into Settings (punch list #9): this is HoundStack's own subscription
 // (the CRM plan), which is configuration - the tenant-facing Stripe money view
@@ -356,6 +357,8 @@ function BillingPage() {
 
       <InvoiceHistory />
 
+      <ExportDataCard />
+
       {/* ── Manage ───────────────────────────────────────────────────────── */}
       {/* Behind the store gate with the rest of it. Cancel and Resume CHANGE a
           HoundStack subscription from inside the binary, which is the thing
@@ -386,6 +389,7 @@ function BillingPage() {
             <>
               <p className="mt-1 text-sm text-muted-foreground">
                 Canceling stops future charges. You keep access until the end of the paid period.
+                Yearly plans aren't refunded. You can export your data for 30 days after canceling.
               </p>
               <Button
                 className="mt-3"

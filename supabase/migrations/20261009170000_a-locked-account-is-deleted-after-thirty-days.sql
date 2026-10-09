@@ -254,8 +254,8 @@ BEGIN
       'reason', _cand.reason,
       'locked_since', _cand.locked_since,
       'delete_after', _cand.delete_after,
-      'delete', _delete || jsonb_build_object('clients_without_invoices', _clients_gone),
-      'keep', _keep || jsonb_build_object('clients_with_invoices_anonymised', _clients_kept),
+      'delete', _delete || jsonb_build_object('clients', _clients_gone),
+      'keep', (_keep - 'clients') || jsonb_build_object('clients_with_invoices_anonymised', _clients_kept),
       'sms_consents_archived', _consents);
   END IF;
 
@@ -336,9 +336,9 @@ BEGIN
 
   UPDATE public.account_deletion_schedule
      SET purged_at = _now,
-         last_report = jsonb_build_object('deleted', _delete, 'kept', _keep,
-                                          'clients_without_invoices', _clients_gone,
-                                          'clients_with_invoices_anonymised', _clients_kept)
+         last_report = jsonb_build_object(
+           'deleted', _delete || jsonb_build_object('clients', _clients_gone),
+           'kept', (_keep - 'clients') || jsonb_build_object('clients_with_invoices_anonymised', _clients_kept))
    WHERE organization_id = _org;
 
   RETURN jsonb_build_object(
@@ -346,8 +346,8 @@ BEGIN
     'dry_run', false,
     'reason', _cand.reason,
     'delete_after', _cand.delete_after,
-    'delete', _delete || jsonb_build_object('clients_without_invoices', _clients_gone),
-    'keep', _keep || jsonb_build_object('clients_with_invoices_anonymised', _clients_kept),
+    'delete', _delete || jsonb_build_object('clients', _clients_gone),
+    'keep', (_keep - 'clients') || jsonb_build_object('clients_with_invoices_anonymised', _clients_kept),
     'sms_consents_archived', _consents);
 END;
 $$;

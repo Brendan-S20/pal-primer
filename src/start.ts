@@ -154,8 +154,30 @@ const reportServerFnErrors = createMiddleware({ type: "function" }).server(async
   }
 });
 
+// The account lock (NP-12). A trial past day 14 with no plan, or a cancelled
+// plan that has ended, reaches the plan picker and checkout and nothing else.
+// Every server function passes through here, so the lock does not depend on
+// each of them remembering it; the allowlist is in src/lib/account-lock.ts.
+// Ahead of reportServerFnErrors: a refusal is a decision, not a fault.
+const accountLockMiddleware = createMiddleware({ type: "function" }).server(
+  async ({ next, serverFnMeta }) => {
+    const [{ refuseIfLocked }, { getRequest }] = await Promise.all([
+      import("@/lib/account-lock.server"),
+      import("@tanstack/react-start/server"),
+    ]);
+    let authorization: string | null = null;
+    try {
+      authorization = getRequest()?.headers.get("authorization") ?? null;
+    } catch {
+      authorization = null;
+    }
+    await refuseIfLocked({ authorization, meta: serverFnMeta });
+    return next();
+  },
+);
+
 export const startInstance = createStart(() => ({
-  functionMiddleware: [attachSupabaseAuth, reportServerFnErrors],
+  functionMiddleware: [attachSupabaseAuth, accountLockMiddleware, reportServerFnErrors],
   requestMiddleware: [corsMiddleware, csrfMiddleware, errorMiddleware],
   // BUILD-9: only present in a bundled native build, where the baked-in
   // "/_serverFn/..." path would resolve to the app bundle instead of the API.
