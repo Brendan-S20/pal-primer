@@ -224,9 +224,12 @@ export function PlanPicker({
                   is decided, in the paragraph above the card field below. */}
               <p className="mt-1 text-xs text-muted-foreground">
                 Includes {p.included_seats} active employee{p.included_seats === 1 ? "" : "s"}
+                {/* Extra seats are counted and charged month by month on yearly
+                    plans too (owner, 2026-10-09; seat-rule.ts), so the price
+                    is per month on both cards. */}
                 {p.price_per_seat_cents
                   ? isAnnualCard
-                    ? ` · ${money(p.price_per_seat_cents * 10)}/yr per extra`
+                    ? ` · ${money(p.price_per_seat_cents)}/mo per extra, by the month`
                     : ` · ${money(p.price_per_seat_cents)}/extra`
                   : ""}
               </p>
@@ -456,10 +459,12 @@ export function EmbeddedPlanCheckout({
                 ? `the first ${session.includedSeats}`
                 : `${session.includedSeats} active employees; each extra`}{" "}
               {session.aiActionsIncluded != null ? "are" : "is"} {money(session.seatOverageCents)}{" "}
-              each a month. {ACTIVE_EMPLOYEE_DEFINITION}
+              for each month they used it, charged after the month ends.{" "}
+              {ACTIVE_EMPLOYEE_DEFINITION}
             </>
           ) : null}{" "}
-          Both are billed on your next invoice. Cancel anytime in Settings → Plan &amp; billing.
+          Both are billed on your next invoice after the month they are used in, never in
+          advance. Cancel anytime in Settings → Plan &amp; billing.
           Payments are processed securely.
         </p>
         <div className="mt-4">

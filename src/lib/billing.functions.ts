@@ -895,8 +895,51 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
       cancelAtPeriodEnd: !!sub.cancel_at_period_end,
       currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
       planInterval,
+      seatsThisPeriod: await seatsThisPeriod(stripe, sub, supabaseAdmin, orgId),
     };
   });
+
+/**
+ * The seat period the org is in, and what it comes to so far: people who
+ * have used their login since it began, past the allowance. Charged after the
+ * period closes (seat-rule.ts), so this is the running number, not a bill.
+ * Null when there is nothing to say (not a per-employee plan, no anchor) or
+ * the count could not be read -- the billing page is not the place to fail.
+ */
+async function seatsThisPeriod(
+  stripe: import("stripe").Stripe,
+  sub: import("stripe").Stripe.Subscription,
+  admin: unknown,
+  orgId: string,
+) {
+  try {
+    const { resolveSeatPlan, billableSeatsBetween } = await import("@/lib/seat-sync.server");
+    const { arrearsFrom, seatOverage, seatPeriodAt, seatPeriodLabel } = await import("@/lib/seat-rule");
+    if (typeof sub.billing_cycle_anchor !== "number") return null;
+    const plan = await resolveSeatPlan(stripe, sub, admin);
+    if (!plan) return null;
+    const now = Math.floor(Date.now() / 1000);
+    const period = seatPeriodAt(sub.billing_cycle_anchor, now);
+    const from = arrearsFrom((sub.metadata ?? {}) as Record<string, string>);
+    // On the old rule, or inside the period it prepaid: nothing more to pay.
+    const prepaid = from === null || period.start < from;
+    const seen = await billableSeatsBetween(admin, orgId, period.start);
+    const extra = prepaid ? 0 : seatOverage(seen, plan.includedSeats);
+    return {
+      periodStart: new Date(period.start * 1000).toISOString(),
+      periodEnd: new Date(period.end * 1000).toISOString(),
+      label: seatPeriodLabel(period),
+      seen,
+      included: plan.includedSeats,
+      extra,
+      unitAmountCents: plan.unitAmountCents,
+      prepaid,
+    };
+  } catch (e) {
+    console.error("seat usage for the billing page failed", (e as Error).message);
+    return null;
+  }
+}
 
 // ── In-app payment methods (replaces the Stripe-hosted billing portal) ──────
 // The org's SaaS cards live on the PLATFORM account customer. Same security

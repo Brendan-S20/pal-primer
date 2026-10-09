@@ -819,6 +819,14 @@ function NextInvoice({
         }>;
         currentPeriodEnd: string | null;
         planInterval?: "month" | "year" | null;
+        seatsThisPeriod?: {
+          label: string;
+          seen: number;
+          included: number;
+          extra: number;
+          unitAmountCents: number;
+          prepaid: boolean;
+        } | null;
       }
     | undefined;
   isLoading: boolean;
@@ -832,13 +840,20 @@ function NextInvoice({
   // Total in the subscription's own interval (all items share it; anything
   // odd an admin attached by hand is excluded and called out).
   const planInterval = subInfo?.planInterval ?? "month";
-  const total = items.reduce(
+  // Seats are charged after each one-month period closes, as their own line
+  // (seat-rule.ts). On a monthly plan that line lands on this invoice; on a
+  // yearly plan each month is invoiced on its own, so it is not in the total.
+  const seats = subInfo?.seatsThisPeriod ?? null;
+  const seatsCents = seats ? seats.extra * seats.unitAmountCents : 0;
+  const seatsOnThisInvoice = !!seats && planInterval === "month";
+  const itemsTotal = items.reduce(
     (sum, i) =>
       i.unitAmountCents != null && i.interval === planInterval && i.intervalCount === 1
         ? sum + i.unitAmountCents * (i.quantity ?? 1)
         : sum,
     0,
   );
+  const total = itemsTotal + (seatsOnThisInvoice ? seatsCents : 0);
   const allSameInterval = items.every((i) => i.interval === planInterval && i.intervalCount === 1);
   const totalLabel = planInterval === "year" ? "Yearly total" : "Monthly total";
   const totalSuffix = planInterval === "year" ? "/yr" : "/mo";
@@ -885,18 +900,39 @@ function NextInvoice({
                   {i.kind !== "seat" && i.description && (
                     <p className="text-xs text-muted-foreground">{i.description}</p>
                   )}
-                  {/* Billed in arrears (seat-rule.ts): the number grows as people
-                      use the app this period and is charged on this invoice. */}
+                  {/* The seat line from before 2026-10-09, which Stripe bills in
+                      advance. The changeover removes it with no credit; the
+                      period it paid for stays paid. */}
                   {i.kind === "seat" && (
                     <p className="text-xs text-muted-foreground">
-                      Everyone past your plan&apos;s allowance who has used their login this billing
-                      period so far.
+                      Paid in advance for this period. From the next one, extra active employees
+                      are charged after each month closes.
                     </p>
                   )}
                 </div>
                 <p className="whitespace-nowrap text-right text-sm">{lineAmount(i)}</p>
               </li>
             ))}
+            {seats && (
+              <li className="flex flex-wrap items-start justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium">Extra active employees, {seats.label}</p>
+                    <MetaChip>So far</MetaChip>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {seats.prepaid
+                      ? "Already paid for this period. From the next one, everyone past your plan's allowance who used their login is charged after each month closes."
+                      : `${seats.seen} ${seats.seen === 1 ? "person has" : "people have"} used their login this period; your plan includes ${seats.included}. ${
+                          seats.extra > 0
+                            ? `${seats.extra} × ${formatUsd(seats.unitAmountCents)}, charged when the period closes`
+                            : "Nothing extra so far"
+                        }${planInterval === "year" ? ", on its own monthly invoice." : "."}`}
+                  </p>
+                </div>
+                <p className="whitespace-nowrap text-right text-sm">{formatUsd(seatsCents)}</p>
+              </li>
+            )}
           </ul>
           <div className="mt-1 flex items-center justify-between border-t pt-3">
             <p className="text-sm font-semibold">
