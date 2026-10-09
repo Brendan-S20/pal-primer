@@ -577,8 +577,8 @@ export const SURFACES: Surface[] = [
     // "Needs a price first" line only when the fixture has no price.
     id: "/settings/client-portal",
     path: "/settings/client-portal",
-    proof: (p) => p.getByText("Extra cleanups from the portal", { exact: true }).first(),
-    proofLabel: 'the "Extra cleanups from the portal" card',
+    proof: (p) => p.getByText("Extra visits from the portal", { exact: true }).first(),
+    proofLabel: 'the "Extra visits from the portal" card',
     expectsData: "Needs a price first.",
   },
   {
