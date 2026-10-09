@@ -558,12 +558,12 @@ const es: Translations = {
     none: "No hay perros registrados",
   },
   outline: {
-    heading: "Contorno del patio",
+    heading: "Contorno de la propiedad",
     area_sqft: "{{value}} pies²",
     area_acres: "{{value}} acres",
-    open: "Abrir el contorno del patio en un mapa",
+    open: "Abrir el contorno de la propiedad en un mapa",
     tapToOpen: "Toca para verlo en el mapa",
-    none: "Todavía no hay contorno del patio",
+    none: "Todavía no hay contorno de la propiedad",
     loading: "Cargando el mapa…",
   },
   stationsSummary: {

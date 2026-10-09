@@ -560,12 +560,12 @@ const en = {
     none: "No dogs on file",
   },
   outline: {
-    heading: "Yard outline",
+    heading: "Property outline",
     area_sqft: "{{value}} sq ft",
     area_acres: "{{value}} acres",
-    open: "Open the yard outline on a map",
+    open: "Open the property outline on a map",
     tapToOpen: "Tap to see it on the map",
-    none: "No yard outline yet",
+    none: "No property outline yet",
     loading: "Loading the map…",
   },
   stationsSummary: {

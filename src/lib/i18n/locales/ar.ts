@@ -624,12 +624,12 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     none: "لا توجد كلاب مسجّلة",
   },
   outline: {
-    heading: "مخطط الفناء",
+    heading: "مخطط العقار",
     area_sqft: "{{value}} قدم²",
     area_acres: "{{value}} أكر",
-    open: "فتح مخطط الفناء على الخريطة",
+    open: "فتح مخطط العقار على الخريطة",
     tapToOpen: "اضغط لرؤيته على الخريطة",
-    none: "لا يوجد مخطط للفناء بعد",
+    none: "لا يوجد مخطط للعقار بعد",
     loading: "جارٍ تحميل الخريطة…",
   },
   stationsSummary: {

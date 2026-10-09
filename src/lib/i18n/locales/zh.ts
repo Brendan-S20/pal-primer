@@ -529,12 +529,12 @@ const zh: TranslationsWithPlurals<"other"> = {
     none: "没有登记的狗",
   },
   outline: {
-    heading: "院子轮廓",
+    heading: "地块轮廓",
     area_sqft: "{{value}} 平方英尺",
     area_acres: "{{value}} 英亩",
-    open: "在地图上打开院子轮廓",
+    open: "在地图上打开地块轮廓",
     tapToOpen: "点按在地图上查看",
-    none: "还没有院子轮廓",
+    none: "还没有地块轮廓",
     loading: "地图加载中…",
   },
   stationsSummary: {

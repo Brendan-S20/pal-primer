@@ -319,7 +319,7 @@ const FREQS = [
   { value: "one_time", label: "One-time" },
 ] as const;
 
-const STEPS = ["Contact", "Property", "Yard", "Dogs", "Plan"] as const;
+const STEPS = ["Contact", "Property", "Outline", "Dogs", "Plan"] as const;
 
 /** The next calendar day after an org-calendar day (YYYY-MM-DD). */
 function tomorrowOf(day: string): string {
@@ -1059,11 +1059,11 @@ function NewClientWizard({
           </div>
         )}
 
-        {/* STEP 2 — Yard (optional boundary sketch) */}
+        {/* STEP 2 — Outline (optional boundary sketch) */}
         {step === 2 && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-base font-medium">Sketch the yard (optional)</h2>
+              <h2 className="text-base font-medium">Sketch the property outline (optional)</h2>
               <p className="text-sm text-muted-foreground">
                 Draw the service area on the satellite map so the tech and pricing know the exact footprint. Skip to price a flat visit instead.
               </p>
