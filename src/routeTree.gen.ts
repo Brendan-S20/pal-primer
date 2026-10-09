@@ -144,7 +144,6 @@ import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$sl
 import { Route as PortalSlugTokenPropertyRouteImport } from './routes/portal.$slug.$token.property'
 import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
 import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
-import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/public/hooks/xero-callback'
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
 import { Route as ApiPublicHooksWebhookDeliveriesRouteImport } from './routes/api/public/hooks/webhook-deliveries'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
@@ -876,12 +875,6 @@ const PortalSlugTokenAccountRoute = PortalSlugTokenAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => PortalSlugTokenRoute,
 } as any)
-const ApiPublicHooksXeroCallbackRoute =
-  ApiPublicHooksXeroCallbackRouteImport.update({
-    id: '/api/public/hooks/xero-callback',
-    path: '/api/public/hooks/xero-callback',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiPublicHooksWeeklyDigestRoute =
   ApiPublicHooksWeeklyDigestRouteImport.update({
     id: '/api/public/hooks/weekly-digest',
@@ -1104,7 +1097,6 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1246,7 +1238,6 @@ export interface FileRoutesByTo {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1399,7 +1390,6 @@ export interface FileRoutesById {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1552,7 +1542,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1694,7 +1683,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1846,7 +1834,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1904,7 +1891,6 @@ export interface RootRouteChildren {
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWebhookDeliveriesRoute: typeof ApiPublicHooksWebhookDeliveriesRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
-  ApiPublicHooksXeroCallbackRoute: typeof ApiPublicHooksXeroCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2854,13 +2840,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalSlugTokenAccountRouteImport
       parentRoute: typeof PortalSlugTokenRoute
     }
-    '/api/public/hooks/xero-callback': {
-      id: '/api/public/hooks/xero-callback'
-      path: '/api/public/hooks/xero-callback'
-      fullPath: '/api/public/hooks/xero-callback'
-      preLoaderRoute: typeof ApiPublicHooksXeroCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/hooks/weekly-digest': {
       id: '/api/public/hooks/weekly-digest'
       path: '/api/public/hooks/weekly-digest'
@@ -3321,7 +3300,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWebhookDeliveriesRoute: ApiPublicHooksWebhookDeliveriesRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
-  ApiPublicHooksXeroCallbackRoute: ApiPublicHooksXeroCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

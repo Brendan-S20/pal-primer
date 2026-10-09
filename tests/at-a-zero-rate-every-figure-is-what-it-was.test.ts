@@ -166,7 +166,7 @@ describe("at a zero rate", () => {
   it("the invoice email and the accounting sync carry nothing new", () => {
     expect(invoiceEmailTaxData({ subtotal_cents: 10_000, tax_cents: 0, tax_rate_bps: 0, tax_label: null })).toEqual({});
     expect(invoiceEmailTaxData({})).toEqual({});
-    // And an untaxed invoice syncs with no sales-tax account set at all.
-    expect(accountingTaxLine({ default_sales_tax_account: null }, { tax_cents: 0 })).toBeNull();
+    // And an untaxed invoice syncs with no sales-tax item set at all.
+    expect(accountingTaxLine({ sales_tax_item_id: null }, { tax_cents: 0 })).toBeNull();
   });
 });

@@ -122,12 +122,11 @@ describe("what the books are told", () => {
     });
   });
 
-  it("is wired into both providers", () => {
+  it("is wired into the QuickBooks sync (the only provider since Xero was dropped, 2026-10-09)", () => {
     const src = read("src/lib/accounting.server.ts");
-    expect(src.match(/accountingLine\(li, money\)/g)?.length).toBe(2);
+    expect(src.match(/accountingLine\(li, money\)/g)?.length).toBe(1);
     expect(src).toMatch(/Qty: l\.quantity/);
-    expect(src).toMatch(/Quantity: l\.quantity/);
-    expect(src).not.toMatch(/Quantity: 1,/);
+    expect(src).not.toMatch(/Qty: 1,/);
   });
 });
 
