@@ -238,6 +238,9 @@ const es: Translations = {
     notePlaceholder: "Portón cerrado, perro ladrando, bolsas junto al cobertizo",
     addNote: "Agregar una nota para la oficina",
     takeCompletionPhoto: "Toma una foto del trabajo terminado para cerrar esta visita.",
+    takePhotoToComplete: "Tomar foto para terminar",
+    photoStillNeeded: "Visita iniciada. Toma la foto del trabajo terminado cuando estés listo.",
+    checklistBeforeComplete: "Marca lo que hiciste y termina la visita.",
     whyNoPhoto: "¿Por qué no hay foto? La oficina lo verá.",
     noPhotoPlaceholder: "La cámara no abrió",
     cantTakePhoto: "¿No puedes tomar la foto?",
@@ -371,6 +374,8 @@ const es: Translations = {
     clockOutWaiting: "Salida esperando sincronizar",
     clockIn: "Entrada",
     clockOut: "Salida",
+    offTheClock: "No has marcado tu entrada",
+    offTheClockShort: "Sin marcar",
   },
   duration: {
     minutes: "{{m}}m",
@@ -749,12 +754,9 @@ const es: Translations = {
     done: "{{n}} hechas",
     skipped: "{{n}} omitidas",
     cardTitle: "Ruta en la pantalla de bloqueo",
-    cardOn: "Se muestra en tu pantalla de bloqueo",
-    cardOff: "Ve tu próxima parada sin desbloquear",
     cardDisabled: "Activa las Actividades en vivo de HoundStack en Ajustes del iPhone",
-    hiddenToast: "Oculta de tu pantalla de bloqueo",
-    prefDescription: "Tu próxima parada en la pantalla de bloqueo y en la Dynamic Island. Empieza sola cuando marcas tu entrada o inicias tu primera parada.",
-    failed: "No se pudo mostrar la ruta en la pantalla de bloqueo",
+    prefDescription:
+      "Tu próxima parada en la pantalla de bloqueo y en la Dynamic Island, con Navegar e Iniciar. Vuelve sola cuando abres la app durante tu jornada.",
     // The buttons on the lock screen and in the Dynamic Island. The same
     // words as the buttons on My Day they open.
     action: {

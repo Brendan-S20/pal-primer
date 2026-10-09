@@ -1,10 +1,10 @@
 // Whether this phone shows the route on the lock screen at all.
 //
-// One switch with two faces: the lock-screen toggle in My Day's status row,
-// and "Route on the lock screen" on Settings → Preferences. Both read and
-// write this, so hiding the route from My Day turns the Preferences switch
-// off, and turning the switch back on is what lets the route start itself
-// again on the next Clock in or first Start.
+// One switch: "Route on the lock screen" on Settings → Preferences. (It had
+// a second face, an icon in My Day's status row, from 2026-10-07 until the
+// owner took it off My Day on 2026-10-08.) On, and the route goes back on the
+// lock screen by itself whenever the app opens mid-day; off, and it never
+// does.
 //
 // Per device, like everything else on Preferences: a Live Activity belongs
 // to the phone it is drawn on, and a tech with an iPad on the dash and a

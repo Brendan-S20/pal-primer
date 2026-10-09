@@ -190,6 +190,74 @@ async function translatorFor(lang: string) {
   };
 }
 
+/** A tech's route for one day as the database has it, in getMyDay's order,
+ *  and the clock it is read on. */
+async function loadRoute(
+  db: AdminLike,
+  techUserId: string,
+  orgId: string,
+  date: string,
+): Promise<{ visits: RouteActivityVisit[]; tz: string }> {
+  const [{ data: staff }, { data: org }] = await Promise.all([
+    db
+      .from("staff")
+      .select("id")
+      .eq("user_id", techUserId)
+      .eq("organization_id", orgId)
+      .maybeSingle(),
+    db
+      .from("organizations")
+      .select("timezone")
+      .eq("id", orgId)
+      .maybeSingle(),
+  ]);
+  let visits: RouteActivityVisit[] = [];
+  if (staff?.id) {
+    // The same rows, in the same order, as getMyDay in my-day.functions.ts.
+    const { data: v, error: vErr } = await db
+      .from("visits")
+      .select(
+        // city, postal_code and the coordinates are where the card's
+        // Navigate button sends the maps app (stopDestination).
+        "id, status, sequence, eta_start, eta_end, properties(label, street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time)",
+      )
+      .eq("assigned_staff_id", staff.id)
+      .eq("scheduled_on", date)
+      .order("sequence", { ascending: true, nullsFirst: false });
+    if (vErr) throw new Error(vErr.message);
+    visits = (v ?? []) as RouteActivityVisit[];
+  }
+  return {
+    visits,
+    tz: (org?.timezone as string | null) || DEFAULT_ORG_TIMEZONE,
+  };
+}
+
+/** The content state for a tech's route, in one language, as the database
+ *  has it now. The lock-screen hook answers a press with this, so the card
+ *  flips at once without waiting for a push. Never throws; null on failure. */
+export async function routeActivityStateFor(
+  techUserId: string,
+  orgId: string,
+  date: string,
+  lang: string,
+): Promise<RouteActivityState | null> {
+  try {
+    const db = await admin();
+    const route = await loadRoute(db, techUserId, orgId, date);
+    const tr = await translatorFor(lang);
+    return buildRouteActivityState(route.visits, {
+      t: tr.t,
+      tz: route.tz,
+      locale: tr.locale,
+      rtl: tr.rtl,
+    });
+  } catch (e) {
+    console.warn("[live-activity] routeActivityStateFor failed", techUserId, date, e);
+    return null;
+  }
+}
+
 /**
  * Rebuild a tech's route for `date` from the database and push it to every
  * live activity they have for that day. A route with nothing left on it --
@@ -220,37 +288,17 @@ export async function updateRouteLiveActivity(
     if (rows.length === 0) return total;
 
     const orgId = rows[0].organization_id;
-    const [{ data: staff }, { data: org }] = await Promise.all([
-      db
-        .from("staff")
-        .select("id")
-        .eq("user_id", techUserId)
-        .eq("organization_id", orgId)
-        .maybeSingle(),
-      db.from("organizations").select("timezone").eq("id", orgId).maybeSingle(),
-    ]);
-    let visits: RouteActivityVisit[] = [];
-    if (staff?.id) {
-      // The same rows, in the same order, as getMyDay in my-day.functions.ts.
-      const { data: v, error: vErr } = await db
-        .from("visits")
-        .select(
-          // city, postal_code and the coordinates are where the card's
-          // Navigate button sends the maps app (stopDestination).
-          "id, status, sequence, eta_start, eta_end, properties(label, street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time)",
-        )
-        .eq("assigned_staff_id", staff.id)
-        .eq("scheduled_on", date)
-        .order("sequence", { ascending: true, nullsFirst: false });
-      if (vErr) throw new Error(vErr.message);
-      visits = (v ?? []) as RouteActivityVisit[];
-    }
-    const tz = (org?.timezone as string | null) || DEFAULT_ORG_TIMEZONE;
+    const route = await loadRoute(db, techUserId, orgId, date);
     const nowS = Math.floor(Date.now() / 1000);
 
     for (const row of rows) {
       const tr = await translatorFor(row.locale ?? "en");
-      const state = buildRouteActivityState(visits, { t: tr.t, tz, locale: tr.locale, rtl: tr.rtl });
+      const state = buildRouteActivityState(route.visits, {
+        t: tr.t,
+        tz: route.tz,
+        locale: tr.locale,
+        rtl: tr.rtl,
+      });
       const nothingLeft = state.allDone || state.total === 0;
       const priority = routeChangePriority(row.last_state, state);
       if (priority == null && !nothingLeft) {

@@ -229,6 +229,9 @@ const zh: TranslationsWithPlurals<"other"> = {
     notePlaceholder: "大门已关，狗在叫，袋子放在棚子旁",
     addNote: "给办公室加个备注",
     takeCompletionPhoto: "拍一张完工照片才能完成这次服务。",
+    takePhotoToComplete: "拍照完成服务",
+    photoStillNeeded: "服务已开始。准备好后拍一张完工照片。",
+    checklistBeforeComplete: "勾选已做的项目，然后完成这次服务。",
     whyNoPhoto: "为什么没有照片？办公室会看到。",
     noPhotoPlaceholder: "相机打不开",
     cantTakePhoto: "拍不了照片？",
@@ -353,6 +356,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     clockOutWaiting: "下班打卡等待同步",
     clockIn: "上班打卡",
     clockOut: "下班打卡",
+    offTheClock: "你还没有上班打卡",
+    offTheClockShort: "未打卡",
   },
   duration: {
     minutes: "{{m}} 分钟",
@@ -712,12 +717,9 @@ const zh: TranslationsWithPlurals<"other"> = {
     done: "已完成 {{n}} 个",
     skipped: "已跳过 {{n}} 个",
     cardTitle: "锁定屏幕上的路线",
-    cardOn: "正在锁定屏幕上显示",
-    cardOff: "无需解锁即可查看下一站",
     cardDisabled: "请在 iPhone 设置中为 HoundStack 打开实时活动",
-    hiddenToast: "已从锁定屏幕隐藏",
-    prefDescription: "在锁定屏幕和灵动岛上显示下一站。上班打卡或开始第一站时会自动开始。",
-    failed: "无法在锁定屏幕上显示路线",
+    prefDescription:
+      "下一站显示在锁定屏幕和灵动岛上，带有导航和开始按钮。工作日内打开应用时会自动重新出现。",
     // The buttons on the lock screen and in the Dynamic Island. The same
     // words as the buttons on My Day they open.
     action: {

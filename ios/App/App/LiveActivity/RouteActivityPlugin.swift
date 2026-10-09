@@ -9,7 +9,7 @@
 // that ships inside the app. JS reaches it as `RouteActivity` through
 // registerPlugin in src/lib/live-activity.ts.
 //
-// Four methods, matching the JS wrapper:
+// Six methods, matching the JS wrapper:
 //
 //   isSupported()           { supported, enabled }. Supported is iOS 16.2+;
 //                           enabled is the person's own switch in Settings ›
@@ -30,6 +30,15 @@
 //                           it up to four hours), or "after" with dismissAt in
 //                           epoch ms. Ends every route activity, and says
 //                           which, so the server can stop pushing to them.
+//                           Forgets the action token too.
+//   setActionToken({token, endpoint, routeDate, expiresAt})
+//                           { saved }. The token the lock screen's Start
+//                           button presses with (RouteActivityIntents.swift),
+//                           kept in this app's keychain, readable after first
+//                           unlock, this device only. Refused when it is not
+//                           the shape of one, has expired, or the endpoint is
+//                           not https.
+//   clearActionToken()      Forget it.
 //
 // Two events: `pushToken` {id, token, routeDate} and `ended` {id, routeDate}
 // when the person swipes it away or iOS ends it, so the server stops pushing
@@ -50,6 +59,8 @@ public class RouteActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "end", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setActionToken", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearActionToken", returnType: CAPPluginReturnPromise),
     ]
 
     /// The latest push token per activity id, as hex. Main actor only.
@@ -186,8 +197,29 @@ public class RouteActivityPlugin: CAPPlugin, CAPBridgedPlugin {
                 await activity.end(content, dismissalPolicy: policy)
                 self?.tokens.removeValue(forKey: activity.id)
             }
+            // No route on the lock screen, so no Start button to press.
+            RouteActionStore.clear()
             call.resolve(["ended": all.count, "ids": all.map { $0.id }])
         }
+    }
+
+    @objc func setActionToken(_ call: CAPPluginCall) {
+        guard let token = call.getString("token"),
+              let endpoint = call.getString("endpoint"),
+              let routeDate = call.getString("routeDate"),
+              let expiresAt = call.getDouble("expiresAt") else {
+            call.reject("setActionToken needs token, endpoint, routeDate and expiresAt", "BAD_INPUT")
+            return
+        }
+        let held = RouteActionStore.Held(
+            token: token, endpoint: endpoint, routeDate: routeDate, expiresAt: expiresAt
+        )
+        call.resolve(["saved": RouteActionStore.save(held)])
+    }
+
+    @objc func clearActionToken(_ call: CAPPluginCall) {
+        RouteActionStore.clear()
+        call.resolve()
     }
 
     // MARK: - Streams

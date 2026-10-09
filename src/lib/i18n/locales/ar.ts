@@ -278,6 +278,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     notePlaceholder: "البوابة مغلقة، كلب ينبح، الأكياس بجانب المخزن",
     addNote: "إضافة ملاحظة للمكتب",
     takeCompletionPhoto: "التقط صورة الإنجاز لإنهاء هذه الزيارة.",
+    takePhotoToComplete: "التقط صورة للإنهاء",
+    photoStillNeeded: "بدأت الزيارة. التقط صورة الإنجاز عندما تكون جاهزًا.",
+    checklistBeforeComplete: "حدّد ما أنجزته، ثم أنهِ الزيارة.",
     whyNoPhoto: "لماذا لا توجد صورة؟ سيرى المكتب هذا.",
     noPhotoPlaceholder: "الكاميرا لم تفتح",
     cantTakePhoto: "لا تستطيع التقاط صورة؟",
@@ -411,6 +414,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     clockOutWaiting: "الانصراف بانتظار المزامنة",
     clockIn: "تسجيل الحضور",
     clockOut: "تسجيل الانصراف",
+    offTheClock: "لم تسجّل حضورك",
+    offTheClockShort: "لم تسجّل الحضور",
   },
   duration: {
     minutes: "{{m}} د",
@@ -829,12 +834,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     done: "{{n}} منجزة",
     skipped: "{{n}} متخطاة",
     cardTitle: "المسار على شاشة القفل",
-    cardOn: "يظهر على شاشة القفل",
-    cardOff: "شاهد محطتك التالية دون فتح القفل",
     cardDisabled: "فعّل الأنشطة المباشرة لتطبيق HoundStack في إعدادات iPhone",
-    hiddenToast: "أُخفي من شاشة القفل",
-    prefDescription: "محطتك التالية على شاشة القفل وفي Dynamic Island. يبدأ تلقائيًا عند تسجيل حضورك أو بدء أول محطة.",
-    failed: "تعذّر إظهار المسار على شاشة القفل",
+    prefDescription:
+      "محطتك التالية على شاشة القفل وفي Dynamic Island، مع زرّي ملاحة وبدء. تعود تلقائيًا عند فتح التطبيق خلال يوم عملك.",
     // The buttons on the lock screen and in the Dynamic Island. The same
     // words as the buttons on My Day they open.
     action: {
