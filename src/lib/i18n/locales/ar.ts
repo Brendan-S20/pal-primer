@@ -275,7 +275,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     tickRequired_many: "حدّد {{count}} بندًا إلزاميًا في قائمة التحقق لإنهاء هذه الزيارة.",
     tickRequired_other: "حدّد {{count}} بند إلزامي في قائمة التحقق لإنهاء هذه الزيارة.",
     noteLabel: "ملاحظة للمكتب",
-    notePlaceholder: "البوابة مغلقة، كلب ينبح، الأكياس بجانب المخزن",
+    notePlaceholder: "البوابة مغلقة، الكلب في الداخل، تركت ملاحظة للعميل",
     addNote: "إضافة ملاحظة للمكتب",
     takeCompletionPhoto: "التقط صورة الإنجاز لإنهاء هذه الزيارة.",
     takePhotoToComplete: "التقط صورة للإنهاء",

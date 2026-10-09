@@ -226,7 +226,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     required: "必填",
     tickRequired_other: "勾选清单上的 {{count}} 个必填项才能完成这次服务。",
     noteLabel: "给办公室的备注",
-    notePlaceholder: "大门已关，狗在叫，袋子放在棚子旁",
+    notePlaceholder: "大门已关，狗在屋里，给客户留了便条",
     addNote: "给办公室加个备注",
     takeCompletionPhoto: "拍一张完工照片才能完成这次服务。",
     takePhotoToComplete: "拍照完成服务",

@@ -239,7 +239,7 @@ const en = {
     tickRequired_one: "Tick the required checklist item to finish this visit.",
     tickRequired_other: "Tick the {{count}} required checklist items to finish this visit.",
     noteLabel: "Note for the office",
-    notePlaceholder: "Gate latched, dog barking, bags by the shed",
+    notePlaceholder: "Gate latched, dog inside, left a note for the client",
     addNote: "Add a note for the office",
     takeCompletionPhoto: "Take a completion photo to finish this visit.",
     takePhotoToComplete: "Take photo to complete",

@@ -235,7 +235,7 @@ const es: Translations = {
     tickRequired_other:
       "Marca los {{count}} puntos obligatorios de la lista para terminar esta visita.",
     noteLabel: "Nota para la oficina",
-    notePlaceholder: "Portón cerrado, perro ladrando, bolsas junto al cobertizo",
+    notePlaceholder: "Portón cerrado, perro adentro, dejé una nota para el cliente",
     addNote: "Agregar una nota para la oficina",
     takeCompletionPhoto: "Toma una foto del trabajo terminado para cerrar esta visita.",
     takePhotoToComplete: "Tomar foto para terminar",
