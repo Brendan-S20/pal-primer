@@ -36,7 +36,7 @@ const LEAD_FORM_DEFAULTS = {
   brandColor: null as string | null,
   logoUrl: null as string | null,
   headline: "Request a quote",
-  intro: "Tell us about your yard and we'll get you a quote.",
+  intro: "Tell us about your property and pets and we'll get you a quote.",
   confirmation: "Thanks, we got your request! We'll be in touch shortly to set up your service.",
   fields: { phone: true, location: true, dogCount: true, message: true },
 };

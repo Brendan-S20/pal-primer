@@ -74,7 +74,8 @@ function SignupPage() {
             Get an instant quote
           </h1>
           <p className="mt-2 text-muted-foreground">
-            Tell us about your yard and we'll price it in seconds. No calls, no forms to wait on.
+            Tell us about your property and pets and we'll price it in seconds. No calls, no forms
+            to wait on.
           </p>
         </div>
 

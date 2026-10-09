@@ -198,7 +198,7 @@ function LeadFormCustomizer({ config }: { config: any }) {
       </div>
       <div>
         <Label className="text-xs">Intro text</Label>
-        <Input value={intro} onChange={(e) => setIntro(e.target.value)} placeholder="Tell us about your yard and we'll get you a quote." />
+        <Input value={intro} onChange={(e) => setIntro(e.target.value)} placeholder="Tell us about your property and pets and we'll get you a quote." />
       </div>
       <div>
         <Label className="text-xs">Confirmation message</Label>
