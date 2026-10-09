@@ -115,7 +115,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Schedule, route, invoice and get paid. HoundStack is the business system for pet service companies that work a route, starting with pet waste removal.",
+          "Scheduling, routing, billing and payments, a client portal and a field app for recurring pet service businesses.",
       },
       { name: "robots", content: "noindex" },
       // Matches manifest.theme_color in vite.config.ts (brand cream). Chrome
@@ -125,22 +125,28 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "theme-color", content: "#fdfaf1" },
       { property: "og:site_name", content: "HoundStack" },
       { property: "og:type", content: "website" },
-      { property: "og:title", content: "HoundStack: the business system for route-based pet services" },
-      { name: "twitter:title", content: "HoundStack: the business system for route-based pet services" },
+      {
+        property: "og:title",
+        content: "HoundStack: run your whole recurring pet service business from one app",
+      },
+      {
+        name: "twitter:title",
+        content: "HoundStack: run your whole recurring pet service business from one app",
+      },
       {
         name: "description",
         content:
-          "Schedule, route, invoice and get paid. HoundStack is the business system for pet service companies that work a route, starting with pet waste removal.",
+          "Scheduling, routing, billing and payments, a client portal and a field app for recurring pet service businesses.",
       },
       {
         property: "og:description",
         content:
-          "Schedule, route, invoice and get paid. HoundStack is the business system for pet service companies that work a route, starting with pet waste removal.",
+          "Scheduling, routing, billing and payments, a client portal and a field app for recurring pet service businesses.",
       },
       {
         name: "twitter:description",
         content:
-          "Schedule, route, invoice and get paid. HoundStack is the business system for pet service companies that work a route, starting with pet waste removal.",
+          "Scheduling, routing, billing and payments, a client portal and a field app for recurring pet service businesses.",
       },
       { property: "og:image", content: appUrl("/og-image.png") },
       { property: "og:image:width", content: "1200" },
