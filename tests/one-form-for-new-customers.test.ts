@@ -358,7 +358,7 @@ describe("every signup lands in Leads too", () => {
   });
 
   it("the migration that links them replays into an empty database", () => {
-    const sql = read("supabase/migrations/20261008120000_a-signup-is-a-lead-too.sql");
+    const sql = read("supabase/migrations/20261008160000_a-signup-is-a-lead-too.sql");
     expect(sql).toMatch(
       /ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public\.leads\(id\) ON DELETE SET NULL/,
     );

@@ -107,7 +107,7 @@ export const listLeads = createServerFn({ method: "GET" })
     await requirePermission(context.supabase, context.userId, "manage_leads");
     // With the signup a lead started, when it started one: Leads labels a
     // row "Started service online" or "Started signup online, didn't pay"
-    // from it. signup_requests.lead_id (20261008120000) is the link.
+    // from it. signup_requests.lead_id (20261008160000) is the link.
     const { data, error } = await context.supabase
       .from("leads")
       .select("*, signup_requests(status, refunded_at, created_at)")
