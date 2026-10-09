@@ -121,10 +121,13 @@ people they invite. The app is free to download.
 
 **Keywords** (100 char limit, comma separated, no spaces after commas)
 ```
-pet service,crm,dispatch,pooper scooper,dog walking,pet sitting,grooming,dog waste,crew,scooper
+pooper scooper,dog waste,pet waste,scooper,pet service,crm,dispatch,field service,crew,technician
 ```
-(95 characters. Words already in the name and subtitle are left out, because
-Apple indexes those separately.)
+(97 characters, saved 2026-10-08. Words already in the name and subtitle are
+left out, because Apple indexes those separately. The 2026-10-07 list named
+dog walking, pet sitting and grooming; the app cannot book those trades yet
+(no service catalog, one visit per plan per day, dogs only), and keywords that
+promise what the app does not do are a guideline 2.3 rejection.)
 
 **Category** (set in App Store Connect by the owner, 2026-09-15)
 - Primary: **Productivity**
@@ -134,7 +137,22 @@ Apple indexes those separately.)
 
 **Support URL:** `https://houndstack.com/contact`
 **Marketing URL:** `https://houndstack.com`
-**Privacy Policy URL:** `https://houndstack.com/privacy`
+**Privacy Policy URL:** `https://app.houndstack.com/legal/privacy` (switched
+2026-10-08 from `houndstack.com/privacy`, which then said nothing about
+location or live tracking and gave deletion as email only; the app's own page
+is the one kept current with the code).
+
+**App Privacy label** (republished 2026-10-08, matching Play's Data safety
+form and the privacy policy). **No tracking.** Thirteen types, all "Used for
+App Functionality" and "Linked to the user's identity": Name, Email Address,
+Phone Number, Physical Address; Payment Info; Coarse Location; Emails or Text
+Messages, Photos or Videos; User ID, Device ID; Purchase History; Crash Data,
+Other Diagnostic Data. Not declared: Contacts (the app never reads the phone's
+address book), Precise Location (it stays on the device for the map), Product
+Interaction and Performance Data (no analytics, Sentry runs without tracing),
+Customer Support (no in-app support chat). The label published before this
+said every type was used for tracking, which would have required the App
+Tracking Transparency prompt the app does not show.
 
 > All three verified live on 2026-08-20: `houndstack.com`, `/contact` and
 > `/privacy` each return 200 (with and without a trailing slash, and on the
