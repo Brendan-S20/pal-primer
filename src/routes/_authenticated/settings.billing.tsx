@@ -889,8 +889,8 @@ function NextInvoice({
                       use the app this period and is charged on this invoice. */}
                   {i.kind === "seat" && (
                     <p className="text-xs text-muted-foreground">
-                      Everyone past your plan&apos;s allowance who has used their login this
-                      billing period so far.
+                      Everyone past your plan&apos;s allowance who has used their login this billing
+                      period so far.
                     </p>
                   )}
                 </div>

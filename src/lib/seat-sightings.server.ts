@@ -65,7 +65,8 @@ async function currentSessionKey(userId: string): Promise<string> {
 async function keepAlive(): Promise<(job: Promise<unknown>) => void> {
   try {
     const { getRequest } = await import("@tanstack/react-start/server");
-    const request = getRequest() as (Request & { waitUntil?: (p: Promise<unknown>) => void }) | null;
+    const request = getRequest() as
+      (Request & { waitUntil?: (p: Promise<unknown>) => void }) | null;
     const waitUntil = request?.waitUntil;
     if (typeof waitUntil === "function") {
       return (job) => {
@@ -96,7 +97,15 @@ export async function noteStaffSeen(
     const key = await currentSessionKey(userId);
     if (!opts.force && throttled(key)) return null;
 
-    const { data, error } = await (supabase as any).rpc("note_staff_seen");
+    // Not in the generated types yet; the shape is note_staff_seen()'s jsonb.
+    const { data, error } = await (
+      supabase as {
+        rpc: (fn: "note_staff_seen") => PromiseLike<{
+          data: unknown;
+          error: { message: string } | null;
+        }>;
+      }
+    ).rpc("note_staff_seen");
     if (error) {
       console.error("note_staff_seen failed", error.message);
       return null;

@@ -139,12 +139,12 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     // reads the last 30 days of that, not the staff list. It charges nothing:
     // what Stripe is told is decided below and by syncOrgSeatQuantity.
     let seats = 0;
-    {
-      const { data: seen, error: seenErr } = await (supabaseAdmin as any).rpc("billable_seat_count", {
-        _org_id: orgId,
-        _since: new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(),
-      });
-      if (!seenErr && Number.isFinite(Number(seen))) seats = Number(seen);
+    try {
+      const { billableSeatsSince } = await import("@/lib/seat-sync.server");
+      seats = await billableSeatsSince(supabaseAdmin, orgId, Date.now() / 1000 - 30 * 24 * 60 * 60);
+    } catch (e) {
+      // A suggestion, not a charge: the smallest plan is a fine default.
+      console.error("seat count for the plan suggestion failed", (e as Error).message);
     }
 
     const { data: planRows } = await (supabaseAdmin as any)

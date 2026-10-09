@@ -42,7 +42,8 @@ describe("the edges, as they reach the seat line", () => {
   // Each edge is decided in the database (who is in the count); here it is
   // carried through to what Stripe bills. Launch: 3 included.
   const bill = (seenThisPeriod: number) =>
-    seatTarget({ period: P, metadata: ARREARS, billableSeats: seenThisPeriod, includedSeats: 3 }).quantity;
+    seatTarget({ period: P, metadata: ARREARS, billableSeats: seenThisPeriod, includedSeats: 3 })
+      .quantity;
 
   it("a team of six where only the owner and two techs opened the app costs nothing extra", () => {
     expect(bill(3)).toBe(0);
@@ -75,7 +76,9 @@ describe("subscriptionPeriod", () => {
   });
 
   it("reads the subscription's own period on older versions", () => {
-    expect(subscriptionPeriod({ current_period_start: P.start, current_period_end: P.end })).toEqual(P);
+    expect(
+      subscriptionPeriod({ current_period_start: P.start, current_period_end: P.end }),
+    ).toEqual(P);
   });
 
   it("takes the item with the latest end when they disagree", () => {
@@ -94,13 +97,20 @@ describe("subscriptionPeriod", () => {
   it("is null rather than a guess when Stripe gave nothing usable", () => {
     expect(subscriptionPeriod(null)).toBeNull();
     expect(subscriptionPeriod({ items: { data: [{ current_period_end: P.end }] } })).toBeNull();
-    expect(subscriptionPeriod({ current_period_start: P.end, current_period_end: P.start })).toBeNull();
+    expect(
+      subscriptionPeriod({ current_period_start: P.end, current_period_end: P.start }),
+    ).toBeNull();
   });
 });
 
 describe("the changeover: no period's seats are billed twice", () => {
   it("a subscription with no marker prepaid this period: bill 0, and mark arrears from the next", () => {
-    const t = seatTarget({ period: P, metadata: { plan_id: "x" }, billableSeats: 9, includedSeats: 3 });
+    const t = seatTarget({
+      period: P,
+      metadata: { plan_id: "x" },
+      billableSeats: 9,
+      includedSeats: 3,
+    });
     expect(t).toEqual({
       quantity: 0,
       prepaid: true,
@@ -128,7 +138,14 @@ describe("the changeover: no period's seats are billed twice", () => {
 
   it("a new subscription is in arrears from its very first period", () => {
     expect(arrearsFrom(newSubscriptionSeatMarker())).toBe(0);
-    expect(seatTarget({ period: P, metadata: newSubscriptionSeatMarker(), billableSeats: 5, includedSeats: 3 }).quantity).toBe(2);
+    expect(
+      seatTarget({
+        period: P,
+        metadata: newSubscriptionSeatMarker(),
+        billableSeats: 5,
+        includedSeats: 3,
+      }).quantity,
+    ).toBe(2);
   });
 
   it("a marker it cannot read is treated as no marker, never as arrears from the start", () => {

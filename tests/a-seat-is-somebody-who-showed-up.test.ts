@@ -27,7 +27,10 @@ import { join } from "node:path";
 vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
-const MIGRATION = join(ROOT, "supabase/migrations/20261009130000_a-seat-is-somebody-who-showed-up.sql");
+const MIGRATION = join(
+  ROOT,
+  "supabase/migrations/20261009130000_a-seat-is-somebody-who-showed-up.sql",
+);
 const PROOF = join(ROOT, "tests/sql/a-seat-is-somebody-who-showed-up.proof.sql");
 const DB_URL =
   process.env.SEATS_PROOF_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
@@ -49,8 +52,10 @@ function findPsql(): string | null {
 const psql = findPsql();
 const reachable =
   !!psql &&
-  spawnSync(psql, [DB_URL, "-XAtc", "select 1"], { encoding: "utf8", timeout: 30_000 }).stdout?.trim() ===
-    "1";
+  spawnSync(psql, [DB_URL, "-XAtc", "select 1"], {
+    encoding: "utf8",
+    timeout: 30_000,
+  }).stdout?.trim() === "1";
 
 if (!reachable) {
   console.warn(
@@ -102,7 +107,11 @@ describe.skipIf(!reachable)("who counts as a seat, in a real database", () => {
 
     const left = spawnSync(
       psql!,
-      [DB_URL, "-XAtc", "select count(*) from public.organizations where name like 'Seats Proof %'"],
+      [
+        DB_URL,
+        "-XAtc",
+        "select count(*) from public.organizations where name like 'Seats Proof %'",
+      ],
       { encoding: "utf8" },
     );
     expect(left.stdout.trim()).toBe("0");

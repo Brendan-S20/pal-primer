@@ -72,7 +72,10 @@ describe("noteStaffSeen", () => {
 
   it("reconciles the seat line on a person's first sighting in the period", async () => {
     const { noteStaffSeen } = await import("@/lib/seat-sightings.server");
-    await noteStaffSeen(client({ stamped: true, organization_id: "org-1", needs_seat_sync: true }), "user-1");
+    await noteStaffSeen(
+      client({ stamped: true, organization_id: "org-1", needs_seat_sync: true }),
+      "user-1",
+    );
     await settle();
     expect(h.sync).toHaveBeenCalledWith("org-1");
     // On the Worker's waitUntil, so the page never waits on Stripe.
@@ -81,7 +84,10 @@ describe("noteStaffSeen", () => {
 
   it("does not ask Stripe when the count cannot have moved", async () => {
     const { noteStaffSeen } = await import("@/lib/seat-sightings.server");
-    await noteStaffSeen(client({ stamped: true, organization_id: "org-1", needs_seat_sync: false }), "user-1");
+    await noteStaffSeen(
+      client({ stamped: true, organization_id: "org-1", needs_seat_sync: false }),
+      "user-1",
+    );
     await noteStaffSeen(client({ stamped: false, why: "already_today" }), "user-2");
     await settle();
     expect(h.sync).not.toHaveBeenCalled();
@@ -111,7 +117,10 @@ describe("noteStaffSeen", () => {
     await expect(noteStaffSeen(client(null, { message: "down" }), "user-1")).resolves.toBeNull();
     h.sync.mockRejectedValue(new Error("stripe down"));
     await expect(
-      noteStaffSeen(client({ stamped: true, organization_id: "org-1", needs_seat_sync: true }), "user-2"),
+      noteStaffSeen(
+        client({ stamped: true, organization_id: "org-1", needs_seat_sync: true }),
+        "user-2",
+      ),
     ).resolves.toMatchObject({ stamped: true });
     await settle();
   });
@@ -189,7 +198,10 @@ describe("the offline replay", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const { syncQueue } = await import("@/lib/offline/sync");
     pending = [queuedStart()];
-    const r = await syncQueue(callers(async () => Promise.reject(new Error("no"))), "tech-a");
+    const r = await syncQueue(
+      callers(async () => Promise.reject(new Error("no"))),
+      "tech-a",
+    );
     expect(r).toMatchObject({ succeeded: 1, failed: 0 });
   });
 

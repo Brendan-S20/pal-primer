@@ -73,7 +73,9 @@ export type SubscriptionPeriod = { start: number; end: number };
 type MaybeSubscription = {
   current_period_start?: number | null;
   current_period_end?: number | null;
-  items?: { data?: Array<{ current_period_start?: number | null; current_period_end?: number | null }> };
+  items?: {
+    data?: Array<{ current_period_start?: number | null; current_period_end?: number | null }>;
+  };
 };
 
 /**

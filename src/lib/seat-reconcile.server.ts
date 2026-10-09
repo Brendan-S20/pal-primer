@@ -48,7 +48,9 @@ export function dueForSeatReconcile(rows: OrgRow[], now: Date): OrgRow[] {
   });
 }
 
-export async function reconcileSeatsBeforeRenewal(now: Date = new Date()): Promise<SeatReconcileSummary> {
+export async function reconcileSeatsBeforeRenewal(
+  now: Date = new Date(),
+): Promise<SeatReconcileSummary> {
   const summary: SeatReconcileSummary = {
     considered: 0,
     synced: 0,
@@ -56,7 +58,7 @@ export async function reconcileSeatsBeforeRenewal(now: Date = new Date()): Promi
     failed: 0,
     skipped_reasons: {},
   };
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from("organizations")
     .select("id, slug, is_comped, current_period_end")
     .not("stripe_subscription_id", "is", null)

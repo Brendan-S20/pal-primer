@@ -213,11 +213,32 @@ export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult
   return result;
 }
 
-/** People seen in the org since the period began (staff_seen_days). */
-async function billableSeatsSince(admin: unknown, orgId: string, periodStart: number): Promise<number> {
-  const { data, error } = await (admin as any).rpc("billable_seat_count", {
+/** The two calls this file makes that the generated types do not know yet. */
+type SeatDb = {
+  rpc: (
+    fn: "billable_seat_count",
+    args: { _org_id: string; _since: string },
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  from: (table: "org_seat_periods") => {
+    upsert: (
+      row: Record<string, unknown>,
+      opts: { onConflict: string },
+    ) => PromiseLike<{ error: { message: string } | null }>;
+  };
+};
+
+/**
+ * People seen in the org since `since` (epoch seconds), from staff_seen_days.
+ * Throws when the count cannot be read.
+ */
+export async function billableSeatsSince(
+  admin: unknown,
+  orgId: string,
+  since: number,
+): Promise<number> {
+  const { data, error } = await (admin as SeatDb).rpc("billable_seat_count", {
     _org_id: orgId,
-    _since: periodBoundaryIso(periodStart),
+    _since: periodBoundaryIso(since),
   });
   // A failed count must not be read as zero: zero would remove the seat
   // line and the renewal would bill nobody. Throw, and the caller's
@@ -240,7 +261,7 @@ async function recordSeatPeriod(
   quantity: number | null,
 ): Promise<void> {
   try {
-    const { error } = await (admin as any).from("org_seat_periods").upsert(
+    const { error } = await (admin as SeatDb).from("org_seat_periods").upsert(
       {
         organization_id: orgId,
         period_start: periodBoundaryIso(period.start),
