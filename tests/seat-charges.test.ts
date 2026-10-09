@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => {
   const stripe = {
-    subscriptions: { retrieve: vi.fn(), update: vi.fn() },
+    subscriptions: { retrieve: vi.fn(), update: vi.fn(), list: vi.fn() },
     subscriptionItems: { del: vi.fn() },
     invoiceItems: { create: vi.fn(), list: vi.fn() },
     invoices: { create: vi.fn(), finalizeInvoice: vi.fn() },
@@ -36,6 +36,12 @@ const admin = {
     const q: any = {
       select: () => q,
       eq: () => q,
+      not: () => q,
+      is: () => q,
+      in: () => q,
+      or: () => q,
+      lt: () => q,
+      limit: () => q,
       maybeSingle: () => Promise.resolve({ data: h.org }),
       update: (row: Record<string, unknown>) => ({
         eq: (_k: string, id: string) => {
@@ -66,7 +72,9 @@ import {
   chargeFloor,
   chargeSeatsOnRenewalInvoice,
   dueForSeatSweep,
+  endedWithinLookback,
   prepaidThroughOnInvoice,
+  sweepSeatCharges,
   invoiceSubscriptionId,
 } from "@/lib/seat-reconcile.server";
 
@@ -460,5 +468,141 @@ describe("the floor and the nightly sweep", () => {
       now,
     ).map((o) => o.id);
     expect(due).toEqual(["closed-yesterday", "never-looked"]);
+  });
+});
+
+describe("the nightly sweep of recently cancelled subscriptions", () => {
+  // The recovery gap: a cancellation whose webhook never charged the final
+  // period. The sweep offers every subscription that ended in the last 70 days
+  // to the same claim-first charge the webhook uses.
+  const NOW = new Date("2026-10-25T09:00:00Z");
+  const ENDED = at("2026-10-20T12:00:00Z");
+  const cancelled = (over: Record<string, unknown> = {}) =>
+    subscription({
+      status: "canceled",
+      ended_at: ENDED,
+      canceled_at: ENDED,
+      billing_cycle_anchor: at("2026-10-01T05:00:00Z"),
+      start_date: at("2026-10-01T05:00:00Z"),
+      ...over,
+    });
+  /** Stripe's list is an async iterable that pages for itself. */
+  const listing = (subs: unknown[]) => ({
+    async *[Symbol.asyncIterator]() {
+      for (const s of subs) yield s;
+    },
+  });
+  const finalClaims = () =>
+    h.claim.mock.calls.map((c) => c[0]).filter((a: any) => a._reason === "cancellation");
+
+  it("asks Stripe for cancelled subscriptions whose last period ended in the window", async () => {
+    h.stripe.subscriptions.list.mockReturnValue(listing([]));
+    await sweepSeatCharges(NOW);
+    expect(h.stripe.subscriptions.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "canceled",
+        current_period_end: { gte: Math.floor(NOW.getTime() / 1000) - 70 * 24 * 60 * 60 },
+      }),
+    );
+  });
+
+  it("the cancellation webhook never ran: the final period is claimed and charged, once", async () => {
+    h.stripe.subscriptions.list.mockReturnValue(listing([cancelled()]));
+    h.stripe.subscriptions.retrieve.mockResolvedValue(cancelled());
+    const r = await sweepSeatCharges(NOW);
+    expect(finalClaims()).toEqual([
+      expect.objectContaining({
+        _subscription_id: "sub_abc123456",
+        _period_start: "2026-10-01T05:00:00.000Z",
+        _period_end: "2026-10-20T12:00:00.000Z",
+      }),
+    ]);
+    expect(h.stripe.invoices.create).toHaveBeenCalledTimes(1);
+    expect(h.stripe.invoiceItems.create).toHaveBeenCalledWith(
+      expect.objectContaining({ invoice: "in_own", amount: 2000 }),
+      {
+        idempotencyKey: `${seatChargeKey("sub_abc123456", { start: at("2026-10-01T05:00:00Z"), end: ENDED })}:own`,
+      },
+    );
+    expect(r).toMatchObject({ cancelled_considered: 1, billed: 1 });
+  });
+
+  it("the claim exists but the Stripe charge never landed: it looks first, finds nothing, and finishes it", async () => {
+    h.stripe.subscriptions.list.mockReturnValue(listing([cancelled()]));
+    h.stripe.subscriptions.retrieve.mockResolvedValue(cancelled());
+    // claim_seat_charge hands back a stale or failed claim as a retry.
+    h.claim.mockReturnValue({
+      data: { claimed: true, id: "charge-final", status: "claimed", retry: true },
+      error: null,
+    });
+    h.stripe.invoiceItems.list.mockResolvedValue({
+      data: [{ id: "ii_other", metadata: { seat_charge_key: "seat-charge:v1:sub_other:1" } }],
+    });
+    const r = await sweepSeatCharges(NOW);
+    expect(h.stripe.invoiceItems.list).toHaveBeenCalledWith({
+      customer: "cus_abc123456",
+      limit: 100,
+    });
+    expect(h.stripe.invoices.create).toHaveBeenCalledTimes(1);
+    expect(h.updates.at(-1)).toMatchObject({ id: "charge-final", row: { status: "billed" } });
+    expect(r).toMatchObject({ billed: 1 });
+  });
+
+  it("...and a retry whose charge DID land is recorded, not repeated", async () => {
+    h.stripe.subscriptions.list.mockReturnValue(listing([cancelled()]));
+    h.stripe.subscriptions.retrieve.mockResolvedValue(cancelled());
+    h.claim.mockReturnValue({
+      data: { claimed: true, id: "charge-final", status: "claimed", retry: true },
+      error: null,
+    });
+    const key = seatChargeKey("sub_abc123456", { start: at("2026-10-01T05:00:00Z"), end: ENDED });
+    h.stripe.invoiceItems.list.mockResolvedValue({
+      data: [{ id: "ii_landed", invoice: "in_earlier", metadata: { seat_charge_key: key } }],
+    });
+    await sweepSeatCharges(NOW);
+    expect(h.stripe.invoices.create).not.toHaveBeenCalled();
+    expect(h.stripe.invoiceItems.create).not.toHaveBeenCalled();
+    expect(h.updates.at(-1)?.row).toMatchObject({
+      status: "billed",
+      stripe_invoice_item_id: "ii_landed",
+    });
+  });
+
+  it("the period was already charged (by the webhook): nothing happens", async () => {
+    h.stripe.subscriptions.list.mockReturnValue(listing([cancelled()]));
+    h.stripe.subscriptions.retrieve.mockResolvedValue(cancelled());
+    h.claim.mockReturnValue({
+      data: { claimed: false, id: "charge-final", status: "billed", retry: false },
+      error: null,
+    });
+    const r = await sweepSeatCharges(NOW);
+    expect(finalClaims()).toHaveLength(1);
+    expect(h.count).not.toHaveBeenCalled();
+    expect(h.stripe.invoices.create).not.toHaveBeenCalled();
+    expect(h.stripe.invoiceItems.create).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ cancelled_considered: 1, billed: 0, failed: 0 });
+  });
+
+  it("cancelled outside the window: ignored, even when Stripe's coarser filter lets it through", async () => {
+    // Cancelled immediately 80 days ago, part-way through a period that would
+    // have ended 60 days ago: inside Stripe's current_period_end filter,
+    // outside the 70-day window.
+    const old = cancelled({
+      ended_at: Math.floor(NOW.getTime() / 1000) - 80 * 24 * 60 * 60,
+      canceled_at: Math.floor(NOW.getTime() / 1000) - 80 * 24 * 60 * 60,
+    });
+    h.stripe.subscriptions.list.mockReturnValue(listing([old]));
+    const r = await sweepSeatCharges(NOW);
+    expect(h.claim).not.toHaveBeenCalled();
+    expect(h.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+    expect(r.cancelled_considered).toBe(0);
+  });
+
+  it("the window is the lookback, inclusive at the near end", () => {
+    const now = at("2026-10-25T09:00:00Z");
+    expect(endedWithinLookback({ ended_at: now - 70 * 24 * 60 * 60 }, now)).toBe(true);
+    expect(endedWithinLookback({ ended_at: now - 70 * 24 * 60 * 60 - 1 }, now)).toBe(false);
+    expect(endedWithinLookback({ ended_at: null, canceled_at: now - 5 }, now)).toBe(true);
+    expect(endedWithinLookback({}, now)).toBe(false);
   });
 });

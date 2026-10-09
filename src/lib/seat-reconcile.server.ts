@@ -202,8 +202,16 @@ export async function chargeSeatsOnRenewalInvoice(inv: Stripe.Invoice): Promise<
 export async function chargeFinalSeatPeriods(ended: Stripe.Subscription): Promise<RenewalSummary> {
   const stripe = await stripeOrNull();
   if (!stripe) return { skipped: "stripe_not_configured" };
-  const db = await admin();
+  return chargeFinal(stripe, await admin(), ended);
+}
 
+/** The final-period charge, shared by the webhook and the nightly sweep of
+ *  recently cancelled subscriptions. Claim-first, like every seat charge. */
+async function chargeFinal(
+  stripe: Stripe,
+  db: unknown,
+  ended: Stripe.Subscription,
+): Promise<RenewalSummary> {
   let sub = ended;
   try {
     sub = await stripe.subscriptions.retrieve(ended.id, { expand: ["items.data.price"] });
@@ -242,6 +250,8 @@ export async function chargeFinalSeatPeriods(ended: Stripe.Subscription): Promis
 
 export type SweepSummary = {
   considered: number;
+  /** Subscriptions cancelled within the lookback that the sweep re-checked. */
+  cancelled_considered: number;
   billed: number;
   nothing_to_bill: number;
   failed: number;
@@ -302,6 +312,7 @@ async function sweepOne(
 export async function sweepSeatCharges(nowDate: Date = new Date()): Promise<SweepSummary> {
   const summary: SweepSummary = {
     considered: 0,
+    cancelled_considered: 0,
     billed: 0,
     nothing_to_bill: 0,
     failed: 0,
@@ -341,6 +352,7 @@ export async function sweepSeatCharges(nowDate: Date = new Date()): Promise<Swee
   }
   const now = Math.floor(nowDate.getTime() / 1000);
   await retryUnfinishedCharges(stripe, supabaseAdmin, summary);
+  await sweepCancelledSubscriptions(stripe, supabaseAdmin, summary, now);
   for (const org of due.slice(0, SWEEP_LIMIT)) {
     summary.considered++;
     const subId = org.stripe_subscription_id;
@@ -417,6 +429,85 @@ async function retryUnfinishedCharges(
         (e as Error).message,
       );
     }
+  }
+}
+
+/** How many cancelled subscriptions one night re-checks, at most. */
+export const CANCELLED_SWEEP_LIMIT = 500;
+
+/** Whether a cancelled subscription is inside the window the sweep covers.
+ *  Pure, for the test. */
+export function endedWithinLookback(
+  sub: { ended_at?: number | null; canceled_at?: number | null },
+  now: number,
+): boolean {
+  const ended = sub.ended_at ?? sub.canceled_at ?? null;
+  return typeof ended === "number" && ended >= now - LOOKBACK_SECONDS && ended <= now;
+}
+
+/**
+ * The cancellation recovery gap, closed. The final period of a cancelled
+ * subscription is charged by the `customer.subscription.deleted` webhook; if
+ * that never ran, or died before claiming the period, nothing else would ever
+ * find the subscription again -- the rest of the sweep walks LIVE
+ * subscriptions only, and the retry pass only sees periods that were claimed.
+ *
+ * So every night, every subscription that ended within the lookback is
+ * offered to the same final-period charge the webhook uses. That path claims
+ * each period in seat_charges before Stripe is called and looks for its
+ * `seat_charge_key` in Stripe on a retry, so a period the webhook already
+ * charged is left alone, a claim whose Stripe charge never landed is finished,
+ * and an unclaimed one is charged. Exactly once, whichever runs first.
+ *
+ * Stripe cannot filter by `ended_at`; `current_period_end` within the window is
+ * a superset (an immediate cancellation ends before its period would have),
+ * and `endedWithinLookback` narrows it.
+ */
+async function sweepCancelledSubscriptions(
+  stripe: Stripe,
+  db: unknown,
+  summary: SweepSummary,
+  now: number,
+): Promise<void> {
+  let seen = 0;
+  try {
+    for await (const sub of stripe.subscriptions.list({
+      status: "canceled",
+      current_period_end: { gte: now - LOOKBACK_SECONDS },
+      limit: 100,
+      expand: ["data.items.data.price"],
+    })) {
+      if (++seen > CANCELLED_SWEEP_LIMIT) {
+        console.warn(
+          `[nightly] more than ${CANCELLED_SWEEP_LIMIT} cancelled subscriptions in the lookback`,
+        );
+        break;
+      }
+      if (!endedWithinLookback(sub, now)) continue;
+      summary.cancelled_considered++;
+      try {
+        const r = await chargeFinal(stripe, db, sub);
+        if ("skipped" in r) {
+          summary.skipped_reasons[r.skipped] = (summary.skipped_reasons[r.skipped] ?? 0) + 1;
+          continue;
+        }
+        for (const o of r.charged) {
+          if (o.status === "billed") summary.billed++;
+          else if (o.status === "nothing_to_bill") summary.nothing_to_bill++;
+          else if (o.status === "failed") summary.failed++;
+        }
+      } catch (e) {
+        summary.failed++;
+        console.error(
+          "[nightly] cancelled subscription seat charge failed",
+          sub.id,
+          (e as Error).message,
+        );
+      }
+    }
+  } catch (e) {
+    summary.failed++;
+    console.error("[nightly] listing cancelled subscriptions failed", (e as Error).message);
   }
 }
 
