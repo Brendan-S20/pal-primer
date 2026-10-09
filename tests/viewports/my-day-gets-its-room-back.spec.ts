@@ -24,11 +24,16 @@
  * ── THE CLUTTER ───────────────────────────────────────────────────────────
  *
  * Two full-width cards, "On the clock" and "Route on the lock screen", put
- * the first stop halfway down the phone. The clock is a chip in the status
- * row now and the lock-screen control an icon beside it (iPhone app only, so
- * absent here). Measured: the first stop starts right under the status row,
- * the chip opens a sheet with Clock out in it, and before clock-in the same
- * slot is a Clock in button.
+ * the first stop halfway down the phone. On 2026-10-07 they became a chip
+ * and an icon in the status row; on 2026-10-08, after a day of that on
+ * TestFlight, the owner took both off My Day. The status row is the date,
+ * progress and List/Map again; the clock is a "Time clock" row in the More
+ * sheet, which opens the clock sheet; and the only thing My Day says about
+ * the clock is a slim "You're off the clock" with Clock in, drawn only when
+ * there is work today and nobody is on it. Measured: the first stop starts
+ * right under the status row, nothing about the clock is on My Day while on
+ * it, the More row opens a sheet with Clock out in it, and off the clock the
+ * banner's Clock in is a full-size target inside the screen.
  *
  * Proof the page rendered and is the tech's, before any "nothing is wrong"
  * assertion: the heading, and a client name only the fixture holds.
@@ -188,39 +193,32 @@ for (const size of SIZES) {
       deviceScaleFactor: 2,
     });
 
-    test("the first stop starts right under the status row, and the clock is a chip that opens a sheet", async ({
+    test("the first stop starts right under the status row, and the clock is not on My Day", async ({
       page,
     }) => {
       await emulateInsets(page, size.insets);
       await openMyDay(page);
 
-      // The two cards are gone, and nothing has taken their place.
+      // The two cards are gone, the chip and the icon that replaced them are
+      // gone, and nothing has taken their place.
       await expect(page.locator('section[aria-label="Time clock"]')).toHaveCount(0);
       await expect(page.locator('section[aria-label="Route on the lock screen"]')).toHaveCount(0);
+      await expect(page.locator("[data-time-clock]")).toHaveCount(0);
+      await expect(page.locator("[data-route-lock-screen]")).toHaveCount(0);
+      await expect(page.locator("[data-off-the-clock]")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^On the clock · / })).toHaveCount(0);
 
       // My Day scrolls an open job into view on arrival; the question here is
       // about the top of the page.
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(400);
 
-      const chip = page.getByRole("button", { name: /^On the clock · / });
-      await expect(chip).toBeVisible();
       const geo = await page.evaluate(() => {
         const r = (el: Element | null) => (el ? el.getBoundingClientRect() : null);
-        const pill = [...document.querySelectorAll("div")]
-          .filter((d) => /\bof\b/.test(d.textContent || "") && /%$/.test((d.textContent || "").trim()))
-          .find((d, _, all) => !all.some((o) => o !== d && d.contains(o)));
-        const header = document.querySelector('[data-page-bleed].sticky');
+        const header = document.querySelector("[data-page-bleed].sticky");
         const first = document.querySelector("ol > li");
-        const chip = document.querySelector('[data-time-clock="on"]');
         const view = document.querySelector('[role="group"][aria-label="View"]');
-        return {
-          view: r(view),
-          pill: r(pill ?? null),
-          header: r(header),
-          first: r(first),
-          chip: r(chip),
-        };
+        return { view: r(view), header: r(header), first: r(first) };
       });
       expect(geo.first, "no stop card rendered").not.toBeNull();
       // Directly under the status row: the header's own bottom edge, then
@@ -229,24 +227,33 @@ for (const size of SIZES) {
         geo.first!.top - geo.header!.bottom,
         "something sits between the status row and the first stop",
       ).toBeLessThanOrEqual(20);
-      // The chip is in the status row: beside the progress, or on the slim
-      // row directly under it.
-      // "Directly under" is under the progress row, whose height is the
-      // taller of the pill and the List/Map toggle: one 8px gap, no more.
-      const rowBottom = Math.max(geo.pill!.bottom, geo.view!.bottom);
-      const besideOrUnder =
-        Math.abs(geo.chip!.top + geo.chip!.height / 2 - (geo.pill!.top + geo.pill!.height / 2)) <= 4 ||
-        (geo.chip!.top >= rowBottom && geo.chip!.top - rowBottom <= 9);
-      expect(besideOrUnder, `the clock chip is not in the status row: ${JSON.stringify(geo)}`).toBe(true);
-      expect(geo.chip!.height, "the clock chip is under the 44px floor").toBeGreaterThanOrEqual(44);
-      expect(geo.chip!.right).toBeLessThanOrEqual(size.width);
+      expect(geo.view!.right).toBeLessThanOrEqual(size.width);
 
       const { scrollW } = await measurePageOverflow(page);
       expect(scrollW, "the page scrolls sideways").toBeLessThanOrEqual(size.width);
+    });
 
-      // One tap opens a sheet; Clock out is in it, never on the row itself.
-      await expect(page.getByRole("button", { name: "Clock out", exact: true })).toHaveCount(0);
-      await chip.click();
+    test("the time clock is a row in More, which opens the clock sheet", async ({ page }) => {
+      await emulateInsets(page, size.insets);
+      await openMyDay(page);
+      const more = page.locator('[data-tour="more"]');
+      const viaMore = await more.isVisible();
+      if (viaMore) {
+        await more.click();
+      } else {
+        // No tab bar at this width: the sidebar is the menu, and the row is
+        // at its foot.
+        const trigger = page.locator('[data-sidebar="trigger"]').first();
+        if (await trigger.isVisible()) await trigger.click();
+      }
+      const row = page.locator("[data-time-clock-row]").filter({ visible: true }).first();
+      await expect(row).toBeVisible();
+      await expect(row).toContainText("Time clock");
+      await expect(row).toContainText(/On the clock · /);
+      const rb = (await row.boundingBox())!;
+      expect(rb.height, "the Time clock row is under the 44px floor").toBeGreaterThanOrEqual(44);
+      await row.click();
+
       const sheet = page.getByRole("dialog", { name: "Time clock" });
       await expect(sheet).toBeVisible();
       // It slides up on the motion tokens; a box measured mid-slide is not
@@ -260,18 +267,26 @@ for (const size of SIZES) {
       expect(b.y + b.height, "Clock out is under the home indicator").toBeLessThanOrEqual(
         size.height - size.insets.bottom,
       );
+      expect(b.x + b.width).toBeLessThanOrEqual(size.width);
     });
 
-    test("before clock-in, the same slot is a Clock in button", async ({ page }) => {
+    test("off the clock with work today, My Day says so, with Clock in", async ({ page }) => {
       await emulateInsets(page, size.insets);
       await openMyDay(page, { offTheClock: true });
       await page.evaluate(() => window.scrollTo(0, 0));
-      const clockIn = page.getByRole("button", { name: "Clock in", exact: true });
+      const banner = page.locator("[data-off-the-clock]");
+      await expect(banner).toBeVisible();
+      await expect(banner).toContainText("You're off the clock");
+      const clockIn = banner.getByRole("button", { name: "Clock in", exact: true });
       await expect(clockIn).toBeVisible();
       const b = (await clockIn.boundingBox())!;
       expect(b.height).toBeGreaterThanOrEqual(44);
       expect(b.x + b.width).toBeLessThanOrEqual(size.width);
+      const bb = (await banner.boundingBox())!;
+      expect(bb.x + bb.width).toBeLessThanOrEqual(size.width);
       await expect(page.getByRole("button", { name: /^On the clock · / })).toHaveCount(0);
+      const { scrollW } = await measurePageOverflow(page);
+      expect(scrollW, "the page scrolls sideways").toBeLessThanOrEqual(size.width);
     });
   });
 }

@@ -242,6 +242,9 @@ const en = {
     notePlaceholder: "Gate latched, dog barking, bags by the shed",
     addNote: "Add a note for the office",
     takeCompletionPhoto: "Take a completion photo to finish this visit.",
+    takePhotoToComplete: "Take photo to complete",
+    photoStillNeeded: "Visit started. Take the completion photo when you're ready.",
+    checklistBeforeComplete: "Check off what you did, then complete the visit.",
     whyNoPhoto: "Why no photo? The office sees this.",
     noPhotoPlaceholder: "Camera would not open",
     cantTakePhoto: "Can't take a photo?",
@@ -372,6 +375,8 @@ const en = {
     clockOutWaiting: "Clock-out waiting to sync",
     clockIn: "Clock in",
     clockOut: "Clock out",
+    offTheClock: "You're off the clock",
+    offTheClockShort: "Off the clock",
   },
   duration: {
     minutes: "{{m}}m",
@@ -754,12 +759,9 @@ const en = {
     done: "{{n}} done",
     skipped: "{{n}} skipped",
     cardTitle: "Route on the lock screen",
-    cardOn: "Showing on your lock screen",
-    cardOff: "See your next stop without unlocking",
     cardDisabled: "Turn on Live Activities for HoundStack in iPhone Settings",
-    hiddenToast: "Hidden from your lock screen",
-    prefDescription: "Your next stop on the lock screen and in the Dynamic Island. It starts by itself when you clock in or start your first stop.",
-    failed: "Couldn't show the route on the lock screen",
+    prefDescription:
+      "Your next stop on the lock screen and in the Dynamic Island, with Navigate and Start on it. It comes back by itself when you open the app during your working day.",
     // The buttons on the lock screen and in the Dynamic Island. The same
     // words as the buttons on My Day they open.
     action: {

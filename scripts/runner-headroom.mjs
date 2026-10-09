@@ -32,17 +32,33 @@
 // rather than ENOMEM. "Built in 9.24s" followed by "Bus error: 10" is that.
 //
 // So swap is read per platform: `sysctl vm.swapusage` on darwin,
-// /proc/meminfo on linux, and on win32 the pagefile via `wmic`, falling back
-// to saying it could not be read. An unread number and a healthy one must not
-// look alike, which is the same rule this repo applies to its test tallies.
+// /proc/meminfo on linux, and on win32 the pagefile via `wmic` or, where wmic
+// has been removed, CIM through PowerShell -- falling back to saying it could
+// not be read. An unread number and a healthy one must not look alike, which
+// is the same rule this repo applies to its test tallies.
 //
 // It never fails the build. The condition is not caused by the diff, so
 // blocking the diff on it would add a failure mode to a machine that already
 // manufactures them. What is worth having is the number IN THE LOG, so the
 // next unexplained timeout is an explained one.
+//
+// ── EXCEPT DISK, WHEN ASKED, BECAUSE THAT ONE IS NOT A GUESS ──────────────
+//
+// `--need-disk-gib N` adds the one check that DOES fail: fewer than N GiB free
+// on the volume holding the working directory. That was a bash step in
+// sandboxes.yml's viewport job (`df -Pk . | awk ...`), and it moved here when
+// that job moved to the Windows runner, which has neither `df` nor `bash` on
+// the PATH it runs steps with.
+//
+// It fails where swap only warns because the two are different kinds of
+// evidence. High swap makes a failure LIKELY; a browser download that runs out
+// of disk half way leaves a cache that exists, fails to launch, and reports as
+// a layout failure on every route at every width -- a certainty, and one that
+// reads like code. Without the flag the script behaves exactly as before, so
+// ci.yml's `What the machine had left` step is untouched by this.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statfsSync } from "node:fs";
 import { cpus, freemem, loadavg, platform, totalmem } from "node:os";
 
 const GiB = 1024 ** 3;
@@ -82,7 +98,24 @@ function swap() {
     const out = quiet("wmic", ["pagefile", "get", "AllocatedBaseSize,CurrentUsage", "/format:csv"]);
     const row = out?.split(/\r?\n/).find((l) => /,\d+,\d+\s*$/.test(l));
     const m = row && /,(\d+),(\d+)\s*$/.exec(row);
-    return m ? { usedMB: +m[2], totalMB: +m[1] } : null;
+    if (m) return { usedMB: +m[2], totalMB: +m[1] };
+    // And it HAS been removed on DESKTOP-JUC6SL1: its runs on 2026-10-08
+    // logged "swap could not be read on this platform". The same class
+    // through CIM, which is what replaced wmic. One line per pagefile,
+    // "allocatedMB,usedMB", summed.
+    const cim = quiet("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      'Get-CimInstance Win32_PageFileUsage | ForEach-Object { "$($_.AllocatedBaseSize),$($_.CurrentUsage)" }',
+    ]);
+    const rows = (cim ?? "")
+      .split(/\r?\n/)
+      .map((l) => /^(\d+),(\d+)$/.exec(l.trim()))
+      .filter(Boolean);
+    const totalMB = rows.reduce((n, r) => n + Number(r[1]), 0);
+    const usedMB = rows.reduce((n, r) => n + Number(r[2]), 0);
+    return totalMB > 0 ? { usedMB, totalMB } : null;
   }
   return null;
 }
@@ -112,4 +145,39 @@ if (s && pct(s.usedMB, s.totalMB) >= 50) {
     "::notice title=Runner headroom::Swap was not readable here, so this run has no swap figure. " +
       "That is not the same as healthy.",
   );
+}
+
+// ── DISK, ONLY WHEN A STEP ASKS ────────────────────────────────────────────
+const flag = process.argv.indexOf("--need-disk-gib");
+if (flag !== -1) {
+  const need = Number(process.argv[flag + 1]);
+  if (!Number.isFinite(need) || need <= 0) {
+    console.log(
+      `::error title=Runner headroom::--need-disk-gib needs a positive number, got "${process.argv[flag + 1]}"`,
+    );
+    process.exit(1);
+  }
+  let freeGiB;
+  try {
+    // statfs works on darwin, linux and win32 (Node >= 18.15), which is the
+    // point: `df` does not exist on the Windows runner.
+    const fs = statfsSync(process.cwd());
+    freeGiB = (Number(fs.bavail) * Number(fs.bsize)) / GiB;
+  } catch (err) {
+    // Unread is not the same as enough. Fail, naming why, rather than let a
+    // half-downloaded browser report itself as a layout fault later.
+    console.log(
+      `::error title=Runner headroom::could not read free disk space here (${err.message}), so this job cannot tell whether it has the ${need} GiB it needs`,
+    );
+    process.exit(1);
+  }
+  if (freeGiB < need) {
+    console.log(
+      `::error title=Runner headroom::Only ${freeGiB.toFixed(1)} GiB free on the runner; this job needs ${need} GiB. ` +
+        "A browser download that runs out of disk half way leaves a cache that exists, fails to launch, " +
+        "and reports as a layout failure on every route at every width.",
+    );
+    process.exit(1);
+  }
+  console.log(`${freeGiB.toFixed(1)} GiB free (this job needs ${need})`);
 }

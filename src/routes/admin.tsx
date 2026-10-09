@@ -10,6 +10,8 @@ import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/admin")({
   ssr: false,
+  // No hydration timer for a client-only route; see _authenticated/route.tsx.
+  pendingMinMs: 0,
   head: () => ({
     meta: [
       { title: pageTitle("Platform operator sign-in") },

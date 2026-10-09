@@ -27,7 +27,6 @@ test("the income CSV downloads, and its Total row matches Postgres", async ({ pa
 
   const db = serviceDb();
   const orgId = await e2eOrgId(db);
-  const year = new Date().getFullYear();
 
   // The same population the report reads: succeeded + refunded payments
   // whose PAID day, in the business's time zone, falls in the year so far
@@ -49,6 +48,11 @@ test("the income CSV downloads, and its Total row matches Postgres", async ({ pa
   const timeZone = org.timezone ?? "America/Chicago";
   const orgDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone });
   const today = orgDay(new Date().toISOString());
+  // The year the REPORT means by "year to date" is the business's, taken from
+  // the same day as `today`. It was the runner's `getFullYear()`, which in
+  // the hour after midnight Eastern on 1 January is a year Chicago has not
+  // reached yet, and the window below would run from Jan 1 to Dec 31.
+  const year = today.slice(0, 4);
   const { data: rows, error } = await db
     .from("payments")
     .select("amount_cents, paid_at, created_at")
