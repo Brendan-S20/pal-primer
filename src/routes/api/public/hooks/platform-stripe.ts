@@ -234,6 +234,20 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                 { onConflict: "stripe_invoice_id" },
               );
 
+              // Seats: a renewal Stripe has just drafted gets the seat period
+              // that just closed, as its own dated line, while it is still a
+              // draft (seat-rule.ts). Never fails the webhook: the period is
+              // claimed exactly once, and the nightly sweep charges it on an
+              // invoice of its own if this did not.
+              if (event.type === "invoice.created" && orgId) {
+                try {
+                  const { chargeSeatsOnRenewalInvoice } = await import("@/lib/seat-reconcile.server");
+                  await chargeSeatsOnRenewalInvoice(inv);
+                } catch (e) {
+                  console.error(`platform invoice ${inv.id}: seat charge failed`, (e as Error).message);
+                }
+              }
+
               // Mirror plan status hints from invoice outcomes.
               //
               // `billing_status` moves with it. It used not to, anywhere in
@@ -312,6 +326,15 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   .eq("id", orgId)
                   .maybeSingle();
                 if ((orgRow as any)?.stripe_subscription_id !== sub.id) break;
+                // The final seat period has no renewal invoice to ride on, so
+                // it is charged now, once, on an invoice of its own
+                // (seat-rule.ts). Never fails the webhook.
+                try {
+                  const { chargeFinalSeatPeriods } = await import("@/lib/seat-reconcile.server");
+                  await chargeFinalSeatPeriods(sub);
+                } catch (e) {
+                  console.error(`subscription ${sub.id}: final seat charge failed`, (e as Error).message);
+                }
               }
               if (orgId) {
                 const statusMap: Record<string, "active" | "past_due" | "canceled" | "free"> = {

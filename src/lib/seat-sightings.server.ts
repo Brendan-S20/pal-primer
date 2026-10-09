@@ -11,7 +11,7 @@
 //   * noteMySighting, which the offline queue calls after it replays work, so
 //     a tech whose day was spent in a dead zone is counted when it lands.
 //
-// It never throws and never makes the caller wait on Stripe.
+// It never throws, and never talks to Stripe.
 
 import { sessionIdFromAuthHeader } from "@/lib/impersonation-marker";
 
@@ -19,7 +19,6 @@ export type SightingResult = {
   stamped: boolean;
   why?: string;
   organization_id?: string;
-  needs_seat_sync?: boolean;
 };
 
 // One call per session per isolate per quarter hour. The database already
@@ -85,8 +84,9 @@ async function keepAlive(): Promise<(job: Promise<unknown>) => void> {
 
 /**
  * Record the caller's sighting with THEIR OWN client (the function reads
- * auth.uid() and the JWT's session id, so it can only ever stamp the caller),
- * and when it was their first in the period, reconcile the org's seat line.
+ * auth.uid() and the JWT's session id, so it can only ever stamp the caller).
+ * Nothing is sent to Stripe here: a seat period is charged after it closes
+ * (seat-reconcile.server.ts).
  */
 export async function noteStaffSeen(
   supabase: unknown,
@@ -111,19 +111,6 @@ export async function noteStaffSeen(
       return null;
     }
     const r = (data ?? { stamped: false }) as SightingResult;
-    if (r.stamped && r.needs_seat_sync && r.organization_id) {
-      const orgId = r.organization_id;
-      const job = (async () => {
-        try {
-          const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
-          await syncOrgSeatQuantity(orgId);
-        } catch (e) {
-          // The nightly reconcile before renewal is the backstop.
-          console.error("seat sync after a first sighting failed", orgId, (e as Error).message);
-        }
-      })();
-      (await keepAlive())(job);
-    }
     return r;
   } catch (e) {
     console.error("recording a sighting failed", (e as Error).message);

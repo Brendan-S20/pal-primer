@@ -340,15 +340,17 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           aiOverage = { error: (e as Error).message };
         }
 
-        // Seats are billed in arrears: Stripe invoices whatever the seat line
-        // holds at renewal (seat-rule.ts). A first sighting each period already
-        // reconciles it, best-effort; this catches any that was lost, for every
-        // org renewing in the next two days. Outside the per-org loop for the
-        // same reasons as ai_overage.
+        // Seats are charged per closed one-month period, as their own dated
+        // invoice line (seat-rule.ts). The renewal webhook puts a monthly
+        // plan's period on its renewal invoice; this charges everything else
+        // that has closed -- a yearly plan's month, or a renewal the webhook
+        // missed -- each exactly once, and runs the changeover from the old
+        // seat line on every subscription the first night. Outside the per-org
+        // loop for the same reasons as ai_overage.
         let seats: Record<string, unknown>;
         try {
-          const { reconcileSeatsBeforeRenewal } = await import("@/lib/seat-reconcile.server");
-          seats = await reconcileSeatsBeforeRenewal();
+          const { sweepSeatCharges } = await import("@/lib/seat-reconcile.server");
+          seats = await sweepSeatCharges();
         } catch (e) {
           console.error("[nightly] seat reconcile failed", e);
           seats = { error: (e as Error).message };
