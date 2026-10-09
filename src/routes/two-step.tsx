@@ -26,6 +26,8 @@ import { pageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/two-step")({
   ssr: false,
+  // No hydration timer for a client-only route; see _authenticated/route.tsx.
+  pendingMinMs: 0,
   validateSearch: (s: Record<string, unknown>) => ({
     next: typeof s.next === "string" ? s.next : undefined,
   }),
