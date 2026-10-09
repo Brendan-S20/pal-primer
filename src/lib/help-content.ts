@@ -37,7 +37,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ── Getting started ────────────────────────────────────────────────────────
   {
     slug: "first-30-minutes",
-    title: "Your first 30 minutes: from empty account to first route",
+    title: "Your first 30 minutes: from empty account to a scheduled, billable week",
     section: "Getting started",
     body: [
       "The fastest path from a fresh account to a working day is the [guided setup](article:tour): six short steps, each done in place, and the [Get started checklist](article:checklist) on your dashboard tracks the same six. In order:",
