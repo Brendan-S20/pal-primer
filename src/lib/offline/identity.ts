@@ -65,6 +65,60 @@ export const IDENTITY_DEADLINE_MS = 4_000;
 export const SESSION_DEADLINE_MS = 1_000;
 
 /**
+ * How long a "yes" from the auth server is taken as still true without asking
+ * again. On BOTH builds, deliberately (see the note inside resolveIdentity on
+ * why the rest of this file's differences are native-only).
+ *
+ * resolveIdentity() is the _authenticated route's beforeLoad, and the router
+ * runs every matched route's beforeLoad on EVERY navigation and on every
+ * intent preload (a touchstart on a link). So until 2026-10-08 every tab tap,
+ * every tap into a client, and every thumb that came to rest on a list of
+ * links while scrolling it, made a round trip to the auth server before
+ * anything could change on the screen: the 100-300ms of a cell connection,
+ * and on one bar up to IDENTITY_DEADLINE_MS, on every single navigation. That
+ * wait, and not the animation after it, is most of what a person calls an
+ * app "not smooth", and the laptop in the evening paid it as well as the
+ * phone in the driveway.
+ *
+ * Nothing about it was protection. Every server function verifies the token
+ * itself (auth-middleware.ts, getClaims), so a session the server would
+ * refuse is refused there whatever this says. What this answer decides is
+ * only whether to draw the signed-in shell or the sign-in screen, and asking
+ * once every few minutes decides that as well as asking on every tap.
+ *
+ * The reuse ends at once when the signed-in user changes or signs out
+ * (watchSignedInUser below), so a sign-out or a switch of account is never
+ * answered from here.
+ */
+export const IDENTITY_REUSE_MS = 5 * 60_000;
+
+let verified: { userId: string; user: User; at: number } | null = null;
+let watching = false;
+
+/** Forget the reused answer the moment the session says someone else, or
+ *  nobody, is signed in. Subscribed on the first verified answer rather than
+ *  at import, so importing this module has no side effect. */
+function watchSignedInUser() {
+  if (watching) return;
+  watching = true;
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      !session ||
+      event === "SIGNED_OUT" ||
+      event === "USER_UPDATED" ||
+      session.user.id !== verified?.userId
+    ) {
+      verified = null;
+    }
+  });
+}
+
+/** For tests, and for any path that wants the next check to ask. */
+export function forgetVerifiedIdentity() {
+  verified = null;
+}
+
+/**
  * Who is signed in, tolerating a dead connection.
  *
  * The fallbacks only ever apply when the failure looks like a lost network
@@ -79,6 +133,13 @@ export async function resolveIdentity(): Promise<IdentityResult> {
   // the stale-onLine problem nor the hanging-refresh problem exists there — and
   // `main` deploys straight to app.houndstack.com, so changing the live sign-in
   // path is not something an iOS pass gets to do as a side effect.
+  //
+  // The reuse just below is the exception, made on purpose for both builds:
+  // see IDENTITY_REUSE_MS.
+  if (verified && Date.now() - verified.at < IDENTITY_REUSE_MS) {
+    return { ok: true, userId: verified.userId, user: verified.user };
+  }
+
   const online = IS_NATIVE_BUNDLE
     ? !isDefinitelyOffline()
     : typeof navigator === "undefined" || navigator.onLine !== false;
@@ -89,7 +150,11 @@ export async function resolveIdentity(): Promise<IdentityResult> {
     const { data, error } = await (IS_NATIVE_BUNDLE
       ? withDeadline(getUser, IDENTITY_DEADLINE_MS, "auth.getUser")
       : getUser);
-    if (data?.user) return { ok: true, userId: data.user.id, user: data.user };
+    if (data?.user) {
+      verified = { userId: data.user.id, user: data.user, at: Date.now() };
+      watchSignedInUser();
+      return { ok: true, userId: data.user.id, user: data.user };
+    }
     authError = error;
   } catch (e) {
     authError = e;

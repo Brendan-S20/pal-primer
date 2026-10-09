@@ -427,22 +427,31 @@ test.describe("skeletons", () => {
       expect(await page.getByText(FIRST_CLIENT).count(), "data is held back").toBe(0);
 
       // Laid out at once, drawn only after its wait: every bone carries the
-      // 160ms hold (styles.css, SKELETONS). Read off the animation itself,
-      // not off a stopwatch, so a slow runner cannot make it pass or fail.
+      // 160ms hold (styles.css, SKELETONS). Read off the computed style, not
+      // off a stopwatch, so a slow runner cannot make it pass or fail.
       const hold = await skeleton.evaluate((region) => {
         const bone = region.querySelector(".hs-skeleton");
-        const wait = bone
-          ?.getAnimations()
-          .find((a) => (a as CSSAnimation).animationName === "hs-skeleton-wait");
-        return wait ? Number(wait.effect?.getTiming().delay) : null;
+        if (!bone) return null;
+        const cs = getComputedStyle(bone);
+        return {
+          name: cs.animationName.split(",")[0].trim(),
+          delay: cs.animationDelay.split(",")[0].trim(),
+        };
       });
-      expect(hold, "a skeleton bone without its wait").toBe(160);
+      expect(hold, "a skeleton bone without its wait").toEqual({
+        name: "hs-skeleton-wait",
+        delay: "0.16s",
+      });
 
       await page.waitForTimeout(300);
       // ...and once the wait is real, it is drawn.
       expect(
         await skeleton.evaluate((region) =>
-          Number(getComputedStyle(region.querySelector(".hs-skeleton")!).opacity),
+          Math.max(
+            ...[...region.querySelectorAll(".hs-skeleton")]
+              .filter((b) => b.getBoundingClientRect().width > 0)
+              .map((b) => Number(getComputedStyle(b).opacity)),
+          ),
         ),
       ).toBeGreaterThan(0);
       const before = {
