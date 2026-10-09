@@ -343,12 +343,26 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
                 quantity: it.quantity ?? 1,
               });
             } else {
-              // Back to monthly: prefer the add-on's stored monthly price so
-              // future logic recognizes the item; else derive 1/12 of the
-              // annual amount (which was minted as monthly x 12 above).
-              const storedMonthly = productId
+              // Back to monthly, at the price this item is ALREADY on.
+              //
+              // The annual amount was minted as monthly x 12 above, so 1/12 of
+              // it is what this org has been paying. Until 2026-10-09 this
+              // reached for the add-on's catalog price instead, which is
+              // whatever the catalog says TODAY: once the $29 Priority support
+              // or the $49 receptionist gave its lookup key to a new price, a
+              // grandfathered org that switched to monthly was silently
+              // re-priced at the new one. Existing subscriptions keep their
+              // price (owner decision, Oct 9), so the catalog price is reused
+              // only when it is the same amount, and otherwise the item is
+              // rebuilt from its own.
+              const monthlyAmount = Math.round(unitAmount / 12);
+              const catalogMonthly = productId
                 ? monthlyAddonPriceByProduct.get(productId)
                 : undefined;
+              const storedMonthly =
+                catalogMonthly && catalog.amountById?.get(catalogMonthly) === monthlyAmount
+                  ? catalogMonthly
+                  : undefined;
               if (storedMonthly) {
                 itemUpdates.push({ price: storedMonthly, quantity: it.quantity ?? 1 });
               } else {
@@ -357,7 +371,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
                     currency: price.currency ?? "usd",
                     product: productId!,
                     recurring: { interval: "month" },
-                    unit_amount: Math.round(unitAmount / 12),
+                    unit_amount: monthlyAmount,
                   },
                   quantity: it.quantity ?? 1,
                 });

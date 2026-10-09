@@ -741,6 +741,10 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                   <Button size="sm" disabled title="This add-on isn't available yet">
                     Coming soon
                   </Button>
+                ) : a.includedReason ? (
+                  <Button size="sm" disabled title={a.includedReason}>
+                    Included on your plan
+                  </Button>
                 ) : data?.canSubscribe ? (
                   <Button
                     size="sm"
