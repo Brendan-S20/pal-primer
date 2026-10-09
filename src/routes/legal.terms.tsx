@@ -80,8 +80,13 @@ function TermsPage() {
             are not yet available.
           </li>
           <li>
-            You can cancel at any time; paid access continues to the end of the billing period.
-            Fees already paid are non-refundable except where required by law.
+            The free trial lasts 14 days. If no plan is chosen by the end of the trial, the account
+            is locked until a plan is chosen, and its data is kept for 30 days.
+          </li>
+          <li>
+            You can cancel at any time; on a monthly plan, paid access continues to the end of the
+            paid month. Yearly plans are not refunded. Fees already paid are non-refundable except
+            where required by law.
           </li>
           <li>
             Payments you collect from your own customers run through your connected Stripe account
@@ -129,8 +134,8 @@ function TermsPage() {
         <h2>Termination</h2>
         <p>
           You may stop using the service and cancel at any time. We may terminate or suspend
-          accounts for material breach of these terms. After termination you may request an export
-          of your data for a reasonable period before it is deleted.
+          accounts for material breach of these terms. After you cancel, or after termination, you
+          may export your data for 30 days before it is deleted.
         </p>
       </section>
 
