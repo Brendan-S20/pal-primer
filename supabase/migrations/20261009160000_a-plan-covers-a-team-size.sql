@@ -43,6 +43,8 @@ AS $$
   END;
 $$;
 
+REVOKE ALL ON FUNCTION public.team_size_ordinal(integer) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.enforce_team_size_cap()
 RETURNS trigger
 LANGUAGE plpgsql
