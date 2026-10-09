@@ -13,7 +13,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { expect, test } from "@playwright/test";
 
-import { e2eOrgId, serviceDb } from "./service-db";
+import { businessToday, e2eOrgId, serviceDb } from "./service-db";
 
 const URL_ = process.env.SUPABASE_URL ?? "http://127.0.0.1:54421";
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -21,7 +21,9 @@ const ANON = process.env.SUPABASE_PUBLISHABLE_KEY ?? "";
 test("a note is kept, and a missing photo needs a reason only when required", async () => {
   const db = serviceDb();
   const orgId = await e2eOrgId(db);
-  const today = new Date().toISOString().slice(0, 10);
+  // The business's today, not UTC's: from 19:00 in Chicago UTC is already
+  // tomorrow, and "a future visit" would skip the org's real tomorrow.
+  const today = await businessToday(db, orgId);
 
   const { data: visits, error: vErr } = await db
     .from("visits")
