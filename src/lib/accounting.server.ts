@@ -239,25 +239,43 @@ export async function findOrCreateQboCustomer(
     return { id: named.Id, store: true };
   }
   if (email) {
-    const byEmail = await qbo.query<{ Customer?: QboCustomer[] }>(
-      `select Id, DisplayName, PrimaryEmailAddr from Customer where PrimaryEmailAddr = ${qboQuoted(email)}`,
-    );
-    const match = byEmail.QueryResponse?.Customer?.[0];
-    if (match) return { id: match.Id, store: true };
+    try {
+      const byEmail = await qbo.query<{ Customer?: QboCustomer[] }>(
+        `select Id, DisplayName, PrimaryEmailAddr from Customer where PrimaryEmailAddr = ${qboQuoted(email)}`,
+      );
+      const match = byEmail.QueryResponse?.Customer?.[0];
+      if (match) return { id: match.Id, store: true };
+    } catch (e) {
+      // The name lookup above is the one that prevents the duplicate-name
+      // error; the email lookup is a second chance. If a company refuses the
+      // filter, carry on to create rather than fail the sync.
+      if (!(e instanceof QboApiError && e.kind === "validation")) throw e;
+    }
   }
 
   // A name collision with a different person: keep their names apart.
-  const displayName = named ? `${name} (${client.id.slice(0, 6)})` : name;
-  const created = await qbo.request<{ Customer?: QboCustomer }>("POST", "customer", {
-    query: { requestid: requestId },
-    body: {
-      DisplayName: displayName,
-      ...(client.company?.trim() ? { CompanyName: client.company.trim().slice(0, 100) } : {}),
-      ...(client.first_name?.trim() ? { GivenName: client.first_name.trim().slice(0, 100) } : {}),
-      ...(client.last_name?.trim() ? { FamilyName: client.last_name.trim().slice(0, 100) } : {}),
-      ...(email ? { PrimaryEmailAddr: { Address: email } } : {}),
-    },
-  });
+  const suffixed = `${name} (${client.id.slice(0, 6)})`;
+  const create = (displayName: string, rid: string) =>
+    qbo.request<{ Customer?: QboCustomer }>("POST", "customer", {
+      query: { requestid: rid },
+      body: {
+        DisplayName: displayName,
+        ...(client.company?.trim() ? { CompanyName: client.company.trim().slice(0, 100) } : {}),
+        ...(client.first_name?.trim() ? { GivenName: client.first_name.trim().slice(0, 100) } : {}),
+        ...(client.last_name?.trim() ? { FamilyName: client.last_name.trim().slice(0, 100) } : {}),
+        ...(email ? { PrimaryEmailAddr: { Address: email } } : {}),
+      },
+    });
+  let created: { Customer?: QboCustomer };
+  try {
+    created = await create(named ? suffixed : name, requestId);
+  } catch (e) {
+    // 6240, Duplicate Name: the name is taken by something the lookup cannot
+    // see (an inactive customer, or a vendor or employee, which share the
+    // namespace). Once more under the distinguishing name.
+    if (!(e instanceof QboApiError && e.code === "6240") || named) throw e;
+    created = await create(suffixed, `${requestId}-2`);
+  }
   const id = created.Customer?.Id;
   if (!id) throw new Error("QuickBooks returned no customer id");
   return { id, store: true };

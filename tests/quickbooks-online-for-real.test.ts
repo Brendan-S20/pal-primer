@@ -406,6 +406,18 @@ describe("customers are looked up before they are created", () => {
     expect(JSON.parse(intuit.calls[2].body!)).toMatchObject({ DisplayName: "Pat O'Neil", PrimaryEmailAddr: { Address: "pat@example.com" } });
   });
 
+  it("on a Duplicate Name it cannot see (an inactive customer), creates once more under a distinguishing name", async () => {
+    const { intuit, qbo } = setup();
+    intuit
+      .on(api("query"), reply(200, { QueryResponse: {} }))
+      .on(api("query"), reply(400, { Fault: { Error: [{ Message: "QueryParserError", code: "4000" }] } }))
+      .on(api("customer"), reply(400, { Fault: { Error: [{ Message: "Duplicate Name Exists Error", code: "6240" }] } }), "POST")
+      .on(api("customer"), reply(200, { Customer: { Id: "60" } }), "POST");
+    const r = await findOrCreateQboCustomer(qbo, invoice().client!, "req");
+    expect(r).toEqual({ id: "60", store: true });
+    expect(JSON.parse(intuit.calls[3].body!).DisplayName).toBe("Pat O'Neil (client)");
+  });
+
   it("quotes a name for the query language", () => {
     expect(qboQuoted(`a'b\\c`)).toBe(`'a\\'b\\\\c'`);
   });

@@ -11,7 +11,8 @@ import { describeManualPayment } from "@/lib/manual-payments";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { getMyOrg } from "@/lib/org.functions";
-import { syncInvoice } from "@/lib/accounting.functions";
+import { getQuickBooksStatus, syncInvoice } from "@/lib/accounting.functions";
+import { hasPermission } from "@/lib/permissions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { describePaymentSplit, formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
@@ -91,6 +92,17 @@ function InvoiceDetail() {
     queryFn: () => get({ data: { id: invoiceId } }),
   });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  // The QuickBooks button is drawn only for someone who can send (the office)
+  // and only while QuickBooks is connected.
+  const qboFn = useServerFn(getQuickBooksStatus);
+  const qboQ = useQuery({
+    queryKey: ["qbo-status"],
+    queryFn: () => qboFn(),
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: hasPermission((orgQ.data?.organization?.role as any) ?? null, "manage_settings"),
+  });
+  const qboConnected = qboQ.data?.connection?.status === "connected";
   // "INV-10420 · Invoices", from the same label the page's heading prints.
   const loadedInvoice = q.data?.invoice as { id: string; number?: number | null } | undefined;
   useDocumentTitle(loadedInvoice ? pageTitle(invoiceNumberLabel(loadedInvoice), "Invoices") : null);
@@ -420,7 +432,7 @@ function InvoiceDetail() {
         )}
         {/* Repeatable: a second send updates the QuickBooks invoice and adds
             any payment recorded since, rather than creating anything twice. */}
-        {invoice.status === "paid" && (
+        {invoice.status === "paid" && qboConnected && (
           <Button variant="outline" onClick={() => syncM.mutate()} disabled={syncM.isPending}>
             {syncM.isPending
               ? "Sending…"
