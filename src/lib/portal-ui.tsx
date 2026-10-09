@@ -187,7 +187,7 @@ export function friendlyCategory(c: string | null | undefined) {
     wrong_yard: "Wrong yard",
     other: "Other",
     reclean_request: "Re-clean request",
-    one_off_request: "Extra cleanup",
+    one_off_request: "Extra visit",
   };
   return map[c ?? ""] ?? c ?? "";
 }
