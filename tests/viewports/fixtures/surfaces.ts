@@ -523,6 +523,25 @@ export const SURFACES: Surface[] = [
     openedLabel: "the Log an expense sheet",
   },
   {
+    // The time clock, off My Day since 2026-10-08. Its way in is a "Time
+    // clock" row: in the More sheet wherever the tab bar is, and at the foot
+    // of the sidebar wherever the sidebar is the menu. Both open the one
+    // clock sheet the layout mounts, which has to hold at 320px with Clock
+    // out at 44.
+    id: "/my-day · the time clock",
+    path: "/my-day",
+    proof: (p) => p.getByText("SAFETY WARNINGS", { exact: false }).first(),
+    proofLabel: "a visit card's hazard banner",
+    expectsData: "Anastasia Vandermolen-Whitaker",
+    open: async (p) => {
+      const more = p.locator('[data-tour="more"]');
+      if (await more.isVisible()) await more.click();
+      await p.locator("[data-time-clock-row]").filter({ visible: true }).first().click();
+    },
+    opened: (p) => p.getByRole("dialog", { name: "Time clock" }),
+    openedLabel: "the time clock sheet",
+  },
+  {
     // Added 2026-09-28 with customer re-clean requests. Until then the unlisted
     // sweep measured this page's empty state only. A re-clean card puts a
     // sentence and a "Schedule re-clean" button on one row, and that button

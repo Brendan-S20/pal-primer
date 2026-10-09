@@ -307,8 +307,11 @@ for (const size of SIZES) {
       await signIn(page);
       await page.goto("/timesheets", { waitUntil: "domcontentloaded" });
       await expect(page.getByText(fx.LONG_STAFF_NAME).first()).toBeVisible({ timeout: 30_000 });
-      // A day with time on it, then its first entry's Edit.
+      // A day with time on it, then its first entry's Edit. Inside <main>:
+      // since #357 the sidebar's "Time clock · On the clock · 2h 30m" row
+      // matches /\d+h/ too, and clicking it opens the clock sheet instead.
       await page
+        .getByRole("main")
         .getByRole("button", { name: /\d+h/ })
         .filter({ hasText: /h/ })
         .first()

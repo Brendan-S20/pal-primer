@@ -121,6 +121,11 @@ export const clockOut = createServerFn({ method: "POST" })
       _at: data.at ?? undefined,
     });
     if (error) throw new Error(error.message);
+    // Off the clock, the lock screen's Start button has nothing to start.
+    // The app ends the route there too; this covers a clock-out replayed
+    // from the offline queue, or made on another device.
+    const { revokeActionTokens } = await import("@/lib/live-activity-action.server");
+    await revokeActionTokens(context.userId, "clocked_out");
     // The day as it stands after the tap, for the summary the tech is shown.
     const clock = await loadMyClock(context.supabase, context.userId);
     return { id: (id as string | null) ?? null, clock };

@@ -1,15 +1,15 @@
 // "Route on the lock screen" on Settings → Preferences, beside
 // "Notifications on this phone".
 //
-// The same preference as the toggle in My Day's status row
-// (lib/live-activity-pref.ts): off here, and the route does not start by
-// itself on Clock in or the first Start; hiding it from My Day turns this
-// off. Turning it off also takes down a route already on the lock screen,
-// since My Day, which normally does that, is not the page that is open.
+// THE switch for the route's Live Activity (lib/live-activity-pref.ts), and
+// since 2026-10-08 the only one: My Day's status-row toggle is gone. On, and
+// the route goes on the lock screen by itself whenever the app opens or comes
+// back to the front during a working day (RouteLockScreenHost, run by the
+// signed-in layout). Off, and it never does, and turning it off takes down a
+// route already showing, and with it the action token its Start button holds.
 //
 // iPhone app only. Renders nothing on the web and on Android, and nothing on
-// an iPhone too old to draw one (Live Activities need iOS 16.2), the same as
-// the My Day control it pairs with.
+// an iPhone too old to draw one (Live Activities need iOS 16.2).
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
