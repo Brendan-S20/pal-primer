@@ -44,6 +44,8 @@ const tabLoaders = {
   communication: () => import("@/components/client-detail/CommunicationTab"),
   reviews: () => import("@/components/client-detail/ReviewsReferralsTab"),
   activity: () => import("@/components/client-detail/ActivityTab"),
+  // Not a tab: ClientHeader's drawer, lazy for its date picker.
+  vacationHold: () => import("@/components/client-detail/VacationHoldDrawer"),
 };
 const PropertiesTab = lazy(() =>
   tabLoaders.properties().then((m) => ({ default: m.PropertiesTab })),
