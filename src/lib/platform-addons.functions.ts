@@ -4,6 +4,11 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
 import { addonLookupKey } from "@/lib/stripe-lookup-keys";
+import {
+  ADDON_NOT_AVAILABLE,
+  addonPlanRefusal,
+  addonPurchasable,
+} from "@/lib/addon-launch";
 import { loadPriceCatalog, resolvePriceId } from "@/lib/stripe-price-catalog.server";
 
 // Platform -> tenant software add-ons (e.g. AI Receptionist): the upsell
@@ -32,6 +37,9 @@ export type PlatformAddonRow = {
    *  ('disabled' add-ons never reach the tenant catalog.) */
   status: "active" | "coming_soon";
   subscribed: boolean;
+  /** Set when this plan already includes the add-on, so it is not sold to it
+   *  (Priority support on Growth and Scale, NP-3). The sentence to show. */
+  includedReason?: string | null;
 };
 
 export const listPlatformAddons = createServerFn({ method: "GET" })
@@ -55,11 +63,12 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
         .eq("status", "active"),
       context.supabase
         .from("organizations")
-        .select("stripe_subscription_id, plan_status")
+        .select("stripe_subscription_id, plan_status, plan_id")
         .eq("id", orgId)
         .single(),
     ]);
     if (error) throw new Error(error.message);
+    const planSlug = await planSlugOf(org?.plan_id);
 
     const subscribed = new Set((mine ?? []).map((m: any) => m.addon_id));
     return {
@@ -74,8 +83,13 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
           description: a.description,
           price_cents: a.price_cents,
           billing_interval: a.billing_interval,
-          status: (a.status === "coming_soon" ? "coming_soon" : "active") as "active" | "coming_soon",
+          // A held add-on reads as coming soon whatever its row says, so the
+          // card shows the disabled button rather than one the server refuses.
+          status: (a.status === "coming_soon" || !addonPurchasable(a.slug)
+            ? "coming_soon"
+            : "active") as "active" | "coming_soon",
           subscribed: subscribed.has(a.id),
+          includedReason: planSlug ? addonPlanRefusal(a.slug, planSlug) : null,
         })),
       canSubscribe: !!org?.stripe_subscription_id && org.plan_status === "active",
     };
@@ -98,6 +112,18 @@ async function setFeatureFlag(orgId: string, flag: string | null, enabled: boole
     .eq("id", orgId);
 }
 
+/** The slug of a plan by id, through the service role; null when none. */
+async function planSlugOf(planId: string | null | undefined): Promise<string | null> {
+  if (!planId) return null;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await (supabaseAdmin as any)
+    .from("platform_plans")
+    .select("slug")
+    .eq("id", planId)
+    .maybeSingle();
+  return (data?.slug as string | undefined) ?? null;
+}
+
 const addonIdSchema = z.object({ addonId: z.string().uuid() });
 
 export const subscribePlatformAddon = createServerFn({ method: "POST" })
@@ -109,17 +135,25 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
 
     const [{ data: addon }, { data: org }] = await Promise.all([
       (supabaseAdmin as any).from("platform_addons").select("*").eq("id", data.addonId).maybeSingle(),
-      (supabaseAdmin as any).from("organizations").select("stripe_subscription_id, plan_status").eq("id", orgId).single(),
+      (supabaseAdmin as any).from("organizations").select("stripe_subscription_id, plan_status, plan_id").eq("id", orgId).single(),
     ]);
     if (!addon) throw new Error("Add-on not found.");
+    // The launch flag comes FIRST, ahead of the catalog row, because the row is
+    // one admin click from `active` and the flag is a deploy away (B-P0-2,
+    // B-P0-4, NP-5). Nothing below this line may run for a held add-on: no
+    // Stripe client is made, no product or price minted, nothing written.
+    if (!addonPurchasable(addon.slug)) throw new Error(ADDON_NOT_AVAILABLE);
     // Only 'active' add-ons are purchasable — 'coming_soon' is display-only and
     // 'disabled' is hidden. Server-side gate so a crafted request can't buy them.
     const addonStatus = addon.status ?? (addon.is_active ? "active" : "disabled");
-    if (addonStatus === "coming_soon") throw new Error("This add-on isn't available yet.");
+    if (addonStatus === "coming_soon") throw new Error(ADDON_NOT_AVAILABLE);
     if (addonStatus !== "active") throw new Error("Add-on not found.");
     if (!org?.stripe_subscription_id || org.plan_status !== "active") {
       throw new Error("Add-ons attach to an active subscription. Pick a plan first.");
     }
+    // Priority support is Launch-only (NP-3): Growth and Scale include it.
+    const planRefusal = addonPlanRefusal(addon.slug, await planSlugOf(org.plan_id));
+    if (planRefusal) throw new Error(planRefusal);
 
     const { data: existing } = await (supabaseAdmin as any)
       .from("org_platform_addons")

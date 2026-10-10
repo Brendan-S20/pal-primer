@@ -182,6 +182,7 @@ export async function smsOtpDeliverable(orgId: string): Promise<boolean> {
 export async function portalContactChannels(token: string): Promise<PortalContact | null> {
   const c = await resolveContact(token);
   if (!c) return null;
+  if (await businessLocked(c.organization_id)) return null;
   const channels: PortalContact["channels"] = [];
   if (c.primary_phone && (await smsOtpDeliverable(c.organization_id))) {
     channels.push({ channel: "sms", hint: maskPhone(c.primary_phone) });
@@ -195,6 +196,21 @@ export async function portalContactChannels(token: string): Promise<PortalContac
   };
 }
 
+/**
+ * NP-12: a business whose HoundStack account is locked (trial over with no
+ * plan, or a cancelled plan that has ended) has no client portal until it
+ * chooses a plan. The portal answers as it does for a link it does not know,
+ * rather than telling the business's own clients about its billing.
+ */
+async function businessLocked(orgId: string): Promise<boolean> {
+  const { lockForOrg } = await import("@/lib/account-lock.server");
+  try {
+    return (await lockForOrg(orgId)).locked;
+  } catch {
+    return false;
+  }
+}
+
 /** Org branding + slug for the generic company sign-in page, looked up by slug. */
 export async function orgBrandingBySlug(
   slug: string,
@@ -206,6 +222,7 @@ export async function orgBrandingBySlug(
     .eq("portal_slug", slug)
     .maybeSingle();
   if (!data) return null;
+  if (await businessLocked(data.id)) return null;
   return {
     organizationId: data.id,
     orgName: data.name ?? "Your service",
@@ -256,6 +273,7 @@ export async function getPortalSession(token: string): Promise<PortalSession | n
   if (sess.client_id !== contact.client_id) return null; // token points elsewhere now
   if (sess.revoked_at) return null;
   if (new Date(sess.expires_at).getTime() < Date.now()) return null;
+  if (await businessLocked(sess.organization_id)) return null;
 
   await supabaseAdmin
     .from("portal_sessions")
