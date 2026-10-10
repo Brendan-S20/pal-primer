@@ -82,6 +82,12 @@ function fakeSupabase(role: string, answer: { data?: unknown; error?: unknown } 
         Promise.resolve({ data: answer.data ?? null, error: answer.error ?? null }).then(res, rej);
       return q;
     },
+    // resolveCaller also asks access_turned_off() (#378, off means off). Nobody
+    // here is turned off, so it answers with no business.
+    async rpc(fn: string) {
+      calls.push({ table: `rpc:${fn}`, op: "rpc", args: [] });
+      return { data: [], error: null };
+    },
   };
   return { client, calls };
 }
