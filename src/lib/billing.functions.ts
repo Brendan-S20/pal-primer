@@ -5,6 +5,7 @@ import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.serve
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
 import { addonLookupKey, planLookupKey } from "@/lib/stripe-lookup-keys";
+import { choosePlanRefusal, smallestPlanFor } from "@/lib/team-size";
 import {
   loadPriceCatalog,
   resolvePriceId,
@@ -61,6 +62,7 @@ export const getBillingStatus = createServerFn({ method: "GET" })
       priceCents: s.priceCents,
       pricePerClientCents: s.pricePerClientCents,
       includedSeats: s.includedSeats,
+      teamSizeRange: s.teamSizeRange,
       pricePerSeatCents: s.pricePerSeatCents,
       monthlyEstimateCents: s.monthlyEstimateCents,
       needsUpgrade: s.needsUpgrade,
@@ -92,16 +94,25 @@ export type PromoDropReason = "lookup_failed" | "invalid" | "not_in_stripe" | "w
 export const listPlatformPlans = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await resolveOrgIdForCaller(context.supabase, context.userId);
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await (supabaseAdmin as any)
-      .from("platform_plans")
-      .select("id, name, slug, description, price_cents, annual_price_cents, currency, interval, features, included_seats, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action, is_free, stripe_price_id, stripe_annual_price_id, sort_order")
-      .eq("is_active", true)
-      .eq("is_enterprise", false)
-      .order("sort_order", { ascending: true });
+    const [{ data, error }, { count }] = await Promise.all([
+      (supabaseAdmin as any)
+        .from("platform_plans")
+        .select("id, name, slug, description, price_cents, annual_price_cents, currency, interval, features, included_seats, max_team_size, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action, is_free, stripe_price_id, stripe_annual_price_id, sort_order")
+        .eq("is_active", true)
+        .eq("is_enterprise", false)
+        .order("sort_order", { ascending: true }),
+      // Enabled users, so the picker can say which plans this team fits
+      // before anybody clicks one. createPlanSubscription refuses the rest.
+      (supabaseAdmin as any)
+        .from("staff")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("active", true),
+    ]);
     if (error) throw new Error(error.message);
-    return { plans: data ?? [] };
+    return { plans: data ?? [], enabledUsers: (count as number | null) ?? 0 };
   });
 
 // In-app plan subscribe via the Payment Element: create the subscription
@@ -142,7 +153,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
 
     const { data: planRows } = await (supabaseAdmin as any)
       .from("platform_plans")
-      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action")
+      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats, max_team_size, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action")
       .eq("is_active", true)
       .eq("is_enterprise", false)
       .not("stripe_price_id", "is", null)
@@ -155,16 +166,25 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       stripe_annual_seat_price_id: string | null;
       price_cents: number | null; annual_price_cents: number | null;
       included_seats: number;
+      max_team_size: number | null;
       price_per_seat_cents: number | null;
       ai_actions_included: number | null;
       ai_overage_cents_per_action: number | null;
     }>;
+    // With no plan named, size it by team-size RANGE. This read
+    // `included_seats >= seats` while a plan included its whole range; with
+    // 1/5/20 included it would have sold a three-person team Growth.
     const targetPlan = data.planId
       ? plans.find((p) => p.id === data.planId)
-      : plans.find((p) => p.included_seats >= seats) ?? plans[plans.length - 1];
+      : smallestPlanFor(seats, plans) ?? plans[plans.length - 1];
     if (!targetPlan || !targetPlan.stripe_price_id) {
       throw new Error("That plan isn't available. Contact support.");
     }
+    // A plan whose cap is below the account's enabled users cannot be chosen
+    // (NP-10). Minimums are not enforced: a small team may choose a big plan.
+    // Refused here, before any Stripe call.
+    const tooSmall = choosePlanRefusal(targetPlan, seats, plans);
+    if (tooSmall) throw new Error(tooSmall);
 
     const targetInterval: "month" | "year" = data.interval ?? "month";
 

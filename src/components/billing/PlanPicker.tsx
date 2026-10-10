@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { saasPurchaseAllowed, BILLING_MANAGED_OUTSIDE_APP } from "@/lib/app-store-billing";
 import { platform } from "@/lib/native";
+import { choosePlanRefusal, teamSizeRange } from "@/lib/team-size";
 import {
   listPlatformPlans,
   createPlanSubscription,
@@ -105,6 +106,10 @@ export function PlanPicker({
     enabled: purchaseAllowed,
   });
   const plans: any[] = ((data as any)?.plans ?? []).filter((p: any) => !p.is_free);
+  // Enabled users on this account, counted on the server (every one counts).
+  // A plan whose cap is below it cannot be chosen (NP-10); the server refuses
+  // it too, so this only saves somebody a click.
+  const enabledUsers: number = (data as any)?.enabledUsers ?? 0;
 
   const [billingInterval, setBillingInterval] = useState<BillingInterval>(
     currentInterval ?? "month",
@@ -185,6 +190,7 @@ export function PlanPicker({
               ? Object.values(p.features as Record<string, string>)
               : [];
           const priceCents = isAnnualCard ? p.annual_price_cents : p.price_cents;
+          const tooSmall = isCurrent ? null : choosePlanRefusal(p, enabledUsers, plans);
           return (
             <div
               key={p.id}
@@ -222,13 +228,17 @@ export function PlanPicker({
                   spend on. The charge itself is still disclosed where the money
                   is decided, in the paragraph above the card field below. */}
               <p className="mt-1 text-xs text-muted-foreground">
-                Includes {p.included_seats} employee{p.included_seats === 1 ? "" : "s"}
+                {`For teams of ${teamSizeRange(p, plans)} · ${p.included_seats} active employee${p.included_seats === 1 ? "" : "s"} included`}
                 {p.price_per_seat_cents
-                  ? isAnnualCard
-                    ? ` · ${money(p.price_per_seat_cents * 10)}/yr per extra`
-                    : ` · ${money(p.price_per_seat_cents)}/extra`
+                  ? (isAnnualCard
+                      ? ` · ${money(p.price_per_seat_cents * 10)}/yr per extra person`
+                      : ` · ${money(p.price_per_seat_cents)}/mo per extra person`) +
+                    (p.max_team_size != null ? ` (up to ${p.max_team_size})` : "")
                   : ""}
               </p>
+              {tooSmall && (
+                <p className="mt-2 text-xs text-amber-700">{tooSmall}</p>
+              )}
               {p.description && (
                 <p className="mt-2 text-sm text-muted-foreground">{p.description}</p>
               )}
@@ -246,7 +256,7 @@ export function PlanPicker({
               <Button
                 className="mt-4"
                 variant={isCurrent ? "outline" : "default"}
-                disabled={isCurrent || busy}
+                disabled={isCurrent || busy || !!tooSmall}
                 onClick={() => onSelect(p.id, p.name, cardInterval)}
               >
                 {isCurrent
