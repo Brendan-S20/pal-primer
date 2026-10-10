@@ -127,7 +127,16 @@ function markRefused() {
       `probably not in the key's website restrictions (${typeof location !== "undefined" ? location.origin : "?"}), ` +
       "or the API or billing is not enabled. Drawing with Leaflet + OpenStreetMap instead.",
   );
-  for (const cb of [...refusalListeners]) cb();
+  // Each listener on its own. This runs inside Google's callback, which
+  // swallows a throw silently, and one surface that fails to swap must not
+  // stop the next one from swapping.
+  for (const cb of [...refusalListeners]) {
+    try {
+      cb();
+    } catch (e) {
+      console.error("[maps] a map could not switch to the fallback after Google refused the key", e);
+    }
+  }
 }
 
 /** Load the API once. Concurrent callers share one script tag and one promise. */

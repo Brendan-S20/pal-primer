@@ -174,14 +174,19 @@ describe("no trigger function is executable by a signed-in user", () => {
     // at the rate stored on it. REVOKEd from PUBLIC, anon and authenticated in
     // the same file.
     //
-    // 52 -> 56 on 2026-10-09 (20261009230000, a visit knows its service):
+    // 52 -> 53 on 2026-10-09 (20261009180000, off means off):
+    // tg_keep_an_active_owner, which refuses to turn off or demote the last
+    // owner who can still sign in. REVOKEd from PUBLIC, anon and authenticated
+    // in the same file.
+    //
+    // 53 -> 57 on 2026-10-09 (20261009230000, a visit knows its service):
     // tg_organizations_default_services (a new business gets its services),
     // tg_subscriptions_service and tg_visits_service (a plan or visit names a
     // service of its own business, and a visit copies its plan's), and
     // tg_subscriptions_service_reaches_upcoming_visits (a plan's new service
     // reaches its upcoming visits). Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
-    expect(triggerFunctions().size).toBe(56);
+    expect(triggerFunctions().size).toBe(57);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
