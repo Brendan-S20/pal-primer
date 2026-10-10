@@ -62,8 +62,8 @@ const EXPECT: Record<
       "Sir Reginald Fluffington-Barksworth III",
       "2 dogs · names not on file",
       "No dogs on file",
-      "Yard outline",
-      "No yard outline yet",
+      "Property outline",
+      "No property outline yet",
       "9 waste stations",
       "Pays cash/check",
       "$42.50 due",
@@ -84,8 +84,8 @@ const EXPECT: Record<
       "Sir Reginald Fluffington-Barksworth III",
       "2 perros · nombres no registrados",
       "No hay perros registrados",
-      "Contorno del patio",
-      "Todavía no hay contorno del patio",
+      "Contorno de la propiedad",
+      "Todavía no hay contorno de la propiedad",
       "9 estaciones de desechos",
       "Paga en efectivo/cheque",
       "Debe $42.50",
@@ -102,7 +102,13 @@ const EXPECT: Record<
 };
 
 /** English that must not be on the Spanish page. */
-const ENGLISH = ["dogs on file", "Yard outline", "waste stations", "Collected cash/check", "due"];
+const ENGLISH = [
+  "dogs on file",
+  "Property outline",
+  "waste stations",
+  "Collected cash/check",
+  "due",
+];
 
 async function openMyDay(page: Page, width: number, height: number, lang: Lang) {
   await page.setViewportSize({ width, height });

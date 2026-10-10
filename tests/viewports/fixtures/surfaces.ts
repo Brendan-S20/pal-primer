@@ -572,8 +572,8 @@ export const SURFACES: Surface[] = [
     open: async (p) => {
       await p.getByRole("button", { name: "Book it", exact: true }).first().click();
     },
-    opened: (p) => p.getByRole("dialog", { name: "Book the extra cleanup" }),
-    openedLabel: "the Book the extra cleanup dialog",
+    opened: (p) => p.getByRole("dialog", { name: "Book the extra visit" }),
+    openedLabel: "the Book the extra visit dialog",
   },
   {
     // Added 2026-09-29. The page was only reached by the unlisted sweep and a
@@ -582,8 +582,8 @@ export const SURFACES: Surface[] = [
     // "Needs a price first" line only when the fixture has no price.
     id: "/settings/client-portal",
     path: "/settings/client-portal",
-    proof: (p) => p.getByText("Extra cleanups from the portal", { exact: true }).first(),
-    proofLabel: 'the "Extra cleanups from the portal" card',
+    proof: (p) => p.getByText("Extra visits from the portal", { exact: true }).first(),
+    proofLabel: 'the "Extra visits from the portal" card',
     expectsData: "Needs a price first.",
   },
   {

@@ -149,7 +149,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     unknown: "性情未知",
   },
   yard: {
-    label: "{{size}}院子",
+    label: "{{size}}地块",
     small: "小",
     medium: "中等",
     large: "大",
@@ -226,7 +226,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     required: "必填",
     tickRequired_other: "勾选清单上的 {{count}} 个必填项才能完成这次服务。",
     noteLabel: "给办公室的备注",
-    notePlaceholder: "大门已关，狗在叫，袋子放在棚子旁",
+    notePlaceholder: "大门已关，狗在屋里，给客户留了便条",
     addNote: "给办公室加个备注",
     takeCompletionPhotoStep: "拍完工照片",
     whyNoPhoto: "为什么没有照片？办公室会看到。",
@@ -526,12 +526,12 @@ const zh: TranslationsWithPlurals<"other"> = {
     none: "没有登记的狗",
   },
   outline: {
-    heading: "院子轮廓",
+    heading: "地块轮廓",
     area_sqft: "{{value}} 平方英尺",
     area_acres: "{{value}} 英亩",
-    open: "在地图上打开院子轮廓",
+    open: "在地图上打开地块轮廓",
     tapToOpen: "点按在地图上查看",
-    none: "还没有院子轮廓",
+    none: "还没有地块轮廓",
     loading: "地图加载中…",
   },
   stationsSummary: {
@@ -636,7 +636,7 @@ const zh: TranslationsWithPlurals<"other"> = {
   expenseCategory: {
     fuel: "油费",
     disposal: "倾倒费",
-    supplies: "袋子和耗材",
+    supplies: "耗材",
     equipment: "设备",
     vehicle_maintenance: "车辆保养",
     mileage: "里程",

@@ -514,7 +514,7 @@ export default defineConfig({
           // capacitor.config.ts appName.
           name: "HoundStack",
           short_name: "HoundStack",
-          description: "Field service CRM for pet waste removal companies",
+          description: "The business system for recurring pet service companies",
           // Brand cream (--cream oklch(0.985 0.012 90)) — matches the icon
           // backgrounds and the marketing hero, not the old slate navy.
           theme_color: "#fdfaf1",

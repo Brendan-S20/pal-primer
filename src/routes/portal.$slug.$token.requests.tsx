@@ -25,7 +25,7 @@ function PortalRequests() {
           request, not a complaint, and it should not read as one. */}
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <CalendarPlus className="h-4 w-4 shrink-0" /> Book an extra cleanup
+          <CalendarPlus className="h-4 w-4 shrink-0" /> Book an extra visit
         </h2>
         <OneOffBookingCard />
       </section>

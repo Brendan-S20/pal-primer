@@ -158,7 +158,7 @@ const en = {
     unknown: "temperament unknown",
   },
   yard: {
-    label: "{{size}} yard",
+    label: "{{size}} property",
     small: "Small",
     medium: "Medium",
     large: "Large",
@@ -239,7 +239,7 @@ const en = {
     tickRequired_one: "Tick the required checklist item to finish this visit.",
     tickRequired_other: "Tick the {{count}} required checklist items to finish this visit.",
     noteLabel: "Note for the office",
-    notePlaceholder: "Gate latched, dog barking, bags by the shed",
+    notePlaceholder: "Gate latched, dog inside, left a note for the client",
     addNote: "Add a note for the office",
     takeCompletionPhotoStep: "Take completion photo",
     whyNoPhoto: "Why no photo? The office sees this.",
@@ -557,12 +557,12 @@ const en = {
     none: "No dogs on file",
   },
   outline: {
-    heading: "Yard outline",
+    heading: "Property outline",
     area_sqft: "{{value}} sq ft",
     area_acres: "{{value}} acres",
-    open: "Open the yard outline on a map",
+    open: "Open the property outline on a map",
     tapToOpen: "Tap to see it on the map",
-    none: "No yard outline yet",
+    none: "No property outline yet",
     loading: "Loading the map…",
   },
   stationsSummary: {
@@ -672,7 +672,7 @@ const en = {
   expenseCategory: {
     fuel: "Fuel",
     disposal: "Disposal fees",
-    supplies: "Bags & supplies",
+    supplies: "Supplies",
     equipment: "Equipment",
     vehicle_maintenance: "Vehicle maintenance",
     mileage: "Mileage",

@@ -30,7 +30,7 @@ function AddonsCatalog() {
 
   const services: any[] = data?.services ?? [];
   // The placeholder is an example of an add-on for what this business runs:
-  // "Yard deodorize" for pet waste, exactly as before; something a walker or
+  // "Extra visit" for pet waste (A-P2-6, #370); something a walker or
   // a groomer would sell otherwise (LINE_SEEDS).
   const { lines } = useServiceLines();
   const example = addOnExampleFor(lines);

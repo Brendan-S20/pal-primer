@@ -42,11 +42,6 @@ function SmsSettings() {
           SMS settings
           {!q.isLoading && !q.data?.configured && <ComingSoonBadge />}
         </h2>
-        <p className="text-sm text-muted-foreground">
-          Two-way texting with clients runs on a HoundStack-managed number, provisioned for your
-          organization. There is no Twilio account to connect and no carrier registration for you to
-          file. We handle both.
-        </p>
       </div>
 
       {q.isLoading ? (
@@ -76,10 +71,18 @@ function SmsSettings() {
             <div>
               <div className="font-medium">Not yet available</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Conversational texting requires US carrier (10DLC) registration, which is in
-                progress. It is a compliance queue paced by the registrar, not something that can be
-                accelerated. Your number will be provisioned and appear here once it clears, with no
-                action needed from you.
+                {/* A-P0-1 (2026-10-09): the Twilio Specialist's exact wording. It
+                    replaces both the header's "HoundStack-managed number" line
+                    and the 10DLC-queue paragraph that stood here, and it sits in
+                    this branch rather than under the heading because it says
+                    "coming soon", which is only true until a number is issued. */}
+                Two-way texting with your clients is coming soon. Each business gets its own local
+                number, registered with US carriers under your business name. You won&apos;t need a
+                Twilio account of your own: HoundStack files the carrier registration on your
+                behalf. Before we file, we&apos;ll ask for your legal business name, EIN (or
+                sole-proprietor details), business address and website, and for your approval.
+                Carrier review can take several days or longer, and your number will appear here
+                once it&apos;s approved.
               </div>
             </div>
           </div>

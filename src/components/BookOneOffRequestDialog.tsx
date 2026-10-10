@@ -144,7 +144,7 @@ export function BookOneOffRequestDialog({
     <Dialog open={!!ticket} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Book the extra cleanup</DialogTitle>
+          <DialogTitle>Book the extra visit</DialogTitle>
           <DialogDescription>
             {ticket?.clientName ?? "This client"} asked for{" "}
             {ticket ? formatDay(ticket.requestedOn) : "a day"}
