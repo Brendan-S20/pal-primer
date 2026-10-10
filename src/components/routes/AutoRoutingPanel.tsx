@@ -576,6 +576,29 @@ export function AutoRoutingPanel({
           },
         );
       }
+      // A stop the run could not place at all (2026-10-10): nobody picked can
+      // do its service, or no route reaches it inside its window. It was
+      // left off every route rather than put somewhere late, so this is the
+      // one toast that always needs a hand: assign it yourself, widen the
+      // window, or give someone the skill under Users & roles.
+      const left = r.unassignable ?? [];
+      const leftCount = r.unassignableCount ?? 0;
+      if (leftCount > 0) {
+        const lines = left.slice(0, 4).map((u) => {
+          const who = u.client ?? "A client";
+          const when = from !== to ? ` on ${shortDay(u.day)}` : "";
+          return u.reason === "no_eligible_tech"
+            ? `${who}${when}: nobody on this run does ${u.service ?? "that service"}.`
+            : `${who}${when}: no route reaches it between ${u.earliest ?? "…"} and ${u.latest ?? "…"}.`;
+        });
+        if (leftCount > 4) lines.push(`${leftCount - 4} more.`);
+        toast.warning(
+          leftCount === 1
+            ? "1 stop was left unassigned."
+            : `${leftCount} stops were left unassigned.`,
+          { description: lines.join(" "), duration: 15000 },
+        );
+      }
       // Refusals are surfaced, not swallowed. A dispatcher who is not told a
       // day was skipped will believe it was optimized.
       for (const s of r.skipped.slice(0, 3)) toast.warning(s.reason, { duration: 8000 });
@@ -727,8 +750,8 @@ export function AutoRoutingPanel({
               })}
             </div>
             <p className="text-2xs text-muted-foreground">
-              The default is in Settings → Scheduling. Missed windows are listed after the run
-              either way.
+              The default is in Settings → Scheduling. Kept windows are never missed: a stop no
+              route can reach in time is left unassigned and named. Set aside, every miss is listed.
             </p>
           </div>
         )}

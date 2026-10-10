@@ -26,6 +26,7 @@ import {
   type SolverOptions,
   type SolverProblem,
   type SolverStop,
+  type UnassignedReason,
 } from "@/lib/route-solver";
 
 export type LatLon = [number, number];
@@ -55,6 +56,10 @@ export type RouteDayInputs = {
     current_min: number | null;
     current_stops: number | null;
     current_sequenced: boolean | null;
+    /** Services this person can do (staff_services, 20261010120000). Null or
+     *  empty: no skills set, so any service -- the default every technician
+     *  had before skills existed. */
+    services?: string[] | null;
   }>;
   visits: Array<{
     id: string;
@@ -66,6 +71,12 @@ export type RouteDayInputs = {
     pref: string;
     assigned_staff_id: string | null;
     fixed: boolean;
+    /** What the visit is (visits.service_id) and its name, for the skill
+     *  check and the sentence that names a stop nobody can take. */
+    service_id?: string | null;
+    service?: string | null;
+    /** The client's display name, for the same sentence. */
+    client?: string | null;
   }>;
   dumps: Array<{ lat: number; lon: number }>;
   day_centroid: { lat: number; lon: number } | null;
@@ -128,7 +139,12 @@ export type BuiltDay = {
   coords: LatLon[];
   startTier: StartTier[];
   /** Stops with no map location: not searched, placed last afterwards. */
-  unlocated: Array<{ id: string; service: number; fixedTech: number | null }>;
+  unlocated: Array<{
+    id: string;
+    service: number;
+    fixedTech: number | null;
+    eligibleTechs: number[] | null;
+  }>;
   /** End points dropped because no stop of the day comes within max_drive. */
   endDropped: boolean[];
   drive: ReturnType<typeof driveModel>;
@@ -136,6 +152,28 @@ export type BuiltDay = {
 
 const minutesAfter = (day: string, hhmm: string, tz: string, start: number) =>
   (zonedTimeToUtc(day, hhmm.slice(0, 5), tz).getTime() - start) / 60_000;
+
+/**
+ * Who may take a visit, by service skill: the technicians whose
+ * staff_services rows name the visit's service, and every technician who
+ * has no rows at all (no skills set means any service). Null when that is
+ * everyone -- which it is for every visit of a business that has never
+ * opened the skills screen, so nothing changes for them. A visit that is
+ * fixed to its technician (reassign off) is also null: the dispatcher's own
+ * assignment stands, skills decide only what the planner may choose.
+ */
+export function eligibleTechsFor(
+  visit: { service_id?: string | null; fixed?: boolean },
+  techs: Array<{ services?: string[] | null }>,
+): number[] | null {
+  if (visit.fixed || !visit.service_id) return null;
+  const out: number[] = [];
+  techs.forEach((t, i) => {
+    const skills = t.services ?? [];
+    if (skills.length === 0 || skills.includes(visit.service_id!)) out.push(i);
+  });
+  return out.length === techs.length ? null : out;
+}
 
 /** The matrix over `coords`, by drive_minutes. A pair it cannot price (no
  *  coordinates) costs nothing, as plan_visits' COALESCE(..., 0) made it. */
@@ -167,10 +205,11 @@ export function buildDay(
   for (const v of inp.visits) {
     const fixedTech =
       v.fixed && v.assigned_staff_id ? (techIndex.get(v.assigned_staff_id) ?? null) : null;
+    const eligibleTechs = eligibleTechsFor(v, inp.techs);
     const at = located(v.lat, v.lon);
     const service = Number(v.service_min ?? 8);
     if (!at) {
-      unlocated.push({ id: v.id, service, fixedTech });
+      unlocated.push({ id: v.id, service, fixedTech, eligibleTechs });
       continue;
     }
     stopIds.push(v.id);
@@ -181,6 +220,7 @@ export function buildDay(
       latest: v.latest ? minutesAfter(opts.day, v.latest, tz, dayStart) : null,
       pref: v.pref === "morning" || v.pref === "afternoon" ? v.pref : null,
       fixedTech,
+      eligibleTechs,
     });
   }
 
@@ -259,8 +299,22 @@ export function buildDay(
   return { problem, stopIds, techIds, coords: nodeCoords, startTier, unlocated, endDropped, drive };
 }
 
+export type UnassignedVisit = {
+  visit_id: string;
+  reason: UnassignedReason;
+  client: string | null;
+  service: string | null;
+  /** The window that could not be kept, as HH:MM on the business's clock. */
+  earliest: string | null;
+  latest: string | null;
+};
+
 export type DayPlan = {
   routes: Array<{ staff_id: string; visit_ids: string[] }>;
+  /** Visits on no route: nobody on the run can do the service, or no route
+   *  keeps the window. apply_route_plan is told, so the day still checks out;
+   *  the panel names each one. */
+  unassigned: UnassignedVisit[];
   solution: Solution;
   startTier: StartTier[];
   /** Solver drive minutes per technician, the leg home included. */
@@ -321,16 +375,38 @@ export function planDay(
     routes[t] = polishRoute(p2, t, routes[t]);
   }
 
+  // ── Stops the search left out, named ──
+  const byId = new Map(inp.visits.map((v) => [v.id, v]));
+  const name = (id: string, reason: UnassignedReason): UnassignedVisit => {
+    const v = byId.get(id);
+    return {
+      visit_id: id,
+      reason,
+      client: v?.client ?? null,
+      service: v?.service ?? null,
+      earliest: v?.earliest ?? null,
+      latest: v?.latest ?? null,
+    };
+  };
+  const unassigned = solution.unassigned.map((u) => name(built.stopIds[u.stop], u.reason));
+
   // ── Stops with no location ──
   // Last on whichever route they belong to: pinned ones on their own person,
-  // the rest one at a time to whoever has the least of their day used.
+  // the rest one at a time to whoever has the least of their day used among
+  // those who can do the service. Their window cannot be checked (nobody
+  // knows the drive to them), so it is not.
   const load = solution.costs.map((c) => c.load);
   const tail: string[][] = routes.map(() => []);
   for (const u of built.unlocated) {
     let t = u.fixedTech;
     if (t == null) {
-      t = 0;
-      for (let k = 1; k < load.length; k++) {
+      const may = u.eligibleTechs ?? [...Array(load.length).keys()];
+      if (may.length === 0) {
+        unassigned.push(name(u.id, "no_eligible_tech"));
+        continue;
+      }
+      t = may[0];
+      for (const k of may) {
         if (load[k] / problem.techs[k].capacity < load[t] / problem.techs[t].capacity) t = k;
       }
     }
@@ -343,6 +419,7 @@ export function planDay(
       staff_id: built.techIds[t],
       visit_ids: [...r.map((s) => built.stopIds[s]), ...tail[t]],
     })),
+    unassigned,
     solution,
     startTier,
     driveMin: solution.costs.map((c) => c.drive),

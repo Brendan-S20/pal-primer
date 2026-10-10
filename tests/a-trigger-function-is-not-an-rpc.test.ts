@@ -192,7 +192,11 @@ describe("no trigger function is executable by a signed-in user", () => {
     // upcoming walks off the days that went) and
     // tg_subscriptions_weekdays_follow_frequency (a cadence change off weekly
     // lets go of the days instead of failing). Both REVOKEd in the same file.
-    expect(triggerFunctions().size).toBe(59);
+    //
+    // 59 -> 60 on 2026-10-10 (20261010120000, a window is kept and a skill
+    // is matched): tg_staff_services_same_org, which keeps a technician's
+    // service skill inside their own business. REVOKEd in the same file.
+    expect(triggerFunctions().size).toBe(60);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -124,7 +124,13 @@ END
 $reset$;
 
 \i :migration
+-- Only where the stack lacks it: 20261009230100 restates apply_route_plan
+-- with six arguments, and a stack that already carries the seven-argument
+-- one (20261010120000) would end up with both, and every call ambiguous.
+SELECT to_regprocedure('public.stop_service_min(integer, integer)') IS NULL AS need_durations \gset
+\if :need_durations
 \i :durations
+\endif
 
 CREATE FUNCTION pg_temp.as_user(_uid text, _aal text DEFAULT 'aal1') RETURNS void LANGUAGE sql AS $$
   SELECT set_config('request.jwt.claims',

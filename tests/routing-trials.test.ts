@@ -145,7 +145,11 @@ describe.skipIf(!reachable)("routing trials: every plan is complete and honest",
   });
 
   it("assigns every visit to somebody (mutation: a 0,0 refused the whole day)", () => {
-    for (const r of ran()) expect(r.checks.unassigned, r.sc.id).toEqual([]);
+    // Except the one stop no route can reach inside its window (2026-10-10):
+    // that one is left unassigned on purpose and named, see below.
+    for (const r of ran()) {
+      expect(r.checks.unassigned, r.sc.id).toEqual(r.sc.id === "windows" ? ["w_sub_tight"] : []);
+    }
   });
 
   it("puts nothing new on anyone who cannot run today", () => {
@@ -271,12 +275,22 @@ describe.skipIf(!reachable)("routing trials: specific scenarios", () => {
     expect(r.legResult.pointsOutsideGraph).toBe(1);
   });
 
-  it("honours the windows set on the service, and flags the one it cannot (mutation)", () => {
+  it("honours the windows set on the service, and leaves out the one it cannot, named (mutation)", () => {
+    // CHANGED 2026-10-10: a window is kept, never planned late and flagged.
+    // The 08:00-08:20 stop that no truck can reach from its start is left
+    // off every route and returned with its reason; nothing on the board is
+    // late, and nothing waits on it.
     const r = get("windows");
     const missed = r.checks.windowTruth.filter((w) => w.missed).map((w) => w.key);
-    expect(missed).toEqual(["w_sub_tight"]);
-    expect(r.checks.appliedViolations).toBe(1);
-    expect(r.checks.forecastViolations).toBe(1);
+    expect(missed).toEqual([]);
+    expect(r.checks.appliedViolations).toBe(0);
+    expect(r.checks.forecastViolations).toBe(0);
+    expect(r.ts!.unassigned).toEqual([{ key: "w_sub_tight", reason: "window" }]);
+    const left = r.visits.find((v) => v.key === "w_sub_tight")!;
+    expect(left.staffKey).toBeNull();
+    expect(left.etaStart).toBeNull();
+    // Every other windowed stop is on a route and inside its window.
+    for (const w of r.checks.windowTruth) expect(w.missed, w.key).toBe(false);
     // An afternoon window no longer parks the truck all morning.
     for (const t of r.techs) expect(t.overtimeMin, t.key).toBe(0);
   });

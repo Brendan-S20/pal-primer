@@ -1008,6 +1008,7 @@ export const BASE_STUBS: Record<string, Stub> = {
   },
   listOrgInvites: { invites: [] },
   listStaffAddresses: { staff: fx.STAFF },
+  listStaffServices: { rows: [] },
   listOrgUsers: {
     users: fx.STAFF.map((s, i) => ({
       user_id: `77777777-0000-4000-8000-${String(500000000000 + i).slice(0, 12)}`,

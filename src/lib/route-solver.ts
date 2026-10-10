@@ -49,18 +49,43 @@
 //   fullest and emptiest day, cheap within 10 minutes (the SQL balancer's own
 //   target) and dear past it, plus a pull of every day towards the mean
 // + minutes over capacity
-// + when arrival windows are honoured: first the NUMBER of customers reached
-//   late, then the minutes late, both weighted so heavily that neither is
-//   ever traded for driving (a window that cannot be met is still planned,
-//   and flagged), and the morning/afternoon preferences. When windows are
-//   set aside none of this is charged; the write still reports which windows
-//   the plan misses, early or late.
+// + when arrival windows are honoured, the morning/afternoon preferences.
+//   Lateness is not a cost here: a route that reaches any stop after its
+//   window is INFEASIBLE (see below). When windows are set aside nothing about
+//   time is charged; the write still reports which windows the plan misses,
+//   early or late.
 //
 // Within one route the order is chosen by that route's own cost alone, and a
 // move between routes is judged only after both routes have been re-ordered
 // that way. A spread rewards making the emptiest day fuller by ANY means --
 // the first version of this search found one, a stop put badly into a
 // part-timer's day, undone by 2-opt, redone by the next move, for 55 seconds.
+//
+// ── TWO HARD RULES (2026-10-10, appointment routing) ─────────────────────
+//
+// Until this, a window was a price: twenty thousand minutes' driving for each
+// customer reached late, so the search avoided it whenever it could and
+// "shared" one impossible window by planning it late and flagging it. A walk
+// booked for 11:00-13:00 cannot be done at 13:40 and flagged; the owner's
+// words were "windows are always honoured". So:
+//
+//   * With windows honoured, a route on which any stop arrives after its
+//     latest time has an INFINITE objective. Nothing inserts a stop where it
+//     would be late, no move makes a stop late, and a stop that cannot be
+//     placed inside its window on any technician is left out and returned in
+//     `unassigned` with the reason "window". It is never silently late and
+//     never silently dropped: the caller names it to the dispatcher.
+//
+//   * A stop may say which technicians can do it (`eligibleTechs`, from the
+//     technician's service skills). The search never puts it anywhere else,
+//     and a stop nobody on the run can do comes back as "no_eligible_tech".
+//     `null` means anybody -- what every stop says when a business has set no
+//     skills, so a pet-waste org that never opens the skills screen routes
+//     exactly as before.
+//
+// The search keeps the number of unplaced stops as its first objective and
+// the cost above as its second: a round that places one more stop is kept
+// whatever it costs in driving, and a round that loses one is never kept.
 
 // ── DETERMINISM ──────────────────────────────────────────────────────────
 //
@@ -79,7 +104,15 @@ export type SolverStop = {
   pref: "morning" | "afternoon" | null;
   /** Index of the technician this stop must stay with, or null. */
   fixedTech: number | null;
+  /** Technicians who can do this stop's service; null (or absent) = anyone.
+   *  An empty list means nobody on the run can, and the stop comes back
+   *  unassigned. */
+  eligibleTechs?: number[] | null;
 };
+
+export type UnassignedReason = "no_eligible_tech" | "window";
+
+export type UnassignedStop = { stop: number; reason: UnassignedReason };
 
 export type SolverTech = {
   /** Node the day starts from; null = the first leg costs nothing. */
@@ -132,7 +165,11 @@ export type RouteCost = {
 export type Solution = {
   routes: number[][];
   costs: RouteCost[];
+  /** The cost of the routes returned (driving, balance, capacity,
+   *  preferences). Stops in `unassigned` are not in it. */
   objective: number;
+  /** Stops on no route, each with the reason, by stop index. */
+  unassigned: UnassignedStop[];
   rounds: number;
   stoppedBy: "rounds" | "time" | "patience";
   ms: number;
@@ -140,13 +177,11 @@ export type Solution = {
 
 // ── Weights ────────────────────────────────────────────────────────────────
 
-/** Lateness, when windows are honoured, is ranked before everything else:
- *  first the NUMBER of customers reached late -- each is a broken promise,
- *  and one impossible window must not be "shared" by making a second
- *  customer five minutes late, which an earlier weighting did on the trials'
- *  windows day -- then the minutes late, each worth fifty minutes' driving. */
-export const W_LATE_STOP = 20_000;
-export const W_LATE_MIN = 50;
+/** There is no weight for lateness. With windows honoured a late arrival is
+ *  not a cost but an impossibility (routeObjective returns Infinity), and
+ *  with them set aside it is not charged at all. Until 2026-10-10 a late stop
+ *  cost 20,000 and each late minute 50, which planned the impossible window
+ *  late and flagged it. */
 /** A morning/afternoon preference not met: what the SQL planner charged. */
 export const W_PREF = 15;
 /** Each minute a day runs over the person's capacity. */
@@ -234,13 +269,29 @@ export function evaluateRoute(
   return { drive, service, wait, late, lateStops, prefMisses, load: drive + service };
 }
 
-/** The part of the objective that belongs to one route (everything but balance). */
+/** The part of the objective that belongs to one route (everything but
+ *  balance). Infinity when windows are honoured and the route reaches a stop
+ *  late: such a route is not a worse plan, it is not a plan. */
 export function routeObjective(p: SolverProblem, t: number, c: RouteCost): number {
+  if (p.honourWindows && c.lateStops > 0) return Infinity;
   let v = c.drive + W_CAP * Math.max(0, c.load - p.techs[t].capacity);
-  if (p.honourWindows) {
-    v += W_LATE_MIN * c.late + W_LATE_STOP * c.lateStops + W_PREF * c.prefMisses;
-  }
+  if (p.honourWindows) v += W_PREF * c.prefMisses;
   return v;
+}
+
+/** Which technicians stop s may be given to: its own service skills and its
+ *  pin, folded into one row of a stops x techs table. */
+export function allowedTechs(p: SolverProblem): Uint8Array {
+  const K = p.techs.length;
+  const allow = new Uint8Array(p.stops.length * K);
+  p.stops.forEach((s, i) => {
+    const el = s.eligibleTechs == null ? null : new Set(s.eligibleTechs);
+    for (let t = 0; t < K; t++) {
+      const ok = (s.fixedTech == null || s.fixedTech === t) && (el == null || el.has(t));
+      allow[i * K + t] = ok ? 1 : 0;
+    }
+  });
+  return allow;
 }
 
 /**
@@ -389,14 +440,21 @@ class State {
   costs: RouteCost[] = [];
   robj: number[] = [];
   loads: number[] = [];
-  /** Per route: prefix of forward legs, backward legs, service, pinned stops. */
+  /** Per route: prefix of forward legs, backward legs, service. */
   F: Float64Array[] = [];
   B: Float64Array[] = [];
   S: Float64Array[] = [];
-  X: Int32Array[] = [];
+  /** Per route t and destination u: prefix count of stops on t that may NOT
+   *  be given to u (pinned to t, or u lacks the skill). A run with a count
+   *  of zero can move to u whole. */
+  X: Int32Array[][] = [];
+  /** allow[s * K + t]: stop s may be on technician t. */
+  readonly allow: Uint8Array;
   /** Which route each stop is on (-1 = none yet), and where in it. */
   where: Int32Array;
   at: Int32Array;
+  /** How many stops are on some route. */
+  placed = 0;
 
   constructor(p: SolverProblem, routes: number[][]) {
     this.p = p;
@@ -405,6 +463,7 @@ class State {
     this.K = p.techs.length;
     this.caps = p.techs.map((t) => t.capacity);
     this.timeline = timelineMatters(p);
+    this.allow = allowedTechs(p);
     this.routes = routes.map((r) => [...r]);
     this.where = new Int32Array(p.stops.length).fill(-1);
     this.at = new Int32Array(p.stops.length).fill(-1);
@@ -417,15 +476,23 @@ class State {
     return this.routes.map((r) => [...r]);
   }
 
+  /** Stops on no route. */
+  unplaced(): number {
+    return this.p.stops.length - this.placed;
+  }
+
   refresh(t: number) {
     const r = this.routes[t];
     const n = r.length;
+    const K = this.K;
     const F = new Float64Array(Math.max(n, 1));
     const B = new Float64Array(Math.max(n, 1));
     const S = new Float64Array(n + 1);
-    const X = new Int32Array(n + 1);
+    const X: Int32Array[] = [];
+    for (let u = 0; u < K; u++) X.push(new Int32Array(n + 1));
     const N = this.N;
     const m = this.m;
+    const allow = this.allow;
     for (let k = 0; k < n; k++) {
       if (k > 0) {
         F[k] = F[k - 1] + m[r[k - 1] * N + r[k]];
@@ -433,7 +500,8 @@ class State {
       }
       const st = this.p.stops[r[k]];
       S[k + 1] = S[k] + st.service;
-      X[k + 1] = X[k] + (st.fixedTech != null ? 1 : 0);
+      const row = r[k] * K;
+      for (let u = 0; u < K; u++) X[u][k + 1] = X[u][k] + (allow[row + u] ? 0 : 1);
     }
     this.F[t] = F;
     this.B[t] = B;
@@ -452,9 +520,15 @@ class State {
   }
 
   setRoute(t: number, r: number[]) {
-    for (const s of this.routes[t]) if (this.where[s] === t) this.where[s] = -1;
+    for (const s of this.routes[t]) {
+      if (this.where[s] === t) {
+        this.where[s] = -1;
+        this.placed--;
+      }
+    }
     this.routes[t] = r;
     r.forEach((s, k) => {
+      if (this.where[s] < 0) this.placed++;
       this.where[s] = t;
       this.at[s] = k;
     });
@@ -517,9 +591,11 @@ class State {
     return out;
   }
 
-  pinned(t: number, i: number, j: number): boolean {
+  /** Whether any stop in positions i..j of route t may not be given to u. */
+  blocked(t: number, i: number, j: number, u: number): boolean {
     if (i > j) return false;
-    return this.X[t][j + 1] - this.X[t][i] > 0;
+    const x = this.X[t][u];
+    return x[j + 1] - x[i] > 0;
   }
 
   /** Objective and load of one route rebuilt from pieces, into this.vObj /
@@ -575,7 +651,12 @@ function insertionCost(
   const over = (l: number) => Math.max(0, l - target[t]);
   let best = Infinity;
   let pos = 0;
-  if (st.timeline && n <= 60) {
+  // Every position, timed, whenever the clock matters: a window is a hard
+  // rule now, and the O(1) estimate below cannot see one. (Until 2026-10-10
+  // routes past 60 stops fell through to the estimate; a 200-stop
+  // single-truck day with windows now costs a few hundred thousand route
+  // evaluations in construction, well inside the budget.)
+  if (st.timeline) {
     const base = st.robj[t];
     const tmp = new Array<number>(n + 1);
     for (let j = 0; j <= n; j++) {
@@ -618,15 +699,11 @@ function regretInsert(
   noise: (() => number) | null = null,
 ) {
   const K = st.K;
-  const p = st.p;
   const left = new Set(pending);
   // best[s][t] cached; recomputed for one route after each insertion.
   const cost = new Map<number, Float64Array>();
   const pos = new Map<number, Int32Array>();
-  const allowed = (s: number, t: number) => {
-    const f = p.stops[s].fixedTech;
-    return f == null || f === t;
-  };
+  const allowed = (s: number, t: number) => st.allow[s * K + t] === 1;
   const fill = (s: number, t: number) => {
     if (!allowed(s, t)) {
       cost.get(s)![t] = Infinity;
@@ -854,8 +931,10 @@ function tryNear(st: State, A: number, i: number, B: number, j: number): boolean
   const na = st.routes[A].length;
   const nb = st.routes[B].length;
   // Relocate a run starting at s to just after v, or ending at s to just before v.
+  // Every run that changes hands is checked against the technician it goes
+  // TO: a pinned stop stays, and a stop needs its new technician's skill.
   for (let L = 1; L <= 3; L++) {
-    if (i + L <= na && !st.pinned(A, i, i + L - 1)) {
+    if (i + L <= na && !st.blocked(A, i, i + L - 1, B)) {
       for (let rv = 0; rv < (L > 1 ? 2 : 1); rv++) {
         PA.reset()
           .add(A, 0, i - 1)
@@ -867,7 +946,7 @@ function tryNear(st: State, A: number, i: number, B: number, j: number): boolean
         if (tryMove(st, A, B)) return true;
       }
     }
-    if (i - L + 1 >= 0 && !st.pinned(A, i - L + 1, i)) {
+    if (i - L + 1 >= 0 && !st.blocked(A, i - L + 1, i, B)) {
       for (let rv = 0; rv < (L > 1 ? 2 : 1); rv++) {
         PA.reset()
           .add(A, 0, i - L)
@@ -886,8 +965,8 @@ function tryNear(st: State, A: number, i: number, B: number, j: number): boolean
       if (
         i + L1 <= na &&
         j + L2 <= nb - 1 &&
-        !st.pinned(A, i, i + L1 - 1) &&
-        !st.pinned(B, j + 1, j + L2)
+        !st.blocked(A, i, i + L1 - 1, B) &&
+        !st.blocked(B, j + 1, j + L2, A)
       ) {
         PA.reset()
           .add(A, 0, i - 1)
@@ -902,8 +981,8 @@ function tryNear(st: State, A: number, i: number, B: number, j: number): boolean
       if (
         i - L1 + 1 >= 0 &&
         j - L2 >= 0 &&
-        !st.pinned(A, i - L1 + 1, i) &&
-        !st.pinned(B, j - L2, j - 1)
+        !st.blocked(A, i - L1 + 1, i, B) &&
+        !st.blocked(B, j - L2, j - 1, A)
       ) {
         PA.reset()
           .add(A, 0, i - L1)
@@ -918,7 +997,7 @@ function tryNear(st: State, A: number, i: number, B: number, j: number): boolean
     }
   }
   // 2-opt*: swap tails so that v -> s, or s -> v, becomes a leg.
-  if (!st.pinned(A, i, na - 1) && !st.pinned(B, j + 1, nb - 1)) {
+  if (!st.blocked(A, i, na - 1, B) && !st.blocked(B, j + 1, nb - 1, A)) {
     PA.reset()
       .add(A, 0, i - 1)
       .add(B, j + 1, nb - 1);
@@ -927,7 +1006,7 @@ function tryNear(st: State, A: number, i: number, B: number, j: number): boolean
       .add(A, i, na - 1);
     if (tryMove(st, A, B)) return true;
   }
-  if (!st.pinned(A, i + 1, na - 1) && !st.pinned(B, j, nb - 1)) {
+  if (!st.blocked(A, i + 1, na - 1, B) && !st.blocked(B, j, nb - 1, A)) {
     PA.reset()
       .add(A, 0, i)
       .add(B, j, nb - 1);
@@ -948,7 +1027,8 @@ function tryFront(st: State, A: number, i: number, nb: Neighbours, s: number): b
     const len = st.routes[B].length;
     if (len > 0 && !nb.nearStart[B].has(s)) continue;
     for (let L = 1; L <= 3 && i + L <= na; L++) {
-      if (st.pinned(A, i, i + L - 1)) break;
+      // A longer run holds the same stop, so it is blocked too.
+      if (st.blocked(A, i, i + L - 1, B)) break;
       PA.reset()
         .add(A, 0, i - 1)
         .add(A, i + L, na - 1);
@@ -1099,18 +1179,36 @@ export function solveRoutes(p: SolverProblem, opts: SolverOptions = {}): Solutio
     p,
     p.techs.map(() => []),
   );
-  const pinned = p.stops.map((s, i) => (s.fixedTech != null ? i : -1)).filter((i) => i >= 0);
-  const free = p.stops.map((s, i) => (s.fixedTech == null ? i : -1)).filter((i) => i >= 0);
+  // A stop nobody on the run may take is never offered to the search; it is
+  // reported, with its reason, at the end.
+  const takers = (i: number) => {
+    let c = 0;
+    for (let t = 0; t < K; t++) c += st.allow[i * K + t];
+    return c;
+  };
+  const nobody: number[] = [];
+  const pinned: number[] = [];
+  const free: number[] = [];
+  p.stops.forEach((s, i) => {
+    if (takers(i) === 0) nobody.push(i);
+    else if (s.fixedTech != null) pinned.push(i);
+    else free.push(i);
+  });
   const target = targets(st, estimateTotal(p));
   // Pinned stops are placed by cheapest insertion on their own route.
   regretInsert(st, pinned, target);
   regretInsert(st, free, target);
+  const offered = pinned.length + free.length;
+  /** Stops offered to the search that are on no route (a window nobody can
+   *  meet so far). First in the ranking of any two days. */
+  const unplacedOffered = () => offered - st.placed;
 
   // 2. Local search.
   const nb = neighbours(p);
   localSearch(st, nb, new Set([...Array(K).keys()]), deadline);
   let best = st.clone();
   let bestVal = st.total();
+  let bestUnplaced = unplacedOffered();
 
   // 3. Ruin and recreate, with a little noise and a cooling threshold.
   //
@@ -1129,6 +1227,7 @@ export function solveRoutes(p: SolverProblem, opts: SolverOptions = {}): Solutio
   const N = p.size;
   let cur = st.clone();
   let curVal = bestVal;
+  let curUnplaced = bestUnplaced;
   const jitter = () => 1 + 0.3 * (rand() - 0.5);
   for (; r < rounds; r++) {
     if (deadline()) {
@@ -1173,6 +1272,10 @@ export function solveRoutes(p: SolverProblem, opts: SolverOptions = {}): Solutio
       for (let k = 0; k < q; k++) removed.add(free[Math.floor(rand() * freeCount)]);
     }
     const out = [...removed];
+    // Whatever is still on no route gets another go every round: the routes
+    // around it have changed, and a window that did not fit may fit now.
+    for (const x of pinned) if (st.where[x] < 0) out.push(x);
+    for (const x of free) if (st.where[x] < 0 && !removed.has(x)) out.push(x);
     const touched = new Set<number>();
     for (let t = 0; t < K; t++) {
       const rt = st.routes[t];
@@ -1194,17 +1297,21 @@ export function solveRoutes(p: SolverProblem, opts: SolverOptions = {}): Solutio
     for (const x of out) if (st.where[x] >= 0) touched.add(st.where[x]);
     localSearch(st, nb, touched, deadline, false);
     const v = st.total();
+    const u = unplacedOffered();
     const threshold = 0.01 * Math.abs(bestVal) * Math.max(0, 1 - r / rounds);
-    if (v < bestVal - EPS) {
+    // Fewer stops left out beats everything; at the same count, the cost.
+    if (u < bestUnplaced || (u === bestUnplaced && v < bestVal - EPS)) {
       bestVal = v;
+      bestUnplaced = u;
       best = st.clone();
       sinceBest = 0;
     } else {
       sinceBest++;
     }
-    if (v < curVal + threshold) {
+    if (u < curUnplaced || (u === curUnplaced && v < curVal + threshold)) {
       cur = st.clone();
       curVal = v;
+      curUnplaced = u;
     } else {
       for (let t = 0; t < K; t++) st.setRoute(t, [...cur[t]]);
     }
@@ -1216,10 +1323,20 @@ export function solveRoutes(p: SolverProblem, opts: SolverOptions = {}): Solutio
   polishExact(st);
   for (let t = 0; t < K; t++) intraRoute(st, t);
 
+  // What was left out, and why: a stop nobody on the run may take, or one
+  // whose window no route could keep.
+  const unassigned: UnassignedStop[] = [];
+  for (const s of nobody) unassigned.push({ stop: s, reason: "no_eligible_tech" });
+  for (let s = 0; s < n; s++) {
+    if (st.where[s] < 0 && takers(s) > 0) unassigned.push({ stop: s, reason: "window" });
+  }
+  unassigned.sort((a, b) => a.stop - b.stop);
+
   return {
     routes: st.clone(),
     costs: [...st.costs],
     objective: st.total(),
+    unassigned,
     rounds: r,
     stoppedBy,
     ms: now() - t0,
