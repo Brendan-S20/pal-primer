@@ -251,6 +251,43 @@ CREATE TRIGGER subscriptions_weekdays_reshape
   WHEN (OLD.weekdays IS DISTINCT FROM NEW.weekdays)
   EXECUTE FUNCTION public.tg_subscriptions_weekdays_reshape();
 
+-- ── 4. A cadence change lets go of the days ─────────────────────────────
+--
+-- A set of days only rides on plain weekly. Whatever moves a plan off it — the
+-- portal's portal_change_frequency with auto-apply on, the office's
+-- applyFrequencyChangeRequest, an import, a script — would otherwise trip
+-- subscriptions_weekdays_are_weekly and fail. So a frequency or interval
+-- change that leaves weekly clears the set in the same row, BEFORE the CHECK
+-- runs. Only when the same UPDATE does not also write weekdays: an update that
+-- asks for a set on a biweekly plan is still refused, as rule 8 proves.
+-- portal_change_frequency already removes the plan's upcoming scheduled visits
+-- itself, and the generator lays the new cadence on its next run.
+
+CREATE OR REPLACE FUNCTION public.tg_subscriptions_weekdays_follow_frequency()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  IF NEW.weekdays IS NOT NULL
+     AND NEW.weekdays IS NOT DISTINCT FROM OLD.weekdays
+     AND (NEW.frequency <> 'weekly' OR COALESCE(NEW.interval_weeks, 1) <> 1) THEN
+    NEW.weekdays := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.tg_subscriptions_weekdays_follow_frequency() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS subscriptions_weekdays_follow_frequency ON public.subscriptions;
+CREATE TRIGGER subscriptions_weekdays_follow_frequency
+  BEFORE UPDATE OF frequency, interval_weeks ON public.subscriptions
+  FOR EACH ROW
+  WHEN (OLD.frequency IS DISTINCT FROM NEW.frequency
+        OR OLD.interval_weeks IS DISTINCT FROM NEW.interval_weeks)
+  EXECUTE FUNCTION public.tg_subscriptions_weekdays_follow_frequency();
+
 -- ── What this file establishes, checked from any starting state ───────────
 DO $post$
 DECLARE

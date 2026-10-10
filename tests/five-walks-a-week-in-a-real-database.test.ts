@@ -118,8 +118,8 @@ describe.skipIf(!reachable)("five walks a week, in a real database", () => {
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
-    // Nine groups, each announcing itself only when it passed.
-    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(9);
+    // Ten groups, each announcing itself only when it passed.
+    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(10);
     expect(out).toMatch(/ALL FIVE-WALKS PROOFS PASSED/);
 
     const left = spawnSync(

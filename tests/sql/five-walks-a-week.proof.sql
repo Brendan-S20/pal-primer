@@ -415,6 +415,21 @@ BEGIN
   RAISE NOTICE 'ok: a completed walk is priced as one visit at the plan''s price, the path every plan bills by';
 END $$;
 
+-- ── 10. Leaving weekly lets go of the days, so a cadence change succeeds ──
+-- (the portal's auto-applied frequency change writes frequency alone)
+DO $$
+BEGIN
+  IF (SELECT weekdays FROM public.subscriptions WHERE id = 'd5300000-0000-4000-8000-0000000000b1') IS NULL THEN
+    RAISE EXCEPTION 'PROOF FAILED [cadence change]: the fixture plan has no set of days to let go of';
+  END IF;
+  UPDATE public.subscriptions SET frequency = 'biweekly'
+   WHERE id = 'd5300000-0000-4000-8000-0000000000b1';
+  IF (SELECT weekdays FROM public.subscriptions WHERE id = 'd5300000-0000-4000-8000-0000000000b1') IS NOT NULL THEN
+    RAISE EXCEPTION 'PROOF FAILED [cadence change]: a plan moved to biweekly kept its set of days';
+  END IF;
+  RAISE NOTICE 'ok: moving a set-days plan off weekly clears its days instead of failing';
+END $$;
+
 DO $$ BEGIN RAISE NOTICE 'ALL FIVE-WALKS PROOFS PASSED'; END $$;
 
 ROLLBACK;
