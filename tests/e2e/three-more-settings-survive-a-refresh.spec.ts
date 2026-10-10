@@ -20,7 +20,7 @@ import { expect, test } from "@playwright/test";
 
 import { pointTheBrowserAtTheLocalDatabase } from "./point-the-browser-at-the-local-database";
 import { e2eOrgId, serviceDb } from "./service-db";
-import { signIn } from "./sign-in";
+import { signIn, waitForHydration } from "./sign-in";
 
 test.beforeEach(async ({ context }) => {
   await pointTheBrowserAtTheLocalDatabase(context, {
@@ -52,6 +52,12 @@ test("online signup: the switch flips, survives a refresh, and lands in Postgres
 
   const toggle = page.getByLabel("Accept signups online");
   await expect(toggle).toBeVisible({ timeout: 30_000 });
+  // The switch is server-rendered, so it is visible before React attaches its
+  // handler, and a click in that gap does nothing. On a loaded runner the gap
+  // is long enough to land in: twice on 2026-10-09/10 (#378, #358) the page
+  // snapshot showed the switch still off and no toast. Wait for the fiber, as
+  // signIn does for /auth.
+  await waitForHydration(page, "#public-signup");
   await toggle.click();
 
   // exact: turning signup on for an org with no web address also draws an
