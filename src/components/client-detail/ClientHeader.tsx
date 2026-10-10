@@ -3,7 +3,7 @@
 // DERIVED from service states (QA follow-up 4.2) so a manual flag can't
 // contradict reality; missing contact info renders as warning chips.
 import { appUrl } from "@/lib/app-origin";
-import { useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -37,7 +37,15 @@ import { pauseSubscription } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
 import { getMyOrg } from "@/lib/org.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
+// Its own chunk, with the 71KB date picker inside it: a client page draws its
+// header on every visit and opens this drawer on very few, so the picker is
+// not parsed before the page can draw (see tabLoaders in clients.$clientId.tsx,
+// which also fetches it once the page is idle).
+const VacationHoldDrawer = lazy(() =>
+  import("@/components/client-detail/VacationHoldDrawer").then((m) => ({
+    default: m.VacationHoldDrawer,
+  })),
+);
 import { StatusChip, MetaChip } from "@/components/client-detail/primitives";
 import { formatPhone, formatDay } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
@@ -104,6 +112,9 @@ export function ClientHeader({
   // Vacation holds (QA round 8): the ••• menu opens a small drawer; an
   // active or upcoming hold shows as a chip next to the status.
   const [holdDrawerOpen, setHoldDrawerOpen] = useState(false);
+  // Mounted from its first opening on, so it keeps its close animation.
+  const holdDrawerEverOpened = useRef(false);
+  if (holdDrawerOpen) holdDrawerEverOpened.current = true;
   const listHoldsFn = useServerFn(listClientHolds);
   const previewFn = useServerFn(previewClientPortal);
   const { can } = usePermissions();
@@ -207,7 +218,9 @@ export function ClientHeader({
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold break-words max-sm:min-w-0 sm:truncate">{client.display_name}</h1>
+              <h1 className="text-xl font-semibold break-words max-sm:min-w-0 sm:truncate">
+                {client.display_name}
+              </h1>
               <StatusChip status={derivedStatus} label={STATUS_LABELS[derivedStatus]} />
               {currentHold && (
                 <StatusChip
@@ -477,11 +490,15 @@ export function ClientHeader({
         </div>
       </dl>
 
-      <VacationHoldDrawer
-        open={holdDrawerOpen}
-        onClose={() => setHoldDrawerOpen(false)}
-        clientId={clientId}
-      />
+      {holdDrawerEverOpened.current && (
+        <Suspense fallback={null}>
+          <VacationHoldDrawer
+            open={holdDrawerOpen}
+            onClose={() => setHoldDrawerOpen(false)}
+            clientId={clientId}
+          />
+        </Suspense>
+      )}
     </header>
   );
 }

@@ -15,6 +15,9 @@ import { resolveIdentity } from "@/lib/offline/identity";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
+import { getAccountLock } from "@/lib/account-lock.functions";
+import { pathOpenWhenLocked } from "@/lib/account-lock";
+import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
 import { getPlatformContext } from "@/lib/platform.functions";
@@ -136,7 +139,29 @@ export const Route = createFileRoute("/_authenticated")({
     // Off in dev and test; see lib/monitoring/config.ts.
     setMonitoringIdentity({ userId: identity.userId, orgId: org.organization.id });
 
-    return { userId: identity.userId, user: identity.user, organization: org.organization };
+    // NP-12: a trial past day 14 with no plan, or a cancelled plan that has
+    // ended, reaches Plan & billing and nothing else. The server refuses every
+    // other function anyway (src/start.ts); this sends the person to the one
+    // page that works instead of a workspace that will not load. Choosing a
+    // plan reloads the app (PlanPaymentForm), and this asks again.
+    //
+    // A failed check lets the person through: offline there is nothing to pay
+    // with, and online the server's refusal still holds.
+    let lock: Awaited<ReturnType<typeof getAccountLock>> | null = null;
+    try {
+      lock = await context.queryClient.fetchQuery({
+        queryKey: ["account-lock"],
+        queryFn: () => getAccountLock(),
+        staleTime: 15_000,
+      });
+    } catch {
+      lock = null;
+    }
+    if (lock?.locked && lock.canChoosePlan && !pathOpenWhenLocked(location.pathname)) {
+      throw redirect({ to: "/settings/billing" });
+    }
+
+    return { userId: identity.userId, user: identity.user, organization: org.organization, lock };
   },
   component: SignedInApp,
   // Client-only route: this is also what the server sends for a signed-in
@@ -374,6 +399,24 @@ function AppShell() {
         "--brand-accent-foreground": brand.fg,
       } as React.CSSProperties)
     : undefined;
+
+  // NP-12: a locked account gets the notice and Plan & billing, nothing else.
+  const { lock } = Route.useRouteContext();
+  if (lock?.locked) {
+    return (
+      <>
+        <AccountLockedShell
+          reason={lock.reason}
+          canChoosePlan={lock.canChoosePlan}
+          onSignOut={handleSignOut}
+          style={brandStyle}
+        >
+          <Outlet />
+        </AccountLockedShell>
+        {signOutDialog}
+      </>
+    );
+  }
 
   return (
     <SidebarProvider docksFrom={docksFrom}>

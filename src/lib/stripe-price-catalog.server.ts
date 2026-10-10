@@ -41,6 +41,11 @@ export type PriceCatalog = {
   ids: Set<string>;
   /** True when the account reported more pages than were read. */
   truncated: boolean;
+  /** unit_amount by price id, so a caller can ask "is this the SAME price"
+   *  before reusing one (the interval switch keeps an add-on on its current
+   *  amount rather than the catalog's). Optional: hand-built catalogs in tests
+   *  predate it, and a missing map means "unknown", never "equal". */
+  amountById?: Map<string, number | null>;
 };
 
 /**
@@ -54,6 +59,7 @@ export type PriceCatalog = {
 export async function loadPriceCatalog(stripe: Stripe): Promise<PriceCatalog> {
   const byLookupKey = new Map<string, string>();
   const ids = new Set<string>();
+  const amountById = new Map<string, number | null>();
   let startingAfter: string | undefined;
   let pages = 0;
   let truncated = false;
@@ -69,6 +75,7 @@ export async function loadPriceCatalog(stripe: Stripe): Promise<PriceCatalog> {
     pages += 1;
     for (const p of page.data) {
       ids.add(p.id);
+      amountById.set(p.id, p.unit_amount ?? null);
       if (p.lookup_key) byLookupKey.set(p.lookup_key, p.id);
     }
     if (!page.has_more) break;
@@ -77,7 +84,7 @@ export async function loadPriceCatalog(stripe: Stripe): Promise<PriceCatalog> {
     if (pages >= 10) truncated = true;
   }
 
-  return { byLookupKey, ids, truncated };
+  return { byLookupKey, ids, truncated, amountById };
 }
 
 /**

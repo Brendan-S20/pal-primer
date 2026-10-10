@@ -3158,6 +3158,7 @@ export type Database = {
           organization_id: string
           status: string
           stripe_subscription_item_id: string | null
+          waived_reason: string | null
         }
         Insert: {
           addon_id: string
@@ -3166,6 +3167,7 @@ export type Database = {
           organization_id: string
           status?: string
           stripe_subscription_item_id?: string | null
+          waived_reason?: string | null
         }
         Update: {
           addon_id?: string
@@ -3174,6 +3176,7 @@ export type Database = {
           organization_id?: string
           status?: string
           stripe_subscription_item_id?: string | null
+          waived_reason?: string | null
         }
         Relationships: [
           {
