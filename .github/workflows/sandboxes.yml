@@ -779,7 +779,14 @@ jobs:
     # than raise this: each half is about 22 minutes on a quiet box and
     # about 34 at 1.5x, with the same 45 over each. Fewer workers or a warm-up would
     # have made a slow job slower, and fixed nothing that was failing.
-    timeout-minutes: 45
+    #
+    # VIEWPORTS_TIMEOUT_MINUTES (a repository variable) overrides the 45 while
+    # these jobs run on GitHub's hosted Linux machine (2026-10-10: the PC was
+    # off and VIEWPORTS_RUNNER pointed here). That machine is two cores, and
+    # the full sweep was cancelled at 45 with 280 checks passed and the Apple
+    # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
+    # PC is back; the 45, and everything said above it, applies to the PC.
+    timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT (Windows only) ──────
       #
@@ -969,7 +976,14 @@ jobs:
     # and 20.3 min of tests in the slowest hour measured. If this ever needs most of 45, the
     # cases have outgrown one job too -- split them again by file, as this
     # was split from the sweeps, rather than raising it.
-    timeout-minutes: 45
+    #
+    # VIEWPORTS_TIMEOUT_MINUTES (a repository variable) overrides the 45 while
+    # these jobs run on GitHub's hosted Linux machine (2026-10-10: the PC was
+    # off and VIEWPORTS_RUNNER pointed here). That machine is two cores, and
+    # the full sweep was cancelled at 45 with 280 checks passed and the Apple
+    # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
+    # PC is back; the 45, and everything said above it, applies to the PC.
+    timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
       # The four setup steps are the `viewports` job's, for the reasons
       # written there.
