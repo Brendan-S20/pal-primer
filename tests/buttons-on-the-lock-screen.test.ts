@@ -461,11 +461,25 @@ describe("My Day on a lock-screen link", () => {
     expect(findActionButton(card("More").node, "complete", labels)).toBeNull();
   });
 
-  it("focuses Start and never clicks it, hands Complete to the card, and takes action out of the URL", () => {
+  it("lands on the card's one button at its current step, whatever the label", () => {
+    const step = {
+      textContent: " Take completion photo ",
+      disabled: false,
+      hasAttribute: (n: string) => n === "data-visit-step",
+    };
+    const other = { textContent: " Take photo ", disabled: false, hasAttribute: () => false };
+    const node = { querySelectorAll: () => [other, step] } as unknown as ParentNode;
+    expect(findActionButton(node, "complete", labels)).toBe(step);
+    expect(findActionButton(node, "start", labels)).toBe(step);
+  });
+
+  it("focuses the button and never clicks it, never opens the camera, and takes action out of the URL", () => {
     const hook = codeOnly(read("src/components/my-day/use-live-activity-action.ts"));
     expect(hook).toMatch(/\.focus\(/);
     expect(hook).not.toMatch(/\.click\(|dispatchEvent|mutate|actions\.(start|complete)/);
-    expect(hook).toMatch(/if \(action === "complete" && capture\.current\?\.\(visitId\)\)/);
+    // 2026-10-09: the lock screen's Complete used to open the camera by
+    // itself (#357). The camera opens only on a tap at the photo step now.
+    expect(hook).not.toMatch(/capture|camera|takePhoto/i);
     const myDay = read("src/routes/_authenticated/my-day.tsx");
     expect(myDay).toMatch(/if \(out\.visit && isLiveActivityAction\(search\.action\)\) out\.action = search\.action;/);
     expect(myDay).toMatch(/useLiveActivityAction\(\{[\s\S]*?action: undefined[\s\S]*?replace: true/);

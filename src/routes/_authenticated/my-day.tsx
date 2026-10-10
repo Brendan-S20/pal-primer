@@ -117,18 +117,11 @@ import {
 } from "@/components/my-day/StopFacts";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  checklistReady,
-  photoThenComplete,
-  startOpensCamera,
-} from "@/lib/start-photo-complete";
+  captureCompletionFile,
+  runVisitStep,
+  takeCompletionPhoto,
+  visitStep,
+} from "@/lib/visit-step";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
@@ -529,21 +522,19 @@ function MyDay() {
       cancelAnimationFrame(second);
     };
   }, [visitParam, visitOnPage]);
-  // ...and from the lock screen's Start or Complete: Complete straight into
-  // that stop's completion photo, Start onto its button.
-  const [captureAsk, setCaptureAsk] = useState<{ id: string; n: number } | null>(null);
+  // ...and from the lock screen's Start or Complete: onto that stop's one
+  // button, at whatever step the visit is at. Never the camera: that opens
+  // only when the tech taps the button at its photo step
+  // (src/lib/visit-step.ts). The card has to be on the page to be landed on,
+  // so a lock-screen link brings the list back from the map.
+  useEffect(() => {
+    if (actionParam && visitOnPage) setView("list");
+  }, [actionParam, visitOnPage]);
   useLiveActivityAction({
     visitId: visitParam,
     action: actionParam,
-    ready: visitOnPage,
+    ready: visitOnPage && view === "list",
     labels: { start: t("myDay.start"), complete: t("myDay.complete") },
-    openCapture: (id) => {
-      if (previewing) return false;
-      // The card is what opens the camera, so it has to be on the page.
-      if (view !== "list") setView("list");
-      setCaptureAsk((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
-      return true;
-    },
     onHandled: () =>
       navigate({
         search: (prev: Record<string, unknown>) => ({ ...prev, action: undefined }),
@@ -959,7 +950,6 @@ function MyDay() {
                 preview={previewing}
                 canText={data?.canText === true}
                 onLogExpense={previewing ? undefined : () => setExpenseOpen(true)}
-                captureRequest={captureAsk && captureAsk.id === v.id ? captureAsk.n : 0}
               />
             ))}
           </ol>
@@ -1490,7 +1480,6 @@ function VisitCard({
   preview = false,
   canText = false,
   onLogExpense,
-  captureRequest = 0,
 }: {
   visit: any;
   index: number;
@@ -1501,10 +1490,6 @@ function VisitCard({
   canText?: boolean;
   /** Opens the page's one "Log an expense" sheet. Absent while previewing. */
   onLogExpense?: () => void;
-  /** Bumped when the lock screen's Complete asked for this stop: open the
-   *  completion photo when that is what the visit needs, else put the tech's
-   *  thumb on Complete. 0 is "never asked". */
-  captureRequest?: number;
 }) {
   const qc = useQueryClient();
   const { t } = useTranslation();
@@ -1580,6 +1565,12 @@ function VisitCard({
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
   const [noPhotoReason, setNoPhotoReason] = useState("");
   const [uploading, setUploading] = useState(false);
+  // What this card has just done that the day's data has not caught up with:
+  // a Start, a completion photo. Live, the refetch is in flight; queued, the
+  // queue's change event is. Either way the card's one button moves on at
+  // once instead of going back a step for a second (src/lib/visit-step.ts).
+  const [startedHere, setStartedHere] = useState(false);
+  const [completionPhotoHere, setCompletionPhotoHere] = useState(false);
   const [photoKind, setPhotoKind] = useState<PhotoKind>("completion");
   // Which photo the in-app viewer is showing, and the signed URLs the
   // thumbnails have already fetched. Keyed by photo id rather than index so a
@@ -1698,17 +1689,10 @@ function VisitCard({
       haptic("select");
       toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
       if (!r.queued) invalidate();
-      // Start leads straight into the completion photo where the business
-      // requires one (src/lib/start-photo-complete.ts). Started either way.
-      if (
-        startOpensCamera({
-          requireCompletionPhoto,
-          photoOnFile,
-          canPerform: canPerformVisit,
-        })
-      ) {
-        void runPhotoToComplete("after_start");
-      }
+      // The button moves on to its next step now, not when the refetch (or
+      // the queue's change event) lands. It does NOT open the camera: that
+      // is the next tap's, if the visit needs a photo (src/lib/visit-step.ts).
+      setStartedHere(true);
     },
     onError: (e: Error) => {
       haptic("error");
@@ -1716,9 +1700,7 @@ function VisitCard({
     },
   });
   const complete = useMutation({
-    // `ticked` is the checklist as answered on the sheet the photo flow shows,
-    // which may be newer than this render's checkedItems.
-    mutationFn: (ticked?: string[] | void) =>
+    mutationFn: () =>
       actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
@@ -1726,7 +1708,7 @@ function VisitCard({
         // the owner has since removed means nothing to complete_visit.
         checkedItems:
           checklist.length > 0
-            ? (ticked ?? checkedItems).filter((id) => checklist.some((i) => i.id === id))
+            ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
       }),
     onSuccess: (r) => {
@@ -1813,6 +1795,10 @@ function VisitCard({
         r.queued ? t("photo.queuedToast", { kind }) : t("photo.uploadedToast", { kind }),
       );
       if (!r.queued) invalidate();
+      // Live only. A queued one is counted by queuedCompletionPhotos, which
+      // also lets go of it if the queue gives up on it -- a flag here would
+      // not, and would hold Complete open on a photo the server never got.
+      if (!r.queued && photoKind_ === "completion") setCompletionPhotoHere(true);
       // Back to the kind that finishes the visit. The picker used to keep
       // whatever was chosen last, so a tech who shot a Before filed every
       // photo after it as a Before too — including the one they took to
@@ -1836,7 +1822,7 @@ function VisitCard({
   // If a completion photo is queued locally, allow "Complete" — the sync
   // driver replays photos first (older ts) then complete (newer ts).
   const hasQueuedCompletionPhoto = queuedCompletionPhotos > 0;
-  const photoOnFile = hasCompletionPhoto || hasQueuedCompletionPhoto;
+  const photoOnFile = hasCompletionPhoto || hasQueuedCompletionPhoto || completionPhotoHere;
   // The rule complete_visit enforces: a photo, or no photo required, or a
   // stated reason there is none.
   const photoRuleMet = photoOnFile || !requireCompletionPhoto || noPhotoReason.trim().length >= 3;
@@ -1867,123 +1853,108 @@ function VisitCard({
   const hasStations = p?.account_type === "commercial" || !!p?.has_units;
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
 
-  // ── Start, the photo, Complete: one motion (src/lib/start-photo-complete.ts)
+  // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
-  // Where the business requires a completion photo and none is on file, a
-  // stop under way needs exactly one thing, so the card says so: "Take photo
-  // to complete". Start runs the same thing on its own once the visit has
-  // started, and the lock screen's Complete runs it when the app opens on
-  // this stop. The photo saved, the checklist (if the business has one)
-  // comes up, and Complete follows. Cancel the camera and the visit simply
-  // stays started, with that button waiting.
-  const needsCompletionPhoto =
-    (inProg || missed) && canPerformVisit && requireCompletionPhoto && !photoOnFile;
-  const [photoFlowBusy, setPhotoFlowBusy] = useState(false);
-  const [checklistAsk, setChecklistAsk] = useState(false);
-  const checklistAnswer = useRef<((ids: string[] | null) => void) | null>(null);
-  const checkedNow = useRef(checkedItems);
-  checkedNow.current = checkedItems;
+  // Start, then "Take completion photo" where the business requires one and
+  // there is none, then Complete: the same button, in the same place, with a
+  // new label at each step. Nothing opens the camera but a tap on the photo
+  // step. #357 had Start open it by itself and put a second "Take photo to
+  // complete" button beside a greyed Complete; the owner asked for this.
+  //
+  // Under way: started on the server, in the queue, or on this card a moment
+  // ago. A missed visit counts -- complete_visit still accepts it.
+  const underWay = inProg || missed || (scheduled && startedHere);
+  const step = visitStep({
+    status: visit.status,
+    startedHere,
+    requireCompletionPhoto,
+    photoOnFile,
+    noPhotoReasonGiven: noPhotoReason.trim().length >= 3,
+    canPerform: canPerformVisit,
+  });
   // The web's camera is the file input below; this is who is waiting on it.
   const webCapture = useRef<((f: File | null) => void) | null>(null);
-
-  const captureCompletionFile = async (afterStart: boolean): Promise<File | null> => {
-    try {
-      const { isNative, takePhotoNative } = await import("@/lib/native");
-      if (isNative()) {
-        try {
-          const blob = await takePhotoNative();
-          return blob
-            ? new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" })
-            : null;
-        } catch (e) {
-          // Capacitor rejects a cancelled camera ("User cancelled photos
-          // app"); that is a no, not a reason to open a second picker.
-          if (/cancel/i.test(String((e as { message?: string })?.message ?? e))) return null;
-        }
-      }
-    } catch {
-      /* the web input below */
-    }
-    // A browser opens the file picker only from a tap. After Start the tap
-    // may have been spent on the network round trip, and a picker that
-    // silently refuses to open would leave this waiting for ever; the card's
-    // "Take photo to complete" is the way in then.
-    const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } })
-      .userActivation;
-    if (afterStart && activation && !activation.isActive) return null;
-    return new Promise<File | null>((resolve) => {
+  const pickFromWebInput = () =>
+    new Promise<File | null>((resolve) => {
       webCapture.current?.(null);
       webCapture.current = resolve;
       fileInput.current?.click();
     });
-  };
 
-  const runPhotoToComplete = async (why: "after_start" | "button" | "lock_screen") => {
-    if (photoFlowBusy) return;
-    setPhotoFlowBusy(true);
+  // The camera, because the tech tapped for it. Saved as the completion
+  // photo, live or queued; the button then reads Complete. Not held "busy"
+  // while the camera is open: a browser may decline to open the picker, and
+  // a button disabled until a picker that never opened answers would be a
+  // dead card. A second tap re-asks instead (pickFromWebInput lets the first
+  // wait go); while the photo uploads, `uploading` holds the button.
+  const tapPhotoStep = async () => {
     setPhotoKind("completion");
-    try {
-      const outcome = await photoThenComplete({
-        capture: () => captureCompletionFile(why === "after_start"),
-        upload: async (file) => {
-          if (!(await uploadPhoto(file, "completion"))) throw new Error("upload");
-          return { queued: false };
-        },
-        checklist,
-        askChecklist: () =>
-          new Promise<string[] | null>((resolve) => {
-            checklistAnswer.current = resolve;
-            setChecklistAsk(true);
-          }),
-        complete: (ticked) => complete.mutateAsync(ticked),
-      });
-      if (outcome === "awaiting_photo" && why !== "button") {
-        // Said once, so a camera that closed is not mistaken for a photo taken.
-        toast.message(t("visit.photoStillNeeded"));
-      }
-    } catch {
-      // Complete's own onError has already said why.
-    } finally {
-      setPhotoFlowBusy(false);
-    }
+    await takeCompletionPhoto({
+      capture: () => captureCompletionFile(pickFromWebInput),
+      upload: (file) => uploadPhoto(file, "completion"),
+    });
   };
 
-  // The lock screen's Complete, for this stop.
-  const lastCaptureRequest = useRef(0);
-  useEffect(() => {
-    if (!captureRequest || captureRequest === lastCaptureRequest.current) return;
-    lastCaptureRequest.current = captureRequest;
-    if (needsCompletionPhoto) {
-      void runPhotoToComplete("lock_screen");
+  const tapStep = () => {
+    if (!step) return;
+    if (!canPerformVisit) {
+      toast.error(
+        step === "start" ? t("visit.notAuthorizedStart") : t("visit.notAuthorizedComplete"),
+      );
       return;
     }
-    // Nothing to photograph: the Complete button, in hand, not pressed.
-    const button = document
-      .getElementById(`visit-${visit.id}`)
-      ?.querySelector<HTMLButtonElement>("button[data-complete-visit]");
-    if (button) {
-      button.scrollIntoView({ block: "center", behavior: "smooth" });
-      if (!button.disabled) button.focus({ preventScroll: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [captureRequest]);
-
-  const answerChecklist = (ids: string[] | null) => {
-    const resolve = checklistAnswer.current;
-    checklistAnswer.current = null;
-    setChecklistAsk(false);
-    resolve?.(ids);
+    void runVisitStep(step, {
+      start: () => start.mutate(),
+      photo: () => {
+        haptic("tap");
+        return tapPhotoStep();
+      },
+      complete: () => complete.mutate(),
+    });
   };
 
-  // The owner's checklist, as rows: on the card wherever Complete is, and on
-  // the sheet the photo flow shows. One copy, so the two cannot drift. Each
-  // row is the label AND the box, 44px tall at every width, so a gloved thumb
-  // anywhere on the line ticks it -- the box alone is 16px. The label wraps
-  // rather than truncates: it is a sentence the owner wrote to be read, and
-  // at 320px a long one has to stay inside the card.
-  const checklistRows = (where: "card" | "sheet") =>
+  // Why the button is grey, as a title (a tooltip, for a mouse) and, for a
+  // phone, as the line under it.
+  const stepDisabled =
+    !canPerformVisit ||
+    (step === "start" && start.isPending) ||
+    (step === "photo" && uploading) ||
+    (step === "complete" &&
+      (!photoRuleMet ||
+        !checklistRuleMet ||
+        complete.isPending ||
+        // `missed` belongs here. complete_visit has accepted
+        // ('scheduled','in_progress','missed') since 20260804060000 --
+        // widened deliberately, so a tech who did the work and forgot to
+        // close it can come back to yesterday and record it. There are
+        // 2,001 missed visits in production.
+        (!inProg && !scheduled && !missed)));
+  const stepTitle = !canPerformVisit
+    ? step === "start"
+      ? t("visit.notAuthorizedStartTitle")
+      : t("visit.notAuthorizedCompleteTitle")
+    : step === "complete" && !photoRuleMet
+      ? t("visit.needCompletionPhotoTitle")
+      : step === "complete" && !checklistRuleMet
+        ? t("visit.needChecklistTitle")
+        : "";
+  const stepLabel =
+    step === "start"
+      ? t("myDay.start")
+      : step === "photo"
+        ? uploading
+          ? t("photo.uploading")
+          : t("visit.takeCompletionPhotoStep")
+        : t("myDay.complete");
+
+  // The owner's checklist, as rows. Each row is the label AND the box, 44px
+  // tall at every width, so a gloved thumb anywhere on the line ticks it --
+  // the box alone is 16px. The label wraps rather than truncates: it is a
+  // sentence the owner wrote to be read, and at 320px a long one has to stay
+  // inside the card.
+  const checklistRows = () =>
     checklist.map((item) => {
-      const id = `checklist-${where}-${visit.id}-${item.id}`;
+      const id = `checklist-card-${visit.id}-${item.id}`;
       const on = checkedItems.includes(item.id);
       return (
         <label
@@ -2012,9 +1983,9 @@ function VisitCard({
       );
     });
 
-  // The photo control appears in two places — primary once the visit is under
-  // way, behind More before that — so it is written once. A FUNCTION and not a
-  // component: an inline component is a new type on every render, which would
+  // The photo control appears in two places — on the card once the visit is
+  // under way, behind More before that — so it is written once. A FUNCTION
+  // and not a component: an inline component is a new type on every render, which would
   // unmount and remount the select and close it under the tech's thumb.
   const photoCapture = () => (
     <div className="flex flex-wrap items-center gap-2">
@@ -2032,28 +2003,6 @@ function VisitCard({
           </option>
         ))}
       </select>
-      {needsCompletionPhoto && photoKind === "completion" ? (
-        // The one thing this stop needs: the photo, and then Complete by
-        // itself. Primary, because it is the next tap.
-        // A row of its own, and a label that may wrap: "Take photo to
-        // complete" in Spanish or Arabic does not fit beside the kind picker
-        // at 320px, and a nowrap label there widened the whole page by a
-        // pixel (my-day-gets-its-room-back at iPhone SE).
-        <Button
-          type="button"
-          size="default"
-          className="h-auto min-h-11 w-full min-w-0 basis-full whitespace-normal py-2"
-          disabled={uploading || photoFlowBusy}
-          data-take-photo-to-complete=""
-          onClick={() => {
-            haptic("tap");
-            void runPhotoToComplete("button");
-          }}
-        >
-          <Camera className="me-1.5 h-4 w-4 shrink-0" />
-          {uploading ? t("photo.uploading") : t("visit.takePhotoToComplete")}
-        </Button>
-      ) : (
       <Button
         type="button"
         variant="outline"
@@ -2085,7 +2034,6 @@ function VisitCard({
         <Camera className="me-1.5 h-4 w-4 shrink-0" />
         {uploading ? t("photo.uploading") : t("photo.take")}
       </Button>
-      )}
     </div>
   );
   const [collapsed, setCollapsed] = useState(finalStatus);
@@ -2426,8 +2374,8 @@ function VisitCard({
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0] ?? null;
-              // The photo flow is waiting on this picker: hand it the file
-              // (or the cancel) and let it upload and complete.
+              // The button's photo step is waiting on this picker: hand it
+              // the file (or the cancel) and let it upload the photo.
               const waiting = webCapture.current;
               if (waiting) {
                 webCapture.current = null;
@@ -2449,43 +2397,88 @@ function VisitCard({
             }}
           />
 
-          {scheduled && (
+          {/* ── THE ONE BUTTON ─────────────────────────────────────────────
+              Start, then "Take completion photo" (only where the business
+              requires one and there is none), then Complete -- this one
+              element, in this one place, its label and its action moving on
+              with the visit (src/lib/visit-step.ts). Nothing beside it does
+              the same job. The camera opens only on a tap at the photo step;
+              Start never opens it, and nor does the lock screen, which lands
+              here. The label may wrap: "Take completion photo" in Spanish or
+              Arabic is longer than a 320px card. */}
+          {step && (
             <Button
-              className="h-12 w-full text-base"
-              onClick={() =>
-                canPerformVisit ? start.mutate() : toast.error(t("visit.notAuthorizedStart"))
-              }
-              disabled={start.isPending || !canPerformVisit}
-              title={canPerformVisit ? "" : t("visit.notAuthorizedStartTitle")}
+              type="button"
+              className="h-auto min-h-12 w-full min-w-0 whitespace-normal py-2 text-base"
+              disabled={stepDisabled}
+              title={stepTitle}
+              data-visit-step={step}
+              onClick={tapStep}
             >
-              {t("myDay.start")}
+              {step === "photo" && <Camera className="h-4 w-4 shrink-0" aria-hidden="true" />}
+              {stepLabel}
             </Button>
           )}
 
-          {(inProg || missed) && photoCapture()}
+          {/* Why the button is grey, UNDER it: `title` is a tooltip, and a
+              phone has no hover. One sentence with a singular and a plural
+              (visit.tickRequired_one/_other). */}
+          {step === "complete" && canPerformVisit && !checklistRuleMet && (
+            <p className="-mt-1 text-center text-xs text-muted-foreground">
+              {t("visit.tickRequired", { count: uncheckedRequired.length })}
+            </p>
+          )}
+          {/* No photo, and a reason why: secondary, under the photo step, as
+              it has always been. A reason long enough for complete_visit and
+              the button above moves on to Complete; the box stays open so
+              the tech can still read and change what they wrote. */}
+          {underWay && canPerformVisit && requireCompletionPhoto && !photoOnFile && (
+            <div className="-mt-1">
+              {noPhotoOpen ? (
+                <div>
+                  <Label htmlFor={`no-photo-${visit.id}`} className="text-xs">
+                    {t("visit.whyNoPhoto")}
+                  </Label>
+                  <Input
+                    id={`no-photo-${visit.id}`}
+                    maxLength={300}
+                    placeholder={t("visit.noPhotoPlaceholder")}
+                    value={noPhotoReason}
+                    onChange={(e) => setNoPhotoReason(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-11 w-full text-xs text-muted-foreground"
+                  onClick={() => setNoPhotoOpen(true)}
+                >
+                  {t("visit.cantTakePhoto")}
+                </Button>
+              )}
+            </div>
+          )}
 
-          {/* Complete stays out of the way until it can do something. It is
-              enabled for a SCHEDULED visit too — complete_visit has accepted
-              ('scheduled','in_progress','missed') since 20260804060000, so a
-              tech who did the work without pressing Start can still close it —
-              which is why a completion photo on a scheduled stop brings the
-              button back rather than stranding the work behind Start. */}
-          {/* The owner's checklist, wherever Complete is on screen. Each row is
-              the label AND the box, 44px tall at every width, so a gloved
-              thumb anywhere on the line ticks it — the box alone is 16px. The
-              label wraps rather than truncates: it is a sentence the owner
-              wrote to be read, and at 320px a long one has to stay inside the
-              card. Absent entirely for an org with no checklist. */}
-          {(inProg || missed || photoOnFile) && canPerformVisit && checklist.length > 0 && (
+          {/* The other photo kinds -- before, gate latched, a problem -- with
+              their own picker, where they have always been. Secondary
+              (outline): the completion photo the visit needs is the button
+              above. */}
+          {underWay && photoCapture()}
+
+          {/* The owner's checklist, once the visit is under way. Complete
+              waits for its required items. Absent entirely for an org with
+              no checklist. */}
+          {underWay && canPerformVisit && checklist.length > 0 && (
             <fieldset className="space-y-0.5 rounded-lg border p-1.5">
               <legend className="px-1.5 text-xs font-semibold uppercase text-muted-foreground">
                 {t("visit.checklist")}
               </legend>
-              {checklistRows("card")}
+              {checklistRows()}
             </fieldset>
           )}
 
-          {(inProg || missed) && canPerformVisit && (
+          {underWay && canPerformVisit && (
             <div className="space-y-2">
               {noteOpen ? (
                 <div>
@@ -2512,85 +2505,6 @@ function VisitCard({
                   onClick={() => setNoteOpen(true)}
                 >
                   {t("visit.addNote")}
-                </Button>
-              )}
-            </div>
-          )}
-
-          {(inProg || missed || photoOnFile) && (
-            <Button
-              variant="default"
-              className="h-12 w-full text-base"
-              disabled={
-                !canPerformVisit ||
-                !photoRuleMet ||
-                !checklistRuleMet ||
-                complete.isPending ||
-                // `missed` belongs here. complete_visit has accepted
-                // ('scheduled','in_progress','missed') since 20260804060000 --
-                // widened deliberately, so a tech who did the work and forgot
-                // to close it can come back to yesterday and record it. The
-                // button never learned, so both Start and Complete were dead
-                // on those cards with nothing on screen saying why. There are
-                // 2,001 missed visits in production.
-                (!inProg && !scheduled && !missed)
-              }
-              onClick={() =>
-                canPerformVisit ? complete.mutate() : toast.error(t("visit.notAuthorizedComplete"))
-              }
-              data-complete-visit=""
-              title={
-                !canPerformVisit
-                  ? t("visit.notAuthorizedCompleteTitle")
-                  : !photoRuleMet
-                    ? t("visit.needCompletionPhotoTitle")
-                    : !checklistRuleMet
-                      ? t("visit.needChecklistTitle")
-                      : ""
-              }
-            >
-              {t("myDay.complete")}
-            </Button>
-          )}
-          {/* Why Complete is grey when the checklist is the reason, under the
-              button for the same reason as the photo line below: `title` is a
-              tooltip, and a phone has no hover. */}
-          {(inProg || missed || photoOnFile) && canPerformVisit && !checklistRuleMet && (
-            <p className="-mt-1 text-center text-xs text-muted-foreground">
-              {t("visit.tickRequired", { count: uncheckedRequired.length })}
-            </p>
-          )}
-          {/* The reason Complete is grey, UNDER Complete. It lived at the
-              bottom of the card, below More options, where the Resume strip
-              covers it on the in-progress stop, and the button's own `title`
-              is a hover tooltip, which a phone does not have. Shown only when
-              the button is on screen and the photo is the one thing missing. */}
-          {(inProg || missed) && canPerformVisit && requireCompletionPhoto && !photoOnFile && (
-            <div className="-mt-1 space-y-2">
-              <p className="text-center text-xs text-muted-foreground">
-                {t("visit.takeCompletionPhoto")}
-              </p>
-              {noPhotoOpen ? (
-                <div>
-                  <Label htmlFor={`no-photo-${visit.id}`} className="text-xs">
-                    {t("visit.whyNoPhoto")}
-                  </Label>
-                  <Input
-                    id={`no-photo-${visit.id}`}
-                    maxLength={300}
-                    placeholder={t("visit.noPhotoPlaceholder")}
-                    value={noPhotoReason}
-                    onChange={(e) => setNoPhotoReason(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-11 w-full text-xs text-muted-foreground"
-                  onClick={() => setNoPhotoOpen(true)}
-                >
-                  {t("visit.cantTakePhoto")}
                 </Button>
               )}
             </div>
@@ -2898,47 +2812,6 @@ function VisitCard({
           )}
           {showStations && <StationsSubpanel visitId={visit.id} readOnly={preview} />}
         </div>
-      )}
-      {/* The checklist, between the completion photo and Complete, when the
-          photo flow is what got here. Put away, it leaves the visit started
-          with its photo, and the same list and Complete wait on the card. */}
-      {checklist.length > 0 && (
-        <Sheet open={checklistAsk} onOpenChange={(open) => !open && answerChecklist(null)}>
-          <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-xl">
-            <div className="mx-auto w-full max-w-md space-y-3">
-              <SheetHeader className="text-start">
-                <SheetTitle>{t("visit.checklist")}</SheetTitle>
-                <SheetDescription>{t("visit.checklistBeforeComplete")}</SheetDescription>
-              </SheetHeader>
-              {/* Named by aria-label rather than an sr-only legend: this
-                  sheet scrolls, and an sr-only inside a scroller escapes it
-                  (an-sr-only-span-scrolled-the-page-sideways). */}
-              <fieldset
-                aria-label={t("visit.checklist")}
-                className="space-y-0.5 rounded-lg border p-1.5"
-              >
-                {checklistRows("sheet")}
-              </fieldset>
-              {!checklistReady(checklist, checkedItems) && (
-                <p className="text-center text-xs text-muted-foreground">
-                  {t("visit.tickRequired", {
-                    count: missingRequired(checklist, checkedItems).length,
-                  })}
-                </p>
-              )}
-              <SheetFooter>
-                <Button
-                  type="button"
-                  className="h-12 w-full text-base"
-                  disabled={!checklistReady(checklist, checkedItems)}
-                  onClick={() => answerChecklist(checkedNow.current)}
-                >
-                  {t("myDay.complete")}
-                </Button>
-              </SheetFooter>
-            </div>
-          </SheetContent>
-        </Sheet>
       )}
     </li>
   );
