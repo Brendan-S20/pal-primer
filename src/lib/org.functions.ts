@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { requirePermission } from "@/lib/authz.server";
+import { accessTurnedOff, requirePermission } from "@/lib/authz.server";
 import { assertValidOrgName } from "@/lib/dna-linkage";
 
 const bootstrapSchema = z.object({
@@ -164,13 +164,24 @@ export const getMyOrg = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const { data: role, error: roleErr } = await supabase
-      .from("user_roles")
-      .select("organization_id, role")
-      .eq("user_id", userId)
-      .maybeSingle();
+    // Both at once. access_turned_off is the one question a person who has
+    // been turned off may still ask: which business turned them off.
+    const [{ data: role, error: roleErr }, off] = await Promise.all([
+      supabase.from("user_roles").select("organization_id, role").eq("user_id", userId).maybeSingle(),
+      accessTurnedOff(supabase),
+    ]);
     if (roleErr) throw new Error(roleErr.message);
-    if (!role) return { organization: null as null };
+    if (!role) return { organization: null as null, accessTurnedOff: null as null };
+
+    // Off means off (20261009180000): no business, and the shell says why
+    // instead of drawing a workspace every query in which comes back empty.
+    const mine = off.find((o) => o.organizationId === role.organization_id);
+    if (mine) {
+      return {
+        organization: null as null,
+        accessTurnedOff: { organizationName: mine.organizationName },
+      };
+    }
 
     const { data: org, error: orgErr } = await (supabase as any)
       .from("organizations")
@@ -187,7 +198,7 @@ export const getMyOrg = createServerFn({ method: "GET" })
       .single();
     if (orgErr) throw new Error(orgErr.message);
 
-    return { organization: { ...org, role: role.role as string } };
+    return { organization: { ...org, role: role.role as string }, accessTurnedOff: null as null };
   });
 
 const slugSchema = z.object({ slug: z.string().trim().min(3).max(63) });
