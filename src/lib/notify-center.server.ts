@@ -120,6 +120,25 @@ export async function notifyUsers(userIds: string[], n: NotifyInput): Promise<No
   ids = ids.filter((uid) => !muted.has(uid));
   if (!ids.length) return NONE;
 
+  // Nobody whose access to this business is turned off (20261009180000). A
+  // push carries the business's data -- an address, a client's name -- to a
+  // phone the owner has deliberately cut off, and nothing else stops it: this
+  // runs on the service role, past every policy.
+  try {
+    const { data: off, error: offErr } = await admin
+      .from("staff")
+      .select("user_id")
+      .eq("organization_id", n.orgId)
+      .eq("active", false)
+      .in("user_id", ids);
+    if (offErr) throw new Error(offErr.message);
+    const turnedOff = new Set((off ?? []).map((r: any) => r.user_id));
+    ids = ids.filter((uid) => !turnedOff.has(uid));
+  } catch (e) {
+    console.error("notifyUsers turned-off lookup failed", e);
+  }
+  if (!ids.length) return NONE;
+
   const coalesced = n.coalesce && n.threadId ? await coalesceInto(admin, ids, n) : [];
   ids = ids.filter((uid) => !coalesced.includes(uid));
   if (!ids.length) return { inserted: [], coalesced, pushed: [] };

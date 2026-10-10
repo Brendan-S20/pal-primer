@@ -12,6 +12,8 @@ function stubSupabase(row: { organization_id: string; role: AppRole } | null, er
         }),
       }),
     }),
+    // access_turned_off(): nobody here is turned off (tests/off-means-off.test.ts).
+    rpc: async () => ({ data: [], error: null }),
   };
 }
 

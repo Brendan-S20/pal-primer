@@ -37,10 +37,7 @@
 import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { installSignedInSession } from "./fixtures/session";
-import { installStubBackend } from "./fixtures/stub-backend";
-import { installMarketingData } from "./fixtures/marketing";
-import { STORE_SHOTS } from "./fixtures/store-shots";
+import { STORE_SHOTS, openStoreShot } from "./fixtures/store-shots";
 
 const OUT = join(process.cwd(), "android", "screenshots");
 
@@ -61,23 +58,14 @@ for (const size of SIZES) {
 
     for (const [i, shot] of STORE_SHOTS.entries()) {
       test(`${i + 1}. ${shot.name}`, async ({ page }) => {
-        await installSignedInSession(page);
-        await installStubBackend(page);
-        await installMarketingData(page);
-
-        await page.goto(shot.path, { waitUntil: "domcontentloaded" });
-        await shot.ready(page);
-
-        // Animations settle, or the shot catches a panel halfway open.
-        await page.waitForTimeout(600);
+        await openStoreShot(page, shot, `${shot.name} at ${size.name}`);
 
         const dir = join(OUT, size.name);
         mkdirSync(dir, { recursive: true });
         const file = join(dir, `${String(i + 1).padStart(2, "0")}-${shot.name}.png`);
         const png = await page.screenshot({ path: file });
 
-        // A blank page satisfies "no error", and a screenshot of one is worse
-        // than none. ready() proved this page drew its own content; this
+        // openStoreShot() proved this is the page with its data on it; this
         // catches a file that came out empty anyway, and a size Play would
         // refuse.
         expect(png.byteLength, `${file} looks empty`).toBeGreaterThan(20_000);

@@ -19,6 +19,7 @@ import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as GetStartedRouteImport } from './routes/get-started'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AccessOffRouteImport } from './routes/access-off'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
@@ -207,6 +208,11 @@ const AuthRoute = AuthRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessOffRoute = AccessOffRouteImport.update({
+  id: '/access-off',
+  path: '/access-off',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -957,6 +963,7 @@ const PortalSlugTokenPayInvoiceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/access-off': typeof AccessOffRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
@@ -1107,6 +1114,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/access-off': typeof AccessOffRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
@@ -1250,6 +1258,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/access-off': typeof AccessOffRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
@@ -1402,6 +1411,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/access-off'
     | '/admin'
     | '/auth'
     | '/get-started'
@@ -1552,6 +1562,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/access-off'
     | '/admin'
     | '/auth'
     | '/get-started'
@@ -1694,6 +1705,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/access-off'
     | '/admin'
     | '/auth'
     | '/get-started'
@@ -1846,6 +1858,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AccessOffRoute: typeof AccessOffRoute
   AdminRoute: typeof AdminRoute
   AuthRoute: typeof AuthRoute
   GetStartedRoute: typeof GetStartedRoute
@@ -1963,6 +1976,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access-off': {
+      id: '/access-off'
+      path: '/access-off'
+      fullPath: '/access-off'
+      preLoaderRoute: typeof AccessOffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -3255,6 +3275,7 @@ const PortalSlugRouteWithChildren = PortalSlugRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AccessOffRoute: AccessOffRoute,
   AdminRoute: AdminRoute,
   AuthRoute: AuthRoute,
   GetStartedRoute: GetStartedRoute,
@@ -3304,13 +3325,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

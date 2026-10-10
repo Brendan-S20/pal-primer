@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createMapRenderer } from "./create";
-import { onGoogleRefused } from "./google-loader";
+import { googleRefused, onGoogleRefused } from "./google-loader";
 import type { MapRenderer, MapSurfaceOptions } from "./types";
 
 /** A map that scrolls INTO view waits this long before it is created, so one
@@ -66,6 +66,14 @@ export function useMapRenderer(
           r.destroy();
           return;
         }
+        // Google refused the key while this map was being built: the refusal
+        // found no map here to swap, so swap it now rather than keep a map
+        // that will only ever show Google's error.
+        if (r.provider === "google" && googleRefused()) {
+          r.destroy();
+          create();
+          return;
+        }
         current = r;
         setRenderer(r);
       });
@@ -75,8 +83,17 @@ export function useMapRenderer(
     // place. Components redraw because the renderer they depend on changed.
     const unsubscribe = onGoogleRefused(() => {
       if (disposed || !current || current.provider !== "google") return;
-      current.destroy();
+      const refusedMap = current;
       current = null;
+      // The swap must not depend on tearing down a map Google has already
+      // torn down. This runs inside Google's own gm_authFailure call, where a
+      // throw is swallowed without a word: that is how a refused key once left
+      // a dead map on screen instead of the fallback.
+      try {
+        refusedMap.destroy();
+      } catch {
+        /* nothing left to tear down */
+      }
       setRenderer(null);
       create();
     });
