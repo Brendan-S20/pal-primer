@@ -571,6 +571,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     lead: "网站新潜在客户",
     quote_response: "报价被接受或拒绝",
     receptionist_escalation: "AI 接待员转交的事项",
+    receptionist_booking: "AI 接待员预约或申请的上门服务",
     inbound_sms: "待回复的短信",
     teammate_joined: "有同事加入",
     field_collection: "现场收取的现金或支票",
