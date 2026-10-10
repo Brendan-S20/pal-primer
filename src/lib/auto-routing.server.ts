@@ -409,6 +409,9 @@ export async function runAutoRouting(
     // the panel names a handful and counts the rest.
     windowMisses: windowMisses.slice(0, 50),
     windowMissCount: windowMisses.length,
+    // Whether a stop left out also came off its technician (the panel's
+    // sentence differs: "left unassigned" against "left off the route").
+    reassign: data.reassign,
     // Stops the run could not place, each with its reason. Capped like the
     // misses; the panel names a handful and counts the rest.
     unassignable: unassignable.slice(0, 50),

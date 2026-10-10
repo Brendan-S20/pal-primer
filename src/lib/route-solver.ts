@@ -269,6 +269,42 @@ export function evaluateRoute(
   return { drive, service, wait, late, lateStops, prefMisses, load: drive + service };
 }
 
+/**
+ * The same clock as evaluateRoute, kept for the caller that needs to know
+ * WHICH stops are late and when the day ends: the stops reached after their
+ * window, in route order, and the minute the last stop finishes. Windows
+ * are waited for, as the write does with them honoured. Not on the hot
+ * path; evaluateRoute keeps its own loop so it stays allocation-free.
+ */
+export function routeClock(
+  p: SolverProblem,
+  t: number,
+  route: ArrayLike<number>,
+): { late: number[]; end: number } {
+  const tech = p.techs[t];
+  const N = p.size;
+  let prev = tech.start ?? -1;
+  let clock = 0;
+  const late: number[] = [];
+  for (let k = 0; k < route.length; k++) {
+    const s = route[k];
+    const st = p.stops[s];
+    clock += prev < 0 ? 0 : Math.round(p.matrix[prev * N + s]);
+    if (st.earliest != null && clock < st.earliest) clock = st.earliest;
+    if (st.latest != null && clock > st.latest) late.push(s);
+    clock += st.service;
+    prev = s;
+  }
+  return { late, end: clock };
+}
+
+/** Whether any stop on the day has a window that can be MISSED (a latest
+ *  time) while windows are honoured. An earliest time alone only makes a
+ *  truck wait; it cannot make a route infeasible. */
+export function hardWindows(p: SolverProblem): boolean {
+  return p.honourWindows && p.stops.some((s) => s.latest != null);
+}
+
 /** The part of the objective that belongs to one route (everything but
  *  balance). Infinity when windows are honoured and the route reaches a stop
  *  late: such a route is not a worse plan, it is not a plan. */
@@ -436,6 +472,8 @@ class State {
   readonly K: number;
   readonly caps: number[];
   readonly timeline: boolean;
+  /** Some stop can be late: every insertion must be timed. */
+  readonly hard: boolean;
   routes: number[][];
   costs: RouteCost[] = [];
   robj: number[] = [];
@@ -463,6 +501,7 @@ class State {
     this.K = p.techs.length;
     this.caps = p.techs.map((t) => t.capacity);
     this.timeline = timelineMatters(p);
+    this.hard = hardWindows(p);
     this.allow = allowedTechs(p);
     this.routes = routes.map((r) => [...r]);
     this.where = new Int32Array(p.stops.length).fill(-1);
@@ -651,12 +690,14 @@ function insertionCost(
   const over = (l: number) => Math.max(0, l - target[t]);
   let best = Infinity;
   let pos = 0;
-  // Every position, timed, whenever the clock matters: a window is a hard
-  // rule now, and the O(1) estimate below cannot see one. (Until 2026-10-10
-  // routes past 60 stops fell through to the estimate; a 200-stop
-  // single-truck day with windows now costs a few hundred thousand route
-  // evaluations in construction, well inside the budget.)
-  if (st.timeline) {
+  // Every position, timed, up to 60 stops when the clock matters -- and at
+  // ANY length when some stop can be late: a window is a hard rule and the
+  // O(1) estimate below cannot see one. A day with preferences but no
+  // window keeps the 60-stop cap it always had, so a pet-waste day over 60
+  // stops is built exactly as before 2026-10-10. (A 200-stop single-truck
+  // day with windows costs a few hundred thousand route evaluations in
+  // construction, well inside the budget.)
+  if (st.timeline && (st.hard || n <= 60)) {
     const base = st.robj[t];
     const tmp = new Array<number>(n + 1);
     for (let j = 0; j <= n; j++) {

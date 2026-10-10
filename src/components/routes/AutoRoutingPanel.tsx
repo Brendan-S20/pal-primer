@@ -592,10 +592,11 @@ export function AutoRoutingPanel({
             : `${who}${when}: no route reaches it between ${u.earliest ?? "…"} and ${u.latest ?? "…"}.`;
         });
         if (leftCount > 4) lines.push(`${leftCount - 4} more.`);
+        // With reassign the stop came off its technician too; without it
+        // the technician stands and only the order and the times went.
+        const fate = r.reassign === false ? "left off the route" : "left unassigned";
         toast.warning(
-          leftCount === 1
-            ? "1 stop was left unassigned."
-            : `${leftCount} stops were left unassigned.`,
+          leftCount === 1 ? `1 stop was ${fate}.` : `${leftCount} stops were ${fate}.`,
           { description: lines.join(" "), duration: 15000 },
         );
       }

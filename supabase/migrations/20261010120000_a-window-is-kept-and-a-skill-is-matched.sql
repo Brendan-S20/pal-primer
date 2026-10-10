@@ -614,7 +614,8 @@ BEGIN
       _r := public.apply_route_plan(
         _run.organization_id, _run.staff_ids, _day, COALESCE(_reassign, false),
         _p->'routes', COALESCE((_p->>'honour_windows')::boolean, true),
-        ARRAY(SELECT x::uuid FROM jsonb_array_elements_text(COALESCE(_p->'unassigned', '[]'::jsonb)) x));
+        ARRAY(SELECT x::uuid FROM jsonb_array_elements_text(
+          CASE WHEN jsonb_typeof(_p->'unassigned') = 'array' THEN _p->'unassigned' ELSE '[]'::jsonb END) x));
       _out := _out || jsonb_build_array(jsonb_build_object('day', _day, 'ok', true, 'result', _r));
     EXCEPTION WHEN OTHERS THEN
       _out := _out || jsonb_build_array(jsonb_build_object('day', _day, 'ok', false, 'error', SQLERRM));

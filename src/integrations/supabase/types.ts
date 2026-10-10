@@ -6950,6 +6950,7 @@ export type Database = {
           _reassign: boolean
           _routes: Json
           _staff_ids: string[]
+          _unassigned?: string[]
         }
         Returns: Json
       }

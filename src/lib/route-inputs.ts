@@ -21,6 +21,7 @@
 import { zonedTimeToUtc } from "@/lib/route-window";
 import {
   polishRoute,
+  routeClock,
   solveRoutes,
   type Solution,
   type SolverOptions,
@@ -144,6 +145,9 @@ export type BuiltDay = {
     service: number;
     fixedTech: number | null;
     eligibleTechs: number[] | null;
+    /** Its window, in minutes after the workday start, as the stops have. */
+    earliest: number | null;
+    latest: number | null;
   }>;
   /** End points dropped because no stop of the day comes within max_drive. */
   endDropped: boolean[];
@@ -208,16 +212,18 @@ export function buildDay(
     const eligibleTechs = eligibleTechsFor(v, inp.techs);
     const at = located(v.lat, v.lon);
     const service = Number(v.service_min ?? 8);
+    const earliest = v.earliest ? minutesAfter(opts.day, v.earliest, tz, dayStart) : null;
+    const latest = v.latest ? minutesAfter(opts.day, v.latest, tz, dayStart) : null;
     if (!at) {
-      unlocated.push({ id: v.id, service, fixedTech, eligibleTechs });
+      unlocated.push({ id: v.id, service, fixedTech, eligibleTechs, earliest, latest });
       continue;
     }
     stopIds.push(v.id);
     coords.push(at);
     stops.push({
       service,
-      earliest: v.earliest ? minutesAfter(opts.day, v.earliest, tz, dayStart) : null,
-      latest: v.latest ? minutesAfter(opts.day, v.latest, tz, dayStart) : null,
+      earliest,
+      latest,
       pref: v.pref === "morning" || v.pref === "afternoon" ? v.pref : null,
       fixedTech,
       eligibleTechs,
@@ -341,6 +347,11 @@ export function planDay(
   // the set it is handed, so the order is re-polished from the start the day
   // will actually be timed from.
   const dumps = inp.dumps.map((d) => [Number(d.lat), Number(d.lon)] as LatLon);
+  // The problem each technician's day is finally timed with: the one solved,
+  // or the one with their settled start.
+  const timed: SolverProblem[] = routes.map(() => problem);
+  // Stops the settling below had to take off a route (by stop index).
+  const droppedLate: number[] = [];
   for (let t = 0; t < routes.length; t++) {
     const tier = startTier[t];
     if (tier !== "disposal" && tier !== "route") continue;
@@ -372,7 +383,28 @@ export function planDay(
       matrix: matrixForExtended(problem, built.coords, start, built.drive),
       techs: problem.techs.map((x, k) => (k === t ? { ...x, start: at } : x)),
     };
+    timed[t] = p2;
     routes[t] = polishRoute(p2, t, routes[t]);
+    // The solver costed this person's first leg at nothing (no start to
+    // drive from); from the settled start that leg is real, and a window
+    // kept with a free first leg can be missed with a 40-minute one.
+    // polishRoute re-orders for the new start but cannot drop a stop, so
+    // whatever is still late comes off the route here, first late stop
+    // first, re-ordering each time: under "Keep windows" no stop is ever
+    // written late. (The reviewer's case on #397: latest 15, solved on time
+    // from a null start, re-polished from a start 40 minutes away.)
+    if (opts.honourWindows) {
+      let late = routeClock(p2, t, routes[t]).late;
+      while (late.length) {
+        droppedLate.push(late[0]);
+        routes[t] = polishRoute(
+          p2,
+          t,
+          routes[t].filter((s) => s !== late[0]),
+        );
+        late = routeClock(p2, t, routes[t]).late;
+      }
+    }
   }
 
   // ── Stops the search left out, named ──
@@ -388,30 +420,51 @@ export function planDay(
       latest: v?.latest ?? null,
     };
   };
-  const unassigned = solution.unassigned.map((u) => name(built.stopIds[u.stop], u.reason));
+  const unassigned = [
+    ...solution.unassigned.map((u) => name(built.stopIds[u.stop], u.reason)),
+    ...droppedLate.map((s) => name(built.stopIds[s], "window")),
+  ];
 
   // ── Stops with no location ──
   // Last on whichever route they belong to: pinned ones on their own person,
   // the rest one at a time to whoever has the least of their day used among
-  // those who can do the service. Their window cannot be checked (nobody
-  // knows the drive to them), so it is not.
+  // those who can do the service. Nobody knows the drive to them, so the
+  // write puts each at the end of the day with a free leg: it arrives when
+  // the last located stop finishes (or waits for its earliest time). That
+  // clock is replayed here, and a tail stop whose window that clock cannot
+  // keep is named rather than written late. With windows set aside nothing
+  // is checked, as for every other stop.
   const load = solution.costs.map((c) => c.load);
+  const clock = routes.map((r, t) => routeClock(timed[t], t, r).end);
   const tail: string[][] = routes.map(() => []);
+  /** When the write would reach this stop on technician t, or null when
+   *  that is after its window. */
+  const arrival = (t: number, u: BuiltDay["unlocated"][number]): number | null => {
+    const at = Math.max(clock[t], u.earliest ?? 0);
+    return opts.honourWindows && u.latest != null && at > u.latest ? null : at;
+  };
   for (const u of built.unlocated) {
     let t = u.fixedTech;
     if (t == null) {
-      const may = u.eligibleTechs ?? [...Array(load.length).keys()];
+      const may = (u.eligibleTechs ?? [...Array(load.length).keys()]).filter(
+        (k) => arrival(k, u) != null,
+      );
       if (may.length === 0) {
-        unassigned.push(name(u.id, "no_eligible_tech"));
+        const can = u.eligibleTechs ?? [...Array(load.length).keys()];
+        unassigned.push(name(u.id, can.length === 0 ? "no_eligible_tech" : "window"));
         continue;
       }
       t = may[0];
       for (const k of may) {
         if (load[k] / problem.techs[k].capacity < load[t] / problem.techs[t].capacity) t = k;
       }
+    } else if (arrival(t, u) == null) {
+      unassigned.push(name(u.id, "window"));
+      continue;
     }
     tail[t].push(u.id);
     load[t] += u.service;
+    clock[t] = arrival(t, u)! + u.service;
   }
 
   return {

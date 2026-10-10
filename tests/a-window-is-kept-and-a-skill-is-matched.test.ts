@@ -521,6 +521,82 @@ describe("planDay names what it could not place", () => {
   });
 });
 
+describe("the settled start and the tail keep the rule too (review of #397)", () => {
+  it("drops a stop the settled start makes late, rather than writing it late", () => {
+    // The reviewer's case: a technician with no start address and a business
+    // with no location. The solver costs the first leg at nothing and keeps
+    // the 15-minute window by going there first; the start is then settled
+    // on the stop furthest from the round, 67 km away, and from there the
+    // window cannot be kept by any order. Until this the re-polish returned
+    // that order and the write stamped it late.
+    const inp = inputs({
+      techs: [{ ...inputs().techs[0], start_lat: null, start_lon: null, services: null }],
+      visits: [
+        visit("v-window", WALK, "30-minute walk", "Window Client", 41.9, -87.65, {
+          earliest: "08:00",
+          latest: "08:15",
+        }),
+        visit("v-mid", WALK, "30-minute walk", "Mid Client", 42.1, -87.65),
+        visit("v-far", WALK, "30-minute walk", "Far Client", 42.5, -87.65),
+      ],
+    });
+    const plan = planDay(inp, { day: "2026-10-14", honourWindows: true, solver: DETERMINISTIC });
+    expect(plan.startTier).toEqual(["route"]);
+    expect(plan.unassigned.map((u) => [u.visit_id, u.reason, u.latest])).toEqual([
+      ["v-window", "window", "08:15"],
+    ]);
+    expect(plan.routes[0].visit_ids.slice().sort()).toEqual(["v-far", "v-mid"]);
+    // With windows set aside the same day is written whole, as before.
+    const aside = planDay(inp, { day: "2026-10-14", honourWindows: false, solver: DETERMINISTIC });
+    expect(aside.unassigned).toEqual([]);
+    expect(aside.routes[0].visit_ids).toHaveLength(3);
+  });
+
+  it("puts a stop with no map location at the end of the day only where its window survives that", () => {
+    // The write gives a tail stop a free leg: it arrives when the last
+    // located stop finishes. The walker's located stop is 11 km out (about
+    // 30 minutes' drive, 10 on site), so her day ends past 08:20 and the
+    // lost 08:20 walk is named; the lost 09:30 walk is fine on her tail; the
+    // scooper has nothing located, so his clock is 08:00 and the lost 08:05
+    // cleanup fits.
+    const inp = inputs({
+      visits: [
+        visit("v-walk", WALK, "30-minute walk", "Walk Client", 42.0, -87.65),
+        visit("u-early", WALK, "30-minute walk", "Lost Early Client", null, null, {
+          latest: "08:20",
+        }),
+        visit("u-later", WALK, "30-minute walk", "Lost Later Client", null, null, {
+          latest: "09:30",
+        }),
+        visit("u-clean", CLEAN, "Pet waste removal", "Lost Yard Client", null, null, {
+          latest: "08:05",
+        }),
+      ],
+    });
+    const plan = planDay(inp, { day: "2026-10-14", honourWindows: true, solver: DETERMINISTIC });
+    const by = Object.fromEntries(plan.routes.map((r) => [r.staff_id, r.visit_ids]));
+    expect(by.a).toEqual(["v-walk", "u-later"]);
+    expect(by.b).toEqual(["u-clean"]);
+    expect(plan.unassigned.map((u) => [u.visit_id, u.reason, u.latest])).toEqual([
+      ["u-early", "window", "08:20"],
+    ]);
+    // Set aside, the tail is not checked and every stop is placed.
+    const aside = planDay(inp, { day: "2026-10-14", honourWindows: false, solver: DETERMINISTIC });
+    expect(aside.unassigned).toEqual([]);
+  });
+
+  it("keeps the 60-stop insertion estimate for a day with preferences and no window", () => {
+    // Owner's rule 3: a pet-waste day over 60 stops is built exactly as it
+    // was. The timed insertion scan is only forced past 60 stops when some
+    // stop has a latest time; a preference alone cannot make a route late.
+    const solver = read("src/lib/route-solver.ts");
+    expect(solver).toMatch(/if \(st\.timeline && \(st\.hard \|\| n <= 60\)\)/);
+    expect(solver).toMatch(
+      /return p\.honourWindows && p\.stops\.some\(\(s\) => s\.latest != null\)/,
+    );
+  });
+});
+
 describe("the list reaches the write and the screen", () => {
   it("is handed to apply_route_plans with each day, so a left-out stop is not 'the day changed'", () => {
     const plan = read("src/lib/route-plan.server.ts");
