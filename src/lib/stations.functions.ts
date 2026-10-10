@@ -3,13 +3,12 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isValidLabel } from "@/lib/dna-linkage";
 import { lastServicedByStation } from "@/lib/stop-facts";
+import { resolveCaller } from "@/lib/authz.server";
 
-async function orgId(supabase: any, userId: string) {
-  const { data, error } = await supabase
-    .from("user_roles").select("organization_id").eq("user_id", userId).maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+async function orgId(supabase: any, userId: string): Promise<string> {
+  // Through the shared gate, so a person whose access is turned off is
+  // refused here as everywhere else (20261009180000).
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 export const listStations = createServerFn({ method: "GET" })

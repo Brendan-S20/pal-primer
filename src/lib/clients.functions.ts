@@ -4,14 +4,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization found for this user. Complete onboarding first.");
-  return data.organization_id as string;
+  // Through the shared gate, so a person whose access is turned off is
+  // refused here as everywhere else (20261009180000).
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 export const listClients = createServerFn({ method: "GET" })

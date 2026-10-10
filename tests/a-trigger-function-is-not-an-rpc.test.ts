@@ -173,7 +173,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // which keeps an expense's staff inside its tenant and prices a mileage row
     // at the rate stored on it. REVOKEd from PUBLIC, anon and authenticated in
     // the same file.
-    expect(triggerFunctions().size).toBe(52);
+    //
+    // 52 -> 53 on 2026-10-09 (20261009180000, off means off):
+    // tg_keep_an_active_owner, which refuses to turn off or demote the last
+    // owner who can still sign in. REVOKEd from PUBLIC, anon and authenticated
+    // in the same file.
+    expect(triggerFunctions().size).toBe(53);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
