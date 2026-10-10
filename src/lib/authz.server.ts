@@ -20,7 +20,8 @@ export type CallerContext = {
  * middleware, the service-role client, and the minimal stubs the test suite
  * uses — and they only have this chain in common. Naming the chain types the
  * lookup AND documents the boundary's entire data dependency in one place:
- * user_roles, two columns, one row.
+ * user_roles, two columns, one row; and access_turned_off(), which answers for
+ * the JWT's own user (so it says nothing through the service-role client).
  *
  * Split into named interfaces rather than one nested type literal so the
  * compiler resolves them lazily.
@@ -51,6 +52,61 @@ export interface AuthzQueryClient {
   // reads exactly one table, and saying so keeps the type honest about its
   // dependency.
   from(table: "user_roles"): AuthzQueryTable;
+  // And one function: is this person turned off (20261009180000)?
+  rpc(fn: "access_turned_off"): PromiseLike<{
+    data: Array<{ organization_id?: unknown; organization_name?: unknown }> | null;
+    error: { message: string; code?: string } | null;
+  }>;
+}
+
+/**
+ * What a person whose staff row is turned off gets from every server function
+ * that resolves a caller. A fixed string, so the app can tell it from any
+ * other failure and send them to /access-off instead of showing an error.
+ */
+export const ACCESS_TURNED_OFF =
+  "Your access to this business has been turned off. Ask the owner to reactivate you.";
+
+export function isAccessTurnedOff(e: unknown): boolean {
+  return e instanceof Error && e.message.includes(ACCESS_TURNED_OFF);
+}
+
+/** PostgREST's "no such function in the schema cache". */
+const FUNCTION_NOT_DEPLOYED = "PGRST202";
+
+/**
+ * The organizations in which the signed-in person is turned off: normally
+ * none, at most the one they belong to.
+ *
+ * Asked through access_turned_off(), a SECURITY DEFINER function, because the
+ * person's own staff row is exactly what RLS stops them reading once they are
+ * off -- a plain select would come back empty for "off" and for "no staff
+ * row" alike.
+ *
+ * Fails CLOSED on any error but one: a deploy that reaches the server before
+ * its migration reaches the database. Then the function does not exist, the
+ * database is not enforcing the rule either, and refusing everybody would take
+ * the whole app down for nothing.
+ */
+export async function accessTurnedOff(
+  supabase: unknown,
+): Promise<Array<{ organizationId: string; organizationName: string }>> {
+  const db = supabase as AuthzQueryClient;
+  const { data, error } = await db.rpc("access_turned_off");
+  if (error) {
+    if (error.code === FUNCTION_NOT_DEPLOYED) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).flatMap((r) =>
+    typeof r.organization_id === "string"
+      ? [
+          {
+            organizationId: r.organization_id,
+            organizationName: typeof r.organization_name === "string" ? r.organization_name : "",
+          },
+        ]
+      : [],
+  );
 }
 
 /**
@@ -94,11 +150,11 @@ export async function resolveCaller(
   const { assertImpersonationSessionActive } = await import("@/lib/impersonation-session.server");
   await assertImpersonationSessionActive();
 
-  const { data, error } = await db
-    .from("user_roles")
-    .select("organization_id, role")
-    .eq("user_id", userId)
-    .maybeSingle();
+  // Both reads at once: the second costs no extra round trip.
+  const [{ data, error }, off] = await Promise.all([
+    db.from("user_roles").select("organization_id, role").eq("user_id", userId).maybeSingle(),
+    accessTurnedOff(db),
+  ]);
   if (error) throw new Error(error.message);
   if (!data) throw new Error("No organization for user");
 
@@ -111,6 +167,12 @@ export async function resolveCaller(
   if (typeof orgId !== "string" || typeof role !== "string") {
     throw new Error("No organization for user");
   }
+
+  // Off means off: a person whose staff row in this organization is turned
+  // off is not a caller in it, whatever user_roles says. Checked here so every
+  // server function that resolves a caller -- including the ones that go on
+  // to use the service-role client, which RLS cannot stop -- refuses them.
+  if (off.some((o) => o.organizationId === orgId)) throw new Error(ACCESS_TURNED_OFF);
   return { orgId, role: role as AppRole };
 }
 
