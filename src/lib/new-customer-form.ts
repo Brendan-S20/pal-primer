@@ -126,11 +126,11 @@ export const FORM_DEFAULTS = {
   instant: {
     headline: "Get an instant quote",
     intro:
-      "Tell us about your yard and we'll price it in seconds. Start service online, or ask us for a quote.",
+      "Tell us about your property and pets and we'll price it in seconds. Start service online, or ask us for a quote.",
   },
   quoteOnly: {
     headline: "Request a quote",
-    intro: "Tell us about your yard and we'll get you a quote.",
+    intro: "Tell us about your property and pets and we'll get you a quote.",
   },
   confirmation: "Thanks, we got your request! We'll be in touch shortly to set up your service.",
 } as const;

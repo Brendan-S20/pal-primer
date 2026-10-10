@@ -12,6 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { toPosix } from "./support/repo-paths";
 import { handleQboCallback, type QboCallbackDeps } from "@/lib/qbo-callback.server";
 import {
   checkOAuthState,
@@ -203,7 +204,8 @@ describe("Xero is gone", () => {
     expect(existsSync(join(ROOT, "src/routes/api/public/hooks/xero-callback.ts"))).toBe(false);
     const offenders = walk("src")
       // The generated database types still describe the old enum value.
-      .filter((f) => !f.endsWith("integrations/supabase/types.ts"))
+      // toPosix: on the Windows runner `join` gives backslashes (CLAUDE.md).
+      .filter((f) => !toPosix(f).endsWith("integrations/supabase/types.ts"))
       .filter((f) => /XERO_|xero\.com|xero-callback|"xero"/i.test(read(f)));
     expect(offenders).toEqual([]);
     expect(read(".env.example")).not.toMatch(/XERO_/);

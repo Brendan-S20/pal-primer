@@ -152,9 +152,9 @@ const es: Translations = {
     unknown: "carácter desconocido",
   },
   yard: {
-    label: "Patio {{size}}",
-    small: "pequeño",
-    medium: "mediano",
+    label: "Propiedad {{size}}",
+    small: "pequeña",
+    medium: "mediana",
     large: "grande",
     xlarge: "extra grande",
   },
@@ -235,7 +235,7 @@ const es: Translations = {
     tickRequired_other:
       "Marca los {{count}} puntos obligatorios de la lista para terminar esta visita.",
     noteLabel: "Nota para la oficina",
-    notePlaceholder: "Portón cerrado, perro ladrando, bolsas junto al cobertizo",
+    notePlaceholder: "Portón cerrado, perro adentro, dejé una nota para el cliente",
     addNote: "Agregar una nota para la oficina",
     takeCompletionPhotoStep: "Tomar foto del trabajo terminado",
     whyNoPhoto: "¿Por qué no hay foto? La oficina lo verá.",
@@ -555,12 +555,12 @@ const es: Translations = {
     none: "No hay perros registrados",
   },
   outline: {
-    heading: "Contorno del patio",
+    heading: "Contorno de la propiedad",
     area_sqft: "{{value}} pies²",
     area_acres: "{{value}} acres",
-    open: "Abrir el contorno del patio en un mapa",
+    open: "Abrir el contorno de la propiedad en un mapa",
     tapToOpen: "Toca para verlo en el mapa",
-    none: "Todavía no hay contorno del patio",
+    none: "Todavía no hay contorno de la propiedad",
     loading: "Cargando el mapa…",
   },
   stationsSummary: {
@@ -671,7 +671,7 @@ const es: Translations = {
   expenseCategory: {
     fuel: "Combustible",
     disposal: "Tarifas de desecho",
-    supplies: "Bolsas y suministros",
+    supplies: "Suministros",
     equipment: "Equipo",
     vehicle_maintenance: "Mantenimiento del vehículo",
     mileage: "Millaje",

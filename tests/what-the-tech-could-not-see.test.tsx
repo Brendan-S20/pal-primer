@@ -157,10 +157,10 @@ describe("the yard outline, or plainly none", () => {
     expect(html).toMatch(/<path d="M[\d. L]+Z"/);
     expect(
       await render(createElement(YardOutline, { boundary: YARD, areaSqm: 600, title: "x" })),
-    ).toContain("Yard outline · 6,458 sq ft");
+    ).toContain("Property outline · 6,458 sq ft");
     // No Leaflet container on the card: the map is the dialog's, and lazy.
     expect(html).not.toMatch(/leaflet/i);
-    expect(html).toMatch(/aria-label="Open the yard outline on a map"/);
+    expect(html).toMatch(/aria-label="Open the property outline on a map"/);
   });
 
   it("says so when nobody has sketched one, with no drawing and no map", async () => {
@@ -181,11 +181,11 @@ describe("the yard outline, or plainly none", () => {
       const html = await markup(createElement(YardOutline, { boundary, title: "x" }));
       expect(html).not.toMatch(/<svg[^>]*viewBox="0 0 56 56"/);
       expect(await render(createElement(YardOutline, { boundary, title: "x" }))).toBe(
-        "No yard outline yet",
+        "No property outline yet",
       );
     }
     expect(await render(createElement(YardOutline, { boundary: null, title: "x" }), "es")).toBe(
-      "Todavía no hay contorno del patio",
+      "Todavía no hay contorno de la propiedad",
     );
   });
 

@@ -123,7 +123,7 @@ test("a scheduled stop asks for one thing, and hides nothing", async ({ page, co
   // like every other occasional one.
   expect(closed, `a scheduled card shows too much: ${closed.join(" | ")}`).toEqual([
     "Stop",
-    "Yard outline · 6,592 sq ftTap to see it on the map",
+    "Property outline · 6,592 sq ftTap to see it on the map",
     "Navigate",
     "Call",
     "Start",
