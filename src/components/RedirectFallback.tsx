@@ -60,7 +60,7 @@ export function RedirectFallback({
   useEffect(() => {
     // `replace` so the alias does not become a back-button trap between the
     // two URLs.
-    void navigate({ to, replace: true, search: (s) => s });
+    void navigate({ to, replace: true, search: (s: Record<string, unknown>) => s });
   }, [navigate, to]);
 
   return (

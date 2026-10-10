@@ -51,14 +51,24 @@ const NONE: Insets = { top: 0, bottom: 0, left: 0, right: 0 };
 /** Each width with the insets of the device it stands for. */
 const SIZES: { name: string; width: number; height: number; insets: Insets }[] = [
   { name: "iPhone SE", width: 320, height: 568, insets: { top: 20, bottom: 0, left: 0, right: 0 } },
-  { name: "iPhone 14", width: 390, height: 844, insets: { top: 47, bottom: 34, left: 0, right: 0 } },
+  {
+    name: "iPhone 14",
+    width: 390,
+    height: 844,
+    insets: { top: 47, bottom: 34, left: 0, right: 0 },
+  },
   {
     name: "iPhone 17 Pro",
     width: 402,
     height: 874,
     insets: { top: 62, bottom: 34, left: 0, right: 0 },
   },
-  { name: "iPad mini", width: 768, height: 1024, insets: { top: 24, bottom: 20, left: 0, right: 0 } },
+  {
+    name: "iPad mini",
+    width: 768,
+    height: 1024,
+    insets: { top: 24, bottom: 20, left: 0, right: 0 },
+  },
   // Landscape is its own size: a short screen, and the island on the side.
   {
     name: "iPhone 17 Pro landscape",
@@ -250,6 +260,21 @@ for (const size of SIZES) {
       await expect(row).toBeVisible();
       await expect(row).toContainText("Time clock");
       await expect(row).toContainText(/On the clock · /);
+      // The More sheet (or the sidebar) slides in on the motion tokens, and a
+      // row measured mid-slide reads a fraction short of its real height:
+      // 43.99997px against the 44px floor, once, on the Windows runner. Wait
+      // for the menu it sits in to finish moving, the same way the clock
+      // sheet is waited for below. Finite animations only, so a spinner
+      // cannot hold this forever.
+      await row.evaluate((el) => {
+        const menu = el.closest('[role="dialog"], [data-sidebar="sidebar"]') ?? document.body;
+        return Promise.all(
+          menu
+            .getAnimations({ subtree: true })
+            .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+            .map((a) => a.finished.catch(() => undefined)),
+        );
+      });
       const rb = (await row.boundingBox())!;
       expect(rb.height, "the Time clock row is under the 44px floor").toBeGreaterThanOrEqual(44);
       await row.click();

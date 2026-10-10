@@ -770,6 +770,18 @@ const en = {
       complete: "Complete",
     },
   },
+  // The screen the shell sends a person to once the owner has turned their
+  // access off (src/routes/access-off.tsx). The business name goes in as
+  // <business/>'s own child, never by interpolation: it is text the office typed.
+  accessOff: {
+    pageTitle: "Access turned off",
+    title: "Your access has been turned off",
+    body: "Your access to <business/> has been turned off. Ask the owner to reactivate you.",
+    thisBusiness: "this business",
+    checkAgain: "Check again",
+    couldNotCheck: "Couldn't check right now. Try again in a moment.",
+    stillOff: "Still turned off. Ask the owner to reactivate you.",
+  },
 };
 
 /** The same tree with every leaf widened to `string`, so a translation is

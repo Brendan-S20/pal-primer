@@ -123,7 +123,12 @@ export const Route = createFileRoute("/_authenticated")({
       } catch {
         /* treat an unavailable check as "not an admin" — never fail open */
       }
-      throw redirect({ to: isPlatformAdmin ? "/platform" : "/no-workspace" });
+      if (isPlatformAdmin) throw redirect({ to: "/platform" });
+      // Off means off (20261009180000): the owner turned this person's access
+      // off. The database refuses them everything already; this says so,
+      // rather than drawing a workspace in which every list is empty.
+      if (org?.accessTurnedOff) throw redirect({ to: "/access-off" });
+      throw redirect({ to: "/no-workspace" });
     }
 
     // Error reports from here on name the user and org by id, and only by id.
