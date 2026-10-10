@@ -16,6 +16,8 @@
  */
 export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/routes/_authenticated/my-day.tsx" },
+  // What a technician sees once the owner has turned their access off.
+  { file: "src/components/AccessOffCard.tsx" },
   // The stop card's dogs, yard outline, stations and money lines, and the
   // form a tech records cash or a check with.
   { file: "src/components/my-day/StopFacts.tsx" },
