@@ -109,7 +109,7 @@ function SignupAndQuoteFormSettings() {
       <div>
         <h2 className="text-lg font-semibold">Signup &amp; quote form</h2>
         <p className="text-sm text-muted-foreground">
-          One page for new clients. They price their yard, then start service with a card or ask you
+          One page for new clients. They get their price, then start service with a card or ask you
           for a quote. Every signup and every quote request lands in{" "}
           <Link to="/leads" className="text-primary underline">
             Leads
