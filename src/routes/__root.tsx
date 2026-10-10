@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, type ReactNode } from "react";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { Toaster } from "sonner";
 
@@ -19,6 +19,7 @@ import { RouteProgress } from "../components/motion/RouteProgress";
 import "../lib/i18n";
 import { appOrigin, appUrl } from "@/lib/app-origin";
 import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
+import { markAppMounted } from "@/lib/app-mounted";
 
 // Error monitoring starts here, at module load on the client, so it is armed
 // before hydration rather than after the first effect. Off (no download, no
@@ -209,6 +210,16 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // React has committed the app, and with it <Transitioner>, whose setState
+  // the router calls from then on. A client-only route's beforeLoad waits for
+  // this before it answers (lib/app-mounted.ts). A layout effect, because it
+  // runs in the commit itself rather than a frame later; and in an effect at
+  // all, because a mark made during render would be a mark made for a render
+  // that may never commit, which is the bug this exists to prevent.
+  useLayoutEffect(() => {
+    markAppMounted();
+  }, []);
 
   // The device's light/dark choice (Settings → Preferences). The boot script
   // in <head> already applied it before paint; this keeps "System" following
