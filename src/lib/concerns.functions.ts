@@ -59,7 +59,7 @@ export const listConcerns = createServerFn({ method: "GET" })
         // Two foreign keys to visits now (the visit complained about, and the
         // free re-clean booked for it), so each embed names its constraint;
         // an unnamed `visits(...)` would be ambiguous and PostgREST refuses it.
-        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status), requested_on, property_id, booked_visit_id, property:properties!qc_tickets_property_id_fkey(street, city), booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on, status)",
+        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status), requested_on, property_id, booked_visit_id, property:properties!qc_tickets_property_id_fkey(street, city), booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on, status), requested_via",
       )
       .eq("organization_id", orgId)
       // Unresolved first, then newest.

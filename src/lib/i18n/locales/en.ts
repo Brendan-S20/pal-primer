@@ -607,6 +607,7 @@ const en = {
     lead: "New website leads",
     quote_response: "Quotes accepted or declined",
     receptionist_escalation: "AI receptionist escalations",
+    receptionist_booking: "Visits the AI receptionist booked or asked for",
     inbound_sms: "Texts needing a reply",
     teammate_joined: "Teammate joined",
     field_collection: "Cash or checks collected in the field",

@@ -220,6 +220,9 @@ export function leadOriginLabel(source: string, signup: LeadSignupState): string
   const isSignup = source === LEAD_SOURCE.onlineSignup || source === LEAD_SOURCE.doorSignup;
   if (!isSignup) {
     if (source === LEAD_SOURCE.quoteRequest) return "Quote request";
+    // ai-receptionist.server.ts: capture_lead, and book_visit for a number
+    // that is not a client (it is never booked, only made a lead).
+    if (source === "sms_receptionist") return "Texted the AI receptionist";
     return source.replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
   }
   const where = source === LEAD_SOURCE.doorSignup ? "at the door" : "online";
