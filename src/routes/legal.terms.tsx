@@ -135,7 +135,7 @@ function TermsPage() {
         <p>
           You may stop using the service and cancel at any time. We may terminate or suspend
           accounts for material breach of these terms. After you cancel, or after termination, you
-          may export your data for 30 days before it is deleted.
+          may export your data for 30 days, after which it may be deleted.
         </p>
       </section>
 
