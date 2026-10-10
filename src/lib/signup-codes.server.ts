@@ -93,8 +93,9 @@ export async function lookupSignupCode(
 
   // The founding code (NP-2) lives in Stripe as a promotion code, not in
   // platform_coupons, so it is recognised by name here and stored on the org
-  // like any coupon. Whether a place is left is Stripe's to say, at checkout
-  // (createPlanSubscription), where the code goes on the plan line only.
+  // like any coupon. Whether a place is left is decided at checkout
+  // (createPlanSubscription, from the accounts that paid with it), where the
+  // code goes on the plan line only.
   if (isFoundingCode(code)) {
     return {
       kind: "coupon",

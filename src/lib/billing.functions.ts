@@ -10,7 +10,7 @@ import {
   resolvePriceId,
   resolvePriceIdSet,
 } from "@/lib/stripe-price-catalog.server";
-import { FOUNDING_CODE, isFoundingCode, placesLeft } from "@/lib/founding-offer";
+import { FOUNDING_CODE, FOUNDING_SPOTS, isFoundingCode, placesLeft } from "@/lib/founding-offer";
 
 // Nothing imports this. $59 is not a price in the current per-employee
 // catalog either — plans come from `platform_plans`, which is the only place
@@ -536,8 +536,9 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     let promoCoupon: { id: string; code: string; stripe_coupon_id: string } | null = null;
     let promoDropped: { code: string; reason: PromoDropReason; detail?: string } | null = null;
     // The founding offer (NP-2): a Stripe promotion code on the BASE PLAN ITEM
-    // only, so extra people and add-ons stay full price. Stripe enforces its
-    // 20-redemption cap and first-time-customer restriction itself.
+    // only, so extra people and add-ons stay full price. The app closes it at
+    // FOUNDING_SPOTS accounts that PAID; Stripe enforces its first-time-
+    // customer restriction and a higher max_redemptions backstop itself.
     let foundingPromo: { id: string; code: string } | null = null;
     try {
       const { data: orgPromoRow } = await (supabaseAdmin as any)
@@ -547,16 +548,21 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         .maybeSingle();
       const storedCode = (data.promoCode || orgPromoRow?.signup_promo_code) as string | null | undefined;
       if (isFoundingCode(storedCode)) {
-        const { findFoundingPromotionCode } = await import("@/lib/founding-offer.server");
+        // Places are counted from accounts that PAID (founding_accounts), not
+        // from Stripe's redemptions, which include abandoned checkouts. The
+        // same count the banner shows.
+        const { findFoundingPromotionCode, countFoundingPaid } = await import(
+          "@/lib/founding-offer.server"
+        );
         const promo = await findFoundingPromotionCode(stripe);
-        if (promo && placesLeft(promo) > 0) {
+        if (promo && placesLeft(await countFoundingPaid(supabaseAdmin), promo) > 0) {
           foundingPromo = { id: promo.id, code: FOUNDING_CODE };
           items[0] = { ...items[0], discounts: [{ promotion_code: promo.id }] };
         } else {
           promoDropped = {
             code: FOUNDING_CODE,
             reason: "invalid",
-            detail: "All 20 founding places have been taken.",
+            detail: `All ${FOUNDING_SPOTS} founding places have been taken.`,
           };
         }
       } else if (storedCode) {
@@ -721,7 +727,8 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       }
     }
 
-    // A founding checkout changes the count the banner shows; read it fresh.
+    // A founding checkout moves Stripe's backstop count (not the paid count,
+    // which only a payment moves); read the banner fresh either way.
     if (foundingPromo) {
       const { forgetFoundingOffer } = await import("@/lib/founding-offer.server");
       forgetFoundingOffer();
@@ -1196,6 +1203,16 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
         actorUserId: context.userId,
         detail: { subscription: active.id, stripe_status: active.status },
       });
+      // A paid founding subscription takes its place here if the webhook has
+      // not already (the payment form calls this straight after paying). An
+      // unpaid one never reaches this branch. Best-effort: the webhook, or the
+      // next refresh, takes the place if this fails.
+      try {
+        const { recordFoundingPayment } = await import("@/lib/founding-offer.server");
+        await recordFoundingPayment({ admin: supabaseAdmin, stripe, orgId, sub: active });
+      } catch (e) {
+        console.error("founding place during refreshBillingStatus failed", (e as Error).message);
+      }
       // Self-heal the seat-overage quantity while we're here, so a seat count
       // that drifted (e.g. an invite accepted since checkout) reconciles the
       // next time billing is viewed. Best-effort.
