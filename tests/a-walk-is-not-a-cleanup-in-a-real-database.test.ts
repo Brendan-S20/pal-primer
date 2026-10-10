@@ -35,6 +35,12 @@ vi.setConfig({ testTimeout: 300_000 });
 const ROOT = join(import.meta.dirname, "..");
 const MIGRATION = join(ROOT, "supabase/migrations/20261009200000_a-walk-is-not-a-cleanup.sql");
 const PROOF = join(ROOT, "tests/sql/a-walk-is-not-a-cleanup.proof.sql");
+// The service-lines migration (#358), which the proof applies first on a stack
+// built before it.
+const BASE = join(
+  ROOT,
+  "supabase/migrations/20261008120000_a-dog-walker-should-not-have-to-learn-about-dump-sites.sql",
+);
 const DB_URL =
   process.env.SERVICES_PROOF_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
 
@@ -81,11 +87,20 @@ function runProof(args: string[]) {
 
 describe.skipIf(!reachable)("the service catalog in a real database", () => {
   it("has the files it runs", () => {
-    for (const f of [MIGRATION, PROOF]) expect(existsSync(f), f).toBe(true);
+    for (const f of [BASE, MIGRATION, PROOF]) expect(existsSync(f), f).toBe(true);
   });
 
   it("proves every rule, and leaves nothing behind", () => {
-    const r = runProof([DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF]);
+    const r = runProof([
+      DB_URL,
+      "-X",
+      "-v",
+      `migration=${MIGRATION}`,
+      "-v",
+      `base=${BASE}`,
+      "-f",
+      PROOF,
+    ]);
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);

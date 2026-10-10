@@ -307,7 +307,7 @@ function ServiceForm({
       <DialogHeader>
         <DialogTitle>{form.id ? "Edit service" : "Add a service"}</DialogTitle>
         <DialogDescription>
-          Customers see the name on quotes and invoices once services are on plans.
+          Clients see the name on quotes and invoices once services are on plans.
         </DialogDescription>
       </DialogHeader>
 

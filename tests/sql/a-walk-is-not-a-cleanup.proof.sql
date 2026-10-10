@@ -18,6 +18,18 @@ DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $tur
 
 BEGIN;
 
+-- A stack built before the service-lines migration has no
+-- organizations.service_lines for the fixture to set; apply that one first,
+-- inside the same transaction (the shared stack CI runs proofs against
+-- follows main, and #358 lands there before this does).
+SELECT NOT EXISTS (
+  SELECT 1 FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'organizations' AND column_name = 'service_lines'
+) AS need_base \gset
+\if :need_base
+\i :base
+\endif
+
 -- ── Fixture, BEFORE the migration, so the seed has businesses to find ──────
 -- A runs pet waste (owner, office manager, tech). B has said it only walks
 -- dogs (owner).
