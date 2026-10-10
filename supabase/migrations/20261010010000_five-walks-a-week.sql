@@ -121,6 +121,12 @@ AS $function$
      AND cardinality(_days) = (SELECT count(DISTINCT d) FROM unnest(_days) AS d)
 $function$;
 
+-- CREATE in this schema grants EXECUTE to PUBLIC. The CHECK below calls it on
+-- every write a signed-in user makes, so authenticated keeps it; anon never
+-- writes a plan.
+REVOKE ALL ON FUNCTION public.is_weekday_set(smallint[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_weekday_set(smallint[]) TO authenticated, service_role;
+
 COMMENT ON FUNCTION public.is_weekday_set(smallint[]) IS
   'True for a flat array of one to seven distinct weekdays, each 0 (Sunday) to 6. The rule subscriptions_weekdays_valid holds subscriptions.weekdays to. Migration 20261010010000.';
 
