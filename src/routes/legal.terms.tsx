@@ -15,7 +15,7 @@ export const Route = createFileRoute("/legal/terms")({
 
 function TermsPage() {
   return (
-    <LegalShell title="Terms of Service" updated="October 7, 2026">
+    <LegalShell title="Terms of Service" updated="October 10, 2026">
       <section>
         <p>
           These terms govern your use of {APP_NAME}, the field-service platform for pet-care
