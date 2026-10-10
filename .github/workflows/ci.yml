@@ -344,7 +344,11 @@ jobs:
     # sandboxes.yml), so this runs whenever CI does. It is cheap relative to
     # what it answers, and it runs on the machine that is otherwise idle, so it
     # costs the Mac nothing.
-    runs-on: [self-hosted, Windows]
+    # The PC by default. WINDOWS_RUNNER_JSON (a repository variable, JSON) moves
+    # it without a commit: '"windows-latest"' for GitHub's Windows machine while
+    # DESKTOP-JUC6SL1 is off (2026-10-10, owner's choice), deleted to come back.
+    # Never anything that is not Windows: this job's whole answer is "on Windows".
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows"]') }}
     # `continue-on-error` removed 2026-09-18, on the run that came back
     # `Suites 1163 passed, 0 failed | Tests 3653 passed, 0 failed` -- the same
     # test count as macOS. The job's own comment named this as the exit

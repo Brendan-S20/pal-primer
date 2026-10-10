@@ -79,6 +79,9 @@ export const APP_LINK_PATH_PREFIXES: readonly string[] = [
   "/reports",
   "/review",
   "/routes",
+  // The guided setup. An owner's page: it sets the business up and sells
+  // nothing, so a link to it from a "finish setting up" email opens the app.
+  "/setup",
   "/tax-reports",
   "/timesheets",
   "/waste-log",
@@ -123,6 +126,7 @@ export const STAYS_IN_BROWSER: Readonly<Record<string, string>> = {
   "/two-step": "part of the web sign-in flow",
   "/reset-password": "the recovery session lands in the browser that asked for it",
   "/no-workspace": "part of the web sign-in flow",
+  "/access-off": "where the app sends a person whose access was turned off; never a shared link",
   "/invite": "a new team member accepts on the web, usually before installing anything",
   "/pay": "a customer's invoice payment link",
   "/portal": "the customer portal",

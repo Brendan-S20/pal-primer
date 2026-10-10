@@ -64,7 +64,10 @@ function parseHasPermissionSql(sql: string): SqlRule[] {
   if (start === -1) throw new Error("has_permission is not defined in the expected migration");
   // Bound the search to this function body so a later statement in the same
   // file can never be mistaken for part of the matrix.
-  const body = sql.slice(start, sql.indexOf("$$;", start));
+  // Either dollar-quote: older migrations close with `$$;`, the later ones
+  // re-issue pg_get_functiondef's own `$function$;`.
+  const ends = ["$$;", "$function$;"].map((d) => sql.indexOf(d, start)).filter((i) => i > -1);
+  const body = sql.slice(start, ends.length ? Math.min(...ends) : -1);
   if (!body) throw new Error("Could not find the end of the has_permission body");
 
   const rules: SqlRule[] = [];
@@ -215,8 +218,10 @@ describe("the authorization primitives refuse to answer about a third party", ()
         guardSql.indexOf("$function$;", guardSql.indexOf(`FUNCTION public.${fn}(`)),
       );
       expect(body, `${fn} must be defined here`).toContain("RETURNS boolean");
-      expect(body, `${fn} must only answer about the caller`).toContain(
-        "auth.uid() IS NULL OR _user_id IS NOT DISTINCT FROM auth.uid()",
+      // Bare `auth.uid()` or the `(SELECT auth.uid())` form 20261009180000
+      // uses -- the same guard, the second evaluated once per call.
+      expect(body, `${fn} must only answer about the caller`).toMatch(
+        /\(?(?:SELECT )?auth\.uid\(\)\)? IS NULL OR _user_id IS NOT DISTINCT FROM \(?(?:SELECT )?auth\.uid\(\)\)?/,
       );
     }
   });
@@ -225,7 +230,7 @@ describe("the authorization primitives refuse to answer about a third party", ()
     // A trigger inside the nightly run has auth.uid() NULL and can read
     // user_roles directly anyway; gating it would break internal callers to
     // prevent nothing.
-    expect(guardSql).toContain("auth.uid() IS NULL OR");
+    expect(guardSql).toMatch(/auth\.uid\(\)\)? IS NULL OR/);
   });
 
   it("compares with IS NOT DISTINCT FROM, so a NULL subject is false not NULL", () => {

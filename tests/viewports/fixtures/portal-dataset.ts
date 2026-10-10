@@ -641,20 +641,59 @@ const SIGNUP_TIERS = [
   { id: "three_months_or_never", label: SIGNUP_LONG_TIER_LABEL, price_cents: 15000 },
 ];
 
-/** `getSignupOrg`: the RPC's row plus `firstCleanup`, which the server adds. */
-export const SIGNUP_ORG = {
+/** `getPublicSignupForm`: the business, its branding, the form's own
+ *  settings (none customised here, so the page draws its defaults), whether
+ *  "Start service" is on offer, and the first-cleanup answers. */
+export const SIGNUP_FORM = {
   id: PORTAL_ORG_ID,
   name: PORTAL_ORG_NAME,
   currency: "usd",
-  public_signup_enabled: true,
-  resolved_slug: PORTAL_SLUG,
-  logo_url: null,
-  brand_color: null,
+  logoUrl: null,
+  brandColor: null,
+  resolvedSlug: PORTAL_SLUG,
+  instantStart: true,
+  form: {
+    brandColor: null,
+    logoUrl: null,
+    headline: "",
+    intro: "",
+    confirmation: "",
+    fields: { phone: true, location: true, dogCount: true, message: true },
+  },
   firstCleanup: {
     mode: "by_last_cleaned",
     tiers: SIGNUP_TIERS.map(({ id, label }) => ({ id, label })),
   },
 };
+
+// ── The same form for a business that only wants leads ─────────────────────
+//
+// Online signup switched off: no price, no card, one "Request a quote"
+// button. The owner has written their own headline and confirmation, and an
+// owner writes a sentence, so both are long: the headline is the h1 a 320px
+// phone has to wrap, the confirmation the card a sent request leaves behind.
+
+export const QUOTE_ONLY_SLUG = "ravenswood-manor-quotes-only-please-call-first";
+export const QUOTE_ONLY_HEADLINE =
+  "Request your free, no-obligation quote for weekly pet waste removal in Ravenswood Manor";
+export const QUOTE_ONLY_CONFIRMATION =
+  "Thank you! Marisol or Dev will call you within one business day to walk your yard and confirm your price.";
+
+export const SIGNUP_FORM_QUOTE_ONLY = {
+  ...SIGNUP_FORM,
+  resolvedSlug: QUOTE_ONLY_SLUG,
+  instantStart: false,
+  form: {
+    ...SIGNUP_FORM.form,
+    headline: QUOTE_ONLY_HEADLINE,
+    confirmation: QUOTE_ONLY_CONFIRMATION,
+  },
+  firstCleanup: { mode: "off", tiers: [] as Array<{ id: string; label: string }> },
+};
+
+/** A ZIP the business has no zone for: the instant page turns into a quote
+ *  request rather than a dead end. */
+export const NO_ZONE_ZIP = "99501";
 
 /** `getSignupQuote` for one dog: every answer priced for this yard, and the
  *  answer the sweep picks priced into `initial_cleanup_cents`. */

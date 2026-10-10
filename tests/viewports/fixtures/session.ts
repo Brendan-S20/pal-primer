@@ -115,11 +115,10 @@ export function sweepUser() {
     email: SWEEP_USER_EMAIL,
     phone: "",
     app_metadata: { provider: "email", providers: ["email"] },
-    // `tour_seen_at` suppresses OnboardingTour, which otherwise opens a modal
-    // over the first authenticated page a fresh account sees. Measuring the
-    // tour's dialog instead of the page underneath it is not what any of these
-    // rules are about — and the tour has its own coverage in the public sweep's
-    // sibling static tests.
+    // `tour_seen_at` closes the guided setup (src/lib/setup-guide.ts) for
+    // this user, so its first-run banner is not drawn on every page these
+    // sweeps measure. The guide has its own walk, with a fresh user:
+    // the-setup-that-finishes.spec.ts.
     user_metadata: { full_name: "Dana Whitfield-Ramirez", tour_seen_at: new Date().toISOString() },
     // Two connected, one not — which is the state that actually stresses the
     // "Ways to sign in" card: a Disconnect button, a Connect button, and the

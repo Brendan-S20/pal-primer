@@ -1,19 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { resolveCaller } from "@/lib/authz.server";
 
 // Feature 2 (tenant side): the "Refer a business" program. A tenant shares
 // /sign-up?ref=<code>; when the referred business becomes a paying customer
 // they earn a percentage of its first payment (paid out manually in Phase 1).
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+  // Through the shared gate, so a person whose access is turned off is
+  // refused here as everywhere else (20261009180000).
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 export type MyReferralProgram = {

@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { requirePermission } from "@/lib/authz.server";
+import { accessTurnedOff, requirePermission } from "@/lib/authz.server";
 import { assertValidOrgName } from "@/lib/dna-linkage";
 
 const bootstrapSchema = z.object({
@@ -164,13 +164,24 @@ export const getMyOrg = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const { data: role, error: roleErr } = await supabase
-      .from("user_roles")
-      .select("organization_id, role")
-      .eq("user_id", userId)
-      .maybeSingle();
+    // Both at once. access_turned_off is the one question a person who has
+    // been turned off may still ask: which business turned them off.
+    const [{ data: role, error: roleErr }, off] = await Promise.all([
+      supabase.from("user_roles").select("organization_id, role").eq("user_id", userId).maybeSingle(),
+      accessTurnedOff(supabase),
+    ]);
     if (roleErr) throw new Error(roleErr.message);
-    if (!role) return { organization: null as null };
+    if (!role) return { organization: null as null, accessTurnedOff: null as null };
+
+    // Off means off (20261009180000): no business, and the shell says why
+    // instead of drawing a workspace every query in which comes back empty.
+    const mine = off.find((o) => o.organizationId === role.organization_id);
+    if (mine) {
+      return {
+        organization: null as null,
+        accessTurnedOff: { organizationName: mine.organizationName },
+      };
+    }
 
     const { data: org, error: orgErr } = await (supabase as any)
       .from("organizations")
@@ -187,7 +198,7 @@ export const getMyOrg = createServerFn({ method: "GET" })
       .single();
     if (orgErr) throw new Error(orgErr.message);
 
-    return { organization: { ...org, role: role.role as string } };
+    return { organization: { ...org, role: role.role as string }, accessTurnedOff: null as null };
   });
 
 const slugSchema = z.object({ slug: z.string().trim().min(3).max(63) });
@@ -266,7 +277,9 @@ export const getOrgBranding = createServerFn({ method: "GET" })
     if (!role) throw new Error("No org");
     const { data, error } = await (supabase.from("organizations") as any)
       .select(
-        "id, name, brand_color, logo_url, contact_phone, contact_email, contact_address, portal_reschedule_cutoff_hours, portal_allow_self_reschedule, portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
+        // latitude/longitude: the point updateOrgBranding geocodes the address
+        // to. The setup guide centres the first service area on it.
+        "id, name, brand_color, logo_url, contact_phone, contact_email, contact_address, latitude, longitude, portal_reschedule_cutoff_hours, portal_allow_self_reschedule, portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
       )
       .eq("id", role.organization_id)
       .single();
@@ -279,6 +292,8 @@ export const getOrgBranding = createServerFn({ method: "GET" })
       contact_phone: string | null;
       contact_email: string | null;
       contact_address: string | null;
+      latitude: number | null;
+      longitude: number | null;
       portal_reschedule_cutoff_hours: number;
       portal_allow_self_reschedule: boolean;
       portal_allow_vacation_hold: boolean;

@@ -18,7 +18,7 @@ import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/clien
 import { needsSecondStep } from "@/lib/mfa";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
-import { OnboardingTour } from "@/components/OnboardingTour";
+import { SetupGuideBanner } from "@/components/SetupGuideBanner";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { useNotificationLanguageSync } from "@/hooks/useNotificationLanguageSync";
 import { headerControlsForRole } from "@/lib/header-prefs";
@@ -123,7 +123,12 @@ export const Route = createFileRoute("/_authenticated")({
       } catch {
         /* treat an unavailable check as "not an admin" — never fail open */
       }
-      throw redirect({ to: isPlatformAdmin ? "/platform" : "/no-workspace" });
+      if (isPlatformAdmin) throw redirect({ to: "/platform" });
+      // Off means off (20261009180000): the owner turned this person's access
+      // off. The database refuses them everything already; this says so,
+      // rather than drawing a workspace in which every list is empty.
+      if (org?.accessTurnedOff) throw redirect({ to: "/access-off" });
+      throw redirect({ to: "/no-workspace" });
     }
 
     // Error reports from here on name the user and org by id, and only by id.
@@ -467,6 +472,9 @@ function AppShell() {
               front of it. */}
           <TrialBanner />
           <AnnouncementBanner />
+          {/* The guided setup, off its own page. In the flow, never over it:
+              see SetupGuideBanner for the overlay this replaced. */}
+          <SetupGuideBanner />
           {/* The bottom padding clears the fixed tab bar for exactly as long
               as the bar is on screen — which now depends on the role, not only
               the width (Q-2). Both read useTabletTier so they cannot disagree:
@@ -519,7 +527,6 @@ function AppShell() {
         <RouteLockScreenHost />
         <CommandPalette />
         <KeyboardShortcuts />
-        <OnboardingTour />
         <InstallBanner />
         <RoleGuard />
         {signOutDialog}

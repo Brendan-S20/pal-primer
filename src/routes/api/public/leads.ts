@@ -15,11 +15,26 @@
 // this app does not know ahead of time. Narrowing it means echoing the request
 // Origin against a site the tenant has registered, which needs somewhere to
 // store that — not built, and deliberately not half-built here.
+//
+// Since 20261009220000 this is also the only way a lead gets in from outside.
+// It used to write with the publishable key, under an INSERT policy that let
+// anyone holding that key (every browser) post straight to /rest/v1/leads past
+// everything below. That policy is gone and the write is the service role's,
+// behind the honeypot, the time-to-submit check and the rate limit in
+// lib/public-form-guard.ts. A refusal says one calm thing and writes nothing. A
+// lead that IS written is told to the office (lib/lead-notify.server.ts).
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import {
+  CALM_REFUSAL,
+  ELAPSED_FIELD,
+  HONEYPOT_FIELD,
+  callerAddress,
+  screenSubmission,
+} from "@/lib/public-form-guard";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -43,7 +58,15 @@ const leadSchema = z.object({
   frequency: z.string().trim().max(40).optional().or(z.literal("")),
   message: z.string().trim().max(2000).optional().or(z.literal("")),
   source: z.string().trim().max(60).optional(),
+  // The spam filters (public-form-guard.ts). Unknown rather than a bounded
+  // string, so a script that stuffs the honeypot with a novel gets the same
+  // calm refusal as one that writes a word, not a validation error naming it.
+  [HONEYPOT_FIELD]: z.unknown().optional(),
+  [ELAPSED_FIELD]: z.unknown().optional(),
 });
+
+const refused = (status: number) =>
+  new Response(JSON.stringify({ error: CALM_REFUSAL }), { status, headers: jsonHeaders });
 
 export const Route = createFileRoute("/api/public/leads")({
   server: {
@@ -67,6 +90,18 @@ export const Route = createFileRoute("/api/public/leads")({
           );
         }
         const data = parsed.data;
+
+        // The two checks that need nothing but the body, before anything is
+        // looked up or written.
+        const screened = screenSubmission({
+          honeypot: data[HONEYPOT_FIELD],
+          elapsedMs: data[ELAPSED_FIELD],
+        });
+        if (!screened.ok) {
+          console.warn("public lead refused", screened.reason);
+          return refused(400);
+        }
+
         const supabase = createClient<Database>(
           resolveSupabaseUrl(),
           process.env.SUPABASE_PUBLISHABLE_KEY!,
@@ -85,24 +120,61 @@ export const Route = createFileRoute("/api/public/leads")({
             headers: jsonHeaders,
           });
         }
-        const { error } = await (supabase.from("leads") as any).insert({
-          organization_id: orgId,
-          name: data.name,
-          email: data.email.toLowerCase(),
-          phone: data.phone || null,
-          company: data.company || null,
-          location: data.location || null,
-          dog_count: data.dog_count ?? null,
-          frequency: data.frequency || null,
-          message: data.message || null,
-          source: data.source || "website",
-        });
-        if (error) {
-          return new Response(JSON.stringify({ error: error.message }), {
-            status: 500,
-            headers: jsonHeaders,
-          });
+
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { takePublicFormTurn } = await import("@/lib/public-form-guard.server");
+        const turn = await takePublicFormTurn(
+          supabaseAdmin as any,
+          orgId,
+          callerAddress((h) => request.headers.get(h)),
+        );
+        if (!turn.ok) {
+          console.warn("public lead rate-limited", orgId, turn.reason);
+          return refused(429);
         }
+
+        // The service role, so status and the three workflow stamps are what
+        // this line says and nothing the caller sent: a submission is always a
+        // new, untouched lead. That was the dropped INSERT policy's rule; it
+        // lives where the write is now.
+        const source = data.source || "website";
+        const location = data.location || null;
+        const { data: lead, error } = await (supabaseAdmin.from("leads") as any)
+          .insert({
+            organization_id: orgId,
+            name: data.name,
+            email: data.email.toLowerCase(),
+            phone: data.phone || null,
+            company: data.company || null,
+            location,
+            dog_count: data.dog_count ?? null,
+            frequency: data.frequency || null,
+            message: data.message || null,
+            source,
+            status: "new",
+          })
+          .select("id")
+          .single();
+        if (error || !lead?.id) {
+          // Postgres's words are for us, not for a homeowner.
+          console.error("public lead insert failed", orgId, error?.message);
+          return new Response(
+            JSON.stringify({ error: "Something went wrong. Please try again." }),
+            { status: 500, headers: jsonHeaders },
+          );
+        }
+
+        const { notifyOfficeOfNewLead } = await import("@/lib/lead-notify.server");
+        await notifyOfficeOfNewLead({
+          orgId,
+          leadId: lead.id as string,
+          name: data.name,
+          source,
+          location,
+          dogCount: data.dog_count ?? null,
+          frequency: data.frequency || null,
+        });
+
         return new Response(JSON.stringify({ ok: true }), {
           status: 201,
           headers: jsonHeaders,

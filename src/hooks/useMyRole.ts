@@ -5,7 +5,13 @@ import { hasPermission, type Permission } from "@/lib/permissions";
 
 export type AppRole = "owner" | "office_manager" | "dispatcher" | "tech";
 
-export function useMyRole(): { role: AppRole | null; orgId: string | null; loading: boolean } {
+export function useMyRole(): {
+  role: AppRole | null;
+  orgId: string | null;
+  loading: boolean;
+  /** The owner turned this person's access off since the shell loaded. */
+  accessTurnedOff: boolean;
+} {
   const fn = useServerFn(getMyOrg);
   const { data, isLoading } = useQuery({
     queryKey: ["my-org"],
@@ -14,7 +20,7 @@ export function useMyRole(): { role: AppRole | null; orgId: string | null; loadi
   });
   const role = (data?.organization?.role as AppRole | undefined) ?? null;
   const orgId = data?.organization?.id ?? null;
-  return { role, orgId, loading: isLoading };
+  return { role, orgId, loading: isLoading, accessTurnedOff: !!data?.accessTurnedOff };
 }
 
 /**
@@ -74,6 +80,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/billing": ["owner"],
   "/payments": ["owner"],
   "/onboarding": ["owner"],
+  // The guided setup (src/lib/setup-guide.ts). The people who can set a
+  // business up: every step's own server gate admits both, except payouts,
+  // which the page filters out for an office manager by its own gate.
+  "/setup": ["owner", "office_manager"],
   // Must precede the "/settings" prefix entry — canAccess takes the first match.
   "/settings/billing": ["owner"],
   // Outbound webhooks send the tenant's events to a third party: the same

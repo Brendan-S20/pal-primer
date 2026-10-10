@@ -238,15 +238,28 @@ config in place.
 4. Confirm **OTP + automated notifications** (reminders, on-my-way, overdue) come
    from the **platform** number `+18668063017`, not the tenant's.
 
-## 10. Lead form customization (#25)
+## 10. Signup & quote form (#25, merged 2026-10-08)
 
-1. **Settings → Lead form → Customize the form**: set a brand color, logo URL,
-   headline/intro/confirmation, and toggle off one optional field (e.g. Message).
-   Save.
-2. Open the hosted form (`/lead/{slug}`) or the embed.
-   - **Expected:** your branding shows (logo + accent color on headline/button),
-     the toggled-off field is gone, and after submitting, your custom
-     confirmation message appears.
+The lead form and online signup are one form now. `/signup/{slug}` prices the
+yard and lets the visitor start service or ask for a quote; `/lead/{slug}`
+forwards to it with its query string.
+
+1. **Settings → Signup & quote form → Customize the form**: set a brand color,
+   logo URL, headline/intro/confirmation, and toggle off one optional question
+   (e.g. Notes). Save. (`/settings/lead-form` forwards here.)
+2. With **Accept signups online** OFF, open the form (or `/lead/{slug}?utm_source=test`).
+   - **Expected:** the URL ends `/signup/{slug}?utm_source=test`; your branding
+     shows; no price and no card; the toggled-off question is gone; after
+     **Request a quote**, your confirmation message appears and the request is
+     in **Leads** labeled "Quote request".
+3. Turn it ON (Stripe connected), enter a ZIP in a priced zone, **Get instant price**.
+   - **Expected:** the price, then **Start service** and **Just send me a quote**.
+     A ZIP outside every zone shows "We don't have online pricing for that ZIP
+     yet" and a **Request a quote** button instead.
+4. Start service but stop at the card form.
+   - **Expected:** Leads shows the person as "Started signup online, didn't
+     pay". Pay with a test card on a second try: the same row turns
+     "Started service online" with **Open client**.
 
 ## 11. Google sign-in (#17)
 

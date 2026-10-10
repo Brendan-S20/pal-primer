@@ -28,6 +28,8 @@ vi.mock("@tanstack/react-router", () => ({
       {children}
     </a>
   ),
+  // The checklist's "Guide me" navigates into /setup.
+  useNavigate: () => () => undefined,
   useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
     select({ location: { pathname } }),
 }));

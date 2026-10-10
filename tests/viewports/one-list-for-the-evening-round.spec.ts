@@ -133,13 +133,13 @@ test.describe("the setup checklist on a phone", () => {
     const visibleSteps = () => card.locator("li:visible").count();
     expect(await visibleSteps()).toBe(1);
     // The next undone step in the fixture.
-    await expect(card.getByText("Add your dump site")).toBeVisible();
+    await expect(card.getByText("Add or import clients")).toBeVisible();
     const height = await card.evaluate((el) => Math.round(el.getBoundingClientRect().height));
     // Seven full-height steps were about two screens; one step, the header
     // and the bar is about 340px with this fixture's longest description.
     expect(height, `the checklist is ${height}px on a phone`).toBeLessThanOrEqual(380);
-    await card.getByRole("button", { name: "Show all 7 steps" }).click();
-    expect(await visibleSteps()).toBe(7);
+    await card.getByRole("button", { name: "Show all 6 steps" }).click();
+    expect(await visibleSteps()).toBe(6);
     await card.getByRole("button", { name: "Show less" }).click();
     expect(await visibleSteps()).toBe(1);
     await holdsTogether(page, "dashboard 390", true);
@@ -151,9 +151,9 @@ test.describe("the setup checklist on a phone", () => {
     await open(page, "/dashboard");
     const card = page.getByTestId("onboarding-checklist");
     await expect(card).toBeVisible({ timeout: FIRST_PAINT_MS });
-    // 7 steps, 4 done: the three left.
+    // 6 steps, 3 done: the three left.
     expect(await card.locator("li:visible").count()).toBe(3);
-    await expect(card.getByText("Verify your email")).toBeHidden();
+    await expect(card.getByText("Your business details")).toBeHidden();
     await ctx.close();
   });
 });

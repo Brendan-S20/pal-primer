@@ -1,8 +1,8 @@
 // QuickBooks was switched off.
 //
-// The live sync is built and disabled (ACCOUNTING_CONNECT_ENABLED), so an
-// owner moving their books had nothing to give a bookkeeper but monthly
-// totals. QuickBooks Online imports invoices from a CSV with no connection at
+// The live sync was built and disabled (until 2026-10-09), so an owner moving
+// their books had nothing to give a bookkeeper but monthly totals. The file
+// stays as the no-connection alternative now that the sync is on. QuickBooks Online imports invoices from a CSV with no connection at
 // all, and the accountant pack now produces that file. These pin the
 // importer's rules, because each one it breaks fails the WHOLE import, not
 // one row: 100 invoices and 1,000 rows per file, no negative amounts, and

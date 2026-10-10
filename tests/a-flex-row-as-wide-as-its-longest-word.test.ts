@@ -395,10 +395,8 @@ describe("values with nothing to break at, measured at 360px", () => {
     expect(codeOnly(read("src/routes/_authenticated/settings.referrals.tsx"))).toMatch(
       /font-mono text-sm break-all/,
     );
-    for (const f of [
-      "src/routes/_authenticated/settings.lead-form.tsx",
-      "src/routes/_authenticated/settings.online-signup.tsx",
-    ]) {
+    // One page since Lead form and Online signup merged (2026-10-08).
+    for (const f of ["src/routes/_authenticated/settings.online-signup.tsx"]) {
       expect(codeOnly(read(f)), f).toMatch(/<code className="break-all rounded bg-muted/);
     }
   });
