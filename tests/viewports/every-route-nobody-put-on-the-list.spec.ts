@@ -66,7 +66,14 @@ import {
  * Each is a deliberate redirect kept for old bookmarks or in-flight OAuth and
  * Stripe return URLs; the page they land on is measured under its own name.
  */
-const REDIRECTS = new Set(["settings", "settings/payments", "ai-tools", "billing"]);
+const REDIRECTS = new Set([
+  "settings",
+  "settings/payments",
+  "ai-tools",
+  "billing",
+  // Forwards to settings/online-signup since the two public forms became one.
+  "settings/lead-form",
+]);
 
 /**
  * Already covered by `every-signed-in-page-at-every-width.spec.ts`, which

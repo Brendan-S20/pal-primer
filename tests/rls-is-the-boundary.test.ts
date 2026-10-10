@@ -114,6 +114,10 @@ const GUARDED: Array<{
   // Written by the Twilio voice webhook and the public signup flow, both on
   // service_role. A tenant only ever reads these.
   { table: "ai_receptionist_logs", permission: "manage_settings", readOnlyForTenants: true },
+  // Written by the QuickBooks sync on service_role (2026-10-09); it records
+  // what was sent to a business's books and Intuit's id for each call, so
+  // only the office reads it and nobody signed in can forge a row.
+  { table: "accounting_sync_log", permission: "manage_settings", readOnlyForTenants: true },
   { table: "signup_requests", permission: "manage_settings", readOnlyForTenants: true },
   // Reading a subscription tells a tech what service they are performing;
   // repricing it is the risk. The read policy is deliberately wider.

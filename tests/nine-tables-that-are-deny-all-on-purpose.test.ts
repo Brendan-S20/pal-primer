@@ -46,24 +46,30 @@ const DENY_ALL: Record<string, string> = {
  *  discuss the tables in prose at length and a text match finds the paragraph
  *  as readily as the statement. */
 function policiesOn(table: string): string[] {
-  const hits: string[] = [];
   const re = new RegExp(String.raw`^create\s+policy\b[\s\S]*?\bon\s+(?:public\.)?"?${table}"?\b`, "i");
-  for (const file of migrationFiles()) {
-    for (const st of statements(stripLineComments(readMigration(file)))) {
-      if (re.test(st)) hits.push(`${file}: ${st.replace(/\s+/g, " ").slice(0, 90)}`);
-    }
-  }
-  return hits;
+  return createPolicyStatements()
+    .filter(({ st }) => re.test(st))
+    .map(({ file, st }) => `${file}: ${st.replace(/\s+/g, " ").slice(0, 90)}`);
+}
+
+/** Every `CREATE POLICY` statement, parsed once. Parsing the whole migration
+ *  directory per table took 33s for one table on a runner deep in swap and
+ *  timed the suite out; the answer is the same list eleven times. */
+let parsed: { file: string; st: string }[] | undefined;
+function createPolicyStatements(): { file: string; st: string }[] {
+  parsed ??= migrationFiles().flatMap((file) =>
+    statements(stripLineComments(readMigration(file)))
+      .filter((st) => /^create\s+policy\b/i.test(st))
+      .map((st) => ({ file, st })),
+  );
+  return parsed;
 }
 
 describe("the eight deny-all tables", () => {
   it("parses policies at all, so the rule below is not vacuous", () => {
     // If CREATE POLICY stopped matching, every assertion here would pass on
     // nothing. This repo has a great many policies; a handful proves the parser.
-    const anywhere = migrationFiles()
-      .flatMap((f) => statements(stripLineComments(readMigration(f))))
-      .filter((st) => /^create\s+policy\b/i.test(st));
-    expect(anywhere.length).toBeGreaterThan(20);
+    expect(createPolicyStatements().length).toBeGreaterThan(20);
   });
 
   for (const [table, why] of Object.entries(DENY_ALL)) {

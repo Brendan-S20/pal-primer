@@ -11,7 +11,8 @@ import { describeManualPayment } from "@/lib/manual-payments";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { getMyOrg } from "@/lib/org.functions";
-import { syncInvoice } from "@/lib/accounting.functions";
+import { getQuickBooksStatus, syncInvoice } from "@/lib/accounting.functions";
+import { hasPermission } from "@/lib/permissions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { describePaymentSplit, formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
@@ -91,6 +92,17 @@ function InvoiceDetail() {
     queryFn: () => get({ data: { id: invoiceId } }),
   });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  // The QuickBooks button is drawn only for someone who can send (the office)
+  // and only while QuickBooks is connected.
+  const qboFn = useServerFn(getQuickBooksStatus);
+  const qboQ = useQuery({
+    queryKey: ["qbo-status"],
+    queryFn: () => qboFn(),
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: hasPermission((orgQ.data?.organization?.role as any) ?? null, "manage_settings"),
+  });
+  const qboConnected = qboQ.data?.connection?.status === "connected";
   // "INV-10420 · Invoices", from the same label the page's heading prints.
   const loadedInvoice = q.data?.invoice as { id: string; number?: number | null } | undefined;
   useDocumentTitle(loadedInvoice ? pageTitle(invoiceNumberLabel(loadedInvoice), "Invoices") : null);
@@ -177,7 +189,10 @@ function InvoiceDetail() {
   const syncM = useMutation({
     mutationFn: async () => syncFn({ data: { invoice_id: invoiceId } }),
     onSuccess: (r) => {
-      toast.success(`Synced to accounting (id ${r.remote_id})`);
+      toast.success(
+        `Sent to QuickBooks (invoice #${r.remote_id}${r.payments ? `, ${r.payments} payment${r.payments === 1 ? "" : "s"}` : ""})`,
+      );
+      for (const e of r.payment_errors) toast.error(e);
       qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -415,9 +430,15 @@ function InvoiceDetail() {
             )}
           </>
         )}
-        {invoice.status === "paid" && !(invoice as any).accounting_remote_id && (
+        {/* Repeatable: a second send updates the QuickBooks invoice and adds
+            any payment recorded since, rather than creating anything twice. */}
+        {invoice.status === "paid" && qboConnected && (
           <Button variant="outline" onClick={() => syncM.mutate()} disabled={syncM.isPending}>
-            {syncM.isPending ? "Syncing…" : "Sync to accounting"}
+            {syncM.isPending
+              ? "Sending…"
+              : (invoice as any).accounting_remote_id
+                ? "Update in QuickBooks"
+                : "Send to QuickBooks"}
           </Button>
         )}
         {/* A real PDF, made on the server: what a bookkeeper files. "Print"
@@ -447,7 +468,7 @@ function InvoiceDetail() {
         )}
         {(invoice as any).accounting_remote_id && (
           <span className="self-center text-xs text-muted-foreground">
-            Synced · {(invoice as any).accounting_remote_id}
+            In QuickBooks · #{(invoice as any).accounting_remote_id}
           </span>
         )}
       </div>

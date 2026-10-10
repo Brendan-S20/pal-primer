@@ -85,7 +85,8 @@ export function PortalBookingCard() {
             </label>
             <p className="text-xs text-muted-foreground">
               Off (default): you approve each one. On: a request is booked straight away at the
-              price above, and you are told it happened.
+              price above, and you are told it happened. A client who books by text with the AI
+              receptionist follows the same switch.
               {priceCents == null && " Needs a price first."}
             </p>
           </div>

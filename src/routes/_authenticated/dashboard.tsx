@@ -7,6 +7,7 @@ import { getMyOrg } from "@/lib/org.functions";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { getDashboardSummary } from "@/lib/dashboard.functions";
 import { getBillingStatus } from "@/lib/billing.functions";
+import { getQuickBooksStatus } from "@/lib/accounting.functions";
 import { hasPermission } from "@/lib/permissions";
 import { humanizeRole } from "@/lib/humanize";
 import type { AppRole } from "@/hooks/useMyRole";
@@ -33,7 +34,8 @@ import {
   TechProgressBones,
 } from "@/components/PageSkeletons";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { useMotionList } from "@/lib/motion/use-motion-list";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => titleHead("Dashboard"),
@@ -45,6 +47,7 @@ function fmtMoney(cents: number) {
 }
 
 function Dashboard() {
+  const motionList = useMotionList<HTMLUListElement>();
   const orgFn = useServerFn(getMyOrg);
   const sumFn = useServerFn(getDashboardSummary);
   const billingFn = useServerFn(getBillingStatus);
@@ -69,6 +72,16 @@ function Dashboard() {
     staleTime: 60_000,
     retry: false,
     enabled: hasPermission(role ?? null, "manage_org_billing"),
+  });
+  // QuickBooks that needs reconnecting has stopped syncing; the people who can
+  // reconnect it hear about it here as well as on Settings → Accounting.
+  const qboFn = useServerFn(getQuickBooksStatus);
+  const { data: qbo } = useQuery({
+    queryKey: ["qbo-status"],
+    queryFn: () => qboFn(),
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: hasPermission(role ?? null, "manage_settings"),
   });
 
   // Platform admins have no tenant org by design. If one lands here (bookmark,
@@ -109,6 +122,14 @@ function Dashboard() {
   const groups = sum ? buildTechGroups(sum.todayVisits as MapVisit[], sum.staff as any) : [];
 
   const alerts: Array<{ icon: any; text: string; to?: string; tone: "warn" | "danger" }> = [];
+  if (qbo?.connection?.status === "needs_reconnect") {
+    alerts.push({
+      icon: AlertTriangle,
+      text: "QuickBooks needs to be reconnected",
+      to: "/settings/accounting",
+      tone: "danger",
+    });
+  }
   if (sum) {
     if (sum.unassignedToday > 0) {
       alerts.push({
@@ -375,7 +396,7 @@ function Dashboard() {
             ) : groups.length === 0 ? (
               <p className="text-xs text-muted-foreground">No routes yet.</p>
             ) : (
-              <ul className="motion-list space-y-3 text-sm">
+              <ul ref={motionList} className="motion-list space-y-3 text-sm">
                 {groups.map((g) => {
                   const total = g.visits.length;
                   const done = g.visits.filter((v) => v.status === "completed").length;
@@ -396,8 +417,8 @@ function Dashboard() {
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${pct}%`, background: g.color }}
+                          className="hs-meter h-full rounded-full"
+                          style={{ "--hs-meter": `${pct}%`, background: g.color } as CSSProperties}
                         />
                       </div>
                     </li>

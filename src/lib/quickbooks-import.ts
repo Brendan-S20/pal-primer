@@ -1,10 +1,11 @@
 /** Invoices in the shape QuickBooks Online's own importer takes.
  *
- *  The live QuickBooks sync is built and switched off
- *  (ACCOUNTING_CONNECT_ENABLED), so an owner moving books over had nothing to
- *  hand their bookkeeper but totals by month. QuickBooks Online can import
- *  invoices from a CSV (Settings → Import data → Invoices) with no connection
- *  and no app, and this produces that file.
+ *  Written while the live QuickBooks sync was switched off, when an owner
+ *  moving books over had nothing to hand their bookkeeper but totals by month.
+ *  The live sync is on since 2026-10-09 (Settings → Accounting); this stays
+ *  for an owner who would rather not connect, or whose bookkeeper wants a
+ *  file. QuickBooks Online can import invoices from a CSV (Settings → Import
+ *  data → Invoices) with no connection and no app, and this produces that file.
  *
  *  What the importer allows, and so what this has to respect:
  *    - one row per invoice LINE, repeating the invoice number, customer and

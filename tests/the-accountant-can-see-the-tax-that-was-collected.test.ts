@@ -92,28 +92,30 @@ describe("the QuickBooks import file", () => {
 
 describe("the live accounting sync", () => {
   it("sends nothing new for an untaxed invoice", () => {
-    expect(accountingTaxLine({ default_sales_tax_account: null }, { tax_cents: 0 })).toBeNull();
+    expect(accountingTaxLine({ sales_tax_item_id: null }, { tax_cents: 0 })).toBeNull();
   });
 
-  it("sends the tax as its own line on the sales-tax account", () => {
+  it("sends the tax as its own line through the sales-tax item", () => {
     expect(
-      accountingTaxLine({ default_sales_tax_account: "33" }, { tax_cents: 825, tax_rate_bps: 825, tax_label: "Sales tax" }),
-    ).toEqual({ description: "Sales tax (8.25%)", amountCents: 825, account: "33" });
+      accountingTaxLine({ sales_tax_item_id: "33" }, { tax_cents: 825, tax_rate_bps: 825, tax_label: "Sales tax" }),
+    ).toEqual({ description: "Sales tax (8.25%)", amountCents: 825, item: "33" });
   });
 
   it("refuses to sync a taxed invoice rather than post its tax to income", () => {
-    expect(() => accountingTaxLine({ default_sales_tax_account: " " }, { tax_cents: 825 })).toThrow(
-      /Set a sales tax account/,
+    expect(() => accountingTaxLine({ sales_tax_item_id: " " }, { tax_cents: 825 })).toThrow(
+      /Choose a sales tax item/,
     );
   });
 
-  it("builds that line through the same accountingLine as every other, on its own account", () => {
+  it("builds that line through the same accountingLine as every other, through its own item", () => {
     const src = code("src/lib/accounting.server.ts");
-    expect(src.match(/linesWithAccounts\(conn, invoice, taxLine\)/g)?.length).toBe(2);
-    expect(src).toMatch(/ItemAccountRef: \{ value: account \}/);
-    expect(src).toMatch(/AccountCode: account,/);
-    // QuickBooks refuses before the customer is created, not after.
-    const qbo = src.slice(src.indexOf("async function pushInvoiceQBO"));
-    expect(qbo.indexOf("accountingTaxLine(conn, invoice)")).toBeLessThan(qbo.indexOf("ensureQBOCustomer("));
+    expect(src.match(/linesWithItems\(mapping, invoice, taxLine\)/g)?.length).toBe(1);
+    expect(src).toMatch(/ItemRef: \{ value: item \}/);
+    // A taxed invoice with no sales-tax item is refused before the customer
+    // is created, not after: proved against a mocked QuickBooks in
+    // tests/quickbooks-online-for-real.test.ts, and pinned here in the order.
+    const sync = code("src/lib/qbo-sync.server.ts");
+    expect(sync.indexOf("qboInvoiceBody(mapping, invoice")).toBeGreaterThan(-1);
+    expect(sync.indexOf("qboInvoiceBody(mapping, invoice")).toBeLessThan(sync.indexOf("findOrCreateQboCustomer(qbo"));
   });
 });

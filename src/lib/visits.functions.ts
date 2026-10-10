@@ -2,16 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { resolveCaller } from "@/lib/authz.server";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+  // Through the shared gate, so a person whose access is turned off is
+  // refused here as everywhere else (20261009180000).
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 export const generateVisits = createServerFn({ method: "POST" })
@@ -72,7 +68,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          properties(id, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
-         subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time),
+         subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via),
          visit_photos(id, storage_path, kind, created_at)`,
       )
       .eq("id", data.visitId)

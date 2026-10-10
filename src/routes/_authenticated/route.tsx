@@ -10,10 +10,14 @@ import {
 import { useEffect } from "react";
 import { clearPersistedReadCaches, ensureReadCachePersistence } from "@/lib/offline/read-cache";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
+import { QueueSyncProvider } from "@/components/QueueSync";
 import { resolveIdentity } from "@/lib/offline/identity";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
+import { getAccountLock } from "@/lib/account-lock.functions";
+import { pathOpenWhenLocked } from "@/lib/account-lock";
+import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
 import { getPlatformContext } from "@/lib/platform.functions";
@@ -123,16 +127,43 @@ export const Route = createFileRoute("/_authenticated")({
       } catch {
         /* treat an unavailable check as "not an admin" — never fail open */
       }
-      throw redirect({ to: isPlatformAdmin ? "/platform" : "/no-workspace" });
+      if (isPlatformAdmin) throw redirect({ to: "/platform" });
+      // Off means off (20261009180000): the owner turned this person's access
+      // off. The database refuses them everything already; this says so,
+      // rather than drawing a workspace in which every list is empty.
+      if (org?.accessTurnedOff) throw redirect({ to: "/access-off" });
+      throw redirect({ to: "/no-workspace" });
     }
 
     // Error reports from here on name the user and org by id, and only by id.
     // Off in dev and test; see lib/monitoring/config.ts.
     setMonitoringIdentity({ userId: identity.userId, orgId: org.organization.id });
 
-    return { userId: identity.userId, user: identity.user, organization: org.organization };
+    // NP-12: a trial past day 14 with no plan, or a cancelled plan that has
+    // ended, reaches Plan & billing and nothing else. The server refuses every
+    // other function anyway (src/start.ts); this sends the person to the one
+    // page that works instead of a workspace that will not load. Choosing a
+    // plan reloads the app (PlanPaymentForm), and this asks again.
+    //
+    // A failed check lets the person through: offline there is nothing to pay
+    // with, and online the server's refusal still holds.
+    let lock: Awaited<ReturnType<typeof getAccountLock>> | null = null;
+    try {
+      lock = await context.queryClient.fetchQuery({
+        queryKey: ["account-lock"],
+        queryFn: () => getAccountLock(),
+        staleTime: 15_000,
+      });
+    } catch {
+      lock = null;
+    }
+    if (lock?.locked && lock.canChoosePlan && !pathOpenWhenLocked(location.pathname)) {
+      throw redirect({ to: "/settings/billing" });
+    }
+
+    return { userId: identity.userId, user: identity.user, organization: org.organization, lock };
   },
-  component: AppShell,
+  component: SignedInApp,
   // Client-only route: this is also what the server sends for a signed-in
   // URL and what a cold native launch paints while beforeLoad decides who
   // is signed in. See ShellPending.
@@ -151,6 +182,18 @@ export const Route = createFileRoute("/_authenticated")({
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
+}
+
+/** The offline queue replays on launch and on every reconnect from here,
+ *  whichever page is open — not only from My Day, where it used to be started.
+ *  Outside AppShell so the shell and every page under it read the same one.
+ *  See components/QueueSync.tsx. */
+function SignedInApp() {
+  return (
+    <QueueSyncProvider>
+      <AppShell />
+    </QueueSyncProvider>
+  );
 }
 
 function AppShell() {
@@ -356,6 +399,24 @@ function AppShell() {
         "--brand-accent-foreground": brand.fg,
       } as React.CSSProperties)
     : undefined;
+
+  // NP-12: a locked account gets the notice and Plan & billing, nothing else.
+  const { lock } = Route.useRouteContext();
+  if (lock?.locked) {
+    return (
+      <>
+        <AccountLockedShell
+          reason={lock.reason}
+          canChoosePlan={lock.canChoosePlan}
+          onSignOut={handleSignOut}
+          style={brandStyle}
+        >
+          <Outlet />
+        </AccountLockedShell>
+        {signOutDialog}
+      </>
+    );
+  }
 
   return (
     <SidebarProvider docksFrom={docksFrom}>

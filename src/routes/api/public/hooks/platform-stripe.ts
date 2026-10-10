@@ -364,6 +364,15 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   source: "platform_webhook",
                   detail: { event: event.type, subscription: sub.id, stripe_status: sub.status },
                 });
+                // LAUNCH20 (NP-2): a founding subscription takes a place when it
+                // is first seen PAID. Incomplete ones were skipped above, so an
+                // abandoned checkout never takes one.
+                try {
+                  const { recordFoundingPayment } = await import("@/lib/founding-offer.server");
+                  await recordFoundingPayment({ admin: supabaseAdmin, stripe, orgId, sub });
+                } catch (e) {
+                  console.error("founding place on subscription event failed", (e as Error).message);
+                }
                 // A dead subscription takes its bolt-on add-ons with it: mark
                 // them canceled and switch their feature flags off, so the org
                 // doesn't keep paid features free (and can re-buy cleanly).

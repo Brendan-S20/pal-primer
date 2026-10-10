@@ -83,7 +83,15 @@ function PhotoThumb({ path }: { path: string }) {
   if (!url) return <div className="h-16 w-16 animate-pulse rounded bg-muted" />;
   return (
     <a href={url} target="_blank" rel="noreferrer">
-      <img src={url} alt="Visit" className="h-16 w-16 rounded border object-cover" />
+      <img
+        src={url}
+        alt="Visit"
+        width={64}
+        height={64}
+        loading="lazy"
+        decoding="async"
+        className="h-16 w-16 rounded border object-cover"
+      />
     </a>
   );
 }
@@ -232,8 +240,7 @@ export function VisitDetailDrawer({
           button's offset; since 2026-10-04 ui/sheet.tsx gives both to every
           full-height sheet, after the owner's iPhone found the same fault on
           the client editors that had no copy. */}
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg"
-      >
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {client?.display_name ?? "Visit"}
@@ -241,6 +248,10 @@ export function VisitDetailDrawer({
               <Badge variant="secondary" className="capitalize">
                 {v.status.replace("_", " ")}
               </Badge>
+            )}
+            {/* Booked by text, through the AI receptionist (subscriptions.booked_via). */}
+            {(v as any)?.subscriptions?.booked_via === "ai_receptionist" && (
+              <Badge variant="outline">Booked by AI receptionist</Badge>
             )}
           </SheetTitle>
           <SheetDescription>

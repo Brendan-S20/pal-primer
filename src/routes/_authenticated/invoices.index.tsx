@@ -3,7 +3,7 @@ import { ListSkeleton } from "@/components/PageSkeletons";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   listInvoices,
   getCollectedThisMonth,
@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { titleHead } from "@/lib/page-title";
 import { byWhatNeedsDoing } from "@/lib/invoice-order";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { useMotionList } from "@/lib/motion/use-motion-list";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
   head: () => titleHead("Invoices"),
@@ -360,7 +361,7 @@ function StatCard({
         // opens on no invoices. They stay CONTROLS, not decoration: each one
         // still toggles its status filter, which is why they are not simply
         // hidden on a phone.
-        "rounded-xl border bg-card text-left shadow-sm transition-colors hover:bg-muted/30",
+        "basis-0 grow rounded-xl border bg-card text-left shadow-sm transition-colors hover:bg-muted/30",
         "max-sm:min-h-11 max-sm:p-2 p-4",
         destructive && "border-destructive/30 bg-destructive/5 hover:bg-destructive/10",
         active && "ring-2 ring-primary/50",
@@ -369,7 +370,7 @@ function StatCard({
       <SectionLabel className="max-sm:text-3xs">{label}</SectionLabel>
       <div
         className={cn(
-          "mt-1 font-semibold tabular-nums text-2xl max-sm:mt-0.5 max-sm:text-base",
+          "mt-1 whitespace-nowrap font-semibold tabular-nums text-2xl max-sm:mt-0.5 max-sm:text-base",
           destructive && "text-destructive",
         )}
       >
@@ -384,6 +385,7 @@ function StatCard({
 }
 
 function InvoicesPage() {
+  const motionList = useMotionList<HTMLDivElement>();
   const { confirm, dialog } = useConfirmDialog();
   const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
   const list = useServerFn(listInvoices);
@@ -399,6 +401,9 @@ function InvoicesPage() {
   const [through, setThrough] = useState(() => new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<StatusKey>("all");
   const [search, setSearch] = useState("");
+  // Typed text shows at once; the list re-filters behind it (see the same
+  // note on /clients).
+  const deferredSearch = useDeferredValue(search);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -469,7 +474,7 @@ function InvoicesPage() {
   const toggleStatusFilter = (s: StatusKey) => setStatus((prev) => (prev === s ? "all" : s));
 
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase();
+    const s = deferredSearch.trim().toLowerCase();
     return (invQ.data ?? []).filter((inv) => {
       if (status !== "all" && inv.status !== status) return false;
       if (from && (inv.period_end ?? "") < from) return false;
@@ -481,7 +486,7 @@ function InvoicesPage() {
       }
       return true;
     });
-  }, [invQ.data, status, search, from, to]);
+  }, [invQ.data, status, deferredSearch, from, to]);
 
   // The phone's cards, most actionable first: see src/lib/invoice-order.ts.
   // The table keeps newest first, where columns and the status filter do the
@@ -807,8 +812,20 @@ function InvoicesPage() {
           and applied. Nothing at all when there are none. */}
       <FieldCollectionsCard />
 
-      {/* Summary stats — click one to filter by that status */}
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
+      {/* Summary stats — click one to filter by that status.
+
+          A wrapping row, not a grid. `grid-cols-3` gave each card a third of
+          the column whatever its number needed, and a third of a 320px phone
+          is 90px: on the hosted Linux runner's fonts "$12,384.00" is about
+          100px, so it ran out of its card and the page scrolled sideways
+          (324px at 320, 350px in a 344px column at 360). The same was true of
+          `lg:grid-cols-4` beside the sidebar at 1024. Here every card is
+          `basis-0 grow` — equal shares of the row — but never narrower than
+          its own number, and when the three numbers do not fit on one line
+          the last card wraps to the next, full width. In a row wherever they
+          fit (a 430pt phone, every laptop); reflowed, not overflowed, where
+          they do not. */}
+      <div className="flex flex-wrap gap-2 sm:gap-3">
         <StatCard
           label="Outstanding"
           value={fmtCents(stats.outstandingCents)}
@@ -1036,7 +1053,7 @@ function InvoicesPage() {
           {/* Mobile Phase 2: below `md` invoices render as tap-through cards
               (shared InvoiceCard — same data, ••• actions, and drawer as the
               table rows). Bulk-select stays via the card checkbox. */}
-          <div className="motion-list space-y-3 md:hidden">
+          <div ref={motionList} className="motion-list space-y-3 md:hidden">
             <label className="flex min-h-10 items-center gap-2 px-1 text-xs text-muted-foreground">
               <Checkbox
                 checked={allVisibleSelected}

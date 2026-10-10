@@ -58,9 +58,13 @@ export const markAllNotificationsRead = createServerFn({ method: "POST" })
 export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   { type: "concern", label: "Client concerns" },
   { type: "payment_failed", label: "Failed client payments" },
+  // A quote request or an online signup from the public form
+  // (src/lib/lead-notify.server.ts), to everyone who works Leads.
   { type: "lead", label: "New website leads" },
   { type: "quote_response", label: "Quotes accepted or declined" },
   { type: "receptionist_escalation", label: "AI receptionist escalations" },
+  // A visit booked, or asked for, by text (src/lib/receptionist-booking.ts).
+  { type: "receptionist_booking", label: "Visits the AI receptionist booked or asked for" },
   { type: "inbound_sms", label: "Texts needing a reply" },
   { type: "teammate_joined", label: "Teammate joined" },
   { type: "field_collection", label: "Cash or checks collected in the field" },

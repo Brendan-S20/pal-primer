@@ -200,10 +200,12 @@ describe("My Day holds Complete until the required items are checked", () => {
     const page = codeOnly(read("src/routes/_authenticated/my-day.tsx"));
     expect(page).toMatch(/const uncheckedRequired = missingRequired\(checklist, checkedItems\)/);
     expect(page).toMatch(/const checklistRuleMet = uncheckedRequired\.length === 0/);
+    // The card's one button (src/lib/visit-step.ts), at its Complete step.
     const button = page.slice(
-      page.indexOf("!photoRuleMet ||"),
-      page.indexOf('{t("myDay.complete")}\n'),
+      page.indexOf("const stepDisabled ="),
+      page.indexOf("const stepTitle ="),
     );
+    expect(button).toMatch(/step === "complete" &&\s*\(!photoRuleMet \|\|/);
     expect(button, "Complete is not held by the checklist").toMatch(/!checklistRuleMet \|\|/);
     expect(page).toMatch(/actions\.complete\(\{[\s\S]{0,600}checkedItems:/);
     // A phone has no hover: why the button is grey is written under it — one

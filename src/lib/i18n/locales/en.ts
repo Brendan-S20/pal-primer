@@ -241,10 +241,7 @@ const en = {
     noteLabel: "Note for the office",
     notePlaceholder: "Gate latched, dog inside, left a note for the client",
     addNote: "Add a note for the office",
-    takeCompletionPhoto: "Take a completion photo to finish this visit.",
-    takePhotoToComplete: "Take photo to complete",
-    photoStillNeeded: "Visit started. Take the completion photo when you're ready.",
-    checklistBeforeComplete: "Check off what you did, then complete the visit.",
+    takeCompletionPhotoStep: "Take completion photo",
     whyNoPhoto: "Why no photo? The office sees this.",
     noPhotoPlaceholder: "Camera would not open",
     cantTakePhoto: "Can't take a photo?",
@@ -607,6 +604,7 @@ const en = {
     lead: "New website leads",
     quote_response: "Quotes accepted or declined",
     receptionist_escalation: "AI receptionist escalations",
+    receptionist_booking: "Visits the AI receptionist booked or asked for",
     inbound_sms: "Texts needing a reply",
     teammate_joined: "Teammate joined",
     field_collection: "Cash or checks collected in the field",
@@ -769,6 +767,18 @@ const en = {
       start: "Start",
       complete: "Complete",
     },
+  },
+  // The screen the shell sends a person to once the owner has turned their
+  // access off (src/routes/access-off.tsx). The business name goes in as
+  // <business/>'s own child, never by interpolation: it is text the office typed.
+  accessOff: {
+    pageTitle: "Access turned off",
+    title: "Your access has been turned off",
+    body: "Your access to <business/> has been turned off. Ask the owner to reactivate you.",
+    thisBusiness: "this business",
+    checkAgain: "Check again",
+    couldNotCheck: "Couldn't check right now. Try again in a moment.",
+    stillOff: "Still turned off. Ask the owner to reactivate you.",
   },
 };
 

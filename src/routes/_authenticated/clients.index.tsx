@@ -6,7 +6,7 @@ import { RowActions } from "@/components/RowActions";
 import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   bulkTagClients,
@@ -39,6 +39,7 @@ import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { titleHead } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
+import { useMotionList } from "@/lib/motion/use-motion-list";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => titleHead("Clients"),
@@ -86,6 +87,7 @@ function exportClientsCsv(rows: any[]) {
 }
 
 function ClientsList() {
+  const motionList = useMotionList<HTMLDivElement>();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const fn = useServerFn(listClients);
@@ -102,6 +104,11 @@ function ClientsList() {
   });
 
   const [q, setQ] = useState("");
+  // The box shows every keystroke at once; the list catches up at a lower
+  // priority. Filtering re-renders every row (both the cards and the table,
+  // hundreds on a real account), and doing that inside the keystroke is what
+  // made typing in this box lag behind the thumb on a phone.
+  const deferredQ = useDeferredValue(q);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
   const [tag, setTag] = useState<string>("all");
@@ -136,7 +143,7 @@ function ClientsList() {
   }, [clients]);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = deferredQ.trim().toLowerCase();
     return clients.filter((c: any) => {
       if (type !== "all" && c.account_type !== type) return false;
       if (
@@ -157,7 +164,7 @@ function ClientsList() {
         .toLowerCase();
       return hay.includes(needle);
     });
-  }, [clients, q, status, type, tag]);
+  }, [clients, deferredQ, status, type, tag]);
 
   // Multi-select over the currently filtered rows (desktop table). Selection
   // clears whenever a filter changes so a bulk action never hits hidden rows.
@@ -507,7 +514,7 @@ function ClientsList() {
       ) : (
         <>
           {/* Mobile: stacked cards */}
-          <div className="motion-list space-y-3 sm:hidden">
+          <div ref={motionList} className="motion-list space-y-3 sm:hidden">
             {filtered.map((c: any) => (
               <Link
                 key={c.id}
@@ -536,9 +543,14 @@ function ClientsList() {
                         </Badge>
                       )}
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground truncate">
-                      {c.primary_email ?? "-"}
-                    </div>
+                    {/* No line at all for a client with no email: a lone dash
+                        under the name read as a rendering fault on a phone. The
+                        desktop table keeps its "-", where a column needs a cell. */}
+                    {c.primary_email && (
+                      <div className="mt-1 text-xs text-muted-foreground truncate">
+                        {c.primary_email}
+                      </div>
+                    )}
                     <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
                   </div>
                   <div className="text-right">
@@ -574,8 +586,13 @@ function ClientsList() {
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span>{c.dog_count} dogs</span>
-                  <span>{c.active_subscription_count} subs</span>
+                  <span>
+                    {c.dog_count} {c.dog_count === 1 ? "dog" : "dogs"}
+                  </span>
+                  <span>
+                    {c.active_subscription_count}{" "}
+                    {c.active_subscription_count === 1 ? "plan" : "plans"}
+                  </span>
                   {(c.frequencies ?? []).length > 0 && (
                     <Badge variant="outline" className="text-3xs">
                       {(c.frequencies as string[]).map((f) => frequencyLabel(f)).join(", ")}
@@ -661,8 +678,14 @@ function ClientsList() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      <div className="truncate max-w-[220px]">{c.primary_email ?? "-"}</div>
-                      <div className="text-xs">{c.primary_phone ?? ""}</div>
+                      {/* A dash only when there is nothing at all to show,
+                          not above a phone number as a line of its own. */}
+                      {c.primary_email ? (
+                        <div className="truncate max-w-[220px]">{c.primary_email}</div>
+                      ) : !c.primary_phone ? (
+                        <div>-</div>
+                      ) : null}
+                      {c.primary_phone && <div className="text-xs">{c.primary_phone}</div>}
                     </td>
                     <td className="px-4 py-3">
                       {/* Same three states as the mobile cards above — the two

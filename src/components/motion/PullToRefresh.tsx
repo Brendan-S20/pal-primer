@@ -37,6 +37,17 @@ const OPEN_LAYER =
  * aria-hidden for that reason; the gesture is a shortcut, not a feature.
  *
  * Mount it anywhere in the page; it draws nothing until a pull begins.
+ *
+ * ── IT DOES NOT SIT IN FRONT OF EVERY SCROLL ─────────────────────────────
+ *
+ * Taking the gesture means a `touchmove` listener that is not passive, and a
+ * non-passive touch listener on the document makes the browser ask the main
+ * thread before it may scroll — every scroll, anywhere on the page, waits
+ * for JavaScript to say it may. On a phone that is the difference between a
+ * list that follows the thumb and one that stutters whenever React is busy
+ * (My Day re-renders on every GPS fix). A pull can only start at the very
+ * top of the page, so that is the only time the listener is there: a passive
+ * scroll listener adds it on arriving at the top and removes it on leaving.
  */
 export function PullToRefresh({ onRefresh }: { onRefresh?: () => Promise<unknown> }) {
   const qc = useQueryClient();
@@ -64,6 +75,19 @@ export function PullToRefresh({ onRefresh }: { onRefresh?: () => Promise<unknown
     let startY = 0;
 
     const atTop = () => (document.scrollingElement?.scrollTop ?? window.scrollY) <= 0;
+
+    // The blocking listener exists only while a pull could start or is
+    // under way (see the note above the component).
+    let blocking = false;
+    const setBlocking = (on: boolean) => {
+      if (on === blocking) return;
+      blocking = on;
+      if (on) document.addEventListener("touchmove", onMove, { passive: false });
+      else document.removeEventListener("touchmove", onMove);
+    };
+    const onScroll = () => {
+      if (!owned) setBlocking(atTop());
+    };
 
     const onStart = (e: TouchEvent) => {
       tracking = false;
@@ -118,6 +142,7 @@ export function PullToRefresh({ onRefresh }: { onRefresh?: () => Promise<unknown
       tracking = false;
       if (!owned) return;
       owned = false;
+      setBlocking(atTop());
       if (distanceRef.current < PULL_THRESHOLD_PX) {
         settle();
         return;
@@ -138,16 +163,20 @@ export function PullToRefresh({ onRefresh }: { onRefresh?: () => Promise<unknown
         owned = false;
         settle();
       }
+      setBlocking(atTop());
     };
 
     document.addEventListener("touchstart", onStart, { passive: true });
     // Not passive: once the pull is ours it has to stop the page bouncing.
-    document.addEventListener("touchmove", onMove, { passive: false });
+    // Only while the page is at its top, though: see setBlocking.
+    setBlocking(atTop());
+    window.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("touchend", onEnd, { passive: true });
     document.addEventListener("touchcancel", onCancel, { passive: true });
     return () => {
       document.removeEventListener("touchstart", onStart);
-      document.removeEventListener("touchmove", onMove);
+      window.removeEventListener("scroll", onScroll);
+      setBlocking(false);
       document.removeEventListener("touchend", onEnd);
       document.removeEventListener("touchcancel", onCancel);
     };

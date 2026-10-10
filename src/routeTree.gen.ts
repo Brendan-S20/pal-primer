@@ -19,6 +19,7 @@ import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as GetStartedRouteImport } from './routes/get-started'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AccessOffRouteImport } from './routes/access-off'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
@@ -144,7 +145,6 @@ import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$sl
 import { Route as PortalSlugTokenPropertyRouteImport } from './routes/portal.$slug.$token.property'
 import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
 import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
-import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/public/hooks/xero-callback'
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
 import { Route as ApiPublicHooksWebhookDeliveriesRouteImport } from './routes/api/public/hooks/webhook-deliveries'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
@@ -208,6 +208,11 @@ const AuthRoute = AuthRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessOffRoute = AccessOffRouteImport.update({
+  id: '/access-off',
+  path: '/access-off',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -876,12 +881,6 @@ const PortalSlugTokenAccountRoute = PortalSlugTokenAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => PortalSlugTokenRoute,
 } as any)
-const ApiPublicHooksXeroCallbackRoute =
-  ApiPublicHooksXeroCallbackRouteImport.update({
-    id: '/api/public/hooks/xero-callback',
-    path: '/api/public/hooks/xero-callback',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiPublicHooksWeeklyDigestRoute =
   ApiPublicHooksWeeklyDigestRouteImport.update({
     id: '/api/public/hooks/weekly-digest',
@@ -964,6 +963,7 @@ const PortalSlugTokenPayInvoiceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/access-off': typeof AccessOffRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
@@ -1104,7 +1104,6 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1115,6 +1114,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/access-off': typeof AccessOffRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
@@ -1246,7 +1246,6 @@ export interface FileRoutesByTo {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1259,6 +1258,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/access-off': typeof AccessOffRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
@@ -1399,7 +1399,6 @@ export interface FileRoutesById {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
-  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -1412,6 +1411,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/access-off'
     | '/admin'
     | '/auth'
     | '/get-started'
@@ -1552,7 +1552,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1563,6 +1562,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/access-off'
     | '/admin'
     | '/auth'
     | '/get-started'
@@ -1694,7 +1694,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1706,6 +1705,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/access-off'
     | '/admin'
     | '/auth'
     | '/get-started'
@@ -1846,7 +1846,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
-    | '/api/public/hooks/xero-callback'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1859,6 +1858,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AccessOffRoute: typeof AccessOffRoute
   AdminRoute: typeof AdminRoute
   AuthRoute: typeof AuthRoute
   GetStartedRoute: typeof GetStartedRoute
@@ -1904,7 +1904,6 @@ export interface RootRouteChildren {
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWebhookDeliveriesRoute: typeof ApiPublicHooksWebhookDeliveriesRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
-  ApiPublicHooksXeroCallbackRoute: typeof ApiPublicHooksXeroCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1977,6 +1976,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access-off': {
+      id: '/access-off'
+      path: '/access-off'
+      fullPath: '/access-off'
+      preLoaderRoute: typeof AccessOffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -2854,13 +2860,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalSlugTokenAccountRouteImport
       parentRoute: typeof PortalSlugTokenRoute
     }
-    '/api/public/hooks/xero-callback': {
-      id: '/api/public/hooks/xero-callback'
-      path: '/api/public/hooks/xero-callback'
-      fullPath: '/api/public/hooks/xero-callback'
-      preLoaderRoute: typeof ApiPublicHooksXeroCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/hooks/weekly-digest': {
       id: '/api/public/hooks/weekly-digest'
       path: '/api/public/hooks/weekly-digest'
@@ -3276,6 +3275,7 @@ const PortalSlugRouteWithChildren = PortalSlugRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AccessOffRoute: AccessOffRoute,
   AdminRoute: AdminRoute,
   AuthRoute: AuthRoute,
   GetStartedRoute: GetStartedRoute,
@@ -3321,18 +3321,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWebhookDeliveriesRoute: ApiPublicHooksWebhookDeliveriesRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
-  ApiPublicHooksXeroCallbackRoute: ApiPublicHooksXeroCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
