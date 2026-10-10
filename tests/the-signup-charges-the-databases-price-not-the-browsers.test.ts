@@ -92,6 +92,11 @@ const hostileBody = {
   name: "Marguerite Okonkwo-Castellanos",
   email: "marguerite@example.test",
   street: "1 Proof Lane",
+  // What the form sends for the spam filters (public-form-guard.ts): an empty
+  // honeypot and the time the visitor spent on it. Without them the handler
+  // refuses before it prices anything, which is a-lead-is-noticed's test.
+  website_url: "",
+  elapsed_ms: 45_000,
   initial_cleanup_cents: 1,
   first_cleanup_cents: 1,
   recurring_price_cents: 1,

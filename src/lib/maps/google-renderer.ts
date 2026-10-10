@@ -121,6 +121,12 @@ export function mapOptions(o: MapSurfaceOptions): Record<string, unknown> {
  *  is a number a test can read rather than a sentence in a comment. */
 export class GoogleMapPool {
   private free: GMap[] = [];
+  /** Each map's own div, remembered rather than asked for: once Google
+   *  refuses the key it tears the map down, and `getDiv()` on it returns
+   *  undefined (seen 2026-10-09 against a refused key). Asking then threw
+   *  inside Google's own gm_authFailure call, so the Leaflet fallback never
+   *  ran and the surface kept Google's broken map. */
+  private divs = new WeakMap<GMap, HTMLElement>();
   /** How many `new google.maps.Map` calls this pool has made. Each one is a
    *  billed map load. */
   constructions = 0;
@@ -133,7 +139,8 @@ export class GoogleMapPool {
   acquire(container: HTMLElement, opts: Record<string, unknown>): GMap {
     const reused = this.free.pop();
     if (reused) {
-      container.appendChild(reused.getDiv());
+      const reusedDiv = this.divOf(reused);
+      if (reusedDiv) container.appendChild(reusedDiv);
       reused.setOptions(opts);
       return reused;
     }
@@ -142,12 +149,25 @@ export class GoogleMapPool {
     div.style.height = "100%";
     container.appendChild(div);
     this.constructions++;
-    return this.construct(div, opts);
+    const m = this.construct(div, opts);
+    this.divs.set(m, div);
+    return m;
+  }
+
+  private divOf(m: GMap): HTMLElement | undefined {
+    return this.divs.get(m) ?? m.getDiv?.() ?? undefined;
   }
 
   release(m: GMap): void {
-    m.getDiv().remove();
+    this.divOf(m)?.remove();
     this.free.push(m);
+  }
+
+  /** Take a map off the page for good: one Google has refused the key for
+   *  only ever shows Google's error, so it is never handed out again. */
+  discard(m: GMap): void {
+    this.divOf(m)?.remove();
+    this.free = this.free.filter((f) => f !== m);
   }
 
   /** After Google refuses the key, a pooled map is a map that will only ever
@@ -268,15 +288,48 @@ export class GoogleRenderer implements MapRenderer {
   private tooltip: GInfoWindow | null = null;
   private z = 10;
   private destroyed = false;
+  /** Has Google measured the container this map is in now? See below. */
+  private measured = false;
+  /** The last fit asked for before it had. */
+  private pendingFit: { points: LatLng[]; opts: FitOptions } | null = null;
+  private sizeWatch: ResizeObserver | null = null;
 
   constructor(
     private readonly g: GoogleMapsApi,
     readonly map: GMap,
     private readonly opts: MapSurfaceOptions,
     private readonly release: (m: GMap) => void,
-  ) {}
+  ) {
+    // A map adopted from the pool still believes it is the size of the
+    // surface that released it until Google re-measures, which happens on a
+    // ResizeObserver tick after layout. A fit computed before then is framed
+    // for the OLD box: the dashboard card after /routes' tall panel was fitted
+    // for 700px and showed half its stops off the edge (reproduced
+    // 2026-10-09). Google's own observer was registered when the map was
+    // built, so it is delivered before this one; by the time this fires,
+    // Google knows the size, and a fit asked for in the meantime is applied
+    // again.
+    const div = map.getDiv?.();
+    if (typeof ResizeObserver === "undefined" || !div) {
+      this.measured = true;
+      return;
+    }
+    this.sizeWatch = new ResizeObserver((entries) => {
+      const box = entries[entries.length - 1]?.contentRect;
+      if (!box || box.width === 0 || box.height === 0) return;
+      this.measured = true;
+      this.sizeWatch?.disconnect();
+      this.sizeWatch = null;
+      const again = this.pendingFit;
+      this.pendingFit = null;
+      if (again && !this.destroyed) this.fitBounds(again.points, again.opts);
+    });
+    this.sizeWatch.observe(div);
+  }
 
   setView(center: LatLng, zoom: number): void {
+    // A deliberate jump (the location button) outranks an earlier fit.
+    this.pendingFit = null;
     this.map.setCenter(center);
     this.map.setZoom(zoom);
   }
@@ -301,6 +354,7 @@ export class GoogleRenderer implements MapRenderer {
     });
     this.listeners.add(once);
     this.map.fitBounds(b, opts.padding);
+    if (!this.measured) this.pendingFit = { points, opts };
   }
 
   isInView(p: LatLng): boolean {
@@ -542,12 +596,25 @@ export class GoogleRenderer implements MapRenderer {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    for (const o of this.overlays) o.setMap(null);
+    this.sizeWatch?.disconnect();
+    this.sizeWatch = null;
+    this.pendingFit = null;
+    // Each step on its own: this also runs on a map Google has just refused
+    // the key for and torn down, where any of these calls can throw, and the
+    // map has to come off the page regardless or the fallback cannot draw.
+    const attempt = (f: () => void) => {
+      try {
+        f();
+      } catch {
+        /* a torn-down map */
+      }
+    };
+    for (const o of this.overlays) attempt(() => o.setMap(null));
     this.overlays.clear();
-    for (const l of this.listeners) l.remove();
+    for (const l of this.listeners) attempt(() => l.remove());
     this.listeners.clear();
-    this.popup?.close();
-    this.tooltip?.close();
+    attempt(() => this.popup?.close());
+    attempt(() => this.tooltip?.close());
     this.release(this.map);
   }
 }
@@ -562,6 +629,6 @@ export function createGoogleRenderer(
   const map = p.acquire(container, mapOptions(opts));
   // A map Google has refused the key for only ever shows Google's error, so
   // after a refusal it is dropped instead of pooled.
-  const back = (m: GMap) => (googleRefused() ? m.getDiv().remove() : p.release(m));
+  const back = (m: GMap) => (googleRefused() ? p.discard(m) : p.release(m));
   return new GoogleRenderer(g, map, opts, release ?? back);
 }

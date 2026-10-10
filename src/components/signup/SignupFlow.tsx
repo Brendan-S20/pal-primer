@@ -30,7 +30,7 @@
 // fallback (mark the door, the office finishes it).
 import { appUrl } from "@/lib/app-origin";
 import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -63,6 +63,7 @@ import {
   leadBodyFromForm,
   type FormFields,
 } from "@/lib/new-customer-form";
+import { ELAPSED_FIELD, HONEYPOT_FIELD } from "@/lib/public-form-guard";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
 // (Connect direct charges must be scoped to the tenant's account).
@@ -162,6 +163,21 @@ export function SignupFlow({
     message: "",
   });
 
+  // The spam filters' two fields (lib/public-form-guard.ts), sent with both
+  // buttons. The honeypot is an input nobody can see or reach, so a person
+  // leaves it empty and a form-filling script does not. The clock starts
+  // when the form is on screen, not when the page began loading, so a slow
+  // lookup is not counted as typing time.
+  const [honeypot, setHoneypot] = useState("");
+  const shownAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (formQ.data && shownAt.current == null) shownAt.current = Date.now();
+  }, [formQ.data]);
+  const guardFields = () => ({
+    [HONEYPOT_FIELD]: honeypot,
+    [ELAPSED_FIELD]: shownAt.current == null ? 0 : Date.now() - shownAt.current,
+  });
+
   const quoteMut = useMutation({
     mutationFn: () =>
       getQuote({
@@ -204,6 +220,7 @@ export function SignupFlow({
           region: form.region,
           message: form.message,
           channel,
+          ...guardFields(),
         },
       }),
     onSuccess: (r) => setIntent(r),
@@ -218,7 +235,7 @@ export function SignupFlow({
       const res = await fetch("/api/public/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(leadBodyFromForm(slug, form)),
+        body: JSON.stringify({ ...leadBodyFromForm(slug, form), ...guardFields() }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -382,8 +399,25 @@ export function SignupFlow({
   );
 
   const detailsCard = (
-    <div className="rounded-2xl border bg-card p-(--card-pad)">
+    <div className="relative rounded-2xl border bg-card p-(--card-pad)">
       <h2 className="text-base font-semibold">2. Your details</h2>
+      {/* The honeypot. `invisible` (visibility: hidden) takes it out of the
+          tab order and the accessibility tree as well as out of sight, and
+          aria-hidden says so twice; absolute and zero-sized inside this
+          `relative` card so it cannot widen the page at any width. A script
+          that fills every input fills this one, and the server refuses it. */}
+      <div aria-hidden="true" className="invisible absolute h-0 w-0 overflow-hidden">
+        <label htmlFor={HONEYPOT_FIELD}>Leave this empty</label>
+        <input
+          id={HONEYPOT_FIELD}
+          name={HONEYPOT_FIELD}
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+        />
+      </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="name">Full name *</Label>
