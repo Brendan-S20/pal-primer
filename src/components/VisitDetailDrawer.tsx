@@ -249,6 +249,10 @@ export function VisitDetailDrawer({
                 {v.status.replace("_", " ")}
               </Badge>
             )}
+            {/* Booked by text, through the AI receptionist (subscriptions.booked_via). */}
+            {(v as any)?.subscriptions?.booked_via === "ai_receptionist" && (
+              <Badge variant="outline">Booked by AI receptionist</Badge>
+            )}
           </SheetTitle>
           <SheetDescription>
             {formatDay(v?.scheduled_on)} {v?.zones?.name ? `· ${v.zones.name}` : ""}

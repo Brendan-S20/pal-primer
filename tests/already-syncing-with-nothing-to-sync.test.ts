@@ -115,9 +115,13 @@ describe("one replay per real mount", () => {
 
 describe("My Day says 'Already syncing…' only to the person who pressed Sync", () => {
   const page = code(read("src/routes/_authenticated/my-day.tsx"));
+  // The replay and its toasts moved out of My Day into the signed-in layout's
+  // provider on 2026-10-09, so the queue replays from every page. The Sync
+  // button stayed on My Day.
+  const host = code(read("src/components/QueueSync.tsx"));
 
   it("gates the toast on a tap", () => {
-    const branch = /if \(res\.alreadyRunning\) \{[\s\S]*?return;\s*\}/.exec(page)?.[0] ?? "";
+    const branch = /if \(res\.alreadyRunning\) \{[\s\S]*?return;\s*\}/.exec(host)?.[0] ?? "";
     expect(branch, "alreadyRunning branch not found").not.toBe("");
     // The words are lib/i18n's (sync.alreadySyncing); the gate is the point.
     expect(branch).toMatch(
@@ -133,11 +137,12 @@ describe("My Day says 'Already syncing…' only to the person who pressed Sync",
   });
 
   it("replays on mount through startAutoSync, whose cleanup cancels it", () => {
-    expect(page).toMatch(
+    expect(host).toMatch(
       /useEffect\(\(\) => startAutoSync\(runSync, window, isDefinitelyOffline\), \[runSync\]\)/,
     );
     // The old shape — replay straight from the effect body — is what the
     // rehearsal mount could not take back.
+    expect(host).not.toMatch(/isDefinitelyOffline\(\)\) runSync\(/);
     expect(page).not.toMatch(/isDefinitelyOffline\(\)\) runSync\(/);
   });
 });
@@ -157,7 +162,11 @@ describe("the app replays when native signal comes back", () => {
     const win = fakeWindow();
     const calls: SyncTrigger[] = [];
     let offline = true;
-    const cleanup = startAutoSync((t) => void calls.push(t), win, () => offline);
+    const cleanup = startAutoSync(
+      (t) => void calls.push(t),
+      win,
+      () => offline,
+    );
     vi.runAllTimers();
     expect(calls).toEqual([]);
 
@@ -170,7 +179,11 @@ describe("the app replays when native signal comes back", () => {
   it("a launch or resume that reports online again does not replay a second time", () => {
     const win = fakeWindow();
     const calls: SyncTrigger[] = [];
-    const cleanup = startAutoSync((t) => void calls.push(t), win, () => false);
+    const cleanup = startAutoSync(
+      (t) => void calls.push(t),
+      win,
+      () => false,
+    );
     vi.runAllTimers();
     win.nativeChanged();
     win.nativeChanged();
@@ -182,7 +195,11 @@ describe("the app replays when native signal comes back", () => {
     const win = fakeWindow();
     const calls: SyncTrigger[] = [];
     let offline = false;
-    const cleanup = startAutoSync((t) => void calls.push(t), win, () => offline);
+    const cleanup = startAutoSync(
+      (t) => void calls.push(t),
+      win,
+      () => offline,
+    );
     vi.runAllTimers();
     calls.length = 0;
     offline = true;
