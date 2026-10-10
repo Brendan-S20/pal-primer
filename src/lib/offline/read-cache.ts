@@ -16,7 +16,9 @@ import {
   isRestorableEnvelope,
   LAST_LANDING_KEY,
   LAST_USER_KEY,
+  PERSISTABLE_QUERY_ROOTS,
   READ_CACHE_KEY_PREFIX,
+  READ_CACHE_MAX_AGE_MS,
   READ_CACHE_MAX_BYTES,
   READ_CACHE_VERSION,
   readCacheStorageKey,
@@ -24,6 +26,7 @@ import {
   shouldPersistReads,
   type ReadCacheEnvelope,
 } from "./read-cache-policy";
+import { asLastGoodCopy, hasLastGoodCopy, savedCopiesToKeep } from "./last-good-copy";
 
 /** Coalesces the burst of cache events a single page load produces into one
  * write. localStorage writes are synchronous and block the UI thread, which on
@@ -132,6 +135,50 @@ function stopPersistence(): void {
   activeUserId = null;
 }
 
+/**
+ * Keep every allowlisted read in MEMORY for as long as the device may keep it
+ * on DISK.
+ *
+ * ── THE DAY LEFT THE PHONE FIVE MINUTES AFTER THE TECH LEFT MY DAY ─────────
+ *
+ * React Query removes a query from the cache `gcTime` after its last observer
+ * goes away, and the default is five minutes. The writer below dehydrates
+ * what is in the cache, so the sequence
+ *
+ *   1. My Day loads the day (persisted);
+ *   2. the tech opens Waste log, Alerts or Preferences: no observer left;
+ *   3. five minutes later the day is garbage-collected, and the cache's
+ *      "removed" event schedules a write;
+ *   4. that write finds no day and removes it from the device
+ *
+ * took the day off the phone in a dead zone without anything failing. A
+ * restored copy on a cold offline launch went the same way if the tech
+ * opened any other page first.
+ *
+ * Two fixes were possible: hold these queries in memory for the max age, or
+ * teach the writer to carry an allowlisted key that has left memory over from
+ * the old store. This is the first, because it is one rule in one place and
+ * adds no new path: the writer still writes exactly what is in the cache, so
+ * the per-user store, the impersonation switch and the sign-out clear cannot
+ * be routed around by a carried-over copy. The second would need the old
+ * store read on every write and a second carry-over rule beside
+ * savedCopiesToKeep (last-good-copy.ts), each of which the writer has to get
+ * right. Holding the query also leaves the day on screen when the tech comes
+ * back to My Day, rather than on disk only.
+ *
+ * `setQueryDefaults` matches by key prefix, so ["my-day", day, staff] and
+ * ["visit-stations", id] are covered, and it applies to queries `hydrate`
+ * builds from the store too. The cost is memory for a few days' responses at
+ * most, inside the same 512 KB budget the store is held to. Age is still
+ * enforced where it always was: the writer drops a copy past the max age
+ * (hasLastGoodCopy) and restore refuses an old store.
+ */
+export function holdPersistedReadsInMemory(queryClient: QueryClient): void {
+  for (const root of PERSISTABLE_QUERY_ROOTS) {
+    queryClient.setQueryDefaults([root], { gcTime: READ_CACHE_MAX_AGE_MS });
+  }
+}
+
 function restore(queryClient: QueryClient, userId: string): void {
   const store = storage();
   if (!store) return;
@@ -188,19 +235,49 @@ function writeNow(queryClient: QueryClient, userId: string): void {
   if (!store) return;
   const key = readCacheStorageKey(userId);
 
+  const now = Date.now();
   const dehydrated = dehydrate(queryClient, {
-    // status === 'success' keeps errored and pending queries out; an error
-    // response persisted to disk would resurrect itself on the next launch and
-    // look like a fresh failure.
+    // Pending queries stay out, and so does an error with nothing behind it.
+    // An error WITH data — a refresh that failed on top of a good copy — is
+    // kept, written back as the success it last was (see last-good-copy.ts:
+    // writing only "success" here is what deleted the day from the phone the
+    // first time a refetch failed offline).
     shouldDehydrateQuery: (query) =>
-      query.state.status === "success" && isPersistableQueryKey(query.queryKey),
+      isPersistableQueryKey(query.queryKey) && hasLastGoodCopy(query.state, { now }),
   });
+  const candidates: unknown[] = dehydrated.queries.map(asLastGoodCopy);
+
+  // A persistable query that failed with NO data in memory must not overwrite
+  // the copy already on disk with nothing. Only read the old store when there
+  // is such a query: on the ordinary path this costs nothing.
+  const failedHashes = new Set(
+    queryClient
+      .getQueryCache()
+      .getAll()
+      .filter(
+        (q) =>
+          isPersistableQueryKey(q.queryKey) &&
+          q.state.status === "error" &&
+          q.state.data === undefined,
+      )
+      .map((q) => q.queryHash),
+  );
+  if (failedHashes.size > 0) {
+    try {
+      const raw = store.getItem(key);
+      if (raw && raw.length <= READ_CACHE_MAX_BYTES * 2) {
+        candidates.push(...savedCopiesToKeep(JSON.parse(raw), { userId, now, failedHashes }));
+      }
+    } catch {
+      /* unreadable old store — nothing in it to keep */
+    }
+  }
 
   // Reserve room for the envelope around the queries: budgeting the queries at
   // the full ceiling could push the serialized whole just over it, and the
   // guard below would then refuse every write from then on — a cache that
   // silently stops updating while still looking populated.
-  const queries = selectPersistableQueries(dehydrated.queries, {
+  const queries = selectPersistableQueries(candidates as { queryKey: unknown }[], {
     maxBytes: READ_CACHE_MAX_BYTES - 2_048,
   });
   if (queries.length === 0) {
@@ -302,6 +379,8 @@ export function ensureReadCachePersistence(
 
   activeUserId = uid;
   rememberLastUser(uid);
+  // Before restore, so the queries hydrate() builds get the long gcTime too.
+  holdPersistedReadsInMemory(queryClient);
   restore(queryClient, uid);
   writeNow(queryClient, uid);
 

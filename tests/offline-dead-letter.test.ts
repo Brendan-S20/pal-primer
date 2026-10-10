@@ -137,7 +137,9 @@ describe("the sync loop gives up only on a reachable server", () => {
 });
 
 describe("the tech is told", () => {
-  const src = read("src/routes/_authenticated/my-day.tsx");
+  // The replay's toasts live in the signed-in layout's provider since
+  // 2026-10-09, so the tech is told from whatever page is open.
+  const src = read("src/components/QueueSync.tsx");
 
   it("surfaces discarded work as an error, separately from a sync", () => {
     // A dead-letter nothing surfaces is the same bug wearing a different hat:

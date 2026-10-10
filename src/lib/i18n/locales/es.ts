@@ -612,6 +612,7 @@ const es: Translations = {
     lead: "Nuevos prospectos del sitio web",
     quote_response: "Cotizaciones aceptadas o rechazadas",
     receptionist_escalation: "Casos que la recepcionista IA pasó al equipo",
+    receptionist_booking: "Visitas que la recepcionista IA reservó o pidió",
     inbound_sms: "Mensajes que esperan respuesta",
     teammate_joined: "Se unió un compañero",
     field_collection: "Efectivo o cheques cobrados en campo",
