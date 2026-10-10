@@ -4,6 +4,8 @@
 // values, a silent data-loss risk on save). Kept pure so it can be unit-tested
 // without a browser.
 
+import { formatWeekdaySet } from "@/lib/weekday-set";
+
 export type SubscriptionRecord = {
   id: string;
   frequency: string;
@@ -14,6 +16,8 @@ export type SubscriptionRecord = {
   property_id: string | null;
   billing_cadence: string | null;
   preferred_weekdays: number[] | null;
+  /** The days a set-days plan runs on (0 = Sunday); null for every other. */
+  weekdays?: number[] | null;
   started_on?: string | null;
   ends_on?: string | null;
   interval_weeks?: number | null;
@@ -31,6 +35,8 @@ export type SubscriptionFormValues = {
   zoneId: string;
   billingCadence: "postpaid" | "prepaid";
   preferredWeekdays: number[];
+  /** The days a "Set days each week" plan runs on (0 = Sunday). */
+  weekdays: number[];
   /** ISO date (YYYY-MM-DD). For one_time this is the visit date. */
   startedOn: string;
   /** ISO date or "" for no end date. Visits stop generating after it. */
@@ -45,12 +51,15 @@ export type SubscriptionFormValues = {
   latestTime: string;
 };
 
-// The five scheduling choices the UI offers (spec): calendar-monthly and
+// The scheduling choices the UI offers (spec): calendar-monthly and
 // every-4-weeks are different things, so both exist side by side.
+// "set_days" is a weekday set (subscriptions.weekdays, migration
+// 20261010010000): stored as frequency weekly with the days beside it.
 export type ScheduleChoice =
   | "weekly"
   | "every_n_weeks"
   | "twice_weekly"
+  | "set_days"
   | "monthly"
   | "every_x_days"
   | "one_time";
@@ -59,7 +68,9 @@ export type ScheduleChoice =
 export function scheduleChoiceFromRecord(s: {
   frequency: string;
   interval_weeks?: number | null;
+  weekdays?: number[] | null;
 }): ScheduleChoice {
+  if (s.weekdays?.length) return "set_days";
   if (s.frequency === "biweekly") return "every_n_weeks";
   if (s.frequency === "weekly" && (s.interval_weeks ?? 1) > 1) return "every_n_weeks";
   if (s.frequency === "every_n_days") return "every_x_days";
@@ -84,6 +95,9 @@ export function scheduleChoiceToFields(
     }
     case "twice_weekly":
       return { frequency: "twice_weekly" };
+    case "set_days":
+      // The days ride beside it, in subscriptions.weekdays.
+      return { frequency: "weekly" };
     case "monthly":
       return { frequency: "monthly" };
     case "every_x_days":
@@ -93,12 +107,19 @@ export function scheduleChoiceToFields(
   }
 }
 
-/** Human label for a stored subscription's cadence. */
-export function formatFrequency(s: {
-  frequency: string;
-  interval_weeks?: number | null;
-  interval_days?: number | null;
-}): string {
+/** Human label for a stored subscription's cadence. A set-days plan reads as
+ *  its days ("Mon–Fri", "Mon, Wed, Fri") in `locale`, the formatters' locale
+ *  (lib/i18n `intlLocaleFor`). */
+export function formatFrequency(
+  s: {
+    frequency: string;
+    interval_weeks?: number | null;
+    interval_days?: number | null;
+    weekdays?: number[] | null;
+  },
+  locale?: string,
+): string {
+  if (s.weekdays?.length) return formatWeekdaySet(s.weekdays, locale);
   switch (s.frequency) {
     case "weekly":
       return (s.interval_weeks ?? 1) > 1 ? `Every ${s.interval_weeks} weeks` : "Weekly";
@@ -148,6 +169,7 @@ export function subscriptionToFormValues(s: SubscriptionRecord, today: string): 
     zoneId: s.zone_id ?? "",
     billingCadence: s.billing_cadence === "prepaid" ? "prepaid" : "postpaid",
     preferredWeekdays: s.preferred_weekdays ?? [],
+    weekdays: s.weekdays ?? [],
     startedOn: s.started_on ?? today,
     endsOn: s.ends_on ?? "",
     intervalWeeks: s.interval_weeks && s.interval_weeks > 1 ? String(s.interval_weeks) : "",
@@ -178,6 +200,7 @@ export function blankSubscriptionFormValues(opts: {
     zoneId: onlyProperty?.zone_id ?? "",
     billingCadence: "postpaid",
     preferredWeekdays: [],
+    weekdays: [],
     startedOn: opts.today,
     endsOn: "",
     intervalWeeks: "",

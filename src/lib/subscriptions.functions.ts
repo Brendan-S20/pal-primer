@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
 
 // Scheduling model (client detail refactor): the five UI choices map to
 //   Weekly            -> weekly (interval_weeks null/1)
@@ -26,6 +27,43 @@ const windowTimeSchema = z
   .nullable()
   .optional();
 
+// A weekday set (subscriptions.weekdays, migration 20261010010000): the days a
+// plan runs on, 0 = Sunday. Rides on frequency weekly with no "every N
+// weeks", which the database also requires (subscriptions_weekdays_are_weekly).
+// null clears it; omitted on update leaves it alone.
+const weekdaysSchema = z
+  .array(z.number().int().min(0).max(6))
+  .min(1)
+  .max(7)
+  .refine((d) => new Set(d).size === d.length, { message: "Each day once" })
+  .nullable()
+  .optional();
+
+const weekdaysFitFrequency = (v: {
+  weekdays?: number[] | null;
+  frequency: string;
+  intervalWeeks?: number;
+}) => !v.weekdays?.length || (v.frequency === "weekly" && (v.intervalWeeks ?? 1) === 1);
+const WEEKDAYS_NEED_WEEKLY = "Set days run every week; choose them without an interval";
+
+/** The weekdays column for a write: the normalized set on a weekly plan,
+ *  else null. Omitted (undefined) on an update that leaves a plain weekly
+ *  plan's set alone. */
+function weekdaysFor(v: {
+  weekdays?: number[] | null;
+  frequency: string;
+  intervalWeeks?: number;
+}): { weekdays: number[] | null } | Record<string, never> {
+  const plainWeekly = v.frequency === "weekly" && (v.intervalWeeks ?? 1) === 1;
+  if (v.weekdays === undefined && plainWeekly) return {};
+  return { weekdays: plainWeekly && v.weekdays?.length ? normalizeWeekdays(v.weekdays) : null };
+}
+
+/** "weekly" or "Mon–Fri", for the activity log. */
+function cadenceWords(frequency: string, weekdays?: number[] | null): string {
+  return weekdays?.length ? formatWeekdaySet(weekdays, "en-US") : frequency.replace(/_/g, " ");
+}
+
 const createSubSchema = z
   .object({
     clientId: z.string().uuid(),
@@ -49,6 +87,7 @@ const createSubSchema = z
       .nullable()
       .optional(),
     preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    weekdays: weekdaysSchema,
     earliestTime: windowTimeSchema,
     latestTime: windowTimeSchema,
     // What the plan sells (public.services). Omitted on create, the database
@@ -65,6 +104,7 @@ const createSubSchema = z
   .refine((v) => v.frequency !== "every_n_days" || !!v.intervalDays, {
     message: "Every X days needs the number of days",
   })
+  .refine(weekdaysFitFrequency, { message: WEEKDAYS_NEED_WEEKLY })
   .refine(
     (v) =>
       (v.accountType === "residential" && v.dogCount && !v.unitCount) ||
@@ -138,8 +178,13 @@ export const createSubscription = createServerFn({ method: "POST" })
         interval_days: data.frequency === "every_n_days" ? (data.intervalDays ?? null) : null,
         started_on: data.startedOn ?? undefined,
         ends_on: data.endsOn ?? null,
+        // A set-days plan has its days; a preferred day beside them would be
+        // a second answer to "which day" that the generator does not read.
         preferred_weekdays:
-          data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
+          !data.weekdays?.length && data.preferredWeekdays && data.preferredWeekdays.length
+            ? data.preferredWeekdays
+            : null,
+        ...weekdaysFor(data),
         earliest_time: data.earliestTime ?? null,
         latest_time: data.latestTime ?? null,
         ...(data.serviceId ? { service_id: data.serviceId } : {}),
@@ -165,8 +210,12 @@ export const createSubscription = createServerFn({ method: "POST" })
       subscriptionId: row.id as string,
       actorUserId: userId,
       kind: "service.created",
-      summary: `Created a ${data.frequency.replace(/_/g, " ")} service at $${(data.priceCents / 100).toFixed(2)} per visit`,
-      meta: { frequency: data.frequency, price_cents: data.priceCents },
+      summary: `Created a ${cadenceWords(data.frequency, data.weekdays)} service at $${(data.priceCents / 100).toFixed(2)} per visit`,
+      meta: {
+        frequency: data.frequency,
+        weekdays: data.weekdays?.length ? normalizeWeekdays(data.weekdays) : null,
+        price_cents: data.priceCents,
+      },
     });
     return { id: row.id as string };
   });
@@ -193,6 +242,7 @@ const updateSubSchema = z
       .nullable()
       .optional(),
     preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    weekdays: weekdaysSchema,
     earliestTime: windowTimeSchema,
     latestTime: windowTimeSchema,
     // What the plan sells (public.services). Omitted on create, the database
@@ -206,6 +256,7 @@ const updateSubSchema = z
   .refine((v) => v.frequency !== "every_n_days" || !!v.intervalDays, {
     message: "Every X days needs the number of days",
   })
+  .refine(weekdaysFitFrequency, { message: WEEKDAYS_NEED_WEEKLY })
   .refine((v) => !v.earliestTime || !v.latestTime || v.earliestTime < v.latestTime, {
     message: "The window's earliest time must be before its latest time",
   });
@@ -221,7 +272,9 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // before -> after).
     const { data: before } = await supabase
       .from("subscriptions")
-      .select("organization_id, client_id, price_cents, frequency, started_on, ends_on, status, service_id")
+      .select(
+        "organization_id, client_id, price_cents, frequency, weekdays, started_on, ends_on, status, service_id",
+      )
       .eq("id", data.subscriptionId)
       .single();
     if (data.serviceId) await assertServiceBookable(supabase, data.serviceId, before?.service_id ?? null);
@@ -233,6 +286,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // before-image. The activity log recomputes the same thing further down
     // for its summary; this one has to reach the patch.
     const priceWasTypedOver = !!before && before.price_cents !== data.priceCents;
+    const weekdaysPatch = weekdaysFor(data);
 
     const today = new Date().toISOString().slice(0, 10);
     const endsInPast = !!data.endsOn && data.endsOn <= today;
@@ -264,7 +318,12 @@ export const updateSubscription = createServerFn({ method: "POST" })
         // null clears the end date; the DB trigger trims trailing visits.
         ends_on: data.endsOn ?? null,
         preferred_weekdays:
-          data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
+          !data.weekdays?.length && data.preferredWeekdays && data.preferredWeekdays.length
+            ? data.preferredWeekdays
+            : null,
+        // Changing the days takes upcoming visits off the days that went
+        // (subscriptions_weekdays_reshape); the horizon run below adds the new.
+        ...weekdaysPatch,
         // undefined = leave the window alone; null = clear it.
         ...(data.earliestTime !== undefined ? { earliest_time: data.earliestTime } : {}),
         ...(data.latestTime !== undefined ? { latest_time: data.latestTime } : {}),
@@ -300,6 +359,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
           before: {
             price_cents: before.price_cents,
             frequency: before.frequency,
+            weekdays: before.weekdays ?? null,
             ends_on: before.ends_on,
             status: before.status,
             service_id: before.service_id ?? null,
@@ -307,6 +367,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
           after: {
             price_cents: data.priceCents,
             frequency: data.frequency,
+            weekdays: "weekdays" in weekdaysPatch ? weekdaysPatch.weekdays : (before.weekdays ?? null),
             service_id: data.serviceId ?? before.service_id ?? null,
             ends_on: data.endsOn ?? null,
             status: (statusPatch as any).status ?? before.status,
@@ -390,6 +451,9 @@ export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
           // apply to their own frequency modes.
           interval_weeks: null,
           interval_days: null,
+          // A set-days plan moved to another cadence stops being one
+          // (subscriptions_weekdays_are_weekly would refuse it otherwise).
+          weekdays: null,
         })
         .eq("id", data.subscriptionId);
       if (error) throw new Error(error.message);
@@ -460,7 +524,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line)",
+        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line)",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

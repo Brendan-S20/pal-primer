@@ -271,7 +271,10 @@ describe("what kind of work the chip says it is", () => {
 
   it("builds the cadence label from every frequency the database has", () => {
     const src = calendar();
-    expect(src).toMatch(/const cadenceLabel = \(v: CalendarVisit\) =>/);
+    expect(src).toMatch(/const cadenceLabel = \(v: CalendarVisit, locale\?: string\) =>/);
+    // A set-days plan is stored as weekly; its days are its cadence
+    // (migration 20261010010000), so the label reads them first.
+    expect(src).toMatch(/days\?\.length \? formatWeekdaySet\(days, locale\)/);
     for (const f of ["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]) {
       expect(src, `${f} is missing from FREQUENCY_LABEL`).toMatch(
         new RegExp(`\\b${f}: "`),

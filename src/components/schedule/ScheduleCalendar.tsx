@@ -58,6 +58,8 @@ import { TechAvatar } from "@/components/schedule/TechAvatar";
 import { orgLocalMinutes } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { servicesVary, type VisitServiceRef } from "@/lib/visit-service";
+import { formatWeekdaySet } from "@/lib/weekday-set";
+import { useIntlLocale } from "@/lib/i18n";
 
 export type CalendarVisit = {
   id: string;
@@ -80,6 +82,8 @@ export type CalendarVisit = {
     /** The cadence, which the hover card shows beside the service name. */
     account_type?: string | null;
     frequency?: string | null;
+    /** A set-days plan's days (0 = Sunday), migration 20261010010000. */
+    weekdays?: number[] | null;
   } | null;
   /** What the visit is (services, phase 2). */
   service_id?: string | null;
@@ -109,10 +113,12 @@ const FREQUENCY_LABEL: Record<string, string> = {
   one_time: "One-time",
 };
 
-const cadenceLabel = (v: CalendarVisit) => {
+const cadenceLabel = (v: CalendarVisit, locale?: string) => {
   const freq = v.subscriptions?.frequency;
   if (!freq) return null;
-  const cadence = FREQUENCY_LABEL[freq] ?? freq;
+  // A set-days plan is stored as weekly; its days are the cadence.
+  const days = v.subscriptions?.weekdays;
+  const cadence = days?.length ? formatWeekdaySet(days, locale) : (FREQUENCY_LABEL[freq] ?? freq);
   const kind = v.subscriptions?.account_type;
   return kind ? `${cadence} ${kind}` : cadence;
 };
@@ -240,6 +246,7 @@ function VisitChip({
   showService?: boolean;
 }) {
   const tz = useOrgTimezone();
+  const locale = useIntlLocale();
   const name = visit.clients?.display_name ?? "Unnamed client";
   const who = visit.staff?.display_name ?? null;
   const street = visit.properties?.street ?? null;
@@ -250,7 +257,7 @@ function VisitChip({
   // the chip a single line tall, which is what a day with no routing looks
   // like before it is optimized.
   const serviceName = visit.services?.name ?? null;
-  const cadence = cadenceLabel(visit);
+  const cadence = cadenceLabel(visit, locale);
   // "One-time" only. See cadenceLabel(): the cadence is constant per customer,
   // so putting it on every chip would cost a 96px column its street name to
   // repeat what the client list already says. The service name likewise, only

@@ -84,6 +84,10 @@ import {
   effectiveServiceId,
   useOrgServices,
 } from "@/components/client-detail/ServicePicker";
+import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
+import { WORK_WEEK, normalizeWeekdays, offersSetDays } from "@/lib/weekday-set";
+import { servicePriceCents } from "@/lib/services";
+import { useIntlLocale } from "@/lib/i18n";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -123,6 +127,9 @@ export function ServicesTab({
 }) {
   const qc = useQueryClient();
   const today = useOrgToday();
+  // The formatters' locale, so a set-days plan reads "Mon–Fri" in the
+  // interface language.
+  const locale = useIntlLocale();
   const navigate = useNavigate();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
@@ -429,7 +436,7 @@ export function ServicesTab({
                       </div>
                     </div>
                     <div className="mt-1 text-muted-foreground">
-                      {formatFrequency(s)}
+                      {formatFrequency(s, locale)}
                       {streetById.get(s.property_id) ? ` · ${streetById.get(s.property_id)}` : ""}
                       {" · "}
                       {s.account_type === "residential"
@@ -944,6 +951,7 @@ function ServiceDetailDrawer({
   canManagePricing: boolean;
   onEdit: (s: any) => void;
 }) {
+  const locale = useIntlLocale();
   if (!s) return null;
   const street = properties.find((p: any) => p.id === s.property_id)?.street;
   const zoneName = zones.find((z: any) => z.id === s.zone_id)?.name;
@@ -958,7 +966,7 @@ function ServiceDetailDrawer({
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
           <div>
             <dt className="text-xs text-muted-foreground">Schedule</dt>
-            <dd className="font-medium">{formatFrequency(s)}</dd>
+            <dd className="font-medium">{formatFrequency(s, locale)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Price</dt>
@@ -1063,6 +1071,7 @@ const SCHEDULE_CHOICES: Array<{ value: ScheduleChoice; label: string; hint: stri
   { value: "weekly", label: "Weekly", hint: "Same day every week." },
   { value: "every_n_weeks", label: "Every N weeks", hint: "A fixed number of weeks between visits (every 4 weeks is not the same as monthly)." },
   { value: "twice_weekly", label: "Twice weekly", hint: "Two visits per week on chosen days." },
+  { value: "set_days", label: "Set days each week", hint: "One visit on each chosen day, every week (Mon–Fri, or Mon, Wed, Fri)." },
   { value: "monthly", label: "Monthly (calendar)", hint: "Repeats on the calendar date, e.g. the 15th of each month." },
   { value: "every_x_days", label: "Every X days", hint: "A fixed number of days between visits." },
   { value: "one_time", label: "One time", hint: "A single visit on the chosen date." },
@@ -1155,10 +1164,14 @@ function ServiceDrawer({
   // refetch changing `initial`'s identity must not wipe in-progress edits.
   const wasOpen = useRef(false);
   const [showErrors, setShowErrors] = useState(false);
+  // A scooper's plan offers "Set days each week" once the business turns it
+  // on here (offersSetDays); a walk, a sit or a groom always offers it.
+  const [setDaysOn, setSetDaysOn] = useState(false);
   useEffect(() => {
     if (open && !wasOpen.current) {
       setForm(initial);
       setShowErrors(false);
+      setSetDaysOn(false);
     }
     wasOpen.current = open;
   }, [open, initial]);
@@ -1167,6 +1180,18 @@ function ServiceDrawer({
     setForm((f) => ({ ...f, [k]: v }));
 
   const accountType = (client?.account_type ?? "residential") as "residential" | "commercial";
+
+  // The formatters' locale, for the weekday chips' names.
+  const locale = useIntlLocale();
+  // What the plan sells, as the picker shows it (its default until chosen).
+  const chosenService =
+    orgServices.find((x) => x.id === effectiveServiceId(form.serviceId, orgServices)) ?? null;
+  const setDaysOffered = offersSetDays({
+    serviceLine: chosenService?.service_line,
+    alreadySetDays: initial.choice === "set_days" || form.choice === "set_days",
+    turnedOn: setDaysOn,
+  });
+  const scheduleChoices = SCHEDULE_CHOICES.filter((c) => c.value !== "set_days" || setDaysOffered);
 
   // Inline validation (QA follow-up 1.3): a blank price must be an error the
   // user can see, never a silent no-op or a $0.00 save.
@@ -1192,6 +1217,8 @@ function ServiceDrawer({
     if (!Number.isFinite(n) || n < 1 || n > 90) errors.intervalDays = "Between 1 and 90 days";
   }
   if (!form.propertyId) errors.propertyId = "Choose a property";
+  if (form.choice === "set_days" && form.weekdays.length === 0)
+    errors.weekdays = "Choose at least one day";
   if (form.earliestTime && form.latestTime && form.earliestTime >= form.latestTime)
     errors.window = "The earliest arrival must be before the latest arrival";
   const hasErrors = Object.keys(errors).length > 0;
@@ -1208,6 +1235,36 @@ function ServiceDrawer({
   });
   const dogsForPricing =
     accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : 1;
+  // The service's own price for one visit (a walk at $25, an hourly groom at
+  // its duration), or null when it has none (pet waste priced by zone). A plan
+  // bills per visit, so this IS the plan's price: five walks a week is five
+  // of these (migration 20261010010000, "Billing").
+  const serviceCents = chosenService
+    ? servicePriceCents(chosenService, { pets: dogsForPricing })
+    : null;
+
+  /** A different service: a new walk plan starts Monday to Friday while its
+   *  schedule is still the untouched default, and a blank price takes the
+   *  service's per-visit price. Neither overwrites anything a person set. */
+  const onServiceChange = (id: string) => {
+    const next = orgServices.find((x) => x.id === id) ?? null;
+    setForm((f) => {
+      const patch: Partial<typeof f> = { serviceId: id };
+      if (
+        !subscription &&
+        next &&
+        next.service_line !== "pet_waste" &&
+        f.choice === "weekly" &&
+        f.weekdays.length === 0
+      ) {
+        patch.choice = "set_days";
+        patch.weekdays = [...WORK_WEEK];
+      }
+      const cents = next ? servicePriceCents(next, { pets: dogsForPricing }) : null;
+      if (cents != null && f.priceDollars.trim() === "") patch.priceDollars = (cents / 100).toFixed(2);
+      return { ...f, ...patch };
+    });
+  };
   const selectedProperty = properties.find((p: any) => p.id === form.propertyId);
   // The zone that actually applies, in ONE place.
   //
@@ -1380,7 +1437,12 @@ function ServiceDrawer({
         billingCadence: form.billingCadence,
         startedOn: form.startedOn || undefined,
         endsOn: form.endsOn || null,
-        preferredWeekdays: form.preferredWeekdays.length ? form.preferredWeekdays : undefined,
+        preferredWeekdays:
+          form.choice !== "set_days" && form.preferredWeekdays.length
+            ? form.preferredWeekdays
+            : undefined,
+        // null on every other schedule, which clears a set the plan had.
+        weekdays: form.choice === "set_days" ? normalizeWeekdays(form.weekdays) : null,
         earliestTime: form.earliestTime || null,
         latestTime: form.latestTime || null,
         serviceId: effectiveServiceId(form.serviceId, orgServices) ?? undefined,
@@ -1462,7 +1524,7 @@ function ServiceDrawer({
           currentId={(subscription?.service_id as string | null) ?? null}
           services={orgServices}
           isLoading={servicesLoading}
-          onChange={(v) => set("serviceId", v)}
+          onChange={onServiceChange}
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
@@ -1506,18 +1568,66 @@ function ServiceDrawer({
             <Label>Schedule</Label>
             <select
               value={form.choice}
-              onChange={(e) => set("choice", e.target.value as ScheduleChoice)}
+              onChange={(e) => {
+                const choice = e.target.value as ScheduleChoice;
+                setForm((f) => ({
+                  ...f,
+                  choice,
+                  // Set days start on Monday to Friday rather than on none.
+                  ...(choice === "set_days" && f.weekdays.length === 0
+                    ? { weekdays: [...WORK_WEEK] }
+                    : {}),
+                }));
+              }}
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             >
-              {SCHEDULE_CHOICES.map((c) => (
+              {scheduleChoices.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
                 </option>
               ))}
             </select>
             <p className="mt-1 text-xs text-muted-foreground">{choiceMeta.hint}</p>
+            {!setDaysOffered && (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="px-0"
+                onClick={() => {
+                  setSetDaysOn(true);
+                  setForm((f) => ({
+                    ...f,
+                    choice: "set_days",
+                    weekdays: f.weekdays.length ? f.weekdays : [...WORK_WEEK],
+                  }));
+                }}
+              >
+                Visit on set days each week instead
+              </Button>
+            )}
           </div>
         </div>
+
+        {form.choice === "set_days" && (
+          <div>
+            <WeekdayPicker
+              label="Days each week"
+              value={form.weekdays}
+              onChange={(days) => set("weekdays", days)}
+              locale={locale}
+              invalid={!!fieldError("weekdays")}
+            />
+            {fieldError("weekdays") ? (
+              <p className="mt-1 text-xs text-destructive">{fieldError("weekdays")}</p>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">
+                One visit on each day, every week, billed per visit. Blackout days and client
+                holds are skipped, not moved.
+              </p>
+            )}
+          </div>
+        )}
 
         {form.choice === "every_n_weeks" && (
           <div>
@@ -1571,6 +1681,17 @@ function ServiceDrawer({
             />
             {fieldError("price") && (
               <p className="mt-1 text-xs text-destructive">{fieldError("price")}</p>
+            )}
+            {serviceCents != null && serviceCents !== finalCents && (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="px-0"
+                onClick={() => set("priceDollars", (serviceCents / 100).toFixed(2))}
+              >
+                Use the service price, ${(serviceCents / 100).toFixed(2)}
+              </Button>
             )}
           </div>
           {accountType === "residential" ? (
@@ -1878,7 +1999,7 @@ function ServiceDrawer({
           </div>
         )}
 
-        {form.choice !== "one_time" && form.choice !== "monthly" && (
+        {form.choice !== "one_time" && form.choice !== "monthly" && form.choice !== "set_days" && (
           <div>
             <Label>Preferred weekdays (optional)</Label>
             <div className="mt-1 flex flex-wrap gap-2">
