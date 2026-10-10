@@ -72,6 +72,21 @@ async function measure(page: Page, width: number, where: string) {
   if (width < 768) expect(await findControlsUnder44px(page), where).toEqual([]);
 }
 
+/** On a phone the dashboard's setup checklist is folded to the NEXT step only
+ *  (OnboardingChecklist's stepVisibility); "Show all N steps" opens the rest,
+ *  as a person would. Wait for the card, then open it if it is folded. The
+ *  click is retried until "Show less" appears, because a click before React
+ *  has attached its handler does nothing. */
+async function showAllSteps(page: Page) {
+  await expect(page.getByTestId("onboarding-checklist")).toBeVisible({ timeout: 30_000 });
+  const more = page.getByRole("button", { name: /^Show all \d+ steps/ });
+  if ((await more.count()) === 0) return;
+  await expect(async () => {
+    if (await more.isVisible()) await more.click();
+    await expect(page.getByRole("button", { name: /^Show less/ })).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
 /** Text in the DOM, hidden or not: the wizard's stepper names every step but
  *  shows only some of them at a given width. */
 const allText = (page: Page) => page.evaluate(() => document.body.textContent ?? "");
@@ -82,6 +97,7 @@ for (const { w, h, label } of WIDTHS) {
       page,
     }) => {
       await open(page, "owner", DOG_WALKING, "/dashboard", w, h);
+      await showAllSteps(page);
       await expect(page.getByText("Where does your day end?").first()).toBeVisible({
         timeout: 30_000,
       });
@@ -163,6 +179,7 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
   test.describe(`control: a pet-waste business, ${label}`, () => {
     test(`asks for the dump site @${w}px`, async ({ page }) => {
       await open(page, "owner", PET_WASTE, "/dashboard", w, h);
+      await showAllSteps(page);
       await expect(page.getByText("Add dump site").first()).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText("Where does your day end?")).toHaveCount(0);
     });
