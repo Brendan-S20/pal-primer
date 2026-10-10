@@ -11,6 +11,7 @@ import {
   readCacheStorageKey,
   READ_CACHE_MAX_AGE_MS,
   READ_CACHE_TRUST_HORIZON_MS,
+  READ_REFRESH_GRACE_MS,
   READ_CACHE_VERSION,
   selectPersistableQueries,
   shouldPersistReads,
@@ -213,6 +214,36 @@ describe("telling the tech the data is old", () => {
     expect(
       describeReadFreshness({ ...base, dataUpdatedAt: NOW - 1_000, online: false }),
     ).toMatchObject({ status: "cached" });
+  });
+
+  it("holds the banner for a launch whose refresh is already on its way, and only that", () => {
+    // Every cold launch with a saved day used to flash this banner for the
+    // second the refresh took, growing and shrinking My Day's sticky bar.
+    // In the first moments, online, with the refresh in flight: nothing yet.
+    const restored = { ...base, dataUpdatedAt: NOW - 9 * HOUR, refreshInFlight: true };
+    expect(describeReadFreshness(restored)).toBeNull();
+    // But never when it matters: offline, a refresh that failed, past the
+    // trust horizon (the red warning), or a clock that went backward.
+    expect(describeReadFreshness({ ...restored, online: false })).toMatchObject({
+      status: "cached",
+    });
+    expect(describeReadFreshness({ ...restored, isError: true })).toMatchObject({
+      status: "cached",
+    });
+    expect(
+      describeReadFreshness({
+        ...restored,
+        dataUpdatedAt: NOW - READ_CACHE_TRUST_HORIZON_MS - 1,
+      }),
+    ).toMatchObject({ status: "cached", beyondTrustHorizon: true });
+    expect(describeReadFreshness({ ...restored, dataUpdatedAt: NOW + 60_000 })).toMatchObject({
+      status: "cached",
+      clockSuspect: true,
+    });
+    // And My Day only claims it inside the grace, from launch.
+    const src = readFileSync(join(process.cwd(), "src/routes/_authenticated/my-day.tsx"), "utf8");
+    expect(src).toMatch(/refreshInFlight: isFetching && inLaunchGrace/);
+    expect(READ_REFRESH_GRACE_MS).toBeLessThanOrEqual(3_000);
   });
 
   it("says nothing when there is no data — the caller owns that screen", () => {

@@ -1,5 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
+import { refetchOnReturn } from "@/lib/query-refocus";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { RouteError, RouteNotFound } from "./components/RouteError";
@@ -33,6 +34,9 @@ export const getRouter = () => {
         // the restored cache (or the "no saved copy" screen) renders instead.
         // Online this changes nothing: with a connection both modes fetch.
         networkMode: "offlineFirst",
+        // Coming back to the app refetches only what is more than 30s old,
+        // not everything on the screen at once (src/lib/query-refocus.ts).
+        refetchOnWindowFocus: (query) => refetchOnReturn(query),
         retry: (failureCount, _error) => {
           // ...but 'offlineFirst' only ungates the FIRST attempt; retries pause
           // again while offline, which puts the spinner right back. When the
@@ -103,16 +107,16 @@ export const getRouter = () => {
     defaultNotFoundComponent: RouteNotFound,
     // ── PAGE TRANSITIONS ────────────────────────────────────────────────
     //
-    // Every navigation goes through document.startViewTransition where the
-    // browser has it (Chrome; Safari and WKWebView from 18), and the
-    // direction (deeper, back, sideways between tabs, or not at all) is
-    // decided in src/lib/motion. Where it does not exist the router skips it
-    // and navigation is exactly what it was.
+    // A navigation deeper or back goes through document.startViewTransition
+    // where the browser has it (Chrome; Safari and WKWebView from 18). Tab
+    // switches, filters and anything the platform already animated start no
+    // transition at all; the decision is in src/lib/motion. Where the API
+    // does not exist the router skips it and navigation is what it was.
     defaultViewTransition: pageViewTransition,
     // ── WHAT A SLOW NAVIGATION SHOWS ────────────────────────────────────
     //
     // A route that has not finished loading (its code, its beforeLoad) after
-    // 300ms shows a skeleton of a page in its place, held for at least 400ms
+    // 300ms shows a skeleton of a page in its place, held for at least 200ms
     // so it cannot flash; RouteProgress in __root.tsx draws the bar along the
     // top on the same two numbers. Below 300ms nothing is drawn at all. The
     // router's own defaults were 1000 and 500, which left a second of a dead

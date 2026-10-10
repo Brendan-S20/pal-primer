@@ -14,6 +14,7 @@ import {
   useCallback,
   lazy,
   Suspense,
+  type CSSProperties,
 } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-vi
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import {
   describeReadFreshness,
+  READ_REFRESH_GRACE_MS,
   cacheAgeParts,
   READ_CACHE_MAX_AGE_MS,
 } from "@/lib/offline/read-cache-policy";
@@ -137,6 +139,7 @@ import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 import { MyDaySkeleton } from "@/components/PageSkeletons";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { showCompletionCheck } from "@/lib/motion/completion-check";
+import { useMotionList } from "@/lib/motion/use-motion-list";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   head: () => titleHead("My day"),
@@ -198,6 +201,7 @@ const VISIT_STATIONS_CACHE = {
 } as const;
 
 function MyDay() {
+  const motionList = useMotionList<HTMLOListElement>();
   const {
     date: dateParam,
     staff: staffParam,
@@ -350,7 +354,7 @@ function MyDay() {
   const nextUpClearOfSidebar =
     docksFrom === "lg" ? "lg:start-(--sidebar-width)" : "md:start-(--sidebar-width)";
 
-  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
+  const { data, isLoading, isError, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
     // Coming back to the app in a dead zone is not a reason to ask the server
@@ -360,6 +364,19 @@ function MyDay() {
     // refetch, are unchanged.
     refetchOnWindowFocus: () => !isDefinitelyOffline(),
   });
+  // The first moments after opening, while a saved day's refresh is still
+  // out: the banner waits for it rather than flashing (refreshInFlight).
+  const [inLaunchGrace, setInLaunchGrace] = useState(
+    () => Date.now() - SESSION_STARTED_AT < READ_REFRESH_GRACE_MS,
+  );
+  useEffect(() => {
+    if (!inLaunchGrace) return;
+    const id = window.setTimeout(
+      () => setInLaunchGrace(false),
+      Math.max(0, READ_REFRESH_GRACE_MS - (Date.now() - SESSION_STARTED_AT)),
+    );
+    return () => window.clearTimeout(id);
+  }, [inLaunchGrace]);
 
   // Mobile Phase 3 offline hardening: this response is one of the few written
   // to the device (lib/offline/read-cache-policy.ts) and restored on launch, so
@@ -376,6 +393,7 @@ function MyDay() {
     // forceAgeRepaint above, for why a stored clock reading here produced a
     // red warning against correct data.
     sessionStartedAt: SESSION_STARTED_AT,
+    refreshInFlight: isFetching && inLaunchGrace,
   });
   const previewing = !!data?.previewing;
 
@@ -785,9 +803,10 @@ function MyDay() {
                     which is the right way round: the bar restates the
                     percentage, the percentage does not restate the bar. */}
                 <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted-foreground/20">
+                  {/* hs-meter: slides on transform, not width (styles.css). */}
                   <div
-                    className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
-                    style={{ width: `${pct}%` }}
+                    className="hs-meter h-full rounded-full bg-primary"
+                    style={{ "--hs-meter": `${pct}%` } as CSSProperties}
                   />
                 </div>
                 <div className="shrink-0 text-xs font-medium text-muted-foreground">{pct}%</div>
@@ -930,7 +949,7 @@ function MyDay() {
             }}
           />
         ) : (
-          <ol className="motion-list space-y-3">
+          <ol ref={motionList} className="motion-list space-y-3">
             {visits.map((v: any, idx: number) => (
               <VisitCard
                 key={v.id}
@@ -977,7 +996,7 @@ function MyDay() {
              the bar starts slightly inboard of the rail; a small gap, never an
              overlap, and the navigation stays reachable either way. */
           data-bottom-chrome=""
-          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
+          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
         >
           <a
             href={`#visit-${nextUp.id}`}
@@ -1375,9 +1394,17 @@ function PhotoThumb({
       className="block rounded border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={t("photo.open")}
     >
+      {/* A phone photo is 12 megapixels drawn 56px square. Sized, so the
+          card never reflows when it arrives; lazy, so a long day does not
+          decode every stop's photos up front; async, so decoding one never
+          holds up a frame. */}
       <img
         src={url}
         alt={t("photo.alt")}
+        width={56}
+        height={56}
+        loading="lazy"
+        decoding="async"
         className="h-14 w-14 rounded object-cover"
         onError={() => setImgFailed(true)}
       />
@@ -2069,7 +2096,10 @@ function VisitCard({
   return (
     <li
       id={`visit-${visit.id}`}
-      className={`animate-fade-in scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm transition-shadow ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}
+      // No entrance of its own: the list it is in (motion-list) animates a
+      // stop added mid-session and leaves the day's first paint alone. No
+      // shadow transition either: box-shadow is a repaint on every frame.
+      className={`scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}
     >
       {!collapsed && <HazardBanner property={p} />}
       {!preview && <EnRouteLocationChip visit={visit} />}

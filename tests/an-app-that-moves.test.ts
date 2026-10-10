@@ -15,9 +15,22 @@
  *   * when the progress bar is allowed to appear (src/lib/motion/pending.ts);
  *   * when a pull refreshes and a swipe dismisses (src/lib/motion/gestures.ts);
  *   * that reduced motion is honoured in the stylesheet, not just in script.
+ *
+ * And, since the owner found it "disrupting the smoothness" on a real iPhone
+ * (2026-10-08), the rules that keep motion from costing a thumb anything:
+ *
+ *   * nothing moves between tabs;
+ *   * a page moves in 200ms or less, a sheet in 250ms or less;
+ *   * every keyframe and every transition in the stylesheet moves only
+ *     transform and opacity, and no page transitions a layout property;
+ *   * a skeleton waits before it is drawn, and the router holds one for
+ *     200ms at most;
+ *   * a list does not animate the rows it first paints with;
+ *   * pull-to-refresh only blocks scrolling while the page is at its top;
+ *   * coming back to the app does not refetch data that is seconds old.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { navDirection, uaAlreadyAnimated, type NavInput } from "../src/lib/motion/direction";
 import {
@@ -26,6 +39,7 @@ import {
   remainingVisibleMs,
   shouldShowProgress,
 } from "../src/lib/motion/pending";
+import { REFETCH_ON_RETURN_AFTER_MS, refetchOnReturn } from "../src/lib/query-refocus";
 import {
   GESTURE_SLOP_PX,
   PULL_MAX_PX,
@@ -57,15 +71,43 @@ describe("which way a page moves", () => {
     );
   });
 
-  it("crossfades between top-level sections, which is what a tab is", () => {
-    expect(navDirection(nav({ fromPath: "/dashboard", toPath: "/clients" }))).toBe("tab");
-    expect(navDirection(nav({ fromPath: "/my-day", toPath: "/waste-log" }))).toBe("tab");
+  it("does not move at all between top-level sections, which is what a tab is", () => {
+    // A native app changes tab in place. This was a 160ms crossfade until
+    // 2026-10-08, and a view transition swallows taps while it runs.
+    expect(navDirection(nav({ fromPath: "/dashboard", toPath: "/clients" }))).toBe("none");
+    expect(navDirection(nav({ fromPath: "/my-day", toPath: "/waste-log" }))).toBe("none");
     // Even when the history went back: tabs have no back stack.
     expect(
       navDirection(
         nav({ fromPath: "/clients", toPath: "/dashboard", isPop: true, fromIndex: 4, toIndex: 3 }),
       ),
-    ).toBe("tab");
+    ).toBe("none");
+  });
+
+  it("takes a tap on the tab bar or the sidebar as a tab switch, wherever it starts", () => {
+    // On a client's page, tapping Clients in the tab bar is changing tab,
+    // not going back, though the URL gets shallower.
+    expect(
+      navDirection(nav({ fromPath: "/clients/123", toPath: "/clients", fromNavChrome: true })),
+    ).toBe("none");
+    expect(
+      navDirection(nav({ fromPath: "/clients/123", toPath: "/invoices", fromNavChrome: true })),
+    ).toBe("none");
+    // The page's own "← Clients" link is not chrome: that still slides back.
+    expect(navDirection(nav({ fromPath: "/clients/123", toPath: "/clients" }))).toBe("back");
+    // And the back key is a pop, whatever was tapped last.
+    expect(
+      navDirection(
+        nav({
+          fromPath: "/clients/123",
+          toPath: "/clients",
+          isPop: true,
+          fromIndex: 3,
+          toIndex: 2,
+          fromNavChrome: true,
+        }),
+      ),
+    ).toBe("back");
   });
 
   it("believes the history over the URL when the history went back", () => {
@@ -168,7 +210,148 @@ describe("the slide is logical, so Arabic gets the mirror image", () => {
     expect(rule('html[data-nav-dir="back"]::view-transition-old(hs-page)')).toMatch(
       /hs-page-out-to-end/,
     );
-    expect(rule('html[data-nav-dir="tab"]::view-transition-new(hs-page)')).toMatch(/hs-fade-in/);
+  });
+
+  it("has no tab transition left to run", () => {
+    expect(css).not.toMatch(/data-nav-dir="tab"/);
+  });
+});
+
+/** The value of a duration token on :root, in ms. */
+const token = (name: string) => {
+  const m = css.match(new RegExp(`:root\\s*\\{[^}]*${name}:\\s*(\\d+)ms`));
+  if (!m) throw new Error(`${name} not found on :root`);
+  return Number(m[1]);
+};
+
+describe("motion never makes a thumb wait", () => {
+  it("moves a page in 200ms or less and a sheet in 250ms or less", () => {
+    expect(token("--motion-duration-base")).toBeLessThanOrEqual(200);
+    expect(token("--motion-duration-fast")).toBeLessThanOrEqual(200);
+    expect(token("--motion-duration-slow")).toBeLessThanOrEqual(250);
+    // The page slide reads the base token and nothing longer.
+    const pageRule =
+      css.match(
+        /::view-transition-old\(hs-page\),\s*::view-transition-new\(hs-page\)\s*\{([^}]*)\}/,
+      )?.[1] ?? "";
+    expect(pageRule).toMatch(/animation-duration:\s*var\(--motion-duration-base\)/);
+    // A sheet opens on the slow token: the longest thing in the app.
+    const sheet = readFileSync(join(root, "src/components/ui/sheet.tsx"), "utf8");
+    expect(sheet).toMatch(/data-\[state=open\]:duration-\(--motion-duration-slow\)/);
+    // And moves by its keyframes only: no CSS transition stacked under them.
+    const variants = sheet.match(/const sheetVariants = cva\(\s*"([^"]*)"/)?.[1] ?? "";
+    expect(variants.split(/\s+/)).not.toContain("transition");
+  });
+
+  it("animates transform and opacity, and nothing that has to be laid out or painted", () => {
+    // stroke-dashoffset is the completion check drawing its own 52px tick:
+    // the one keyframe that is not transform or opacity, and it is an SVG
+    // stroke on a badge with pointer-events off, not a box anything sits in.
+    const allowed = new Set(["transform", "opacity", "stroke-dashoffset"]);
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const keyframes = [...code.matchAll(/@keyframes ([\w-]+)\s*\{([\s\S]*?)\n\}/g)];
+    expect(keyframes.length).toBeGreaterThan(5);
+    for (const [, name, body] of keyframes) {
+      const props = [...body.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]);
+      for (const prop of props)
+        expect(allowed.has(prop), `@keyframes ${name} animates ${prop}`).toBe(true);
+    }
+    // Every CSS transition the stylesheet declares names transform or
+    // opacity only.
+    for (const m of code.matchAll(/(?<![\w-])transition:\s*([^;]+);/g)) {
+      const props = m[1]
+        .split(",")
+        .map((part) => part.trim().split(/\s+/)[0])
+        .filter((p) => p !== "none");
+      for (const prop of props) {
+        expect(["transform", "opacity"], `transition: ${m[1]}`).toContain(prop);
+      }
+    }
+  });
+
+  it("never transitions a layout property on a page", () => {
+    // width, height, a side or a margin is a layout every frame; box-shadow
+    // is a repaint every frame; `transition-all` is all of them at once.
+    // The ui/ primitives keep theirs (the desktop sidebar's collapse, the
+    // switch's 16px thumb), but a page is where a list or a meter lives.
+    const pages = readdirSync(join(root, "src/routes"), { recursive: true })
+      .map(String)
+      .filter((f) => f.endsWith(".tsx"));
+    const offenders: string[] = [];
+    for (const f of pages) {
+      const src = readFileSync(join(root, "src/routes", f), "utf8");
+      src.split("\n").forEach((line, i) => {
+        if (
+          /\btransition-(all|shadow)\b|\btransition-\[[^\]]*\b(width|height|top|left|right|bottom|margin|padding|inset)\b/.test(
+            line,
+          )
+        )
+          offenders.push(`src/routes/${f}:${i + 1}`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("draws a skeleton only once the wait is real", () => {
+    const delay = token("--skeleton-delay");
+    expect(delay).toBeGreaterThanOrEqual(150);
+    expect(delay).toBeLessThanOrEqual(200);
+    expect(css).toMatch(
+      /\.hs-skeleton\s*\{\s*animation:\s*hs-skeleton-wait 1ms linear var\(--skeleton-delay\) backwards,/,
+    );
+    const skeleton = readFileSync(join(root, "src/components/ui/skeleton.tsx"), "utf8");
+    expect(skeleton).toMatch(/"hs-skeleton /);
+    expect(skeleton).not.toMatch(/animate-pulse/);
+    // The router's own pending page has waited 300ms already.
+    const pages = readFileSync(join(root, "src/components/PageSkeletons.tsx"), "utf8");
+    expect(pages).toMatch(/<Region immediate className="space-y-6">/);
+    expect(css).toMatch(/\[data-skeleton-now\] \.hs-skeleton\s*\{\s*animation-delay:\s*0ms, 0ms;/);
+    // And the router holds a pending page no longer than it has to.
+    expect(PENDING_MIN_VISIBLE_MS).toBeLessThanOrEqual(200);
+  });
+
+  it("does not animate the rows a list first paints with", () => {
+    expect(css).toMatch(
+      /@utility motion-list \{\s*&\[data-motion-armed\] > :not\(\[data-motion-seen\]\):nth-child\(-n \+ 12\)/,
+    );
+    expect(css).not.toMatch(/--motion-stagger/);
+    // Every list that carries the class carries the hook's ref, or the class
+    // does nothing (the safe way round, but then it is dead code).
+    const files = readdirSync(join(root, "src"), { recursive: true })
+      .map(String)
+      .filter((f) => f.endsWith(".tsx"));
+    let lists = 0;
+    for (const f of files) {
+      const src = readFileSync(join(root, "src", f), "utf8");
+      for (const m of src.matchAll(/<\w+([^>]*)className="motion-list[^"]*"/g)) {
+        lists++;
+        expect(m[1], `${f}: a motion-list without useMotionList's ref`).toMatch(/ref=\{/);
+        expect(src, f).toMatch(/useMotionList/);
+      }
+    }
+    expect(lists).toBeGreaterThanOrEqual(5);
+  });
+
+  it("only blocks scrolling for a pull while the page is at its top", () => {
+    const ptr = readFileSync(join(root, "src/components/motion/PullToRefresh.tsx"), "utf8");
+    const adds = [...ptr.matchAll(/addEventListener\("touchmove"/g)];
+    expect(adds).toHaveLength(1);
+    const setBlocking = ptr.slice(ptr.indexOf("const setBlocking"), ptr.indexOf("const onScroll"));
+    expect(setBlocking).toMatch(/addEventListener\("touchmove", onMove, \{ passive: false \}\)/);
+  });
+});
+
+describe("coming back to the app", () => {
+  it("refetches what is older than 30 seconds, and nothing younger", () => {
+    expect(REFETCH_ON_RETURN_AFTER_MS).toBe(30_000);
+    const now = 1_000_000;
+    expect(refetchOnReturn({ state: { dataUpdatedAt: now - 5_000 } }, now)).toBe(false);
+    expect(refetchOnReturn({ state: { dataUpdatedAt: now - 29_999 } }, now)).toBe(false);
+    expect(refetchOnReturn({ state: { dataUpdatedAt: now - 30_000 } }, now)).toBe(true);
+    // Never fetched: fetch.
+    expect(refetchOnReturn({ state: { dataUpdatedAt: 0 } }, now)).toBe(true);
+    const router = readFileSync(join(root, "src/router.tsx"), "utf8");
+    expect(router).toMatch(/refetchOnWindowFocus: \(query\) => refetchOnReturn\(query\)/);
   });
 });
 
