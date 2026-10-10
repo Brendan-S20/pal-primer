@@ -38,6 +38,7 @@ import {
 } from "@/components/ZonesOverviewMap";
 import { HelpTip } from "@/components/HelpTip";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
+import { useServiceLines } from "@/components/CommercialOnly";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { titleHead } from "@/lib/page-title";
 
@@ -104,6 +105,13 @@ function ZonesPage() {
     queryFn: () => firstCleanupFn(),
   });
   const zoneFeeIsCharged = firstCleanupQ.data?.pricing.mode === "flat";
+  // The first cleanup prices a yard nobody has scooped for a while: a
+  // pet-waste idea. Hidden from a business that does not run pet waste, but
+  // only while it is off -- once configured it is charging new customers, and
+  // the owner must be able to find the switch (PET_WASTE_MODULES).
+  const { petWaste } = useServiceLines();
+  const showFirstCleanup =
+    petWaste || (!!firstCleanupQ.data && firstCleanupQ.data.pricing.mode !== "off");
 
   // null = closed, "new" = create, otherwise the zone row being edited.
   const [drawer, setDrawer] = useState<"new" | any | null>(null);
@@ -319,7 +327,7 @@ function ZonesPage() {
         )}
       </div>
 
-      <FirstCleanupPricingCard canEdit={canEdit} />
+      {showFirstCleanup && <FirstCleanupPricingCard canEdit={canEdit} />}
 
       {bulkDialog}
       {drawer !== null && (

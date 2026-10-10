@@ -115,6 +115,7 @@ import {
   YardOutline,
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
+import { useServiceLines } from "@/components/CommercialOnly";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
   captureCompletionFile,
@@ -1494,6 +1495,9 @@ function VisitCard({
   const qc = useQueryClient();
   const { t } = useTranslation();
   const locale = useIntlLocale();
+  // Whether this business runs pet waste: without it, a missing yard outline
+  // is not worth a line on the card (PET_WASTE_MODULES.yard_outline_prompt).
+  const { petWaste } = useServiceLines();
   const smsFn = useServerFn(sendVisitStatusSms);
   const onMyWayFn = useServerFn(sendOnMyWayMessage);
   const { role } = useMyRole();
@@ -2220,6 +2224,7 @@ function VisitCard({
                 areaSqm={p?.boundary_area_sqm}
                 title={p?.street ?? visit.clients?.display_name ?? t("visit.fallbackTitle")}
                 locale={locale}
+                promptWhenMissing={petWaste}
               />
               {/* What the office sees on the client's stations panel: how many,
                   which, and when each was last serviced. */}

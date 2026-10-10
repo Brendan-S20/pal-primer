@@ -2,6 +2,12 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyOrgFeatures } from "@/lib/org-features.functions";
+import {
+  DEFAULT_SERVICE_LINES,
+  runsPetWaste,
+  serviceLinesOrDefault,
+  type ServiceLine,
+} from "@/lib/service-lines";
 
 /**
  * Hides commercial-account machinery from an org that only does driveways.
@@ -39,4 +45,46 @@ export function CommercialOnly({ children }: { children: ReactNode }) {
   const { enabled, known } = useCommercialAccounts();
   if (!known) return null;
   return enabled ? <>{children}</> : null;
+}
+
+/**
+ * What this business runs (organizations.service_lines), for rendering.
+ *
+ * Same query and the same fail-OPEN rule as useCommercialAccounts, and for a
+ * sharper version of the same reason: every business on the platform today
+ * is a pet-waste business, so "the lookup failed" must read as pet waste.
+ * The other way round, a flaky connection in a van would take the waste log
+ * off a tech's tab bar mid-route.
+ *
+ * One deliberate difference: while the answer is unknown, `petWaste` is TRUE
+ * (and `known` is false). The tab bar and the sidebar lay themselves out from
+ * this on every cold load, and for the case that is all of production today,
+ * pet waste, guessing right means nothing moves when the answer arrives.
+ * Something that would rather draw nothing until it knows -- a card, say --
+ * checks `known`, which is what PetWasteOnly does.
+ */
+export function useServiceLines(): {
+  lines: ServiceLine[];
+  petWaste: boolean;
+  known: boolean;
+} {
+  const fn = useServerFn(getMyOrgFeatures);
+  const q = useQuery({
+    queryKey: ["my-org-features"],
+    queryFn: () => fn(),
+    staleTime: 60_000,
+  });
+  if (q.isLoading) return { lines: [...DEFAULT_SERVICE_LINES], petWaste: true, known: false };
+  // serviceLinesOrDefault is the fail-open: an error, no data, or a value
+  // that is not a usable list all read as {pet_waste}.
+  const lines = serviceLinesOrDefault(q.isError ? null : q.data?.serviceLines);
+  return { lines, petWaste: runsPetWaste(lines), known: true };
+}
+
+/** Children only for a business that runs pet waste. Nothing while the answer
+ *  is unknown, like CommercialOnly; everything when the lookup fails. */
+export function PetWasteOnly({ children }: { children: ReactNode }) {
+  const { petWaste, known } = useServiceLines();
+  if (!known) return null;
+  return petWaste ? <>{children}</> : null;
 }

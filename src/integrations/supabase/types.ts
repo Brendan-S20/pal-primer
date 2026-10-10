@@ -3348,6 +3348,7 @@ export type Database = {
           seasonal_deepclean_charge_cents: number
           seasonal_deepclean_enabled: boolean
           seasonal_deepclean_months: number[]
+          service_lines: string[]
           signup_promo_code: string | null
           signup_ref_code: string | null
           signup_utm: Json | null
@@ -3490,6 +3491,7 @@ export type Database = {
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
+          service_lines?: string[]
           signup_promo_code?: string | null
           signup_ref_code?: string | null
           signup_utm?: Json | null
@@ -3632,6 +3634,7 @@ export type Database = {
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
+          service_lines?: string[]
           signup_promo_code?: string | null
           signup_ref_code?: string | null
           signup_utm?: Json | null
@@ -7974,6 +7977,7 @@ export type Database = {
         Args: { _child_org_id: string; _collected_by_parent: boolean }
         Returns: undefined
       }
+      service_lines_are_valid: { Args: { _lines: string[] }; Returns: boolean }
       set_org_commercial_accounts: {
         Args: { _enabled: boolean }
         Returns: Json

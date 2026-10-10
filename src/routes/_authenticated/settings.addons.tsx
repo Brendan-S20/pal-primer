@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { titleHead } from "@/lib/page-title";
+import { addOnExampleFor } from "@/lib/service-lines";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 export const Route = createFileRoute("/_authenticated/settings/addons")({
   head: () => titleHead("Add-ons", "Settings"),
@@ -27,6 +29,11 @@ function AddonsCatalog() {
   });
 
   const services: any[] = data?.services ?? [];
+  // The placeholder is an example of an add-on for what this business runs:
+  // "Extra visit" for pet waste (A-P2-6, #370); something a walker or
+  // a groomer would sell otherwise (LINE_SEEDS).
+  const { lines } = useServiceLines();
+  const example = addOnExampleFor(lines);
 
   const upsertMut = useMutation({
     mutationFn: (v: any) => upsert({ data: v }),
@@ -77,11 +84,11 @@ function AddonsCatalog() {
         >
           <div className="sm:col-span-2">
             <Label>Code</Label>
-            <Input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} placeholder="extra_visit" />
+            <Input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} placeholder={example.code} />
           </div>
           <div className="sm:col-span-3">
             <Label>Name</Label>
-            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Extra visit" />
+            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={example.name} />
           </div>
           <div className="sm:col-span-1">
             <Label>Price ($)</Label>

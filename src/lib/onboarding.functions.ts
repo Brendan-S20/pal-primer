@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
 
 export type OnboardingStepId = "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts";
 
@@ -50,7 +51,7 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
 
     const orgId = role.organization_id;
 
-    const [zones, fieldStaff, invites, dumps, staffEnds, clients, org] = await Promise.all([
+    const [zones, fieldStaff, invites, dumps, staffEnds, clients, org, lines] = await Promise.all([
       supabase
         .from("zones")
         .select("id", { count: "exact", head: true })
@@ -105,7 +106,11 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         )
         .eq("id", orgId)
         .single(),
+      // Its own read, so a database the service-lines migration has not
+      // reached fails this alone and falls open to pet waste.
+      supabase.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
     ]);
+    const petWaste = runsPetWaste(serviceLinesOrDefault(lines.data?.service_lines));
 
     const o = (org.data ?? {}) as {
       contact_address?: string | null;
@@ -114,6 +119,31 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
       email_verified_at?: string | null;
     };
     const dismissed = Boolean(o.onboarding_dismissed_at);
+
+    // ── WHERE THE DAY ENDS, FOR A BUSINESS WITH NO DUMP ─────────────────
+    //
+    // The dump site matters because the planner ends a day THERE
+    // (staff_end_point), and a day planned with no end is ordered as though
+    // the van evaporates at the last stop. A dog walker or a groomer has no
+    // dump, but their day still ends somewhere -- home, the shop, the kennel
+    // -- and the planner reads that from each person's own end point, which
+    // already answers this step for a pet-waste business too. So the step
+    // keeps its id, its place and its reason (/setup walks the ids), and
+    // asks the question that business can answer. A business that does not
+    // run pet waste is never asked about a dump site.
+    const endOfDay = petWaste
+      ? {
+          label: "Where the day ends",
+          description:
+            "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
+          cta: "Add dump site",
+        }
+      : {
+          label: "Where does your day end?",
+          description:
+            "Set where each tech finishes the day: home, the shop, wherever the van parks. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
+          cta: "Set day's end",
+        };
 
     // ── WHAT A FIRST SESSION HAS TO LEAVE BEHIND ────────────────────────
     //
@@ -221,14 +251,22 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         // 2026-08-31: six organizations, one disposal facility between them,
         // and that one not geocoded. Nobody is withholding this address; they
         // do not know the router wants it.
+        //
+        // The wording is endOfDay's, above: a business without pet waste is
+        // asked where its day ends, not for a dump site. Done either way when
+        // the planner has an end to plan to.
+        //
+        // Gated on Users & roles, where each person's end point lives, rather
+        // than on the waste log, a page a business without pet waste is never
+        // shown. The same people pass both (owner, office manager), so a
+        // pet-waste business is offered the step exactly as before.
         id: "dump_site",
-        label: "Where the day ends",
-        description:
-          "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
+        label: endOfDay.label,
+        description: endOfDay.description,
         done: (dumps.count ?? 0) > 0 || (staffEnds.count ?? 0) > 0,
         to: "/setup",
-        cta: "Add dump site",
-        gate: "/waste-log",
+        cta: endOfDay.cta,
+        gate: "/settings/users",
       },
       {
         // Was "Connect Stripe (optional)", done when `stripe_customer_id` was

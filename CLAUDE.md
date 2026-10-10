@@ -620,6 +620,20 @@ And one from the Twilio toll-free resubmission (2026-10-06):
   customers"; until #341 every automated client text preferred it.
   → `tests/the-toll-free-number-texts-account-holders.test.ts`
 
+And one from opening the product to other pet services (2026-10-08):
+
+- **A pet-waste page is signposted only to a pet-waste business.**
+  `organizations.service_lines` says what a business runs; without
+  `pet_waste`, the waste log, DNA, deep clean and the other modules in
+  `PET_WASTE_MODULES` (`src/lib/service-lines.ts`) are hidden from its staff.
+  Any menu entry (sidebar / More `NavItem`, settings `Tab`, command-palette
+  row) whose path is in `PET_WASTE_ROUTES` carries `petWasteOnly: true`, and
+  its list filters on it. Hiding only: no server function refuses a write
+  because of a line, nothing is deleted, a module that is still configured
+  (a first cleanup, area pricing, a seasonal campaign) stays visible, and an
+  answer that cannot be read is pet waste (`serviceLinesOrDefault`).
+  → `tests/a-dog-walker-should-not-have-to-learn-about-dump-sites.test.ts`
+
 And one that is not a test: **the local Supabase stack on 54421-54427 is the
 database CI's test job runs the SQL proofs against** (the runner is this
 machine). A branch's migration applied there for a quick look fails every other

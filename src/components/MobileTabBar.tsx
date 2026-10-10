@@ -46,7 +46,21 @@ export const FOCUS_MY_DAY_SCHEDULE_EVENT = "houndstack:focus-my-day-schedule";
 
 // Destinations already surfaced as a first-class tab — excluded from "More".
 const OFFICE_TAB_URLS = ["/dashboard", "/routes", "/clients"];
-const TECH_TAB_URLS = ["/my-day", "/waste-log", "/notifications"];
+
+/**
+ * The tech's second tab: the waste log for a business that hauls waste, and
+ * My schedule for one that does not (organizations.service_lines). The slot
+ * is not left empty or squeezed out -- a dog walker's question mid-route is
+ * "what about Thursday", which is My schedule, and it is otherwise two taps
+ * deep in More. Exported for the gating test.
+ */
+export function techSecondTab(petWaste: boolean): "/waste-log" | "/my-schedule" {
+  return petWaste ? "/waste-log" : "/my-schedule";
+}
+
+export function techTabUrls(petWaste: boolean): string[] {
+  return ["/my-day", techSecondTab(petWaste), "/notifications"];
+}
 
 // `h-full`: each tab fills the bar's fixed row (see the nav below), so the
 // whole of the bar's height is a hit area and not just the icon and label.
@@ -98,7 +112,8 @@ export function MobileTabBar() {
       ? pathname === "/dashboard"
       : pathname === url || pathname.startsWith(url + "/");
 
-  const tabUrls = isTech ? TECH_TAB_URLS : OFFICE_TAB_URLS;
+  const secondTab = techSecondTab(navVisibility.petWaste);
+  const tabUrls = isTech ? techTabUrls(navVisibility.petWaste) : OFFICE_TAB_URLS;
   // `isNavItemVisible` rather than a bare `canAccess`: this sheet used to apply
   // only the permission filter, so every flag the sidebar honoured leaked here.
   // DNA compliance has been showing to residential-only orgs on phones because
@@ -215,15 +230,27 @@ export function MobileTabBar() {
               </Link>
             </li>
             <li>
-              <Link
-                to="/waste-log"
-                data-tour="/waste-log"
-                preload="render"
-                className={tabClass(isActive("/waste-log"))}
-              >
-                <Trash2 className="h-5 w-5 shrink-0" />
-                <span>{t("nav.wasteLogTab")}</span>
-              </Link>
+              {secondTab === "/waste-log" ? (
+                <Link
+                  to="/waste-log"
+                  data-tour="/waste-log"
+                  preload="render"
+                  className={tabClass(isActive("/waste-log"))}
+                >
+                  <Trash2 className="h-5 w-5 shrink-0" />
+                  <span>{t("nav.wasteLogTab")}</span>
+                </Link>
+              ) : (
+                <Link
+                  to="/my-schedule"
+                  data-tour="/my-schedule"
+                  preload="render"
+                  className={tabClass(isActive("/my-schedule"))}
+                >
+                  <CalendarDays className="h-5 w-5 shrink-0" />
+                  <span>{t("nav.item.my-schedule")}</span>
+                </Link>
+              )}
             </li>
             <li>
               <Link

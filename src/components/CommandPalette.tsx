@@ -11,8 +11,11 @@ import {
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
+import { useServiceLines } from "@/components/CommercialOnly";
 
-type NavEntry = { label: string; to: string; group: string };
+/** `petWasteOnly`: hidden for a business that does not run pet waste, as in
+ *  the sidebar (NavItem.petWasteOnly). */
+type NavEntry = { label: string; to: string; group: string; petWasteOnly?: boolean };
 
 const NAV: NavEntry[] = [
   { label: "Dashboard", to: "/dashboard", group: "Overview" },
@@ -25,7 +28,7 @@ const NAV: NavEntry[] = [
   // no `routes` table behind it to justify the older word.
   { label: "Schedule", to: "/routes", group: "Operations" },
   { label: "My day", to: "/my-day", group: "Field" },
-  { label: "Waste log", to: "/waste-log", group: "Field" },
+  { label: "Waste log", to: "/waste-log", group: "Field", petWasteOnly: true },
   { label: "Inbox", to: "/inbox", group: "Overview" },
   { label: "Messages", to: "/messages", group: "Operations" },
   // "Operations", as in the sidebar. These were a separate "Ops" group there
@@ -76,6 +79,7 @@ export function CommandPalette() {
   const [clients, setClients] = useState<ClientHit[]>([]);
   const navigate = useNavigate();
   const { role } = useMyRole();
+  const { petWaste } = useServiceLines();
   // Don't surface client results to roles that can't open a client page
   // (e.g. Technician) — searching used to confirm a client exists and then
   // dead-click back to My day with no explanation (finding #50).
@@ -121,13 +125,12 @@ export function CommandPalette() {
     navigate({ to, params } as never);
   };
 
-  const groups = NAV.filter((item) => canAccess(role, item.to)).reduce<Record<string, NavEntry[]>>(
-    (acc, item) => {
-      (acc[item.group] ||= []).push(item);
-      return acc;
-    },
-    {},
-  );
+  const groups = NAV.filter(
+    (item) => canAccess(role, item.to) && (!item.petWasteOnly || petWaste),
+  ).reduce<Record<string, NavEntry[]>>((acc, item) => {
+    (acc[item.group] ||= []).push(item);
+    return acc;
+  }, {});
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>

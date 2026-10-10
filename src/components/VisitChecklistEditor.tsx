@@ -12,11 +12,12 @@ import { setEmailVisitChecklist, setVisitChecklist } from "@/lib/org-features.fu
 import {
   MAX_CHECKLIST_ITEMS,
   MAX_CHECKLIST_LABEL,
-  SUGGESTED_CHECKLIST,
   checklistProblem,
   newChecklistItemId,
   type ChecklistItem,
 } from "@/lib/visit-checklist";
+import { suggestedChecklistFor } from "@/lib/service-lines";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 const same = (a: readonly ChecklistItem[], b: readonly ChecklistItem[]) =>
   a.length === b.length &&
@@ -59,14 +60,19 @@ export function VisitChecklistEditor({
     setBase(saved);
   }, [saved, base]);
 
+  // The one-tap set for what this business runs. For a pet-waste business it
+  // is exactly the list it always was (LINE_SEEDS.pet_waste is
+  // SUGGESTED_CHECKLIST, and a test holds them identical).
+  const { lines } = useServiceLines();
+  const suggested = suggestedChecklistFor(lines);
   const dirty = !same(draft, saved);
   const problem = checklistProblem(draft);
   const missingSuggestions = useMemo(
     () =>
-      SUGGESTED_CHECKLIST.filter(
+      suggested.filter(
         (s) => !draft.some((d) => d.label.trim().toLowerCase() === s.label.toLowerCase()),
       ),
-    [draft],
+    [draft, suggested],
   );
 
   const refresh = () => {
@@ -162,7 +168,7 @@ export function VisitChecklistEditor({
           <div className="text-sm font-medium">Visit checklist</div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             Nothing for a tech to confirm yet. Add a checklist and they tick it off before
-            completing every visit. Suggested: {SUGGESTED_CHECKLIST.map((s) => s.label).join(", ")}.
+            completing every visit. Suggested: {suggested.map((s) => s.label).join(", ")}.
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

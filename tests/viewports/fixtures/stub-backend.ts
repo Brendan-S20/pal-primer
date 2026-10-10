@@ -74,6 +74,19 @@ export type Stub = unknown | ((args: Record<string, any>) => unknown);
 
 const ok = { ok: true };
 
+/** The end-of-day step's wording for a business that does not run pet waste
+ *  (onboarding.functions.ts asks "Where does your day end?" instead of for a
+ *  dump site). Same id, place and gate as the pet-waste step in BASE_STUBS,
+ *  as on the server, because /setup walks the ids. Open, so its panel is
+ *  drawn and measured. */
+const DAY_END_WORDING = {
+  label: "Where does your day end?",
+  description:
+    "Set where each tech finishes the day: home, the shop, wherever the van parks. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
+  done: false,
+  cta: "Set day's end",
+};
+
 /**
  * Name → reply. Named for the export, so one entry serves every route that
  * calls it and a rename in `src/lib` shows up here as an unstubbed call
@@ -105,6 +118,15 @@ export const BASE_STUBS: Record<string, Stub> = {
     // per item, the 120-character label in a text field, at every width.
     visitChecklist: fx.VISIT_CHECKLIST,
     emailVisitChecklist: false,
+    // EXPLICITLY pet waste, not left to the fail-open. useServiceLines reads
+    // a missing value as pet waste too, so leaving this out would still draw
+    // the waste log -- but by accident, and the day the fallback changed the
+    // whole sweep would quietly start measuring the other branch. Spelled out
+    // so the waste log, the Yard step, the dump-site step and the first
+    // cleanup card stay measured on purpose. The other branch has its own
+    // fixture: installStubBackend({ serviceLines: ["dog_walking"] }), measured
+    // by a-business-that-does-not-scoop.spec.ts.
+    serviceLines: ["pet_waste"],
   },
   // /leads, and /clients/new?fromLead=<id>. The wizard is answered with the
   // first (convertible) lead AND an existing client on the same email, so the
@@ -335,7 +357,7 @@ export const BASE_STUBS: Record<string, Stub> = {
         done: false,
         to: "/setup",
         cta: "Add dump site",
-        gate: "/waste-log",
+        gate: "/settings/users",
       },
       {
         id: "payouts",
@@ -582,6 +604,10 @@ export const BASE_STUBS: Record<string, Stub> = {
   // new-client wizard all draw it. Off would draw one sentence and nothing to
   // measure.
   getFirstCleanupPricing: fx.FIRST_CLEANUP_PRICING,
+  // Settings asks this only for a business without pet waste, to decide
+  // whether "Deep clean" is still worth a tab (it is while it is on). Off
+  // here, so the dog-walking fixture measures the rail without it.
+  getDeepCleanSettings: { enabled: false, months: [3, 10], chargeCents: 4900 },
   // The quote editor's pricing (2026-10-01, "a quote started from nothing"):
   // a priced zone with the long name, the standard price, and a client with
   // three dogs every two weeks. So /quotes/new from a lead opens with its
@@ -1457,7 +1483,13 @@ const PORTAL_STUBS: Record<string, Stub> = {
 
 export async function installStubBackend(
   context: BrowserContext,
-  options: { role?: SweepRole; portal?: boolean } = {},
+  options: {
+    role?: SweepRole;
+    portal?: boolean;
+    /** organizations.service_lines for this run. Omitted, the org is the
+     *  pet-waste business BASE_STUBS describes. */
+    serviceLines?: string[];
+  } = {},
 ): Promise<StubReport> {
   const report: StubReport = { unstubbed: [], blockedHosts: [], leadPosts: [] };
   const user = sweepUser();
@@ -1476,6 +1508,24 @@ export async function installStubBackend(
     },
     getBillingBannerStatus: { planStatus: "active", role },
   };
+
+  // A business that does not run pet waste: the same org, told so. The
+  // features answer carries the lines, and the setup checklist asks the
+  // end-of-day question instead of the dump site, as the server does.
+  if (options.serviceLines && !options.portal) {
+    const lines = options.serviceLines;
+    STUBS.getMyOrgFeatures = {
+      ...(BASE_STUBS.getMyOrgFeatures as Record<string, any>),
+      serviceLines: lines,
+    };
+    const onboarding = BASE_STUBS.getOnboardingStatus as { steps: Array<{ id: string }> };
+    STUBS.getOnboardingStatus = {
+      ...onboarding,
+      steps: onboarding.steps.map((st) =>
+        st.id === "dump_site" && !lines.includes("pet_waste") ? { ...st, ...DAY_END_WORDING } : st,
+      ),
+    };
+  }
 
   // ── THE FENCE ─────────────────────────────────────────────────────────
   //
