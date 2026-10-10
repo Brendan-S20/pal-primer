@@ -28,6 +28,7 @@ import {
   subscribePlatformAddon,
   cancelPlatformAddon,
 } from "@/lib/platform-addons.functions";
+import { isSetupAddon, setupIsFreeFor, SETUP_FREE_BECAUSE } from "@/lib/done-for-you-setup";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -642,12 +643,14 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
   };
   const subscribe = useMutation({
     mutationFn: (addonId: string) => subFn({ data: { addonId } }),
-    onSuccess: (_r, addonId) => {
+    onSuccess: (r, addonId) => {
       const addon = (data?.addons ?? []).find((x) => x.id === addonId);
       toast.success(
-        addon?.billing_interval === "one_time"
-          ? "Purchase added. It will appear on your next invoice"
-          : "Add-on added. The prorated amount for this period is charged today",
+        (r as { waived?: string } | undefined)?.waived
+          ? "Added at no charge. Nothing is added to your invoice"
+          : addon?.billing_interval === "one_time"
+            ? "Purchase added. It will appear on your next invoice"
+            : "Add-on added. The prorated amount for this period is charged today",
       );
       invalidate();
     },
@@ -666,6 +669,10 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
 
   const addons = data?.addons ?? [];
   if (!isLoading && !addons.length) return null;
+  // Done-for-you setup is free on Scale, for founding accounts and on yearly
+  // billing (NP-4). The same rule the purchase runs on the server; the
+  // interval comes from the subscription this page already reads.
+  const setupFree = data?.setup ? setupIsFreeFor({ ...data.setup, planInterval }) : null;
 
   return (
     <section className="space-y-3">
@@ -680,7 +687,15 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
-          {addons.map((a) => (
+          {addons.map((a) => {
+            // Owned: only what the purchase recorded (a setup paid for before
+            // the org qualified stays paid). Not owned: what it would cost now.
+            const freeBecause = !isSetupAddon(a.slug)
+              ? null
+              : a.subscribed
+                ? (a.waivedReason ?? null)
+                : setupFree;
+            return (
             <div
               key={a.id}
               className={`flex flex-col rounded-xl border bg-card p-4 shadow-sm ${
@@ -693,7 +708,9 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                   {a.subscribed && (
                     <StatusChip
                       status={a.billing_interval === "one_time" ? "paid" : "active"}
-                      label={a.billing_interval === "one_time" ? "Purchased" : "Active"}
+                      label={
+                        a.waivedReason ? "Included" : a.billing_interval === "one_time" ? "Purchased" : "Active"
+                      }
                     />
                   )}
                   {a.status === "coming_soon" && !a.subscribed && (
@@ -703,7 +720,9 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                 {/* Annual orgs pay recurring add-ons yearly at 12x the monthly
                     amount (no discount), so show the amount they'll actually
                     be billed. One-time add-ons are unaffected by interval. */}
-                {planInterval === "year" && a.billing_interval === "month" ? (
+                {freeBecause ? (
+                  <p className="whitespace-nowrap text-sm font-semibold">Included</p>
+                ) : planInterval === "year" && a.billing_interval === "month" ? (
                   <p className="whitespace-nowrap text-right text-sm font-semibold">
                     {formatUsd(a.price_cents * 12)}
                     <span className="font-normal text-muted-foreground">/yr</span>
@@ -720,6 +739,13 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                   </p>
                 )}
               </div>
+              {freeBecause && (
+                <p className="mt-1 text-xs font-medium text-muted-foreground">
+                  {a.subscribed
+                    ? `${SETUP_FREE_BECAUSE[freeBecause]}. You were not charged.`
+                    : `${SETUP_FREE_BECAUSE[freeBecause]}. ${formatUsd(a.price_cents)} one time otherwise.`}
+                </p>
+              )}
               {a.description && (
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{a.description}</p>
               )}
@@ -764,6 +790,15 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                       // today (`proration_behavior: "always_invoice"`). The
                       // app's own success toast has been saying so all along.
                       const oneTime = a.billing_interval === "one_time";
+                      if (freeBecause) {
+                        const ok = await confirm({
+                          title: `Add ${a.name}?`,
+                          description: `${SETUP_FREE_BECAUSE[freeBecause]}, so there is no charge and nothing is added to your invoice.`,
+                          confirmLabel: "Add at no charge",
+                        });
+                        if (ok) subscribe.mutate(a.id);
+                        return;
+                      }
                       // Annual orgs pay a monthly-priced add-on at 12x, per
                       // the note on the price above. Confirm the number they
                       // will actually be billed, not the one on the label.
@@ -784,7 +819,9 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                   >
                     {addingId === a.id
                       ? "Adding…"
-                      : a.billing_interval === "one_time"
+                      : freeBecause
+                        ? "Add at no charge"
+                        : a.billing_interval === "one_time"
                         ? "Purchase"
                         : "Add to my plan"}
                   </Button>
@@ -795,7 +832,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
