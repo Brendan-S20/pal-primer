@@ -4995,6 +4995,7 @@ export type Database = {
           property_id: string | null
           reclean_visit_id: string | null
           requested_on: string | null
+          requested_via: string | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
@@ -5015,6 +5016,7 @@ export type Database = {
           property_id?: string | null
           reclean_visit_id?: string | null
           requested_on?: string | null
+          requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -5035,6 +5037,7 @@ export type Database = {
           property_id?: string | null
           reclean_visit_id?: string | null
           requested_on?: string | null
+          requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -5831,6 +5834,7 @@ export type Database = {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
           billing_cadence: Database["public"]["Enums"]["billing_cadence"]
+          booked_via: string | null
           client_id: string
           created_at: string
           dog_count: number | null
@@ -5861,6 +5865,7 @@ export type Database = {
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
+          booked_via?: string | null
           client_id: string
           created_at?: string
           dog_count?: number | null
@@ -5891,6 +5896,7 @@ export type Database = {
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
+          booked_via?: string | null
           client_id?: string
           created_at?: string
           dog_count?: number | null

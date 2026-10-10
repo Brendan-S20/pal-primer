@@ -102,7 +102,10 @@ describe("the field screen asks honestly everywhere", () => {
     // "Already syncing…"). The honest answer still gates it -- asked when the
     // replay would start -- and tests/already-syncing-with-nothing-to-sync
     // drives that gate rather than reading it.
-    expect(page).toMatch(/startAutoSync\(runSync, window, isDefinitelyOffline\)/);
+    // Since 2026-10-09 it is started by the signed-in layout's provider, so
+    // the queue replays from every page and not only from My Day.
+    const host = strip(read("src/components/QueueSync.tsx"));
+    expect(host).toMatch(/startAutoSync\(runSync, window, isDefinitelyOffline\)/);
     const auto = strip(read("src/lib/offline/auto-sync.ts"));
     expect(auto).toMatch(/if \(!isOffline\(\)\) run\("auto"\)/);
   });
