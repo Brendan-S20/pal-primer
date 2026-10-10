@@ -14,6 +14,8 @@
 //
 // Invalid codes NEVER block signup — callers warn and proceed without them.
 
+import { FOUNDING_CODE, FOUNDING_PERCENT_OFF, isFoundingCode } from "@/lib/founding-offer";
+
 type CouponRow = {
   id: string;
   code: string;
@@ -86,6 +88,31 @@ export async function lookupSignupCode(
       kind: "coupon",
       coupon,
       description: `${couponDiscountLabel(coupon)}, applied at checkout`,
+    };
+  }
+
+  // The founding code (NP-2) lives in Stripe as a promotion code, not in
+  // platform_coupons, so it is recognised by name here and stored on the org
+  // like any coupon. Whether a place is left is Stripe's to say, at checkout
+  // (createPlanSubscription), where the code goes on the plan line only.
+  if (isFoundingCode(code)) {
+    return {
+      kind: "coupon",
+      coupon: {
+        id: "founding",
+        code: FOUNDING_CODE,
+        stripe_coupon_id: null,
+        percent_off: FOUNDING_PERCENT_OFF,
+        amount_off_cents: null,
+        duration: "forever",
+        duration_in_months: null,
+        expires_at: null,
+        is_active: true,
+        max_redemptions: null,
+        times_redeemed: 0,
+        applies_to_plan_ids: null,
+      },
+      description: `${FOUNDING_PERCENT_OFF}% off your plan price for as long as you stay subscribed, while founding places last`,
     };
   }
 

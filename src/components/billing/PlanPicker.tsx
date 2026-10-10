@@ -8,6 +8,7 @@ import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MetaChip } from "@/components/client-detail/primitives";
 import { toast } from "sonner";
@@ -21,6 +22,8 @@ import {
   type PromoDropReason,
   refreshBillingStatus,
 } from "@/lib/billing.functions";
+import { getFoundingOffer } from "@/lib/founding-offer.functions";
+import { FOUNDING_CODE, foundingBannerText } from "@/lib/founding-offer";
 
 export type BillingInterval = "month" | "year";
 
@@ -111,6 +114,18 @@ export function PlanPicker({
   // it too, so this only saves somebody a click.
   const enabledUsers: number = (data as any)?.enabledUsers ?? 0;
 
+  // The founding offer (NP-2). The count comes from the server, which reads it
+  // off the LAUNCH20 promotion code in Stripe; nothing here computes it. It is
+  // for an account's FIRST plan, so an account already paying (it has a live
+  // interval) is not shown it.
+  const foundingFn = useServerFn(getFoundingOffer);
+  const { data: founding } = useQuery({
+    queryKey: ["founding-offer"],
+    queryFn: () => foundingFn(),
+    enabled: purchaseAllowed && !currentInterval,
+    staleTime: 60_000,
+  });
+
   const [billingInterval, setBillingInterval] = useState<BillingInterval>(
     currentInterval ?? "month",
   );
@@ -156,6 +171,14 @@ export function PlanPicker({
 
   return (
     <div className="space-y-4">
+      {founding?.visible && founding.left > 0 && !currentInterval && (
+        <div
+          data-founding-offer
+          className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
+        >
+          {foundingBannerText(founding.left)}
+        </div>
+      )}
       {anyAnnual && (
         <div className="flex items-center gap-3 max-md:flex-col max-md:items-stretch max-md:gap-2">
           <div
@@ -355,9 +378,15 @@ export function EmbeddedPlanCheckout({
     seatOverageCents: number | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A code typed here (the founding code, LAUNCH20). Applying one re-creates
+  // the pending subscription with it; the server puts it on the plan line
+  // only, so extra people and add-ons stay full price.
+  const [promoDraft, setPromoDraft] = useState("");
+  const [promoCode, setPromoCode] = useState<string | undefined>(undefined);
+  const [promoApplied, setPromoApplied] = useState<string | null>(null);
 
   const create = useMutation({
-    mutationFn: () => createFn({ data: { planId, interval } }),
+    mutationFn: () => createFn({ data: { planId, interval, promoCode } }),
     onSuccess: async (r: any) => {
       if (r.switched) {
         // In-place plan switch: already billed via proration, nothing to pay
@@ -385,6 +414,7 @@ export function EmbeddedPlanCheckout({
       if (r.promoDropped) {
         toast.warning(promoDropMessage(r.promoDropped), { duration: 15000 });
       }
+      setPromoApplied(r.promoApplied ?? null);
       setSession({
         clientSecret: r.clientSecret,
         publishableKey: r.publishableKey,
@@ -401,14 +431,14 @@ export function EmbeddedPlanCheckout({
     },
   });
 
-  // Kick off once per chosen plan + interval.
+  // Kick off once per chosen plan + interval (+ code, when one is applied).
   useEffect(() => {
     if (!purchaseAllowed) return;
     setSession(null);
     setError(null);
     create.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planId, interval]);
+  }, [planId, interval, promoCode]);
 
   // A store build renders the note, never a purchase. See StoreBuildNote.
   if (!purchaseAllowed) return <StoreBuildNote />;
@@ -465,6 +495,35 @@ export function EmbeddedPlanCheckout({
           Both are billed on your next invoice. Cancel anytime in Settings → Plan &amp; billing.
           Payments are processed securely.
         </p>
+        <form
+          className="mt-4 flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const code = promoDraft.trim();
+            if (code) setPromoCode(code);
+          }}
+        >
+          <label className="min-w-0 flex-1 text-xs text-muted-foreground">
+            Promo code
+            <Input
+              className="mt-1"
+              value={promoDraft}
+              onChange={(e) => setPromoDraft(e.target.value.toUpperCase())}
+              placeholder={FOUNDING_CODE}
+              maxLength={40}
+              autoCapitalize="characters"
+            />
+          </label>
+          <Button type="submit" variant="outline" size="sm" disabled={!promoDraft.trim()}>
+            Apply
+          </Button>
+        </form>
+        {promoApplied && (
+          <p className="mt-2 text-xs text-primary">
+            {promoApplied} applied: 30% off the plan price. Extra people and add-ons are billed at
+            regular price.
+          </p>
+        )}
         <div className="mt-4">
           <Elements
             stripe={getPlatformStripe(session.publishableKey)}

@@ -11,6 +11,7 @@ import {
   resolvePriceId,
   resolvePriceIdSet,
 } from "@/lib/stripe-price-catalog.server";
+import { FOUNDING_CODE, isFoundingCode, placesLeft } from "@/lib/founding-offer";
 
 // Nothing imports this. $59 is not a price in the current per-employee
 // catalog either — plans come from `platform_plans`, which is the only place
@@ -128,6 +129,10 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       .object({
         planId: z.string().uuid().optional(),
         interval: z.enum(["month", "year"]).optional(),
+        // A code typed at checkout. Only the founding code (LAUNCH20) is
+        // looked up in Stripe; anything else goes through the same lookup as
+        // a code typed on Get-started.
+        promoCode: z.string().trim().max(40).optional(),
       })
       .parse(d),
   )
@@ -535,9 +540,11 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         .eq("id", orgId);
     }
 
-    const items: { price: string; quantity: number }[] = [
-      { price: targetPlanPriceId, quantity: 1 },
-    ];
+    const items: Array<{
+      price: string;
+      quantity: number;
+      discounts?: Array<{ promotion_code: string }>;
+    }> = [{ price: targetPlanPriceId, quantity: 1 }];
     if (targetSeatPriceId && overage > 0) {
       items.push({ price: targetSeatPriceId, quantity: overage });
     }
@@ -562,14 +569,31 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     // not reported: it produced no coupon because it never was one.
     let promoCoupon: { id: string; code: string; stripe_coupon_id: string } | null = null;
     let promoDropped: { code: string; reason: PromoDropReason; detail?: string } | null = null;
+    // The founding offer (NP-2): a Stripe promotion code on the BASE PLAN ITEM
+    // only, so extra people and add-ons stay full price. Stripe enforces its
+    // 20-redemption cap and first-time-customer restriction itself.
+    let foundingPromo: { id: string; code: string } | null = null;
     try {
       const { data: orgPromoRow } = await (supabaseAdmin as any)
         .from("organizations")
         .select("signup_promo_code")
         .eq("id", orgId)
         .maybeSingle();
-      const storedCode = orgPromoRow?.signup_promo_code as string | null | undefined;
-      if (storedCode) {
+      const storedCode = (data.promoCode || orgPromoRow?.signup_promo_code) as string | null | undefined;
+      if (isFoundingCode(storedCode)) {
+        const { findFoundingPromotionCode } = await import("@/lib/founding-offer.server");
+        const promo = await findFoundingPromotionCode(stripe);
+        if (promo && placesLeft(promo) > 0) {
+          foundingPromo = { id: promo.id, code: FOUNDING_CODE };
+          items[0] = { ...items[0], discounts: [{ promotion_code: promo.id }] };
+        } else {
+          promoDropped = {
+            code: FOUNDING_CODE,
+            reason: "invalid",
+            detail: "All 20 founding places have been taken.",
+          };
+        }
+      } else if (storedCode) {
         const { lookupSignupCode } = await import("@/lib/signup-codes.server");
         const hit = await lookupSignupCode(supabaseAdmin, storedCode);
         if (hit.kind === "referral") {
@@ -628,6 +652,9 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       const subItems = sub.items?.data ?? [];
       const sameItems =
         sub.metadata?.plan_id === targetPlan.id &&
+        // A code applied (or dropped) since the abandoned attempt is a
+        // different price, so that subscription is not reusable.
+        (sub.metadata?.promo_code ?? "") === (promoCoupon?.code ?? foundingPromo?.code ?? "") &&
         subItems.length === items.length &&
         items.every((d) =>
           subItems.some((it) => it.price?.id === d.price && (it.quantity ?? 1) === d.quantity),
@@ -664,6 +691,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         kind: "org_saas",
         interval: targetInterval,
         ...(promoCoupon ? { promo_code: promoCoupon.code } : {}),
+        ...(foundingPromo ? { promo_code: foundingPromo.code } : {}),
       },
       expand: ["latest_invoice.confirmation_secret"],
     };
@@ -676,10 +704,26 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     } catch (e) {
       // A coupon Stripe rejects (e.g. its own max_redemptions hit) must not
       // block the subscribe — retry once without the discount.
-      if (!promoCoupon) throw e;
+      if (!promoCoupon && !foundingPromo) throw e;
       console.error("signup promo coupon rejected by Stripe; subscribing without it", (e as Error).message);
+      if (foundingPromo) {
+        // Stripe is the judge of the founding code (its cap, first-time
+        // customers only). Say so rather than charging full price silently.
+        promoDropped = {
+          code: FOUNDING_CODE,
+          reason: "invalid",
+          detail: "Stripe did not accept the founding code for this account.",
+        };
+      }
       promoCoupon = null;
-      sub = await stripe.subscriptions.create(createParams);
+      foundingPromo = null;
+      const { discounts: _drop, ...baseItem } = items[0];
+      items[0] = baseItem;
+      sub = await stripe.subscriptions.create({
+        ...createParams,
+        items,
+        metadata: { ...createParams.metadata, promo_code: "" },
+      });
     }
 
     // Redemption bookkeeping + attribution audit, best-effort. Counted at
@@ -711,6 +755,12 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       }
     }
 
+    // A founding checkout changes the count the banner shows; read it fresh.
+    if (foundingPromo) {
+      const { forgetFoundingOffer } = await import("@/lib/founding-offer.server");
+      forgetFoundingOffer();
+    }
+
     const clientSecret = clientSecretOf(sub);
     if (!clientSecret) throw new Error("Couldn't start the payment. Please try again.");
 
@@ -724,6 +774,8 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       publishableKey,
       planName: targetPlan.name,
       promoDropped,
+      /** "LAUNCH20" when the founding discount is on the plan line. */
+      promoApplied: foundingPromo?.code ?? null,
       // Returned so the payment form can name the metered charges at the point
       // of purchase. There is no Stripe-hosted checkout page here — the card is
       // taken inline through a Payment Element — so every word the buyer reads
