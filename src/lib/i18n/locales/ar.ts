@@ -675,6 +675,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     lead: "عملاء محتملون جدد من الموقع",
     quote_response: "عروض أسعار مقبولة أو مرفوضة",
     receptionist_escalation: "حالات أحالها موظف الاستقبال الذكي",
+    receptionist_booking: "زيارات حجزها أو طلبها موظف الاستقبال الذكي",
     inbound_sms: "رسائل نصية تحتاج إلى رد",
     teammate_joined: "انضم زميل",
     field_collection: "نقد أو شيكات حُصّلت في الميدان",

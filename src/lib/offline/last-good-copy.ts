@@ -48,6 +48,21 @@ function fetchedWithin(state: QueryStateLike, now: number, maxAgeMs: number): bo
   return now - at <= maxAgeMs;
 }
 
+/** A fetch time older than the max age. Unlike fetchedWithin, a missing or
+ *  future time is not "too old": a success with no measurable age is written
+ *  as it always was, and the envelope's own age check still applies to it.
+ *
+ *  Needed since read-cache.ts holds allowlisted queries in memory for the
+ *  whole max age (holdPersistedReadsInMemory). Before that a success sat in
+ *  memory five minutes unobserved; now one fetched on Monday can still be in
+ *  the cache on Thursday, and written beside Thursday's fresh day it would
+ *  share that day's `savedAt` and be restored as if it were new. */
+function fetchedTooLongAgo(state: QueryStateLike, now: number, maxAgeMs?: number): boolean {
+  const at = state.dataUpdatedAt;
+  if (typeof at !== "number" || !Number.isFinite(at) || at <= 0) return false;
+  return now - at > (maxAgeMs ?? READ_CACHE_MAX_AGE_MS);
+}
+
 /**
  * Whether a query's state holds a copy worth writing to the device.
  *
@@ -60,7 +75,7 @@ export function hasLastGoodCopy(
   args: { now: number; maxAgeMs?: number },
 ): boolean {
   if (!state) return false;
-  if (state.status === "success") return true;
+  if (state.status === "success") return !fetchedTooLongAgo(state, args.now, args.maxAgeMs);
   if (state.status !== "error" || state.data === undefined) return false;
   return fetchedWithin(state, args.now, args.maxAgeMs ?? READ_CACHE_MAX_AGE_MS);
 }

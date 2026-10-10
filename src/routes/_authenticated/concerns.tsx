@@ -402,6 +402,9 @@ function ConcernsPage() {
                     <div className="flex items-center gap-2 max-md:flex-wrap">
                       <span className="font-medium">{client?.display_name ?? "Client"}</span>
                       <Badge variant="outline">{CONCERN_CATEGORY_LABELS[c.category] ?? humanizeEnum(c.category)}</Badge>
+                      {(c as { requested_via?: string | null }).requested_via === "ai_receptionist" && (
+                        <Badge variant="outline">By text: AI receptionist</Badge>
+                      )}
                       <Badge variant={status === "resolved" ? "secondary" : status === "in_progress" ? "default" : "destructive"}>
                         {STATUS_LABEL[status]}
                       </Badge>
