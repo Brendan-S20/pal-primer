@@ -72,7 +72,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          properties(id, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
-         subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time),
+         subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via),
          visit_photos(id, storage_path, kind, created_at)`,
       )
       .eq("id", data.visitId)

@@ -10,6 +10,9 @@
 //     owner turned auto-accept on and set a price. Runs as the service role,
 //     so nothing here may rely on RLS for tenancy: the client and property
 //     are checked against input.orgId explicitly below, and were already.
+//   * the AI receptionist's book_visit (receptionist-booking.ts) -- the same
+//     request, made by text, on the same switch and at the same price. Also
+//     the service role; it says so with actorLabel and bookedVia.
 //
 // Every comment below was written about createOneOffVisit and still applies;
 // see there for why a one-off is a `one_time` subscription at all.
@@ -24,8 +27,19 @@ export type BookOneOffInput = {
   priceCents: number;
   staffId?: string | null;
   note?: string;
-  /** True only for the portal's auto-accept path (service-role client). */
+  /** True only for the service-role paths: the portal's auto-accept, and
+   *  the AI receptionist. */
   asService?: boolean;
+  /** Who the timeline names on a service-role booking. Default "Customer
+   *  portal". */
+  actorLabel?: string;
+  /** subscriptions.booked_via. Omitted (NULL) for the office and the portal,
+   *  exactly as before 20261010000000. */
+  bookedVia?: "ai_receptionist";
+  /** The client's arrival window, carried onto the one-off's service so the
+   *  planner honours it as it does on their plan. Omitted: no window. */
+  earliestTime?: string | null;
+  latestTime?: string | null;
 };
 
 export type BookOneOffResult = {
@@ -133,6 +147,9 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
       dog_count: dogCount,
       unit_count: accountType === "commercial" ? Math.max(1, prop.total_units ?? 1) : null,
       zone_id: prop.zone_id ?? prop.auto_zone_id ?? null,
+      ...(input.bookedVia ? { booked_via: input.bookedVia } : {}),
+      ...(input.earliestTime ? { earliest_time: input.earliestTime } : {}),
+      ...(input.latestTime ? { latest_time: input.latestTime } : {}),
       started_on: input.scheduledOn,
       // A one-off must not keep generating. Bounding it on the same day is
       // what makes the `one_time` branch terminate rather than relying on
@@ -241,7 +258,7 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
       clientId: input.clientId,
       propertyId: input.propertyId,
       actorUserId: input.actorUserId,
-      ...(input.asService ? { actorLabel: "Customer portal" } : {}),
+      ...(input.asService ? { actorLabel: input.actorLabel ?? "Customer portal" } : {}),
       kind: "visit.created",
       summary: `Booked a one-off visit on ${visit.scheduled_on}${
         input.note ? ` — ${input.note}` : ""
