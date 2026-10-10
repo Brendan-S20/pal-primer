@@ -190,6 +190,22 @@ async function provisionSignup(
       })
       .eq("id", signupRequestId);
 
+    // The lead this signup wrote (signup.functions.ts, recordSignupLead) is
+    // now a client: Leads shows it as "Started service online" with Open
+    // client, rather than as somebody still waiting for a call. Through the
+    // same helper the wizard uses, which only links a lead not yet linked.
+    // Guarded like the schedule and the invoice above: the customer has an
+    // account by this line, and a label that failed to update must not
+    // become the sale being refunded.
+    if (sr.lead_id) {
+      try {
+        const { markLeadConverted } = await import("@/lib/lead-conversion.server");
+        await markLeadConverted(supabaseAdmin, sr.lead_id as string, client.id);
+      } catch (e) {
+        console.error("signup lead conversion failed", signupRequestId, e);
+      }
+    }
+
     // Best-effort welcome email
     try {
       const { buildPortalLink } = await import("@/lib/portal-links.server");

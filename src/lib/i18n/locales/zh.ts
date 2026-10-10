@@ -725,6 +725,15 @@ const zh: TranslationsWithPlurals<"other"> = {
       complete: "完成",
     },
   },
+  accessOff: {
+    pageTitle: "访问已关闭",
+    title: "你的访问权限已被关闭",
+    body: "你对<business/>的访问权限已被关闭。请让负责人重新启用你。",
+    thisBusiness: "该商家",
+    checkAgain: "重新检查",
+    couldNotCheck: "暂时无法检查，请稍后再试。",
+    stillOff: "仍处于关闭状态。请让负责人重新启用你。",
+  },
 };
 
 export default zh;

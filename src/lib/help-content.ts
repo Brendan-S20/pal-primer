@@ -209,19 +209,19 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ── Client-facing ──────────────────────────────────────────────────────────
   {
     slug: "lead-form",
-    title: "The lead form: your embeddable quote page",
+    title: "Your signup & quote form",
     section: "Client-facing",
     body: [
-      "The lead form is a public page (and embeddable widget) where prospects request service. It collects their address, dog count, and frequency, and drops them into your [Leads](/leads) list.",
-      "Customize the fields and branding in [Lead form](/settings/lead-form), then link it from your website or ads. You can preview the live form from the Leads page at any time.",
+      "Your signup & quote form is one public page (and embeddable widget) for new clients. They enter their ZIP, dogs and frequency and see your price where you have priced that zone, then either start service with a card or ask you for a quote. Every signup and every quote request lands in your [Leads](/leads) list, labeled so you can tell them apart.",
+      "Choose whether new clients can start service online, and customize the questions and branding, in [Signup & quote form](/settings/online-signup). With online signup off, the page takes quote requests only and shows no prices. Old lead form links keep working and open the same page.",
     ],
     steps: [
-      "Open [Settings -> Lead form](/settings/lead-form) and toggle the fields you want to collect.",
-      "Copy the hosted link or the embed snippet onto your website.",
-      "New submissions appear in [Leads](/leads); use Preview form there to see exactly what prospects see.",
-      "Convert a qualified lead to a client in one click; it lands in [Clients](/clients) ready to schedule.",
+      "Open [Settings -> Signup & quote form](/settings/online-signup) and decide whether to accept signups online.",
+      "Copy the link or the embed snippet onto your website.",
+      "New signups and quote requests appear in [Leads](/leads); use Preview form there to see exactly what prospects see.",
+      "Convert a quote request to a client in one click; a paid signup is already a client, and its lead links to it.",
     ],
-    appLink: { to: "/settings/lead-form", label: "Open Lead form settings" },
+    appLink: { to: "/settings/online-signup", label: "Open Signup & quote form settings" },
     related: ["client-portal", "first-30-minutes"],
   },
   {

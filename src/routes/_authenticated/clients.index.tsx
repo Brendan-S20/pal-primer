@@ -536,9 +536,14 @@ function ClientsList() {
                         </Badge>
                       )}
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground truncate">
-                      {c.primary_email ?? "-"}
-                    </div>
+                    {/* No line at all for a client with no email: a lone dash
+                        under the name read as a rendering fault on a phone. The
+                        desktop table keeps its "-", where a column needs a cell. */}
+                    {c.primary_email && (
+                      <div className="mt-1 text-xs text-muted-foreground truncate">
+                        {c.primary_email}
+                      </div>
+                    )}
                     <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
                   </div>
                   <div className="text-right">
@@ -574,8 +579,13 @@ function ClientsList() {
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span>{c.dog_count} dogs</span>
-                  <span>{c.active_subscription_count} subs</span>
+                  <span>
+                    {c.dog_count} {c.dog_count === 1 ? "dog" : "dogs"}
+                  </span>
+                  <span>
+                    {c.active_subscription_count}{" "}
+                    {c.active_subscription_count === 1 ? "plan" : "plans"}
+                  </span>
                   {(c.frequencies ?? []).length > 0 && (
                     <Badge variant="outline" className="text-3xs">
                       {(c.frequencies as string[]).map((f) => frequencyLabel(f)).join(", ")}
@@ -661,8 +671,14 @@ function ClientsList() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      <div className="truncate max-w-[220px]">{c.primary_email ?? "-"}</div>
-                      <div className="text-xs">{c.primary_phone ?? ""}</div>
+                      {/* A dash only when there is nothing at all to show,
+                          not above a phone number as a line of its own. */}
+                      {c.primary_email ? (
+                        <div className="truncate max-w-[220px]">{c.primary_email}</div>
+                      ) : !c.primary_phone ? (
+                        <div>-</div>
+                      ) : null}
+                      {c.primary_phone && <div className="text-xs">{c.primary_phone}</div>}
                     </td>
                     <td className="px-4 py-3">
                       {/* Same three states as the mobile cards above — the two

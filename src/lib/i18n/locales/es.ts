@@ -762,6 +762,15 @@ const es: Translations = {
       complete: "Completar",
     },
   },
+  accessOff: {
+    pageTitle: "Acceso desactivado",
+    title: "Tu acceso ha sido desactivado",
+    body: "Tu acceso a <business/> ha sido desactivado. Pide al dueño que te reactive.",
+    thisBusiness: "este negocio",
+    checkAgain: "Comprobar de nuevo",
+    couldNotCheck: "No se pudo comprobar ahora. Inténtalo de nuevo en un momento.",
+    stillOff: "Sigue desactivado. Pide al dueño que te reactive.",
+  },
 };
 
 export default es;

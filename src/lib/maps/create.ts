@@ -34,7 +34,9 @@ export async function createMapRenderer(
         poolDrainWired = true;
         onGoogleRefused(() => googleMapPool(g).discardAll());
       }
-      return createGoogleRenderer(g, container, opts);
+      // Asked again: Google can refuse the key while the script is loading,
+      // and a map built after that is only ever Google's error box.
+      if (!googleRefused()) return createGoogleRenderer(g, container, opts);
     } catch (e) {
       logOnce(
         "load-failed",

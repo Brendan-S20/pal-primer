@@ -43,15 +43,22 @@ import type { ReactNode } from "react";
 // public page out of compliance. Also kept: that Stripe handles the card, which
 // is reassurance the buyer actually wants, and which the payment form says
 // again next to the button.
+//
+// `compact` is the page inside an iframe on the business's own website: the
+// header goes (their site already wears their name above it) and the footer
+// moves up. The footer itself stays, links and all, for the reason above: the
+// page still collects a phone number, wherever it is shown.
 export function TenantSignupShell({
   orgName,
   logoUrl,
   brandColor,
+  compact = false,
   children,
 }: {
   orgName: string | null;
   logoUrl?: string | null;
   brandColor?: string | null;
+  compact?: boolean;
   children: ReactNode;
 }) {
   // Falls back to the app's own primary token rather than a hardcoded colour,
@@ -61,8 +68,9 @@ export function TenantSignupShell({
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="h-1.5 w-full" style={{ backgroundColor: accent }} />
+      {compact ? null : (
       <header className="border-b border-border/60 bg-background/75 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 sm:px-6">
           {logoUrl ? (
             <img src={logoUrl} alt={orgName ?? ""} className="h-9 max-w-[180px] object-contain" />
           ) : null}
@@ -73,9 +81,10 @@ export function TenantSignupShell({
           ) : null}
         </div>
       </header>
+      )}
       <main>{children}</main>
-      <footer className="mt-16 border-t bg-muted/30">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-6 text-xs text-muted-foreground">
+      <footer className={`${compact ? "mt-6" : "mt-16"} border-t bg-muted/30`}>
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:px-6">
           <div>
             © {new Date().getFullYear()} {orgName ?? ""} · Payments processed securely by Stripe
           </div>

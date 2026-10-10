@@ -53,6 +53,10 @@ import {
   PORTAL_SLUG,
   PORTAL_TOKEN,
   SIGNUP_LONG_TIER_LABEL,
+  NO_ZONE_ZIP,
+  QUOTE_ONLY_CONFIRMATION,
+  QUOTE_ONLY_HEADLINE,
+  QUOTE_ONLY_SLUG,
   PORTAL_CLIENT_NAME,
   PORTAL_PAY_INVOICE_ID,
   PUBLIC_INVOICE,
@@ -396,7 +400,7 @@ test.describe("the signup page, which prices the first cleanup by the customer's
    * was your yard last cleaned?". Not in every-public-page-at-every-width:
    * that sweep has no backend stub, and this page's lookup is a server
    * function that would otherwise reach the live project. Here it is
-   * answered by `getSignupOrg` / `getSignupQuote` in the portal stubs.
+   * answered by `getPublicSignupForm` / `getSignupQuote` in the portal stubs.
    *
    * Measured in its widest state: the question answered with the owner's
    * longest answer, and the quote panel drawn, so the first-cleanup line
@@ -427,6 +431,10 @@ test.describe("the signup page, which prices the first cleanup by the customer's
       });
       await expect(page.getByText("$150.00").first()).toBeVisible();
       await expect(page.getByText("$25.00/visit")).toBeVisible();
+      // The choice the lead form and the signup merged into: both are on
+      // the page once there is a price, and so both are measured.
+      await expect(page.getByRole("button", { name: "Start service" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Just send me a quote" })).toBeVisible();
       await page.waitForTimeout(700);
 
       const { scrollW, innerW } = await measurePageOverflow(page);
@@ -436,6 +444,103 @@ test.describe("the signup page, which prices the first cleanup by the customer's
       if (width < 768) {
         expect(await findControlsUnder44px(page), `signup @${width}`).toEqual([]);
       }
+    });
+  }
+});
+
+test.describe("one form for a new customer: a price, or a quote request", () => {
+  /**
+   * The lead form and the signup are one page now (lib/new-customer-form.ts).
+   * The priced state is measured above, at 320 and up. These are the states
+   * that page has that neither old page had, at the four widths CLAUDE.md
+   * names: a ZIP outside every zone, which must turn into a quote request
+   * rather than a dead end; a business that only takes quote requests, down
+   * to the card a sent request leaves behind; and the retired /lead address,
+   * which has to arrive here with its query string intact.
+   *
+   * Proofs, as everywhere in this file: the business's name proves the
+   * lookup reached the page, and each case adds what only that state draws.
+   * The quote request's POST is answered by the stub (`leadPosts`), never by
+   * the dev server's handler, which would write a lead somewhere real.
+   */
+  const measure = async (page: import("@playwright/test").Page, label: string, width: number) => {
+    await page.waitForTimeout(500);
+    const { scrollW, innerW } = await measurePageOverflow(page);
+    expect(scrollW, `${label} @${width}: scrolls sideways`).toBeLessThanOrEqual(innerW + 1);
+    expect(await findControlsOffTheSide(page), `${label} @${width}`).toEqual([]);
+    expect(await findSilentlyClippedText(page), `${label} @${width}`).toEqual([]);
+    if (width < 768) {
+      expect(await findControlsUnder44px(page), `${label} @${width}`).toEqual([]);
+    }
+  };
+
+  for (const width of [360, 768, 1280, 1920]) {
+    test(`a ZIP outside every zone becomes a quote request at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await installStubBackend(page, { portal: true });
+      await page.goto(`/signup/${PORTAL_SLUG}`, { waitUntil: "domcontentloaded" });
+      await expect(page.getByText(PORTAL_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
+
+      await page.getByLabel("ZIP code").fill(NO_ZONE_ZIP);
+      await page.locator("#last_cleaned").click();
+      await page.getByRole("option", { name: SIGNUP_LONG_TIER_LABEL }).click();
+      await page.getByRole("button", { name: "Get instant price" }).click();
+
+      await expect(page.getByText("We don't have online pricing for that ZIP yet.", { exact: false })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByRole("button", { name: "Request a quote" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Start service" })).toHaveCount(0);
+      await measure(page, "no zone", width);
+    });
+
+    test(`a business that only takes quote requests at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const report = await installStubBackend(page, { portal: true });
+      await page.goto(`/signup/${QUOTE_ONLY_SLUG}`, { waitUntil: "domcontentloaded" });
+      await expect(page.getByText(PORTAL_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("heading", { name: QUOTE_ONLY_HEADLINE })).toBeVisible();
+      // No price on offer: no price button, no first-cleanup question.
+      await expect(page.getByRole("button", { name: "Get instant price" })).toHaveCount(0);
+      await expect(page.getByText("When was your yard last cleaned?")).toHaveCount(0);
+
+      await page.getByLabel("ZIP code").fill("60625");
+      await page.getByLabel("Full name *").fill("Anneliese Okonkwo-Vandermeer");
+      await page.getByLabel("Email *").fill("anneliese.okonkwo.vandermeer@example.com");
+      await page.getByLabel("Street address").fill("4417 North Francisco Avenue, Garden Unit");
+      await measure(page, "quote only", width);
+
+      await page.getByRole("button", { name: "Request a quote" }).click();
+      await expect(page.getByText(QUOTE_ONLY_CONFIRMATION)).toBeVisible({ timeout: 15_000 });
+      expect(report.leadPosts).toHaveLength(1);
+      expect(report.leadPosts[0]).toMatchObject({
+        slug: QUOTE_ONLY_SLUG,
+        email: "anneliese.okonkwo.vandermeer@example.com",
+        source: "website",
+      });
+      await measure(page, "quote sent", width);
+    });
+
+    test(`the old lead form address lands here, query string and all, at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await installStubBackend(page, { portal: true });
+      const qs = "?zone=north&ref=12e3&utm_source=flyer&utm_campaign=spring%20promo&embed=1";
+      await page.goto(`/lead/${QUOTE_ONLY_SLUG}${qs}`, { waitUntil: "domcontentloaded" });
+
+      await page.waitForURL((u) => u.pathname === `/signup/${QUOTE_ONLY_SLUG}`, {
+        timeout: 30_000,
+      });
+      expect(new URL(page.url()).search, "the query string, exactly as it arrived").toBe(qs);
+      await expect(page.getByRole("heading", { name: QUOTE_ONLY_HEADLINE })).toBeVisible({
+        timeout: 30_000,
+      });
+      // embed=1 came through: the page is drawn for an iframe, without its
+      // own header, and still with the footer's SMS consent link.
+      await expect(page.locator("header")).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "SMS Consent" })).toBeVisible();
+      await measure(page, "redirected embed", width);
     });
   }
 });
