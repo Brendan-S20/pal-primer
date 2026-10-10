@@ -16,6 +16,10 @@
  */
 export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/routes/_authenticated/my-day.tsx" },
+  // The offline queue's sync toasts ("Synced 3 queued actions", the dead-letter
+  // message that names the stop). They moved out of My Day so the queue
+  // replays from every page, and they still speak the tech's language.
+  { file: "src/components/QueueSync.tsx" },
   // The stop card's dogs, yard outline, stations and money lines, and the
   // form a tech records cash or a check with.
   { file: "src/components/my-day/StopFacts.tsx" },

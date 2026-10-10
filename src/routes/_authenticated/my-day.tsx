@@ -31,14 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  getMyDay,
-  startVisit,
-  completeVisit,
-  skipVisit,
-  recordVisitPhoto,
-  listMyDayFieldStaff,
-} from "@/lib/my-day.functions";
+import { getMyDay, listMyDayFieldStaff } from "@/lib/my-day.functions";
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
@@ -48,8 +41,7 @@ import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
-import { syncQueue } from "@/lib/offline/sync";
-import { startAutoSync, type SyncTrigger } from "@/lib/offline/auto-sync";
+import { useQueueSync } from "@/components/QueueSync";
 import {
   countPendingForVisit,
   countQueuedCompletionPhotos,
@@ -111,7 +103,6 @@ import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { OffTheClockBanner } from "@/components/TimeClock";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
-import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
 import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
 import {
@@ -122,7 +113,6 @@ import {
   YardOutline,
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
-import { createExpense } from "@/lib/expenses.functions";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
   Sheet,
@@ -303,12 +293,6 @@ function MyDay() {
   // it runs before i18n has read the device's choice.
   useDocumentTitle(pageTitle(t("nav.item.my-day")));
   const locale = useIntlLocale();
-  // The sync driver's toasts read the CURRENT language through a ref rather
-  // than closing over `t`: `t` in runSync's dependencies would rebuild the
-  // driver on a language change, and startAutoSync below treats a new driver
-  // as a new mount and replays the queue again.
-  const tRef = useRef(t);
-  tRef.current = t;
   const { role, orgId } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
   // One "Log an expense" sheet for the page, opened from any card's More
@@ -405,134 +389,11 @@ function MyDay() {
   });
   const fieldStaff = staffList.data?.staff ?? [];
 
-  // Bind server-fn callers once for the sync driver.
-  const startFn = useServerFn(startVisit);
-  const completeFn = useServerFn(completeVisit);
-  const skipFn = useServerFn(skipVisit);
-  const photoFn = useServerFn(recordVisitPhoto);
-  const stationFn = useServerFn(logStationService);
-  // The time clock's taps ride the same queue, so the same replay sends them.
-  const clockInFn = useServerFn(clockIn);
-  const clockOutFn = useServerFn(clockOut);
-  // Cash or a check taken at a stop rides the same queue.
-  const collectionFn = useServerFn(recordFieldCollection);
-  // And an expense logged from the field, with its receipt.
-  const expenseFn = useServerFn(createExpense);
-  const callers = useMemo(
-    () => ({
-      startVisit: startFn,
-      completeVisit: completeFn,
-      skipVisit: skipFn,
-      recordVisitPhoto: photoFn,
-      logStationService: stationFn,
-      clockIn: clockInFn,
-      clockOut: clockOutFn,
-      recordFieldCollection: collectionFn,
-      createExpense: expenseFn,
-    }),
-    [
-      startFn,
-      completeFn,
-      skipFn,
-      photoFn,
-      stationFn,
-      clockInFn,
-      clockOutFn,
-      collectionFn,
-      expenseFn,
-    ],
-  );
-
-  // Client names for the two messages that ask a tech to go back and redo
-  // work. Held in a ref rather than closed over, because `visits` is derived
-  // below `runSync` and putting it in the dependency array would rebuild the
-  // sync driver on every refetch.
-  const visitNames = useRef<Map<string, string>>(new Map());
-  /** "Bark Park and 2 others", or nothing when we cannot name any of them.
-   *  A queued action can outlive the day it belongs to -- it survives the app
-   *  being killed in a pocket -- so an id with no row today is expected and
-   *  simply contributes no name. */
-  const namesFor = useCallback((ids: string[]): string | undefined => {
-    const named = ids.map((id) => visitNames.current.get(id)).filter(Boolean) as string[];
-    if (named.length === 0) return undefined;
-    if (named.length === 1) return named[0];
-    if (named.length === 2)
-      return tRef.current("sync.twoNames", { first: named[0], second: named[1] });
-    return tRef.current("sync.andOthers", { first: named[0], count: named.length - 1 });
-  }, []);
-
-  const runSync = useCallback(
-    async (trigger: SyncTrigger) => {
-      // Replay only the signed-in tech's own queued work — see lib/offline/queue.
-      //
-      // resolveOfflineUserId, NOT supabase.auth.getSession(). getSession reads
-      // local storage EXCEPT when the stored token has expired, in which case
-      // supabase-js refreshes it over the network first — which offline hangs for
-      // ever, with no deadline here to stop it. That is the exact defect
-      // action-owner.ts was written to eliminate, and this call site was still
-      // making it: 7am, token aged out overnight, one bar in the yard so
-      // navigator.onLine is true, and Sync does nothing for ever with no toast.
-      //
-      // Worse, the BADGE already used the bounded resolver, so the count said "6
-      // pending" while the button it labels could not act at all — breaking the
-      // one invariant countPending exists to hold: the count and the thing the
-      // button acts on have to be the same set.
-      let uid: string;
-      try {
-        uid = await resolveOfflineUserId();
-      } catch {
-        return;
-      }
-      const res = await syncQueue(callers, uid);
-      if (res.alreadyRunning) {
-        // A replay is already in flight. Saying nothing is indistinguishable from
-        // a dead button -- so the BUTTON is told. An automatic run (mount, back
-        // online) is not a request anybody made, and the replay in flight is
-        // already doing its job; telling the tech "Already syncing…" on opening
-        // the page, with nothing queued, was noise. See lib/offline/auto-sync.
-        if (trigger === "tap") toast.info(tRef.current("sync.alreadySyncing"));
-        return;
-      }
-      if (res.succeeded > 0) {
-        toast.success(tRef.current("sync.synced", { count: res.succeeded }));
-        qc.invalidateQueries({ queryKey: ["my-day"] });
-      }
-      if (res.dropped > 0) {
-        // Never folded into the success count: this is a photo whose bytes are
-        // gone, and the tech is the only person who can retake it.
-        toast.error(tRef.current("sync.photosLost", { count: res.dropped }), {
-          description: namesFor(res.droppedVisitIds),
-        });
-        qc.invalidateQueries({ queryKey: ["my-day"] });
-      }
-      if (res.deadLettered > 0) {
-        // Loud, specific, and never folded into any other count. The queue was
-        // blocking everything behind this; giving up unblocks the day, but the
-        // work itself is gone and only the tech can redo it.
-        //
-        // And it now NAMES the stop. This is the one message in the app that
-        // asks somebody to drive somewhere a second time, and it used to end
-        // "Check the visit and redo it if needed" without saying which visit --
-        // on a twenty-stop day, with the queue already emptied of the evidence.
-        toast.error(tRef.current("sync.deadLettered", { count: res.deadLettered }), {
-          duration: 12_000,
-          description: namesFor(res.deadLetteredVisitIds),
-        });
-        qc.invalidateQueries({ queryKey: ["my-day"] });
-      }
-      if (res.failed > 0) {
-        toast.error(tRef.current("sync.stalled"));
-      }
-    },
-    [callers, qc, namesFor],
-  );
-
-  // Auto-sync on load + whenever we come back online. Once per REAL mount: the
-  // replay on mount is scheduled and the cleanup cancels it, so StrictMode's
-  // rehearsal mount (and a tab flicked away from at once) starts nothing. Not
-  // into a dead zone either: startAutoSync asks isDefinitelyOffline when the
-  // timer fires.
-  useEffect(() => startAutoSync(runSync, window, isDefinitelyOffline), [runSync]);
+  // The replay itself lives in the signed-in layout (components/QueueSync.tsx),
+  // so the queue goes out on reconnect from whatever page is open, not only
+  // this one. Here: the Sync button (the only "tap"), and the day's client
+  // names, which let a message about work to redo name the stop.
+  const { runSync, visitNames } = useQueueSync();
 
   // The day AS WORKED, not just as the server last described it: every queued
   // Start, Complete and Skip applied on top. Before this, an offline Complete
@@ -552,10 +413,10 @@ function MyDay() {
   // different day, and a tech who taps Map then reloads in a dead spot should
   // get the list back rather than a grey tile grid.
   const [view, setView] = useState<"list" | "map">("list");
-  // Kept current for namesFor above. Written during render rather than in an
-  // effect: a sync can fire from the online listener before an effect has run,
-  // and a toast that says "and 2 others" with no names is worse than one that
-  // says nothing.
+  // Kept current for the sync toasts' names (QueueSync). Written during render
+  // rather than in an effect: a sync can fire from the online listener before
+  // an effect has run, and a toast that says "and 2 others" with no names is
+  // worse than one that says nothing.
   visitNames.current = new Map(
     visits.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
       v.id,

@@ -10,6 +10,7 @@ import {
 import { useEffect } from "react";
 import { clearPersistedReadCaches, ensureReadCachePersistence } from "@/lib/offline/read-cache";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
+import { QueueSyncProvider } from "@/components/QueueSync";
 import { resolveIdentity } from "@/lib/offline/identity";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
@@ -132,7 +133,7 @@ export const Route = createFileRoute("/_authenticated")({
 
     return { userId: identity.userId, user: identity.user, organization: org.organization };
   },
-  component: AppShell,
+  component: SignedInApp,
   // Client-only route: this is also what the server sends for a signed-in
   // URL and what a cold native launch paints while beforeLoad decides who
   // is signed in. See ShellPending.
@@ -151,6 +152,18 @@ export const Route = createFileRoute("/_authenticated")({
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
+}
+
+/** The offline queue replays on launch and on every reconnect from here,
+ *  whichever page is open — not only from My Day, where it used to be started.
+ *  Outside AppShell so the shell and every page under it read the same one.
+ *  See components/QueueSync.tsx. */
+function SignedInApp() {
+  return (
+    <QueueSyncProvider>
+      <AppShell />
+    </QueueSyncProvider>
+  );
 }
 
 function AppShell() {

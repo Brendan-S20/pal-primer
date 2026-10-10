@@ -16,7 +16,9 @@ import {
   isRestorableEnvelope,
   LAST_LANDING_KEY,
   LAST_USER_KEY,
+  PERSISTABLE_QUERY_ROOTS,
   READ_CACHE_KEY_PREFIX,
+  READ_CACHE_MAX_AGE_MS,
   READ_CACHE_MAX_BYTES,
   READ_CACHE_VERSION,
   readCacheStorageKey,
@@ -131,6 +133,50 @@ function stopPersistence(): void {
   removeFlushListeners?.();
   removeFlushListeners = null;
   activeUserId = null;
+}
+
+/**
+ * Keep every allowlisted read in MEMORY for as long as the device may keep it
+ * on DISK.
+ *
+ * ── THE DAY LEFT THE PHONE FIVE MINUTES AFTER THE TECH LEFT MY DAY ─────────
+ *
+ * React Query removes a query from the cache `gcTime` after its last observer
+ * goes away, and the default is five minutes. The writer below dehydrates
+ * what is in the cache, so the sequence
+ *
+ *   1. My Day loads the day (persisted);
+ *   2. the tech opens Waste log, Alerts or Preferences: no observer left;
+ *   3. five minutes later the day is garbage-collected, and the cache's
+ *      "removed" event schedules a write;
+ *   4. that write finds no day and removes it from the device
+ *
+ * took the day off the phone in a dead zone without anything failing. A
+ * restored copy on a cold offline launch went the same way if the tech
+ * opened any other page first.
+ *
+ * Two fixes were possible: hold these queries in memory for the max age, or
+ * teach the writer to carry an allowlisted key that has left memory over from
+ * the old store. This is the first, because it is one rule in one place and
+ * adds no new path: the writer still writes exactly what is in the cache, so
+ * the per-user store, the impersonation switch and the sign-out clear cannot
+ * be routed around by a carried-over copy. The second would need the old
+ * store read on every write and a second carry-over rule beside
+ * savedCopiesToKeep (last-good-copy.ts), each of which the writer has to get
+ * right. Holding the query also leaves the day on screen when the tech comes
+ * back to My Day, rather than on disk only.
+ *
+ * `setQueryDefaults` matches by key prefix, so ["my-day", day, staff] and
+ * ["visit-stations", id] are covered, and it applies to queries `hydrate`
+ * builds from the store too. The cost is memory for a few days' responses at
+ * most, inside the same 512 KB budget the store is held to. Age is still
+ * enforced where it always was: the writer drops a copy past the max age
+ * (hasLastGoodCopy) and restore refuses an old store.
+ */
+export function holdPersistedReadsInMemory(queryClient: QueryClient): void {
+  for (const root of PERSISTABLE_QUERY_ROOTS) {
+    queryClient.setQueryDefaults([root], { gcTime: READ_CACHE_MAX_AGE_MS });
+  }
 }
 
 function restore(queryClient: QueryClient, userId: string): void {
@@ -333,6 +379,8 @@ export function ensureReadCachePersistence(
 
   activeUserId = uid;
   rememberLastUser(uid);
+  // Before restore, so the queries hydrate() builds get the long gcTime too.
+  holdPersistedReadsInMemory(queryClient);
   restore(queryClient, uid);
   writeNow(queryClient, uid);
 

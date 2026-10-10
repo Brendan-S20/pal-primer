@@ -13,54 +13,19 @@
 //   ...
 //   return <>{dialog}...</>
 
-import { useCallback, useMemo } from "react";
-import { useServerFn } from "@tanstack/react-start";
+import { useCallback } from "react";
 import { toast } from "sonner";
-import { startVisit, completeVisit, skipVisit, recordVisitPhoto } from "@/lib/my-day.functions";
-import { logStationService } from "@/lib/stations.functions";
-import { clockIn, clockOut } from "@/lib/time-clock.functions";
-import { recordFieldCollection } from "@/lib/field-collections.functions";
-import { createExpense } from "@/lib/expenses.functions";
 import { flushThenClearAndSignOut } from "@/lib/offline/sign-out";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useSyncCallers } from "@/hooks/useSyncCallers";
 
 export function useOfflineSignOut() {
-  const startFn = useServerFn(startVisit);
-  const completeFn = useServerFn(completeVisit);
-  const skipFn = useServerFn(skipVisit);
-  const photoFn = useServerFn(recordVisitPhoto);
   // Every kind the queue can hold has to be replayable from here. A caller
   // missing from this set is a queued action the flush cannot send, which the
-  // tech is then asked to discard on the way out the door.
-  const stationFn = useServerFn(logStationService);
-  const clockInFn = useServerFn(clockIn);
-  const clockOutFn = useServerFn(clockOut);
-  const collectionFn = useServerFn(recordFieldCollection);
-  const expenseFn = useServerFn(createExpense);
-  const callers = useMemo(
-    () => ({
-      startVisit: startFn,
-      completeVisit: completeFn,
-      skipVisit: skipFn,
-      recordVisitPhoto: photoFn,
-      logStationService: stationFn,
-      clockIn: clockInFn,
-      clockOut: clockOutFn,
-      recordFieldCollection: collectionFn,
-      createExpense: expenseFn,
-    }),
-    [
-      startFn,
-      completeFn,
-      skipFn,
-      photoFn,
-      stationFn,
-      clockInFn,
-      clockOutFn,
-      collectionFn,
-      expenseFn,
-    ],
-  );
+  // tech is then asked to discard on the way out the door. The set is shared
+  // with the app-wide replay (components/QueueSync.tsx) so the two cannot
+  // drift apart.
+  const callers = useSyncCallers();
 
   const { confirm, dialog } = useConfirmDialog();
 

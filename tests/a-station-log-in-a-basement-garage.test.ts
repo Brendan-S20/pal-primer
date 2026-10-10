@@ -53,6 +53,8 @@ const queueSrc = read("src/lib/offline/queue.ts");
 const syncSrc = read("src/lib/offline/sync.ts");
 const myDaySrc = read("src/routes/_authenticated/my-day.tsx");
 const signOutHookSrc = read("src/hooks/useOfflineSignOut.tsx");
+const syncCallersSrc = read("src/hooks/useSyncCallers.ts");
+const queueSyncSrc = read("src/components/QueueSync.tsx");
 const stationsFnSrc = read("src/lib/stations.functions.ts");
 
 /** Comments and JSX comment blocks stripped.
@@ -266,12 +268,16 @@ describe("every syncQueue call site can replay every kind", () => {
   // A caller missing from one of these sets is a queued action that call site
   // cannot send. On the sign-out path that is worse than a stall: the tech is
   // asked to discard work the flush was never able to attempt.
-  it("my-day passes one", () => {
-    expect(codeOnly(myDaySrc())).toMatch(/logStationService:\s*\w+/);
+  // Since 2026-10-09 both call sites (the app-wide replay that used to live in
+  // my-day, and the sign-out hook) take one shared set, so a kind cannot be in
+  // one and missing from the other.
+  it("the shared set passes one", () => {
+    expect(codeOnly(syncCallersSrc())).toMatch(/logStationService:\s*\w+/);
   });
 
-  it("the sign-out hook passes one", () => {
-    expect(codeOnly(signOutHookSrc())).toMatch(/logStationService:\s*\w+/);
+  it("the app-wide replay and the sign-out hook both use the shared set", () => {
+    expect(codeOnly(queueSyncSrc())).toMatch(/const callers = useSyncCallers\(\);/);
+    expect(codeOnly(signOutHookSrc())).toMatch(/const callers = useSyncCallers\(\);/);
   });
 
   it("and the type makes forgetting a third one a compile error", () => {
