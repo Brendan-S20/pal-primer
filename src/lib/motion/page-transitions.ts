@@ -11,9 +11,12 @@ import { prefersReducedMotion } from "./reduced-motion";
  *     transition only;
  *   * the router's `defaultViewTransition.types` callback, which returns
  *     `false` to skip the transition entirely where the browser supports
- *     view-transition types (Chrome 125+, Safari 18.2+). Where it does not,
- *     the router starts a plain transition anyway and `data-nav-dir="none"`
- *     makes it instant in CSS.
+ *     view-transition types (Chrome 125+, Safari 18.2+). Where it does not
+ *     (iOS 18.0-18.1, Android System WebView before 125) the router would
+ *     start a plain transition anyway, so observeTransitions() below refuses
+ *     it: a transition with nothing to animate still snapshots the whole
+ *     screen twice, holds rendering for a frame and swallows taps until it
+ *     ends, which is the cost of a transition with none of the point.
  *
  * Feature detection is the router's: it only calls startViewTransition when
  * `document.startViewTransition` exists. Anywhere else, navigation is
@@ -25,6 +28,13 @@ let lastTraversal: { at: number; uaAnimated: boolean } | null = null;
 let activeTransitions = 0;
 let clearTimer: ReturnType<typeof setTimeout> | undefined;
 let installed = false;
+/** When the app's own navigation chrome (tab bar, More sheet, sidebar) was
+ *  last tapped. A navigation that starts right after is a tab switch. */
+let lastChromeTap = -Infinity;
+
+/** The navigation chrome. A tap inside any of these is a tab switch. */
+const NAV_CHROME =
+  '[data-vt="tabbar"], [data-vt="header"], [data-sidebar="sidebar"], [data-nav-chrome]';
 
 /** A history traversal this recent is the one the router is loading now. */
 const TRAVERSAL_WINDOW_MS = 1000;
@@ -75,6 +85,25 @@ function watchTraversals() {
   });
 }
 
+/** Capture phase, so it is recorded before the router's own click handler
+ *  starts the navigation. Keyboard activation of a link is a click too. */
+function watchNavChrome() {
+  document.addEventListener(
+    "click",
+    (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest(NAV_CHROME)) lastChromeTap = performance.now();
+    },
+    { capture: true },
+  );
+}
+
+function takeChromeTap(): boolean {
+  const recent = performance.now() - lastChromeTap <= TRAVERSAL_WINDOW_MS;
+  lastChromeTap = -Infinity;
+  return recent;
+}
+
 function takeTraversal() {
   const t = lastTraversal;
   lastTraversal = null;
@@ -100,6 +129,24 @@ function observeTransitions() {
   const original = doc.startViewTransition;
   if (typeof original !== "function") return;
   doc.startViewTransition = function (this: Document, arg: unknown) {
+    // Nothing to animate (a tab switch, a filter, reduced motion, a swipe the
+    // platform already animated): do the update and start no transition.
+    // Only reached on an engine without view-transition types, where the
+    // router cannot be told `false`; everywhere else it never calls this.
+    if (current === "none") {
+      const update =
+        typeof arg === "function"
+          ? (arg as () => unknown)
+          : (arg as { update?: () => unknown } | null)?.update;
+      const done = Promise.resolve().then(() => update?.());
+      done.catch(() => {});
+      return {
+        ready: Promise.resolve(),
+        finished: done.then(() => undefined),
+        updateCallbackDone: done.then(() => undefined),
+        skipTransition() {},
+      };
+    }
     const t = original.call(this, arg);
     activeTransitions++;
     t.ready.catch(() => {});
@@ -123,6 +170,7 @@ export function installPageTransitions(router: AnyRouter) {
   if (installed || typeof window === "undefined") return;
   installed = true;
   watchTraversals();
+  watchNavChrome();
   observeTransitions();
 
   router.subscribe("onBeforeLoad", (e) => {
@@ -138,16 +186,21 @@ export function installPageTransitions(router: AnyRouter) {
         toIndex: toState?.__TSR_index,
         uaTransitioned: traversal?.uaAnimated ?? false,
         reducedMotion: prefersReducedMotion(),
+        fromNavChrome: takeChromeTap(),
       }),
     );
   });
 
-  // Backstop: a navigation that resolved without any transition starting
-  // (no support, or one was not wanted) must not leave the names on. They
-  // make <main> a stacking context, which is harmless for 220ms and not for
-  // the rest of the session.
+  // A navigation that resolved without any transition starting (no support,
+  // or one was not wanted) must not leave the names on. They make <main> a
+  // stacking context, which is harmless for 180ms and not for the rest of the
+  // session. The transition, when there is one, has started by now (the
+  // router starts it before it resolves), so nothing running means nothing
+  // is coming: clear at once. The timer is a backstop for a transition whose
+  // `finished` never settles.
   router.subscribe("onResolved", () => {
     if (clearTimer) clearTimeout(clearTimer);
-    clearTimer = setTimeout(clearDir, 1000);
+    if (activeTransitions === 0) clearDir();
+    else clearTimer = setTimeout(clearDir, 1000);
   });
 }
