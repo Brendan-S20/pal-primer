@@ -244,7 +244,16 @@ export function VisitDetailDrawer({
             )}
           </SheetTitle>
           <SheetDescription>
-            {formatDay(v?.scheduled_on)} {v?.zones?.name ? `· ${v.zones.name}` : ""}
+            {formatDay(v?.scheduled_on)}
+            {/* What this visit is (services, phase 2): the business's own
+                name for it, so it keeps its own direction. */}
+            {v?.services?.name ? (
+              <>
+                {" · "}
+                <bdi className="font-medium text-foreground">{v.services.name}</bdi>
+              </>
+            ) : null}{" "}
+            {v?.zones?.name ? `· ${v.zones.name}` : ""}
             {v?.staff?.display_name ? ` · ${v.staff.display_name}` : ""}
           </SheetDescription>
         </SheetHeader>

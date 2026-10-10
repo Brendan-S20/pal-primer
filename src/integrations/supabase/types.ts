@@ -5853,6 +5853,7 @@ export type Database = {
           priced_at: string | null
           priced_from_zone_id: string | null
           property_id: string
+          service_id: string | null
           started_on: string
           status: Database["public"]["Enums"]["subscription_status"]
           unit_count: number | null
@@ -5883,6 +5884,7 @@ export type Database = {
           priced_at?: string | null
           priced_from_zone_id?: string | null
           property_id: string
+          service_id?: string | null
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
           unit_count?: number | null
@@ -5913,6 +5915,7 @@ export type Database = {
           priced_at?: string | null
           priced_from_zone_id?: string | null
           property_id?: string
+          service_id?: string | null
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
           unit_count?: number | null
@@ -5945,6 +5948,13 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
             referencedColumns: ["id"]
           },
           {
@@ -6330,6 +6340,7 @@ export type Database = {
           rescheduled_from: string | null
           scheduled_on: string
           sequence: number | null
+          service_id: string | null
           skip_billable: boolean
           skip_charge_cents: number
           skip_reason: string | null
@@ -6374,6 +6385,7 @@ export type Database = {
           rescheduled_from?: string | null
           scheduled_on: string
           sequence?: number | null
+          service_id?: string | null
           skip_billable?: boolean
           skip_charge_cents?: number
           skip_reason?: string | null
@@ -6418,6 +6430,7 @@ export type Database = {
           rescheduled_from?: string | null
           scheduled_on?: string
           sequence?: number | null
+          service_id?: string | null
           skip_billable?: boolean
           skip_charge_cents?: number
           skip_reason?: string | null
@@ -6472,6 +6485,13 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
             referencedColumns: ["id"]
           },
           {
@@ -7121,6 +7141,10 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      ensure_default_services: {
+        Args: { _org_id: string }
+        Returns: string
       }
       file_reversal_review_item: {
         Args: {
@@ -8109,6 +8133,10 @@ export type Database = {
       start_visit: {
         Args: { _started_at?: string; _visit_id: string }
         Returns: undefined
+      }
+      stop_service_min: {
+        Args: { _property_min: number; _service_min: number }
+        Returns: number
       }
       tip_staff_for_invoice: {
         Args: { _invoice_id: string }

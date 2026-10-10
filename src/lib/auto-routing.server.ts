@@ -52,6 +52,7 @@ import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import { measureDayFit } from "@/lib/route-day-fit";
 import { applyRoutePlans, planDayRoutes, type DayPlan } from "@/lib/route-plan.server";
 import { LEVELS, shouldPushWhenDone, type RunStage } from "@/lib/routing-run";
+import { visitServiceMinutes } from "@/lib/visit-service";
 
 /** The search budget for one day, by level, before it is shared out across a
  *  multi-day run. "thorough" is what the panel sends. */
@@ -329,7 +330,7 @@ export async function runAutoRouting(
         supabase
           .from("visits")
           .select(
-            "assigned_staff_id, scheduled_on, eta_end, travel_min, properties(latitude, longitude, service_duration_min)",
+            "assigned_staff_id, scheduled_on, eta_end, travel_min, properties(latitude, longitude, service_duration_min), services(default_duration_min)",
           )
           .eq("organization_id", orgId)
           .eq("status", "scheduled")
@@ -344,7 +345,12 @@ export async function runAutoRouting(
         day: v.scheduled_on,
         etaEnd: v.eta_end,
         travelMin: v.travel_min == null ? null : Number(v.travel_min),
-        serviceMin: v.properties?.service_duration_min ?? null,
+        // The planner's own rule (stop_service_min): the service's minutes,
+        // else the yard's. A walk is as long as the walk.
+        serviceMin: visitServiceMinutes(
+          v.services?.default_duration_min,
+          v.properties?.service_duration_min,
+        ),
         latitude: v.properties?.latitude ?? null,
         longitude: v.properties?.longitude ?? null,
       })),

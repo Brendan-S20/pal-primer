@@ -78,6 +78,12 @@ import { getQuote, markQuoteConverted } from "@/lib/quotes.functions";
 import { formatQuoteMoney, quoteConversion } from "@/lib/quotes";
 import { humanizeEnum } from "@/lib/humanize";
 import { CHURN_REASONS } from "@/lib/churn-reasons";
+import { planTitle } from "@/lib/visit-service";
+import {
+  ServicePicker,
+  effectiveServiceId,
+  useOrgServices,
+} from "@/components/client-detail/ServicePicker";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -401,10 +407,8 @@ export function ServicesTab({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="font-semibold">
-                          {s.frequency === "one_time"
-                            ? "One-time pet waste removal"
-                            : "Recurring pet waste removal"}
+                        <span className="min-w-0 break-words font-semibold">
+                          {planTitle(s.frequency, s.services)}
                         </span>
                         {ended ? (
                           <StatusChip status="ended" />
@@ -1112,10 +1116,15 @@ function ServiceDrawer({
   const activeDogsFor = (propertyId: string) =>
     dogs.filter((d: any) => d.property_id === propertyId && d.active !== false).length;
 
-  const initial: SubscriptionFormValues & { choice: ScheduleChoice } = useMemo(() => {
+  // What the plan sells. "" until the person picks: the picker shows the
+  // business's pet waste removal, and Save sends whatever it shows.
+  const { services: orgServices, isLoading: servicesLoading } = useOrgServices(open);
+
+  const initial: SubscriptionFormValues & { choice: ScheduleChoice; serviceId: string } = useMemo(() => {
     if (subscription) {
       return {
         ...subscriptionToFormValues(subscription, today),
+        serviceId: (subscription.service_id as string | null) ?? "",
         intervalWeeks:
           subscription.frequency === "biweekly"
             ? "2"
@@ -1125,7 +1134,11 @@ function ServiceDrawer({
         choice: scheduleChoiceFromRecord(subscription),
       };
     }
-    const blank = { ...blankSubscriptionFormValues({ properties, today }), choice: "weekly" as ScheduleChoice };
+    const blank = {
+      ...blankSubscriptionFormValues({ properties, today }),
+      choice: "weekly" as ScheduleChoice,
+      serviceId: "",
+    };
     if (blank.propertyId) {
       const n = activeDogsFor(blank.propertyId);
       if (n > 0) blank.dogCount = String(n);
@@ -1370,6 +1383,7 @@ function ServiceDrawer({
         preferredWeekdays: form.preferredWeekdays.length ? form.preferredWeekdays : undefined,
         earliestTime: form.earliestTime || null,
         latestTime: form.latestTime || null,
+        serviceId: effectiveServiceId(form.serviceId, orgServices) ?? undefined,
       };
       const run = subscription
         ? updateFn({ data: { subscriptionId: subscription.id, ...common } })
@@ -1443,6 +1457,13 @@ function ServiceDrawer({
           saveMut.mutate();
         }}
       >
+        <ServicePicker
+          value={form.serviceId}
+          currentId={(subscription?.service_id as string | null) ?? null}
+          services={orgServices}
+          isLoading={servicesLoading}
+          onChange={(v) => set("serviceId", v)}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label>Property</Label>

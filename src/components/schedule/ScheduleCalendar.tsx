@@ -57,6 +57,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { TechAvatar } from "@/components/schedule/TechAvatar";
 import { orgLocalMinutes } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { servicesVary, type VisitServiceRef } from "@/lib/visit-service";
 
 export type CalendarVisit = {
   id: string;
@@ -76,29 +77,30 @@ export type CalendarVisit = {
   subscriptions?: {
     earliest_time?: string | null;
     latest_time?: string | null;
-    /** The nearest thing this product has to Jobber's "service name" — see
-     *  serviceLabel() below for why it is a cadence and not a name. */
+    /** The cadence, which the hover card shows beside the service name. */
     account_type?: string | null;
     frequency?: string | null;
   } | null;
+  /** What the visit is (services, phase 2). */
+  service_id?: string | null;
+  services?: VisitServiceRef;
   eta_start?: string | null;
 };
 
 /** What kind of work this visit is.
  *
  *  Owner QA, 2026-08-19, asked for the week view to read like Jobber's, whose
- *  chip carries the SERVICE on its second line. HoundStack has no service name
- *  to carry: there is no services table and no per-visit service column,
- *  because the product sells one service — waste removal — at a cadence. The
- *  nearest true value is the subscription's cadence and account type, which is
- *  what this builds. Inventing a "Pet waste removal" string for every chip
- *  would put the same seven words on every row of the board and say nothing.
+ *  chip carries the SERVICE on its second line. Until the service catalog
+ *  (2026-10-09) there was no service to carry, so this was the plan's cadence
+ *  and account type. Now a visit has a service, and the hover card names it
+ *  beside the cadence.
  *
- *  Where it goes is decided by whether it VARIES. Cadence is a property of the
- *  customer, not of the day, so on a week where nearly every account is weekly
- *  it is noise in a 96px column — it lives in the hover card. The one case that
- *  does vary, and that a dispatcher plans around, is a ONE-TIME job sitting in
- *  a week of recurring ones: that earns the chip's second line. */
+ *  Where it goes is still decided by whether it VARIES. A business that sells
+ *  one service would read the same words on every chip and learn nothing, so
+ *  the chip's second line carries the service name only when the visits on
+ *  screen are not all one service (servicesVary). Cadence is a property of the
+ *  customer, not of the day, so it stays in the hover card, except a ONE-TIME
+ *  job sitting in a week of recurring ones: that earns the chip's second line. */
 const FREQUENCY_LABEL: Record<string, string> = {
   weekly: "Weekly",
   biweekly: "Bi-weekly",
@@ -107,7 +109,7 @@ const FREQUENCY_LABEL: Record<string, string> = {
   one_time: "One-time",
 };
 
-const serviceLabel = (v: CalendarVisit) => {
+const cadenceLabel = (v: CalendarVisit) => {
   const freq = v.subscriptions?.frequency;
   if (!freq) return null;
   const cadence = FREQUENCY_LABEL[freq] ?? freq;
@@ -222,6 +224,7 @@ function VisitChip({
   hovered,
   onHover,
   hiddenOnPhone = false,
+  showService = false,
 }: {
   visit: CalendarVisit;
   color: string | undefined;
@@ -233,6 +236,8 @@ function VisitChip({
    *  Rendered either way, because at `md` the column scrolls and there is no
    *  cut-off to be past. */
   hiddenOnPhone?: boolean;
+  /** The visits on screen are not all one service, so the chip names it. */
+  showService?: boolean;
 }) {
   const tz = useOrgTimezone();
   const name = visit.clients?.display_name ?? "Unnamed client";
@@ -244,12 +249,21 @@ function VisitChip({
   // where. Both are optional and either alone is worth a line; neither leaves
   // the chip a single line tall, which is what a day with no routing looks
   // like before it is optimized.
-  const service = serviceLabel(visit);
-  // "One-time" only. See serviceLabel(): the cadence is constant per customer,
+  const serviceName = visit.services?.name ?? null;
+  const cadence = cadenceLabel(visit);
+  // "One-time" only. See cadenceLabel(): the cadence is constant per customer,
   // so putting it on every chip would cost a 96px column its street name to
-  // repeat what the client list already says.
+  // repeat what the client list already says. The service name likewise, only
+  // when it varies.
   const oneTime = visit.subscriptions?.frequency === "one_time" ? "One-time" : null;
-  const second = [mins == null ? null : clock(mins), oneTime, street].filter(Boolean).join(" · ");
+  const second = [
+    mins == null ? null : clock(mins),
+    showService ? serviceName : null,
+    oneTime,
+    street,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const dayLabel = new Date(`${visit.scheduled_on}T00:00:00`).toLocaleDateString(undefined, {
     weekday: "long",
     month: "short",
@@ -308,10 +322,14 @@ function VisitChip({
               <dd>{[street, city].filter(Boolean).join(", ")}</dd>
             </>
           )}
-          {service && (
+          {(serviceName || cadence) && (
             <>
               <dt className="text-muted-foreground">Service</dt>
-              <dd>{service}</dd>
+              <dd>
+                {serviceName && <bdi>{serviceName}</bdi>}
+                {serviceName && cadence ? " · " : null}
+                {cadence}
+              </dd>
             </>
           )}
           {visit.zones?.name && (
@@ -355,6 +373,7 @@ export function ScheduleCalendar({
 }) {
   const tz = useOrgTimezone();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const showService = servicesVary(visits);
   const { days, leadingBlanks } = calendarWindow(day, range);
 
   const byDay = new Map<string, CalendarVisit[]>();
@@ -557,6 +576,7 @@ export function ScheduleCalendar({
                         hovered={hoveredVisitId === v.id}
                         onHover={onHoverVisit}
                         hiddenOnPhone={!isMonth && i >= phoneCut}
+                        showService={showService}
                       />
                     </Fragment>
                   ))}

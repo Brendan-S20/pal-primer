@@ -199,6 +199,16 @@ const en = {
     by: "By {{time}}",
     over8h: "Over 8h · started {{time}}",
   },
+  /** What kind of work a stop is, by service line (services, phase 2). The
+   *  business's own name for the service is its text and is not translated;
+   *  this is the line it belongs to. */
+  serviceLine: {
+    pet_waste: "Pet waste removal",
+    dog_walking: "Dog walking",
+    pet_sitting: "Pet sitting",
+    mobile_grooming: "Mobile grooming",
+    other: "Other service",
+  },
   access: {
     gate: "Gate",
     lockBox: "Lock box",

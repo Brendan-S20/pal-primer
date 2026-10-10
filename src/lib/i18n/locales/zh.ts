@@ -190,6 +190,13 @@ const zh: TranslationsWithPlurals<"other"> = {
     by: "{{time}} 之前",
     over8h: "超过 8 小时 · {{time}} 开始",
   },
+  serviceLine: {
+    pet_waste: "宠物粪便清理",
+    dog_walking: "遛狗",
+    pet_sitting: "宠物看护",
+    mobile_grooming: "上门美容",
+    other: "其他服务",
+  },
   access: {
     gate: "大门",
     lockBox: "钥匙盒",

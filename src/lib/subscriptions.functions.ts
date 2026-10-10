@@ -51,6 +51,10 @@ const createSubSchema = z
     preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
     earliestTime: windowTimeSchema,
     latestTime: windowTimeSchema,
+    // What the plan sells (public.services). Omitted on create, the database
+    // gives the plan the business's default service; omitted on update, the
+    // plan keeps the one it has.
+    serviceId: z.string().uuid().optional(),
   })
   .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
     message: "End date can't be before the start date",
@@ -68,6 +72,26 @@ const createSubSchema = z
     { message: "residential requires dogCount; commercial requires unitCount" },
   );
 
+/** A plan may be sold as one of the business's ACTIVE services, or keep the
+ *  one it already has after that service was deactivated. Another business's
+ *  service reads as "not found" here (RLS) and is refused by the database
+ *  too (tg_subscriptions_service). */
+async function assertServiceBookable(
+  supabase: any,
+  serviceId: string,
+  currentId: string | null,
+): Promise<void> {
+  if (serviceId === currentId) return;
+  const { data: svc, error } = await supabase
+    .from("services")
+    .select("id, active")
+    .eq("id", serviceId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!svc) throw new Error("That service was not found.");
+  if (!svc.active) throw new Error("That service is no longer offered. Choose another.");
+}
+
 export const createSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => createSubSchema.parse(d))
@@ -83,6 +107,7 @@ export const createSubscription = createServerFn({ method: "POST" })
       .eq("id", data.clientId)
       .single();
     if (cErr) throw new Error(cErr.message);
+    if (data.serviceId) await assertServiceBookable(supabase, data.serviceId, null);
 
     const { data: row, error } = await supabase
       .from("subscriptions")
@@ -117,6 +142,7 @@ export const createSubscription = createServerFn({ method: "POST" })
           data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
         earliest_time: data.earliestTime ?? null,
         latest_time: data.latestTime ?? null,
+        ...(data.serviceId ? { service_id: data.serviceId } : {}),
       })
       .select("id")
       .single();
@@ -169,6 +195,10 @@ const updateSubSchema = z
     preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
     earliestTime: windowTimeSchema,
     latestTime: windowTimeSchema,
+    // What the plan sells (public.services). Omitted on create, the database
+    // gives the plan the business's default service; omitted on update, the
+    // plan keeps the one it has.
+    serviceId: z.string().uuid().optional(),
   })
   .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
     message: "End date can't be before the start date",
@@ -191,9 +221,10 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // before -> after).
     const { data: before } = await supabase
       .from("subscriptions")
-      .select("organization_id, client_id, price_cents, frequency, started_on, ends_on, status")
+      .select("organization_id, client_id, price_cents, frequency, started_on, ends_on, status, service_id")
       .eq("id", data.subscriptionId)
       .single();
+    if (data.serviceId) await assertServiceBookable(supabase, data.serviceId, before?.service_id ?? null);
     // Keep status consistent with the end date (UX round 4): setting a past
     // end date cancels; clearing it (or moving it to the future) on a
     // canceled service revives it — otherwise ending a service was a one-way
@@ -237,6 +268,10 @@ export const updateSubscription = createServerFn({ method: "POST" })
         // undefined = leave the window alone; null = clear it.
         ...(data.earliestTime !== undefined ? { earliest_time: data.earliestTime } : {}),
         ...(data.latestTime !== undefined ? { latest_time: data.latestTime } : {}),
+        // The plan's upcoming scheduled visits follow a change of service in
+        // the database (subscriptions_service_reaches_upcoming_visits); the
+        // ones that happened keep the service they were done as.
+        ...(data.serviceId ? { service_id: data.serviceId } : {}),
       })
       .eq("id", data.subscriptionId)
       .select("organization_id");
@@ -262,10 +297,17 @@ export const updateSubscription = createServerFn({ method: "POST" })
           ? `Changed service price from $${(before.price_cents / 100).toFixed(2)} to $${(data.priceCents / 100).toFixed(2)} per visit`
           : "Updated service configuration",
         meta: {
-          before: { price_cents: before.price_cents, frequency: before.frequency, ends_on: before.ends_on, status: before.status },
+          before: {
+            price_cents: before.price_cents,
+            frequency: before.frequency,
+            ends_on: before.ends_on,
+            status: before.status,
+            service_id: before.service_id ?? null,
+          },
           after: {
             price_cents: data.priceCents,
             frequency: data.frequency,
+            service_id: data.serviceId ?? before.service_id ?? null,
             ends_on: data.endsOn ?? null,
             status: (statusPatch as any).status ?? before.status,
           },
@@ -418,7 +460,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time",
+        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line)",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
