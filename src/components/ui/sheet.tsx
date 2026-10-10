@@ -50,8 +50,14 @@ SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 // strips its padding (`p-0`) takes the inset over with it, and has to put it
 // back on whatever it draws at the top. tests/a-sheet-is-not-under-the-clock
 // checks that it does.
+//
+// It moves by keyframes (tw-animate's slide-in/out) and nothing else. It used
+// to carry `transition` as well, which put a CSS transition on transform,
+// opacity and box-shadow underneath the keyframes: two animation systems on
+// one element, the transition re-firing whenever the swipe handler cleared
+// its inline transform. The swipe sets its own transition while it needs one.
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-(--motion-ease-standard) data-[state=closed]:duration-(--motion-duration-base) data-[state=open]:duration-(--motion-duration-slow) data-[state=open]:animate-in data-[state=closed]:animate-out",
+  "fixed z-50 gap-4 bg-background p-6 shadow-lg ease-(--motion-ease-standard) data-[state=closed]:duration-(--motion-duration-base) data-[state=open]:duration-(--motion-duration-slow) data-[state=open]:animate-in data-[state=closed]:animate-out",
   {
     variants: {
       side: {

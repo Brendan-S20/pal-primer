@@ -138,7 +138,7 @@ export const PET_WASTE_MODULES: Record<PetWasteModule, string> = {
   dump_site_step:
     'The setup step "Where the day ends" asks for a dump site (becomes "Where does your day end?", saved as each tech\'s route end)',
   stations_dna: "DNA compliance (also commercialOnly) and waste stations",
-  yard_step: 'The "Yard" step of the new-client wizard (outline sketch)',
+  yard_step: 'The "Outline" step of the new-client wizard (property outline sketch)',
   yard_outline_prompt: 'My Day\'s "No yard outline yet" line (an outline that exists still shows)',
   area_pricing: "Per-sq-ft / per-acre zone pricing (shown anyway when a zone already uses it)",
   first_cleanup:
@@ -166,14 +166,14 @@ export function showsPetWasteModule(
 }
 
 /** The new-client wizard's steps, in order. */
-export const NEW_CLIENT_STEPS = ["Contact", "Property", "Yard", "Dogs", "Plan"] as const;
+export const NEW_CLIENT_STEPS = ["Contact", "Property", "Outline", "Dogs", "Plan"] as const;
 export type NewClientStep = (typeof NEW_CLIENT_STEPS)[number];
 
-/** "Yard" sketches the outline that area pricing and the waste-time estimate
+/** "Outline" sketches the outline that area pricing and the waste-time estimate
  *  read, so only a pet-waste business is asked for it. The outline can still
  *  be drawn later from the client's property, by anybody who wants one. */
 export function newClientWizardSteps(petWaste: boolean): readonly NewClientStep[] {
-  return petWaste ? NEW_CLIENT_STEPS : NEW_CLIENT_STEPS.filter((s) => s !== "Yard");
+  return petWaste ? NEW_CLIENT_STEPS : NEW_CLIENT_STEPS.filter((s) => s !== "Outline");
 }
 
 // ── SEEDS: WHAT EACH LINE SUGGESTS ──────────────────────────────────────────
@@ -220,7 +220,7 @@ function fixedVisit(baseMin: number, perExtraPetMin: number): EstTimeConfig {
 export const LINE_SEEDS: Readonly<Record<ServiceLine, LineSeeds>> = {
   pet_waste: {
     checklist: SUGGESTED_CHECKLIST,
-    addOnExample: { code: "deodorize", name: "Yard deodorize" },
+    addOnExample: { code: "extra_visit", name: "Extra visit" },
     // organizations.frequency_multipliers' column default, migration
     // 20260701215820.
     frequencyMultipliers: { weekly: 1.0, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 },

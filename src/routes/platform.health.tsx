@@ -10,6 +10,7 @@ import { Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { sendClientTestError } from "@/lib/monitoring/client";
 import { sendMonitoringTestError } from "@/lib/monitoring/test-error.functions";
+import { AccountDeletionCard } from "@/components/platform/AccountDeletionCard";
 
 export const Route = createFileRoute("/platform/health")({
   head: () => ({ meta: [{ title: pageTitle("Health", "Platform admin") }, { name: "robots", content: "noindex" }] }),
@@ -153,6 +154,7 @@ function HealthPage() {
           <MonitoringTestButton />
         </CardContent>
       </Card>
+      <AccountDeletionCard />
     </div>
   );
 }

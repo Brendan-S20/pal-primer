@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, redirect, Link } from "@tanstack/react-ro
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { signOutAndClearDevice } from "@/lib/offline/read-cache";
+import { settleAfterFirstCommit } from "@/lib/app-mounted";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,14 +19,19 @@ export const Route = createFileRoute("/admin")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  beforeLoad: async () => {
-    // If already signed in AND platform admin, bounce straight in.
-    const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      const { data: isAdmin } = await supabase.rpc("is_platform_admin", { _user_id: data.user.id });
-      if (isAdmin) throw redirect({ to: "/platform" });
-    }
-  },
+  // Answers only after the first commit, like the _authenticated shell: on a
+  // hard load this runs beside React's first render. See lib/app-mounted.ts.
+  beforeLoad: () =>
+    settleAfterFirstCommit(async () => {
+      // If already signed in AND platform admin, bounce straight in.
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        const { data: isAdmin } = await supabase.rpc("is_platform_admin", {
+          _user_id: data.user.id,
+        });
+        if (isAdmin) throw redirect({ to: "/platform" });
+      }
+    }),
   component: AdminLoginPage,
 });
 

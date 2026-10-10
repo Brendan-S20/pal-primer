@@ -10,6 +10,7 @@ import { useIntlLocale } from "@/lib/i18n";
 import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 import { ScheduleDaysSkeleton } from "@/components/PageSkeletons";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
+import { useMotionList } from "@/lib/motion/use-motion-list";
 
 /**
  * A technician's own next two weeks.
@@ -52,6 +53,7 @@ const fmtDay = (iso: string, locale: string | undefined) =>
   });
 
 function MySchedulePage() {
+  const motionList = useMotionList<HTMLUListElement>();
   const { t } = useTranslation();
   // In the language this device reads. The route's head is English because
   // it runs before i18n has read the device's choice.
@@ -94,7 +96,7 @@ function MySchedulePage() {
           address these rows without also catching the mobile tab bar's, which
           are also <li><a> and sit in the same document. In Spanish the name
           is Spanish too: "Tus próximos días". */}
-      <ul aria-label={t("schedule.listLabel")} className="motion-list space-y-2">
+      <ul ref={motionList} aria-label={t("schedule.listLabel")} className="motion-list space-y-2">
         {days.map((d) => {
           const left = d.stops - d.done;
           const first = orgLocalTime(d.firstEta, tz, locale) || null;

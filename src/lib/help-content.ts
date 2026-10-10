@@ -37,7 +37,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ── Getting started ────────────────────────────────────────────────────────
   {
     slug: "first-30-minutes",
-    title: "Your first 30 minutes: from empty account to first route",
+    title: "Your first 30 minutes: from empty account to a scheduled, billable week",
     section: "Getting started",
     body: [
       "The fastest path from a fresh account to a working day is the [guided setup](article:tour): six short steps, each done in place, and the [Get started checklist](article:checklist) on your dashboard tracks the same six. In order:",
@@ -281,7 +281,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       // 2026-10-07: says "coming soon" first, and points the automated-text
       // switches at Settings > Automation, where they are. It pointed at SMS
       // settings, which has none.
-      "Texting your clients is **coming soon**. Each business will text from a HoundStack-managed number of its own, provisioned for you: there is no Twilio account to connect and no carrier registration for you to file. Those numbers are waiting on US carrier (10DLC) registration, and until yours is ready nothing is texted to your clients. Visit reminders, on-my-way notices, review requests, overdue and declined-card reminders, and portal sign-in codes go by email instead. [SMS settings](/settings/sms) shows where your number stands.",
+      "Texting your clients is **coming soon**. Each business will text from its own local number, registered with US carriers under your business name: there is no Twilio account to connect, and HoundStack files the carrier registration on your behalf. Those numbers are waiting on US carrier (10DLC) registration, and until yours is ready nothing is texted to your clients. Visit reminders, on-my-way notices, review requests, overdue and declined-card reminders, and portal sign-in codes go by email instead. [SMS settings](/settings/sms) shows where your number stands.",
       "While texting is coming soon, the texting controls in the app (New message in [Messages](/messages), the composer on a client's page, the text switches in [Automation](/settings/automation)) show a Coming soon badge instead of sending. Your settings are kept, and they light up on their own when your number is ready.",
       "Once it arrives, every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. A client is texted only after they have agreed to texts, which you can record now on their Communication tab. Consent details live in the public [SMS policy](/legal/sms).",
       "Pick which automated texts go out in [Automation](/settings/automation), under Text notifications; the emails that stand in for them are in [Emails](/settings/emails). Per-client opt-outs show on the client's page.",
@@ -428,7 +428,6 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "[My Day](/my-day) lists the visits assigned to you for the day, in route order, with one-tap directions, start/complete buttons, photo capture, skip (with a [reason](article:skip-rules)), and [add-on billing](article:add-ons).",
       "Complete visits as you finish them; completed visits are what [invoicing](article:getting-paid) runs on. A visit left in progress overnight shows up in the office's stuck-visit count.",
-      "Works offline: actions queue when you lose signal and sync when you're back.",
     ],
     appLink: { to: "/my-day", label: "Open My Day" },
     related: ["time-clock", "waste-log", "skip-rules", "add-ons"],

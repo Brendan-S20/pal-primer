@@ -9,11 +9,15 @@
  *            flips it with --motion-dir, so this file never says "right").
  *   back     shallower, or the history went back. The page leaves toward the
  *            end edge and the previous one is underneath.
- *   tab      sideways between top-level sections (the tab bar, the sidebar):
- *            a crossfade, because neither is "inside" the other.
- *   none     no transition at all.
+ *   none     no transition at all. This includes every move between
+ *            top-level sections and every tap on the tab bar or the sidebar:
+ *            a native app switches tabs in place, it does not slide or fade
+ *            between them. Until 2026-10-08 a tab switch crossfaded, which
+ *            on the owner's iPhone read as the app hesitating on every tab
+ *            tap, and a view transition swallows taps for as long as it runs,
+ *            so tapping two tabs quickly lost the second one.
  */
-export type NavDirection = "forward" | "back" | "tab" | "none";
+export type NavDirection = "forward" | "back" | "none";
 
 export type NavInput = {
   /** Pathname being left; undefined on the first load. */
@@ -32,6 +36,12 @@ export type NavInput = {
   uaTransitioned: boolean;
   /** prefers-reduced-motion: reduce. */
   reducedMotion: boolean;
+  /** The navigation came from the app's own navigation chrome (the bottom
+   *  tab bar, its More sheet, the sidebar) rather than from a link in a page.
+   *  Those are tab switches whatever the two URLs look like: tapping Clients
+   *  while on /clients/123 is not "going back" in a native app, it is
+   *  changing tab. */
+  fromNavChrome?: boolean;
 };
 
 const segments = (path: string) => path.split("/").filter(Boolean);
@@ -50,7 +60,10 @@ export function navDirection(i: NavInput): NavDirection {
 
   // Two top-level sections: the tab bar and the sidebar move between these,
   // and there is no back stack between tabs in a native app either.
-  if (from.length <= 1 && to.length <= 1) return "tab";
+  if (from.length <= 1 && to.length <= 1) return "none";
+  // A tap on the tab bar or the sidebar is a tab switch, wherever it starts.
+  // A history pop is still a pop: the back key from /clients/123 slides.
+  if (i.fromNavChrome && !i.isPop) return "none";
 
   // The history knows which way it went, and that beats the shape of the
   // URLs: going back from /clients (reached by a link) to /clients/123 is

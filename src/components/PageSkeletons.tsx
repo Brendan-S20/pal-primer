@@ -34,7 +34,11 @@ import { cn } from "@/lib/utils";
  *     measured.
  *
  * Each one pulses (ui/skeleton.tsx); under reduced motion the pulse is held
- * still by the rule in styles.css.
+ * still by the rule in styles.css. And each one waits 160ms before it is
+ * drawn (styles.css, SKELETONS), so a page whose data answers quickly goes
+ * straight from nothing to content without a grey flash in between. The
+ * router's pending page is the exception: the router has already waited
+ * 300ms before mounting it, so it is drawn at once (`immediate`).
  */
 
 function Bone({ className }: { className?: string }) {
@@ -44,10 +48,14 @@ function Bone({ className }: { className?: string }) {
 function Region({
   label,
   className,
+  immediate = false,
   children,
 }: {
   label?: string;
   className?: string;
+  /** Drawn at once rather than after --skeleton-delay: only for a skeleton
+   *  something else has already waited for. */
+  immediate?: boolean;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -57,6 +65,7 @@ function Region({
       aria-busy="true"
       aria-label={label ?? t("common.loading")}
       data-skeleton-region=""
+      data-skeleton-now={immediate ? "" : undefined}
       className={className}
     >
       {children}
@@ -92,7 +101,7 @@ function HeadingBones({ wide = false }: { wide?: boolean }) {
 export function RoutePending() {
   const inShell = useInPageShell();
   const body = (
-    <Region className="space-y-6">
+    <Region immediate className="space-y-6">
       <HeadingBones />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {range(4).map((i) => (

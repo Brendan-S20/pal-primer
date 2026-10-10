@@ -136,7 +136,10 @@ describe("a plan that ended stops being paid", () => {
 
   it("does not tell someone who cancelled a paid plan that their trial ended", () => {
     expect(TRIAL_COPY.lapsed.headline({} as any)).toMatch(/plan has ended/i);
-    expect(TRIAL_COPY.lapsed.body).toMatch(/nothing has been deleted/i);
+    // NP-12 (2026-10-09): locked until a plan is chosen, export for 30 days.
+    expect(TRIAL_COPY.lapsed.body).toBe(
+      "Your account is locked until you choose a plan. You can export your data for 30 days after cancelling.",
+    );
   });
 
   it("explains AI in terms of the plan, not the trial", () => {
@@ -273,8 +276,24 @@ describe("expiry locks out new accounts, and only new accounts", () => {
     }
   });
 
-  it("tells an expired org nothing was deleted", () => {
-    expect(TRIAL_COPY.expired.body).toMatch(/nothing has been deleted/i);
+  it("tells an expired org it is locked and how long its data is kept", () => {
+    // NP-12 (2026-10-09), exactly.
+    expect(TRIAL_COPY.expired.body).toBe(
+      "Your account is locked. Choose a plan to unlock it. Your data is kept for 30 days.",
+    );
+    expect(TRIAL_COPY.trialing.body).toBe(
+      "Everything is unlocked. If you don't choose a plan by the end of the trial, the account is locked until you do, and your data is kept for 30 days. Nothing is charged automatically and no card is on file.",
+    );
+  });
+
+  it("the account lock passes createdAt too, and its select carries it", () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const lock = readFileSync(join(root, "src/lib/account-lock.ts"), "utf8");
+    expect(lock.slice(lock.indexOf("trialStateFor("), lock.indexOf("trialStateFor(") + 400)).toMatch(
+      /createdAt: org\.created_at/,
+    );
+    const server = readFileSync(join(root, "src/lib/account-lock.server.ts"), "utf8");
+    expect(/ORG_LOCK_COLUMNS =\s*"([^"]*)"/.exec(server)?.[1]).toMatch(/\bcreated_at\b/);
   });
 });
 

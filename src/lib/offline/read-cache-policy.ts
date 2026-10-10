@@ -296,6 +296,24 @@ export function describeReadFreshness(input: {
   now?: number;
   sessionStartedAt: number;
   trustHorizonMs?: number;
+  /**
+   * The screen has only just opened and the refresh that will replace this
+   * copy is already in flight (the caller decides "just": My Day allows
+   * READ_REFRESH_GRACE_MS from launch).
+   *
+   * Without it, every cold launch with a saved day showed the "saved copy"
+   * banner for the second it took the refresh to land, then took it away:
+   * the sticky bar grew by a banner and shrank again, moving the whole list
+   * twice, on the screen a tech opens first. That is the warning firing on
+   * every load, which the note on forceAgeRepaint in my-day.tsx explains is
+   * how it stops being read.
+   *
+   * It never hides anything that matters: offline, a refresh that failed, a
+   * clock that went backward or a copy past the trust horizon (the red
+   * warning) all show at once, and a refresh that is still out when the
+   * grace ends shows the banner then.
+   */
+  refreshInFlight?: boolean;
 }): ReadFreshness | null {
   // No data at all is not a staleness question — the caller owns that screen.
   if (!input.hasData) return null;
@@ -330,15 +348,27 @@ export function describeReadFreshness(input: {
     return { status: "live" };
   }
 
+  const beyondTrustHorizon =
+    clockSuspect || rawAgeMs > (input.trustHorizonMs ?? READ_CACHE_TRUST_HORIZON_MS);
+
+  // A saved copy that a refresh in flight is about to replace, in the first
+  // moments of the screen: say nothing yet (see refreshInFlight).
+  if (input.refreshInFlight && input.online && !refreshFailed && !beyondTrustHorizon) {
+    return null;
+  }
+
   return {
     status: "cached",
     fetchedAt,
     ageMs: Math.max(0, rawAgeMs),
-    beyondTrustHorizon:
-      clockSuspect || rawAgeMs > (input.trustHorizonMs ?? READ_CACHE_TRUST_HORIZON_MS),
+    beyondTrustHorizon,
     clockSuspect,
   };
 }
+
+/** How long a screen that opened on a saved copy waits, while its refresh is
+ *  in flight, before it says the copy is a saved one. */
+export const READ_REFRESH_GRACE_MS = 2_500;
 
 /** Compact age for the banner. Rounds DOWN so the copy never claims the data is
  * fresher than it is (59 minutes reads as "59 min", never "1 hour"). */

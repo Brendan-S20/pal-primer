@@ -52,6 +52,23 @@ export const setStaffActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ staffId: z.string().uuid(), active: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
+    // Enabling somebody past the plan's team-size cap is refused here, before
+    // the write, with the sentence the owner needs (NP-10). The database
+    // trigger staff_team_size_cap refuses it too, for callers that reach the
+    // RPC without this function. Turning somebody OFF is never refused.
+    if (data.active) {
+      const orgId = await resolveOrgId(context.supabase, context.userId);
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: row } = await (supabaseAdmin as any)
+        .from("staff")
+        .select("organization_id, active")
+        .eq("id", data.staffId)
+        .maybeSingle();
+      if (row && row.organization_id === orgId && !row.active) {
+        const { assertRoomForAnotherUser } = await import("@/lib/team-size.server");
+        await assertRoomForAnotherUser(orgId);
+      }
+    }
     const { error } = await context.supabase.rpc("set_staff_active", {
       _staff_id: data.staffId,
       _active: data.active,
@@ -147,6 +164,10 @@ export const createOrgInvite = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    // No invite past the plan's team-size cap (NP-10): the person would
+    // arrive to an account with no room for them.
+    const { assertRoomForAnotherUser } = await import("@/lib/team-size.server");
+    await assertRoomForAnotherUser(orgId);
     const email = data.email.toLowerCase();
     const crypto = await import("node:crypto");
     const token = crypto.randomBytes(24).toString("hex");
