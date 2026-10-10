@@ -114,8 +114,8 @@ export function PlanPicker({
   // it too, so this only saves somebody a click.
   const enabledUsers: number = (data as any)?.enabledUsers ?? 0;
 
-  // The founding offer (NP-2). The count comes from the server, which reads it
-  // off the LAUNCH20 promotion code in Stripe; nothing here computes it. It is
+  // The founding offer (NP-2). The count comes from the server, which counts
+  // the accounts that PAID with LAUNCH20; nothing here computes it. It is
   // for an account's FIRST plan, so an account already paying (it has a live
   // interval) is not shown it.
   const foundingFn = useServerFn(getFoundingOffer);

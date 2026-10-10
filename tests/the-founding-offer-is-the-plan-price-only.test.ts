@@ -1,36 +1,55 @@
 // The founding offer is the plan price only (spec NP-2).
 //
-// LAUNCH20: 30% off the PLAN price, forever, first 20 paying accounts. Extra
-// people and add-ons are full price. The banner's count is read from the
-// promotion code in Stripe (20 minus redemptions), cached briefly, and hidden
-// at zero; the browser never computes it.
+// LAUNCH20: 30% off the PLAN price, forever, first 20 PAYING accounts. Extra
+// people and add-ons are full price. The banner's count is 20 minus the
+// accounts that PAID with the code (founding_accounts, owner 2026-10-10), not
+// Stripe's redemption count, which Stripe takes when the unpaid subscription
+// is created and so includes abandoned checkouts. Cached briefly, hidden at
+// zero; the browser never computes it.
 //
 // There are no Stripe keys here, so Stripe is faked. What these prove:
-//   * the count, the cache and the hide-at-zero, from the promotion code;
+//   * the count, the cache and the hide-at-zero, from the paid count, with
+//     Stripe's max_redemptions only as a backstop;
+//   * an abandoned (incomplete) subscription takes no place, a paid one does,
+//     and a payment after the 20th has its discount taken off in Stripe;
 //   * a founding checkout with one extra person, monthly and yearly, puts the
 //     code on the BASE PLAN ITEM and nowhere else (not the seat line, not the
 //     subscription as a whole, which would discount every line);
-//   * with all 20 redeemed the code is not applied and the buyer is told;
+//   * with 20 accounts paid the code is not applied and the buyer is told,
+//     however few redemptions Stripe has counted; and abandoned checkouts do
+//     not close it early;
 //   * the Get-started box recognises the code;
-//   * the Stripe setup script refuses a live key without --live.
-// What they cannot prove is that Stripe agrees; that is the release-gate run
-// in test mode (see the PR).
+//   * the Stripe setup script refuses a live key without --live, and sets the
+//     backstop above the offer.
+// The database half (claim_founding_place: once per account, NULL past the
+// last place, a place never held twice) is proved in a real Postgres by
+// a-founding-place-is-taken-by-paying.test.ts. What none of this can prove is
+// that Stripe agrees; that is the release-gate run in test mode.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { foundingBannerText, isFoundingCode, placesLeft } from "@/lib/founding-offer";
+import { FOUNDING_SPOTS, foundingBannerText, isFoundingCode, placesLeft } from "@/lib/founding-offer";
 
 const ORG = "0f000000-0000-4000-8000-0000000000f1";
 const LAUNCH = "10000000-0000-4000-8000-0000000000f1";
 
 describe("the count and the banner", () => {
-  it("is 20 minus redemptions, never negative", () => {
-    expect(placesLeft({ times_redeemed: 0, max_redemptions: 20 })).toBe(20);
-    expect(placesLeft({ times_redeemed: 7, max_redemptions: 20 })).toBe(13);
-    expect(placesLeft({ times_redeemed: 20, max_redemptions: 20 })).toBe(0);
-    expect(placesLeft({ times_redeemed: 25, max_redemptions: null })).toBe(0);
-    // Stripe's own cap wins if somebody set it lower.
-    expect(placesLeft({ times_redeemed: 3, max_redemptions: 10 })).toBe(7);
+  it("is 20 minus the accounts that PAID, never negative", () => {
+    expect(FOUNDING_SPOTS).toBe(20);
+    expect(placesLeft(0, { times_redeemed: 0, max_redemptions: 30 })).toBe(20);
+    expect(placesLeft(7, { times_redeemed: 7, max_redemptions: 30 })).toBe(13);
+    expect(placesLeft(20, { times_redeemed: 20, max_redemptions: 30 })).toBe(0);
+    expect(placesLeft(25, null)).toBe(0);
+  });
+
+  it("does not count Stripe's redemptions, which include abandoned checkouts", () => {
+    // 9 checkouts started, 4 paid: 16 left, not 11.
+    expect(placesLeft(4, { times_redeemed: 9, max_redemptions: 30 })).toBe(16);
+  });
+
+  it("lets Stripe's backstop close it only if the backstop is nearer", () => {
+    expect(placesLeft(15, { times_redeemed: 28, max_redemptions: 30 })).toBe(2);
+    expect(placesLeft(3, { times_redeemed: 30, max_redemptions: 30 })).toBe(0);
   });
 
   it("says the spec's sentence, with the count in place of {X}", () => {
@@ -50,9 +69,27 @@ describe("the count and the banner", () => {
     expect(ui).toMatch(/foundingBannerText\(founding\.left\)/);
     expect(ui).not.toMatch(/FOUNDING_SPOTS|times_redeemed|20\s*-\s*/);
   });
+
+  it("writes the 20 in one place (FOUNDING_SPOTS); the database is handed it", () => {
+    const code = (f: string) =>
+      readFileSync(join(import.meta.dirname, "..", f), "utf8")
+        .split("\n")
+        .filter((l) => !/^\s*(\/\/|--|\*)/.test(l))
+        .join("\n");
+    for (const f of [
+      "src/lib/founding-offer.server.ts",
+      "supabase/migrations/20261010120000_a-founding-place-is-taken-by-paying.sql",
+    ]) {
+      expect(code(f), f).not.toMatch(/\b20\b/);
+    }
+    expect(code("src/lib/founding-offer.server.ts")).toMatch(/_spots: FOUNDING_SPOTS/);
+    const billing = code("src/lib/billing.functions.ts");
+    expect(billing).toMatch(/All \$\{FOUNDING_SPOTS\} founding places have been taken\./);
+    expect(billing).not.toMatch(/All 20 founding/);
+  });
 });
 
-describe("reading the count from Stripe", () => {
+describe("reading the count: paid accounts, while the code is live in Stripe", () => {
   function fakeStripe(promo: Record<string, unknown> | null, calls: { n: number }) {
     return {
       promotionCodes: {
@@ -64,6 +101,7 @@ describe("reading the count from Stripe", () => {
       },
     } as any;
   }
+  const paid = (n: number) => async () => n;
 
   beforeEach(async () => {
     const { forgetFoundingOffer } = await import("@/lib/founding-offer.server");
@@ -73,41 +111,204 @@ describe("reading the count from Stripe", () => {
   it("shows the places left, and caches the read", async () => {
     const { readFoundingOffer } = await import("@/lib/founding-offer.server");
     const calls = { n: 0 };
-    const s = fakeStripe({ id: "promo_1", active: true, times_redeemed: 7, max_redemptions: 20 }, calls);
-    expect(await readFoundingOffer(async () => s, 1_000_000)).toEqual({ visible: true, left: 13 });
-    expect(await readFoundingOffer(async () => s, 1_030_000)).toEqual({ visible: true, left: 13 });
+    const s = fakeStripe({ id: "promo_1", active: true, times_redeemed: 9, max_redemptions: 30 }, calls);
+    expect(await readFoundingOffer(async () => s, 1_000_000, paid(7))).toEqual({ visible: true, left: 13 });
+    expect(await readFoundingOffer(async () => s, 1_030_000, paid(7))).toEqual({ visible: true, left: 13 });
     expect(calls.n).toBe(1);
-    // After the cache window, Stripe is asked again.
-    await readFoundingOffer(async () => s, 1_061_000);
+    // After the cache window, it is asked again.
+    await readFoundingOffer(async () => s, 1_061_000, paid(7));
     expect(calls.n).toBe(2);
   });
 
-  it("drops after a redemption once the cache is forgotten", async () => {
+  it("drops after a payment once the cache is forgotten", async () => {
     const { readFoundingOffer, forgetFoundingOffer } = await import("@/lib/founding-offer.server");
-    const promo = { id: "promo_1", active: true, times_redeemed: 7, max_redemptions: 20 };
-    const s = fakeStripe(promo, { n: 0 });
-    expect(await readFoundingOffer(async () => s)).toEqual({ visible: true, left: 13 });
-    promo.times_redeemed = 8;
+    const s = fakeStripe({ id: "promo_1", active: true, times_redeemed: 7, max_redemptions: 30 }, { n: 0 });
+    expect(await readFoundingOffer(async () => s, Date.now(), paid(7))).toEqual({ visible: true, left: 13 });
     forgetFoundingOffer();
-    expect(await readFoundingOffer(async () => s)).toEqual({ visible: true, left: 12 });
+    expect(await readFoundingOffer(async () => s, Date.now(), paid(8))).toEqual({ visible: true, left: 12 });
   });
 
-  it("hides at 20 redemptions, with no code, with no key, and when Stripe fails", async () => {
+  it("hides at 20 paid, with no code, with no key, and when Stripe or the count fails", async () => {
     const { readFoundingOffer, forgetFoundingOffer } = await import("@/lib/founding-offer.server");
     const hidden = { visible: false };
+    const live = () => fakeStripe({ id: "p", active: true, times_redeemed: 22, max_redemptions: 30 }, { n: 0 });
+    expect(await readFoundingOffer(async () => live(), Date.now(), paid(20))).toEqual(hidden);
+    forgetFoundingOffer();
+    expect(await readFoundingOffer(async () => fakeStripe(null, { n: 0 }), Date.now(), paid(0))).toEqual(hidden);
+    forgetFoundingOffer();
+    expect(await readFoundingOffer(async () => null, Date.now(), paid(0))).toEqual(hidden);
+    forgetFoundingOffer();
     expect(
-      await readFoundingOffer(async () => fakeStripe({ id: "p", active: true, times_redeemed: 20, max_redemptions: 20 }, { n: 0 })),
+      await readFoundingOffer(
+        async () => {
+          throw new Error("network");
+        },
+        Date.now(),
+        paid(0),
+      ),
     ).toEqual(hidden);
     forgetFoundingOffer();
-    expect(await readFoundingOffer(async () => fakeStripe(null, { n: 0 }))).toEqual(hidden);
-    forgetFoundingOffer();
-    expect(await readFoundingOffer(async () => null)).toEqual(hidden);
-    forgetFoundingOffer();
     expect(
-      await readFoundingOffer(async () => {
-        throw new Error("network");
+      await readFoundingOffer(async () => live(), Date.now(), async () => {
+        throw new Error("db down");
       }),
     ).toEqual(hidden);
+  });
+});
+
+// ── Taking a place: only a PAID founding subscription ─────────────────────
+
+describe("a place is taken by paying, not by starting a checkout", () => {
+  // claim_founding_place in memory, with the SQL's rules (once per account;
+  // NULL past the last place). The SQL itself is proved in a real Postgres.
+  type Row = { organization_id: string; place: number | null; discount_removed_at?: string };
+  function fakeDb() {
+    const rows: Row[] = [];
+    const rpcs: Array<Record<string, unknown>> = [];
+    const admin = {
+      rpc: async (fn: string, args: any) => {
+        rpcs.push({ fn, ...args });
+        const taken = rows.filter((r) => r.place != null).length;
+        const have = rows.find((r) => r.organization_id === args._org);
+        if (have) return { data: [{ place: have.place, newly_claimed: false, places_taken: taken }], error: null };
+        const place = taken < args._spots ? taken + 1 : null;
+        rows.push({ organization_id: args._org, place });
+        return { data: [{ place, newly_claimed: true, places_taken: taken + (place ? 1 : 0) }], error: null };
+      },
+      from: () => {
+        let patch: Partial<Row> | null = null;
+        const q: any = {
+          select: () => q,
+          not: () => q,
+          update: (p: Partial<Row>) => ((patch = p), q),
+          eq: (_k: string, v: string) => {
+            const row = rows.find((r) => r.organization_id === v);
+            if (patch && row) Object.assign(row, patch);
+            return q;
+          },
+          then: (res: any) =>
+            Promise.resolve({ count: rows.filter((r) => r.place != null).length, error: null }).then(res),
+        };
+        return q;
+      },
+    };
+    return { admin, rows, rpcs };
+  }
+  function fakeStripe() {
+    const itemUpdates: Array<[string, unknown]> = [];
+    const subUpdates: Array<[string, unknown]> = [];
+    return {
+      stripe: {
+        subscriptionItems: { update: async (id: string, p: unknown) => (itemUpdates.push([id, p]), {}) },
+        subscriptions: { update: async (id: string, p: unknown) => (subUpdates.push([id, p]), {}) },
+      } as any,
+      itemUpdates,
+      subUpdates,
+    };
+  }
+  const founding = (id: string, status: string): any => ({
+    id,
+    status,
+    metadata: { promo_code: "LAUNCH20" },
+    items: { data: [{ id: `si_base_${id}`, discounts: ["di_1"] }, { id: `si_seat_${id}`, discounts: [] }] },
+  });
+
+  it("an abandoned (incomplete) subscription takes no place, and the banner still says 20 left", async () => {
+    const { recordFoundingPayment, countFoundingPaid, readFoundingOffer, forgetFoundingOffer } = await import(
+      "@/lib/founding-offer.server"
+    );
+    const { admin, rpcs } = fakeDb();
+    const { stripe } = fakeStripe();
+    for (const status of ["incomplete", "incomplete_expired", "canceled"]) {
+      expect(await recordFoundingPayment({ admin, stripe, orgId: "org-a", sub: founding("sub_a", status) })).toEqual({
+        kind: "not_founding",
+      });
+    }
+    expect(rpcs).toEqual([]);
+    expect(await countFoundingPaid(admin)).toBe(0);
+    // Stripe has counted the abandoned checkout; the banner has not.
+    forgetFoundingOffer();
+    const s = {
+      promotionCodes: { list: async () => ({ data: [{ id: "p", active: true, times_redeemed: 1, max_redemptions: 30 }] }) },
+    } as any;
+    expect(await readFoundingOffer(async () => s, Date.now(), () => countFoundingPaid(admin))).toEqual({
+      visible: true,
+      left: 20,
+    });
+  });
+
+  it("a paid one takes a place, once, and the banner drops by one", async () => {
+    const { recordFoundingPayment, countFoundingPaid, readFoundingOffer } = await import(
+      "@/lib/founding-offer.server"
+    );
+    const { admin, rpcs } = fakeDb();
+    const { stripe, itemUpdates } = fakeStripe();
+    const r = await recordFoundingPayment({ admin, stripe, orgId: "org-a", sub: founding("sub_a", "active") });
+    expect(r).toEqual({ kind: "place", place: 1, newlyClaimed: true, placesTaken: 1 });
+    expect(rpcs[0]).toEqual({ fn: "claim_founding_place", _org: "org-a", _subscription: "sub_a", _spots: 20 });
+    // The webhook and the refresh both see it: still one place.
+    const again = await recordFoundingPayment({ admin, stripe, orgId: "org-a", sub: founding("sub_a", "active") });
+    expect(again).toMatchObject({ kind: "place", place: 1, newlyClaimed: false });
+    expect(await countFoundingPaid(admin)).toBe(1);
+    expect(itemUpdates).toEqual([]);
+    // A newly taken place forgot the cache, so the banner reads 19 at once.
+    const s = {
+      promotionCodes: { list: async () => ({ data: [{ id: "p", active: true, times_redeemed: 1, max_redemptions: 30 }] }) },
+    } as any;
+    expect(await readFoundingOffer(async () => s, Date.now(), () => countFoundingPaid(admin))).toEqual({
+      visible: true,
+      left: 19,
+    });
+  });
+
+  it("a subscription without the code takes nothing", async () => {
+    const { recordFoundingPayment } = await import("@/lib/founding-offer.server");
+    const { admin, rpcs } = fakeDb();
+    const sub = { ...founding("sub_b", "active"), metadata: { promo_code: "" } };
+    expect(await recordFoundingPayment({ admin, stripe: fakeStripe().stripe, orgId: "org-b", sub })).toEqual({
+      kind: "not_founding",
+    });
+    expect(rpcs).toEqual([]);
+  });
+
+  it("at 20 paid the banner hides; a 21st payment gets no place and its discount comes off the plan line", async () => {
+    const { recordFoundingPayment, countFoundingPaid, readFoundingOffer, forgetFoundingOffer } = await import(
+      "@/lib/founding-offer.server"
+    );
+    const { admin, rows } = fakeDb();
+    const { stripe, itemUpdates, subUpdates } = fakeStripe();
+    for (let i = 1; i <= 20; i += 1) {
+      await recordFoundingPayment({ admin, stripe, orgId: `org-${i}`, sub: founding(`sub_${i}`, "active") });
+    }
+    expect(await countFoundingPaid(admin)).toBe(20);
+    forgetFoundingOffer();
+    const s = {
+      promotionCodes: { list: async () => ({ data: [{ id: "p", active: true, times_redeemed: 21, max_redemptions: 30 }] }) },
+    } as any;
+    expect(await readFoundingOffer(async () => s, Date.now(), () => countFoundingPaid(admin))).toEqual({
+      visible: false,
+    });
+
+    // A checkout started before the 20th paid, and paid after it.
+    const late = await recordFoundingPayment({ admin, stripe, orgId: "org-21", sub: founding("sub_21", "active") });
+    expect(late).toEqual({ kind: "over", placesTaken: 20, discountRemoved: true });
+    expect(itemUpdates).toEqual([["si_base_sub_21", { discounts: "" }]]);
+    expect(subUpdates).toEqual([["sub_21", { metadata: { promo_code: "", founding_over_limit: "LAUNCH20" } }]]);
+    const row = rows.find((r) => r.organization_id === "org-21");
+    expect(row?.place).toBeNull();
+    expect(row?.discount_removed_at).toBeTruthy();
+    expect(await countFoundingPaid(admin)).toBe(20);
+  });
+
+  it("is called where a payment is seen: the platform webhook and refreshBillingStatus", () => {
+    const hook = readFileSync(join(import.meta.dirname, "..", "src/routes/api/public/hooks/platform-stripe.ts"), "utf8");
+    // After the incomplete skip, inside the subscription branch.
+    const skip = hook.indexOf('if (sub.status === "incomplete" || sub.status === "incomplete_expired") break;');
+    const call = hook.indexOf("recordFoundingPayment({ admin: supabaseAdmin, stripe, orgId, sub })");
+    expect(skip).toBeGreaterThan(0);
+    expect(call).toBeGreaterThan(skip);
+    const billing = readFileSync(join(import.meta.dirname, "..", "src/lib/billing.functions.ts"), "utf8");
+    expect(billing).toMatch(/recordFoundingPayment\(\{ admin: supabaseAdmin, stripe, orgId, sub: active \}\)/);
   });
 });
 
@@ -189,7 +390,7 @@ vi.mock("@/lib/stripe-client.server", () => ({
   }),
 }));
 
-function seed(signupCode: string | null = null) {
+function seed(signupCode: string | null = null, paidFounders = 4) {
   tables = {
     organizations: [{ id: ORG, signup_promo_code: signupCode }],
     // Two enabled people on a plan that includes one: one extra person.
@@ -206,12 +407,14 @@ function seed(signupCode: string | null = null) {
       },
     ],
     platform_coupons: [],
+    // Accounts that have PAID with the code (each holds a place).
+    founding_accounts: Array.from({ length: paidFounders }, (_, i) => ({ organization_id: `paid-${i}`, place: i + 1 })),
   };
 }
 
 beforeEach(() => {
   creates.length = 0;
-  promo = { id: "promo_launch20", code: "LAUNCH20", active: true, times_redeemed: 4, max_redemptions: 20 };
+  promo = { id: "promo_launch20", code: "LAUNCH20", active: true, times_redeemed: 6, max_redemptions: 30 };
   process.env.STRIPE_SECRET_KEY = "sk_test_fake";
   process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_fake";
 });
@@ -247,16 +450,31 @@ describe("a founding checkout with one extra person", () => {
     expect(creates[0].items[1].discounts).toBeUndefined();
   });
 
-  it("with all 20 places taken, applies nothing and says so", async () => {
-    seed();
-    promo = { ...promo!, times_redeemed: 20 };
+  it("with 20 accounts PAID, applies nothing and says so, whatever Stripe has counted", async () => {
+    seed(null, 20);
+    promo = { ...promo!, times_redeemed: 22 };
     const { createPlanSubscription } = await import("@/lib/billing.functions");
     const out: any = await createPlanSubscription({
       data: { planId: LAUNCH, interval: "month", promoCode: "LAUNCH20" },
     } as any);
     expect(out.promoApplied).toBeNull();
-    expect(out.promoDropped).toMatchObject({ code: "LAUNCH20", reason: "invalid" });
+    expect(out.promoDropped).toMatchObject({
+      code: "LAUNCH20",
+      reason: "invalid",
+      detail: "All 20 founding places have been taken.",
+    });
     expect(JSON.stringify(creates[0])).not.toMatch(/promo_launch20|discounts/);
+  });
+
+  it("abandoned checkouts do not close it: 19 paid and 25 redemptions in Stripe still applies", async () => {
+    seed(null, 19);
+    promo = { ...promo!, times_redeemed: 25 };
+    const { createPlanSubscription } = await import("@/lib/billing.functions");
+    const out: any = await createPlanSubscription({
+      data: { planId: LAUNCH, interval: "month", promoCode: "LAUNCH20" },
+    } as any);
+    expect(out.promoApplied).toBe("LAUNCH20");
+    expect(creates[0].items[0].discounts).toEqual([{ promotion_code: "promo_launch20" }]);
   });
 
   it("an add-on bought later carries no discount", () => {
@@ -301,6 +519,13 @@ describe("scripts/stripe-test-setup.mjs", () => {
     expect(src).toMatch(/max_redemptions: PROMO_MAX/);
     expect(src).toMatch(/first_time_transaction: true/);
     expect(src).toMatch(/percent_off: 30,\s*duration: "forever"/);
+  });
+
+  it("sets Stripe's cap as a backstop ABOVE the offer, so abandoned checkouts cannot close it", async () => {
+    // @ts-expect-error -- a plain .mjs script with no types
+    const { PROMO_MAX } = await import("../scripts/stripe-test-setup.mjs");
+    expect(PROMO_MAX).toBe(30);
+    expect(PROMO_MAX).toBeGreaterThan(FOUNDING_SPOTS);
   });
 
   it("names nothing longer than Stripe takes", () => {

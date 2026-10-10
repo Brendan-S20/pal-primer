@@ -23,8 +23,9 @@
 //                   (never an add-on product). Base and seat prices share a
 //                   plan's product, so the app puts the code on the BASE ITEM
 //                   only; see src/lib/founding-offer.ts.
-//   promotion code  LAUNCH20 on that coupon, max_redemptions 20, first-time
-//                   customers only (a returning account does not get it back)
+//   promotion code  LAUNCH20 on that coupon, max_redemptions 30 (a BACKSTOP,
+//                   see PROMO_MAX), first-time customers only (a returning
+//                   account does not get it back)
 //
 // `transfer_lookup_key: true` moves a key from the old price to the new one.
 // The old price stays ACTIVE (a subscription item on it renews unchanged); it
@@ -68,7 +69,16 @@ export const ADDONS = [
 ];
 export const COUPON_ID = "founding-30-plan-only";
 export const PROMO_CODE = "LAUNCH20";
-export const PROMO_MAX = 20;
+// A backstop, deliberately HIGHER than the offer's 20 places (FOUNDING_SPOTS
+// in src/lib/founding-offer.ts). Stripe counts a redemption when a
+// subscription carrying the code is CREATED, and the app creates it unpaid
+// (default_incomplete) before the card is taken, so an abandoned checkout uses
+// one. The app closes the offer at 20 accounts that PAID (founding_accounts);
+// this only stops a runaway if the app's count ever failed. Set to 20, ten
+// abandoned checkouts would close the offer at 10 paying founders. Stripe
+// cannot change max_redemptions on an existing promotion code, so a LAUNCH20
+// made with another cap keeps it (the run below says so).
+export const PROMO_MAX = 30;
 
 async function main() {
   const verdict = keyVerdict(key, { liveOk: LIVE_OK });
@@ -175,7 +185,15 @@ async function main() {
   const promos = await stripe.promotionCodes.list({ code: PROMO_CODE, limit: 10 });
   const activePromo = promos.data.find((p) => p.active);
   if (activePromo) {
-    kept.push({ promotion_code: activePromo.id, code: PROMO_CODE, max_redemptions: activePromo.max_redemptions, times_redeemed: activePromo.times_redeemed });
+    kept.push({
+      promotion_code: activePromo.id,
+      code: PROMO_CODE,
+      max_redemptions: activePromo.max_redemptions,
+      times_redeemed: activePromo.times_redeemed,
+      ...(activePromo.max_redemptions !== PROMO_MAX
+        ? { note: `max_redemptions is ${activePromo.max_redemptions}, not the ${PROMO_MAX} backstop; Stripe cannot change it on an existing code, so it is left as it is` }
+        : {}),
+    });
   } else if (DRY) {
     created.push({ promotion_code: "(dry run)", code: PROMO_CODE, max_redemptions: PROMO_MAX });
   } else {
