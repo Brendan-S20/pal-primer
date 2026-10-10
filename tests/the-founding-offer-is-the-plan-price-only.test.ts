@@ -302,4 +302,15 @@ describe("scripts/stripe-test-setup.mjs", () => {
     expect(src).toMatch(/first_time_transaction: true/);
     expect(src).toMatch(/percent_off: 30,\s*duration: "forever"/);
   });
+
+  it("names nothing longer than Stripe takes", () => {
+    // Stripe refuses a coupon name over 40 characters, and it refused this
+    // script's first one (42) in test mode on 2026-10-10, after the prices
+    // were already made. Every literal `name:` here is checked against the
+    // tightest limit; a product name may be longer, but none needs to be.
+    const src = readFileSync(join(import.meta.dirname, "..", "scripts/stripe-test-setup.mjs"), "utf8");
+    const names = [...src.matchAll(/\bname:\s*"([^"]*)"/g)].map((m) => m[1]);
+    expect(names.length).toBeGreaterThan(0);
+    for (const n of names) expect(n.length, n).toBeLessThanOrEqual(40);
+  });
 });

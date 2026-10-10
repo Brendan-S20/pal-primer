@@ -161,7 +161,9 @@ async function main() {
   } else {
     coupon = await stripe.coupons.create({
       id: COUPON_ID,
-      name: "Founding customers: 30% off the plan price",
+      // Stripe caps a coupon name at 40 characters; the first run in test mode
+      // (2026-10-10) was refused at 42.
+      name: "Founding: 30% off the plan price",
       percent_off: 30,
       duration: "forever",
       applies_to: { products: Object.values(planProducts) },
