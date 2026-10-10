@@ -942,6 +942,8 @@ const BASE_STUBS: Record<string, Stub> = {
     ],
   },
   listAddonServices: { services: [], addons: [], rows: [] },
+  // Settings → Services. See SERVICES for why each row is awkward.
+  listServices: { services: fx.SERVICES },
   listInvoices: fx.INVOICES,
   // Cash and checks the techs recorded, waiting on /invoices -- see
   // FIELD_COLLECTIONS for why each is awkward.

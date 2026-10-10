@@ -105,6 +105,7 @@ export const APP_LINK_PATH_PREFIXES: readonly string[] = [
   "/settings/referrals",
   "/settings/reviews",
   "/settings/scheduling",
+  "/settings/services",
   "/settings/skip-rules",
   "/settings/sms",
   "/settings/users",

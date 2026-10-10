@@ -38,6 +38,10 @@ const TAB_GROUPS: TabGroup[] = [
       // I charge" opened Settings and did not find them (persona review,
       // 2026-09-27). The page itself stays where the sidebar has it.
       { label: "Zones & pricing", to: "/zones" },
+      // What the business sells: a walk, a sit, a groom, pet waste removal
+      // (docs/other-trades-service-catalog.md, phase 1). Beside zones,
+      // because both answer "what do I charge".
+      { label: "Services", to: "/settings/services" },
       { label: "Skip rules", to: "/settings/skip-rules" },
       { label: "Blackouts", to: "/settings/blackouts" },
       { label: "Add-ons", to: "/settings/addons" },

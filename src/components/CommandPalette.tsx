@@ -64,6 +64,7 @@ const NAV: NavEntry[] = [
   { label: "Business defaults", to: "/settings/business", group: "Settings" },
   { label: "Reviews & referrals", to: "/settings/reviews", group: "Settings" },
   { label: "Add-ons", to: "/settings/addons", group: "Settings" },
+  { label: "Services", to: "/settings/services", group: "Settings" },
   { label: "Accounting", to: "/settings/accounting", group: "Settings" },
   { label: "Zapier & webhooks", to: "/settings/webhooks", group: "Settings" },
   // Yours, not the company's — hence its own group rather than sitting among

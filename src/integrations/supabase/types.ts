@@ -5427,6 +5427,56 @@ export type Database = {
         }
         Relationships: []
       }
+      services: {
+        Row: {
+          active: boolean
+          base_price_cents: number | null
+          created_at: string
+          default_duration_min: number | null
+          extra_pet_cents: number
+          id: string
+          name: string
+          organization_id: string
+          price_unit: string
+          service_line: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          base_price_cents?: number | null
+          created_at?: string
+          default_duration_min?: number | null
+          extra_pet_cents?: number
+          id?: string
+          name: string
+          organization_id: string
+          price_unit?: string
+          service_line: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          base_price_cents?: number | null
+          created_at?: string
+          default_duration_min?: number | null
+          extra_pet_cents?: number
+          id?: string
+          name?: string
+          organization_id?: string
+          price_unit?: string
+          service_line?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "services_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       signup_requests: {
         Row: {
           city: string | null
