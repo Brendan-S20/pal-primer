@@ -65,6 +65,18 @@ describe("who is locked", () => {
     expect(accountLockFor({ ...base, created_at: "2026-08-01T00:00:00Z" }, NOW).locked).toBe(false);
   });
 
+  it("keeps the grandfather date after a plan ends too: full access, never locked (owner, 2026-10-10)", () => {
+    const ended = {
+      ...base,
+      plan_status: "canceled",
+      billing_status: "canceled",
+      stripe_subscription_id: "sub_old",
+      current_period_end: "2026-10-10T00:00:00Z",
+    };
+    expect(accountLockFor({ ...ended, created_at: "2026-08-15T23:59:59Z" }, NOW)).toEqual({ locked: false });
+    expect(accountLockFor({ ...ended, created_at: "2026-08-16T00:00:00Z" }, NOW).locked).toBe(true);
+  });
+
   it("locks a cancelled plan once it has ended, with 30 days to export", () => {
     const lock = accountLockFor(
       { ...base, plan_status: "canceled", billing_status: "canceled", current_period_end: "2026-10-10T00:00:00Z" },
@@ -199,7 +211,7 @@ describe("the server check every function passes through", () => {
 // ── The deletion job ─────────────────────────────────────────────────────
 
 type Call = { kind: string; args: unknown };
-function fakeAdmin(candidates: Array<Record<string, unknown>>) {
+function fakeAdmin(candidates: Array<Record<string, unknown>>, purgeRefuses: string | null = null) {
   const calls: Call[] = [];
   const builder = (table: string) => {
     const q: any = {
@@ -219,6 +231,7 @@ function fakeAdmin(candidates: Array<Record<string, unknown>>) {
     rpc: async (fn: string, args: Record<string, unknown>) => {
       calls.push({ kind: `rpc:${fn}`, args });
       if (fn === "account_deletion_candidates") return { data: candidates, error: null };
+      if (purgeRefuses) return { data: null, error: { message: purgeRefuses } };
       return {
         data: { delete: { visits: 10, properties: 2 }, keep: { invoices: 3 } },
         error: null,
@@ -280,16 +293,27 @@ describe("the deletion job", () => {
     expect(calls.some((c) => /^(storage|auth):/.test(c.kind))).toBe(false);
   });
 
-  it("enabled and due: files, then the purge, then the sign-ins", async () => {
+  it("enabled and due: the database's own check, then files, then the purge, then the sign-ins", async () => {
     const { admin, calls } = fakeAdmin([due]);
     const r = await runAccountDeletion({ admin, enabled: true, deployedOn: "2026-10-09", now: new Date("2026-11-09T00:00:00Z") });
     expect(r.dueNow).toBe(1);
-    const order = calls.map((c) => c.kind).filter((k) => /^(storage|rpc:purge|auth)/.test(k));
-    expect(order[0]).toBe("storage:remove");
-    expect(order).toContain("rpc:purge_locked_account");
-    expect(order[order.length - 1]).toBe("auth:anonymise");
-    const real = calls.find((c) => c.kind === "rpc:purge_locked_account")!.args as any;
+    const steps = calls
+      .filter((c) => /^(storage|rpc:purge|auth)/.test(c.kind))
+      .map((c) => (c.kind === "rpc:purge_locked_account" ? `purge:${(c.args as any)._dry_run ? "dry" : "real"}` : c.kind));
+    expect(steps[0]).toBe("purge:dry");
+    expect(steps.indexOf("storage:remove")).toBeGreaterThan(0);
+    expect(steps.indexOf("purge:real")).toBeGreaterThan(steps.lastIndexOf("storage:remove"));
+    expect(steps[steps.length - 1]).toBe("auth:anonymise");
+    const real = calls.find((c) => c.kind === "rpc:purge_locked_account" && !(c.args as any)._dry_run)!.args as any;
     expect(real).toMatchObject({ _org: "org-1", _dry_run: false, _deployed_on: "2026-10-09" });
+  });
+
+  it("enabled and due, but the database refuses: no file, no sign-in and no real purge is touched", async () => {
+    const { admin, calls } = fakeAdmin([due], "organization org-1 was created before 2026-08-16; it is never deleted");
+    const r = await runAccountDeletion({ admin, enabled: true, deployedOn: "2026-10-09", now: new Date("2026-11-09T00:00:00Z") });
+    expect(r.perAccount[0].error).toMatch(/never deleted/);
+    expect(calls.some((c) => /^(storage|auth):/.test(c.kind))).toBe(false);
+    expect(calls.filter((c) => c.kind === "rpc:purge_locked_account").every((c) => (c.args as any)._dry_run)).toBe(true);
   });
 
   it("is in the nightly run, and reports what it would delete", () => {
@@ -314,6 +338,16 @@ describe("the database half", () => {
   it("refuses to delete without a deploy date, or before the account is due", () => {
     expect(SQL).toMatch(/IF NOT _dry_run AND _deployed_on IS NULL THEN\s+RAISE EXCEPTION/);
     expect(SQL).toMatch(/IF NOT _dry_run AND _cand\.delete_after > _now THEN\s+RAISE EXCEPTION/);
+  });
+
+  it("never makes, or purges, an account the app does not lock (created before TRIAL_ENFORCEMENT_FROM)", () => {
+    // Both branches, not only trial_ended: the gate sits on the row set.
+    expect(SQL).toMatch(/WHERE NOT org\.is_comped\s+AND org\.created_at >= public\.trial_enforcement_from\(\)/);
+    // The purge checks the row itself, before it asks the candidate list.
+    const purge = SQL.slice(SQL.indexOf("CREATE OR REPLACE FUNCTION public.purge_locked_account"));
+    const guard = purge.search(/IF _created IS NULL OR _created < public\.trial_enforcement_from\(\) THEN\s+RAISE EXCEPTION/);
+    expect(guard).toBeGreaterThan(0);
+    expect(guard).toBeLessThan(purge.indexOf("FROM public.account_deletion_candidates("));
   });
 
   it("dates every account from the later of its lock and the deploy, plus 30 days", () => {

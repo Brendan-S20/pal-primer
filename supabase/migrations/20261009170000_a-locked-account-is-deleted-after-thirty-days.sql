@@ -10,11 +10,17 @@
 --
 -- ── WHEN AN ACCOUNT IS DUE ────────────────────────────────────────────────
 --
---   trial_ended  trial_ends_at has passed, no paid status, no subscription,
---                created on/after 2026-08-16 (TRIAL_ENFORCEMENT_FROM in
---                src/lib/trial.ts; earlier accounts were promised no lock).
+--   trial_ended  trial_ends_at has passed, no paid status, no subscription.
 --   plan_ended   plan_status or billing_status is 'canceled' (Stripe ended the
 --                subscription), dated from current_period_end.
+--
+--   BOTH only for an account created on/after trial_enforcement_from()
+--   (2026-08-16, TRIAL_ENFORCEMENT_FROM in src/lib/trial.ts). The app never
+--   locks an older account, for either reason, and the owner's rule
+--   (2026-10-10) is that such an account keeps full access after its plan ends
+--   and is NEVER a deletion candidate. Until 2026-10-10 the gate was on the
+--   trial_ended branch only, so a cancelled pre-cutoff account the app left
+--   open would have been deleted at deploy + 30.
 --
 --   delete_after = GREATEST(locked_since, deploy date) + 30 days
 --
@@ -23,8 +29,9 @@
 -- a plan makes the account paying again, which removes it from the candidates
 -- on the next run: the scheduled deletion is cancelled by the state itself.
 --
--- Never due: comped accounts, suspended accounts (a platform decision with its
--- own process), and accounts with no trial clock at all (pre-trial signups).
+-- Never due: accounts created before trial_enforcement_from(), comped
+-- accounts, suspended accounts (a platform decision with its own process), and
+-- accounts with no trial clock at all (pre-trial signups).
 --
 -- ── WHAT IS DELETED, WHAT IS KEPT ─────────────────────────────────────────
 --
@@ -71,9 +78,35 @@
 --
 -- ── SAFETY ────────────────────────────────────────────────────────────────
 --
--- purge_locked_account refuses an organization that is not a candidate, one
--- that is not yet due, and any real run without a deploy date. Dry run is the
--- default. Both functions are service-role only.
+-- purge_locked_account refuses an organization created before
+-- trial_enforcement_from() (checked on the row itself, before and apart from
+-- the candidate list), one that is not a candidate, one that is not yet due,
+-- and any real run without a deploy date. Dry run is the default. Both
+-- functions are service-role only.
+
+-- ── The grandfather date, in ONE place ──────────────────────────────────
+--
+-- The SQL copy of TRIAL_ENFORCEMENT_FROM (src/lib/trial.ts). Two languages
+-- cannot share a constant, so this is the only place the date is written in
+-- SQL, and tests/a-grandfathered-account-is-never-deleted.test.ts fails if it
+-- stops matching the app's. Midnight UTC, which is what the app's
+-- createdAt.slice(0, 10) >= TRIAL_ENFORCEMENT_FROM compares against
+-- (organizations.created_at comes back from PostgREST in UTC).
+
+CREATE OR REPLACE FUNCTION public.trial_enforcement_from()
+RETURNS timestamptz
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path TO 'pg_catalog'
+AS $$ SELECT timestamptz '2026-08-16 00:00:00+00' $$;
+
+COMMENT ON FUNCTION public.trial_enforcement_from() IS
+  'TRIAL_ENFORCEMENT_FROM (src/lib/trial.ts): an organization created before this is never locked '
+  'by the app and never deleted by the account deletion job.';
+
+REVOKE ALL ON FUNCTION public.trial_enforcement_from() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.trial_enforcement_from() TO service_role;
 
 -- ── SMS consent records, kept under their own retention ─────────────────
 
@@ -141,13 +174,15 @@ AS $$
     SELECT org.id,
            org.trial_ends_at,
            org.current_period_end,
-           org.created_at,
            (org.plan_status::text = 'canceled' OR org.billing_status::text = 'canceled') AS cancelled,
            (org.plan_status::text IN ('active', 'past_due', 'grace')
              OR org.billing_status::text IN ('active', 'past_due', 'grace')) AS paying,
            org.stripe_subscription_id
       FROM public.organizations org
      WHERE NOT org.is_comped
+       -- The app locks nobody created before this, so nobody before it is due.
+       -- A NULL created_at fails this too, as enforcementApplies fails open.
+       AND org.created_at >= public.trial_enforcement_from()
        AND org.deleted_at IS NULL
        AND org.suspended_at IS NULL
        AND org.plan_status::text <> 'suspended'
@@ -157,8 +192,7 @@ AS $$
            CASE
              WHEN o.cancelled THEN 'plan_ended'
              WHEN NOT o.paying AND o.stripe_subscription_id IS NULL
-                  AND o.trial_ends_at IS NOT NULL AND o.trial_ends_at <= _now
-                  AND o.created_at >= timestamptz '2026-08-16 00:00:00+00' THEN 'trial_ended'
+                  AND o.trial_ends_at IS NOT NULL AND o.trial_ends_at <= _now THEN 'trial_ended'
            END AS reason,
            CASE
              WHEN o.cancelled THEN COALESCE(s.locked_since, o.current_period_end, _now)
@@ -192,6 +226,7 @@ SET search_path TO 'public', 'pg_temp'
 AS $$
 DECLARE
   _cand record;
+  _created timestamptz;
   _t text;
   _n bigint;
   _delete jsonb := '{}'::jsonb;
@@ -208,6 +243,14 @@ DECLARE
   -- owner (with counsel) should confirm it. The job never deletes these rows.
   _retain constant interval := interval '4 years';
 BEGIN
+  -- First, and on the row itself rather than through the candidate list: an
+  -- account the app never locks is never purged, in a dry run or a real one.
+  SELECT org.created_at INTO _created FROM public.organizations org WHERE org.id = _org;
+  IF _created IS NULL OR _created < public.trial_enforcement_from() THEN
+    RAISE EXCEPTION 'organization % was created before % (or has no creation date); it is never deleted',
+      _org, public.trial_enforcement_from();
+  END IF;
+
   SELECT * INTO _cand
     FROM public.account_deletion_candidates(_deployed_on, _now) c
    WHERE c.organization_id = _org;
@@ -367,6 +410,19 @@ BEGIN
   IF has_table_privilege('authenticated', 'public.sms_consent_records', 'DELETE')
      OR has_table_privilege('authenticated', 'public.account_deletion_schedule', 'INSERT') THEN
     RAISE EXCEPTION 'a client role can write the consent archive or the deletion schedule';
+  END IF;
+  -- The grandfather date is read from one place by both functions, and the
+  -- purge checks it on the row before it consults the candidate list.
+  IF (SELECT p.prosrc FROM pg_proc p WHERE p.oid = 'public.account_deletion_candidates(date, timestamptz)'::regprocedure)
+       !~ 'org\.created_at >= public\.trial_enforcement_from\(\)' THEN
+    RAISE EXCEPTION 'account_deletion_candidates does not exclude accounts created before trial_enforcement_from()';
+  END IF;
+  IF (SELECT p.prosrc FROM pg_proc p WHERE p.oid = 'public.purge_locked_account(uuid, boolean, date, timestamptz)'::regprocedure)
+       !~ '_created < public\.trial_enforcement_from\(\)' THEN
+    RAISE EXCEPTION 'purge_locked_account does not refuse an account created before trial_enforcement_from()';
+  END IF;
+  IF has_function_privilege('anon', 'public.trial_enforcement_from()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'trial_enforcement_from is callable by anon';
   END IF;
   -- The dry run is the default, and nothing in this file deletes a row.
   IF (SELECT pg_get_function_arguments('public.purge_locked_account(uuid, boolean, date, timestamptz)'::regprocedure))

@@ -15,6 +15,12 @@
 // database: purge_locked_account will not delete without a deploy date, or
 // before an account's own delete_after.
 //
+// NEVER DELETED: an account created before TRIAL_ENFORCEMENT_FROM
+// (2026-08-16). The app never locks one, and the owner's rule (2026-10-10) is
+// that it keeps full access after its plan ends and is never a candidate. The
+// database holds that date once, in trial_enforcement_from(); the candidate
+// list excludes such an account and the purge refuses it on the row itself.
+//
 // ── WHEN ──────────────────────────────────────────────────────────────────
 //
 //   delete_after = max(locked since, ACCOUNT_DELETION_DEPLOYED_ON) + 30 days
@@ -226,7 +232,18 @@ export async function runAccountDeletion(
     try {
       const real = !dryRun && due;
       if (real) {
-        // Files and sign-ins first: the rows that say where they are and who
+        // Ask the database first, as a dry run: purge_locked_account refuses an
+        // account it must never delete (created before the grandfather date,
+        // not a candidate, not due). The files go before the real purge, so
+        // without this a refusal would come after they were already gone.
+        const { error: checkErr } = await admin.rpc("purge_locked_account", {
+          _org: c.organization_id,
+          _dry_run: true,
+          _deployed_on: deployedOn,
+          _now: now.toISOString(),
+        });
+        if (checkErr) throw new Error(checkErr.message);
+        // Files and sign-ins next: the rows that say where they are and who
         // they belong to are what the purge removes.
         entry.files = await deleteOrgFiles(admin, c.organization_id);
         const people = await membersOnlyHere(admin, c.organization_id);
