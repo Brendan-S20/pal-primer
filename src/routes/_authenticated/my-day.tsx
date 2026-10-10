@@ -369,6 +369,12 @@ function MyDay() {
   const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
+    // Coming back to the app in a dead zone is not a reason to ask the server
+    // for the day: the request can only fail. The saved copy now survives a
+    // failed refresh (lib/offline/last-good-copy.ts), but a refetch that cannot
+    // succeed only adds a failure. Focus while online, and the reconnect
+    // refetch, are unchanged.
+    refetchOnWindowFocus: () => !isDefinitelyOffline(),
   });
 
   // Mobile Phase 3 offline hardening: this response is one of the few written
