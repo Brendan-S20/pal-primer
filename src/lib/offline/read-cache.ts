@@ -24,6 +24,7 @@ import {
   shouldPersistReads,
   type ReadCacheEnvelope,
 } from "./read-cache-policy";
+import { asLastGoodCopy, hasLastGoodCopy, savedCopiesToKeep } from "./last-good-copy";
 
 /** Coalesces the burst of cache events a single page load produces into one
  * write. localStorage writes are synchronous and block the UI thread, which on
@@ -188,19 +189,49 @@ function writeNow(queryClient: QueryClient, userId: string): void {
   if (!store) return;
   const key = readCacheStorageKey(userId);
 
+  const now = Date.now();
   const dehydrated = dehydrate(queryClient, {
-    // status === 'success' keeps errored and pending queries out; an error
-    // response persisted to disk would resurrect itself on the next launch and
-    // look like a fresh failure.
+    // Pending queries stay out, and so does an error with nothing behind it.
+    // An error WITH data — a refresh that failed on top of a good copy — is
+    // kept, written back as the success it last was (see last-good-copy.ts:
+    // writing only "success" here is what deleted the day from the phone the
+    // first time a refetch failed offline).
     shouldDehydrateQuery: (query) =>
-      query.state.status === "success" && isPersistableQueryKey(query.queryKey),
+      isPersistableQueryKey(query.queryKey) && hasLastGoodCopy(query.state, { now }),
   });
+  const candidates: unknown[] = dehydrated.queries.map(asLastGoodCopy);
+
+  // A persistable query that failed with NO data in memory must not overwrite
+  // the copy already on disk with nothing. Only read the old store when there
+  // is such a query: on the ordinary path this costs nothing.
+  const failedHashes = new Set(
+    queryClient
+      .getQueryCache()
+      .getAll()
+      .filter(
+        (q) =>
+          isPersistableQueryKey(q.queryKey) &&
+          q.state.status === "error" &&
+          q.state.data === undefined,
+      )
+      .map((q) => q.queryHash),
+  );
+  if (failedHashes.size > 0) {
+    try {
+      const raw = store.getItem(key);
+      if (raw && raw.length <= READ_CACHE_MAX_BYTES * 2) {
+        candidates.push(...savedCopiesToKeep(JSON.parse(raw), { userId, now, failedHashes }));
+      }
+    } catch {
+      /* unreadable old store — nothing in it to keep */
+    }
+  }
 
   // Reserve room for the envelope around the queries: budgeting the queries at
   // the full ceiling could push the serialized whole just over it, and the
   // guard below would then refuse every write from then on — a cache that
   // silently stops updating while still looking populated.
-  const queries = selectPersistableQueries(dehydrated.queries, {
+  const queries = selectPersistableQueries(candidates as { queryKey: unknown }[], {
     maxBytes: READ_CACHE_MAX_BYTES - 2_048,
   });
   if (queries.length === 0) {
