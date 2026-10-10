@@ -10,7 +10,15 @@ import { toast } from "sonner";
 export function RoleGuard() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (r) => r.location.pathname });
-  const { role, loading } = useMyRole();
+  const { role, loading, accessTurnedOff } = useMyRole();
+
+  // Turned off while already inside: the shell's check ran when the app
+  // opened, and on a phone that can be days ago. ["my-org"] refetches when it
+  // goes stale and the app comes back to the foreground; the first answer
+  // that says "off" ends the session's view of the business.
+  useEffect(() => {
+    if (accessTurnedOff) navigate({ to: "/access-off", replace: true });
+  }, [accessTurnedOff, navigate]);
 
   useEffect(() => {
     if (loading || !role) return;

@@ -9,6 +9,13 @@ import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
+import {
+  CALM_REFUSAL,
+  ELAPSED_FIELD,
+  HONEYPOT_FIELD,
+  callerAddress,
+  screenSubmission,
+} from "@/lib/public-form-guard";
 
 function anon() {
   return createClient<Database>(
@@ -167,6 +174,9 @@ export const signupCheckoutSchema = quoteSchema.extend({
   // nowhere on a signup request for it, so it goes on the lead the signup
   // writes, where the office reads it beside the quote requests' notes.
   message: z.string().trim().max(2000).optional().or(z.literal("")),
+  // The spam filters, as the quote request sends them (public-form-guard.ts).
+  [HONEYPOT_FIELD]: z.unknown().optional(),
+  [ELAPSED_FIELD]: z.unknown().optional(),
 });
 
 /** In-app signup prepay (Payment Element): records the signup request and
@@ -177,6 +187,19 @@ export const signupCheckoutSchema = quoteSchema.extend({
 export const createSignupPaymentIntent = createServerFn({ method: "POST" })
   .inputValidator((d) => signupCheckoutSchema.parse(d))
   .handler(async ({ data }) => {
+    // The spam filters, before anything is looked up or written. A signup
+    // writes a lead and tells the office, exactly as a quote request does, so
+    // it stands behind the same three (public-form-guard.ts); the rate limit
+    // is below, once the business is known.
+    const screened = screenSubmission({
+      honeypot: data[HONEYPOT_FIELD],
+      elapsedMs: data[ELAPSED_FIELD],
+    });
+    if (!screened.ok) {
+      console.warn("public signup refused", screened.reason);
+      throw new Error(CALM_REFUSAL);
+    }
+
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", {
       _slug: data.slug,
@@ -237,6 +260,29 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       throw new Error(
         "This business isn't accepting new online signups right now. Please contact them directly and they'll get you set up.",
       );
+    }
+
+    // Per address and per business, before the lead, the signup request or
+    // the PaymentIntent. A refused turn is not counted, so this writes
+    // nothing either.
+    {
+      const { getRequestHeader } = await import("@tanstack/react-start/server");
+      const { takePublicFormTurn } = await import("@/lib/public-form-guard.server");
+      const turn = await takePublicFormTurn(
+        supabaseAdmin as any,
+        q.organization_id,
+        callerAddress((h) => {
+          try {
+            return getRequestHeader(h as any);
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (!turn.ok) {
+        console.warn("public signup rate-limited", q.organization_id, turn.reason);
+        throw new Error(CALM_REFUSAL);
+      }
     }
 
     // Every signup is a lead too, so the office sees it in Leads beside the
@@ -335,10 +381,15 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
  * is reused and brought up to date instead.
  *
  * Service role, because the visitor has no session; the row is a `new` lead
- * with no contacted or converted stamp, which is exactly what the public
- * INSERT policy allows an anonymous form to write anyway.
+ * with no contacted or converted stamp, the only kind a public form writes.
+ *
+ * The office is told about the lead here, on the INSERT only
+ * (lead-notify.server.ts). The re-use branch is the same household pressing
+ * the button again, and the Stripe webhook that later marks this lead
+ * converted is the same lead paying: neither is news, and neither notifies.
+ * Exported for the test that holds it to that.
  */
-async function recordSignupLead(
+export async function recordSignupLead(
   admin: any,
   lead: {
     orgId: string;
@@ -384,7 +435,20 @@ async function recordSignupLead(
       .select("id")
       .single();
     if (error) throw error;
-    return (created?.id as string) ?? null;
+    const id = (created?.id as string) ?? null;
+    if (id) {
+      const { notifyOfficeOfNewLead } = await import("@/lib/lead-notify.server");
+      await notifyOfficeOfNewLead({
+        orgId: lead.orgId,
+        leadId: id,
+        name: lead.name,
+        source: lead.source,
+        location: lead.location || null,
+        dogCount: lead.dogCount,
+        frequency: lead.frequency,
+      });
+    }
+    return id;
   } catch (e) {
     console.error("signup lead write failed", lead.orgId, e);
     return null;
