@@ -107,8 +107,11 @@ function hexToken(): string {
 }
 
 /** A message_id that is the same every time for the same template and key,
- *  shaped like the random UUIDs every other message gets. */
-async function messageIdForKey(templateName: string, key: string): Promise<string> {
+ *  shaped like the random UUIDs every other message gets. Exported for the
+ *  platform's own once-per-key mail (setup-notify.server.ts), which goes to
+ *  the HoundStack team rather than as a tenant and so does not come through
+ *  enqueueAppEmail. */
+export async function messageIdForKey(templateName: string, key: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(`${templateName}:${key}`),

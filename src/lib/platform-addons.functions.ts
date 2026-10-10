@@ -16,6 +16,7 @@ import {
   type SetupWaivedReason,
 } from "@/lib/done-for-you-setup";
 import { loadPriceCatalog, resolvePriceId } from "@/lib/stripe-price-catalog.server";
+import type { SetupAddedEvent } from "@/lib/setup-notify.server";
 
 // Platform -> tenant software add-ons (e.g. AI Receptionist): the upsell
 // catalog shown on Settings -> Billing. Subscribing attaches a Stripe
@@ -165,6 +166,21 @@ async function holdsFoundingPlace(orgId: string): Promise<boolean> {
   return data?.place != null;
 }
 
+/**
+ * Tell the HoundStack team a tenant added Done-for-you setup (email to the team
+ * address, and a notification to every platform admin). Called only once the
+ * purchase has succeeded. It can never fail or undo the purchase: anything that
+ * goes wrong is logged and swallowed here.
+ */
+async function tellTheTeamAboutSetup(e: SetupAddedEvent): Promise<void> {
+  try {
+    const { notifyTeamOfSetup } = await import("@/lib/setup-notify.server");
+    await notifyTeamOfSetup(e);
+  } catch (err) {
+    console.error(`setup notification failed for org ${e.orgId}; the purchase stands`, err);
+  }
+}
+
 const addonIdSchema = z.object({ addonId: z.string().uuid() });
 
 export const subscribePlatformAddon = createServerFn({ method: "POST" })
@@ -205,6 +221,15 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
       .maybeSingle();
     if (existing?.status === "active") return { ok: true, already: true };
 
+    // Idempotency generation: retries of THIS attempt dedupe, but a re-add
+    // after a removal must NOT replay the original create (Stripe would
+    // return the deleted item's id and the org would get the add-on unbilled).
+    // The prior row's canceled_at is stable per re-add generation. It also
+    // keys the team's setup notification, so that is told once per purchase.
+    const idemGen = existing?.canceled_at
+      ? new Date(existing.canceled_at).getTime()
+      : "first";
+
     // Done-for-you setup is free on Scale, for founding accounts and on yearly
     // billing (NP-4; the rule is setupIsFreeFor in done-for-you-setup.ts).
     // Decided BEFORE any charge. The two database facts are asked first, so a
@@ -212,6 +237,9 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
     // holds is the subscription read (a read, not a charge) for its interval,
     // and that same client then makes the $199 charge if it is still owed.
     let stripeClient: Awaited<ReturnType<typeof getStripe>> | null = null;
+    // The interval, when the setup check read it (only when the plan and the
+    // founding place did not already make setup free). For the team's note.
+    let setupInterval: "month" | "year" | null = null;
     if (isSetupAddon(addon.slug)) {
       const facts = { planSlug, founding: await holdsFoundingPlace(orgId), planInterval: null };
       let waived = setupIsFreeFor(facts);
@@ -220,7 +248,8 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
         const sub = await stripeClient.subscriptions.retrieve(org.stripe_subscription_id, {
           expand: ["items.data.price"],
         });
-        waived = setupIsFreeFor({ ...facts, planInterval: subscriptionInterval(sub as any) });
+        setupInterval = subscriptionInterval(sub as any);
+        waived = setupIsFreeFor({ ...facts, planInterval: setupInterval });
       }
       if (waived) {
         // Recorded exactly as a paid one-time purchase is (an active row with
@@ -239,19 +268,20 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
         if (waiveErr) throw new Error("Couldn't record the add-on. You have not been charged; try again.");
         console.info(`done-for-you setup added at no charge for org ${orgId} (${waived})`);
         await setFeatureFlag(orgId, addon.feature_flag, true);
+        await tellTheTeamAboutSetup({
+          orgId,
+          addonId: addon.id,
+          generation: idemGen,
+          charge: { kind: "free", reason: waived },
+          planSlug,
+          planInterval: setupInterval,
+        });
         return { ok: true, waived };
       }
     }
 
     const stripe = stripeClient ?? (await getStripe());
     const oneTime = addon.billing_interval === "one_time";
-    // Idempotency generation: retries of THIS attempt dedupe, but a re-add
-    // after a removal must NOT replay the original create (Stripe would
-    // return the deleted item's id and the org would get the add-on unbilled).
-    // The prior row's canceled_at is stable per re-add generation.
-    const idemGen = existing?.canceled_at
-      ? new Date(existing.canceled_at).getTime()
-      : "first";
 
     // Mint the Stripe product (and, when needed, the stored price) on first
     // ever subscribe of this add-on. Idempotency keys make a two-tab race
@@ -324,6 +354,7 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
     // single most expensive thing in the catalog — and the customer was told
     // "You have not been charged" while a $499 line sat on their next invoice.
     let invoiceItemId: string | null = null;
+    let invoiceId: string | null = null;
     if (oneTime) {
       const { data: orgRow } = await (supabaseAdmin as any)
         .from("organizations").select("stripe_customer_id").eq("id", orgId).single();
@@ -337,6 +368,8 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
         { idempotencyKey: `addon-buy-${orgId}-${addon.id}-${idemGen}` },
       );
       invoiceItemId = invoiceItem.id;
+      const onInvoice = (invoiceItem as { invoice?: string | { id?: string } | null }).invoice;
+      invoiceId = typeof onInvoice === "string" ? onInvoice : (onInvoice?.id ?? null);
     } else {
       // The new item must match the subscription's billing interval — Stripe
       // forbids mixing month and year items on one subscription.
@@ -434,6 +467,18 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
       );
     }
     await setFeatureFlag(orgId, addon.feature_flag, true);
+    if (isSetupAddon(addon.slug)) {
+      // Stripe accepted the charge and the row is written: the purchase is
+      // done, so the team can be told.
+      await tellTheTeamAboutSetup({
+        orgId,
+        addonId: addon.id,
+        generation: idemGen,
+        charge: { kind: "paid", amountCents: addon.price_cents, invoiceItemId, invoiceId },
+        planSlug,
+        planInterval: setupInterval,
+      });
+    }
     return { ok: true };
   });
 
