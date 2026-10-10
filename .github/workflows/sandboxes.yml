@@ -736,7 +736,57 @@ jobs:
     #
     # So the ceiling stays 45 with about ten minutes of margin, and the Mac
     # is free for the database job at the same time.
-    timeout-minutes: 45
+    #
+    # ── 2026-10-09: THE TEN MINUTES WERE GONE, AND THE JOB WAS SPLIT ─────
+    #
+    # The one-off cases now run in `viewport-cases` below, not here. Read
+    # this before putting them back or before raising this number.
+    #
+    # For a day every PR "failed 1 to 3 random tests" with
+    # `browserContext.close: Target page, context or browser has been
+    # closed`, after a `toBeVisible` or a `waitForTimeout`. Those were not
+    # test failures. Each one was `Test was interrupted`, and the job's
+    # annotation said why: "The job has exceeded the maximum execution time
+    # of 45m0s" (job 113924415012), or, on main, "Canceling since a higher
+    # priority waiting request ... exists" (114037497809). Playwright prints
+    # whatever the in-flight tests were awaiting when the runner kills it, so
+    # the "failures" were whichever tests were running at minute 45 -- most
+    # often the 430px half of every-route-nobody-put-on-the-list and the
+    # live map in the-half-of-the-product-the-customer-uses, the two longest
+    # files in the last step, which is why those two kept being named. No
+    # log or artifact held a crash, an out-of-memory, or a 90s test
+    # timeout, and no first-visit compile ever failed a wait outright.
+    #
+    # The job had simply outgrown the ceiling. On this box, the same day:
+    #
+    #   one-off cases   14.3-14.5 min (800 tests)  at 12:34-14:27
+    #                   17.2 min      (823 tests)  at 21:59, a quiet box
+    #                   20.2-20.3 min (814 tests)  at 16:51 and 19:03
+    #   whole job       35 min  ->  39-42 min  ->  45m00s, cancelled
+    #
+    # Two things moved. The cases grew -- the guided setup walked at four
+    # widths has 66-84s tests, a-business-that-does-not-scoop added 22 --
+    # and every test in that step got 15-20% slower beside them, while the
+    # eleven-size sweep in the same jobs did not move (85 vs 87 worker-
+    # minutes). And the box itself has hours where everything is half as
+    # fast again: at 16:33 `npm ci` took 6m53s against its usual 3m05s in a
+    # job that never opened a browser, at 19:03 every file in the cases ran
+    # about 1.5x its usual time, and at 22:35 the Apple step took 17.6 min
+    # against 11.1. Nothing from GitHub shares the box -- it is one runner
+    # -- so that is the machine, and it is a machine to look at.
+    #
+    # Halving the job is what the 2026-09-17 note above said to do rather
+    # than raise this: each half is about 22 minutes on a quiet box and
+    # about 34 at 1.5x, with the same 45 over each. Fewer workers or a warm-up would
+    # have made a slow job slower, and fixed nothing that was failing.
+    #
+    # VIEWPORTS_TIMEOUT_MINUTES (a repository variable) overrides the 45 while
+    # these jobs run on GitHub's hosted Linux machine (2026-10-10: the PC was
+    # off and VIEWPORTS_RUNNER pointed here). That machine is two cores, and
+    # the full sweep was cancelled at 45 with 280 checks passed and the Apple
+    # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
+    # PC is back; the 45, and everything said above it, applies to the PC.
+    timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT (Windows only) ──────
       #
@@ -892,9 +942,78 @@ jobs:
       - name: Sweep eleven Apple sizes with touch — public and signed-in
         run: npm run test:viewports:apple:sweeps
 
+      # Screenshots and error contexts exist only for failures -- on a green
+      # run this uploads nothing, which is the point. There is no trace.zip:
+      # playwright.config.ts records none, and recording one for every test
+      # to keep the few that fail would cost the job time it does not have.
+      #
+      # `cancelled()` as well as `failure()`: a job stopped at its ceiling or
+      # by a newer push is CANCELLED, not failed, and until 2026-10-09 that
+      # left nothing to download from exactly the runs that most needed it.
+      - name: Keep what failed
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewport-failures
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  viewport-cases:
+    name: The one-off cases in a real browser
+    # Split out of `viewports` above on 2026-10-09; the note above its
+    # `timeout-minutes` has the measurements. Same gate, same runner, same
+    # setup, and the same ceiling over half the work. On one Windows runner
+    # the two jobs still run one after the other, so this costs one more
+    # checkout and `npm ci` (about four minutes) per run, which is what it
+    # costs to stop a slow hour on that box from cancelling a PR at 45m00s.
+    needs: changes
+    if: needs.changes.outputs.viewports == 'true'
+    runs-on: ${{ vars.VIEWPORTS_RUNNER || (vars.CI_RUNNER && fromJSON('["self-hosted","Windows"]')) || 'ubuntu-latest' }}
+    # ~17.5 min of tests plus ~4.5 of setup on a quiet box (2026-10-09),
+    # and 20.3 min of tests in the slowest hour measured. If this ever needs most of 45, the
+    # cases have outgrown one job too -- split them again by file, as this
+    # was split from the sweeps, rather than raising it.
+    #
+    # VIEWPORTS_TIMEOUT_MINUTES (a repository variable) overrides the 45 while
+    # these jobs run on GitHub's hosted Linux machine (2026-10-10: the PC was
+    # off and VIEWPORTS_RUNNER pointed here). That machine is two cores, and
+    # the full sweep was cancelled at 45 with 280 checks passed and the Apple
+    # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
+    # PC is back; the 45, and everything said above it, applies to the PC.
+    timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
+    steps:
+      # The four setup steps are the `viewports` job's, for the reasons
+      # written there.
+      - name: Make git write LF
+        if: runner.os == 'Windows'
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - uses: actions/checkout@v4
+      - name: Renormalise a workspace checked out before .gitattributes
+        if: runner.os == 'Windows'
+        run: |
+          git rm --cached -r -q .
+          git reset --hard
+          git status --porcelain
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
+      - run: npm ci
+
+      - name: Find room to work
+        run: node scripts/runner-headroom.mjs --need-disk-gib 5
+
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
       # ── THE SWEEPS ARE NOT ALL OF IT ─────────────────────────────────────
       #
-      # The two steps above run by filename pattern, and for five months
+      # The sweep steps run by filename pattern, and for five months
       # everything that did not match one of those two patterns ran nowhere.
       # Four one-off measurements had been written, merged, and never run
       # again by anything.
@@ -905,13 +1024,12 @@ jobs:
       - name: Measure the one-off cases
         run: npm run test:viewports:cases
 
-      # Screenshots and traces exist only for failures — on a green run this
-      # uploads nothing, which is the point.
+      # Its own name: two jobs in one run cannot upload the same artifact.
       - name: Keep what failed
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: viewport-failures
+          name: viewport-cases-failures
           path: |
             test-results/
             playwright-report/
