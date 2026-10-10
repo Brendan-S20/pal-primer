@@ -9,6 +9,12 @@ import {
   addonPlanRefusal,
   addonPurchasable,
 } from "@/lib/addon-launch";
+import {
+  isSetupAddon,
+  setupIsFreeFor,
+  subscriptionInterval,
+  type SetupWaivedReason,
+} from "@/lib/done-for-you-setup";
 import { loadPriceCatalog, resolvePriceId } from "@/lib/stripe-price-catalog.server";
 
 // Platform -> tenant software add-ons (e.g. AI Receptionist): the upsell
@@ -40,11 +46,21 @@ export type PlatformAddonRow = {
   /** Set when this plan already includes the add-on, so it is not sold to it
    *  (Priority support on Growth and Scale, NP-3). The sentence to show. */
   includedReason?: string | null;
+  /** Set on an owned Done-for-you setup that was free (NP-4): why. */
+  waivedReason?: SetupWaivedReason | null;
 };
+
+/** What the billing page needs to ask `setupIsFreeFor` itself. The interval is
+ *  not here: the page already reads it from the subscription. */
+export type SetupFactsForPage = { planSlug: string | null; founding: boolean };
 
 export const listPlatformAddons = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ addons: PlatformAddonRow[]; canSubscribe: boolean }> => {
+  .handler(async ({ context }): Promise<{
+    addons: PlatformAddonRow[];
+    canSubscribe: boolean;
+    setup: SetupFactsForPage;
+  }> => {
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
 
     const [{ data: catalog, error }, { data: mine }, { data: org }] = await Promise.all([
@@ -58,7 +74,9 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
         .order("sort_order"),
       context.supabase
         .from("org_platform_addons")
-        .select("addon_id, status")
+        // `*` rather than a column list, so the page still lists before the
+        // waived_reason column (20261010154500) has reached a database.
+        .select("*")
         .eq("organization_id", orgId)
         .eq("status", "active"),
       context.supabase
@@ -69,8 +87,14 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
     ]);
     if (error) throw new Error(error.message);
     const planSlug = await planSlugOf(org?.plan_id);
+    // For display only: a failed read shows $199, and the purchase itself asks
+    // again (and refuses on an error) before anything is charged.
+    const founding = await holdsFoundingPlace(orgId).catch(() => false);
 
     const subscribed = new Set((mine ?? []).map((m: any) => m.addon_id));
+    const waivedBy = new Map<string, SetupWaivedReason | null>(
+      (mine ?? []).map((m: any) => [m.addon_id, (m.waived_reason ?? null) as SetupWaivedReason | null]),
+    );
     return {
       addons: (catalog ?? [])
         // Disabled add-ons are hidden from the catalog EXCEPT when the org is
@@ -90,8 +114,10 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
             : "active") as "active" | "coming_soon",
           subscribed: subscribed.has(a.id),
           includedReason: planSlug ? addonPlanRefusal(a.slug, planSlug) : null,
+          waivedReason: waivedBy.get(a.id) ?? null,
         })),
       canSubscribe: !!org?.stripe_subscription_id && org.plan_status === "active",
+      setup: { planSlug, founding },
     };
   });
 
@@ -124,6 +150,21 @@ async function planSlugOf(planId: string | null | undefined): Promise<string | n
   return (data?.slug as string | undefined) ?? null;
 }
 
+/** Does the org hold a founding place? A `founding_accounts` row with a NULL
+ *  place paid after the places were gone, and is not a founding account.
+ *  Read through the service role: the table is readable by platform admins
+ *  only. Throws on a failed read, so a purchase never guesses "not founding". */
+async function holdsFoundingPlace(orgId: string): Promise<boolean> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await (supabaseAdmin as any)
+    .from("founding_accounts")
+    .select("place")
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (error) throw new Error(`founding_accounts: ${error.message}`);
+  return data?.place != null;
+}
+
 const addonIdSchema = z.object({ addonId: z.string().uuid() });
 
 export const subscribePlatformAddon = createServerFn({ method: "POST" })
@@ -152,7 +193,8 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
       throw new Error("Add-ons attach to an active subscription. Pick a plan first.");
     }
     // Priority support is Launch-only (NP-3): Growth and Scale include it.
-    const planRefusal = addonPlanRefusal(addon.slug, await planSlugOf(org.plan_id));
+    const planSlug = await planSlugOf(org.plan_id);
+    const planRefusal = addonPlanRefusal(addon.slug, planSlug);
     if (planRefusal) throw new Error(planRefusal);
 
     const { data: existing } = await (supabaseAdmin as any)
@@ -163,7 +205,45 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
       .maybeSingle();
     if (existing?.status === "active") return { ok: true, already: true };
 
-    const stripe = await getStripe();
+    // Done-for-you setup is free on Scale, for founding accounts and on yearly
+    // billing (NP-4; the rule is setupIsFreeFor in done-for-you-setup.ts).
+    // Decided BEFORE any charge. The two database facts are asked first, so a
+    // Scale or founding org never makes a Stripe client; only when neither
+    // holds is the subscription read (a read, not a charge) for its interval,
+    // and that same client then makes the $199 charge if it is still owed.
+    let stripeClient: Awaited<ReturnType<typeof getStripe>> | null = null;
+    if (isSetupAddon(addon.slug)) {
+      const facts = { planSlug, founding: await holdsFoundingPlace(orgId), planInterval: null };
+      let waived = setupIsFreeFor(facts);
+      if (!waived) {
+        stripeClient = await getStripe();
+        const sub = await stripeClient.subscriptions.retrieve(org.stripe_subscription_id, {
+          expand: ["items.data.price"],
+        });
+        waived = setupIsFreeFor({ ...facts, planInterval: subscriptionInterval(sub as any) });
+      }
+      if (waived) {
+        // Recorded exactly as a paid one-time purchase is (an active row with
+        // no Stripe item), plus why it was free. Nothing is sent to Stripe.
+        const { error: waiveErr } = await (supabaseAdmin as any).from("org_platform_addons").upsert(
+          {
+            organization_id: orgId,
+            addon_id: addon.id,
+            stripe_subscription_item_id: null,
+            status: "active",
+            canceled_at: null,
+            waived_reason: waived,
+          },
+          { onConflict: "organization_id,addon_id" },
+        );
+        if (waiveErr) throw new Error("Couldn't record the add-on. You have not been charged; try again.");
+        console.info(`done-for-you setup added at no charge for org ${orgId} (${waived})`);
+        await setFeatureFlag(orgId, addon.feature_flag, true);
+        return { ok: true, waived };
+      }
+    }
+
+    const stripe = stripeClient ?? (await getStripe());
     const oneTime = addon.billing_interval === "one_time";
     // Idempotency generation: retries of THIS attempt dedupe, but a re-add
     // after a removal must NOT replay the original create (Stripe would
