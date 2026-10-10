@@ -104,8 +104,10 @@ describe("the message that sends a tech back to a house names the house", () => 
     expect(sync).toMatch(/result\.droppedVisitIds = \[\.\.\.droppedVisits\]/);
   });
 
+  // The toasts moved with the replay into the signed-in layout's provider on
+  // 2026-10-09; My Day still supplies the names (visitNames).
   it("puts a client name on both toasts", () => {
-    const page = strip(read("src/routes/_authenticated/my-day.tsx"));
+    const page = strip(read("src/components/QueueSync.tsx"));
     expect(page).toMatch(/description: namesFor\(res\.deadLetteredVisitIds\)/);
     expect(page).toMatch(/description: namesFor\(res\.droppedVisitIds\)/);
   });
@@ -113,7 +115,7 @@ describe("the message that sends a tech back to a house names the house", () => 
   it("says nothing rather than counting visits it cannot name", () => {
     // A queued action outlives the day it belongs to, so an id with no row
     // today is expected. "and 2 others" with no names is worse than silence.
-    const page = strip(read("src/routes/_authenticated/my-day.tsx"));
+    const page = strip(read("src/components/QueueSync.tsx"));
     expect(page).toMatch(/if \(named\.length === 0\) return undefined;/);
   });
 });
