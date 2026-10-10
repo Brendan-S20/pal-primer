@@ -1,18 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { requirePermission } from "@/lib/authz.server";
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { isDemoOrganization } from "@/lib/demo-org";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for this user");
-  return data.organization_id as string;
+  // Through the shared gate, so a person whose access is turned off is
+  // refused here as everywhere else (20261009180000).
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 export const reseedDemoData = createServerFn({ method: "POST" })

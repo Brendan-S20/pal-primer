@@ -38,11 +38,9 @@
 import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { installSignedInSession } from "./fixtures/session";
-import { installStubBackend } from "./fixtures/stub-backend";
-import { installMarketingData } from "./fixtures/marketing";
-// The five shots, shared with play-store-screenshots.spec.ts.
-import { STORE_SHOTS } from "./fixtures/store-shots";
+// The five shots, shared with play-store-screenshots.spec.ts, and the guard
+// that refuses a frame which is not its page (see the top of that file).
+import { STORE_SHOTS, openStoreShot } from "./fixtures/store-shots";
 
 const OUT = join(process.cwd(), "ios", "screenshots");
 
@@ -58,31 +56,29 @@ for (const size of SIZES) {
       viewport: { width: size.width, height: size.height },
       deviceScaleFactor: size.scale,
       isMobile: size.scale === 3,
+      // Every one of these is a touch device. The app sizes controls by input
+      // (`touch:`), not width, so a mouse-emulated iPad photographs the desktop
+      // control sizes no iPad user ever sees.
+      hasTouch: true,
     });
 
     for (const [i, shot] of STORE_SHOTS.entries()) {
       test(`${i + 1}. ${shot.name}`, async ({ page }) => {
-        await installSignedInSession(page);
-        await installStubBackend(page);
-        await installMarketingData(page);
-
-        await page.goto(shot.path, { waitUntil: "domcontentloaded" });
-        await shot.ready(page);
-
-        // Animations settle, or the shot catches a panel halfway open.
-        await page.waitForTimeout(600);
+        await openStoreShot(page, shot, `${shot.name} at ${size.name}`);
 
         const dir = join(OUT, size.name);
         mkdirSync(dir, { recursive: true });
         const file = join(dir, `${String(i + 1).padStart(2, "0")}-${shot.name}.png`);
-        await page.screenshot({ path: file });
+        const png = await page.screenshot({ path: file });
 
-        // A blank page satisfies "no error", and a screenshot of one is worse
-        // than none because nobody looks until the review is rejected. The
-        // ready() above already proved this page drew its own content; this
-        // catches a file that came out empty anyway.
-        const png = await page.screenshot();
+        // openStoreShot() proved this is the page with its data on it; this
+        // catches a file that came out empty anyway, and a size App Store
+        // Connect would refuse.
         expect(png.byteLength, `${file} looks empty`).toBeGreaterThan(20_000);
+        expect([png.readUInt32BE(16), png.readUInt32BE(20)], `${file} dimensions`).toEqual([
+          size.width * size.scale,
+          size.height * size.scale,
+        ]);
       });
     }
   });

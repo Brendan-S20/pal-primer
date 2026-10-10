@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { requirePermission } from "@/lib/authz.server";
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
 /** Every skip reason the SCHEDULE can carry, including the one only the portal
  *  writes. See TECH_SKIP_REASON_CODES for the subset a tech may choose. */
@@ -91,16 +91,10 @@ export const TECH_SKIP_REASON_CODES = SKIP_REASON_CODES.filter(
   (c) => c !== "customer_requested",
 ) as ReadonlyArray<(typeof SKIP_REASON_CODES)[number]>;
 
-async function getOrgId(supabase: any, userId: string) {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+async function getOrgId(supabase: any, userId: string): Promise<string> {
+  // Through the shared gate, so a person whose access is turned off is
+  // refused here as everywhere else (20261009180000).
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 export const listSkipRules = createServerFn({ method: "GET" })

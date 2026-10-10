@@ -845,6 +845,15 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       complete: "إنهاء",
     },
   },
+  accessOff: {
+    pageTitle: "تم إيقاف الوصول",
+    title: "تم إيقاف وصولك",
+    body: "تم إيقاف وصولك إلى <business/>. اطلب من المالك إعادة تفعيلك.",
+    thisBusiness: "هذا العمل",
+    checkAgain: "تحقق مرة أخرى",
+    couldNotCheck: "تعذّر التحقق الآن. حاول مرة أخرى بعد قليل.",
+    stillOff: "لا يزال الوصول متوقفًا. اطلب من المالك إعادة تفعيلك.",
+  },
 };
 
 export default ar;
