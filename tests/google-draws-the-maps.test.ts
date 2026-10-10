@@ -310,6 +310,80 @@ describe("a map is paid for once per surface, not once per render", () => {
   });
 });
 
+// 2026-10-09: a map adopted from the pool still believed it was the size of
+// the surface that released it, so a fit made on arrival was framed for that
+// box — the dashboard card after /routes' tall panel opened with its stops at
+// the edges. Reproduced with the real Maps script; Google learns the new size
+// on a ResizeObserver tick, after the component has already asked for a fit.
+describe("a fit asked for before Google has measured the box is made again once it has", () => {
+  class FakeResizeObserver {
+    static all: FakeResizeObserver[] = [];
+    observed: unknown[] = [];
+    disconnected = false;
+    constructor(private readonly cb: (entries: unknown[]) => void) {
+      FakeResizeObserver.all.push(this);
+    }
+    observe(el: unknown) {
+      this.observed.push(el);
+    }
+    disconnect() {
+      this.disconnected = true;
+    }
+    size(width: number, height: number) {
+      if (!this.disconnected) this.cb([{ contentRect: { width, height } }]);
+    }
+  }
+  beforeEach(() => {
+    FakeResizeObserver.all = [];
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  });
+
+  const stops = [
+    { lat: 42.46, lng: -83.14 },
+    { lat: 42.55, lng: -83.22 },
+  ];
+
+  it("refits on the first real size, once, and then leaves the view to the user", () => {
+    const g = fakeGoogle();
+    const r = createGoogleRenderer(g, new FakeEl() as unknown as HTMLElement, surface());
+    const fit = vi.spyOn((r as any).map, "fitBounds");
+    const watch = FakeResizeObserver.all.at(-1)!;
+    expect(watch.observed).toEqual([(r as any).map.getDiv()]);
+
+    r.fitBounds(stops, { padding: 30, maxZoom: 14 });
+    expect(fit).toHaveBeenCalledTimes(1);
+    // Detached, or not laid out yet: nothing to fit to.
+    watch.size(0, 0);
+    expect(fit).toHaveBeenCalledTimes(1);
+    watch.size(760, 380);
+    expect(fit).toHaveBeenCalledTimes(2);
+    // Measured: later fits are made once, and later resizes do not refit.
+    expect(watch.disconnected).toBe(true);
+    r.fitBounds(stops, { padding: 30, maxZoom: 14 });
+    expect(fit).toHaveBeenCalledTimes(3);
+    r.destroy();
+  });
+
+  it("does not undo a deliberate jump made before the box was measured", () => {
+    const g = fakeGoogle();
+    const r = createGoogleRenderer(g, new FakeEl() as unknown as HTMLElement, surface());
+    const fit = vi.spyOn((r as any).map, "fitBounds");
+    r.fitBounds(stops, { padding: 30, maxZoom: 14 });
+    // "Show my current location".
+    r.setView({ lat: 42.5, lng: -83.2 }, 15);
+    FakeResizeObserver.all.at(-1)!.size(760, 380);
+    expect(fit).toHaveBeenCalledTimes(1);
+    r.destroy();
+  });
+
+  it("stops watching when the surface goes", () => {
+    const g = fakeGoogle();
+    const r = createGoogleRenderer(g, new FakeEl() as unknown as HTMLElement, surface());
+    r.destroy();
+    expect(FakeResizeObserver.all.at(-1)!.disconnected).toBe(true);
+  });
+});
+
 describe("the options that keep a map load the only thing billed", () => {
   it("switches off Street View, place cards and the 45° tilt", () => {
     const o = mapOptions(surface({ style: "satellite" }));
@@ -441,6 +515,67 @@ describe("the key, and what happens without one", () => {
     expect(await createMapRenderer(new FakeEl() as unknown as HTMLElement, surface())).toBe(
       fakeLeaflet,
     );
+  });
+
+  // 2026-10-09: the dashboard's map sat on a grey box. Against a refused key
+  // (reproduced with a real Maps script), Google tears the map down and
+  // `getDiv()` on it returns undefined. The swap asked it for its div, threw
+  // inside Google's gm_authFailure call — where a throw is swallowed without
+  // a word — and never reached the Leaflet fallback.
+  it("takes a map Google has torn down off the page, and never asks the map for its div", () => {
+    const g = fakeGoogle();
+    const container = new FakeEl();
+    const r = createGoogleRenderer(g, container as unknown as HTMLElement, surface());
+    r.addMarker({
+      position: { lat: 42, lng: -83 },
+      html: "<div>1</div>",
+      size: [26, 26],
+      anchor: [13, 13],
+    });
+    expect(container.children).toHaveLength(1);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // What Google leaves behind after a refusal.
+    (r as any).map.getDiv = () => undefined;
+    // The loader's refusal flag, set the way Google sets it: through the
+    // global the loader installs when it puts the script on the page.
+    const api = fakeWindow.google;
+    delete fakeWindow.google;
+    loadGoogleMaps("k").catch(() => {});
+    fakeWindow.gm_authFailure();
+    fakeWindow.google = api;
+    expect(() => r.destroy()).not.toThrow();
+    expect(container.children).toHaveLength(0);
+    expect(googleMapPool(g).idle).toBe(0);
+  });
+
+  it("lets every surface swap even when one of them cannot", async () => {
+    const { onGoogleRefused } = await import("@/lib/maps/google-loader");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const second = vi.fn();
+    onGoogleRefused(() => {
+      throw new Error("first surface");
+    });
+    onGoogleRefused(second);
+    loadGoogleMaps("k").catch(() => {});
+    fakeWindow.gm_authFailure();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws with Leaflet when Google refuses the key before the map is built", async () => {
+    getMapsBrowserKey.mockResolvedValue({ key: "runtime-key" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const container = new FakeEl();
+    const pending = createMapRenderer(container as unknown as HTMLElement, surface());
+    await vi.waitFor(() => expect(head.children).toHaveLength(1));
+    const url = new URL((head.children[0] as any).src);
+    installFakeGoogleMaps(fakeWindow);
+    fakeWindow.gm_authFailure();
+    fakeWindow[url.searchParams.get("callback")!]();
+    expect(await pending).toBe(fakeLeaflet);
+    // And no Google map was built into the container on the way.
+    expect(container.children).toHaveLength(0);
   });
 
   it("never hands the browser a server key", () => {
