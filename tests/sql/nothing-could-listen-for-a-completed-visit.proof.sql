@@ -205,8 +205,34 @@ BEGIN
   IF pg_temp.n('a1', 'payment.received') <> 2 THEN
     RAISE EXCEPTION 'PROOF FAILED [payment.received]: %', pg_temp.n('a1', 'payment.received');
   END IF;
-  IF (SELECT bool_or(payload::text ~ '(4242|visa|pi_SECRET|REF-check|raw_event)') FROM public.webhook_deliveries
-       WHERE event_type = 'payment.received') THEN
+  -- ── WHERE THE LEAK CHECK LOOKS, AND WHY NOT IN THE WHOLE PAYLOAD ──────
+  --
+  -- This searched `payload::text` for '4242' until 2026-10-09, and failed
+  -- intermittently with nothing leaked. The envelope's `id` is
+  -- gen_random_uuid(), and `data.paid_at` is a timestamptz rendered to the
+  -- microsecond: '…:42.424242+00:00' and '…-4242-…' both contain 4242. A
+  -- card's last four is a four-digit string, which is the one thing a random
+  -- id and a clock reading are both made of.
+  --
+  -- So it looks where a leak can actually go. The envelope is pinned to its
+  -- five keys, which leaves `data` as the only place a payment's columns can
+  -- reach; `paid_at` is required to be a timestamp and nothing else, so it
+  -- cannot carry a card; and everything else in `data` is searched. Every
+  -- other value there comes from this block's fixed fixtures, so the search
+  -- is deterministic. Mutation-checked: adding raw_event, reference or
+  -- stripe_payment_intent_id to webhook_emit_payment's payload fails here.
+  IF (SELECT bool_or((SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(payload) k)
+                     <> ARRAY['created_at','data','id','organization_id','type'])
+        FROM public.webhook_deliveries WHERE event_type = 'payment.received') THEN
+    RAISE EXCEPTION 'PROOF FAILED [payment payload envelope]: a key beyond id, type, created_at, organization_id, data';
+  END IF;
+  IF (SELECT bool_or(pg_input_is_valid(payload->'data'->>'paid_at', 'timestamptz') IS NOT TRUE)
+        FROM public.webhook_deliveries WHERE event_type = 'payment.received') THEN
+    RAISE EXCEPTION 'PROOF FAILED [payment payload]: paid_at is not a timestamp';
+  END IF;
+  IF (SELECT bool_or(((payload->'data') - 'paid_at')::text
+                     ~* '(4242|visa|last4|brand|card|pi_|stripe|REF-check|reference|raw_event)')
+        FROM public.webhook_deliveries WHERE event_type = 'payment.received') THEN
     RAISE EXCEPTION 'PROOF FAILED [payment payload leaks card, Stripe or reference data]';
   END IF;
   IF (SELECT payload->'data'->>'client_id' FROM public.webhook_deliveries
