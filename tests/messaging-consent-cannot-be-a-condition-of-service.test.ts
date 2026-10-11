@@ -80,8 +80,9 @@ describe("messaging consent cannot be a condition of service", () => {
     expect(t).toMatch(/optional/i);
   });
 
-  it("carries the rest of the express-consent elements a carrier looks for", () => {
+  it("names HoundStack and carries the rest of the express-consent elements a carrier looks for", () => {
     const t = storedConsentText();
+    expect(t).toMatch(/^I agree to receive text messages from HoundStack\b/i);
     expect(t).toMatch(/message frequency varies/i);
     expect(t).toMatch(/message & data rates may apply/i);
     expect(t).toMatch(/reply STOP to opt out/i);
@@ -102,6 +103,7 @@ describe("messaging consent cannot be a condition of service", () => {
 
   it("keeps the checkbox unticked by default", () => {
     expect(getStarted).toMatch(/const \[smsConsent, setSmsConsent\] = useState\(false\)/);
+    expect(getStarted).toMatch(/disabled=\{!phone\.trim\(\)\}/);
   });
 
   it("only records consent when the box was actually ticked", () => {
