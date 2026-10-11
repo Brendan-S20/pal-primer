@@ -84,13 +84,19 @@ describe("messaging consent cannot be a condition of service", () => {
     const t = storedConsentText();
     expect(t).toMatch(/^I agree to receive text messages from HoundStack\b/i);
     expect(t).toMatch(/message frequency varies/i);
-    expect(t).toMatch(/message & data rates may apply/i);
+    expect(t).toContain("Msg & data rates may apply.");
+    expect(t).toContain("Reply STOP to opt out, HELP for help.");
+    expect(t).not.toContain("—");
     expect(t).toMatch(/reply STOP to opt out/i);
     expect(t).toMatch(/HELP/);
   });
 
   it("publishes exactly the sentence it stores", () => {
     expect(publishedConsentText()).toBe(storedConsentText());
+    const doc = readFileSync(join(root, "docs/twilio-toll-free-resubmission.md"), "utf8");
+    const quote = /\n> "I agree[\s\S]*?for help\."/.exec(doc);
+    expect(quote, "resubmission consent quote").not.toBeNull();
+    expect(quote![0].replace(/\n> ?/g, " ").trim().replace(/^"|"$/g, "")).toBe(storedConsentText());
   });
 
   it("does not name a signup step after the opt-in", () => {

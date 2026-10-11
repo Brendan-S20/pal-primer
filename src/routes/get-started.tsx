@@ -59,18 +59,14 @@ export const Route = createFileRoute("/get-started")({
 // The optionality is now stated inside the consent record itself rather than
 // only in the surrounding UI, because the stored text is what a carrier reads
 // back months later, long after the page around it has changed.
-// em-dash-ok: the compliance artifact. This exact wording is stored per
-// consent as the auditable record, is what /legal/sms shows carriers in its
-// linked screenshots, and is pinned by two tests. Toll-free verification was
-// open when the em-dash sweep ran, so the page must not drift from the
-// evidence submitted. Change it deliberately, with the screenshots, or not at
-// all.
+// Keep this wording identical to /legal/sms, the resubmission document, and
+// the opt-in evidence screenshots. It is stored with each consent record.
 export const SMS_CONSENT_TEXT =
   `I agree to receive text messages from ${APP_NAME} at the number provided about my ` +
   `account and service notifications, including verification codes, security alerts and ` +
-  `billing notices. Consent is optional and is not a condition of purchase — you can ` +
-  `create and use a ${APP_NAME} account without it. Message frequency varies. Message & ` +
-  `data rates may apply. Reply STOP to opt out or HELP for help.`;
+  `billing notices. Consent is optional and is not a condition of purchase. You can ` +
+  `create and use a ${APP_NAME} account without it. Message frequency varies. Msg & ` +
+  `data rates may apply. Reply STOP to opt out, HELP for help.`;
 
 // Not "Texting". The last step creates the workspace; the texting opt-in is one
 // optional control inside it. Naming the step after the opt-in made messaging
