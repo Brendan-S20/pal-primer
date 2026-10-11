@@ -101,8 +101,14 @@ $splice$;
 DO $splice$
 DECLARE
   _def text;
-  _new text;
   _count integer;
+  _loop_from CONSTANT text :=
+    'FOR _v IN\s+SELECT v\.id, v\.scheduled_on, v\.is_deepclean, v\.deepclean_charge_cents\s+FROM public\.visits v\s+LEFT JOIN public\.invoice_line_items li';
+  _loop_to CONSTANT text := 'FOR _v IN
+    SELECT v.id, v.scheduled_on, v.is_deepclean, v.deepclean_charge_cents, sv.name AS service_name
+      FROM public.visits v
+      LEFT JOIN public.services sv ON sv.id = v.service_id
+      LEFT JOIN public.invoice_line_items li';
   _desc_from CONSTANT text := 'ELSE ''Prepaid service on '' END';
   _desc_to   CONSTANT text := 'ELSE ''Prepaid '' || public.service_line_item_name(_v.service_name, ''service'') || '' on '' END';
 BEGIN
@@ -115,18 +121,14 @@ BEGIN
 
   -- The loop's SELECT gains the service name and its join. Anchored on the
   -- FOR so the count query above it, which reads the same columns, is left
-  -- alone.
-  _new := regexp_replace(_def,
-    'FOR _v IN\s+SELECT v\.id, v\.scheduled_on, v\.is_deepclean, v\.deepclean_charge_cents\s+FROM public\.visits v\s+LEFT JOIN public\.invoice_line_items li',
-    'FOR _v IN
-    SELECT v.id, v.scheduled_on, v.is_deepclean, v.deepclean_charge_cents, sv.name AS service_name
-      FROM public.visits v
-      LEFT JOIN public.services sv ON sv.id = v.service_id
-      LEFT JOIN public.invoice_line_items li');
-  IF _new = _def THEN
-    RAISE EXCEPTION 'generate_prepaid_invoice no longer reads its visits the way this splice expects; re-cut it against the current body.';
+  -- alone; and, like the postpaid anchors, required to occur exactly once.
+  SELECT count(*) INTO _count FROM regexp_matches(_def, _loop_from, 'g');
+  IF _count <> 1 THEN
+    RAISE EXCEPTION
+      'generate_prepaid_invoice reads its visits in the FOR loop % time(s), not once; the splice anchor moved. Re-cut this migration against the current body.',
+      _count;
   END IF;
-  _def := _new;
+  _def := regexp_replace(_def, _loop_from, _loop_to);
 
   _count := (length(_def) - length(replace(_def, _desc_from, ''))) / length(_desc_from);
   IF _count <> 1 THEN
@@ -161,10 +163,11 @@ BEGIN
   END IF;
 
   -- Both generators read the visit's service and name it through the one
-  -- function. prosrc, never pg_get_functiondef over a set.
+  -- function. prosrc of the NAMED signature, never pg_get_functiondef over a
+  -- set, and never a proname lookup an overload could make ambiguous.
   SELECT p.prosrc INTO _src
-    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'admin_generate_invoice_for_client';
+    FROM pg_proc p
+   WHERE p.oid = 'public.admin_generate_invoice_for_client(uuid, date)'::regprocedure;
   IF _src IS NULL THEN
     RAISE EXCEPTION 'admin_generate_invoice_for_client is missing';
   END IF;
@@ -182,8 +185,8 @@ BEGIN
   END IF;
 
   SELECT p.prosrc INTO _src
-    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'generate_prepaid_invoice';
+    FROM pg_proc p
+   WHERE p.oid = 'public.generate_prepaid_invoice(uuid, integer)'::regprocedure;
   IF _src IS NULL THEN
     RAISE EXCEPTION 'generate_prepaid_invoice is missing';
   END IF;

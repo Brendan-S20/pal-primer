@@ -198,7 +198,11 @@ export function servicePriceCents(
   opts: { pets?: number; minutes?: number | null; nights?: number; multiplier?: number } = {},
 ): number | null {
   if (s.base_price_cents === null) return null;
-  const pets = Math.max(1, Math.floor(opts.pets ?? 1));
+  // A nonsense pet count (0, negative, NaN, a string that did not parse)
+  // reads as one pet, never as a discount and never as NaN -- the same
+  // GREATEST(COALESCE(_pets, 1), 1) the SQL applies.
+  const petsRaw = Number(opts.pets ?? 1);
+  const pets = Number.isFinite(petsRaw) && petsRaw >= 1 ? Math.floor(petsRaw) : 1;
   const perUnit = s.base_price_cents + s.extra_pet_cents * (pets - 1);
   const mult = opts.multiplier ?? 1;
   if (!(mult > 0)) return null;

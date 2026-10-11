@@ -17,7 +17,7 @@ export interface PriceProvenanceFields {
   price_overridden_at: string | null;
 }
 
-export type PriceProvenanceTone = "manual" | "zone" | "dated" | "unknown";
+export type PriceProvenanceTone = "manual" | "zone" | "service" | "dated" | "unknown";
 
 export interface PriceProvenance {
   /** Which case this is, for a caller that wants to style rather than read. */
@@ -62,6 +62,10 @@ export function formatProvenanceDate(iso: string): string {
 export function describePriceProvenance(
   sub: PriceProvenanceFields,
   lookupZoneName: (zoneId: string) => string | undefined,
+  /** The plan's service when it is priced from the service rather than a
+   *  zone (phase 5: a walk, a sit, a groom). Such a plan records no zone,
+   *  and "Set on <date>" would understate what is known. */
+  serviceName?: string | null,
 ): PriceProvenance {
   // An override outranks everything: once a person has typed a number, which
   // zone rate it started from is history.
@@ -79,6 +83,13 @@ export function describePriceProvenance(
       text: name
         ? `From the ${name} rate on ${formatProvenanceDate(sub.priced_at)}`
         : `From a zone that has since been deleted, on ${formatProvenanceDate(sub.priced_at)}`,
+    };
+  }
+
+  if (sub.priced_at && serviceName) {
+    return {
+      tone: "service",
+      text: `From the ${serviceName} price on ${formatProvenanceDate(sub.priced_at)}`,
     };
   }
 

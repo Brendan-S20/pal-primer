@@ -1205,7 +1205,7 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
     const { bookableDays, ONE_OFF_MAX_DAYS_AHEAD, oneOffServiceOptions } = await import(
       "@/lib/one-off-booking"
     );
-    const [{ data: blackouts }, { data: props }, { data: services }] = await Promise.all([
+    const [{ data: blackouts }, { data: props }, { data: services }, { data: client }] = await Promise.all([
       sb
         .from("blackout_dates")
         .select("blackout_on")
@@ -1225,8 +1225,29 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
         )
         .eq("organization_id", session.organizationId)
         .eq("active", true),
+      (sb.from("clients") as any)
+        .select("account_type")
+        .eq("id", session.clientId)
+        .maybeSingle(),
     ]);
     const priceCents = (org?.one_off_price_cents as number | null) ?? null;
+    // The pets at each address, counted exactly as bookOneOffVisit counts them
+    // when it prices the booking (active dogs, NOT (active IS false), at least
+    // one; a commercial account prices as one), so the price the card shows
+    // before the tap is the price that is charged.
+    const propertyIds = ((props ?? []) as Array<{ id: string }>).map((p) => p.id);
+    const commercial = (client?.account_type as string | null) === "commercial";
+    const petsByProperty: Record<string, number> = Object.fromEntries(propertyIds.map((id) => [id, 1]));
+    if (!commercial && propertyIds.length > 0) {
+      const { data: dogs } = await (sb.from("dogs") as any)
+        .select("property_id")
+        .in("property_id", propertyIds)
+        .not("active", "is", false);
+      for (const d of (dogs ?? []) as Array<{ property_id: string }>) {
+        if (d.property_id in petsByProperty) petsByProperty[d.property_id] += 1;
+      }
+      for (const id of propertyIds) petsByProperty[id] = Math.max(1, petsByProperty[id] - 1);
+    }
     return {
       today,
       days: bookableDays(
@@ -1251,6 +1272,7 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       // priced service at its own (one pet). Empty for a business with no
       // active service, when the card offers the extra cleanup as before.
       services: oneOffServiceOptions((services ?? []) as any[], priceCents),
+      petsByProperty,
       currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
     };
   });

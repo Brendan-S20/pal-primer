@@ -186,12 +186,12 @@ BEGIN
   END IF;
   -- An hourly groom at its own 90 minutes, two pets: (60 + 10) × 1.5.
   SELECT * INTO r FROM public.public_quote('walk-priced-proof-q', '60601', 2, 'weekly', NULL, '55500000-0000-4000-8000-0000000000a2');
-  IF r.recurring_price_cents <> 10500 THEN
-    RAISE EXCEPTION 'PROOF FAILED [groom]: quoted %', row_to_json(r);
+  IF r.recurring_price_cents <> 10500 OR r.per_dog_addl_cents <> 1500 THEN
+    RAISE EXCEPTION 'PROOF FAILED [groom]: quoted % (per dog should be $10 × 1.5 hours)', row_to_json(r);
   END IF;
   -- A nightly stay: one night is a visit.
   SELECT * INTO r FROM public.public_quote('walk-priced-proof-q', '60601', 1, 'weekly', NULL, '55500000-0000-4000-8000-0000000000a3');
-  IF r.recurring_price_cents <> 6000 THEN
+  IF r.recurring_price_cents <> 6000 OR r.per_dog_addl_cents <> 1500 THEN
     RAISE EXCEPTION 'PROOF FAILED [stay]: quoted %', row_to_json(r);
   END IF;
   -- An unpriced service: the row, with no price to charge.
@@ -322,6 +322,51 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [portal]: the walk request recorded %', _svc;
   END IF;
 
+  -- A cleanup on the walk's day is a SECOND request, not the walk handed back;
+  -- the walk asked for again is the walk's own ticket; the pet-waste service
+  -- named explicitly is the cleanup, recorded as no service.
+  DECLARE _walk_ticket uuid := _r.ticket_id; _again record;
+  BEGIN
+    SELECT * INTO _again FROM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 1, 'and a cleanup');
+    IF NOT _again.created OR _again.ticket_id = _walk_ticket THEN
+      RAISE EXCEPTION 'PROOF FAILED [portal]: a cleanup on the walk''s day was handed the walk''s ticket';
+    END IF;
+    SELECT service_id INTO _svc FROM public.qc_tickets WHERE id = _again.ticket_id;
+    IF _svc IS NOT NULL THEN RAISE EXCEPTION 'PROOF FAILED [portal]: the cleanup request recorded %', _svc; END IF;
+    SELECT * INTO _r FROM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 1, 'again', '55500000-0000-4000-8000-0000000000a1');
+    IF _r.created OR _r.ticket_id <> _walk_ticket THEN
+      RAISE EXCEPTION 'PROOF FAILED [portal]: asking for the walk again did not hand back the walk''s ticket';
+    END IF;
+    SELECT * INTO _r FROM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 1, 'again',
+      (SELECT s.id FROM public.services s WHERE s.organization_id = '05500000-0000-4000-8000-0000000000aa' AND lower(s.name) = 'pet waste removal'));
+    IF _r.created OR _r.ticket_id <> _again.ticket_id THEN
+      RAISE EXCEPTION 'PROOF FAILED [portal]: the pet-waste service named explicitly is not the extra cleanup';
+    END IF;
+  END;
+
+  -- already_scheduled is per service: a walk on the schedule stops a second
+  -- walk that day and not a cleanup; a cleanup on the schedule the reverse.
+  -- (_day + 6 and + 8, clear of the invoice group's visits on today + 7.)
+  INSERT INTO public.visits (organization_id, subscription_id, client_id, property_id, scheduled_on, status)
+  VALUES ('05500000-0000-4000-8000-0000000000aa', 'd5500000-0000-4000-8000-0000000000a2', 'c5500000-0000-4000-8000-0000000000a1', 'e5500000-0000-4000-8000-0000000000a1', _day + 6, 'scheduled'),
+         ('05500000-0000-4000-8000-0000000000aa', 'd5500000-0000-4000-8000-0000000000a1', 'c5500000-0000-4000-8000-0000000000a1', 'e5500000-0000-4000-8000-0000000000a1', _day + 8, 'scheduled');
+  _err := NULL;
+  BEGIN
+    PERFORM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 6, '', '55500000-0000-4000-8000-0000000000a1');
+  EXCEPTION WHEN OTHERS THEN _err := SQLERRM;
+  END;
+  IF _err IS DISTINCT FROM 'already_scheduled' THEN RAISE EXCEPTION 'PROOF FAILED [portal]: a walk on a day a walk is scheduled was %', COALESCE(_err, 'accepted'); END IF;
+  SELECT * INTO _r FROM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 6, 'cleanup beside the walk');
+  IF NOT _r.created THEN RAISE EXCEPTION 'PROOF FAILED [portal]: a cleanup was blocked by a scheduled walk'; END IF;
+  _err := NULL;
+  BEGIN
+    PERFORM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 8, '');
+  EXCEPTION WHEN OTHERS THEN _err := SQLERRM;
+  END;
+  IF _err IS DISTINCT FROM 'already_scheduled' THEN RAISE EXCEPTION 'PROOF FAILED [portal]: a cleanup on a day a cleanup is scheduled was %', COALESCE(_err, 'accepted'); END IF;
+  SELECT * INTO _r FROM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 8, 'walk beside the cleanup', '55500000-0000-4000-8000-0000000000a1');
+  IF NOT _r.created THEN RAISE EXCEPTION 'PROOF FAILED [portal]: a walk was blocked by a scheduled cleanup'; END IF;
+
   -- Another business's service, and a retired one: refused, the same way.
   BEGIN
     PERFORM public.portal_request_one_off('a5500000-0000-4000-8000-00000000c0de', 'e5500000-0000-4000-8000-0000000000a1', _day + 2, '', '55500000-0000-4000-8000-0000000000b1');
@@ -347,7 +392,7 @@ BEGIN
      OR has_function_privilege('authenticated', 'public.portal_request_one_off(uuid, uuid, date, text, uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'PROOF FAILED [portal]: an API role can call portal_request_one_off';
   END IF;
-  RAISE NOTICE 'ok: a portal request records the service asked for, refuses another business''s or a retired one, and keeps every older rule';
+  RAISE NOTICE 'ok: a portal request records the service asked for, is one per property, day and service, blocks only a scheduled visit of that service, refuses another business''s or a retired one, and keeps every older rule';
 END $$;
 
 DO $$ BEGIN RAISE NOTICE 'ALL PRICING PROOFS PASSED'; END $$;

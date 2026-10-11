@@ -1233,41 +1233,26 @@ function ServiceDrawer({
   });
   const dogsForPricing =
     accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : 1;
-  // An hourly service is priced for its own duration unless the plan says
-  // otherwise: "Minutes per visit" below, blank meaning the service's. Not
-  // stored (a plan has no duration column; a 60-minute walk IS the service);
-  // it only decides the price this form suggests. A nightly service needs no
-  // quantity: a visit is one night.
-  const [hourlyMinutes, setHourlyMinutes] = useState("");
-  const hourly = chosenService?.price_unit === "hour";
-  const minutesTyped = hourly && hourlyMinutes.trim() !== "" ? parseInt(hourlyMinutes, 10) : NaN;
-  const minutesForPricing = Number.isFinite(minutesTyped) && minutesTyped > 0 ? minutesTyped : null;
-  if (hourly && hourlyMinutes.trim() !== "" && minutesForPricing === null)
-    errors.minutes = "Between 1 and 720 minutes";
-  else if (minutesForPricing !== null && minutesForPricing > 720)
-    errors.minutes = "Between 1 and 720 minutes";
+  const hasErrors = Object.keys(errors).length > 0;
+  const fieldError = (k: string) => (showErrors && errors[k] ? errors[k] : null);
   // The service's own price for one visit (a walk at $25, an hourly groom at
   // its duration), or null when it has none (pet waste priced by zone). A plan
   // bills per visit, so this IS the plan's price: five walks a week is five
   // of these (migration 20261010010000, "Billing"). The one pricing rule,
   // servicePriceCents (phase 5); pet waste never reaches it.
+  //
+  // A service's length lives on the SERVICE: an hourly price is the rate ×
+  // the service's own duration, and a business that sells a 45-minute and a
+  // 90-minute groom has two services, which is how routing, drift, the portal
+  // and public_quote already read it. A plan has no duration of its own.
   const serviceCents = chosenService
-    ? servicePriceCents(chosenService, {
-        pets: dogsForPricing,
-        minutes: errors.minutes ? null : minutesForPricing,
-      })
+    ? servicePriceCents(chosenService, { pets: dogsForPricing })
     : null;
-  const minutesPriced = minutesForPricing ?? chosenService?.default_duration_min ?? null;
-  const servicePriceHint =
-    chosenService && serviceCents != null
-      ? hourly
-        ? ` (${minutesPriced} min at $${((chosenService.base_price_cents ?? 0) / 100).toFixed(2)} per hour)`
-        : chosenService.price_unit === "night"
-          ? " (one night)"
-          : ""
-      : "";
-  const hasErrors = Object.keys(errors).length > 0;
-  const fieldError = (k: string) => (showErrors && errors[k] ? errors[k] : null);
+  const hourly = chosenService?.price_unit === "hour";
+  const hourlyHint =
+    hourly && chosenService && serviceCents != null && chosenService.default_duration_min != null
+      ? `Priced at ${chosenService.default_duration_min} min × $${((chosenService.base_price_cents ?? 0) / 100).toFixed(2)} per hour; for a different length, add another service.`
+      : null;
 
   /** A different service: a new walk plan starts Monday to Friday while its
    *  schedule is still the untouched default, and a blank price takes the
@@ -1290,9 +1275,6 @@ function ServiceDrawer({
       if (cents != null && f.priceDollars.trim() === "") patch.priceDollars = (cents / 100).toFixed(2);
       return { ...f, ...patch };
     });
-    // A different service has its own duration; the minutes typed for the
-    // last one do not carry over.
-    setHourlyMinutes("");
   };
   const selectedProperty = properties.find((p: any) => p.id === form.propertyId);
   // The zone that actually applies, in ONE place.
@@ -1716,42 +1698,13 @@ function ServiceDrawer({
                 type="button"
                 variant="link"
                 size="sm"
-                className="h-auto min-h-11 whitespace-normal px-0 text-start"
+                className="px-0"
                 onClick={() => set("priceDollars", (serviceCents / 100).toFixed(2))}
               >
                 Use the service price, ${(serviceCents / 100).toFixed(2)}
-                {servicePriceHint}
               </Button>
             )}
-            {hourly && (
-              <div className="mt-2">
-                <Label htmlFor="sd-minutes">Minutes per visit</Label>
-                <Input
-                  id="sd-minutes"
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  max="720"
-                  placeholder={
-                    chosenService?.default_duration_min != null
-                      ? String(chosenService.default_duration_min)
-                      : undefined
-                  }
-                  value={hourlyMinutes}
-                  onChange={(e) => setHourlyMinutes(e.target.value)}
-                  aria-invalid={!!fieldError("minutes")}
-                  className={fieldError("minutes") ? "border-destructive" : undefined}
-                />
-                {fieldError("minutes") ? (
-                  <p className="mt-1 text-xs text-destructive">{fieldError("minutes")}</p>
-                ) : (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Priced by the hour. Blank is the service&apos;s usual{" "}
-                    {chosenService?.default_duration_min ?? "--"} minutes.
-                  </p>
-                )}
-              </div>
-            )}
+            {hourlyHint && <p className="mt-1 text-xs text-muted-foreground">{hourlyHint}</p>}
           </div>
           {accountType === "residential" ? (
             <div>

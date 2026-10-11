@@ -196,7 +196,11 @@ BEGIN
     zone_id := _zone.id;
     zone_name := _zone.name;
     base_price_cents := _base_visit_cents;
-    per_dog_addl_cents := _svc.extra_pet_cents;
+    -- Per dog PER VISIT, like the zone's per_dog_addl_cents: the extra-pet
+    -- rate × the same units (the service's duration for an hourly service,
+    -- one night for a nightly one), so a "+$X per dog" label is right.
+    per_dog_addl_cents := public.service_price_cents(
+      _svc.price_unit, _svc.extra_pet_cents, 0, _svc.default_duration_min, 1, NULL, 1, 1);
     recurring_price_cents := _base_visit_cents;
     initial_cleanup_cents := 0;
     currency := _org.currency;

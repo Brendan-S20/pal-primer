@@ -22,10 +22,21 @@
 -- four-argument call the portal and the AI receptionist make today is the
 -- same call. A service named has to be this business's and active, or the
 -- request is refused with 'service_not_offered' (oneOffRefusalMessage says
--- it in words); the other rules -- tomorrow through 30 days, a working day,
--- not blacked out, one request per property per day -- are the 20260929050000
--- body unchanged. The four-argument function is dropped, not overloaded, for
--- the PostgREST reason every signature change here gives.
+-- it in words). The business's pet-waste service IS the extra cleanup and is
+-- recorded as NULL, so a pet-waste-only business's requests read exactly as
+-- they always did. The other rules -- tomorrow through 30 days, a working
+-- day, not blacked out -- are the 20260929050000 body unchanged.
+--
+-- "One open request per property per day" becomes per property, day AND
+-- service (NULL being the extra cleanup): a walk asked for on a day a cleanup
+-- is already asked for is a second request, not the first one handed back.
+-- The partial unique index moves with it, and the ON CONFLICT target names
+-- the same expression. Likewise `already_scheduled` blocks only a visit OF
+-- THAT SERVICE on that day: a scheduled cleanup does not stop a walk. For a
+-- business that sells one thing, every one of these is the old rule.
+--
+-- The four-argument function is dropped, not overloaded, for the PostgREST
+-- reason every signature change here gives.
 --
 -- Mirrors portal_request_reclean: postgres and service_role, nobody else.
 --
@@ -39,6 +50,14 @@ COMMENT ON COLUMN public.qc_tickets.service_id IS
 
 CREATE INDEX IF NOT EXISTS qc_tickets_service_id_idx ON public.qc_tickets (service_id)
   WHERE service_id IS NOT NULL;
+
+-- One OPEN request per property, day and service. NULL is the extra cleanup,
+-- folded to a fixed uuid because a unique index treats NULLs as distinct.
+DROP INDEX IF EXISTS public.qc_tickets_one_open_one_off_per_property_day;
+CREATE UNIQUE INDEX IF NOT EXISTS qc_tickets_one_open_one_off_per_property_day_service
+  ON public.qc_tickets (property_id, requested_on,
+                        COALESCE(service_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  WHERE category = 'one_off_request' AND status <> 'resolved';
 
 DROP FUNCTION IF EXISTS public.portal_request_one_off(uuid, uuid, date, text);
 
@@ -59,6 +78,7 @@ DECLARE
   _work int[];
   _today date;
   _id uuid;
+  _asked_service uuid;
 BEGIN
   SELECT c.id, c.organization_id INTO _client_id, _org_id
     FROM public.clients c WHERE c.portal_token = _token AND c.active = true;
@@ -78,6 +98,10 @@ BEGIN
     PERFORM 1 FROM public.services s
       WHERE s.id = _service_id AND s.organization_id = _org_id AND s.active;
     IF NOT FOUND THEN RAISE EXCEPTION 'service_not_offered'; END IF;
+    -- The pet-waste service is the extra cleanup: recorded as no service.
+    IF (SELECT s.service_line FROM public.services s WHERE s.id = _service_id) = 'pet_waste' THEN
+      _service_id := NULL;
+    END IF;
   END IF;
 
   SELECT COALESCE(NULLIF(o.timezone, ''), 'America/Chicago'), o.work_days
@@ -103,6 +127,7 @@ BEGIN
   SELECT t.id INTO _id FROM public.qc_tickets t
    WHERE t.category = 'one_off_request' AND t.client_id = _client_id
      AND t.property_id = _property_id AND t.requested_on = _on
+     AND t.service_id IS NOT DISTINCT FROM _service_id
      AND (t.status <> 'resolved' OR t.booked_visit_id IS NOT NULL)
    ORDER BY t.created_at DESC
    LIMIT 1;
@@ -111,15 +136,21 @@ BEGIN
     RETURN;
   END IF;
 
+  -- A visit of THIS service that day is already on the schedule. The extra
+  -- cleanup is the business's pet-waste service (ensure_default_services, the
+  -- same answer the visit triggers give a visit with no service).
+  _asked_service := COALESCE(_service_id, public.ensure_default_services(_org_id));
   PERFORM 1 FROM public.visits v
     WHERE v.property_id = _property_id AND v.scheduled_on = _on
-      AND v.status NOT IN ('skipped', 'canceled');
+      AND v.status NOT IN ('skipped', 'canceled')
+      AND COALESCE(v.service_id, public.ensure_default_services(_org_id)) IS NOT DISTINCT FROM _asked_service;
   IF FOUND THEN RAISE EXCEPTION 'already_scheduled'; END IF;
 
   INSERT INTO public.qc_tickets (organization_id, client_id, property_id, category, requested_on, message, service_id)
   VALUES (_org_id, _client_id, _property_id, 'one_off_request', _on,
           left(NULLIF(btrim(COALESCE(_message, '')), ''), 1000), _service_id)
-  ON CONFLICT (property_id, requested_on) WHERE category = 'one_off_request' AND status <> 'resolved'
+  ON CONFLICT (property_id, requested_on, COALESCE(service_id, '00000000-0000-0000-0000-000000000000'::uuid))
+    WHERE category = 'one_off_request' AND status <> 'resolved'
   DO NOTHING
   RETURNING id INTO _id;
 
@@ -130,7 +161,8 @@ BEGIN
   -- Lost a race with a concurrent tap: the other one's request is this one.
   SELECT t.id INTO _id FROM public.qc_tickets t
    WHERE t.category = 'one_off_request' AND t.property_id = _property_id
-     AND t.requested_on = _on AND t.status <> 'resolved'
+     AND t.requested_on = _on AND t.service_id IS NOT DISTINCT FROM _service_id
+     AND t.status <> 'resolved'
    LIMIT 1;
   RETURN QUERY SELECT _id, false;
 END $function$;
@@ -149,6 +181,17 @@ BEGIN
      WHERE table_schema = 'public' AND table_name = 'qc_tickets' AND column_name = 'service_id'
   ) THEN
     RAISE EXCEPTION 'qc_tickets.service_id was not created';
+  END IF;
+  IF to_regclass('public.qc_tickets_one_open_one_off_per_property_day') IS NOT NULL THEN
+    RAISE EXCEPTION 'the per-property-day index is still there; a walk and a cleanup on one day would collide';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_index i
+     WHERE i.indrelid = 'public.qc_tickets'::regclass
+       AND i.indexrelid = to_regclass('public.qc_tickets_one_open_one_off_per_property_day_service')
+       AND i.indisunique AND i.indisvalid
+  ) THEN
+    RAISE EXCEPTION 'qc_tickets_one_open_one_off_per_property_day_service is missing, not unique, or invalid';
   END IF;
   IF to_regprocedure('public.portal_request_one_off(uuid, uuid, date, text)') IS NOT NULL THEN
     RAISE EXCEPTION 'the four-argument portal_request_one_off is still there; PostgREST cannot choose between two';

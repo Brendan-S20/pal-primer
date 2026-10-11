@@ -44,6 +44,9 @@ export type OneOffRequestTicket = {
   propertyId: string;
   address: string | null;
   requestedOn: string;
+  /** The active dogs at the address (at least one; one for a commercial
+   *  account): what bookOneOffVisit prices the service for. */
+  pets: number;
   /** The service the client asked for (phase 5). Null is the extra cleanup:
    *  every request before the catalog, and the pet-waste service since. */
   service: Pick<
@@ -103,11 +106,12 @@ export function BookOneOffRequestDialog({
     setDay(ticket.requestedOn >= today ? ticket.requestedOn : today);
     setStaffId("");
   }, [ticket, today]);
-  // The price starts from the service the client asked for (one pet, through
-  // the one rule; the extra-pet charge is said beside it), else from the org's
-  // one-off price: the extra cleanup, as before.
+  // The price starts from the service the client asked for, for the pets at
+  // that address through the one rule (what bookOneOffVisit will charge),
+  // else from the org's one-off price: the extra cleanup, as before.
   const svc = requestedService(ticket);
-  const svcCents = svc ? servicePriceCents(svc, { pets: 1 }) : null;
+  const pets = ticket?.pets ?? 1;
+  const svcCents = svc ? servicePriceCents(svc, { pets }) : null;
   useEffect(() => {
     if (!ticket) return;
     const cents = svc ? svcCents : settingsQ.data?.priceCents;
@@ -220,11 +224,7 @@ export function BookOneOffRequestDialog({
               <p className="text-xs text-muted-foreground">
                 {svcCents == null
                   ? `${svc.name} has no price yet, so this one is yours to price. Set one under Settings → Services.`
-                  : `${svc.name}'s price for one pet${
-                      svc.extra_pet_cents > 0
-                        ? `; add $${(svc.extra_pet_cents / 100).toFixed(2)} for each extra pet at this address`
-                        : ""
-                    }.`}
+                  : `${svc.name}'s price for the ${pets === 1 ? "one pet" : `${pets} pets`} at this address.`}
               </p>
             ) : settingsQ.data && settingsQ.data.priceCents == null ? (
               <p className="text-xs text-muted-foreground">

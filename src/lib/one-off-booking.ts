@@ -63,11 +63,15 @@ export function oneOffRefusalMessage(raw: string): string {
 }
 
 /** One thing a customer can ask for from the portal (phase 5). */
-export type OneOffServiceOption = {
+export type OneOffServiceOption = Pick<
+  Service,
+  "price_unit" | "base_price_cents" | "extra_pet_cents" | "default_duration_min"
+> & {
   id: string;
   name: string;
   /** What one visit costs for one pet, or null when the business has not set
-   *  a price (the request then waits for the office, as it always has). */
+   *  a price (the request then waits for the office, as it always has). For
+   *  the price at THIS address's pet count use oneOffPriceFor. */
   priceCents: number | null;
   /** Per pet beyond the first, so the card can say "+ $5 per extra pet". */
   perExtraPetCents: number;
@@ -75,6 +79,19 @@ export type OneOffServiceOption = {
    *  one-off price, booked exactly as before the catalog. */
   petWaste: boolean;
 };
+
+/**
+ * What one visit of this option costs for `pets` pets: the one-off price for
+ * the extra cleanup (pet waste has no per-pet one-off rate), the service's
+ * price through the one rule for anything else. This is the number the card
+ * shows before the tap and the number bookOneOffVisit charges
+ * (servicePriceCents with the property's active dog count), so the two
+ * cannot differ; tests/a-walk-is-priced-as-a-walk.test.ts holds them equal.
+ */
+export function oneOffPriceFor(option: OneOffServiceOption, pets: number): number | null {
+  if (option.petWaste) return option.priceCents;
+  return servicePriceCents(option, { pets });
+}
 
 /**
  * The services the portal offers to book, from the business's ACTIVE ones,
@@ -108,13 +125,27 @@ export function oneOffServiceOptions(
   const out: OneOffServiceOption[] = [];
   for (const s of servicePickerOptions(services)) {
     if (!s.active) continue;
+    const fields = {
+      price_unit: s.price_unit,
+      base_price_cents: s.base_price_cents,
+      extra_pet_cents: s.extra_pet_cents,
+      default_duration_min: s.default_duration_min,
+    };
     if (isZonePriced(s)) {
-      out.push({ id: s.id, name: s.name, priceCents: oneOffPriceCents, perExtraPetCents: 0, petWaste: true });
+      out.push({
+        ...fields,
+        id: s.id,
+        name: s.name,
+        priceCents: oneOffPriceCents,
+        perExtraPetCents: 0,
+        petWaste: true,
+      });
       continue;
     }
     const cents = servicePriceCents(s, { pets: 1 });
     if (cents == null) continue;
     out.push({
+      ...fields,
       id: s.id,
       name: s.name,
       priceCents: cents,

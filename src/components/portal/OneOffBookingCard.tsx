@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { portalOneOffBookingOptions, portalRequestOneOff } from "@/lib/portal.functions";
+import { oneOffPriceFor } from "@/lib/one-off-booking";
 import { fmtDay, fmtDayShort, money, usePortalCtx } from "@/lib/portal-ui";
 
 const selectClass =
@@ -57,7 +58,11 @@ export function OneOffBookingCard() {
   // card has always offered it. The pet-waste service IS the extra cleanup,
   // so it is sent as no service, and the request is the one it always was.
   const chosen = services.find((s) => s.id === serviceId) ?? services[0] ?? null;
-  const priceCents = chosen ? chosen.priceCents : opts?.priceCents ?? null;
+  // The price for THIS address's pets, through the same rule the booking
+  // charges (oneOffPriceFor), so what is promised before the tap is what is
+  // booked after it.
+  const pets = opts?.petsByProperty?.[propertyId] ?? 1;
+  const priceCents = chosen ? oneOffPriceFor(chosen, pets) : (opts?.priceCents ?? null);
   const autoAccept = !!opts?.autoAccept && priceCents != null;
 
   const mut = useMutation({
@@ -123,11 +128,7 @@ export function OneOffBookingCard() {
                   ? `. ${chosen && !chosen.petWaste ? chosen.name : "An extra visit"} is ${money(
                       priceCents,
                       opts.currency,
-                    )}${
-                      chosen && chosen.perExtraPetCents > 0
-                        ? `, plus ${money(chosen.perExtraPetCents, opts.currency)} for each extra pet`
-                        : ""
-                    }`
+                    )}`
                   : ""
               }.`}
         </span>
@@ -147,7 +148,9 @@ export function OneOffBookingCard() {
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
-                  {s.priceCents != null ? ` (${money(s.priceCents, opts.currency)})` : ""}
+                  {oneOffPriceFor(s, pets) != null
+                    ? ` (${money(oneOffPriceFor(s, pets), opts.currency)})`
+                    : ""}
                 </option>
               ))}
             </select>

@@ -505,7 +505,18 @@ function ConcernsPage() {
                       })
                     }
                     onBook={() => {
-                      const prop = oneOf<{ street: string; city: string | null }>(c.property);
+                      const prop = oneOf<{
+                        street: string;
+                        city: string | null;
+                        dogs?: Array<{ active: boolean | null }> | null;
+                      }>(c.property);
+                      // Counted as bookOneOffVisit counts them: active dogs,
+                      // NOT (active IS false), at least one; one for a
+                      // commercial account.
+                      const pets =
+                        client?.account_type === "commercial"
+                          ? 1
+                          : Math.max(1, (prop?.dogs ?? []).filter((d) => d.active !== false).length);
                       setOneOffFor({
                         ticketId: c.id,
                         clientId: c.client_id,
@@ -513,6 +524,7 @@ function ConcernsPage() {
                         propertyId: c.property_id,
                         address: prop ? [prop.street, prop.city].filter(Boolean).join(", ") : null,
                         requestedOn: c.requested_on,
+                        pets,
                         service: oneOf<OneOffRequestTicket["service"]>(c.service) ?? null,
                       });
                     }}

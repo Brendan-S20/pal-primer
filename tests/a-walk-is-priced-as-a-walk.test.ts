@@ -35,11 +35,13 @@ import {
   type DriftSubscription,
 } from "@/lib/pricing-drift";
 import {
+  oneOffPriceFor,
   oneOffRefusalMessage,
   oneOffRequestWord,
   oneOffServiceOptions,
   oneOffVisitNote,
 } from "@/lib/one-off-booking";
+import { describePriceProvenance } from "@/lib/price-provenance";
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -142,6 +144,14 @@ describe("one pricing rule, in SQL and in TypeScript", () => {
     );
   });
 
+  it("reads a nonsense pet count as one pet, never as NaN or a discount, as the SQL does", () => {
+    const walk = { price_unit: "visit" as const, base_price_cents: 2500, extra_pet_cents: 500, default_duration_min: 30 };
+    for (const pets of [Number.NaN, 0, -2, 0.5, Infinity, "abc" as unknown as number, undefined])
+      expect(servicePriceCents(walk, { pets }), String(pets)).toBe(2500);
+    expect(servicePriceCents(walk, { pets: 2.9 })).toBe(3000);
+    expect(servicePriceCents(walk, { pets: "3" as unknown as number })).toBe(3500);
+  });
+
   it("pet waste is zone-priced and never reaches the rule", () => {
     expect(isZonePriced({ service_line: "pet_waste" })).toBe(true);
     for (const line of ["dog_walking", "pet_sitting", "mobile_grooming", "other"] as const)
@@ -196,6 +206,10 @@ describe("public_quote gains a service and keeps its old answer", () => {
       code.indexOf("_mult := COALESCE"),
     );
     expect(svcBranch).toMatch(/recurring_price_cents := _base_visit_cents;/);
+    // Per dog PER VISIT: the extra-pet rate through the same units.
+    expect(svcBranch).toMatch(
+      /per_dog_addl_cents := public\.service_price_cents\(\s*_svc\.price_unit, _svc\.extra_pet_cents, 0, _svc\.default_duration_min, 1, NULL, 1, 1\);/,
+    );
     expect(svcBranch).toMatch(/initial_cleanup_cents := 0;/);
     expect(svcBranch).toMatch(/first_cleanup_mode := 'off';/);
     expect(svcBranch).toMatch(/first_cleanup_options := '\[\]'::jsonb;/);
@@ -402,6 +416,13 @@ describe("an invoice line names the visit's service", () => {
     expect(code.match(/IF strpos\(_def, 'service_line_item_name'\) > 0 THEN/g)).toHaveLength(2);
   });
 
+  it("counts the prepaid loop anchor exactly once, and verifies by signature", () => {
+    expect(code).toMatch(/SELECT count\(\*\) INTO _count FROM regexp_matches\(_def, _loop_from, 'g'\);\s*IF _count <> 1 THEN/);
+    expect(code).toMatch(/WHERE p\.oid = 'public\.admin_generate_invoice_for_client\(uuid, date\)'::regprocedure;/);
+    expect(code).toMatch(/WHERE p\.oid = 'public\.generate_prepaid_invoice\(uuid, integer\)'::regprocedure;/);
+    expect(code).not.toMatch(/p\.proname = 'admin_generate_invoice_for_client'/);
+  });
+
   it("the screen's date humanizer still finds the day in the new shapes", async () => {
     const { formatLineItemDescription } = await import("@/lib/invoice-labels");
     const { formatDay } = await import("@/lib/format");
@@ -434,13 +455,40 @@ describe("the portal offers the business's services", () => {
   it("lists the extra cleanup at the one-off price and every active, priced service at its own", () => {
     const opts = oneOffServiceOptions([UNPRICED, WALK_SERVICE, RETIRED, PW_SERVICE], 4500);
     expect(opts.map((o) => o.id)).toEqual(["pw", "w"]);
-    expect(opts[0]).toEqual({ id: "pw", name: "Pet waste removal", priceCents: 4500, perExtraPetCents: 0, petWaste: true });
-    expect(opts[1]).toEqual({ id: "w", name: "30-minute walk", priceCents: 2500, perExtraPetCents: 500, petWaste: false });
+    expect(opts[0]).toMatchObject({ id: "pw", name: "Pet waste removal", priceCents: 4500, perExtraPetCents: 0, petWaste: true });
+    expect(opts[1]).toMatchObject({ id: "w", name: "30-minute walk", priceCents: 2500, perExtraPetCents: 500, petWaste: false });
   });
 
   it("keeps the extra cleanup on offer with no price, as it always was", () => {
     const opts = oneOffServiceOptions([PW_SERVICE], null);
-    expect(opts).toEqual([{ id: "pw", name: "Pet waste removal", priceCents: null, perExtraPetCents: 0, petWaste: true }]);
+    expect(opts).toHaveLength(1);
+    expect(opts[0]).toMatchObject({ id: "pw", priceCents: null, petWaste: true });
+  });
+
+  it("shows the price it books: the card's number equals the booking's, for 1 pet and for 3", () => {
+    // The card prices the chosen option for the address's pets with
+    // oneOffPriceFor; bookOneOffVisit prices the service with servicePriceCents
+    // for the property's active dog count. Same rule, same inputs.
+    const [pw, walk] = oneOffServiceOptions([PW_SERVICE, WALK_SERVICE], 4500);
+    for (const pets of [1, 3]) {
+      expect(oneOffPriceFor(walk, pets)).toBe(servicePriceCents(WALK_SERVICE, { pets }));
+      // The extra cleanup has one price whatever the pets: the one-off price.
+      expect(oneOffPriceFor(pw, pets)).toBe(4500);
+    }
+    expect(oneOffPriceFor(walk, 1)).toBe(2500);
+    expect(oneOffPriceFor(walk, 3)).toBe(3500);
+    // ...and both sides count the pets the same way.
+    const fns = read("src/lib/portal.functions.ts");
+    const server = read("src/lib/one-off-visit.server.ts");
+    expect(fns).toMatch(/\.not\("active", "is", false\)/);
+    expect(server).toMatch(/\.not\("active", "is", false\)/);
+    expect(fns).toMatch(/petsByProperty\[id\] = Math\.max\(1, petsByProperty\[id\] - 1\)/);
+    expect(fns).toMatch(/const commercial = \(client\?\.account_type as string \| null\) === "commercial";/);
+    expect(server).toMatch(/servicePriceCents\(svc, \{ pets: dogCount \?\? 1 \}\)/);
+    const card = read("src/components/portal/OneOffBookingCard.tsx");
+    expect(card).toMatch(/const pets = opts\?\.petsByProperty\?\.\[propertyId\] \?\? 1;/);
+    expect(card).toMatch(/const priceCents = chosen \? oneOffPriceFor\(chosen, pets\) : \(opts\?\.priceCents \?\? null\);/);
+    expect(card).toMatch(/const autoAccept = !!opts\?\.autoAccept && priceCents != null;/);
   });
 
   it("says why a service was refused, and names what was asked for", () => {
@@ -477,6 +525,18 @@ describe("the portal offers the business's services", () => {
     expect(code).toMatch(/DROP FUNCTION IF EXISTS public\.portal_request_one_off\(uuid, uuid, date, text\);/);
     expect(code).toMatch(/_token uuid, _property_id uuid, _on date, _message text,\s*_service_id uuid DEFAULT NULL/);
     expect(code).toMatch(/IF NOT FOUND THEN RAISE EXCEPTION 'service_not_offered'; END IF;/);
+    // One open request per property, day AND service; NULL is the extra cleanup.
+    expect(code).toMatch(/DROP INDEX IF EXISTS public\.qc_tickets_one_open_one_off_per_property_day;/);
+    expect(code).toMatch(
+      /CREATE UNIQUE INDEX IF NOT EXISTS qc_tickets_one_open_one_off_per_property_day_service\s+ON public\.qc_tickets \(property_id, requested_on,\s*COALESCE\(service_id, '00000000-0000-0000-0000-000000000000'::uuid\)\)\s+WHERE category = 'one_off_request' AND status <> 'resolved';/,
+    );
+    expect(code).toMatch(/ON CONFLICT \(property_id, requested_on, COALESCE\(service_id, '00000000-0000-0000-0000-000000000000'::uuid\)\)/);
+    expect(code.match(/t\.service_id IS NOT DISTINCT FROM _service_id/g)).toHaveLength(2);
+    // The pet-waste service is the extra cleanup, recorded as no service.
+    expect(code).toMatch(/= 'pet_waste' THEN\s*_service_id := NULL;/);
+    // already_scheduled is per service.
+    expect(code).toMatch(/_asked_service := COALESCE\(_service_id, public\.ensure_default_services\(_org_id\)\);/);
+    expect(code).toMatch(/COALESCE\(v\.service_id, public\.ensure_default_services\(_org_id\)\) IS NOT DISTINCT FROM _asked_service;/);
     expect(code).toMatch(/REVOKE ALL ON FUNCTION public\.portal_request_one_off\(uuid, uuid, date, text, uuid\) FROM PUBLIC, anon, authenticated;/);
     expect(code).toMatch(/GRANT EXECUTE ON FUNCTION public\.portal_request_one_off\(uuid, uuid, date, text, uuid\) TO service_role;/);
     // The old rules, unchanged.
@@ -487,7 +547,12 @@ describe("the portal offers the business's services", () => {
   it("the office books the service the client asked for", () => {
     const dialog = read("src/components/BookOneOffRequestDialog.tsx");
     expect(dialog).toMatch(/serviceId: requestedService\(t\)!\.id/);
-    expect(dialog).toMatch(/servicePriceCents\(svc, \{ pets: 1 \}\)/);
+    // Prefilled for the address's pets, as the booking will charge.
+    expect(dialog).toMatch(/const pets = ticket\?\.pets \?\? 1;/);
+    expect(dialog).toMatch(/servicePriceCents\(svc, \{ pets \}\)/);
+    const concerns = read("src/routes/_authenticated/concerns.tsx");
+    expect(concerns).toMatch(/\(prop\?\.dogs \?\? \[\]\)\.filter\(\(d\) => d\.active !== false\)\.length/);
+    expect(read("src/lib/concerns.functions.ts")).toMatch(/properties!qc_tickets_property_id_fkey\(street, city, dogs\(active\)\)/);
     const server = read("src/lib/one-off-visit.server.ts");
     expect(server).toMatch(/priceCents: number \| "service";/);
     expect(server).toMatch(/\.\.\.\(input\.serviceId \? \{ service_id: input\.serviceId \} : \{\}\)/);
@@ -503,24 +568,59 @@ describe("the portal offers the business's services", () => {
 
 // ── the plan form ──────────────────────────────────────────────────────────
 
-describe("the plan form prices an hourly service by the minute", () => {
+describe("the plan form prices an hourly service by the service's own length", () => {
   const tab = read("src/components/client-detail/ServicesTab.tsx");
 
-  it("shows Minutes per visit only for an hourly service, blank meaning the service's own", () => {
-    expect(tab).toMatch(/const hourly = chosenService\?\.price_unit === "hour";/);
-    expect(tab).toMatch(/\{hourly && \(\s*<div className="mt-2">\s*<Label htmlFor="sd-minutes">Minutes per visit<\/Label>/);
-    expect(tab).toMatch(/minutes: errors\.minutes \? null : minutesForPricing,/);
-    expect(tab).toMatch(/Between 1 and 720 minutes/);
+  it("has no minutes field: a service's length lives on the service", () => {
+    expect(tab).not.toMatch(/sd-minutes/);
+    expect(tab).not.toMatch(/hourlyMinutes/);
+    expect(tab).toMatch(/servicePriceCents\(chosenService, \{ pets: dogsForPricing \}\)/);
   });
 
-  it("says what the suggested price is made of", () => {
-    expect(tab).toMatch(/min at \$\$\{\(\(chosenService\.base_price_cents \?\? 0\) \/ 100\)\.toFixed\(2\)\} per hour\)/);
-    expect(tab).toMatch(/\{servicePriceHint\}/);
+  it("tells the owner how the hourly price was made and what to do for another length", () => {
+    expect(tab).toMatch(
+      /Priced at \$\{chosenService\.default_duration_min\} min × \$\$\{\(\(chosenService\.base_price_cents \?\? 0\) \/ 100\)\.toFixed\(2\)\} per hour; for a different length, add another service\./,
+    );
+    expect(tab).toMatch(/\{hourlyHint && <p className="mt-1 text-xs text-muted-foreground">\{hourlyHint\}<\/p>\}/);
   });
 
-  it("still prefills a blank price from the service on a change, and resets the minutes", () => {
+  it("still prefills a blank price from the service on a change", () => {
     expect(tab).toMatch(/servicePriceCents\(next, \{ pets: dogsForPricing \}\)/);
-    expect(tab).toMatch(/setHourlyMinutes\(""\);/);
     expect(tab).toMatch(/Price \(\$ per visit\)/);
+  });
+});
+
+// ── where the price came from ──────────────────────────────────────────────
+
+describe("a service-priced plan does not claim a zone's rate card", () => {
+  const fns = read("src/lib/subscriptions.functions.ts");
+
+  it("writes no priced_from_zone_id for a plan whose service is not zone-priced", () => {
+    expect(fns).toMatch(/priced_from_zone_id: zonePriced \? \(data\.zoneId \?\? null\) : null,/);
+    // ...and clears it when an edit moves the plan onto such a service.
+    expect(fns).toMatch(/\.\.\.\(zonePriced \? \{\} : \{ priced_from_zone_id: null \}\),/);
+    expect(fns).toMatch(/return \{ zonePriced: isZonePriced\(svc\) \};/);
+  });
+
+  it("reads 'From the <service> price' on the drift page, and as before everywhere else", () => {
+    const priced = { priced_at: "2026-10-11T12:00:00Z", priced_from_zone_id: null, price_overridden_at: null };
+    expect(describePriceProvenance(priced, () => undefined, "30-minute walk")).toMatchObject({
+      tone: "service",
+      text: expect.stringMatching(/^From the 30-minute walk price on /),
+    });
+    // The two-argument call (every other screen) is unchanged.
+    expect(describePriceProvenance(priced, () => undefined)).toMatchObject({
+      tone: "dated",
+      text: expect.stringMatching(/^Set on /),
+    });
+    expect(
+      describePriceProvenance({ ...priced, priced_from_zone_id: "z" }, () => "Downtown", "30-minute walk").text,
+    ).toMatch(/^From the Downtown rate on /);
+    expect(
+      describePriceProvenance({ ...priced, price_overridden_at: priced.priced_at }, () => undefined, "30-minute walk").tone,
+    ).toBe("manual");
+    expect(read("src/routes/_authenticated/pricing-drift.tsx")).toMatch(
+      /r\.basis === "service" \? r\.serviceName : null,/,
+    );
   });
 });

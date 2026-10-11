@@ -304,6 +304,7 @@ function PricingDriftPage() {
                           price_overridden_at: r.priceOverriddenAt,
                         },
                         () => r.zoneName ?? undefined,
+                        r.basis === "service" ? r.serviceName : null,
                       ).text}
                     </TableCell>
                   </TableRow>
