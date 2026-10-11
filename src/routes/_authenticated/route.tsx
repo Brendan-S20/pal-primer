@@ -12,9 +12,13 @@ import { clearPersistedReadCaches, ensureReadCachePersistence } from "@/lib/offl
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { QueueSyncProvider } from "@/components/QueueSync";
 import { resolveIdentity } from "@/lib/offline/identity";
+import { settleAfterFirstCommit } from "@/lib/app-mounted";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
+import { getAccountLock } from "@/lib/account-lock.functions";
+import { pathOpenWhenLocked } from "@/lib/account-lock";
+import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
 import { getPlatformContext } from "@/lib/platform.functions";
@@ -48,96 +52,129 @@ import { ShellPending } from "@/components/PageSkeletons";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async ({ context, location }) => {
-    // NATIVE ONLY: not navigator.onLine — see lib/offline/connectivity.ts, a
-    // WKWebView resumed from a dead zone can still be claiming to be online.
-    // The hosted app keeps the property it has always read.
-    const online = IS_NATIVE_BUNDLE
-      ? !isDefinitelyOffline()
-      : typeof navigator === "undefined" || navigator.onLine !== false;
-    const identity = await resolveIdentity();
-    if (!identity.ok) {
-      // A REJECTED identity has to take the device copy with it.
-      //
-      // Revoking a session server-side (a tech leaves, an account is disabled)
-      // did not reach the device: this redirect fires before
-      // ensureReadCachePersistence below, so the onAuthStateChange SIGNED_OUT
-      // backstop registered in there was never armed on that boot, and nothing
-      // else sweeps at launch. The previous tech's route — addresses, gate
-      // codes, lock box codes, access notes — stayed readable in localStorage
-      // on the crew tablet until someone happened to sign out through the app.
-      //
-      // Only on `rejected`. A failure we could not reach the network to make
-      // means we do not know anything, and deleting the day then would erase
-      // the tech's route exactly when they need it most.
-      if (identity.rejected) clearPersistedReadCaches();
-      throw redirect({ to: "/auth" });
-    }
-
-    // Two-step sign-in: somebody who turned it on and signed in with the
-    // password alone is asked for the code before anything loads. The
-    // database refuses such a session anyway (public.mfa_satisfied); asking
-    // first means they see a code box, not a workspace that will not load.
-    // Read from the session on the device, so this works offline too.
-    if (await needsSecondStep()) {
-      throw redirect({ to: "/two-step", search: { next: location.href } });
-    }
-
-    // Put this user's persisted reads back into the query cache before anything
-    // asks it a question. On a cold offline launch the ensureQueryData below
-    // and every useQuery under this route resolve from what this restores;
-    // doing it any later means the shell renders its empty state first.
-    ensureReadCachePersistence(context.queryClient, identity.userId);
-
-    // BUG-1: being signed in is not enough to render a tenant surface — every
-    // page below this route reads org-scoped data, so an account with no
-    // organization rendered tenant chrome around nothing (the repro was a
-    // platform-admin account opening /settings/addons and getting an empty
-    // settings page). Guarding here covers the WHOLE _authenticated tree
-    // rather than the one route the repro happened to name.
-    //
-    // This shares the ["my-org"] cache entry with useMyRole(), so the shell
-    // and every child that calls it reuse this fetch instead of adding one.
-    // ensureQueryData answers from cache when one exists, so offline this is
-    // the restored copy rather than a request that cannot be made.
-    let org: Awaited<ReturnType<typeof getMyOrg>> | undefined;
-    try {
-      org = await context.queryClient.ensureQueryData({
-        queryKey: ["my-org"],
-        queryFn: () => getMyOrg(),
-        staleTime: 60_000,
-      });
-    } catch (e) {
-      if (online) throw e;
-      // Offline with nothing cached: bouncing to /auth would strand a tech on
-      // a sign-in form they cannot submit, so say what is actually wrong.
-      throw new Error(
-        "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
-      );
-    }
-    if (!org?.organization) {
-      // Platform admins have a real home; everyone else gets an explicit
-      // terminal state rather than a blank tenant page.
-      let isPlatformAdmin = false;
-      try {
-        isPlatformAdmin = !!(await getPlatformContext()).isPlatformAdmin;
-      } catch {
-        /* treat an unavailable check as "not an admin" — never fail open */
+  // The work below starts at once, but its answer -- a context or a redirect --
+  // is handed to the router only after React has committed the first render.
+  // On a hard load this beforeLoad runs beside that render (hydration starts
+  // router.load() before React draws anything), and an answer that lands
+  // between <Transitioner>'s render and its commit is a setState on a fiber
+  // that never mounted: "Can't perform a React state update on a component
+  // that hasn't mounted yet", the QA list's intermittent /routes,
+  // /my-schedule and /neighbors failure. After the first commit the wait is
+  // one microtask. See lib/app-mounted.ts.
+  // → tests/a-shell-that-answered-before-the-first-render.test.ts
+  beforeLoad: ({ context, location }) =>
+    settleAfterFirstCommit(async () => {
+      // NATIVE ONLY: not navigator.onLine — see lib/offline/connectivity.ts, a
+      // WKWebView resumed from a dead zone can still be claiming to be online.
+      // The hosted app keeps the property it has always read.
+      const online = IS_NATIVE_BUNDLE
+        ? !isDefinitelyOffline()
+        : typeof navigator === "undefined" || navigator.onLine !== false;
+      const identity = await resolveIdentity();
+      if (!identity.ok) {
+        // A REJECTED identity has to take the device copy with it.
+        //
+        // Revoking a session server-side (a tech leaves, an account is disabled)
+        // did not reach the device: this redirect fires before
+        // ensureReadCachePersistence below, so the onAuthStateChange SIGNED_OUT
+        // backstop registered in there was never armed on that boot, and nothing
+        // else sweeps at launch. The previous tech's route — addresses, gate
+        // codes, lock box codes, access notes — stayed readable in localStorage
+        // on the crew tablet until someone happened to sign out through the app.
+        //
+        // Only on `rejected`. A failure we could not reach the network to make
+        // means we do not know anything, and deleting the day then would erase
+        // the tech's route exactly when they need it most.
+        if (identity.rejected) clearPersistedReadCaches();
+        throw redirect({ to: "/auth" });
       }
-      if (isPlatformAdmin) throw redirect({ to: "/platform" });
-      // Off means off (20261009180000): the owner turned this person's access
-      // off. The database refuses them everything already; this says so,
-      // rather than drawing a workspace in which every list is empty.
-      if (org?.accessTurnedOff) throw redirect({ to: "/access-off" });
-      throw redirect({ to: "/no-workspace" });
-    }
 
-    // Error reports from here on name the user and org by id, and only by id.
-    // Off in dev and test; see lib/monitoring/config.ts.
-    setMonitoringIdentity({ userId: identity.userId, orgId: org.organization.id });
+      // Two-step sign-in: somebody who turned it on and signed in with the
+      // password alone is asked for the code before anything loads. The
+      // database refuses such a session anyway (public.mfa_satisfied); asking
+      // first means they see a code box, not a workspace that will not load.
+      // Read from the session on the device, so this works offline too.
+      if (await needsSecondStep()) {
+        throw redirect({ to: "/two-step", search: { next: location.href } });
+      }
 
-    return { userId: identity.userId, user: identity.user, organization: org.organization };
-  },
+      // Put this user's persisted reads back into the query cache before anything
+      // asks it a question. On a cold offline launch the ensureQueryData below
+      // and every useQuery under this route resolve from what this restores;
+      // doing it any later means the shell renders its empty state first.
+      ensureReadCachePersistence(context.queryClient, identity.userId);
+
+      // BUG-1: being signed in is not enough to render a tenant surface — every
+      // page below this route reads org-scoped data, so an account with no
+      // organization rendered tenant chrome around nothing (the repro was a
+      // platform-admin account opening /settings/addons and getting an empty
+      // settings page). Guarding here covers the WHOLE _authenticated tree
+      // rather than the one route the repro happened to name.
+      //
+      // This shares the ["my-org"] cache entry with useMyRole(), so the shell
+      // and every child that calls it reuse this fetch instead of adding one.
+      // ensureQueryData answers from cache when one exists, so offline this is
+      // the restored copy rather than a request that cannot be made.
+      let org: Awaited<ReturnType<typeof getMyOrg>> | undefined;
+      try {
+        org = await context.queryClient.ensureQueryData({
+          queryKey: ["my-org"],
+          queryFn: () => getMyOrg(),
+          staleTime: 60_000,
+        });
+      } catch (e) {
+        if (online) throw e;
+        // Offline with nothing cached: bouncing to /auth would strand a tech on
+        // a sign-in form they cannot submit, so say what is actually wrong.
+        throw new Error(
+          "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
+        );
+      }
+      if (!org?.organization) {
+        // Platform admins have a real home; everyone else gets an explicit
+        // terminal state rather than a blank tenant page.
+        let isPlatformAdmin = false;
+        try {
+          isPlatformAdmin = !!(await getPlatformContext()).isPlatformAdmin;
+        } catch {
+          /* treat an unavailable check as "not an admin" — never fail open */
+        }
+        if (isPlatformAdmin) throw redirect({ to: "/platform" });
+        // Off means off (20261009180000): the owner turned this person's access
+        // off. The database refuses them everything already; this says so,
+        // rather than drawing a workspace in which every list is empty.
+        if (org?.accessTurnedOff) throw redirect({ to: "/access-off" });
+        throw redirect({ to: "/no-workspace" });
+      }
+
+      // Error reports from here on name the user and org by id, and only by id.
+      // Off in dev and test; see lib/monitoring/config.ts.
+      setMonitoringIdentity({ userId: identity.userId, orgId: org.organization.id });
+
+      // NP-12: a trial past day 14 with no plan, or a cancelled plan that has
+      // ended, reaches Plan & billing and nothing else. The server refuses every
+      // other function anyway (src/start.ts); this sends the person to the one
+      // page that works instead of a workspace that will not load. Choosing a
+      // plan reloads the app (PlanPaymentForm), and this asks again.
+      //
+      // A failed check lets the person through: offline there is nothing to pay
+      // with, and online the server's refusal still holds.
+      let lock: Awaited<ReturnType<typeof getAccountLock>> | null = null;
+      try {
+        lock = await context.queryClient.fetchQuery({
+          queryKey: ["account-lock"],
+          queryFn: () => getAccountLock(),
+          staleTime: 15_000,
+        });
+      } catch {
+        lock = null;
+      }
+      if (lock?.locked && lock.canChoosePlan && !pathOpenWhenLocked(location.pathname)) {
+        throw redirect({ to: "/settings/billing" });
+      }
+
+      return { userId: identity.userId, user: identity.user, organization: org.organization, lock };
+    }),
   component: SignedInApp,
   // Client-only route: this is also what the server sends for a signed-in
   // URL and what a cold native launch paints while beforeLoad decides who
@@ -374,6 +411,24 @@ function AppShell() {
         "--brand-accent-foreground": brand.fg,
       } as React.CSSProperties)
     : undefined;
+
+  // NP-12: a locked account gets the notice and Plan & billing, nothing else.
+  const { lock } = Route.useRouteContext();
+  if (lock?.locked) {
+    return (
+      <>
+        <AccountLockedShell
+          reason={lock.reason}
+          canChoosePlan={lock.canChoosePlan}
+          onSignOut={handleSignOut}
+          style={brandStyle}
+        >
+          <Outlet />
+        </AccountLockedShell>
+        {signOutDialog}
+      </>
+    );
+  }
 
   return (
     <SidebarProvider docksFrom={docksFrom}>

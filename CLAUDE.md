@@ -294,6 +294,42 @@ than none, because it tells the owner the job is done.
 Adding a screen to `TECH_SCREENS` is the whole of extending the rule. Like the
 rules above, this one is also in the Lovable project knowledge.
 
+## Motion never makes a thumb wait.
+
+Native feel is a requirement (transitions, skeletons, gestures), and so is
+this: motion may never block, delay or jank. On 2026-10-08 the owner, on a
+real iPhone, found the transitions "disrupting the smoothness"; what was
+disrupting it was motion that cost a thumb time.
+
+- **Nothing moves between tabs.** A tab bar, More sheet, sidebar or header
+  tap, or any move between two top-level sections, starts no view
+  transition (`src/lib/motion/direction.ts`, `page-transitions.ts`). Only a
+  step deeper or back slides, and on iOS a history traversal is the edge
+  swipe's to animate.
+- **Short, and on the compositor.** Page 200ms or less, sheet 250ms or
+  less (the tokens in `src/styles.css`). Keyframes and transitions move
+  `transform` and `opacity` only; a page never uses `transition-all`,
+  `transition-shadow` or a transition on a size, side or margin. A progress
+  fill is `.hs-meter`, not a width.
+- **No animation of a first paint, and no delay dressed as one.** A
+  skeleton (`ui/skeleton.tsx`) waits 160ms before it is drawn; the router
+  holds a pending page 200ms at most; `motion-list` animates rows added
+  later, never the ones a list paints with, and needs `useMotionList()`'s
+  ref.
+- **Nothing sits in front of a scroll.** A non-passive touch listener on
+  the document is only there while it can be used (pull-to-refresh: at the
+  top of the page).
+- **A navigation does not wait on a round trip it does not need.** The
+  `_authenticated` beforeLoad runs on every navigation and every intent
+  preload; `resolveIdentity()` reuses a verified answer for five minutes
+  rather than asking the auth server on every tap.
+
+`tests/an-app-that-moves.test.ts` pins all of it mechanically,
+`tests/viewports/an-app-that-moves.spec.ts` checks it in a browser, and
+`tests/a-tab-tap-waited-for-the-auth-server.test.ts` pins the identity
+reuse. Like the rules above, this belongs in the Lovable project knowledge
+too.
+
 ## A list renders by key, and `<>` cannot carry one.
 
 `{rows.map(r => <>…</>)}` has no key. Not a missing one — an impossible one:

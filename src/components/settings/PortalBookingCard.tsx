@@ -39,7 +39,7 @@ export function PortalBookingCard() {
   const mut = useMutation({
     mutationFn: () => setFn({ data: { autoAccept: autoAccept && priceCents != null, priceCents } }),
     onSuccess: () => {
-      toast.success("Extra cleanup settings saved");
+      toast.success("Extra visit settings saved");
       qc.invalidateQueries({ queryKey: ["portal-booking-settings"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -50,16 +50,16 @@ export function PortalBookingCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Extra cleanups from the portal</CardTitle>
+        <CardTitle>Extra visits from the portal</CardTitle>
         <CardDescription>
-          Clients can ask for a one-off cleanup on one of your working days, from tomorrow up to 30
+          Clients can ask for a one-off visit on one of your working days, from tomorrow up to 30
           days out. It lands in Concerns for you to book or decline.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="max-w-xs">
           <Label htmlFor="one-off-price" className="text-xs">
-            Price of an extra cleanup
+            Price of an extra visit
           </Label>
           <Input
             id="one-off-price"

@@ -467,6 +467,32 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           liveLocations = { error: (e as Error).message };
         }
 
+        // NP-12: the deletion of locked accounts' data. Disabled until the
+        // owner switches it on (src/lib/account-deletion.server.ts); until
+        // then every run is a DRY RUN that deletes nothing and reports what it
+        // would, which is the report the owner reads before switching it on.
+        let accountDeletion: Record<string, unknown>;
+        try {
+          const { runAccountDeletion } = await import("@/lib/account-deletion.server");
+          const r = await runAccountDeletion();
+          accountDeletion = {
+            enabled: r.enabled,
+            dry_run: r.dryRun,
+            deployed_on: r.deployedOn,
+            deployed_on_is_hypothetical: r.deployedOnIsHypothetical,
+            accounts: r.accounts,
+            due_now: r.dueNow,
+            records_to_delete: r.recordsToDelete,
+            records_kept: r.recordsKept,
+            earliest_delete_after: r.earliestDeleteAfter,
+            errors: r.perAccount.filter((a) => a.error).map((a) => ({ org: a.organizationId, error: a.error })),
+          };
+          console.log("[nightly] account deletion", JSON.stringify(accountDeletion));
+        } catch (e) {
+          console.error("[nightly] account deletion failed", e);
+          accountDeletion = { error: (e as Error).message };
+        }
+
         return json({
           ok: true,
           ran_at: new Date().toISOString(),
@@ -475,6 +501,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           trial_notices: trialNotices,
           routing_anchors: anchors,
           live_locations: liveLocations,
+          account_deletion: accountDeletion,
         });
       },
     },

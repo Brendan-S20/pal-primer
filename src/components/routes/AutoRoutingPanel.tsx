@@ -72,7 +72,7 @@
  * the run writes the routes, all of its days in one transaction, and a run
  * that is cut off before that write has changed nothing.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -835,8 +835,8 @@ export function AutoRoutingPanel({
           {fraction != null && (
             <div className="h-1 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full bg-primary transition-[width] duration-500"
-                style={{ width: `${Math.round(fraction * 100)}%` }}
+                className="hs-meter h-full bg-primary"
+                style={{ "--hs-meter": `${Math.round(fraction * 100)}%` } as CSSProperties}
               />
             </div>
           )}

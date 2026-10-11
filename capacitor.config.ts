@@ -71,6 +71,13 @@ const config: CapacitorConfig = {
     // viewport-fit=cover in src/routes/__root.tsx exists to make resolve.
     contentInset: "never",
     limitsNavigationsToAppBoundDomains: false,
+    // A long press on a link is not a request to preview a web page. WKWebView
+    // defaults this to true, so holding a client card, a stop's address or a
+    // tab bar item a moment too long lifted a Safari-style preview of
+    // capacitor://localhost/... over the app, which no native app does and
+    // which a thumb resting on a list triggers by accident. Text selection
+    // and the copy menu are unaffected; only the link preview goes.
+    allowsLinkPreview: false,
   },
   android: {
     allowMixedContent: false,

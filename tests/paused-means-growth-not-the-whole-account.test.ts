@@ -32,7 +32,7 @@ const st = (phase: TrialState["phase"]): TrialState =>
 // These tests exist because that gap can reopen in two directions, and both are
 // quiet. The copy can drift from the rule, or the rule can be widened into the
 // broader freeze the owner declined. Neither would fail anything else.
-describe("paused means growth, not the whole account", () => {
+describe("paused means growth, not the whole account (superseded by the lock, 2026-10-09)", () => {
   it("matches the database rule, phase for phase", () => {
     // The SQL allows active/past_due, trialing-while-unexpired, free and grace;
     // everything else is refused. In phase terms that is exactly expired and
@@ -63,28 +63,22 @@ describe("paused means growth, not the whole account", () => {
     expect(fn).not.toMatch(/enforcementApplies|TRIAL_ENFORCEMENT/);
   });
 
-  it("tells a paused tenant what still works, not only what stopped", () => {
-    // A pause notice that lists only the loss reads as a lockout, which is the
-    // thing this decision explicitly is not.
+  it("tells a locked tenant it is locked, not that everything keeps running", () => {
+    // SUPERSEDED 2026-10-09 (spec NP-12). This used to require the expired and
+    // lapsed bodies to say what keeps running and that nothing was deleted:
+    // the 2026-08-20 decision was that only growth paused. The owner has since
+    // chosen the lock, so the same two bodies must now say the opposite, and
+    // the database's own gate on new clients (above) is one part of it.
+    expect(TRIAL_COPY.expired.body).toMatch(/locked/i);
+    expect(TRIAL_COPY.expired.body).toMatch(/30 days/);
+    expect(TRIAL_COPY.lapsed.body).toMatch(/locked/i);
+    expect(TRIAL_COPY.lapsed.body).toMatch(/export your data for 30 days/i);
     for (const phase of ["expired", "lapsed"] as const) {
-      const body = TRIAL_COPY[phase].body;
-      // CHANGED 2026-10-02: staff copy says "client" for the person who pays
-      // (tests/one-word-for-the-person-who-pays.test.ts).
-      expect(body, `${phase} does not say new clients are what stopped`).toMatch(/new clients/i);
-      expect(body, `${phase} does not say what keeps running`).toMatch(/keeps running/i);
-      expect(body, `${phase} dropped the "nothing deleted" promise`).toMatch(/nothing has been deleted/i);
-    }
-    // The banner used to add a second line (GROWTH_PAUSED_NOTE) repeating
-    // this body nearly word for word. The body is now the only statement, so
-    // it carries the part the note was there to guarantee: the portal.
-    for (const phase of ["expired", "lapsed"] as const) {
-      expect(TRIAL_COPY[phase].body, `${phase} does not say the portal keeps working`).toMatch(
-        /portal/i,
-      );
+      expect(TRIAL_COPY[phase].body, `${phase} still promises it keeps running`).not.toMatch(/keeps running/i);
     }
   });
 
-  it("trial state still has exactly two consumers, so a new gate cannot arrive quietly", () => {
+  it("trial state has exactly three consumers, so a new gate cannot arrive quietly", () => {
     // The declined broader freeze, pinned in the only way that is not a word
     // search. A capability gate has to READ the trial state to gate on it, so
     // the honest invariant is the caller set, not vocabulary: the first version
@@ -115,6 +109,8 @@ describe("paused means growth, not the whole account", () => {
       "the set of things that consult trial state changed. If this is a new " +
         "capability gate, the 2026-08-20 decision was that growth is the only " +
         "thing that pauses — revisit it deliberately rather than widening here.",
-    ).toEqual(["lib/ai-access.server.ts", "lib/trial.functions.ts"]);
+      // lib/account-lock.ts joined on 2026-10-09: the lock (NP-12) is the
+      // gate this test was written to make deliberate, and it was.
+    ).toEqual(["lib/account-lock.ts", "lib/ai-access.server.ts", "lib/trial.functions.ts"]);
   });
 });
