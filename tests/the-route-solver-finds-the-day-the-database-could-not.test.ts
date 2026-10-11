@@ -86,7 +86,14 @@ function nnTwoOpt(p: SolverProblem, t: number, stops: number[]): number[] {
   return cur;
 }
 
-const DETERMINISTIC = { rounds: 150, timeLimitMs: 60_000, seed: 7 };
+// Clock-free: `now` is the solver's one impure input, and a search cut off by
+// `deadline()` returns a different day from one that ran its rounds. A 60 s
+// limit looked unreachable until a sibling test failed once under load
+// average 38 (2026-10-10, a-window-is-kept-and-a-skill-is-matched.test.ts);
+// a frozen clock is what makes "deterministic" mean the algorithm. The
+// 200-stop budget test below keeps the real clock on purpose: the budget is
+// what it measures.
+const DETERMINISTIC = { rounds: 150, timeLimitMs: 60_000, seed: 7, now: () => 0 };
 
 describe("Held-Karp gives the exact best order for a small route", () => {
   it("agrees with brute force over every permutation, open and closed", () => {

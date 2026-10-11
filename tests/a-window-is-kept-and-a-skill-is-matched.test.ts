@@ -71,7 +71,16 @@ function day(
   } as SolverProblem;
 }
 
-const DETERMINISTIC = { rounds: 150, timeLimitMs: 60_000, seed: 7 };
+// Clock-free, not merely generous. The solver's one impure input is `now`:
+// `deadline()` returns the best day so far the moment the budget is spent,
+// and a search cut at round 17 is a different (and worse) day from one that
+// ran its 150 rounds. On 2026-10-10 "routes the same day the same way whether
+// skills are absent or say everyone" failed once on this machine at load
+// average 38 (a CI job plus Spotlight) and passed on every rerun: a 1.7 s
+// solve under `nice -n 15` on a saturated box can run past a 60 s limit, and
+// a frozen clock is the only thing that makes "the same day, move for move"
+// a statement about the algorithm rather than about the machine.
+const DETERMINISTIC = { rounds: 150, timeLimitMs: 60_000, seed: 7, now: () => 0 };
 
 /** One truck at the origin; stop 0 is 10 km east (20 minutes' drive) with a
  *  window closing `latest` minutes after the workday starts; stops 1-4 sit
@@ -260,7 +269,7 @@ describe("a skill is matched", () => {
       stops.push({ eligibleTechs: eligible, latest: i % 15 === 0 ? 300 : null });
     }
     const p = day(n, 4, 2026, { stops });
-    const s = solveRoutes(p, { rounds: 300, timeLimitMs: 20_000, seed: 3 });
+    const s = solveRoutes(p, { rounds: 300, timeLimitMs: 20_000, seed: 3, now: () => 0 });
     expect(s.unassigned).toEqual([]);
     expect(s.routes.flat()).toHaveLength(n);
     s.routes.forEach((route, t) => {
