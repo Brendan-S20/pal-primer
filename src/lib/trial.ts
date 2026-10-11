@@ -34,52 +34,28 @@
 // assembled from six places is enforcement nobody can reason about before
 // turning it on — and turning it on was one line plus a date.
 //
-// WHAT DAY 15 DOES NOW, STATED ACCURATELY (corrected 2026-08-20).
+// WHAT DAY 15 DOES NOW (owner decision, 2026-10-09; spec NP-12).
 //
-// It computes `restricted`. It does not restrict.
+// It LOCKS. A trial past day 14 with no plan, and a cancelled plan once it has
+// ended, reach the plan picker and checkout and nothing else; the data is kept
+// for 30 days, and a cancelled plan may export it for those 30 days. Choosing
+// a plan unlocks the account at once. The lock reads `restricted` from
+// trialStateFor below, through src/lib/account-lock.ts, and is enforced by the
+// `_authenticated` layout, a global server-function middleware (src/start.ts)
+// and the customer portal.
 //
-// `TRIAL_ENFORCEMENT` was flipped to true on 2026-08-16 under a commit message
-// saying trials enforce. They do not, because the half this constant was
-// designed to switch was never built: `restricted` is written in all five
-// branches below, serialized to the browser by trial.functions.ts, and read by
-// NOTHING. `git log -S'.restricted' -- src/` is empty for the life of the repo,
-// so it was never wired and then unwired — it has always been inert. Flipping
-// the constant back to false today would change no observable behaviour either.
+// History, kept because it explains the shape. From 2026-08-16 to 2026-10-09
+// `restricted` was computed in every branch below and read by NOTHING: the
+// owner had ratified (2026-08-20) that "the account pauses" meant only that
+// GROWTH paused -- `org_can_add_client`, a database trigger, refusing a new
+// customer -- and explicitly declined a broader freeze. On 2026-10-09 the owner
+// chose the broader freeze. The database gate on new clients still exists and
+// still fires first; growthPausedFor below still describes it.
 //
-// The one thing an expired trial really loses is AI, and that is `aiAvailableFor`
-// gating on `phase === "paid"` (below), which is independent of this constant
-// and works whether it is true or false.
-//
-// Deliberately still ungated, and each for a reason worth keeping: invoicing and
-// card payments (blocking those stops a business collecting the money it needs
-// to pay us), the customer portal (a HoundStack billing problem must not show up
-// as a broken business to the tenant's own customers), routing (the truck is
-// already out), and read access to data the tenant owns — the published FAQ
-// promises "nothing is deleted either way", and MASTER_BRIEF §3114 makes the
-// same point about relationships you can enter and cannot exit.
-//
-// SETTLED 2026-08-20, and this is the part to read first. "The account pauses"
-// means GROWTH pauses: an expired trial cannot take on a NEW customer, keeps
-// everything it already has, and is not frozen in any other way. See
-// growthPausedFor below for the authoritative list, and note where the rule
-// actually lives — `org_can_add_client`, a database trigger that has been
-// enforcing exactly this since 20260701164146, before any of this file existed.
-//
-// The owner ratified that gate rather than extending it, and explicitly
-// declined a broader freeze until real usage and support load argue for one.
-//
-// So `restricted` stays unwired BY DECISION. It was built for the broader
-// freeze; there is no broader freeze. It also could not be used for the copy
-// even if we wanted to, because it is grandfathered by TRIAL_ENFORCEMENT_FROM
-// and the database gate is not — it would tell a grandfathered org that nothing
-// is paused while the database refuses their next customer.
-//
-// The grandfather clause is real but currently empty: enforcementApplies exempts
-// organizations created before TRIAL_ENFORCEMENT_FROM, and every such org today
-// is already `paid`. If a gate does land later, revisit that date — anyone who
-// signed up between 2026-08-16 and the gate shipping did so under "a message,
-// not a lock", which is exactly what the constant's own comment says must not
-// happen to them.
+// The grandfather clause still holds: enforcementApplies exempts organizations
+// created before TRIAL_ENFORCEMENT_FROM, so nobody who signed up before the
+// trial existed is locked by it. Comped accounts are never locked
+// (account-lock.ts).
 
 /** Mirrors TRIAL_DAYS in the marketing site's src/lib/site.ts.
  *
@@ -282,7 +258,7 @@ export const TRIAL_COPY: Record<
     // being told "your free trial has ended" would reasonably conclude the
     // product has lost track of what they paid for.
     headline: () => "Your plan has ended",
-    body: "Adding new clients needs an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
+    body: "Your account is locked until you choose a plan. You can export your data for 30 days after cancelling.",
     tone: "warn",
   },
   trialing: {
@@ -294,20 +270,15 @@ export const TRIAL_COPY: Record<
     // is not a surprise on day 15. (It also said "except the AI features"
     // until 2026-10-03, when everything a trial can reach stopped using AI:
     // the receptionist is an add-on and marketing posts are not live.)
-    body: "Everything is unlocked. When the trial ends you keep everything you have, but adding new clients will need a plan. Nothing is charged automatically and no card is on file.",
+    body: "Everything is unlocked. If you don't choose a plan by the end of the trial, the account is locked until you do, and your data is kept for 30 days. Nothing is charged automatically and no card is on file.",
     tone: "info",
   },
   expired: {
     headline: () => "Your free trial has ended",
-    // Corrected 2026-08-20. This used to end "we'll tell you before anything
-    // changes", which was false twice over: something had ALREADY changed by
-    // the time this banner appears -- org_can_add_client returns false the
-    // moment trial_ends_at passes, so new customers are refused by a database
-    // trigger -- and there is no trial-expiry email in the repo to have told
-    // them with. A banner that promises a warning it cannot send, about a
-    // change that already happened, is worse than one that simply says what is
-    // true now.
-    body: "Adding new clients needs an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the client portal. Nothing has been deleted.",
+    // NP-12 (2026-10-09). This banner and the plan picker are all a locked
+    // account sees. Until then it said everything kept running, which was
+    // true of the growth-only pause and is not true of the lock.
+    body: "Your account is locked. Choose a plan to unlock it. Your data is kept for 30 days.",
     tone: "warn",
   },
 };
@@ -327,8 +298,10 @@ export const TRIAL_COPY: Record<
  *                invoicing, card payments, the portal, the field app and every
  *                read keep working.
  *
- * There is deliberately NO broader account freeze, and there is not to be one
- * until real usage and support load say otherwise.
+ * SUPERSEDED 2026-10-09 for the account as a whole: the owner chose the
+ * broader freeze (NP-12), which is the account lock in src/lib/account-lock.ts.
+ * This function still describes the database's own gate on new clients, which
+ * fires for every expired or lapsed org, grandfathered or not.
  *
  * This mirrors `org_can_add_client`, which is where the rule is actually
  * enforced — a BEFORE INSERT trigger on public.clients, live since
@@ -342,8 +315,7 @@ export const TRIAL_COPY: Record<
  * TRIAL_ENFORCEMENT_FROM, and the database gate honours neither. Deriving copy
  * from it would tell a grandfathered org that nothing is paused while the
  * database refuses their next customer. So the copy reads THIS, which is what
- * actually happens, and `restricted` stays unwired — now by decision rather
- * than by oversight.
+ * actually happens. (`restricted` is now read, by the account lock.)
  */
 export function growthPausedFor(state: TrialState): boolean {
   return state.phase === "expired" || state.phase === "lapsed";
@@ -356,7 +328,7 @@ export function aiUnavailableReason(state: TrialState): string | null {
     return "AI features need a paid plan. They're the one thing the free trial doesn't include, because every request costs us real money to run.";
   }
   if (state.phase === "lapsed") {
-    return "AI features need an active plan. Yours has ended, so AI and adding new clients are paused. Everything you already have still works.";
+    return "AI features need an active plan. Yours has ended, so the account is locked until you choose one.";
   }
   return "AI features need a paid plan.";
 }

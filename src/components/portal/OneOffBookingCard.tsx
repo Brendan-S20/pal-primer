@@ -96,7 +96,7 @@ export function OneOffBookingCard() {
               }.`
             : `Pick a day and we'll confirm it${
                 opts.priceCents != null
-                  ? `. An extra cleanup is ${money(opts.priceCents, opts.currency)}`
+                  ? `. An extra visit is ${money(opts.priceCents, opts.currency)}`
                   : ""
               }.`}
         </span>

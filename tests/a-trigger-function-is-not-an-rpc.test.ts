@@ -179,14 +179,19 @@ describe("no trigger function is executable by a signed-in user", () => {
     // owner who can still sign in. REVOKEd from PUBLIC, anon and authenticated
     // in the same file.
     //
-    // 53 -> 57 on 2026-10-09 (20261009230000, a visit knows its service):
+    // 53 -> 54 on 2026-10-09 (20261009160000, team-size caps):
+    // enforce_team_size_cap, which refuses enabling a user past the chosen
+    // plan's max_team_size on every path into staff (set_staff_active, invite
+    // acceptance, a direct insert). REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    // 54 -> 58 on 2026-10-09 (20261009230000, a visit knows its service):
     // tg_organizations_default_services (a new business gets its services),
     // tg_subscriptions_service and tg_visits_service (a plan or visit names a
     // service of its own business, and a visit copies its plan's), and
     // tg_subscriptions_service_reaches_upcoming_visits (a plan's new service
     // reaches its upcoming visits). Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
-    expect(triggerFunctions().size).toBe(57);
+    expect(triggerFunctions().size).toBe(58);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

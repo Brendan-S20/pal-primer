@@ -102,7 +102,7 @@ export function FirstCleanupPricingCard({ canEdit }: { canEdit: boolean }) {
       <div className="space-y-1">
         <h2 className="text-base font-semibold">First cleanup</h2>
         <p className="text-sm text-muted-foreground">
-          What a new client pays, once, for the first visit to a yard. Online signup charges it,
+          What a new client pays, once, for the first visit to a property. Online signup charges it,
           and the new-client wizard and quotes offer it with the price filled in.
         </p>
       </div>

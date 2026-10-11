@@ -78,10 +78,22 @@ describe("the metered charges are named at the point of purchase", () => {
     expect(src).not.toMatch(/ai_actions_included != null/);
   });
 
-  it("the terms name the metered charge, not only per-seat billing", () => {
+  it("the terms say the AI features are not available yet, and bill for none", () => {
+    // Inverted 2026-10-09 (spec L-1, the owner's decision, cleared by the
+    // Twilio Specialist): the AI paragraph is cut to its first sentence. The
+    // receptionist and marketing posts are coming soon, so the terms stopped
+    // describing an allowance, an overage rate and a Settings → AI usage
+    // ceiling for features nobody can use. The checkout still names the
+    // metered charge (the tests above), which is where the money is decided.
     const terms = read("src/routes/legal.terms.tsx");
-    expect(terms, "terms describe seats only").toMatch(/allowance of AI actions/i);
-    expect(terms).toMatch(/published per-action rate/i);
+    expect(terms).toMatch(
+      /The AI features \(the AI receptionist and drafting marketing posts\) are coming soon and\s+are not yet available\./,
+    );
+    expect(terms).not.toMatch(/allowance of AI actions/i);
+    expect(terms).not.toMatch(/published per-action rate/i);
+    expect(terms, "terms lost the per-employee billing sentence").toMatch(
+      /published per-employee rate/,
+    );
     // The old bullet said "priced per active staff seat", which was never the
     // model — it is a flat tier plus a per-employee rate beyond an allowance.
     expect(terms).not.toMatch(/priced per\s*\n?\s*active staff seat/);

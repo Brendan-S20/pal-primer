@@ -3,7 +3,7 @@ import { ListSkeleton } from "@/components/PageSkeletons";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   listInvoices,
   getCollectedThisMonth,
@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { titleHead } from "@/lib/page-title";
 import { byWhatNeedsDoing } from "@/lib/invoice-order";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { useMotionList } from "@/lib/motion/use-motion-list";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
   head: () => titleHead("Invoices"),
@@ -384,6 +385,7 @@ function StatCard({
 }
 
 function InvoicesPage() {
+  const motionList = useMotionList<HTMLDivElement>();
   const { confirm, dialog } = useConfirmDialog();
   const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
   const list = useServerFn(listInvoices);
@@ -399,6 +401,9 @@ function InvoicesPage() {
   const [through, setThrough] = useState(() => new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<StatusKey>("all");
   const [search, setSearch] = useState("");
+  // Typed text shows at once; the list re-filters behind it (see the same
+  // note on /clients).
+  const deferredSearch = useDeferredValue(search);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -469,7 +474,7 @@ function InvoicesPage() {
   const toggleStatusFilter = (s: StatusKey) => setStatus((prev) => (prev === s ? "all" : s));
 
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase();
+    const s = deferredSearch.trim().toLowerCase();
     return (invQ.data ?? []).filter((inv) => {
       if (status !== "all" && inv.status !== status) return false;
       if (from && (inv.period_end ?? "") < from) return false;
@@ -481,7 +486,7 @@ function InvoicesPage() {
       }
       return true;
     });
-  }, [invQ.data, status, search, from, to]);
+  }, [invQ.data, status, deferredSearch, from, to]);
 
   // The phone's cards, most actionable first: see src/lib/invoice-order.ts.
   // The table keeps newest first, where columns and the status filter do the
@@ -1048,7 +1053,7 @@ function InvoicesPage() {
           {/* Mobile Phase 2: below `md` invoices render as tap-through cards
               (shared InvoiceCard — same data, ••• actions, and drawer as the
               table rows). Bulk-select stays via the card checkbox. */}
-          <div className="motion-list space-y-3 md:hidden">
+          <div ref={motionList} className="motion-list space-y-3 md:hidden">
             <label className="flex min-h-10 items-center gap-2 px-1 text-xs text-muted-foreground">
               <Checkbox
                 checked={allVisibleSelected}

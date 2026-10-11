@@ -187,7 +187,7 @@ export function friendlyCategory(c: string | null | undefined) {
     wrong_yard: "Wrong yard",
     other: "Other",
     reclean_request: "Re-clean request",
-    one_off_request: "Extra cleanup",
+    one_off_request: "Extra visit",
   };
   return map[c ?? ""] ?? c ?? "";
 }
@@ -2230,8 +2230,8 @@ export function ReferralCard({
   isCommercial: boolean;
 }) {
   const shareText = isCommercial
-    ? `We use ${orgName} at our property for pet waste service. Use code ${code} and we both get credit.`
-    : `I use ${orgName} for pet waste removal. Use code ${code} and we both save on your first month.`;
+    ? `We use ${orgName} at our property and recommend them. Use code ${code} and we both get credit.`
+    : `I use ${orgName} and think you'd like them too. Use code ${code} and we both save on your first month.`;
   const [copied, setCopied] = useState(false);
   const share = async () => {
     if (typeof navigator !== "undefined" && (navigator as any).share) {

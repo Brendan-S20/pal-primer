@@ -20,19 +20,18 @@
 //
 // ── WHAT IT SAYS, AND WHY THAT WORDING ────────────────────────────────────
 //
-// It states the ratified meaning of "paused" (owner decision, 2026-08-20):
-// growth pauses, the account does not. Adding a NEW customer stops; existing
-// clients, jobs, routes, invoices, history and the customer portal keep
-// running. That is what org_can_add_client actually enforces, and the email
-// must not imply a broader freeze the product does not perform.
+// It states the lock (owner decision, 2026-10-09; spec NP-12): if no plan is
+// chosen, the account is locked until one is, and the data is kept for 30
+// days. That is what src/lib/account-lock.ts enforces. Until 2026-10-09 this
+// said the account "pauses" and only adding a new client stopped, which was the
+// 2026-08-20 decision and is no longer true.
 //
 // AI IS DELIBERATELY NOT LISTED AS SOMETHING THAT STOPS, and this is the one
 // line most likely to get "helpfully" added back. `aiAvailableFor` is
 // `phase === "paid"`, and an active trial is `phase === "trialing"` — so AI is
 // already off during the trial and expiry changes nothing about it. Naming it
 // would tell a trialing customer they are about to lose a feature they have
-// never had. Adding a new customer is the only thing that stops, which is why
-// the sentence above says so and the lead-in says "only in one way".
+// never had. The email names the lock and nothing else.
 
 // ── THE RECIPIENT, WHICH IS WHERE THIS NEARLY FAILED ──────────────────────
 //
@@ -86,19 +85,10 @@ export function renderTrialNoticeHtml(input: {
     <div style="background:#d97706;color:#fff;padding:16px 20px;font-weight:600">Your HoundStack trial ends ${when}</div>
     <div style="padding:20px;line-height:1.55;font-size:15px">
       <p style="margin:0 0 14px">Hi ${escapeHtml(orgName)},</p>
-      <p style="margin:0 0 14px">Your free trial ends on <strong>${escapeHtml(endsOn)}</strong>. Picking a plan before then keeps everything exactly as it is.</p>
-      <p style="margin:0 0 8px"><strong>If the trial ends without a plan, your account pauses, but only in one way.</strong></p>
-      <p style="margin:0 0 14px">What stops: <strong>adding a new client.</strong> That is the only thing.</p>
-      <p style="margin:0 0 6px">What keeps running:</p>
-      <ul style="margin:0 0 14px;padding-left:20px">
-        <li>Every client, job and route you already have.</li>
-        <li>Scheduling, dispatch and the field app.</li>
-        <li>Invoicing, taking payment, and your full billing history.</li>
-        <li>Your client portal, exactly as your clients see it today.</li>
-      </ul>
-      <p style="margin:0 0 18px">Nothing is deleted, at any point.</p>
+      <p style="margin:0 0 14px">Your free trial ends on <strong>${escapeHtml(endsOn)}</strong>. Pick a plan before then to keep going.</p>
+      <p style="margin:0 0 14px"><strong>If you don't, the account is locked until you choose a plan, and your data is kept for 30 days.</strong> Choosing a plan unlocks it at once.</p>
       <p style="margin:0 0 18px"><a href="${billingUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:600">Choose a plan</a></p>
-      <p style="margin:0;font-size:13px;color:#475569">Plans start at $79 a month with your first 3 teammates included. Questions? Email <a href="mailto:support@houndstack.com" style="color:#2563eb">support@houndstack.com</a> before your trial ends and we'll help you choose the right plan.</p>
+      <p style="margin:0;font-size:13px;color:#475569">Plans start at $79 a month with your first teammate included. Nothing is charged automatically. Questions? Email <a href="mailto:support@houndstack.com" style="color:#2563eb">support@houndstack.com</a> before your trial ends and we'll help you choose the right plan.</p>
     </div>
     <div style="padding:12px 20px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">Sent by HoundStack &middot; You are receiving this because your workspace is in a free trial.</div>
   </div></body></html>`;
@@ -119,17 +109,13 @@ export function renderTrialNoticeText(input: {
   return [
     `Your HoundStack trial ends ${when}.`,
     ``,
-    `Hi ${input.orgName}, your free trial ends on ${input.endsOn}. Picking a plan before then keeps everything exactly as it is.`,
+    `Hi ${input.orgName}, your free trial ends on ${input.endsOn}. Pick a plan before then to keep going.`,
     ``,
-    `If the trial ends without a plan, your account pauses, but only in one way.`,
-    ``,
-    `What stops: adding a new client. That is the only thing.`,
-    `What keeps running: every client, job and route you already have; scheduling, dispatch and the field app; invoicing, taking payment and your billing history; and your client portal.`,
-    `Nothing is deleted, at any point.`,
+    `If you don't, the account is locked until you choose a plan, and your data is kept for 30 days. Choosing a plan unlocks it at once.`,
     ``,
     `Choose a plan: ${input.billingUrl}`,
     ``,
-    `Plans start at $79 a month with your first 3 teammates included.`,
+    `Plans start at $79 a month with your first teammate included. Nothing is charged automatically.`,
     ``,
     `Questions? Email support@houndstack.com before your trial ends and we'll help you choose the right plan.`,
   ].join("\n");

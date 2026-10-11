@@ -123,7 +123,7 @@ test("a scheduled stop asks for one thing, and hides nothing", async ({ page, co
   // like every other occasional one.
   expect(closed, `a scheduled card shows too much: ${closed.join(" | ")}`).toEqual([
     "Stop",
-    "Yard outline · 6,592 sq ftTap to see it on the map",
+    "Property outline · 6,592 sq ftTap to see it on the map",
     "Navigate",
     "Call",
     "Start",
@@ -146,10 +146,13 @@ test("a stop in progress asks for the next thing instead", async ({ page, contex
   // changed most did not, so that claim was tested at a third of its width.
   //
   // What must be true here and is false one card up: no Start (it has been
-  // started), and Complete present rather than folded away, because on a stop
-  // in progress finishing it IS the next act. Complete is disabled until a
-  // completion photo exists, and that is correct — the difference from the
-  // scheduled card is that here the sentence explaining why is on screen.
+  // started), and the card's one button moved on to the next step. Since
+  // 2026-10-09 that is ONE button walking the visit (src/lib/visit-step.ts):
+  // the fixture's business requires a completion photo and this stop has
+  // none, so the button reads "Take completion photo" -- and there is no
+  // greyed Complete beside it, and no second "Take photo to complete" (#357,
+  // which the owner asked to have undone). "Can't take a photo?" stays, as
+  // the secondary way through; "Take photo" is the other photo kinds.
   await installSignedInSession(context);
   await installStubBackend(context);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -173,10 +176,18 @@ test("a stop in progress asks for the next thing instead", async ({ page, contex
       .filter(Boolean),
   );
 
-  // "Take photo to complete" since #357, where Start leads into the photo.
-  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Take photo to complete");
-  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Complete");
+  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Take completion photo");
+  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Can't take a photo?");
+  expect(ctl, `a stop in progress shows: ${ctl.join(" | ")}`).toContain("Take photo");
+  expect(ctl, "Complete sits beside the photo step").not.toContain("Complete");
+  expect(ctl, "#357's second photo button is back").not.toContain("Take photo to complete");
   expect(ctl, "Start is still offered on a visit that has already started").not.toContain("Start");
+  // Exactly one primary step button on the card.
+  expect(await inProgress.locator("button[data-visit-step]").count()).toBe(1);
+  await expect(inProgress.locator("button[data-visit-step]")).toHaveAttribute(
+    "data-visit-step",
+    "photo",
+  );
   // Still folded, not deleted — the same both-ends check as the scheduled card.
   expect(ctl).toContain("More options");
   expect(ctl, "the occasional actions leaked back onto a card").not.toContain("+ Add-on");

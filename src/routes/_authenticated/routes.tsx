@@ -383,7 +383,7 @@ function RoutesPage() {
   // createSubscription uses. A dispatcher does not hold it, and the server
   // refuses regardless; hiding the button keeps it from being a form that
   // throws only after it has been filled in.
-  const { can: canDo } = usePermissions();
+  const { can: canDo, role } = usePermissions();
   const canBookOneOff = canDo("manage_pricing");
   // "You shouldn't have to go to settings to say who's a tech." Naming the
   // crew is the same permission as editing the crew — `setStaffRouting` takes
@@ -986,8 +986,13 @@ function RoutesPage() {
               </PopoverContent>
             </Popover>
           </div>
+          {/* A-P2-10: completing a visit from the office is an owner or office
+              manager action (office_complete_visit refuses a dispatcher), so
+              only they are told this page marks visits complete. */}
           <p className="text-sm text-muted-foreground">
-            Dispatch, route, map, and mark visits complete, all in one view.
+            {role === "owner" || role === "office_manager"
+              ? "Dispatch, route, map, and mark visits complete, all in one view."
+              : "Dispatch, route and map visits, all in one view."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

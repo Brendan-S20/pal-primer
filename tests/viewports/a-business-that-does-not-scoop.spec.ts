@@ -126,7 +126,7 @@ for (const { w, h, label } of WIDTHS) {
       await measure(page, w, `/setup end of day (dog walking) @${w}px`);
     });
 
-    test(`the new-client wizard has no Yard step @${w}px`, async ({ page }) => {
+    test(`the new-client wizard has no Outline step @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
       await expect(page.getByRole("heading", { name: /new client/i }).first()).toBeVisible({
         timeout: 30_000,
@@ -134,7 +134,7 @@ for (const { w, h, label } of WIDTHS) {
       await expect.poll(() => allText(page), { timeout: 15_000 }).toContain("Step 1 of 4");
       // Exact: the stepper's own label, not the org's name ("…Yard and Waste
       // Services") in the header.
-      await expect(page.getByText("Yard", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Outline", { exact: true })).toHaveCount(0);
       await measure(page, w, `/clients/new (dog walking) @${w}px`);
     });
 
@@ -190,10 +190,10 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
       await expect(page.getByText("Where does your day end?")).toHaveCount(0);
     });
 
-    test(`has the Yard step @${w}px`, async ({ page }) => {
+    test(`has the Outline step @${w}px`, async ({ page }) => {
       await open(page, "owner", PET_WASTE, "/clients/new", w, h);
       await expect.poll(() => allText(page), { timeout: 30_000 }).toContain("Step 1 of 5");
-      await expect(page.getByText("Yard", { exact: true }).first()).toBeAttached();
+      await expect(page.getByText("Outline", { exact: true }).first()).toBeAttached();
     });
 
     test(`keeps the waste log in a tech's navigation @${w}px`, async ({ page }) => {

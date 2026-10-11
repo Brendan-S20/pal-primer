@@ -165,7 +165,7 @@ export function SummaryTab({
   if (activeProps.some((p: any) => !p.boundary))
     alerts.push({
       severity: "info",
-      text: "A property has no boundary drawn, so yard size and time estimates are incomplete.",
+      text: "A property has no boundary drawn, so property size and time estimates are incomplete.",
       tab: "properties",
     });
   if (client.sms_opt_out) alerts.push({ severity: "info", text: "Client has opted out of SMS." });
