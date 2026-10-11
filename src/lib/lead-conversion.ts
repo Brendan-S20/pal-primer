@@ -44,6 +44,11 @@ export type ConvertibleLead = {
   source: string;
   status: string;
   converted_client_id: string | null;
+  /** The service the lead asked for (the catalog; a walk, not a cleanup),
+   *  when the lead form or the receptionist recorded one. Optional: the
+   *  column is read defensively, so a lead from before it exists, or a
+   *  database without it yet, is a lead with no service. */
+  service_id?: string | null;
 };
 
 export type WizardDog = {
@@ -75,6 +80,11 @@ export type WizardPrefill = {
   dogs: WizardDog[];
   /** null when the lead named no frequency the wizard recognises. */
   frequency: WizardFrequency | null;
+  /** The business's service the plan is for, when the lead asked for one;
+   *  null means the business's default, as every client before the catalog.
+   *  The wizard prefills the price from it through the one pricing rule
+   *  (servicePriceCents) when the business sells more than one thing. */
+  serviceId: string | null;
   officeNote: string;
 };
 
@@ -89,6 +99,7 @@ export const EMPTY_PREFILL: WizardPrefill = {
   postalCode: "",
   dogs: [BLANK_DOG],
   frequency: null,
+  serviceId: null,
   officeNote: "",
 };
 
@@ -267,6 +278,9 @@ export function leadToWizardPrefill(lead: ConvertibleLead): WizardPrefill {
     postalCode: loc.postalCode,
     dogs: Array.from({ length: rows }, () => ({ ...BLANK_DOG })),
     frequency,
+    // Read defensively: a lead row without the column is a lead with no
+    // service, never an error.
+    serviceId: typeof lead.service_id === "string" && lead.service_id ? lead.service_id : null,
     officeNote: note ? `From the lead:\n${note}` : "",
   };
 }

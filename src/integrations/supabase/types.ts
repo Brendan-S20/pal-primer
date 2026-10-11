@@ -7643,7 +7643,10 @@ export type Database = {
           primary_frequency: string
           primary_phone: string
           primary_price_cents: number
+          primary_service_line: string
+          primary_service_name: string
           primary_unit_count: number
+          primary_weekdays: number[]
           reschedule_cutoff_hours: number
           sms_consent_at: string
           sms_opt_out: boolean
@@ -7715,6 +7718,7 @@ export type Database = {
           requested_on: string
           resolution_note: string
           resolved_at: string
+          service_name: string
           status: string
           ticket_id: string
           visit_date: string
@@ -7728,6 +7732,7 @@ export type Database = {
           price_cents: number
           property_label: string
           subscription_id: string
+          weekdays: number[]
         }[]
       }
       portal_list_recent_visits: {

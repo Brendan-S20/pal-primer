@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 export const Route = createFileRoute("/_authenticated/imports/")({
   head: () => titleHead("Import data"),
@@ -98,6 +99,7 @@ const FIELD_LABELS: Record<string, string> = {
   start_date: "Start date",
   dog_count: "Number of dogs",
   billing: "Billing (prepaid or after each visit)",
+  service: "Service (which of your services the plan is for)",
   amount: "Amount owed",
   due_date: "Due date",
   note: "Note",
@@ -264,7 +266,14 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
 
-  const targetFields = TARGET_FIELDS_BY_ENTITY[entity];
+  // A Service column is offered to a business that runs more than pet waste.
+  // A scooper's import has one service, the default, and the mapping step
+  // reads exactly as it did.
+  const { lines } = useServiceLines();
+  const offersServiceColumn = lines.some((l) => l !== "pet_waste");
+  const targetFields = TARGET_FIELDS_BY_ENTITY[entity].filter(
+    (f) => f !== "service" || offersServiceColumn,
+  );
   const required = REQUIRED_FIELDS[entity];
 
   const onFileChange = (f: File | null) => {
@@ -378,6 +387,15 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             <>
               Import <strong>clients first</strong>. Properties and dogs link back to a client by
               its ID in your original system.
+            </>
+          )}
+          {entity === "services" && offersServiceColumn && (
+            <>
+              {" "}
+              A Service column says which of your services each plan is for (a walk, a sit, a
+              groom). A name you don&apos;t have yet is added to Settings → Services with no price,
+              for you to fill in. Days named on a weekly walk (&quot;Mon/Wed/Fri&quot;,
+              &quot;weekdays&quot;) become the days it runs.
             </>
           )}
         </div>

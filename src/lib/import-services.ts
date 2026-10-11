@@ -12,6 +12,18 @@
 // and of turning Jobber's Tags into tags rather than notes. The database half
 // is in imports.functions.ts; everything here is a pure function so the
 // awkward inputs a real export holds can be tested without one.
+//
+// Since 2026-10-11 a row can also say WHICH service the plan is for (the
+// service catalog, docs/other-trades-service-catalog.md, "Imports"): a
+// Service column is matched to one of the business's services by name, and a
+// name it has not got yet is created with the line its words suggest and no
+// price. A walker's "Mon/Wed/Fri", "M-F" or "weekdays" becomes the plan's
+// weekday set (subscriptions.weekdays). A pet-waste business's import, with
+// or without a Service column, writes the rows it always did: importPlanRow
+// below is the one place the plan row is built, and a test holds it to the
+// old shape.
+
+import type { ServiceLine } from "@/lib/service-lines";
 
 export type ImportFrequency = {
   frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly" | "one_time" | "every_n_days";
@@ -29,13 +41,52 @@ const WEEKDAY_WORDS: Array<[RegExp, number]> = [
   [/\bsat(urday)?s?\b/i, 6],
 ];
 
+/** A day word at the start of a range: the three-letter stem with whatever
+ *  the export spelled after it ("Mon", "Monday", "Tues", "Thurs"), or a bare
+ *  letter M T W R F that is not the start of another word ("Weekly" is not
+ *  Wednesday). */
+const RANGE_DAY = String.raw`(?:\b(sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|rs|r|s|urday)?s?\b|\b([mtwrf])(?![a-z]))`;
+const RANGE_RE = new RegExp(`${RANGE_DAY}\\s*(?:-|–|—|to|thru|through)\\s*${RANGE_DAY}`, "i");
+const STEM_DAY: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+const LETTER_DAY: Record<string, number> = { m: 1, t: 2, w: 3, r: 4, f: 5 };
+/** A cell that is nothing but day codes: "MWF", "M/W/F", "TTh", "MTWThF".
+ *  Su, Sa, Th and Tu first so "Th" is not read as Tuesday + nothing. A lone
+ *  "S" is left out: it says Saturday or Sunday and we cannot tell which. */
+const COMPACT_RE = /^(?:su|sa|th|tu|m|t|w|r|f)+$/i;
+const COMPACT_TOKEN = /su|sa|th|tu|m|t|w|r|f/gi;
+const COMPACT_DAY: Record<string, number> = { su: 0, sa: 6, th: 4, tu: 2, m: 1, t: 2, w: 3, r: 4, f: 5 };
+
 /** Weekdays named anywhere in a cell: "Tuesday", "Tue & Fri", "Weekly on
- *  Thursdays". 0 = Sunday, the numbering subscriptions.preferred_weekdays
- *  uses. Empty when none are named. */
+ *  Thursdays"; and, since the catalog, the ways a walker writes a week:
+ *  "Mon/Wed/Fri", "weekdays", "M-F", "Mon–Fri", "Tue to Thu", "MWF", "TTh".
+ *  0 = Sunday, the numbering subscriptions.preferred_weekdays and
+ *  subscriptions.weekdays use. Empty when none are named. */
 export function parseWeekdays(text: string | null | undefined): number[] {
   if (!text) return [];
   const out = new Set<number>();
   for (const [re, d] of WEEKDAY_WORDS) if (re.test(text)) out.add(d);
+  // "weekdays", "every weekday", "week days": Monday to Friday.
+  if (/\bweek ?days?\b/i.test(text)) for (const d of [1, 2, 3, 4, 5]) out.add(d);
+  // "Mon-Fri", "M–F", "Tue thru Thu": every day from the first to the second,
+  // forward through the week (so "Fri-Mon" is Fri, Sat, Sun, Mon). One dash
+  // only: "Mon - Wed - Fri" is a list spelled with dashes, not a range.
+  const range = (text.match(/-|–|—|\b(?:to|thru|through)\b/gi) ?? []).length === 1 ? RANGE_RE.exec(text) : null;
+  if (range) {
+    const from = range[1] ? STEM_DAY[range[1].toLowerCase()] : LETTER_DAY[range[2].toLowerCase()];
+    const to = range[3] ? STEM_DAY[range[3].toLowerCase()] : LETTER_DAY[range[4].toLowerCase()];
+    for (let d = from; ; d = (d + 1) % 7) {
+      out.add(d);
+      if (d === to) break;
+    }
+  }
+  // "MWF", "M/W/F", "TTh": only when the whole cell is day codes and no word
+  // above was found, so "Sat" is read once and "Weekly" is not W + nothing.
+  if (out.size === 0) {
+    const compact = text.replace(/[\s/,&+.|-]/g, "");
+    if (compact && COMPACT_RE.test(compact)) {
+      for (const tok of compact.match(COMPACT_TOKEN) ?? []) out.add(COMPACT_DAY[tok.toLowerCase()]);
+    }
+  }
   return [...out].sort((a, b) => a - b);
 }
 
@@ -141,7 +192,144 @@ export type MappedService = {
   started_on: string | null;
   dog_count: number | null;
   billing_cadence: "prepaid" | "postpaid" | null;
+  /** The service the row names ("30-minute walk"), trimmed, or null when
+   *  the file has no Service column or the cell is blank: the plan then
+   *  takes the business's default, as every import before the catalog. */
+  service_name: string | null;
 };
+
+/** The same bound as services_name_length. A longer cell is cut, not
+ *  refused: the plan is the thing being imported, the name is a label. */
+const SERVICE_NAME_MAX = 80;
+
+/**
+ * The line a service's own name suggests, for one the import has to create.
+ * The words are the ones the trades use for themselves; a name that says
+ * nothing ("Standard", "Plan A") goes on the business's only line when it
+ * has only one, else on `other`, where the owner can move it.
+ */
+export function inferServiceLine(name: string, orgLines: readonly ServiceLine[]): ServiceLine {
+  const s = name.toLowerCase();
+  if (/\b(walks?|walking|strolls?|hikes?)\b/.test(s)) return "dog_walking";
+  if (/\b(sit|sits|sitting|sitter|drop[- ]?ins?|overnights?|boarding|house ?visits?|feeding|check[- ]?ins?)\b/.test(s))
+    return "pet_sitting";
+  if (/\b(grooms?|grooming|baths?|nails?|trims?|brush(ing)?|de-?shed(ding)?|shampoo)\b/.test(s))
+    return "mobile_grooming";
+  if (/\b(waste|scoop(s|ing)?|poop|pooper|doody|doo|clean(s|ing|up)?|clean-up|yards?)\b/.test(s))
+    return "pet_waste";
+  return orgLines.length === 1 ? orgLines[0] : "other";
+}
+
+/** A length written into the name: "30-minute walk" is 30, "Drop-in (20
+ *  min)" is 20, "1 hr walk" is 60, "1.5 hour groom" is 90. Null when the name
+ *  does not say; a suggested number is the one that ships unread. */
+export function durationFromName(name: string): number | null {
+  const s = name.toLowerCase();
+  const mins = /(\d{1,3})\s*-?\s*(?:min|mins|minute|minutes)\b/.exec(s);
+  const hours = /(\d{1,2}(?:\.\d{1,2})?)\s*-?\s*(?:hr|hrs|hour|hours)\b/.exec(s);
+  let n: number | null = null;
+  if (mins) n = Number(mins[1]);
+  else if (hours) n = Math.round(Number(hours[1]) * 60);
+  return n !== null && n >= 1 && n <= 720 ? n : null;
+}
+
+/** What the import creates for a service name it has not seen: the row
+ *  Settings → Services would save, with no price. */
+export function newServiceDraft(
+  name: string,
+  orgLines: readonly ServiceLine[],
+): {
+  name: string;
+  service_line: ServiceLine;
+  price_unit: "visit";
+  base_price_cents: null;
+  extra_pet_cents: 0;
+  default_duration_min: number | null;
+  active: true;
+} {
+  const trimmed = name.trim().slice(0, SERVICE_NAME_MAX);
+  const line = inferServiceLine(trimmed, orgLines);
+  return {
+    name: trimmed,
+    service_line: line,
+    price_unit: "visit",
+    base_price_cents: null,
+    extra_pet_cents: 0,
+    // A cleanup takes as long as the yard; a walk as long as its name says.
+    default_duration_min: line === "pet_waste" ? null : durationFromName(trimmed),
+    active: true,
+  };
+}
+
+/** One of the business's services, as the import matches a row to it. */
+export type ImportService = { id: string; name: string; service_line: string };
+
+/** The business's service a row names, by name, case and spaces aside. Null
+ *  when the row names none; undefined when it names one the business has
+ *  not got (the caller creates it). */
+export function matchImportService(
+  name: string | null,
+  services: readonly ImportService[],
+): ImportService | null | undefined {
+  const key = (name ?? "").trim().toLowerCase();
+  if (!key) return null;
+  return services.find((s) => s.name.trim().toLowerCase() === key);
+}
+
+/**
+ * The subscriptions row an imported plan becomes. This is the ONE place it is
+ * built, so the pet-waste shape can be held to what it was:
+ *
+ *   * no service on the row, or the business's pet-waste service: exactly the
+ *     row every import before the catalog wrote (the database fills the
+ *     default service on insert, tg_subscriptions_service), plus service_id
+ *     when the row named it;
+ *   * any other service, weekly, with days named: the days become the plan's
+ *     weekday set (one visit on each, migration 20261010010000) and the
+ *     preferred day is left empty, since the set IS the schedule.
+ */
+export function importPlanRow(
+  m: MappedService,
+  ctx: {
+    orgId: string;
+    clientId: string;
+    propertyId: string;
+    zoneId: string | null;
+    isResidential: boolean;
+    dogCount: number | null;
+    service: ImportService | null;
+    /** When the import runs (ISO), for price_overridden_at. */
+    now: string;
+  },
+): Record<string, unknown> {
+  const setDays =
+    !!ctx.service &&
+    ctx.service.service_line !== "pet_waste" &&
+    m.frequency === "weekly" &&
+    (m.interval_weeks ?? 1) === 1 &&
+    !!m.preferred_weekdays?.length;
+  return {
+    organization_id: ctx.orgId,
+    client_id: ctx.clientId,
+    property_id: ctx.propertyId,
+    account_type: ctx.isResidential ? "residential" : "commercial",
+    frequency: m.frequency,
+    interval_weeks: m.frequency === "weekly" ? m.interval_weeks : null,
+    interval_days: m.frequency === "every_n_days" ? m.interval_days : null,
+    price_cents: m.price_cents,
+    dog_count: ctx.isResidential ? ctx.dogCount : null,
+    unit_count: ctx.isResidential ? null : 1,
+    zone_id: ctx.zoneId ?? null,
+    billing_cadence: m.billing_cadence ?? "postpaid",
+    preferred_weekdays: setDays ? null : m.preferred_weekdays,
+    // The price came from the old system, not the rate card, so it is
+    // recorded as set by hand.
+    price_overridden_at: ctx.now,
+    ...(m.started_on ? { started_on: m.started_on } : {}),
+    ...(ctx.service ? { service_id: ctx.service.id } : {}),
+    ...(setDays ? { weekdays: m.preferred_weekdays } : {}),
+  };
+}
 
 export function mapServiceRow(
   raw: Record<string, unknown>,
@@ -182,6 +370,7 @@ export function mapServiceRow(
       started_on,
       dog_count: Number.isFinite(dogs) && dogs > 0 && dogs <= 50 ? dogs : null,
       billing_cadence: billText.startsWith("pre") ? "prepaid" : billText ? "postpaid" : null,
+      service_name: cell(raw, mapping, "service"),
     },
     error: null,
   };

@@ -1,6 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { mapBalanceRow, mapServiceRow, parseTags } from "@/lib/import-services";
+import {
+  importPlanRow,
+  mapBalanceRow,
+  mapServiceRow,
+  matchImportService,
+  newServiceDraft,
+  parseTags,
+  type ImportService,
+} from "@/lib/import-services";
+import { serviceLinesOrDefault } from "@/lib/service-lines";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 
@@ -78,6 +87,9 @@ export const SERVICE_TARGET_FIELDS = [
   "start_date",
   "dog_count",
   "billing",
+  // Which of the business's services the plan is for (the catalog). Optional:
+  // left unmapped, every plan is the business's default service, as before.
+  "service",
 ] as const;
 
 export const BALANCE_TARGET_FIELDS = [
@@ -371,6 +383,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     start_date: ["start date", "start_date", "start", "started", "first visit"],
     dog_count: ["dogs", "dog count", "number of dogs", "# dogs"],
     billing: ["billing", "billing type", "billing cadence"],
+    service: ["service", "service name", "service_name", "plan", "plan name", "product"],
   },
   jobber: {
     client_external_id: ["Client J-ID", "J-ID", "Client ID"],
@@ -381,6 +394,10 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     start_date: ["Start date", "Scheduled start date", "Created date"],
     dog_count: ["Number of dogs", "Dogs"],
     billing: ["Billing frequency", "Billing"],
+    // Jobber's line item is the service ("30 Minute Walk"); "Title" is the
+    // job's, which the frequency preset reads first when nothing better
+    // exists, so it is not repeated here.
+    service: ["Service", "Service name", "Line item", "Line item name", "Product / Service", "Product/Service"],
   },
   sweepgo: {
     client_external_id: ["Client ID", "Customer ID"],
@@ -391,6 +408,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     start_date: ["Start Date", "Created"],
     dog_count: ["Number of Dogs", "Dogs", "Dog Count"],
     billing: ["Billing", "Billing Type"],
+    service: ["Service", "Service Name", "Service Type", "Plan"],
   },
 };
 
@@ -936,6 +954,45 @@ export const commitImport = createServerFn({ method: "POST" })
     }
     const sourceLabel = batch.source === "jobber" ? "Jobber" : batch.source === "sweepgo" ? "Sweep&Go" : "your previous system";
 
+    // The business's services, for a plan row that names one. Read once; a
+    // name the business has not got is created on first sight (no price,
+    // the line its words suggest) and remembered for the rest of the batch.
+    // Creating one needs manage_pricing, as Settings → Services does; an
+    // importer without it gets that row refused with a sentence, and the
+    // rest of the file still goes in.
+    const serviceCatalog: ImportService[] = [];
+    let orgLines: ReturnType<typeof serviceLinesOrDefault> = serviceLinesOrDefault(null);
+    if (entity === "services") {
+      const [{ data: svc, error: svcErr }, { data: orgRow }] = await Promise.all([
+        supabase.from("services").select("id, name, service_line").eq("organization_id", orgId),
+        supabase.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
+      ]);
+      if (svcErr) throw new Error(svcErr.message);
+      serviceCatalog.push(...((svc ?? []) as ImportService[]));
+      orgLines = serviceLinesOrDefault(orgRow?.service_lines);
+    }
+    const resolveImportService = async (name: string | null): Promise<ImportService | null> => {
+      const found = matchImportService(name, serviceCatalog);
+      if (found !== undefined) return found;
+      const draft = newServiceDraft(name!, orgLines);
+      const { data: ins, error } = await supabase
+        .from("services")
+        .insert({ ...draft, organization_id: orgId })
+        .select("id, name, service_line")
+        .single();
+      if (error) {
+        if (error.code === "42501") {
+          throw new Error(
+            `"${draft.name}" is not one of your services yet, and adding services needs the pricing permission. Add it in Settings → Services first, or ask an owner to.`,
+          );
+        }
+        throw new Error(`Could not add the service "${draft.name}": ${error.message}`);
+      }
+      const made = ins as ImportService;
+      serviceCatalog.push(made);
+      return made;
+    };
+
     let created = 0, updated = 0, failed = 0;
 
     // Every new client's service address, geocoded up front in ONE call. With
@@ -1159,27 +1216,23 @@ export const commitImport = createServerFn({ method: "POST" })
                 .eq("property_id", prop.id);
               dogCount = Math.max(1, count ?? 1);
             }
+            // The service the row names, or none (the database then gives
+            // the plan the business's default, as it always has).
+            const service = await resolveImportService(m.service_name ?? null);
             const { data: ins, error: sErr } = await supabase
               .from("subscriptions")
-              .insert({
-                organization_id: orgId,
-                client_id: row.target_id,
-                property_id: prop.id,
-                account_type: isRes ? "residential" : "commercial",
-                frequency: m.frequency,
-                interval_weeks: m.frequency === "weekly" ? m.interval_weeks : null,
-                interval_days: m.frequency === "every_n_days" ? m.interval_days : null,
-                price_cents: m.price_cents,
-                dog_count: isRes ? dogCount : null,
-                unit_count: isRes ? null : 1,
-                zone_id: prop.zone_id ?? null,
-                billing_cadence: m.billing_cadence ?? "postpaid",
-                preferred_weekdays: m.preferred_weekdays,
-                // The price came from the old system, not the rate card, so
-                // it is recorded as set by hand.
-                price_overridden_at: new Date().toISOString(),
-                ...(m.started_on ? { started_on: m.started_on } : {}),
-              })
+              .insert(
+                importPlanRow(m, {
+                  orgId,
+                  clientId: row.target_id,
+                  propertyId: prop.id,
+                  zoneId: prop.zone_id ?? null,
+                  isResidential: isRes,
+                  dogCount,
+                  service,
+                  now: new Date().toISOString(),
+                }) as any,
+              )
               .select("id")
               .single();
             if (sErr) throw sErr;

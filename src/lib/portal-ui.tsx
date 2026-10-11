@@ -4,7 +4,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_TIMEZONE, orgLocalTime } from "@/lib/org-day";
-import { frequencyLabel } from "@/lib/frequency-request";
+import { cadenceLabel, frequencyLabel } from "@/lib/frequency-request";
 import { stationDisplayName } from "@/lib/dna-linkage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -1276,6 +1276,8 @@ export function PlanRow({
     frequency: string;
     property_label: string | null;
     price_cents: number;
+    /** The days a walk plan runs on (the catalog); absent or null otherwise. */
+    weekdays?: number[] | null;
   };
   isCommercial: boolean;
   allowChange: boolean;
@@ -1292,7 +1294,7 @@ export function PlanRow({
             {s.property_label ?? (isCommercial ? "Service contract" : "Weekly service")}
           </div>
           <div className="text-xs text-muted-foreground">
-            Currently {friendlyFrequency(s.frequency)} · {money(s.price_cents)}/visit
+            Currently {cadenceLabel(s.frequency, s.weekdays)} · {money(s.price_cents)}/visit
           </div>
         </div>
         {allowChange && (
@@ -1568,6 +1570,7 @@ export function TopupRow({
     price_cents: number;
     frequency: string;
     property_label: string | null;
+    weekdays?: number[] | null;
   };
   onSubmit: (count: number) => void;
   pending: boolean;
@@ -1577,7 +1580,7 @@ export function TopupRow({
     <li className="flex flex-wrap items-end gap-3 rounded-md border bg-card p-3 text-sm">
       <div className="flex-1">
         <div className="font-medium">
-          {s.property_label ?? "Service"} · {friendlyFrequency(s.frequency)}
+          {s.property_label ?? "Service"} · {cadenceLabel(s.frequency, s.weekdays)}
         </div>
         <div className="text-xs text-muted-foreground">{money(s.price_cents)} per visit</div>
       </div>
@@ -2187,7 +2190,10 @@ export function RequestsList({ rows }: { rows: Array<any> }) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-medium">
-                  {friendlyCategory(r.category)}
+                  {/* A request for one of the business's services reads as
+                      that service ("30-minute walk"); the extra cleanup, and
+                      every other kind of request, as its category. */}
+                  {oneOff && r.service_name ? r.service_name : friendlyCategory(r.category)}
                   {r.visit_date && (
                     <span className="text-muted-foreground">
                       {" "}

@@ -753,6 +753,14 @@ const onboardSchema = z.object({
       zoneId: z.string().uuid().optional(),
       billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
       preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+      /** Which of the business's services the plan is for (the catalog).
+       *  Omitted, the database gives the plan the business's default, as
+       *  every client before the catalog (tg_subscriptions_service). */
+      serviceId: z.string().uuid().optional(),
+      /** A walk's days each week (subscriptions.weekdays, 0 = Sunday): one
+       *  visit on each, every week. Only with frequency weekly; the set
+       *  replaces the preferred day. */
+      weekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
       /** The first day the service may run, on the org's calendar. Without
        *  it the column defaults to the database's CURRENT_DATE, which is UTC:
        *  a client created on a US evening got a visit that same night, after
@@ -934,6 +942,11 @@ export const onboardClient = createServerFn({ method: "POST" })
           throw new Error("The first visit can't be in the past.");
         }
       }
+      // A weekday set rides on 'weekly' (subscriptions_weekdays_are_weekly)
+      // and is the whole schedule, so the preferred day is left empty beside it.
+      const { normalizeWeekdays } = await import("@/lib/weekday-set");
+      const weekdays =
+        s.frequency === "weekly" && s.weekdays?.length ? normalizeWeekdays(s.weekdays) : null;
       const { data: subRow, error: sErr } = await supabase.from("subscriptions").insert({
         organization_id: orgId,
         client_id: clientId,
@@ -945,8 +958,10 @@ export const onboardClient = createServerFn({ method: "POST" })
         unit_count: !isRes ? (s.unitCount ?? 1) : null,
         zone_id: s.zoneId ?? null,
         billing_cadence: s.billingCadence ?? "postpaid",
-        preferred_weekdays: s.preferredWeekdays?.length ? s.preferredWeekdays : null,
+        preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
         ...(s.startedOn ? { started_on: s.startedOn } : {}),
+        ...(s.serviceId ? { service_id: s.serviceId } : {}),
+        ...(weekdays ? { weekdays } : {}),
       }).select("id").single();
       if (sErr) {
         await undoClient();

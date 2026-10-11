@@ -8,7 +8,7 @@ import { PushToggle } from "@/components/PushToggle";
 import { Switch } from "@/components/ui/switch";
 import { SMS_CONSENT_TEXT } from "@/lib/clients.functions";
 import { usePortalCtx, ReferralCard, EmptyBox, VacationHoldCard } from "@/lib/portal-ui";
-import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
+import { PORTAL_FREQUENCY_VALUES, cadenceLabel, frequencyLabel } from "@/lib/frequency-request";
 import {
   portalSelfServeOptions,
   portalSetSmsConsent,
@@ -164,7 +164,9 @@ function SelfServeSection({ token }: { token: string }) {
             <p className="mb-3 text-muted-foreground">
               Currently{" "}
               <strong>
-                {FREQ_LABELS[opts.subscription.frequency] ?? opts.subscription.frequency}
+                {opts.subscription.weekdays?.length
+                  ? cadenceLabel(opts.subscription.frequency, opts.subscription.weekdays)
+                  : (FREQ_LABELS[opts.subscription.frequency] ?? opts.subscription.frequency)}
               </strong>
               .
             </p>
