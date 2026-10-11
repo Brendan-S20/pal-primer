@@ -67,6 +67,24 @@ BEGIN
   END IF;
 END $$;
 
+-- Phase 5 (20261011100000_a-walk-is-priced-as-a-walk) replaced this file's
+-- five-argument public_quote with a six-argument one, dropping the old
+-- signature on the way, for the PostgREST reason it gives. On a stack that
+-- has it, re-applying this file creates the five-argument function BESIDE the
+-- six-argument one, and the file's own check ("public_quote must have exactly
+-- one signature") stops the proof before a single first-cleanup claim is
+-- tested. So on such a stack the newer function is set aside first, inside
+-- this transaction, and the file under proof establishes its own exactly as
+-- it did the day it shipped. Nothing else depends on the function (no view,
+-- no trigger), the proof lock keeps other proofs out, and the ROLLBACK at the
+-- end puts the six-argument one back untouched. The fixture's "before" row
+-- above was captured from whichever function the stack had, which is the
+-- point: phase 5 keeps the pet-waste quote byte for byte.
+SELECT to_regprocedure('public.public_quote(text, text, integer, text, text, uuid)') IS NOT NULL AS has_six \gset
+\if :has_six
+DROP FUNCTION public.public_quote(text, text, integer, text, text, uuid);
+\endif
+
 \i :migration
 
 -- ── Off by default changes nothing ─────────────────────────────────────────
