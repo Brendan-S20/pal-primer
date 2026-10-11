@@ -2,7 +2,7 @@
 // database half.
 //
 // tests/sql/a-window-is-kept-and-a-skill-is-matched.proof.sql builds one
-// business with a walker and a scooper, applies 20261010120000 (and, on a
+// business with a walker and a scooper, applies 20261010200000 (and, on a
 // stack that lacks them, service lines, the catalog, P2 and the durations
 // first) inside a transaction, and proves that
 //
@@ -40,7 +40,7 @@ const LINES = M("20261008120000_a-dog-walker-should-not-have-to-learn-about-dump
 const P1 = M("20261009200000_a-walk-is-not-a-cleanup.sql");
 const P2 = M("20261009230000_a-visit-knows-its-service.sql");
 const DURATIONS = M("20261009230100_a-walk-takes-as-long-as-the-walk.sql");
-const MIGRATION = M("20261010120000_a-window-is-kept-and-a-skill-is-matched.sql");
+const MIGRATION = M("20261010200000_a-window-is-kept-and-a-skill-is-matched.sql");
 const PROOF = join(ROOT, "tests/sql/a-window-is-kept-and-a-skill-is-matched.proof.sql");
 const DB_URL =
   process.env.WINDOW_SKILL_PROOF_DB_URL ??

@@ -49,7 +49,7 @@ export type DayPlan = {
   routes: Array<{ staff_id: string; visit_ids: string[] }>;
   /** Visits the solver could not place: no eligible technician, or a window
    *  no route keeps. Handed to the write so the day still checks out, and
-   *  named to the dispatcher afterwards (20261010120000). */
+   *  named to the dispatcher afterwards (20261010200000). */
   unassigned: UnassignedVisit[];
   honourWindows: boolean;
   /** Each technician's route before this run, from route_cost_current. */

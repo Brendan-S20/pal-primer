@@ -6,7 +6,7 @@
 --   :p1         20261009200000_a-walk-is-not-a-cleanup.sql (the catalog itself)
 --   :p2         20261009230000_a-visit-knows-its-service.sql
 --   :durations  20261009230100_a-walk-takes-as-long-as-the-walk.sql
---   :migration  20261010120000_a-window-is-kept-and-a-skill-is-matched.sql
+--   :migration  20261010200000_a-window-is-kept-and-a-skill-is-matched.sql
 -- The first four are applied only when the database does not have them yet:
 -- the shared stack CI runs proofs against follows main, which may have none
 -- of them (#358, #381, #384).

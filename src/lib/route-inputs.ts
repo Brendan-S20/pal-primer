@@ -57,7 +57,7 @@ export type RouteDayInputs = {
     current_min: number | null;
     current_stops: number | null;
     current_sequenced: boolean | null;
-    /** Services this person can do (staff_services, 20261010120000). Null or
+    /** Services this person can do (staff_services, 20261010200000). Null or
      *  empty: no skills set, so any service -- the default every technician
      *  had before skills existed. */
     services?: string[] | null;

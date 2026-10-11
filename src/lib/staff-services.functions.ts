@@ -1,6 +1,6 @@
 // A technician's service skills: Users & roles reads and writes them here.
 //
-// public.staff_services (20261010120000) holds one row per skill. No rows for
+// public.staff_services (20261010200000) holds one row per skill. No rows for
 // a person means any service -- what every technician could do before skills
 // existed, so a business that never opens this routes exactly as before.
 // Rows mean exactly those services, and auto-routing gives a visit only to

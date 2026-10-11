@@ -263,14 +263,14 @@ export const REQUIRED_MIGRATIONS: string[] = [
   "20261002090500_drive-times-are-not-a-typed-speed.sql",
   "20261002090700_the-route-is-solved-outside-the-database.sql",
   // The service catalog (#358, #381, #384) and appointment routing's write,
-  // which takes the stops the solver leaves out (20261010120000). A stack
+  // which takes the stops the solver leaves out (20261010200000). A stack
   // that follows main may have none of them; each is applied in the trial's
   // transaction only where it is missing, like the seven above.
   "20261008120000_a-dog-walker-should-not-have-to-learn-about-dump-sites.sql",
   "20261009200000_a-walk-is-not-a-cleanup.sql",
   "20261009230000_a-visit-knows-its-service.sql",
   "20261009230100_a-walk-takes-as-long-as-the-walk.sql",
-  "20261010120000_a-window-is-kept-and-a-skill-is-matched.sql",
+  "20261010200000_a-window-is-kept-and-a-skill-is-matched.sql",
 ].map((f) => join(ROOT, "supabase/migrations", f));
 
 let pendingCache: string[] | null = null;
@@ -486,7 +486,7 @@ export function buildSql(
   // 4. The write.
   if (mode.kind === "apply") {
     // The stops the solver left out on purpose (a window no route keeps, or
-    // nobody with the skill), as the app passes them (20261010120000).
+    // nobody with the skill), as the app passes them (20261010200000).
     const left = (mode.unassigned ?? []).map((v) => q(v)).join(", ");
     call(
       "apply",

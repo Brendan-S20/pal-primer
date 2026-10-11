@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS public.staff_services (
 );
 
 COMMENT ON TABLE public.staff_services IS
-  'Which services a technician can do. No rows for a person means any service (the default before skills existed); rows mean exactly those. The planner (route_day_inputs) reads it; Users & roles writes it. Migration 20261010120000.';
+  'Which services a technician can do. No rows for a person means any service (the default before skills existed); rows mean exactly those. The planner (route_day_inputs) reads it; Users & roles writes it. Migration 20261010200000.';
 
 CREATE INDEX IF NOT EXISTS staff_services_organization_id_idx ON public.staff_services (organization_id);
 CREATE INDEX IF NOT EXISTS staff_services_service_id_idx ON public.staff_services (service_id);
@@ -189,7 +189,7 @@ BEGIN
   -- anything unassigned or already on a routable selected person; without
   -- it, the same set, but what is already assigned stays where it is.
   -- service_id, service and client are for the skill match and for naming
-  -- a stop the plan has to leave out (20261010120000).
+  -- a stop the plan has to leave out (20261010200000).
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'id', v.id,
            'lat', p.latitude,

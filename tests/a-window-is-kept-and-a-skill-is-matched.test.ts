@@ -611,7 +611,7 @@ describe("the list reaches the write and the screen", () => {
     const plan = read("src/lib/route-plan.server.ts");
     expect(plan).toMatch(/unassigned: p\.unassigned\.map\(\(u\) => u\.visit_id\)/);
     const sql = read(
-      "supabase/migrations/20261010120000_a-window-is-kept-and-a-skill-is-matched.sql",
+      "supabase/migrations/20261010200000_a-window-is-kept-and-a-skill-is-matched.sql",
     );
     expect(sql).toMatch(/_unassigned uuid\[\] DEFAULT NULL/);
     expect(sql).toMatch(/_p->'unassigned'/);
