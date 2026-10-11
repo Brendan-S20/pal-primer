@@ -4,24 +4,23 @@
 // (src/lib/live-activity-links.ts). The page already scrolls to ?visit=. This
 // takes the last step.
 //
-// COMPLETE (2026-10-08) goes straight into the stop's completion photo when
-// that is what the visit needs: `openCapture` hands the request to the card,
-// which opens the camera, then shows the checklist if there is one, then
-// completes (src/lib/start-photo-complete.ts). Where no photo is needed the
-// card puts the tech's thumb on its Complete button instead.
+// Both land on the stop's one button (src/lib/visit-step.ts), at whatever
+// step the visit is at -- Start, "Take completion photo" or Complete -- bring
+// it to the middle of the screen, focus it and pulse it once, and do NOT press
+// it. Neither opens the camera: #357 had Complete open it by itself, and the
+// owner's rule since 2026-10-09 is that the camera opens only on a tap at the
+// photo step.
 //
 // START reaches here only when the lock screen could not start the stop
 // itself (iOS 16, no signal, an expired token): the intent falls back to
-// opening the app. Then this finds the stop's Start button, brings it to the
-// middle of the screen, focuses it and pulses it once, and does NOT press it:
-// the start the tech asked for did not happen, and the card's own button,
-// with everything around it, is where to decide again. When the stop has
-// moved on since the lock screen was drawn (it says Start, the visit is
-// already under way) the other button is the one that exists, and that is
-// the one it lands on.
+// opening the app. The start the tech asked for did not happen, and the
+// card's own button, with everything around it, is where to decide again.
+// When the stop has moved on since the lock screen was drawn (it says Start,
+// the visit is already under way) the button is at its later step, and that
+// is what it lands on.
 //
-// The button is found by its label inside the stop's card, #visit-<id>, so
-// this needs nothing from the card's markup and survives it being moved.
+// The button is found inside the stop's card, #visit-<id>: the one marked
+// data-visit-step, or failing that by its Start or Complete label.
 // Once handled, `action` leaves the URL, so a refresh or a refetch does not
 // do it again, and the next tap on the lock screen does.
 
@@ -37,19 +36,19 @@ type Options = {
   labels: Record<LiveActivityAction, string>;
   /** Take `action` back out of the URL. */
   onHandled: () => void;
-  /** Ask the stop's card for its completion photo. True when the card took
-   *  the request; false leaves the focus-the-button path to run. */
-  openCapture?: (visitId: string) => boolean;
 };
 
-/** The stop's button for this action, or the other one if that is all the
- *  card has now. Exported for the test. */
+/** The stop's one button, at its current step; else the button for this
+ *  action by label, or the other one if that is all the card has now.
+ *  Exported for the test. */
 export function findActionButton(
   card: ParentNode,
   action: LiveActivityAction,
   labels: Record<LiveActivityAction, string>,
 ): HTMLButtonElement | null {
   const buttons = [...card.querySelectorAll<HTMLButtonElement>("button")];
+  const step = buttons.find((b) => b.hasAttribute?.("data-visit-step"));
+  if (step) return step;
   const byLabel = (a: LiveActivityAction) =>
     buttons.find((b) => (b.textContent ?? "").trim() === labels[a]) ?? null;
   return byLabel(action) ?? byLabel(action === "start" ? "complete" : "start");
@@ -61,13 +60,10 @@ export function useLiveActivityAction({
   ready,
   labels,
   onHandled,
-  openCapture,
 }: Options) {
   const done = useRef<string | null>(null);
   const handled = useRef(onHandled);
   handled.current = onHandled;
-  const capture = useRef(openCapture);
-  capture.current = openCapture;
   const startLabel = labels.start;
   const completeLabel = labels.complete;
 
@@ -84,10 +80,6 @@ export function useLiveActivityAction({
       f2 = requestAnimationFrame(() => {
         f3 = requestAnimationFrame(() => {
           done.current = key;
-          if (action === "complete" && capture.current?.(visitId)) {
-            handled.current();
-            return;
-          }
           const card = document.getElementById(`visit-${visitId}`);
           const button = card
             ? findActionButton(card, action, { start: startLabel, complete: completeLabel })

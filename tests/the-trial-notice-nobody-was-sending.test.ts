@@ -60,24 +60,23 @@ describe("the trial notice", () => {
     ).not.toMatch(/\.not\(\s*["']contact_email["']/);
   });
 
-  it("states what pauses and what does not, matching the ratified definition", () => {
+  it("states the lock, matching the decision (NP-12, 2026-10-09)", () => {
+    // CHANGED 2026-10-09. This used to require the email to say what keeps
+    // running and that nothing is deleted, and to never mention a lock: the
+    // 2026-08-20 decision was a growth-only pause. The owner has since chosen
+    // the lock, enforced by src/lib/account-lock.ts, so the email now says so.
     const html = renderTrialNoticeHtml(args);
     const text = renderTrialNoticeText(args);
     for (const body of [html, text]) {
-      // What stops.
-      // CHANGED 2026-10-02: staff copy says "client" for the person who pays
-      // (tests/one-word-for-the-person-who-pays.test.ts).
-      expect(body).toMatch(/new client/i);
-      // What does not — the half that makes it a pause rather than a lockout.
-      expect(body).toMatch(/invoic/i);
-      expect(body).toMatch(/portal/i);
-      expect(body).toMatch(/nothing is deleted/i);
-      // The CTA.
+      expect(body).toMatch(/account is locked until you choose a plan/i);
+      expect(body).toMatch(/data is kept for 30 days/i);
       expect(body).toContain("/settings/billing");
+      // NP-7: the old allowance is gone.
+      expect(body).toMatch(/first teammate included/);
+      expect(body).not.toMatch(/first 3 teammates/);
+      // The growth-only pause is not what happens any more.
+      expect(body).not.toMatch(/pauses|keeps running|Nothing is deleted/i);
     }
-    // It must NOT imply a broader freeze the product does not perform.
-    expect(html).not.toMatch(/account (will be )?(locked|frozen|suspended|disabled)/i);
-    expect(html).not.toMatch(/lose access/i);
   });
 
   it("reads correctly on the last day rather than saying 'in 1 days'", () => {
@@ -208,10 +207,10 @@ describe("a send that never reached the queue", () => {
 // ── The email must not name a loss that is not one ─────────────────────────
 //
 // `aiAvailableFor` is `phase === "paid"`; an active trial is `"trialing"`. AI
-// is therefore already off DURING the trial, so listing it under "what stops"
-// tells a customer they are losing something they never had. The first draft
-// of this email did exactly that, and contradicted its own "pauses in only one
-// way" lead-in by listing two things under it.
+// is therefore already off DURING the trial, so naming it as something the
+// trial's end takes away tells a customer they are losing something they never
+// had. (Until 2026-10-09 this block also pinned "exactly one thing stops":
+// adding a client. The lock replaced that list with one sentence.)
 describe("the notice describes only what actually changes", () => {
   const rendered = [
     renderTrialNoticeHtml({ orgName: "Scooper Troopers", daysLeft: 3, endsOn: "2026-08-30", billingUrl: "https://app.houndstack.com/settings/billing" }),
@@ -233,20 +232,9 @@ describe("the notice describes only what actually changes", () => {
     it(`${which} does not claim AI stops at expiry`, () => {
       expect(body, `${which} names AI as a thing that stops`).not.toMatch(/\bAI\b/);
     });
-
-    it(`${which} names exactly one thing that stops`, () => {
-      const stops = /What stops:?([\s\S]{0,240}?)(What keeps running|Nothing is deleted)/.exec(body);
-      expect(stops, `${which} has no "What stops" section to check`).not.toBeNull();
-      expect(stops![1], `${which} lists more than adding a client`).toMatch(/new client/);
-      // Two ways to list a second item, and the text body can only use one of
-      // them -- without the conjunction check this assertion is vacuous there.
-      expect(stops![1].match(/<li>/g)?.length ?? 0, `${which} still uses a multi-item list`).toBe(0);
-      expect(stops![1], `${which} joins a second thing with a conjunction`).not.toMatch(
-        /\band\b|\balso\b|,\s*(plus|as well as)\b/i,
-      );
-    });
   }
 });
+
 
 // ── Two owner rules, 2026-08-20 ────────────────────────────────────────────
 //

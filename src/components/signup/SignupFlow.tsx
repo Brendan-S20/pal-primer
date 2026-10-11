@@ -557,7 +557,7 @@ export function SignupFlow({
             ) : branch.reason === "no-zone" ? (
               <>We'll price your yard ourselves and get back to you.</>
             ) : (
-              <>Tell us about your yard and we'll get back to you with a price.</>
+              <>Tell us about your property and pets and we'll get back to you with a price.</>
             )}
           </p>
           {quoteRequestButton}

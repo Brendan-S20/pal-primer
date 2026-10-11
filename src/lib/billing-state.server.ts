@@ -25,6 +25,10 @@ export function subscriptionPeriodEnd(sub: unknown): number | null {
   return itemEnds.length ? Math.max(...itemEnds) : null;
 }
 
+import { teamSizeRange } from "@/lib/team-size";
+
+const withMax = (p: PlanRow) => ({ ...p, max_team_size: p.max_team_size ?? null });
+
 type PlanRow = {
   id: string;
   name: string;
@@ -34,6 +38,7 @@ type PlanRow = {
   price_cents: number | null;
   price_per_client_cents: number | null;
   included_seats: number | null;
+  max_team_size?: number | null;
   price_per_seat_cents: number | null;
   stripe_price_id: string | null;
   is_free: boolean;
@@ -70,6 +75,8 @@ export type BillingState = {
   priceCents: number | null;
   pricePerClientCents: number | null;
   includedSeats: number | null;
+  /** "1–3 people", "16+ people": the plan's team-size range (NP-1). */
+  teamSizeRange: string | null;
   pricePerSeatCents: number | null;
   monthlyEstimateCents: number | null; // final $ owed if per-client
   stripePriceId: string | null;
@@ -134,7 +141,7 @@ export async function getOrgBillingState(
     supabase
       .from("platform_plans")
       .select(
-        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, price_per_seat_cents, stripe_price_id, is_free, sort_order",
+        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, max_team_size, price_per_seat_cents, stripe_price_id, is_free, sort_order",
       )
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
@@ -162,7 +169,7 @@ export async function getBulkOrgBillingState(
     supabase
       .from("platform_plans")
       .select(
-        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, price_per_seat_cents, stripe_price_id, is_free, sort_order",
+        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, max_team_size, price_per_seat_cents, stripe_price_id, is_free, sort_order",
       )
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
@@ -221,6 +228,10 @@ function buildBillingState(o: OrgRow, plans: PlanRow[]): BillingState {
     priceCents,
     pricePerClientCents: perClientCents,
     includedSeats: displayPlan?.included_seats ?? null,
+    teamSizeRange:
+      displayPlan && displayPlan.included_seats != null
+        ? teamSizeRange(withMax(displayPlan), plans.map(withMax))
+        : null,
     pricePerSeatCents: displayPlan?.price_per_seat_cents ?? null,
     monthlyEstimateCents,
     stripePriceId: displayPlan?.stripe_price_id ?? null,

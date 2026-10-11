@@ -322,7 +322,7 @@ const FREQS = [
 ] as const;
 
 // The wizard's steps come from newClientWizardSteps (lib/service-lines): the
-// Yard step is pet-waste-only. Steps are addressed by NAME below, never by
+// Outline step is pet-waste-only. Steps are addressed by NAME below, never by
 // position, so dropping one cannot move the Plan step's quote onto Dogs.
 
 /** The next calendar day after an org-calendar day (YYYY-MM-DD). */
@@ -437,7 +437,7 @@ function NewClientWizard({
   // yard boundary
   const [boundary, setBoundary] = useState<PolygonGeoJSON | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
-  // Geocode outcome for the Yard step, so a failure surfaces a clear message
+  // Geocode outcome for the Outline step, so a failure surfaces a clear message
   // instead of silently rendering a zoomed-out world map (finding #13).
   const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "notfound" | "error">("idle");
   const boundaryAreaSqm = useMemo(() => (boundary ? polyAreaSqm(boundary) : null), [boundary]);
@@ -446,7 +446,7 @@ function NewClientWizard({
   // every field at once and brings its own coordinates, and any hand edit
   // afterwards throws those coordinates away.
   //
-  // Throwing them away matters more here than it looks. The Yard step's
+  // Throwing them away matters more here than it looks. The Outline step's
   // geocode effect is guarded by `if (geo) return;`, so a pin left over from
   // the address the user has just corrected would be the pin they draw a
   // boundary on — for the wrong house, with no way to tell from the map.
@@ -456,7 +456,7 @@ function NewClientWizard({
     if (r.address.region) setRegion(r.address.region);
     setPostalCode(r.address.postalCode);
     if (r.address.latitude != null && r.address.longitude != null) {
-      // A provider match is a better pin than the Yard step's Nominatim
+      // A provider match is a better pin than the Outline step's Nominatim
       // lookup, and it saves the round trip: the effect there is a fallback
       // for hand-typed addresses now.
       setGeo({ lat: r.address.latitude, lng: r.address.longitude });
@@ -472,9 +472,9 @@ function NewClientWizard({
     setGeoStatus("idle");
   }
 
-  // Best-effort geocode when entering the Yard step
+  // Best-effort geocode when entering the Outline step
   useEffect(() => {
-    if (current !== "Yard") return;
+    if (current !== "Outline") return;
     if (geo) return;
     const q = [street, city, region, postalCode].filter(Boolean).join(", ");
     if (q.length < 6) {
@@ -731,7 +731,7 @@ function NewClientWizard({
     // Region/State is required — the property is unusable downstream without it
     // (routing, zone pricing, geocoding all need it). Finding #13.
     if (current === "Property") return !!(street && city && region && postalCode);
-    if (current === "Yard") return true; // yard boundary optional
+    if (current === "Outline") return true; // outline sketch optional
     if (current === "Dogs") return true;
     return true;
   })();
@@ -1068,11 +1068,11 @@ function NewClientWizard({
           </div>
         )}
 
-        {/* STEP 2 — Yard (optional boundary sketch) */}
-        {current === "Yard" && (
+        {/* STEP 2 — Outline (optional boundary sketch) */}
+        {current === "Outline" && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-base font-medium">Sketch the yard (optional)</h2>
+              <h2 className="text-base font-medium">Sketch the property outline (optional)</h2>
               <p className="text-sm text-muted-foreground">
                 Draw the service area on the satellite map so the tech and pricing know the exact footprint. Skip to price a flat visit instead.
               </p>

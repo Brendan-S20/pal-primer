@@ -54,6 +54,8 @@ import {
 const ENGLISH_THAT_WAS_THERE = [
   "More options",
   "Take photo",
+  // The card's one button at its photo step (src/lib/visit-step.ts).
+  "Take completion photo",
   "Navigate",
   "Off the clock",
   "On the clock",

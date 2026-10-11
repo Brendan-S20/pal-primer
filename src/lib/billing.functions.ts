@@ -5,11 +5,13 @@ import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.serve
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
 import { addonLookupKey, planLookupKey } from "@/lib/stripe-lookup-keys";
+import { choosePlanRefusal, smallestPlanFor } from "@/lib/team-size";
 import {
   loadPriceCatalog,
   resolvePriceId,
   resolvePriceIdSet,
 } from "@/lib/stripe-price-catalog.server";
+import { FOUNDING_CODE, FOUNDING_SPOTS, isFoundingCode, placesLeft } from "@/lib/founding-offer";
 
 // Nothing imports this. $59 is not a price in the current per-employee
 // catalog either — plans come from `platform_plans`, which is the only place
@@ -61,6 +63,7 @@ export const getBillingStatus = createServerFn({ method: "GET" })
       priceCents: s.priceCents,
       pricePerClientCents: s.pricePerClientCents,
       includedSeats: s.includedSeats,
+      teamSizeRange: s.teamSizeRange,
       pricePerSeatCents: s.pricePerSeatCents,
       monthlyEstimateCents: s.monthlyEstimateCents,
       needsUpgrade: s.needsUpgrade,
@@ -92,16 +95,25 @@ export type PromoDropReason = "lookup_failed" | "invalid" | "not_in_stripe" | "w
 export const listPlatformPlans = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await resolveOrgIdForCaller(context.supabase, context.userId);
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await (supabaseAdmin as any)
-      .from("platform_plans")
-      .select("id, name, slug, description, price_cents, annual_price_cents, currency, interval, features, included_seats, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action, is_free, stripe_price_id, stripe_annual_price_id, sort_order")
-      .eq("is_active", true)
-      .eq("is_enterprise", false)
-      .order("sort_order", { ascending: true });
+    const [{ data, error }, { count }] = await Promise.all([
+      (supabaseAdmin as any)
+        .from("platform_plans")
+        .select("id, name, slug, description, price_cents, annual_price_cents, currency, interval, features, included_seats, max_team_size, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action, is_free, stripe_price_id, stripe_annual_price_id, sort_order")
+        .eq("is_active", true)
+        .eq("is_enterprise", false)
+        .order("sort_order", { ascending: true }),
+      // Enabled users, so the picker can say which plans this team fits
+      // before anybody clicks one. createPlanSubscription refuses the rest.
+      (supabaseAdmin as any)
+        .from("staff")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("active", true),
+    ]);
     if (error) throw new Error(error.message);
-    return { plans: data ?? [] };
+    return { plans: data ?? [], enabledUsers: (count as number | null) ?? 0 };
   });
 
 // In-app plan subscribe via the Payment Element: create the subscription
@@ -117,6 +129,10 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       .object({
         planId: z.string().uuid().optional(),
         interval: z.enum(["month", "year"]).optional(),
+        // A code typed at checkout. Only the founding code (LAUNCH20) is
+        // looked up in Stripe; anything else goes through the same lookup as
+        // a code typed on Get-started.
+        promoCode: z.string().trim().max(40).optional(),
       })
       .parse(d),
   )
@@ -142,7 +158,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
 
     const { data: planRows } = await (supabaseAdmin as any)
       .from("platform_plans")
-      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action")
+      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats, max_team_size, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action")
       .eq("is_active", true)
       .eq("is_enterprise", false)
       .not("stripe_price_id", "is", null)
@@ -155,16 +171,25 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       stripe_annual_seat_price_id: string | null;
       price_cents: number | null; annual_price_cents: number | null;
       included_seats: number;
+      max_team_size: number | null;
       price_per_seat_cents: number | null;
       ai_actions_included: number | null;
       ai_overage_cents_per_action: number | null;
     }>;
+    // With no plan named, size it by team-size RANGE. This read
+    // `included_seats >= seats` while a plan included its whole range; with
+    // 1/5/20 included it would have sold a three-person team Growth.
     const targetPlan = data.planId
       ? plans.find((p) => p.id === data.planId)
-      : plans.find((p) => p.included_seats >= seats) ?? plans[plans.length - 1];
+      : smallestPlanFor(seats, plans) ?? plans[plans.length - 1];
     if (!targetPlan || !targetPlan.stripe_price_id) {
       throw new Error("That plan isn't available. Contact support.");
     }
+    // A plan whose cap is below the account's enabled users cannot be chosen
+    // (NP-10). Minimums are not enforced: a small team may choose a big plan.
+    // Refused here, before any Stripe call.
+    const tooSmall = choosePlanRefusal(targetPlan, seats, plans);
+    if (tooSmall) throw new Error(tooSmall);
 
     const targetInterval: "month" | "year" = data.interval ?? "month";
 
@@ -343,12 +368,26 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
                 quantity: it.quantity ?? 1,
               });
             } else {
-              // Back to monthly: prefer the add-on's stored monthly price so
-              // future logic recognizes the item; else derive 1/12 of the
-              // annual amount (which was minted as monthly x 12 above).
-              const storedMonthly = productId
+              // Back to monthly, at the price this item is ALREADY on.
+              //
+              // The annual amount was minted as monthly x 12 above, so 1/12 of
+              // it is what this org has been paying. Until 2026-10-09 this
+              // reached for the add-on's catalog price instead, which is
+              // whatever the catalog says TODAY: once the $29 Priority support
+              // or the $49 receptionist gave its lookup key to a new price, a
+              // grandfathered org that switched to monthly was silently
+              // re-priced at the new one. Existing subscriptions keep their
+              // price (owner decision, Oct 9), so the catalog price is reused
+              // only when it is the same amount, and otherwise the item is
+              // rebuilt from its own.
+              const monthlyAmount = Math.round(unitAmount / 12);
+              const catalogMonthly = productId
                 ? monthlyAddonPriceByProduct.get(productId)
                 : undefined;
+              const storedMonthly =
+                catalogMonthly && catalog.amountById?.get(catalogMonthly) === monthlyAmount
+                  ? catalogMonthly
+                  : undefined;
               if (storedMonthly) {
                 itemUpdates.push({ price: storedMonthly, quantity: it.quantity ?? 1 });
               } else {
@@ -357,7 +396,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
                     currency: price.currency ?? "usd",
                     product: productId!,
                     recurring: { interval: "month" },
-                    unit_amount: Math.round(unitAmount / 12),
+                    unit_amount: monthlyAmount,
                   },
                   quantity: it.quantity ?? 1,
                 });
@@ -501,9 +540,11 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         .eq("id", orgId);
     }
 
-    const items: { price: string; quantity: number }[] = [
-      { price: targetPlanPriceId, quantity: 1 },
-    ];
+    const items: Array<{
+      price: string;
+      quantity: number;
+      discounts?: Array<{ promotion_code: string }>;
+    }> = [{ price: targetPlanPriceId, quantity: 1 }];
     if (targetSeatPriceId && overage > 0) {
       items.push({ price: targetSeatPriceId, quantity: overage });
     }
@@ -528,14 +569,37 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     // not reported: it produced no coupon because it never was one.
     let promoCoupon: { id: string; code: string; stripe_coupon_id: string } | null = null;
     let promoDropped: { code: string; reason: PromoDropReason; detail?: string } | null = null;
+    // The founding offer (NP-2): a Stripe promotion code on the BASE PLAN ITEM
+    // only, so extra people and add-ons stay full price. The app closes it at
+    // FOUNDING_SPOTS accounts that PAID; Stripe enforces its first-time-
+    // customer restriction and a higher max_redemptions backstop itself.
+    let foundingPromo: { id: string; code: string } | null = null;
     try {
       const { data: orgPromoRow } = await (supabaseAdmin as any)
         .from("organizations")
         .select("signup_promo_code")
         .eq("id", orgId)
         .maybeSingle();
-      const storedCode = orgPromoRow?.signup_promo_code as string | null | undefined;
-      if (storedCode) {
+      const storedCode = (data.promoCode || orgPromoRow?.signup_promo_code) as string | null | undefined;
+      if (isFoundingCode(storedCode)) {
+        // Places are counted from accounts that PAID (founding_accounts), not
+        // from Stripe's redemptions, which include abandoned checkouts. The
+        // same count the banner shows.
+        const { findFoundingPromotionCode, countFoundingPaid } = await import(
+          "@/lib/founding-offer.server"
+        );
+        const promo = await findFoundingPromotionCode(stripe);
+        if (promo && placesLeft(await countFoundingPaid(supabaseAdmin), promo) > 0) {
+          foundingPromo = { id: promo.id, code: FOUNDING_CODE };
+          items[0] = { ...items[0], discounts: [{ promotion_code: promo.id }] };
+        } else {
+          promoDropped = {
+            code: FOUNDING_CODE,
+            reason: "invalid",
+            detail: `All ${FOUNDING_SPOTS} founding places have been taken.`,
+          };
+        }
+      } else if (storedCode) {
         const { lookupSignupCode } = await import("@/lib/signup-codes.server");
         const hit = await lookupSignupCode(supabaseAdmin, storedCode);
         if (hit.kind === "referral") {
@@ -594,6 +658,9 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       const subItems = sub.items?.data ?? [];
       const sameItems =
         sub.metadata?.plan_id === targetPlan.id &&
+        // A code applied (or dropped) since the abandoned attempt is a
+        // different price, so that subscription is not reusable.
+        (sub.metadata?.promo_code ?? "") === (promoCoupon?.code ?? foundingPromo?.code ?? "") &&
         subItems.length === items.length &&
         items.every((d) =>
           subItems.some((it) => it.price?.id === d.price && (it.quantity ?? 1) === d.quantity),
@@ -630,6 +697,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         kind: "org_saas",
         interval: targetInterval,
         ...(promoCoupon ? { promo_code: promoCoupon.code } : {}),
+        ...(foundingPromo ? { promo_code: foundingPromo.code } : {}),
       },
       expand: ["latest_invoice.confirmation_secret"],
     };
@@ -642,10 +710,26 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     } catch (e) {
       // A coupon Stripe rejects (e.g. its own max_redemptions hit) must not
       // block the subscribe — retry once without the discount.
-      if (!promoCoupon) throw e;
+      if (!promoCoupon && !foundingPromo) throw e;
       console.error("signup promo coupon rejected by Stripe; subscribing without it", (e as Error).message);
+      if (foundingPromo) {
+        // Stripe is the judge of the founding code (its cap, first-time
+        // customers only). Say so rather than charging full price silently.
+        promoDropped = {
+          code: FOUNDING_CODE,
+          reason: "invalid",
+          detail: "Stripe did not accept the founding code for this account.",
+        };
+      }
       promoCoupon = null;
-      sub = await stripe.subscriptions.create(createParams);
+      foundingPromo = null;
+      const { discounts: _drop, ...baseItem } = items[0];
+      items[0] = baseItem;
+      sub = await stripe.subscriptions.create({
+        ...createParams,
+        items,
+        metadata: { ...createParams.metadata, promo_code: "" },
+      });
     }
 
     // Redemption bookkeeping + attribution audit, best-effort. Counted at
@@ -677,6 +761,13 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       }
     }
 
+    // A founding checkout moves Stripe's backstop count (not the paid count,
+    // which only a payment moves); read the banner fresh either way.
+    if (foundingPromo) {
+      const { forgetFoundingOffer } = await import("@/lib/founding-offer.server");
+      forgetFoundingOffer();
+    }
+
     const clientSecret = clientSecretOf(sub);
     if (!clientSecret) throw new Error("Couldn't start the payment. Please try again.");
 
@@ -690,6 +781,8 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       publishableKey,
       planName: targetPlan.name,
       promoDropped,
+      /** "LAUNCH20" when the founding discount is on the plan line. */
+      promoApplied: foundingPromo?.code ?? null,
       // Returned so the payment form can name the metered charges at the point
       // of purchase. There is no Stripe-hosted checkout page here — the card is
       // taken inline through a Payment Element — so every word the buyer reads
@@ -1144,6 +1237,16 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
         actorUserId: context.userId,
         detail: { subscription: active.id, stripe_status: active.status },
       });
+      // A paid founding subscription takes its place here if the webhook has
+      // not already (the payment form calls this straight after paying). An
+      // unpaid one never reaches this branch. Best-effort: the webhook, or the
+      // next refresh, takes the place if this fails.
+      try {
+        const { recordFoundingPayment } = await import("@/lib/founding-offer.server");
+        await recordFoundingPayment({ admin: supabaseAdmin, stripe, orgId, sub: active });
+      } catch (e) {
+        console.error("founding place during refreshBillingStatus failed", (e as Error).message);
+      }
       // Self-heal the seat-overage quantity while we're here, so a seat count
       // that drifted (e.g. an invite accepted since checkout) reconciles the
       // next time billing is viewed. Best-effort.

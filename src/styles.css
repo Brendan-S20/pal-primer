@@ -392,9 +392,20 @@
  * feel" is a decision made here, once.
  *
  *   --motion-duration-instant   90ms   a colour or opacity nudge
- *   --motion-duration-fast     160ms   crossfades, popovers, tab switches
- *   --motion-duration-base     220ms   page slides, dialogs, list rise
- *   --motion-duration-slow     320ms   sheets, toasts, anything that travels
+ *   --motion-duration-fast     140ms   crossfades, popovers, menus
+ *   --motion-duration-base     180ms   page slides, dialogs, list rise
+ *   --motion-duration-slow     240ms   sheets, toasts, anything that travels
+ *
+ * Ceilings, not suggestions (tests/an-app-that-moves.test.ts pins them):
+ * nothing a person waits through is longer than 200ms for a page and 250ms
+ * for a sheet. They were 220 and 320 until 2026-10-08, when the owner, on a
+ * real iPhone, found the transitions "disrupting the smoothness": a motion a
+ * thumb has to wait out reads as lag, however good the curve.
+ *
+ * And motion is transform and opacity only. Those two are the compositor's:
+ * they move a picture that is already drawn. width, height, top, left,
+ * margin and box-shadow are layout or paint, redone on the main thread every
+ * frame, which is exactly the thread that is busy when a page is arriving.
  *
  *   --motion-ease-standard   cubic-bezier(0.32, 0.72, 0, 1)
  *       The iOS sheet curve (vaul uses the same one): fast out of the gate,
@@ -414,20 +425,19 @@
  */
 :root {
   --motion-duration-instant: 90ms;
-  --motion-duration-fast: 160ms;
-  --motion-duration-base: 220ms;
-  --motion-duration-slow: 320ms;
+  --motion-duration-fast: 140ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 240ms;
   --motion-ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --motion-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* List entrance: each row starts this far below where it lands, and each
-     waits one stagger step longer than the row above it, up to eight steps.
-     Past the eighth row everything arrives together, so a 200-row list takes
-     the same quarter of a second as a 9-row one. */
+  /* List entrance: a row added to a list that is already on screen starts
+     this far below where it lands. */
   --motion-rise: 6px;
-  --motion-stagger: 30ms;
   --motion-press-scale: 0.97;
+  /* How long a skeleton waits before it is drawn at all (see SKELETONS). */
+  --skeleton-delay: 160ms;
   /* Page transitions. On a wide screen the page only drifts: a 1600px column
      sliding its own width past a docked sidebar is a lot of motion for a
      click. Below md, where the page IS the screen, it is the full native
@@ -463,7 +473,6 @@
     --motion-duration-base: 1ms;
     --motion-duration-slow: 1ms;
     --motion-rise: 0px;
-    --motion-stagger: 0ms;
     --motion-press-scale: 1;
     --motion-page-in: 0px;
     --motion-page-out: 0px;
@@ -483,6 +492,16 @@
     transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* The one delay that is not motion: a skeleton still waits before it is
+     drawn, so a fast load does not flash grey at someone who asked for less
+     movement, not more. */
+  .hs-skeleton {
+    animation-delay: var(--skeleton-delay), 0ms !important;
+  }
+  [data-skeleton-now] .hs-skeleton {
+    animation-delay: 0ms, 0ms !important;
+  }
 }
 
 /* Toasts. sonner ships its own 400ms on an unnamed curve; it already turns
@@ -496,20 +515,29 @@
 
 /* ── LIST ENTRANCE ───────────────────────────────────────────────────────
  *
- * `motion-list` on a list's container: its children fade and rise into
- * place the first time each one is inserted. A CSS animation runs on
- * insertion and never again for the same node, so a refetch that keeps the
- * same keys does not replay it, and a filter only animates the rows it adds.
+ * `motion-list` on a list's container, with useMotionList()'s ref on it
+ * (src/lib/motion/use-motion-list.ts): a row ADDED to a list that is already
+ * on screen fades and rises into place. Nothing else moves:
  *
- * `backwards` fill, so a row waiting for its stagger slot is not drawn at
- * its final position first and then jump back to start. NOT `both`: a
- * transform animation that keeps filling after it ends leaves the row with a
- * transform for good, which makes it the containing block of anything
- * `fixed` inside it (a stop card's own overlays). Transform and opacity only:
- * nothing about the row's box changes, so nothing around it moves.
+ *   * Not the rows the list first paints with. Until 2026-10-08 every row
+ *     of every list rose on arrival, staggered 30ms apart, so the last of the
+ *     first nine was not fully drawn until 460ms after its data had landed,
+ *     and /clients started 297 animations at once on the owner's account.
+ *     Content that has arrived is shown, not performed.
+ *   * Not a row that moves. React moves a keyed row by re-inserting its node,
+ *     and a re-inserted node restarts its CSS animation; the hook marks every
+ *     row it has seen, so a reorder is a reorder and not a flicker.
+ *   * Not past the twelfth row: below that a new row is off screen anyway,
+ *     and a filter that brings in 200 rows animates the ones you can see.
+ *   * No stagger. A stagger is a delay, and every row of it is a row you
+ *     are waiting for.
  *
- * `animate-fade-in` is the same entrance for a single element. My Day's stop
- * cards and status banners carried that class from before it was defined.
+ * `backwards` fill, NOT `both`: a transform that keeps filling after the
+ * animation ends leaves the row a containing block for anything `fixed`
+ * inside it (a stop card's own overlays). Transform and opacity only.
+ *
+ * `animate-fade-in` is the same entrance for a single element that appears
+ * mid-session (My Day's offline and cached-copy banners).
  */
 @theme {
   --animate-fade-in: hs-rise var(--motion-duration-base) var(--motion-ease-out) backwards;
@@ -523,17 +551,59 @@
 }
 
 @utility motion-list {
-  & > * {
+  &[data-motion-armed] > :not([data-motion-seen]):nth-child(-n + 12) {
     animation: hs-rise var(--motion-duration-base) var(--motion-ease-out) backwards;
   }
-  & > :nth-child(2) { animation-delay: calc(var(--motion-stagger) * 1); }
-  & > :nth-child(3) { animation-delay: calc(var(--motion-stagger) * 2); }
-  & > :nth-child(4) { animation-delay: calc(var(--motion-stagger) * 3); }
-  & > :nth-child(5) { animation-delay: calc(var(--motion-stagger) * 4); }
-  & > :nth-child(6) { animation-delay: calc(var(--motion-stagger) * 5); }
-  & > :nth-child(7) { animation-delay: calc(var(--motion-stagger) * 6); }
-  & > :nth-child(8) { animation-delay: calc(var(--motion-stagger) * 7); }
-  & > :nth-child(n + 9) { animation-delay: calc(var(--motion-stagger) * 8); }
+}
+
+/* ── SKELETONS ───────────────────────────────────────────────────────────
+ *
+ * A skeleton (ui/skeleton.tsx) is laid out at once, so the page has its
+ * final shape from the first frame, but it is not DRAWN until it has waited
+ * --skeleton-delay. Most loads are a cached query or a stub that answers in
+ * well under that, and a grey page that flashes for 60ms before the real one
+ * reads as a flicker, not as loading. The wait is an animation with a delay
+ * and `backwards` fill, so it costs no script, no timer and no re-render, and
+ * a skeleton replaced before its delay is never seen at all.
+ *
+ * The router's own pending page (RoutePending, ShellPending) has already
+ * waited 300ms before it is mounted, so it carries data-skeleton-now and is
+ * drawn at once.
+ */
+@keyframes hs-skeleton-wait {
+  from,
+  to {
+    opacity: 0;
+  }
+}
+.hs-skeleton {
+  animation:
+    hs-skeleton-wait 1ms linear var(--skeleton-delay) backwards,
+    hs-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes hs-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+[data-skeleton-now] .hs-skeleton {
+  animation-delay: 0ms, 0ms;
+}
+
+/* ── METERS ──────────────────────────────────────────────────────────────
+ *
+ * A progress fill (My Day's route bar, the dashboard's goals, a routing run)
+ * set with --hs-meter: 40%. It is always full width and slides along its
+ * track, which clips it, so the change animates on transform and the round
+ * end stays round. It was a `width` transition: a layout on every frame for
+ * 500ms, inside My Day's blurred sticky bar, which redraws its blur for
+ * anything that repaints under it. Logical: in Arabic it fills from the
+ * right, through --motion-dir.
+ */
+.hs-meter {
+  width: 100%;
+  transform: translateX(calc(var(--motion-dir) * (var(--hs-meter, 0%) - 100%)));
+  transition: transform var(--motion-duration-slow) var(--motion-ease-out);
 }
 
 /* ── PAGE TRANSITIONS (View Transitions API) ─────────────────────────────
@@ -553,18 +623,15 @@
  * own groups with no animation, and the page slides underneath them.
  */
 html[data-nav-dir="forward"] [data-vt="page"],
-html[data-nav-dir="back"] [data-vt="page"],
-html[data-nav-dir="tab"] [data-vt="page"] {
+html[data-nav-dir="back"] [data-vt="page"] {
   view-transition-name: hs-page;
 }
 html[data-nav-dir="forward"] [data-vt="header"],
-html[data-nav-dir="back"] [data-vt="header"],
-html[data-nav-dir="tab"] [data-vt="header"] {
+html[data-nav-dir="back"] [data-vt="header"] {
   view-transition-name: hs-header;
 }
 html[data-nav-dir="forward"] [data-vt="tabbar"],
-html[data-nav-dir="back"] [data-vt="tabbar"],
-html[data-nav-dir="tab"] [data-vt="tabbar"] {
+html[data-nav-dir="back"] [data-vt="tabbar"] {
   view-transition-name: hs-tabbar;
 }
 
@@ -626,16 +693,6 @@ html[data-nav-dir="tab"] [data-vt="tabbar"] {
     opacity: var(--motion-page-in-opacity);
   }
 }
-@keyframes hs-fade-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes hs-fade-out {
-  to {
-    opacity: 0;
-  }
-}
 
 /* Deeper: the new page arrives from the end edge, over the old one. */
 html[data-nav-dir="forward"]::view-transition-old(hs-page) {
@@ -653,18 +710,11 @@ html[data-nav-dir="back"]::view-transition-old(hs-page) {
 html[data-nav-dir="back"]::view-transition-new(hs-page) {
   animation-name: hs-page-in-from-start;
 }
-/* Sideways between tabs: no direction to imply, so a crossfade. */
-html[data-nav-dir="tab"]::view-transition-old(hs-page) {
-  animation-name: hs-fade-out;
-  animation-duration: var(--motion-duration-fast);
-}
-html[data-nav-dir="tab"]::view-transition-new(hs-page) {
-  animation-name: hs-fade-in;
-  animation-duration: var(--motion-duration-fast);
-}
-/* No transition wanted (reduced motion, the browser already animated a
-   swipe-back, a same-page update) but the browser has no view-transition
-   types, so the router started one anyway: make it instant. */
+/* Between tabs: nothing. A native app changes tab in place, and this one
+   did a 160ms crossfade until 2026-10-08 (see src/lib/motion/direction.ts).
+   No transition wanted is normally no transition STARTED (the router is
+   told `false`, and page-transitions.ts refuses one on an engine that cannot
+   be told); this is the belt to that, so one that slips through is instant. */
 html[data-nav-dir="none"]::view-transition-group(*),
 html[data-nav-dir="none"]::view-transition-old(*),
 html[data-nav-dir="none"]::view-transition-new(*) {

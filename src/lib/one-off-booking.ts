@@ -63,8 +63,8 @@ export function oneOffRefusalMessage(raw: string): string {
  *  one-off exists. */
 export function oneOffVisitNote(dayLabel: string, auto: boolean): string {
   return auto
-    ? "Extra cleanup the client asked for from the portal (booked automatically)"
-    : `Extra cleanup the client asked for from the portal${dayLabel ? ` for ${dayLabel}` : ""}`;
+    ? "Extra visit the client asked for from the portal (booked automatically)"
+    : `Extra visit the client asked for from the portal${dayLabel ? ` for ${dayLabel}` : ""}`;
 }
 
 /** What the portal's request list says about one of these. */
