@@ -154,6 +154,16 @@ Customer Support (no in-app support chat). The label published before this
 said every type was used for tracking, which would have required the App
 Tracking Transparency prompt the app does not show.
 
+Two of those types map to third parties the privacy policy names by name since
+2026-10-11 (#394): **Device ID** is the APNs push token (and the FCM token on
+Android), sent to Apple's and Google's push services with the text of each
+notification; **Crash Data / Other Diagnostic Data** are the error reports to
+Sentry (`src/lib/monitoring/`), carrying the error, the page's path, device
+and OS, and the account's user id and org id, never a name, email or IP. The
+label already declared both before the policy did, so nothing in App Store
+Connect has to change for #394; re-read it against §3 of
+`docs/play-store-submission.md` when either integration changes.
+
 > All three verified live on 2026-08-20: `houndstack.com`, `/contact` and
 > `/privacy` each return 200 (with and without a trailing slash, and on the
 > `www` host). Worth re-checking at submission time rather than trusting this

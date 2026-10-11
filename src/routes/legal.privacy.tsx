@@ -15,7 +15,7 @@ export const Route = createFileRoute("/legal/privacy")({
 
 function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="October 7, 2026">
+    <LegalShell title="Privacy Policy" updated="October 11, 2026">
       <section>
         <p>
           {APP_NAME} ("we", "us") provides field-service software for pet-care businesses at
@@ -125,6 +125,27 @@ function PrivacyPage() {
           <li>Resend (email delivery)</li>
           <li>Google (maps and address suggestions)</li>
           <li>Geocodio (turning addresses into map locations)</li>
+          <li>
+            Sentry (error reporting: when the app or our server hits a fault, Sentry receives the
+            error, the address of the page it happened on with any codes removed, the browser or
+            device and operating system, and your account&apos;s user id and workspace id; not your
+            name, email address or IP address, and no recording of your screen)
+          </li>
+          <li>
+            Firebase Cloud Messaging (Google) and the Apple Push Notification service (delivering
+            notifications to the Android and iOS apps: your device&apos;s push token and the text of
+            each notification, which can include a client&apos;s name, an address or a visit time,
+            together with the page in the app it opens)
+          </li>
+          <li>
+            Plausible (visit counts for the marketing site at www.houndstack.com only: it sets no
+            cookies, and we see page views and referral sources in aggregate, not individual
+            profiles)
+          </li>
+          <li>
+            Formspree (the contact and product-updates forms on www.houndstack.com only: the name,
+            business name, email address and message you submit)
+          </li>
           <li>
             Anthropic (the AI features, once a business switches them on: the AI receptionist and
             drafting marketing posts)

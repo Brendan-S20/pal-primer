@@ -798,3 +798,13 @@ jobs:
 
       - name: Does the deployed site serve /sw.js
         run: npm run check:pwa:live
+
+      # The one Terms of Service (pal-primer#393) lives in this repo at
+      # /legal/terms; www.houndstack.com/terms is a copy in the HoundStack
+      # repo, which neither repo can see at build time. The served site can
+      # be seen from here, so this compares it word for word with
+      # src/routes/legal.terms.tsx. Same exit policy as the step above: red
+      # only when the site answers and the words differ. Red here after the
+      # app's terms change is expected until the site's copy is updated.
+      - name: Does www.houndstack.com/terms show this repo's terms
+        run: npm run check:terms:live
