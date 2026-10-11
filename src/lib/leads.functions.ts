@@ -108,9 +108,11 @@ export const listLeads = createServerFn({ method: "GET" })
     // With the signup a lead started, when it started one: Leads labels a
     // row "Started service online" or "Started signup online, didn't pay"
     // from it. signup_requests.lead_id (20261008160000) is the link.
+    // And the service asked about (leads.service_id, 20261011150000), by its
+    // name, when the business offers more than one and the visitor picked.
     const { data, error } = await context.supabase
       .from("leads")
-      .select("*, signup_requests(status, refunded_at, created_at)")
+      .select("*, signup_requests(status, refunded_at, created_at), service:services(name)")
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);

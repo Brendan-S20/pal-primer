@@ -64,6 +64,13 @@ import {
   type FormFields,
 } from "@/lib/new-customer-form";
 import { ELAPSED_FIELD, HONEYPOT_FIELD } from "@/lib/public-form-guard";
+import {
+  asksAboutTheYard,
+  chosenPublicService,
+  offersAChoice,
+  publicServiceChoices,
+  publicServiceOptionLabel,
+} from "@/lib/public-services";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
 // (Connect direct charges must be scoped to the tenant's account).
@@ -138,16 +145,6 @@ export function SignupFlow({
     retry: false,
   });
   const instantStart = !!formQ.data?.instantStart;
-  const tiers =
-    instantStart && formQ.data?.firstCleanup?.mode === "by_last_cleaned"
-      ? formQ.data.firstCleanup.tiers
-      : [];
-  const asksLastCleaned = tiers.length > 0;
-  const fields: FormFields = askedFields(
-    formQ.data?.form?.fields ?? { phone: true, location: true, dogCount: true, message: true },
-    instantStart,
-  );
-  const copy = formQ.data ? formCopy(formQ.data.form, instantStart) : null;
 
   const [form, setForm] = useState({
     postal_code: prefill?.postal_code ?? "",
@@ -161,7 +158,32 @@ export function SignupFlow({
     region: prefill?.region ?? "",
     last_cleaned: "",
     message: "",
+    // The service picked (phase 5). "" until the visitor picks, which reads
+    // as the default (the business's pet-waste service, else the first
+    // listed). Sent only when the business offers more than one.
+    service_id: "",
   });
+
+  // What the business sells (public_services, through the form lookup). A
+  // business that sells one thing, or lists nothing online, gets no picker
+  // and sends no service id anywhere: its form is the form it always was.
+  const services = publicServiceChoices(formQ.data?.services);
+  const pickService = offersAChoice(services);
+  const chosen = chosenPublicService(services, form.service_id);
+  const serviceField = pickService && chosen ? { service_id: chosen.id } : {};
+
+  // The pet-waste questions apply when nothing was picked and for the
+  // pet-waste service; a walk has no yard to ask about.
+  const tiers =
+    instantStart && formQ.data?.firstCleanup?.mode === "by_last_cleaned" && asksAboutTheYard(chosen)
+      ? formQ.data.firstCleanup.tiers
+      : [];
+  const asksLastCleaned = tiers.length > 0;
+  const fields: FormFields = askedFields(
+    formQ.data?.form?.fields ?? { phone: true, location: true, dogCount: true, message: true },
+    instantStart,
+  );
+  const copy = formQ.data ? formCopy(formQ.data.form, instantStart) : null;
 
   // The spam filters' two fields (lib/public-form-guard.ts), sent with both
   // buttons. The honeypot is an input nobody can see or reach, so a person
@@ -187,6 +209,7 @@ export function SignupFlow({
           dog_count: Number(form.dog_count),
           frequency: form.frequency as any,
           last_cleaned: form.last_cleaned,
+          ...serviceField,
         },
       }),
     onError: (e: Error) => toast.error(e.message),
@@ -212,6 +235,8 @@ export function SignupFlow({
           // The answer, as a tier id. The price is not sent: the server asks
           // the database for it and charges that.
           last_cleaned: form.last_cleaned,
+          // The service picked, as an id, for the same reason.
+          ...serviceField,
           name: form.name,
           email: form.email,
           phone: form.phone,
@@ -232,10 +257,13 @@ export function SignupFlow({
   const [sent, setSent] = useState(false);
   const leadMut = useMutation({
     mutationFn: async () => {
+      // The lead form's own body and the spam filters' two fields, plus the
+      // service picked when there was one to pick.
+      const lead = { ...leadBodyFromForm(slug, form), ...guardFields() };
       const res = await fetch("/api/public/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...leadBodyFromForm(slug, form), ...guardFields() }),
+        body: JSON.stringify({ ...lead, ...serviceField }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -308,6 +336,30 @@ export function SignupFlow({
     <div className="rounded-2xl border bg-card p-(--card-pad)">
       <h2 className="text-base font-semibold">1. Your service</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        {pickService && (
+          <div className="min-w-0 space-y-1.5 sm:col-span-3">
+            <Label htmlFor="service">What would you like?</Label>
+            <Select
+              value={chosen?.id ?? ""}
+              onValueChange={(v) => {
+                setFormField({ ...form, service_id: v, last_cleaned: "" });
+                // A price quoted for one service says nothing about another.
+                quoteMut.reset();
+              }}
+            >
+              <SelectTrigger id="service" className="min-w-0 whitespace-normal text-left">
+                <SelectValue placeholder="Pick a service" />
+              </SelectTrigger>
+              <SelectContent>
+                {services.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {publicServiceOptionLabel(s)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {fields.location && (
           <div className="space-y-1.5">
             <Label htmlFor="postal_code">ZIP code</Label>
@@ -567,6 +619,9 @@ export function SignupFlow({
           <div className="text-xs uppercase tracking-wide text-muted-foreground">
             {quote.zone_name}
           </div>
+          {pickService && chosen && (
+            <div className="min-w-0 break-words text-sm font-medium">{chosen.name}</div>
+          )}
           {(firstCleanupCents == null || firstCleanupCents > 0) && (
             <div className="flex items-baseline justify-between gap-3">
               <div className="min-w-0 text-sm">

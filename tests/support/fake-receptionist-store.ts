@@ -8,8 +8,13 @@
  *   requestOneOff   portal_request_one_off: token -> active client, the
  *                   client's own live property, tomorrow..+30 on the org's
  *                   calendar, a work day, no blackout, idempotent per
- *                   property and day, and "already_scheduled"
- *   bookOneOff      bookOneOffVisit: a scheduled visit at the given price
+ *                   property, day and service, "already_scheduled" per
+ *                   service, and "service_not_offered" for a service that
+ *                   is not this org's or is retired (pet waste folds to
+ *                   none, as the SQL does)
+ *   bookOneOff      bookOneOffVisit: a scheduled visit at the given price,
+ *                   or at the service's price for the property's pets
+ *                   (servicePriceCents) when asked to price "service"
  *
  * Every await takes a tick, so two calls awaited together interleave the
  * way two webhook requests do. Nothing here sends anything anywhere.
@@ -22,9 +27,11 @@ import type {
   OrgFacts,
   PropertyFacts,
   ReceptionistStore,
+  ServiceFacts,
 } from "../../src/lib/receptionist-booking.types";
 import { bookableDays } from "../../src/lib/one-off-booking";
 import { orgToday } from "../../src/lib/org-day";
+import { isZonePriced, servicePriceCents } from "../../src/lib/services";
 import type { ZoneMatchFields } from "../../src/lib/zone-match";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -38,6 +45,7 @@ export type FakeVisit = {
   status: string;
   priceCents: number | null;
   bookedVia: string | null;
+  serviceId?: string | null;
 };
 
 export class FakeReceptionistDb {
@@ -46,6 +54,10 @@ export class FakeReceptionistDb {
   blackoutRows: { orgId: string; day: string }[] = [];
   clients: (ClientFacts & { primary_phone: string })[] = [];
   props: (PropertyFacts & { organization_id: string })[] = [];
+  /** The catalog, per org. */
+  serviceRows: (ServiceFacts & { organization_id: string })[] = [];
+  /** Active dogs at a property, as bookOneOffVisit counts them. Unset: one. */
+  petsAt = new Map<string, number>();
   zoneRows: { orgId: string; zone: ZoneMatchFields }[] = [];
   visits: FakeVisit[] = [];
   staff: {
@@ -67,6 +79,7 @@ export class FakeReceptionistDb {
     status: string;
     requestedVia: string | null;
     bookedVisitId: string | null;
+    serviceId: string | null;
   }[] = [];
   leads: {
     id: string;
@@ -75,6 +88,7 @@ export class FakeReceptionistDb {
     phone: string;
     note: string;
     source: string;
+    serviceId: string | null;
   }[] = [];
   activity: { orgId: string; clientId: string | null; kind: string; summary: string }[] = [];
   notices: { orgId: string; title: string; body: string; eventKey: string }[] = [];
@@ -117,6 +131,12 @@ export class FakeReceptionistDb {
         return db.props
           .filter((p) => p.organization_id === orgId && p.client_id === clientId)
           .map(({ organization_id: _o, ...p }) => p);
+      },
+      async services(orgId) {
+        await tick();
+        return db.serviceRows
+          .filter((s) => s.organization_id === orgId)
+          .map(({ organization_id: _o, ...s }) => s);
       },
       async zones(orgId) {
         await tick();
@@ -216,6 +236,16 @@ export class FakeReceptionistDb {
             p.organization_id === client.organization_id,
         );
         if (!prop) throw new Error("property_not_found");
+        // The service asked for: this org's and active, or refused; pet
+        // waste is the extra cleanup, recorded as none (20261011100200).
+        let serviceId: string | null = null;
+        if (a.serviceId) {
+          const svc = db.serviceRows.find(
+            (s) => s.id === a.serviceId && s.organization_id === client.organization_id && s.active,
+          );
+          if (!svc) throw new Error("service_not_offered");
+          serviceId = isZonePriced(svc) ? null : svc.id;
+        }
         const org = db.orgs.get(client.organization_id)!;
         const today = orgToday(org.timezone ?? "America/Chicago", db.now);
         if (a.day < today) throw new Error("date_in_past");
@@ -227,14 +257,21 @@ export class FakeReceptionistDb {
         );
         if (!allowed.includes(a.day)) throw new Error("not_a_working_day");
         const asked = db.tickets.find(
-          (t) => t.clientId === client.id && t.propertyId === prop.id && t.day === a.day,
+          (t) =>
+            t.clientId === client.id &&
+            t.propertyId === prop.id &&
+            t.day === a.day &&
+            (t.serviceId ?? null) === serviceId,
         );
         if (asked) return { ticketId: asked.id, created: false };
+        // A visit OF THIS SERVICE that day (a visit with no service is the
+        // org's default, the extra cleanup).
         if (
           db.visits.some(
             (v) =>
               v.propertyId === prop.id &&
               v.day === a.day &&
+              (v.serviceId ?? null) === serviceId &&
               !["skipped", "canceled"].includes(v.status),
           )
         )
@@ -249,6 +286,7 @@ export class FakeReceptionistDb {
           status: "received",
           requestedVia: null,
           bookedVisitId: null,
+          serviceId,
         });
         return { ticketId: id, created: true };
       },
@@ -262,6 +300,21 @@ export class FakeReceptionistDb {
         const client = db.clients.find((c) => c.id === a.clientId);
         if (!client || client.organization_id !== a.orgId)
           throw new Error("That client is not in your organization");
+        // bookOneOffVisit's pricing, restated: "service" prices the named
+        // service for the property's active dogs through the one rule, and
+        // refuses a service that is not this org's, retired, or unpriced.
+        let priceCents: number;
+        if (a.priceCents === "service") {
+          if (!a.serviceId) throw new Error("A service is needed to price this visit");
+          const svc = db.serviceRows.find((s) => s.id === a.serviceId);
+          if (!svc || svc.organization_id !== a.orgId || !svc.active)
+            throw new Error("That service is not offered");
+          const cents = servicePriceCents(svc, { pets: db.petsAt.get(a.propertyId) ?? 1 });
+          if (cents == null) throw new Error("That service has no price yet");
+          priceCents = cents;
+        } else {
+          priceCents = a.priceCents;
+        }
         const id = db.id("visit");
         db.visits.push({
           id,
@@ -270,8 +323,9 @@ export class FakeReceptionistDb {
           propertyId: a.propertyId,
           day: a.day,
           status: "scheduled",
-          priceCents: a.priceCents,
+          priceCents,
           bookedVia: "ai_receptionist",
+          serviceId: a.serviceId ?? null,
         });
         db.activity.push({
           orgId: a.orgId,
@@ -299,6 +353,7 @@ export class FakeReceptionistDb {
           phone: a.fromNumber,
           note: a.note,
           source: "sms_receptionist",
+          serviceId: a.serviceId ?? null,
         });
         return id;
       },
@@ -383,6 +438,36 @@ export function twoBusinesses() {
   db.props.push(
     prop("prop-a", "org-a", "client-a", "1 Ada St", "60601"),
     prop("prop-b", "org-b", "client-b", "2 Bea St", "60602"),
+  );
+  // What each sells. A scoops and walks (and lists a drop-in it has not
+  // priced, and a walk it retired); B scoops only, as every business did
+  // before the catalog.
+  const svc = (
+    id: string,
+    org: string,
+    name: string,
+    line: ServiceFacts["service_line"],
+    base: number | null,
+    extra = 0,
+    minutes: number | null = 30,
+    active = true,
+  ): ServiceFacts & { organization_id: string } => ({
+    id,
+    organization_id: org,
+    name,
+    service_line: line,
+    active,
+    price_unit: "visit",
+    base_price_cents: base,
+    extra_pet_cents: extra,
+    default_duration_min: minutes,
+  });
+  db.serviceRows.push(
+    svc("pw-a", "org-a", "Pet waste removal", "pet_waste", null, 0, null),
+    svc("walk-a", "org-a", "30-minute walk", "dog_walking", 2500, 500),
+    svc("dropin-a", "org-a", "Drop-in", "pet_sitting", null, 0, 20),
+    svc("old-walk-a", "org-a", "Old walk", "dog_walking", 2000, 0, 30, false),
+    svc("pw-b", "org-b", "Pet waste removal", "pet_waste", null, 0, null),
   );
   return {
     db,

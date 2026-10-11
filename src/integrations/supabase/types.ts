@@ -2763,6 +2763,7 @@ export type Database = {
           name: string
           organization_id: string | null
           phone: string | null
+          service_id: string | null
           source: string
           status: string
           updated_at: string
@@ -2782,6 +2783,7 @@ export type Database = {
           name: string
           organization_id?: string | null
           phone?: string | null
+          service_id?: string | null
           source?: string
           status?: string
           updated_at?: string
@@ -2801,6 +2803,7 @@ export type Database = {
           name?: string
           organization_id?: string | null
           phone?: string | null
+          service_id?: string | null
           source?: string
           status?: string
           updated_at?: string
@@ -2818,6 +2821,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
             referencedColumns: ["id"]
           },
         ]
@@ -5509,6 +5519,7 @@ export type Database = {
           refunded_amount_cents: number | null
           refunded_at: string | null
           region: string | null
+          service_id: string | null
           status: string
           street: string
           stripe_checkout_session_id: string | null
@@ -5539,6 +5550,7 @@ export type Database = {
           refunded_amount_cents?: number | null
           refunded_at?: string | null
           region?: string | null
+          service_id?: string | null
           status?: string
           street: string
           stripe_checkout_session_id?: string | null
@@ -5569,6 +5581,7 @@ export type Database = {
           refunded_amount_cents?: number | null
           refunded_at?: string | null
           region?: string | null
+          service_id?: string | null
           status?: string
           street?: string
           stripe_checkout_session_id?: string | null
@@ -5597,6 +5610,13 @@ export type Database = {
             columns: ["provisioned_client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signup_requests_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
             referencedColumns: ["id"]
           },
           {
@@ -7892,6 +7912,18 @@ export type Database = {
         Returns: {
           id: string
           name: string
+        }[]
+      }
+      public_services: {
+        Args: { _slug: string }
+        Returns: {
+          base_price_cents: number | null
+          default_duration_min: number | null
+          extra_pet_cents: number
+          id: string
+          name: string
+          price_unit: string
+          service_line: string
         }[]
       }
       public_quote: {

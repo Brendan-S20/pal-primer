@@ -122,6 +122,10 @@ async function provisionSignup(
       billing_cadence: "prepaid",
       dog_count: sr.dog_count,
       zone_id: sr.zone_id,
+      // The service signed up for (phase 5), when the visitor picked one.
+      // Absent, the row is the insert it always was and tg_subscriptions_service
+      // gives the plan the business's default (its pet-waste service).
+      ...(sr.service_id ? { service_id: sr.service_id as string } : {}),
       status: "active",
       started_on: new Date().toISOString().slice(0, 10),
     });

@@ -19,6 +19,16 @@
 //                the owner turned "Book requests automatically" on and set a
 //                price -- otherwise it waits in Concerns, and the client is
 //                told the office will confirm.
+//   which service  the business's own list (list_services, phase 5), by id.
+//                With none named, or the pet-waste service, it is the extra
+//                cleanup at organizations.one_off_price_cents, exactly as
+//                before the catalog. Any other service is validated against
+//                the business (resolveService), recorded on the request
+//                (portal_request_one_off's _service_id), and booked at the
+//                service's price worked out by bookOneOffVisit for the
+//                property's pets -- the same call the portal makes. Neither
+//                tool here returns a price for it; get_pricing_quote does,
+//                through public_quote with the same id.
 //
 // What it will not do:
 //   * book a day get_open_slots did not offer to this phone, for this
@@ -36,6 +46,9 @@
 import { bookableDays, ONE_OFF_MAX_DAYS_AHEAD } from "@/lib/one-off-booking";
 import { addDaysToDay } from "@/lib/reclean";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { oneOffRequestWord } from "@/lib/one-off-booking";
+import { isZonePriced } from "@/lib/services";
+import { servicePickerOptions } from "@/lib/visit-service";
 import { matchZone, type ZoneMatchFields } from "@/lib/zone-match";
 
 import {
@@ -49,6 +62,7 @@ import {
   type OrgFacts,
   type PropertyFacts,
   type ReceptionistStore,
+  type ServiceFacts,
 } from "@/lib/receptionist-booking.types";
 
 export * from "@/lib/receptionist-booking.types";
@@ -106,9 +120,36 @@ export function quotedAmounts(v: unknown, out: number[] = []): number[] {
   return out;
 }
 
-/** Booked straight in only on the portal's own switch, which needs a price. */
-export function booksStraightIn(org: OrgFacts): boolean {
-  return !!org.portal_auto_accept_bookings && org.one_off_price_cents != null;
+/** Booked straight in only on the portal's own switch, which needs a price:
+ *  the org's one-off price for the extra cleanup (no service named, or the
+ *  pet-waste one), the service's own base price for anything else. */
+export function booksStraightIn(org: OrgFacts, service: ServiceFacts | null = null): boolean {
+  if (!org.portal_auto_accept_bookings) return false;
+  if (service && !isZonePriced(service)) return service.base_price_cents != null;
+  return org.one_off_price_cents != null;
+}
+
+/** The extra cleanup when nothing was named or the pet-waste service was;
+ *  the service itself otherwise. What the request, the visit and the office
+ *  are told about. */
+function askedFor(service: ServiceFacts | null): ServiceFacts | null {
+  return service && !isZonePriced(service) ? service : null;
+}
+
+type Resolved = { ok: true; service: ServiceFacts | null } | { ok: false };
+
+/** The service a tool was handed: none (the extra cleanup, as always), or one
+ *  of THIS business's active services. Another business's id, a retired one
+ *  and a made-up one are all the same refusal. */
+async function resolveService(
+  store: ReceptionistStore,
+  orgId: string,
+  serviceId: string | undefined,
+): Promise<Resolved> {
+  if (!serviceId) return { ok: true, service: null };
+  const hit = (await store.services(orgId)).find((s) => s.id === serviceId);
+  if (!hit || !hit.active) return { ok: false };
+  return { ok: true, service: hit };
 }
 
 function inServiceArea(zones: ZoneMatchFields[], p: PropertyFacts): boolean {
@@ -160,6 +201,33 @@ export async function identify(store: ReceptionistStore, c: Caller): Promise<Who
 
 const handoff = (reason: string) => ({ available: false as const, handoff: true, reason });
 
+// ── what the business sells ─────────────────────────────────────────────────
+
+/** The list_services tool: this business's active services, by id and name,
+ *  in the order its own Services page lists them. Only the ones that can be
+ *  asked for: the pet-waste service (the extra cleanup) and any service with
+ *  a price. NO PRICE on any of them; get_pricing_quote is the only place a
+ *  price comes from, and it takes the id this hands back. */
+export async function listServices(store: ReceptionistStore, c: Caller) {
+  const org = await store.org(c.orgId);
+  if (!org) return handoff("business_not_found");
+  // servicePickerOptions: the active ones, by line (pet waste first) and name,
+  // as the plan form and the portal list them.
+  const rows = servicePickerOptions(await store.services(c.orgId)).filter(
+    (s) => isZonePriced(s) || s.base_price_cents != null,
+  );
+  return {
+    services: rows.map((s) => ({
+      service_id: s.id,
+      name: s.name,
+      kind: s.service_line,
+      usual_minutes: s.default_duration_min,
+    })),
+    // What a caller who names nothing gets: the pet-waste extra cleanup.
+    default_is_extra_cleanup: rows.some((s) => isZonePriced(s)),
+  };
+}
+
 // ── which days are open ─────────────────────────────────────────────────────
 
 type OpenDays = { days: string[]; window: ArrivalWindow | null };
@@ -194,11 +262,20 @@ async function openDays(
   return { days, window };
 }
 
-export type SlotsArgs = { days?: number; address?: string; postal_code?: string; now?: Date };
+export type SlotsArgs = {
+  days?: number;
+  address?: string;
+  postal_code?: string;
+  /** The service asked about (list_services). Absent: the extra cleanup. */
+  service_id?: string;
+  now?: Date;
+};
 
 export async function getOpenSlots(store: ReceptionistStore, c: Caller, a: SlotsArgs) {
   const org = await store.org(c.orgId);
   if (!org) return handoff("business_not_found");
+  const resolved = await resolveService(store, c.orgId, a.service_id);
+  if (!resolved.ok) return { available: false as const, reason: "service_not_offered" };
   const now = a.now ?? new Date();
   const today = orgToday(org.timezone || DEFAULT_ORG_TIMEZONE, now);
   const horizon = Math.max(
@@ -266,7 +343,7 @@ export async function getOpenSlots(store: ReceptionistStore, c: Caller, a: Slots
     // What book_visit will do with one of these. The model says this, not
     // "booked", until book_visit says booked.
     on_booking:
-      who.kind === "client" && booksStraightIn(org)
+      who.kind === "client" && booksStraightIn(org, resolved.service)
         ? ("books_into_calendar" as const)
         : ("office_confirms" as const),
   };
@@ -280,6 +357,8 @@ export type BookArgs = {
   postal_code?: string;
   name?: string;
   note?: string;
+  /** The service to book (list_services). Absent: the extra cleanup. */
+  service_id?: string;
   now?: Date;
 };
 
@@ -292,6 +371,7 @@ const ONE_OFF_REFUSALS = [
   "blackout_day",
   "already_scheduled",
   "property_not_found",
+  "service_not_offered",
   "invalid_token",
 ];
 
@@ -311,6 +391,11 @@ export async function bookVisit(store: ReceptionistStore, c: Caller, a: BookArgs
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.date)) return refused("date_not_understood");
   const org = await store.org(c.orgId);
   if (!org) return refused("business_not_found");
+  const resolved = await resolveService(store, c.orgId, a.service_id);
+  if (!resolved.ok) return refused("service_not_offered");
+  // The service the request and the visit carry: null is the extra cleanup.
+  const service = askedFor(resolved.service);
+  const word = oneOffRequestWord(service);
   const now = a.now ?? new Date();
   const key = conversationKey(c.fromNumber);
   const who = await identify(store, c);
@@ -352,9 +437,10 @@ export async function bookVisit(store: ReceptionistStore, c: Caller, a: BookArgs
         orgId: c.orgId,
         fromNumber: c.fromNumber,
         name: (a.name ?? "").trim().slice(0, 120) || `Text from ${c.fromNumber}`,
-        note: `Asked by text for a first visit on ${dayLabel(offer.day)} (ZIP ${offer.postal_code ?? "?"}). Not booked: the office confirms.${
+        note: `Asked by text for a first visit${service ? ` (${service.name})` : ""} on ${dayLabel(offer.day)} (ZIP ${offer.postal_code ?? "?"}). Not booked: the office confirms.${
           a.note ? ` ${a.note.slice(0, 300)}` : ""
         }`,
+        serviceId: service?.id ?? null,
       });
     }
     await store.settleOffer(c.orgId, offer.id, { outcome: leadId ? "lead" : "handed_off", leadId });
@@ -398,6 +484,9 @@ export async function bookVisit(store: ReceptionistStore, c: Caller, a: BookArgs
       propertyId: property.id,
       day: offer.day,
       message: `Asked by text (AI receptionist)${a.note ? `: ${a.note.slice(0, 300)}` : ""}`,
+      // Only when a service other than the extra cleanup was named, so the
+      // call for the extra cleanup is the four-argument call it always was.
+      ...(service ? { serviceId: service.id } : {}),
     });
   } catch (e) {
     await store.releaseOffer(c.orgId, offer.id);
@@ -418,15 +507,20 @@ export async function bookVisit(store: ReceptionistStore, c: Caller, a: BookArgs
   await store.markRequestedByText(c.orgId, ticket.ticketId);
 
   let visitId: string | null = null;
-  if (booksStraightIn(org)) {
+  if (booksStraightIn(org, service)) {
     try {
       const booked = await store.bookOneOff({
         orgId: c.orgId,
         clientId: who.client.id,
         propertyId: property.id,
         day: offer.day,
-        priceCents: Number(org.one_off_price_cents),
-        note: "Extra cleanup the client asked for by text (AI receptionist)",
+        // The extra cleanup at the owner's one-off price, as always; any
+        // other service at ITS price, worked out by bookOneOffVisit for the
+        // property's pets through the one rule (never a number from here).
+        ...(service
+          ? { priceCents: "service" as const, serviceId: service.id }
+          : { priceCents: Number(org.one_off_price_cents) }),
+        note: `${word} the client asked for by text (AI receptionist)`,
         window: open.window,
       });
       await store.linkTicketToVisit(c.orgId, ticket.ticketId, booked.visitId, booked.scheduledOn);
@@ -446,13 +540,13 @@ export async function bookVisit(store: ReceptionistStore, c: Caller, a: BookArgs
       clientId: who.client.id,
       propertyId: property.id,
       kind: "receptionist.visit_requested",
-      summary: `Asked by text for an extra cleanup on ${label}; waiting for the office`,
+      summary: `Asked by text for ${service ? `a ${service.name}` : "an extra cleanup"} on ${label}; waiting for the office`,
     });
   }
   await store.notifyOffice({
     orgId: c.orgId,
     title: `${visitId ? "Booked by text" : "Asked by text"}: ${who.client.display_name ?? "a client"}`,
-    body: `Extra cleanup ${visitId ? "booked" : "requested"} for ${label} by the AI receptionist.`,
+    body: `${word} ${visitId ? "booked" : "requested"} for ${label} by the AI receptionist.`,
     link: "/concerns",
     eventKey: `receptionist-offer:${offer.id}`,
   });

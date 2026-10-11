@@ -9,7 +9,9 @@
  *  parameter is the second lock.) */
 export type PricedSignupQuote = {
   initial_cleanup_cents: number | null;
-  recurring_price_cents: number;
+  /** NULL for a service the owner has not priced yet (phase 5): "we cannot
+   *  price this", which nothing may charge. Never NULL for pet waste. */
+  recurring_price_cents: number | null;
   first_cleanup_mode?: string | null;
   first_cleanup_label?: string | null;
 };
@@ -27,7 +29,14 @@ export type SignupCharge = {
 export const NEEDS_LAST_CLEANED =
   "Tell us when your yard was last cleaned so we can price the first cleanup.";
 
+/** Thrown when the chosen service has no online price (the owner unpriced it
+ *  between the page loading and the button). public_quote says so with NULL
+ *  prices; a pet-waste quote never does, so this never fires for one. */
+export const SERVICE_NOT_PRICED =
+  "That service doesn't have an online price yet. Pick another, or ask us for a quote.";
+
 export function signupChargeFromQuote(q: PricedSignupQuote): SignupCharge {
+  if (q.recurring_price_cents == null) throw new Error(SERVICE_NOT_PRICED);
   if (q.initial_cleanup_cents == null) throw new Error(NEEDS_LAST_CLEANED);
   const firstCleanupCents = Math.max(0, Math.round(q.initial_cleanup_cents));
   const recurringCents = Math.max(0, Math.round(q.recurring_price_cents));

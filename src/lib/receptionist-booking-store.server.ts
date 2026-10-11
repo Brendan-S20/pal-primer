@@ -9,6 +9,8 @@
 //   daysWithATech           routable_staff, the planner's eligibility rule
 //   arrivalWindow           the service's window, else the property's legacy
 //                           pair (the rule in 20261002090000 and the screens)
+//   services                the business's catalog, as portalOneOffBookingOptions
+//                           reads it (every row of this org; the rules filter)
 //   requestOneOff           portal_request_one_off itself
 //   bookOneOff              bookOneOffVisit, as the portal's auto-accept
 //   notifyOffice            notifyRoles, the one door notifications leave by
@@ -72,6 +74,17 @@ export function supabaseReceptionistStore(
         .eq("organization_id", orgId)
         .eq("client_id", clientId)
         .is("archived_at", null)
+        .order("created_at");
+      return data ?? [];
+    },
+
+    async services(orgId) {
+      const { data } = await supabaseAdmin
+        .from("services")
+        .select(
+          "id, name, service_line, active, price_unit, base_price_cents, extra_pet_cents, default_duration_min",
+        )
+        .eq("organization_id", orgId)
         .order("created_at");
       return data ?? [];
     },
@@ -212,6 +225,8 @@ export function supabaseReceptionistStore(
         _property_id: a.propertyId,
         _on: a.day,
         _message: a.message,
+        // The service asked for (20261011100200), only when one was named.
+        ...(a.serviceId ? { _service_id: a.serviceId } : {}),
       });
       if (error) throw new Error(error.message);
       const row = ((data ?? []) as Array<{ ticket_id: string; created: boolean }>)[0];
@@ -236,6 +251,7 @@ export function supabaseReceptionistStore(
         propertyId: a.propertyId,
         scheduledOn: a.day,
         priceCents: a.priceCents,
+        serviceId: a.serviceId ?? null,
         note: a.note,
         asService: true,
         actorLabel: RECEPTIONIST_ACTOR,

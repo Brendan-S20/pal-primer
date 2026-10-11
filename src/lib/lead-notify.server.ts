@@ -49,10 +49,14 @@ export type NewLead = {
   location?: string | null;
   dogCount?: number | null;
   frequency?: string | null;
+  /** The service they asked about, when the business offers more than one
+   *  (phase 5). The business's own name for it, as it reads on its page. */
+  serviceName?: string | null;
 };
 
 /** What the bell and the lock screen say. A stranger's name and how they
- *  came in; the address and the yard after it, as much as they gave. */
+ *  came in; the address, the yard and the service after it, as much as they
+ *  gave. */
 export function leadNotice(lead: Omit<NewLead, "orgId" | "leadId">): { title: string; body: string } {
   const name = lead.name.trim().slice(0, 80) || "Someone";
   const how =
@@ -69,6 +73,8 @@ export function leadNotice(lead: Omit<NewLead, "orgId" | "leadId">): { title: st
   }
   const freq = (lead.frequency ?? "").trim();
   if (freq) parts.push(frequencyLabel(freq));
+  const service = (lead.serviceName ?? "").trim();
+  if (service) parts.push(service.slice(0, 80));
   return { title: `New lead: ${name}`, body: parts.join(" · ") };
 }
 

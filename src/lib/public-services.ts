@@ -1,0 +1,111 @@
+/** What a stranger may pick from: the business's services as public_services
+ *  (migration 20261011150000) hands them to the public signup and quote form.
+ *
+ *  Pure, so the form, the server functions and the tests read one copy of:
+ *
+ *    which rows count                 publicServiceChoices
+ *    whether there is anything to pick  offersAChoice
+ *    what the picker starts on        defaultPublicServiceId
+ *    whether the yard questions apply   asksAboutTheYard
+ *    how an option reads              publicServiceOptionLabel
+ *
+ *  The rule the whole file exists for: a business that sells ONE thing sees
+ *  the form it has always seen. No picker, no service id in any request, no
+ *  service id on its lead or its signup. A pet-waste-only business is the
+ *  common case today, and its signup must stay byte-for-byte what it was
+ *  (tests/a-stranger-can-see-what-is-for-sale.test.ts holds it there).
+ */
+
+import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
+import { SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
+
+/** One row of public_services: what public_quote needs back, and what a
+ *  visitor needs to choose. No organization column. */
+export type PublicService = {
+  id: string;
+  name: string;
+  service_line: ServiceLine;
+  price_unit: PriceUnit;
+  base_price_cents: number | null;
+  extra_pet_cents: number;
+  default_duration_min: number | null;
+};
+
+function isServiceLine(v: unknown): v is ServiceLine {
+  return typeof v === "string" && (SERVICE_LINES as readonly string[]).includes(v);
+}
+
+/**
+ * The rows the RPC returned, typed and in its order (by line, pet waste
+ * first, then by name). Anything that is not a row of the right shape is
+ * dropped rather than guessed at: a malformed row would otherwise become a
+ * picker option whose id public_quote refuses.
+ */
+export function publicServiceChoices(raw: unknown): PublicService[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicService[] = [];
+  const seen = new Set<string>();
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o.id !== "string" || typeof o.name !== "string") continue;
+    if (!isServiceLine(o.service_line) || !isPriceUnit(o.price_unit)) continue;
+    if (seen.has(o.id)) continue;
+    seen.add(o.id);
+    out.push({
+      id: o.id,
+      name: o.name,
+      service_line: o.service_line,
+      price_unit: o.price_unit,
+      base_price_cents: typeof o.base_price_cents === "number" ? o.base_price_cents : null,
+      extra_pet_cents: typeof o.extra_pet_cents === "number" ? o.extra_pet_cents : 0,
+      default_duration_min:
+        typeof o.default_duration_min === "number" ? o.default_duration_min : null,
+    });
+  }
+  return out;
+}
+
+/** True when there is a choice to make. One service, or none listed, is the
+ *  form as it always was. */
+export function offersAChoice(services: readonly PublicService[]): boolean {
+  return services.length > 1;
+}
+
+/** What the picker starts on when there is a choice: the business's pet-waste
+ *  service when it sells one (the thing every business sold until the
+ *  catalog), else the first service listed. Null when there is no choice,
+ *  so nothing is sent. */
+export function defaultPublicServiceId(services: readonly PublicService[]): string | null {
+  if (!offersAChoice(services)) return null;
+  return services.find((s) => isZonePriced(s))?.id ?? services[0]?.id ?? null;
+}
+
+/** The service a visitor has chosen, or null when there is nothing to
+ *  choose: `pickedId` first, the default when it names nothing listed. */
+export function chosenPublicService(
+  services: readonly PublicService[],
+  pickedId: string | null | undefined,
+): PublicService | null {
+  if (!offersAChoice(services)) return null;
+  return (
+    services.find((s) => s.id === pickedId) ??
+    services.find((s) => s.id === defaultPublicServiceId(services)) ??
+    null
+  );
+}
+
+/** Whether the pet-waste questions ("when was your yard last cleaned?", the
+ *  first cleanup line) apply. They do with no choice made (the form as it
+ *  was) and for the pet-waste service; a walk has no yard to ask about. */
+export function asksAboutTheYard(chosen: PublicService | null): boolean {
+  return chosen === null || isZonePriced(chosen);
+}
+
+/** How an option reads in the picker: the business's own name, and how long
+ *  it usually takes when the service says. Never a price: the price is the
+ *  quote's to say, for this ZIP and these pets. */
+export function publicServiceOptionLabel(s: PublicService): string {
+  const duration = serviceDurationLabel(s.default_duration_min);
+  return duration && !isZonePriced(s) ? `${s.name} (${duration})` : s.name;
+}

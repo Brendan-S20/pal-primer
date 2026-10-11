@@ -275,6 +275,9 @@ function LeadsPage() {
                         · {l.dog_count} dog{l.dog_count === 1 ? "" : "s"}
                       </>
                     ) : null}
+                    {/* What they asked for, when the business sells more than
+                        one thing and the form let them pick (phase 5). */}
+                    {(l as any).service?.name ? <> · {(l as any).service.name}</> : null}
                   </div>
                   {l.message ? (
                     <p className="mt-2 max-w-2xl whitespace-pre-wrap break-words text-sm">

@@ -73,13 +73,15 @@ const codeOnly = (sql: string) =>
 
 // ── the intended anonymous surface, with a caller for each ────────────────
 //
-// Six entries. A seventh must be added here, with a reason, before it can pass.
+// Seven entries. An eighth must be added here, with a reason, before it can pass.
 const ALLOWED_FOR_ANON: Record<string, string> = {
   public_get_org_by_slug:
     "signup.functions.ts resolves a tenant from a public slug before any account exists",
   public_get_org_for_lead_form:
     "api/public/leads.ts serves a lead form embedded on a tenant's own website",
   public_quote: "signup.$slug.tsx prices a visit for a visitor who has not signed up yet",
+  public_services:
+    "signup.functions.ts (getPublicSignupForm) lists what a business sells so the same visitor can pick what to be quoted for; same gate and slug resolution as public_quote, no organization column",
   org_accepts_public_leads:
     "the anon INSERT policy on `leads` calls it, so the querying role needs EXECUTE",
   roadmap_vote_counts: "the marketing roadmap reads counts from the browser",
@@ -94,7 +96,7 @@ const isSweep = (sql: string) =>
   /FROM\s+pg_proc/i.test(sql) && /REVOKE\s+ALL\s+ON\s+FUNCTION\s+%s\s+FROM\s+PUBLIC/i.test(sql);
 
 describe("the anonymous surface is a list, not an accident", () => {
-  it("is exactly the six functions that have a caller, and no others", () => {
+  it("is exactly the seven functions that have a caller, and no others", () => {
     const files = migrations();
     const lastSweep = files.map((f) => isSweep(f.sql)).lastIndexOf(true);
     expect(
