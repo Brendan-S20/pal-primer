@@ -183,3 +183,15 @@ describe("messaging consent cannot be a condition of service", () => {
     expect(legalSms).not.toMatch(/never need to receive a text/i);
   });
 });
+
+// #396: Twilio's toll-free review wants the Privacy Policy and Terms linked on
+// the same screen as the opt-in box, not only in the footer.
+describe("the opt-in screen links the policies next to the box", () => {
+  it("links Privacy, Terms and the SMS policy right after the consent label", () => {
+    const after = getStarted.slice(getStarted.indexOf("<span>{SMS_CONSENT_TEXT}</span>"));
+    const block = after.slice(0, after.indexOf("{error &&"));
+    expect(block).toMatch(/href="\/legal\/privacy"/);
+    expect(block).toMatch(/href="\/legal\/terms"/);
+    expect(block).toMatch(/href="\/legal\/sms"/);
+  });
+});

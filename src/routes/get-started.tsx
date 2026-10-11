@@ -406,6 +406,25 @@ function GetStartedPage() {
                 />
                 <span>{SMS_CONSENT_TEXT}</span>
               </label>
+              {/* Twilio's toll-free review asks for the Privacy Policy and Terms
+                  on the same screen as the opt-in, not only in the footer
+                  (#396). A new tab, so following one does not throw away the
+                  form the person has half filled in. */}
+              <p className="text-xs text-muted-foreground">
+                See our{" "}
+                <a href="/legal/privacy" target="_blank" rel="noopener" className="underline">
+                  Privacy Policy
+                </a>
+                ,{" "}
+                <a href="/legal/terms" target="_blank" rel="noopener" className="underline">
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a href="/legal/sms" target="_blank" rel="noopener" className="underline">
+                  SMS Consent &amp; Messaging Policy
+                </a>
+                .
+              </p>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>
