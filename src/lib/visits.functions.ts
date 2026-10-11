@@ -170,6 +170,8 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
         /** The day the visit should happen. */
         scheduledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         priceCents: z.number().int().min(0).max(10_000_00),
+        /** The service booked (phase 5); omitted is the business's default. */
+        serviceId: z.string().uuid().optional(),
         /** Optional: put it straight on a tech's route. */
         staffId: z.string().uuid().nullable().optional(),
         /** Why it was booked. Shows on the client's activity timeline. */

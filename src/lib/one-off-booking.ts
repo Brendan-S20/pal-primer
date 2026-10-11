@@ -15,6 +15,8 @@
 // be offered the day after.
 
 import { addDaysToDay } from "@/lib/reclean";
+import { isZonePriced, servicePriceCents, type Service } from "@/lib/services";
+import { servicePickerOptions } from "@/lib/visit-service";
 
 export const ONE_OFF_MAX_DAYS_AHEAD = 30;
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -55,16 +57,92 @@ export function oneOffRefusalMessage(raw: string): string {
   if (/already_scheduled/.test(raw))
     return "You already have a visit that day, so there's nothing extra to book.";
   if (/property_not_found/.test(raw)) return "We couldn't find that address on your account.";
+  if (/service_not_offered/.test(raw)) return "That service isn't offered right now. Please pick another.";
   if (/invalid_token/.test(raw)) return "This portal link is no longer valid.";
   return raw;
 }
 
+/** One thing a customer can ask for from the portal (phase 5). */
+export type OneOffServiceOption = {
+  id: string;
+  name: string;
+  /** What one visit costs for one pet, or null when the business has not set
+   *  a price (the request then waits for the office, as it always has). */
+  priceCents: number | null;
+  /** Per pet beyond the first, so the card can say "+ $5 per extra pet". */
+  perExtraPetCents: number;
+  /** True for the business's pet-waste service: the extra cleanup, at the
+   *  one-off price, booked exactly as before the catalog. */
+  petWaste: boolean;
+};
+
+/**
+ * The services the portal offers to book, from the business's ACTIVE ones,
+ * in the plan picker's order (pet waste first, then by line and name).
+ *
+ *   pet waste    the extra cleanup, at organizations.one_off_price_cents --
+ *                the one thing the portal has always offered, priced as it
+ *                always was (zone pricing has no per-visit answer for a
+ *                one-off, which is why that setting exists).
+ *   anything else   its own price for one pet, through the one rule
+ *                   (servicePriceCents). A service with no price yet is not
+ *                   offered: the owner has not said what it costs, and a
+ *                   request with no price could only wait.
+ *
+ * Deactivated services are never offered.
+ */
+export function oneOffServiceOptions(
+  services: readonly Pick<
+    Service,
+    | "id"
+    | "name"
+    | "service_line"
+    | "active"
+    | "price_unit"
+    | "base_price_cents"
+    | "extra_pet_cents"
+    | "default_duration_min"
+  >[],
+  oneOffPriceCents: number | null,
+): OneOffServiceOption[] {
+  const out: OneOffServiceOption[] = [];
+  for (const s of servicePickerOptions(services)) {
+    if (!s.active) continue;
+    if (isZonePriced(s)) {
+      out.push({ id: s.id, name: s.name, priceCents: oneOffPriceCents, perExtraPetCents: 0, petWaste: true });
+      continue;
+    }
+    const cents = servicePriceCents(s, { pets: 1 });
+    if (cents == null) continue;
+    out.push({
+      id: s.id,
+      name: s.name,
+      priceCents: cents,
+      perExtraPetCents: s.extra_pet_cents,
+      petWaste: false,
+    });
+  }
+  return out;
+}
+
 /** The note on the client's activity timeline, so the office can see why a
- *  one-off exists. */
-export function oneOffVisitNote(dayLabel: string, auto: boolean): string {
+ *  one-off exists. Names the service when the client asked for one that is
+ *  not the business's pet-waste service. */
+export function oneOffVisitNote(dayLabel: string, auto: boolean, serviceName?: string | null): string {
+  const what = serviceName ? `${serviceName} the client asked for` : "Extra visit the client asked for";
   return auto
-    ? "Extra visit the client asked for from the portal (booked automatically)"
-    : `Extra visit the client asked for from the portal${dayLabel ? ` for ${dayLabel}` : ""}`;
+    ? `${what} from the portal (booked automatically)`
+    : `${what} from the portal${dayLabel ? ` for ${dayLabel}` : ""}`;
+}
+
+/** "Extra cleanup" for the pet-waste service (or no service, as every request
+ *  before the catalog), else the service's own name: the word the office's
+ *  inbox, email and notification use for a one-off request. */
+export function oneOffRequestWord(
+  service: { name: string; service_line?: string | null } | null | undefined,
+): string {
+  if (!service || service.service_line === "pet_waste") return "Extra cleanup";
+  return service.name;
 }
 
 /** What the portal's request list says about one of these. */

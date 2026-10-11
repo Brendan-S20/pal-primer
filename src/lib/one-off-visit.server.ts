@@ -24,7 +24,14 @@ export type BookOneOffInput = {
   clientId: string;
   propertyId: string;
   scheduledOn: string;
-  priceCents: number;
+  /** The visit's price, or "service": priced from `serviceId` through the one
+   *  rule (servicePriceCents) for the property's pets. The portal's auto-accept
+   *  of a walk uses that; the office always types a number. */
+  priceCents: number | "service";
+  /** The service booked (phase 5). Omitted: the business's default, which the
+   *  database fills in (tg_subscriptions_service), as every one-off before
+   *  the catalog. */
+  serviceId?: string | null;
   staffId?: string | null;
   note?: string;
   /** True only for the service-role paths: the portal's auto-accept, and
@@ -86,6 +93,30 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
           .then((r: any) => Math.max(1, r.count ?? 1))
       : null;
 
+  // ── the price, when it is the service's ─────────────────────────────────
+  // A walk asked for from the portal is priced here, for THIS property's
+  // pets, through the same rule the plan form and public_quote use. The
+  // service has to be this organization's and still offered; a service with
+  // no price cannot be booked automatically, and says so.
+  let priceCents: number;
+  if (input.priceCents === "service") {
+    if (!input.serviceId) throw new Error("A service is needed to price this visit");
+    const { data: svc, error: svcErr } = await db
+      .from("services")
+      .select("id, organization_id, active, price_unit, base_price_cents, extra_pet_cents, default_duration_min")
+      .eq("id", input.serviceId)
+      .maybeSingle();
+    if (svcErr) throw new Error(svcErr.message);
+    if (!svc || svc.organization_id !== input.orgId || !svc.active)
+      throw new Error("That service is not offered");
+    const { servicePriceCents } = await import("@/lib/services");
+    const cents = servicePriceCents(svc, { pets: dogCount ?? 1 });
+    if (cents == null) throw new Error("That service has no price yet");
+    priceCents = cents;
+  } else {
+    priceCents = input.priceCents;
+  }
+
   // ── billing_cadence must be INHERITED, never defaulted ──────────────────
   //
   // Omitting it takes the table default 'postpaid', and that is not a
@@ -142,8 +173,9 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
       property_id: input.propertyId,
       account_type: accountType,
       frequency: "one_time",
-      price_cents: input.priceCents,
+      price_cents: priceCents,
       billing_cadence: cadence,
+      ...(input.serviceId ? { service_id: input.serviceId } : {}),
       dog_count: dogCount,
       unit_count: accountType === "commercial" ? Math.max(1, prop.total_units ?? 1) : null,
       zone_id: prop.zone_id ?? prop.auto_zone_id ?? null,

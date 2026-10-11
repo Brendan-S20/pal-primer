@@ -1202,8 +1202,10 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
     const tz = (org?.timezone as string | null) || "America/Chicago";
     const today = orgToday(tz);
     const { addDaysToDay } = await import("@/lib/reclean");
-    const { bookableDays, ONE_OFF_MAX_DAYS_AHEAD } = await import("@/lib/one-off-booking");
-    const [{ data: blackouts }, { data: props }] = await Promise.all([
+    const { bookableDays, ONE_OFF_MAX_DAYS_AHEAD, oneOffServiceOptions } = await import(
+      "@/lib/one-off-booking"
+    );
+    const [{ data: blackouts }, { data: props }, { data: services }] = await Promise.all([
       sb
         .from("blackout_dates")
         .select("blackout_on")
@@ -1215,6 +1217,14 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
         .eq("client_id", session.clientId)
         .is("archived_at", null)
         .order("created_at"),
+      // The business's services (phase 5): what the card lists. The service
+      // role reads them; a customer has no row in services' RLS.
+      (sb.from("services") as any)
+        .select(
+          "id, name, service_line, active, price_unit, base_price_cents, extra_pet_cents, default_duration_min",
+        )
+        .eq("organization_id", session.organizationId)
+        .eq("active", true),
     ]);
     const priceCents = (org?.one_off_price_cents as number | null) ?? null;
     return {
@@ -1230,10 +1240,17 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
         street: string;
         city: string | null;
       }>,
-      // Auto-accept books at the org's one-off price, so without a price it
-      // cannot book anything and the request waits for the office.
-      autoAccept: !!org?.portal_auto_accept_bookings && priceCents != null,
+      // Auto-accept books at the chosen service's price (the org's one-off
+      // price for pet waste), so a service without one cannot be booked
+      // automatically and the request waits for the office. The card reads
+      // this beside each service's own priceCents.
+      autoAccept: !!org?.portal_auto_accept_bookings,
+      /** The extra cleanup's price: what the card showed before services. */
       priceCents,
+      // The pet-waste service at the one-off price, and every other active,
+      // priced service at its own (one pet). Empty for a business with no
+      // active service, when the card offers the extra cleanup as before.
+      services: oneOffServiceOptions((services ?? []) as any[], priceCents),
       currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
     };
   });
@@ -1260,6 +1277,9 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         propertyId: z.string().uuid(),
         day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         message: z.string().max(1000).optional().default(""),
+        /** The service asked for (phase 5). Omitted: the extra cleanup, as
+         *  every request before the catalog. */
+        serviceId: z.string().uuid().optional(),
       })
       .parse(d),
   )
@@ -1268,11 +1288,26 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
     const session = await requirePortalSession(data.token);
     const sb = await admin();
 
+    // The service, when one was named: the database refuses another
+    // business's or a deactivated one (service_not_offered); this read is for
+    // the words and the price. Pet waste is the extra cleanup, as before.
+    let service: { id: string; name: string; service_line: string } | null = null;
+    if (data.serviceId) {
+      const { data: svc } = await (sb.from("services") as any)
+        .select("id, name, service_line")
+        .eq("id", data.serviceId)
+        .eq("organization_id", session.organizationId)
+        .maybeSingle();
+      service = svc ?? null;
+    }
+    const petWaste = !service || service.service_line === "pet_waste";
+
     const { data: rows, error } = await (sb as any).rpc("portal_request_one_off", {
       _token: data.token,
       _property_id: data.propertyId,
       _on: data.day,
       _message: data.message,
+      ...(data.serviceId ? { _service_id: data.serviceId } : {}),
     });
     if (error) {
       const { oneOffRefusalMessage } = await import("@/lib/one-off-booking");
@@ -1298,7 +1333,11 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       .select("portal_auto_accept_bookings, one_off_price_cents")
       .eq("id", session.organizationId)
       .maybeSingle();
-    if (org?.portal_auto_accept_bookings && org?.one_off_price_cents != null) {
+    // The extra cleanup books at the org's one-off price, as it always has; a
+    // walk books at its service's price, worked out for the property's pets
+    // by bookOneOffVisit through the one rule. Neither books without a price.
+    const canAutoBook = petWaste ? org?.one_off_price_cents != null : true;
+    if (org?.portal_auto_accept_bookings && canAutoBook) {
       try {
         const { bookOneOffVisit } = await import("@/lib/one-off-visit.server");
         const { oneOffVisitNote } = await import("@/lib/one-off-booking");
@@ -1308,8 +1347,9 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
           clientId: session.clientId,
           propertyId: data.propertyId,
           scheduledOn: data.day,
-          priceCents: Number(org.one_off_price_cents),
-          note: oneOffVisitNote(dayLabel, true),
+          priceCents: petWaste ? Number(org.one_off_price_cents) : "service",
+          serviceId: service?.id ?? null,
+          note: oneOffVisitNote(dayLabel, true, petWaste ? null : service?.name),
           asService: true,
         });
         const { data: linked } = await (sb.from("qc_tickets") as any)
@@ -1333,6 +1373,8 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       }
     }
 
+    const { oneOffRequestWord } = await import("@/lib/one-off-booking");
+    const word = oneOffRequestWord(service);
     try {
       await notifyOfficeOfConcern(
         sb,
@@ -1341,6 +1383,7 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         data.message,
         dayLabel,
         bookedOn != null,
+        word,
       );
     } catch (e) {
       console.error("one-off office notification failed", (e as Error).message);
@@ -1355,9 +1398,7 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       await notifyRoles(["owner", "office_manager"], {
         orgId: session.organizationId,
         type: "concern",
-        title: `${bookedOn ? "Extra cleanup booked" : "Extra cleanup requested"}: ${
-          cl?.display_name ?? "a client"
-        }`,
+        title: `${word} ${bookedOn ? "booked" : "requested"}: ${cl?.display_name ?? "a client"}`,
         body: `For ${dayLabel}${data.message ? `: ${data.message.slice(0, 120)}` : ""}`,
         link: "/concerns",
       });
@@ -1387,6 +1428,9 @@ async function notifyOfficeOfConcern(
   visitDay: string | null = null,
   /** A one-off request that auto-accept already booked. */
   booked = false,
+  /** What a one-off request was for: "Extra cleanup", or the service's name
+   *  when the customer asked for something else the business sells. */
+  oneOffWord = "Extra cleanup",
 ): Promise<void> {
   const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) return; // email not configured — banner + inbox still work
@@ -1412,7 +1456,7 @@ async function notifyOfficeOfConcern(
   const subject = isReclean
     ? `Re-clean requested by ${client.display_name}`
     : isOneOff
-      ? `${booked ? "Extra cleanup booked" : "Extra cleanup requested"} by ${client.display_name}`
+      ? `${oneOffWord} ${booked ? "booked" : "requested"} by ${client.display_name}`
       : `New client concern: ${label}`;
   const html =
     (isReclean
@@ -1420,9 +1464,9 @@ async function notifyOfficeOfConcern(
           visitDay ? ` for the visit on ${visitDay}` : ""
         }.</p>`
       : isOneOff
-        ? `<p><strong>${booked ? "Extra cleanup booked" : "Extra cleanup requested"}</strong>${
+        ? `<p><strong>${oneOffWord} ${booked ? "booked" : "requested"}</strong>${
             visitDay ? ` for ${visitDay}` : ""
-          }${booked ? ", automatically, at your one-off price." : "."}</p>`
+          }${booked ? ", automatically, at its price." : "."}</p>`
         : `<p><strong>New client concern:</strong> ${label}</p>`) +
     `<p>From: ${client.display_name}</p>` +
     (message ? `<p>${message.replace(/</g, "&lt;")}</p>` : "") +
@@ -1432,7 +1476,7 @@ async function notifyOfficeOfConcern(
   const text = isReclean
     ? `Re-clean requested by ${client.display_name}${visitDay ? ` for the visit on ${visitDay}` : ""}. ${message}`.trim()
     : isOneOff
-      ? `${booked ? "Extra cleanup booked" : "Extra cleanup requested"} by ${client.display_name}${visitDay ? ` for ${visitDay}` : ""}. ${message}`.trim()
+      ? `${oneOffWord} ${booked ? "booked" : "requested"} by ${client.display_name}${visitDay ? ` for ${visitDay}` : ""}. ${message}`.trim()
       : `New client concern (${label}) from ${client.display_name}. ${message}`.trim();
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

@@ -1,14 +1,19 @@
 // "Can you come Friday as well? We have people over Saturday."
 //
-// The customer's side of an extra cleanup: pick one of the days on offer,
-// the address if they have more than one, an optional note, and send. The
-// days come from the server (portalOneOffBookingOptions), already limited to
-// the org's working days from its tomorrow through 30 days out, so the list is
-// a <select> rather than a calendar: every option in it is one the server will
-// accept, and a phone's native picker is the best one-handed control there is.
+// The customer's side of an extra visit: pick one of the days on offer, the
+// address if they have more than one, what they want if the business sells
+// more than one thing (phase 5: the extra cleanup, a walk, a groom), an
+// optional note, and send. The days come from the server
+// (portalOneOffBookingOptions), already limited to the org's working days
+// from its tomorrow through 30 days out, so the list is a <select> rather than
+// a calendar: every option in it is one the server will accept, and a phone's
+// native picker is the best one-handed control there is. The services come
+// from the same call, active and priced, in the plan picker's order.
 //
 // It is a REQUEST unless the owner turned auto-accept on, and the card says
 // which before the customer taps, so "Send request" never reads as a booking.
+// Auto-accept needs a price: a service the business has not priced waits for
+// the office, exactly as an extra cleanup with no one-off price always has.
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -36,17 +41,36 @@ export function OneOffBookingCard() {
   });
   const [day, setDay] = useState("");
   const [propertyId, setPropertyId] = useState("");
+  const [serviceId, setServiceId] = useState("");
   const [note, setNote] = useState("");
   const [done, setDone] = useState<{ day: string; bookedOn: string | null } | null>(null);
 
   const opts = q.data;
+  const services = opts?.services ?? [];
   useEffect(() => {
     if (!opts) return;
     if (!propertyId && opts.properties.length > 0) setPropertyId(opts.properties[0].id);
-  }, [opts, propertyId]);
+    if (!serviceId && services.length > 0) setServiceId(services[0].id);
+  }, [opts, propertyId, serviceId, services]);
+
+  // What is being asked for: the chosen service, else the extra cleanup as the
+  // card has always offered it. The pet-waste service IS the extra cleanup,
+  // so it is sent as no service, and the request is the one it always was.
+  const chosen = services.find((s) => s.id === serviceId) ?? services[0] ?? null;
+  const priceCents = chosen ? chosen.priceCents : opts?.priceCents ?? null;
+  const autoAccept = !!opts?.autoAccept && priceCents != null;
 
   const mut = useMutation({
-    mutationFn: () => requestFn({ data: { token, propertyId, day, message: note.trim() } }),
+    mutationFn: () =>
+      requestFn({
+        data: {
+          token,
+          propertyId,
+          day,
+          message: note.trim(),
+          ...(chosen && !chosen.petWaste ? { serviceId: chosen.id } : {}),
+        },
+      }),
     onSuccess: (r) => {
       setDone({ day, bookedOn: r.bookedOn });
       setNote("");
@@ -90,18 +114,45 @@ export function OneOffBookingCard() {
       <p className="flex items-start gap-2 text-muted-foreground">
         <CalendarPlus className="mt-0.5 h-4 w-4 shrink-0" />
         <span className="min-w-0">
-          {opts.autoAccept
+          {autoAccept
             ? `Pick a day and it's booked straight away${
-                opts.priceCents != null ? `, for ${money(opts.priceCents, opts.currency)}` : ""
+                priceCents != null ? `, for ${money(priceCents, opts.currency)}` : ""
               }.`
             : `Pick a day and we'll confirm it${
-                opts.priceCents != null
-                  ? `. An extra visit is ${money(opts.priceCents, opts.currency)}`
+                priceCents != null
+                  ? `. ${chosen && !chosen.petWaste ? chosen.name : "An extra visit"} is ${money(
+                      priceCents,
+                      opts.currency,
+                    )}${
+                      chosen && chosen.perExtraPetCents > 0
+                        ? `, plus ${money(chosen.perExtraPetCents, opts.currency)} for each extra pet`
+                        : ""
+                    }`
                   : ""
               }.`}
         </span>
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
+        {services.length > 1 && (
+          <div className="min-w-0 space-y-1">
+            <Label htmlFor="one-off-what" className="text-xs">
+              What
+            </Label>
+            <select
+              id="one-off-what"
+              className={selectClass}
+              value={chosen?.id ?? ""}
+              onChange={(e) => setServiceId(e.target.value)}
+            >
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.priceCents != null ? ` (${money(s.priceCents, opts.currency)})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="min-w-0 space-y-1">
           <Label htmlFor="one-off-day" className="text-xs">
             Day
@@ -155,7 +206,7 @@ export function OneOffBookingCard() {
       </div>
       <div className="flex justify-end">
         <Button disabled={!day || !propertyId || mut.isPending} onClick={() => mut.mutate()}>
-          {mut.isPending ? "Sending…" : opts.autoAccept ? "Book it" : "Send request"}
+          {mut.isPending ? "Sending…" : autoAccept ? "Book it" : "Send request"}
         </Button>
       </div>
     </div>

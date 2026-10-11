@@ -64,10 +64,18 @@ photos, and step 1's `service_lines`.
 ## How each part of the product changes
 
 - **Pricing and quotes.** Price = the service's base price + extra-pet fee per
-  pet beyond the first, × the line's frequency multiplier (flat 1.0 for every
-  line except pet waste; step 1's `LINE_SEEDS` holds the proposed values).
-  Zone pricing and area pricing stay the pet-waste path, chosen when the
-  service's line is `pet_waste`. `public_quote` gains a `service_id` argument.
+  pet beyond the first, × units (1 per visit, minutes ÷ 60 per hour, nights
+  per night), × the line's frequency multiplier (flat 1.0 for every line
+  except pet waste; step 1's `LINE_SEEDS` holds the proposed values). Zone
+  pricing and area pricing stay the pet-waste path, chosen when the service's
+  line is `pet_waste`. `public_quote` gains a `_service_id` argument.
+  *Built 2026-10-11 (phase 5): the rule is `public.service_price_cents`
+  (migration `20261011100000`) and `servicePriceCents` (`src/lib/services.ts`),
+  held to one table by `tests/a-walk-is-priced-as-a-walk.test.ts`; the drift
+  report compares a non-waste plan against its service; the invoice line names
+  the visit's service (`20261011100100`); the portal lists the business's
+  services and the request records the one asked for (`20261011100200`).
+  Hourly prices round once, to the cent, by the minute.*
 - **Visit generation.** Per plan: for each day the cadence selects, one visit
   per slot (one, with a null slot, when the plan has none). Duration copied
   from the service onto the visit.

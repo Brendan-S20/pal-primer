@@ -41,6 +41,7 @@ function signedMoney(cents: number, currency: string): string {
 
 const OUTCOME_LABEL: Record<DriftOutcome, string> = {
   no_zone: "No zone",
+  no_price: "No price set",
   on_rate: "On the card",
   under: "Below the card",
   over: "Above the card",
@@ -50,7 +51,7 @@ function OutcomeBadge({ outcome }: { outcome: DriftOutcome }) {
   const tone =
     outcome === "on_rate"
       ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-      : outcome === "no_zone"
+      : outcome === "no_zone" || outcome === "no_price"
         ? "bg-muted text-muted-foreground"
         : outcome === "under"
           ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"
@@ -85,6 +86,14 @@ function Stat({
       {hint ? <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div> : null}
     </button>
   );
+}
+
+/** What the plan was compared against: the zone's name for pet waste, the
+ *  service's name for everything else (phase 5). A plan from before plans had
+ *  a service has no basis flag and reads as it always did. */
+function pricedBy(r: DriftRow): string {
+  if (r.basis === "service") return r.serviceName ?? "Service";
+  return r.zoneName ?? "No zone";
 }
 
 function ratioText(r: number | null): string {
@@ -123,7 +132,8 @@ function PricingDriftPage() {
       <div>
         <h1 className="text-2xl font-semibold">Who is off the rate card</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          Every active service, compared against what its zone charges today. This page
+          Every active plan, compared against what its card charges today: the zone for
+          pet waste removal, the service&apos;s own price for everything else. This page
           changes nothing. It is here so the gap can be looked at before anybody decides
           what to do about it.
         </p>
@@ -139,7 +149,7 @@ function PricingDriftPage() {
 
       {s ? (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Stat
               label="Active services"
               value={String(s.total)}
@@ -172,6 +182,13 @@ function PricingDriftPage() {
               hint="no rate to compare"
               active={filter === "no_zone"}
               onClick={() => setFilter("no_zone")}
+            />
+            <Stat
+              label="No price set"
+              value={String(s.noPrice ?? 0)}
+              hint="the service has no price yet"
+              active={filter === "no_price"}
+              onClick={() => setFilter("no_price")}
             />
           </div>
 
@@ -215,7 +232,7 @@ function PricingDriftPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Client</TableHead>
-                  <TableHead>Zone</TableHead>
+                  <TableHead>Priced by</TableHead>
                   <TableHead>Frequency</TableHead>
                   <TableHead className="text-right">Pays</TableHead>
                   <TableHead className="text-right">Card today</TableHead>
@@ -237,7 +254,7 @@ function PricingDriftPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="max-w-[12rem] truncate text-muted-foreground">
-                      {r.zoneName ?? "None"}
+                      {pricedBy(r)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {r.frequency.replace(/_/g, " ")}
@@ -322,7 +339,7 @@ function DriftCard({ row: r, currency }: { row: DriftRow; currency: string }) {
             {r.clientName}
           </Link>
           <div className="truncate text-xs text-muted-foreground">
-            {r.zoneName ?? "No zone"} - {r.frequency.replace(/_/g, " ")}
+            {pricedBy(r)} - {r.frequency.replace(/_/g, " ")}
           </div>
         </div>
         <div className="shrink-0">

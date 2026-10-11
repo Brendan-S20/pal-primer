@@ -135,6 +135,11 @@ function OneOffRow({
   const booked = oneOf<{ scheduled_on: string }>(concern.booked_visit);
   const property = oneOf<{ street: string; city: string | null }>(concern.property);
   const where = property ? [property.street, property.city].filter(Boolean).join(", ") : null;
+  // What was asked for (phase 5): "an extra visit" for pet waste or a request
+  // from before the catalog, else the service by name.
+  const service = oneOf<{ name: string; service_line: string }>(concern.service);
+  const what =
+    service && service.service_line !== "pet_waste" ? `"${service.name}"` : "an extra visit";
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm">
       {booked ? (
@@ -147,7 +152,7 @@ function OneOffRow({
           ? `Booked for ${formatDay(booked.scheduled_on)}.`
           : status === "resolved"
             ? `Asked for ${formatDay(concern.requested_on)}. Not booked.`
-            : `Asked for an extra visit on ${formatDay(concern.requested_on)}${
+            : `Asked for ${what} on ${formatDay(concern.requested_on)}${
                 where ? ` at ${where}` : ""
               }.`}
       </span>
@@ -508,6 +513,7 @@ function ConcernsPage() {
                         propertyId: c.property_id,
                         address: prop ? [prop.street, prop.city].filter(Boolean).join(", ") : null,
                         requestedOn: c.requested_on,
+                        service: oneOf<OneOffRequestTicket["service"]>(c.service) ?? null,
                       });
                     }}
                   />

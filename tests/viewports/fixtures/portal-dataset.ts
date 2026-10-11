@@ -352,6 +352,24 @@ export const PORTAL_ONE_OFF_OPTIONS = {
   ],
   autoAccept: false,
   priceCents: 4500,
+  // The business's bookable services (phase 5): the extra cleanup at the
+  // one-off price, and a walk at its own, so the card draws its "What".
+  services: [
+    {
+      id: "55555555-0000-4000-8000-000000000001",
+      name: "Pet waste removal",
+      priceCents: 4500,
+      perExtraPetCents: 0,
+      petWaste: true,
+    },
+    {
+      id: "55555555-0000-4000-8000-000000000002",
+      name: "30-minute neighbourhood walk with a long-ish name",
+      priceCents: 2500,
+      perExtraPetCents: 500,
+      petWaste: false,
+    },
+  ],
   currency: "usd",
 };
 

@@ -8,6 +8,10 @@
 // PROPERTY's, because that is the one `redetectZonesForOrg` keeps current. See
 // the long note at the top of pricing-drift.ts for why the subscription's own
 // zone_id is the wrong input even though it looks like the obvious one.
+//
+// And subscriptions -> services (phase 5): a plan that is not pet waste is
+// compared against its service's price, not the zone's. The zone is still
+// read for it, so the row can say where the plan is routed.
 
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -36,6 +40,8 @@ export const getPricingDrift = createServerFn({ method: "GET" })
         `id, client_id, frequency, price_cents, dog_count,
          priced_at, priced_from_zone_id, price_overridden_at,
          clients!inner ( id, display_name ),
+         services ( id, name, service_line, price_unit, base_price_cents,
+                    extra_pet_cents, default_duration_min ),
          properties!inner (
            id, boundary_area_sqm,
            zone:zones!properties_zone_id_fkey ( id, name, base_price_cents, per_dog_addl_cents,
@@ -86,6 +92,21 @@ export const getPricingDrift = createServerFn({ method: "GET" })
               price_per_acre_cents: z.price_per_acre_cents,
               area_min_charge_cents: z.area_min_charge_cents,
               area_max_charge_cents: z.area_max_charge_cents,
+            }
+          : null,
+        service: s.services
+          ? {
+              id: s.services.id as string,
+              name: s.services.name as string,
+              service_line: s.services.service_line,
+              price_unit: s.services.price_unit,
+              base_price_cents:
+                s.services.base_price_cents == null ? null : Number(s.services.base_price_cents),
+              extra_pet_cents: Number(s.services.extra_pet_cents ?? 0),
+              default_duration_min:
+                s.services.default_duration_min == null
+                  ? null
+                  : Number(s.services.default_duration_min),
             }
           : null,
         boundaryAreaSqm: prop?.boundary_area_sqm == null ? null : Number(prop.boundary_area_sqm),
