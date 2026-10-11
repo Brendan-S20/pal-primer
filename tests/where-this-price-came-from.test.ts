@@ -103,7 +103,10 @@ describe("the columns are written where a price is set", () => {
 
   it("records the rate card at creation", () => {
     const create = fns.slice(fns.indexOf("export const createSubscription"));
-    expect(create).toMatch(/priced_from_zone_id: data\.zoneId \?\? null/);
+    // ...for a zone-priced plan (pet waste). A plan priced from its service
+    // (phase 5: a walk, a sit, a groom) records no zone, because no zone
+    // priced it; tests/a-walk-is-priced-as-a-walk.test.ts covers that half.
+    expect(create).toMatch(/priced_from_zone_id: zonePriced \? \(data\.zoneId \?\? null\) : null/);
     expect(create).toMatch(/priced_at: new Date\(\)\.toISOString\(\)/);
   });
 

@@ -162,36 +162,60 @@ export function serviceProblem(d: ServiceDraft): string | null {
   return null;
 }
 
+/** A service priced by the business's ZONES rather than by its own row: pet
+ *  waste, exactly as today. Every other line prices through
+ *  servicePriceCents; this one never reaches it (phase 5, migration
+ *  20261011100000). */
+export function isZonePriced(s: Pick<ServiceDraft, "service_line">): boolean {
+  return s.service_line === "pet_waste";
+}
+
 /**
- * What one booking of this service costs, in cents, or null when the service
+ * What one visit of this service costs, in cents, or null when the service
  * has no price of its own (pet waste priced by zone, or not set yet).
  *
- *   (base + extra pet charge × pets beyond the first) × units
+ *   (base + extra pet charge × pets beyond the first) × units × multiplier
  *
  * where units is 1 for a flat visit, hours for hourly (from `minutes`, or the
- * service's own duration), and nights for nightly. Rounded once, at the end,
- * to the nearest cent, so a 45-minute walk at $20/hour is $15.00 and not the
- * sum of two rounded halves.
+ * service's own duration), and nights for nightly; and the multiplier is the
+ * line's frequency multiplier, which is 1.0 for every line this function
+ * prices (only pet waste multiplies by cadence, and pet waste is priced by
+ * zone). Rounded once, at the end, to the nearest cent, so a 45-minute walk
+ * at $20/hour is $15.00 and not the sum of two rounded halves.
+ *
+ * The same rule as `public.service_price_cents` (migration 20261011100000),
+ * which public_quote uses; tests/a-walk-is-priced-as-a-walk.test.ts holds the
+ * two to one table. The arithmetic is kept in integers until the one division
+ * (cents × minutes × multiplier, then ÷ 60) so a half-cent lands on exactly
+ * .5 on both sides and rounds the same way: Math.round and Postgres's
+ * round(numeric) both take a positive half UP.
  */
 export function servicePriceCents(
   s: Pick<
     ServiceDraft,
     "price_unit" | "base_price_cents" | "extra_pet_cents" | "default_duration_min"
   >,
-  opts: { pets?: number; minutes?: number | null; nights?: number } = {},
+  opts: { pets?: number; minutes?: number | null; nights?: number; multiplier?: number } = {},
 ): number | null {
   if (s.base_price_cents === null) return null;
-  const pets = Math.max(1, Math.floor(opts.pets ?? 1));
+  // A nonsense pet count (0, negative, NaN, a string that did not parse)
+  // reads as one pet, never as a discount and never as NaN -- the same
+  // GREATEST(COALESCE(_pets, 1), 1) the SQL applies.
+  const petsRaw = Number(opts.pets ?? 1);
+  const pets = Number.isFinite(petsRaw) && petsRaw >= 1 ? Math.floor(petsRaw) : 1;
   const perUnit = s.base_price_cents + s.extra_pet_cents * (pets - 1);
-  let units = 1;
+  const mult = opts.multiplier ?? 1;
+  if (!(mult > 0)) return null;
   if (s.price_unit === "hour") {
     const minutes = opts.minutes ?? s.default_duration_min;
     if (minutes === null || minutes === undefined || !(minutes > 0)) return null;
-    units = minutes / 60;
-  } else if (s.price_unit === "night") {
-    units = Math.max(1, Math.floor(opts.nights ?? 1));
+    return Math.round((perUnit * minutes * mult) / 60);
   }
-  return Math.round(perUnit * units);
+  if (s.price_unit === "night") {
+    const nights = Math.max(1, Math.floor(opts.nights ?? 1));
+    return Math.round(perUnit * nights * mult);
+  }
+  return Math.round(perUnit * mult);
 }
 
 /** How the price reads in a list: "$25.00 per visit", "$22.00 per hour,

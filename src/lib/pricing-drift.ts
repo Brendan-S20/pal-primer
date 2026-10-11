@@ -34,8 +34,20 @@
 // where it is recorded (see price-provenance.ts); where it is NULL the honest
 // answer is that nobody knows, and a report that guessed would be worse than
 // one that says so.
+//
+// ── A WALK IS COMPARED AGAINST A WALK (phase 5) ─────────────────────────────
+//
+// Since the service catalog, a plan says what it sells. A pet-waste plan is
+// still compared against its property's zone, exactly as above. Any other
+// plan -- a walk, a sit, a groom -- is compared against ITS SERVICE's price,
+// through the one pricing rule (servicePriceCents / service_price_cents):
+// the zone's rate card prices yards, and a $25 walk beside a $26 zone rate
+// is not drift, it is a different product. A non-waste service with no price
+// set has nothing to compare against either, and that is its own outcome
+// (`no_price`), not `no_zone` and not on rate.
 
 import { computeZoneVisitPrice, type ZonePricingFields } from "@/lib/pricing";
+import { isZonePriced, servicePriceCents, type ServiceDraft } from "@/lib/services";
 
 /**
  * Why a service has no comparison, or which direction it is off in.
@@ -44,8 +56,22 @@ import { computeZoneVisitPrice, type ZonePricingFields } from "@/lib/pricing";
  * state -- somebody quoted it by hand -- and the rate card genuinely has no
  * opinion about it. Grouping it with "on rate" would understate the problem;
  * grouping it with "off rate" would invent a number.
+ *
+ * `no_price` is the same honesty for a non-waste plan whose service has no
+ * price yet: the zone has no opinion about a walk, and the service has none
+ * until the owner gives it one.
  */
-export type DriftOutcome = "no_zone" | "on_rate" | "under" | "over";
+export type DriftOutcome = "no_zone" | "no_price" | "on_rate" | "under" | "over";
+
+/** What a plan is compared against: the property's zone (pet waste) or the
+ *  plan's own service (everything else). */
+export type DriftBasis = "zone" | "service";
+
+/** The plan's service, as much of it as the comparison needs. */
+export type DriftService = Pick<
+  ServiceDraft,
+  "service_line" | "price_unit" | "base_price_cents" | "extra_pet_cents" | "default_duration_min"
+> & { id: string; name: string };
 
 /** One active service, as much of it as the comparison needs. */
 export interface DriftSubscription {
@@ -58,6 +84,9 @@ export interface DriftSubscription {
   dogCount: number | null;
   /** The zone the property is routed to TODAY, or null if it is in none. */
   zone: (ZonePricingFields & { id: string; name: string }) | null;
+  /** The plan's service (phase 2). Absent or null on a plan from before the
+   *  catalog, which is compared as pet waste, as it always was. */
+  service?: DriftService | null;
   boundaryAreaSqm: number | null;
   /** Provenance, straight off the row. All three may be NULL. */
   pricedAt: string | null;
@@ -71,13 +100,20 @@ export interface DriftRow {
   clientName: string;
   frequency: string;
   outcome: DriftOutcome;
+  /** Whether the card compared against was the zone's or the service's. */
+  basis: DriftBasis;
   zoneId: string | null;
   zoneName: string | null;
+  /** The plan's service name, for the "priced by" column; null on a plan
+   *  from before the catalog. */
+  serviceName: string | null;
   paidCents: number;
-  /** What the zone charges today for this service. Null when there is no zone. */
+  /** What the card charges today for this plan: the zone's rate for pet
+   *  waste, the service's price for anything else. Null when there is
+   *  nothing to compare against. */
   todayCents: number | null;
   /** todayCents - paidCents. Positive means the customer pays less than the
-   *  card says. Null when there is no zone. */
+   *  card says. Null when there is nothing to compare against. */
   diffCents: number | null;
   /** todayCents / paidCents, for sorting by severity rather than by dollars --
    *  a $26 service at 18x is a worse fault than a $90 one at 1.2x, and sorting
@@ -99,6 +135,8 @@ export interface DriftRow {
 export interface DriftSummary {
   total: number;
   noZone: number;
+  /** Non-waste plans whose service has no price yet. */
+  noPrice: number;
   onRate: number;
   under: number;
   over: number;
@@ -116,13 +154,21 @@ export interface DriftReport {
   summary: DriftSummary;
 }
 
+/** Which card a plan is compared against. Pet waste, and a plan from before
+ *  plans had a service, go to the zone; everything else to its service. */
+export function driftBasis(service: DriftService | null | undefined): DriftBasis {
+  return service && !isZonePriced(service) ? "service" : "zone";
+}
+
 /**
- * Compare every service against what its zone charges today.
+ * Compare every plan against what its card charges today: the zone's rate
+ * for pet waste, the service's own price for anything else.
  *
  * `multipliers` is the organization's `frequency_multipliers` map. A frequency
  * missing from it falls back to 1 rather than throwing: an unknown frequency
  * is a data problem worth seeing the rest of the report about, and 1 is the
- * weekly baseline the rest of the pricing code already assumes.
+ * weekly baseline the rest of the pricing code already assumes. It is read
+ * for pet waste only: a walk costs the same whatever the cadence.
  */
 export function computePricingDrift(
   subs: DriftSubscription[],
@@ -130,17 +176,54 @@ export function computePricingDrift(
 ): DriftReport {
   const rows: DriftRow[] = subs.map((s) => {
     const handPriced = s.priceOverriddenAt != null;
+    const basis = driftBasis(s.service);
     const base = {
       subscriptionId: s.id,
       clientId: s.clientId,
       clientName: s.clientName,
       frequency: s.frequency,
+      basis,
+      serviceName: s.service?.name ?? null,
       paidCents: s.priceCents,
       handPriced,
       pricedAt: s.pricedAt,
       pricedFromZoneId: s.pricedFromZoneId,
       priceOverriddenAt: s.priceOverriddenAt,
     };
+    const compared = (today: number, extra: Partial<DriftRow> = {}) => {
+      const diff = today - s.priceCents;
+      return {
+        ...base,
+        outcome:
+          diff === 0 ? ("on_rate" as const) : diff > 0 ? ("under" as const) : ("over" as const),
+        zoneId: s.zone?.id ?? null,
+        zoneName: s.zone?.name ?? null,
+        todayCents: today,
+        diffCents: diff,
+        ratio: s.priceCents > 0 ? today / s.priceCents : null,
+        areaCapped: false,
+        ...extra,
+      };
+    };
+
+    if (basis === "service" && s.service) {
+      // The one rule, at the service's own duration (a plan has no duration
+      // of its own: a 60-minute walk IS the service) and one night per visit.
+      const today = servicePriceCents(s.service, { pets: s.dogCount ?? 1 });
+      if (today == null) {
+        return {
+          ...base,
+          outcome: "no_price" as const,
+          zoneId: s.zone?.id ?? null,
+          zoneName: s.zone?.name ?? null,
+          todayCents: null,
+          diffCents: null,
+          ratio: null,
+          areaCapped: false,
+        };
+      }
+      return compared(today);
+    }
 
     if (!s.zone) {
       return {
@@ -161,24 +244,13 @@ export function computePricingDrift(
       boundaryAreaSqm: s.boundaryAreaSqm,
       multiplier: mult,
     });
-    const today = priced.recurringCents;
-    const diff = today - s.priceCents;
-
-    return {
-      ...base,
-      outcome: diff === 0 ? ("on_rate" as const) : diff > 0 ? ("under" as const) : ("over" as const),
-      zoneId: s.zone.id,
-      zoneName: s.zone.name,
-      todayCents: today,
-      diffCents: diff,
-      ratio: s.priceCents > 0 ? today / s.priceCents : null,
-      areaCapped: priced.areaCapped,
-    };
+    return compared(priced.recurringCents, { areaCapped: priced.areaCapped });
   });
 
   const summary: DriftSummary = {
     total: rows.length,
     noZone: rows.filter((r) => r.outcome === "no_zone").length,
+    noPrice: rows.filter((r) => r.outcome === "no_price").length,
     onRate: rows.filter((r) => r.outcome === "on_rate").length,
     under: rows.filter((r) => r.outcome === "under").length,
     over: rows.filter((r) => r.outcome === "over").length,
@@ -203,7 +275,7 @@ export function computePricingDrift(
  * whenever the dollar gap is bigger, which is exactly backwards for finding
  * misconfigured zones.
  *
- * Rows with no ratio -- no zone, or a customer paying nothing -- sort last.
+ * Rows with no ratio -- no zone, no price, or a customer paying nothing -- sort last.
  * They are not "least severe"; they are unrankable on this axis, and the
  * report lists them under their own heading rather than at the bottom of a
  * list that implies an ordering.

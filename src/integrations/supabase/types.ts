@@ -5002,6 +5002,7 @@ export type Database = {
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
+          service_id: string | null
           status: string
           updated_at: string
           visit_id: string | null
@@ -5023,6 +5024,7 @@ export type Database = {
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
+          service_id?: string | null
           status?: string
           updated_at?: string
           visit_id?: string | null
@@ -5044,6 +5046,7 @@ export type Database = {
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
+          service_id?: string | null
           status?: string
           updated_at?: string
           visit_id?: string | null
@@ -7787,6 +7790,7 @@ export type Database = {
           _message: string
           _on: string
           _property_id: string
+          _service_id?: string
           _token: string
         }
         Returns: {
@@ -7896,6 +7900,7 @@ export type Database = {
           _frequency: string
           _last_cleaned?: string
           _postal_code: string
+          _service_id?: string
           _slug: string
         }
         Returns: {
@@ -8190,6 +8195,23 @@ export type Database = {
       start_visit: {
         Args: { _started_at?: string; _visit_id: string }
         Returns: undefined
+      }
+      service_line_item_name: {
+        Args: { _fallback?: string; _service_name: string }
+        Returns: string
+      }
+      service_price_cents: {
+        Args: {
+          _base_price_cents: number
+          _default_duration_min: number
+          _extra_pet_cents: number
+          _minutes?: number
+          _multiplier?: number
+          _nights?: number
+          _pets?: number
+          _price_unit: string
+        }
+        Returns: number
       }
       stop_service_min: {
         Args: { _property_min: number; _service_min: number }

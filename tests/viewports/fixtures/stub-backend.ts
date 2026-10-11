@@ -489,6 +489,7 @@ export const BASE_STUBS: Record<string, Stub> = {
     summary: {
       total: 4,
       noZone: 1,
+      noPrice: 0,
       onRate: 0,
       under: 2,
       over: 1,

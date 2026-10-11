@@ -34,6 +34,7 @@ import { linkOneOffBooking } from "@/lib/concerns.functions";
 import { getPortalBookingSettings } from "@/lib/portal-booking.functions";
 import { formatDay } from "@/lib/format";
 import { oneOffVisitNote } from "@/lib/one-off-booking";
+import { isZonePriced, servicePriceCents, type Service } from "@/lib/services";
 import { useOrgToday } from "@/hooks/useOrgToday";
 
 export type OneOffRequestTicket = {
@@ -43,7 +44,27 @@ export type OneOffRequestTicket = {
   propertyId: string;
   address: string | null;
   requestedOn: string;
+  /** The active dogs at the address (at least one; one for a commercial
+   *  account): what bookOneOffVisit prices the service for. */
+  pets: number;
+  /** The service the client asked for (phase 5). Null is the extra cleanup:
+   *  every request before the catalog, and the pet-waste service since. */
+  service: Pick<
+    Service,
+    | "id"
+    | "name"
+    | "service_line"
+    | "price_unit"
+    | "base_price_cents"
+    | "extra_pet_cents"
+    | "default_duration_min"
+  > | null;
 };
+
+/** The service a request names when it is not the extra cleanup. */
+function requestedService(t: OneOffRequestTicket | null) {
+  return t?.service && !isZonePriced(t.service) ? t.service : null;
+}
 
 export function BookOneOffRequestDialog({
   ticket,
@@ -85,10 +106,17 @@ export function BookOneOffRequestDialog({
     setDay(ticket.requestedOn >= today ? ticket.requestedOn : today);
     setStaffId("");
   }, [ticket, today]);
+  // The price starts from the service the client asked for, for the pets at
+  // that address through the one rule (what bookOneOffVisit will charge),
+  // else from the org's one-off price: the extra cleanup, as before.
+  const svc = requestedService(ticket);
+  const pets = ticket?.pets ?? 1;
+  const svcCents = svc ? servicePriceCents(svc, { pets }) : null;
   useEffect(() => {
     if (!ticket) return;
-    const cents = settingsQ.data?.priceCents;
+    const cents = svc ? svcCents : settingsQ.data?.priceCents;
     setPrice(cents == null ? "" : (cents / 100).toFixed(2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticket, settingsQ.data]);
 
   const priceCents = Math.round(parseFloat(price || "0") * 100);
@@ -105,8 +133,9 @@ export function BookOneOffRequestDialog({
             propertyId: t.propertyId,
             scheduledOn: day,
             priceCents,
+            ...(requestedService(t) ? { serviceId: requestedService(t)!.id } : {}),
             staffId: staffId || null,
-            note: oneOffVisitNote(formatDay(t.requestedOn), false),
+            note: oneOffVisitNote(formatDay(t.requestedOn), false, requestedService(t)?.name),
           },
         });
         visitId = r.visitId;
@@ -147,6 +176,7 @@ export function BookOneOffRequestDialog({
           <DialogTitle>Book the extra visit</DialogTitle>
           <DialogDescription>
             {ticket?.clientName ?? "This client"} asked for{" "}
+            {svc ? `${svc.name} on ` : ""}
             {ticket ? formatDay(ticket.requestedOn) : "a day"}
             {ticket?.address ? ` at ${ticket.address}` : ""}. It bills like any other visit.
           </DialogDescription>
@@ -190,12 +220,18 @@ export function BookOneOffRequestDialog({
                 />
               </div>
             </div>
-            {settingsQ.data && settingsQ.data.priceCents == null && (
+            {svc ? (
+              <p className="text-xs text-muted-foreground">
+                {svcCents == null
+                  ? `${svc.name} has no price yet, so this one is yours to price. Set one under Settings → Services.`
+                  : `${svc.name}'s price for the ${pets === 1 ? "one pet" : `${pets} pets`} at this address.`}
+              </p>
+            ) : settingsQ.data && settingsQ.data.priceCents == null ? (
               <p className="text-xs text-muted-foreground">
                 No one-off price is set, so this one is yours to price. Set one under Settings →
                 Client portal to fill it in next time.
               </p>
-            )}
+            ) : null}
             <div className="space-y-1">
               <Label htmlFor="one-off-tech" className="text-xs">
                 Assign to (optional)

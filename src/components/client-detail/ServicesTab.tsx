@@ -1221,8 +1221,6 @@ function ServiceDrawer({
     errors.weekdays = "Choose at least one day";
   if (form.earliestTime && form.latestTime && form.earliestTime >= form.latestTime)
     errors.window = "The earliest arrival must be before the latest arrival";
-  const hasErrors = Object.keys(errors).length > 0;
-  const fieldError = (k: string) => (showErrors && errors[k] ? errors[k] : null);
 
   // Pricing precedence (spec): Standard -> Zone -> Custom, always displayed,
   // never silently replaced. The buttons copy a computed price into the
@@ -1235,13 +1233,26 @@ function ServiceDrawer({
   });
   const dogsForPricing =
     accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : 1;
+  const hasErrors = Object.keys(errors).length > 0;
+  const fieldError = (k: string) => (showErrors && errors[k] ? errors[k] : null);
   // The service's own price for one visit (a walk at $25, an hourly groom at
   // its duration), or null when it has none (pet waste priced by zone). A plan
   // bills per visit, so this IS the plan's price: five walks a week is five
-  // of these (migration 20261010010000, "Billing").
+  // of these (migration 20261010010000, "Billing"). The one pricing rule,
+  // servicePriceCents (phase 5); pet waste never reaches it.
+  //
+  // A service's length lives on the SERVICE: an hourly price is the rate ×
+  // the service's own duration, and a business that sells a 45-minute and a
+  // 90-minute groom has two services, which is how routing, drift, the portal
+  // and public_quote already read it. A plan has no duration of its own.
   const serviceCents = chosenService
     ? servicePriceCents(chosenService, { pets: dogsForPricing })
     : null;
+  const hourly = chosenService?.price_unit === "hour";
+  const hourlyHint =
+    hourly && chosenService && serviceCents != null && chosenService.default_duration_min != null
+      ? `Priced at ${chosenService.default_duration_min} min × $${((chosenService.base_price_cents ?? 0) / 100).toFixed(2)} per hour; for a different length, add another service.`
+      : null;
 
   /** A different service: a new walk plan starts Monday to Friday while its
    *  schedule is still the untouched default, and a blank price takes the
@@ -1693,6 +1704,7 @@ function ServiceDrawer({
                 Use the service price, ${(serviceCents / 100).toFixed(2)}
               </Button>
             )}
+            {hourlyHint && <p className="mt-1 text-xs text-muted-foreground">{hourlyHint}</p>}
           </div>
           {accountType === "residential" ? (
             <div>

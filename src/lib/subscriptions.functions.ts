@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { isZonePriced } from "@/lib/services";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -115,21 +116,24 @@ const createSubSchema = z
 /** A plan may be sold as one of the business's ACTIVE services, or keep the
  *  one it already has after that service was deactivated. Another business's
  *  service reads as "not found" here (RLS) and is refused by the database
- *  too (tg_subscriptions_service). */
+ *  too (tg_subscriptions_service). Answers whether the service is priced by
+ *  the business's zones (pet waste) or by its own row (phase 5), which
+ *  decides what the price's provenance may claim. */
 async function assertServiceBookable(
   supabase: any,
   serviceId: string,
   currentId: string | null,
-): Promise<void> {
-  if (serviceId === currentId) return;
+): Promise<{ zonePriced: boolean }> {
   const { data: svc, error } = await supabase
     .from("services")
-    .select("id, active")
+    .select("id, active, service_line")
     .eq("id", serviceId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!svc) throw new Error("That service was not found.");
-  if (!svc.active) throw new Error("That service is no longer offered. Choose another.");
+  if (!svc.active && serviceId !== currentId)
+    throw new Error("That service is no longer offered. Choose another.");
+  return { zonePriced: isZonePriced(svc) };
 }
 
 export const createSubscription = createServerFn({ method: "POST" })
@@ -147,7 +151,11 @@ export const createSubscription = createServerFn({ method: "POST" })
       .eq("id", data.clientId)
       .single();
     if (cErr) throw new Error(cErr.message);
-    if (data.serviceId) await assertServiceBookable(supabase, data.serviceId, null);
+    // A walk is priced from its service, not from any zone: its provenance
+    // must not claim the zone's rate card (priced_from_zone_id stays NULL).
+    const zonePriced = data.serviceId
+      ? (await assertServiceBookable(supabase, data.serviceId, null)).zonePriced
+      : true;
 
     const { data: row, error } = await supabase
       .from("subscriptions")
@@ -171,7 +179,7 @@ export const createSubscription = createServerFn({ method: "POST" })
         // from a typed one, and guessing would put a false "hand-priced" flag
         // on the majority that just accepted it. A service created off its
         // zone's rate shows up as drift instead, which is what it is.
-        priced_from_zone_id: data.zoneId ?? null,
+        priced_from_zone_id: zonePriced ? (data.zoneId ?? null) : null,
         priced_at: new Date().toISOString(),
         billing_cadence: data.billingCadence ?? "postpaid",
         interval_weeks: data.frequency === "weekly" ? (data.intervalWeeks ?? null) : null,
@@ -277,7 +285,9 @@ export const updateSubscription = createServerFn({ method: "POST" })
       )
       .eq("id", data.subscriptionId)
       .single();
-    if (data.serviceId) await assertServiceBookable(supabase, data.serviceId, before?.service_id ?? null);
+    const zonePriced = data.serviceId
+      ? (await assertServiceBookable(supabase, data.serviceId, before?.service_id ?? null)).zonePriced
+      : true;
     // Keep status consistent with the end date (UX round 4): setting a past
     // end date cancels; clearing it (or moving it to the future) on a
     // canceled service revives it — otherwise ending a service was a one-way
@@ -331,6 +341,8 @@ export const updateSubscription = createServerFn({ method: "POST" })
         // the database (subscriptions_service_reaches_upcoming_visits); the
         // ones that happened keep the service they were done as.
         ...(data.serviceId ? { service_id: data.serviceId } : {}),
+        // A plan priced from its service cannot have come from a zone's rate.
+        ...(zonePriced ? {} : { priced_from_zone_id: null }),
       })
       .eq("id", data.subscriptionId)
       .select("organization_id");
