@@ -44,6 +44,7 @@
     "check:oauth": "node scripts/check-oauth-providers.mjs",
     "apple:secret": "node scripts/apple-client-secret.mjs",
     "check:pwa:live": "node scripts/check-pwa-live.mjs",
+    "check:terms:live": "node scripts/check-terms-live.mjs",
     "check:hooks": "eslint -c eslint.hooks.config.js src"
   },
   "dependencies": {
