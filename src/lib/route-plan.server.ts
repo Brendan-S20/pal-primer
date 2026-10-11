@@ -22,7 +22,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
-import { planDay, type RouteDayInputs } from "@/lib/route-inputs";
+import { planDay, type RouteDayInputs, type UnassignedVisit } from "@/lib/route-inputs";
 
 export type DaySummaryRow = {
   staff_id: string;
@@ -47,6 +47,10 @@ export type WindowMiss = {
 export type DayPlan = {
   day: string;
   routes: Array<{ staff_id: string; visit_ids: string[] }>;
+  /** Visits the solver could not place: no eligible technician, or a window
+   *  no route keeps. Handed to the write so the day still checks out, and
+   *  named to the dispatcher afterwards (20261010200000). */
+  unassigned: UnassignedVisit[];
   honourWindows: boolean;
   /** Each technician's route before this run, from route_cost_current. */
   before: Array<{ staffId: string; minutes: number; sequenced: boolean }>;
@@ -90,6 +94,7 @@ export async function planDayRoutes(
   return {
     day: args.day,
     routes: plan.routes,
+    unassigned: plan.unassigned,
     honourWindows,
     before: inp.techs.map((t) => ({
       staffId: t.id,
@@ -126,6 +131,9 @@ export async function applyRoutePlans(
     _plans: args.plans.map((p) => ({
       day: p.day,
       routes: p.routes,
+      // The stops deliberately on no route. Without this list the write
+      // would read a missing stop as "the day changed" and refuse the day.
+      unassigned: p.unassigned.map((u) => u.visit_id),
       honour_windows: p.honourWindows,
     })) as unknown as Json,
   });

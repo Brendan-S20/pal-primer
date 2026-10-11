@@ -81,6 +81,21 @@ export type WindowMissOut = {
   latest: string | null;
 };
 
+/** A visit the run could not place, named so the dispatcher can act on it:
+ *  nobody on the run can do its service, or no route keeps its arrival
+ *  window. It was left on no route (its old sequence and ETA cleared, and
+ *  with reassign its technician too), never put somewhere late. */
+export type UnassignableOut = {
+  day: string;
+  visitId: string;
+  client: string | null;
+  service: string | null;
+  reason: "no_eligible_tech" | "window";
+  /** HH:MM on the business's clock, when the reason is the window. */
+  earliest: string | null;
+  latest: string | null;
+};
+
 /** False when the run is no longer this job's to move (finished elsewhere,
  *  declared abandoned). The job stops and writes nothing. */
 export type ReportProgress = (stage: RunStage, daysDone: number) => Promise<boolean>;
@@ -145,6 +160,7 @@ export async function runAutoRouting(
   let savedMin = 0;
   let violations = 0;
   const windowMisses: WindowMissOut[] = [];
+  const unassignable: UnassignableOut[] = [];
   // Whether arrival windows were honoured on the days planned (the
   // organization's setting, unless this run overrode it).
   let windowsHonoured: boolean | null = honourWindows;
@@ -233,6 +249,19 @@ export async function runAutoRouting(
     }
     const plan = planOf.get(day);
     if (plan) windowsHonoured = plan.honourWindows;
+    // Only for a day that was written: on a refused day nothing changed, and
+    // the refusal is already in `skipped`.
+    for (const u of plan?.unassigned ?? []) {
+      unassignable.push({
+        day,
+        visitId: u.visit_id,
+        client: u.client,
+        service: u.service,
+        reason: u.reason,
+        earliest: u.earliest,
+        latest: u.latest,
+      });
+    }
 
     const before = new Map((plan?.before ?? []).map((b) => [b.staffId, b]));
     for (const r of w.rows) {
@@ -380,6 +409,13 @@ export async function runAutoRouting(
     // the panel names a handful and counts the rest.
     windowMisses: windowMisses.slice(0, 50),
     windowMissCount: windowMisses.length,
+    // Whether a stop left out also came off its technician (the panel's
+    // sentence differs: "left unassigned" against "left off the route").
+    reassign: data.reassign,
+    // Stops the run could not place, each with its reason. Capped like the
+    // misses; the panel names a handful and counts the rest.
+    unassignable: unassignable.slice(0, 50),
+    unassignableCount: unassignable.length,
   };
 }
 

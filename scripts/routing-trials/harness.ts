@@ -262,6 +262,15 @@ export const REQUIRED_MIGRATIONS: string[] = [
   "20261002090400_arrival-windows-can-be-set-aside.sql",
   "20261002090500_drive-times-are-not-a-typed-speed.sql",
   "20261002090700_the-route-is-solved-outside-the-database.sql",
+  // The service catalog (#358, #381, #384) and appointment routing's write,
+  // which takes the stops the solver leaves out (20261010200000). A stack
+  // that follows main may have none of them; each is applied in the trial's
+  // transaction only where it is missing, like the seven above.
+  "20261008120000_a-dog-walker-should-not-have-to-learn-about-dump-sites.sql",
+  "20261009200000_a-walk-is-not-a-cleanup.sql",
+  "20261009230000_a-visit-knows-its-service.sql",
+  "20261009230100_a-walk-takes-as-long-as-the-walk.sql",
+  "20261010200000_a-window-is-kept-and-a-skill-is-matched.sql",
 ].map((f) => join(ROOT, "supabase/migrations", f));
 
 let pendingCache: string[] | null = null;
@@ -304,7 +313,9 @@ function pendingMigrations(): string[] {
  *  twice from the same deterministic ids -- once to read, once to write --
  *  each inside its own BEGIN ... ROLLBACK. */
 export type SqlMode =
-  { kind: "sql" } | { kind: "inputs" } | { kind: "apply"; routes: unknown; honourWindows: boolean };
+  | { kind: "sql" }
+  | { kind: "inputs" }
+  | { kind: "apply"; routes: unknown; honourWindows: boolean; unassigned?: string[] };
 
 export function buildSql(
   sc: Scenario,
@@ -474,10 +485,14 @@ export function buildSql(
 
   // 4. The write.
   if (mode.kind === "apply") {
+    // The stops the solver left out on purpose (a window no route keeps, or
+    // nobody with the skill), as the app passes them (20261010200000).
+    const left = (mode.unassigned ?? []).map((v) => q(v)).join(", ");
     call(
       "apply",
       `SELECT public.apply_route_plan(${q(id.org)}, ${staffArr}, ${q(sc.day)}, true,
-         ${q(JSON.stringify(mode.routes))}::jsonb, ${mode.honourWindows}) AS j`,
+         ${q(JSON.stringify(mode.routes))}::jsonb, ${mode.honourWindows},
+         ARRAY[${left}]::uuid[]) AS j`,
     );
   } else {
     call(
@@ -668,6 +683,8 @@ export type TrialResult = {
     solver: { rounds: number; stoppedBy: string; objective: number } | null;
     honourWindows: boolean;
     misses: TsMiss[];
+    /** Stops the solver left off every route, by stop key, with the reason. */
+    unassigned: Array<{ key: string; reason: string }>;
     inputs: RouteDayInputs | null;
   } | null;
   /** Largest difference, in minutes, between the TypeScript drive model and
@@ -800,7 +817,14 @@ export async function runTrial(
       solveMs = performance.now() - t0;
     }
     ({ tags, stderr } = plan
-      ? runSql(buildSql(sc, written, { kind: "apply", routes: plan.routes, honourWindows }))
+      ? runSql(
+          buildSql(sc, written, {
+            kind: "apply",
+            routes: plan.routes,
+            honourWindows,
+            unassigned: plan.unassigned.map((u) => u.visit_id),
+          }),
+        )
       : { tags: {} as Tags, stderr: read.stderr });
     stderr = `${read.stderr}${stderr}`;
     apply = stepOf(tags, "apply");
@@ -825,6 +849,10 @@ export async function runTrial(
         : null,
       honourWindows,
       misses: (out?.misses ?? []) as TsMiss[],
+      unassigned: (plan?.unassigned ?? []).map((u) => ({
+        key: sc.stops.find((st) => id.visit(st) === u.visit_id)?.key ?? u.visit_id,
+        reason: u.reason,
+      })),
       inputs: inputs ?? null,
     };
   }
