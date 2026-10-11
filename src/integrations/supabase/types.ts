@@ -5864,6 +5864,7 @@ export type Database = {
           started_on: string
           status: Database["public"]["Enums"]["subscription_status"]
           unit_count: number | null
+          weekdays: number[] | null
           zone_id: string | null
         }
         Insert: {
@@ -5896,6 +5897,7 @@ export type Database = {
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
           unit_count?: number | null
+          weekdays?: number[] | null
           zone_id?: string | null
         }
         Update: {
@@ -5928,6 +5930,7 @@ export type Database = {
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
           unit_count?: number | null
+          weekdays?: number[] | null
           zone_id?: string | null
         }
         Relationships: [
@@ -7338,6 +7341,7 @@ export type Database = {
         Args: { _user_id: string; _visit_id: string }
         Returns: boolean
       }
+      is_weekday_set: { Args: { _days: number[] }; Returns: boolean }
       list_org_users: {
         Args: { _org_id: string }
         Returns: {

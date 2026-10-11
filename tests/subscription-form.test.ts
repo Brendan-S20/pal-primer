@@ -43,6 +43,8 @@ describe("subscriptionToFormValues (finding #8)", () => {
       zoneId: "zone-9",
       billingCadence: "postpaid",
       preferredWeekdays: [1, 3],
+      // Not a set-days plan (subscriptions.weekdays, migration 20261010010000).
+      weekdays: [],
       startedOn: "2026-07-01",
       endsOn: "2026-09-30",
       intervalWeeks: "",

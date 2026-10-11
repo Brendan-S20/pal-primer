@@ -191,7 +191,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_subscriptions_service_reaches_upcoming_visits (a plan's new service
     // reaches its upcoming visits). Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
-    expect(triggerFunctions().size).toBe(58);
+    //
+    // 58 -> 60 on 2026-10-09 (20261010010000, five walks a week):
+    // tg_subscriptions_weekdays_reshape (changing a plan's days takes its
+    // upcoming walks off the days that went) and
+    // tg_subscriptions_weekdays_follow_frequency (a cadence change off weekly
+    // lets go of the days instead of failing). Both REVOKEd in the same file.
+    expect(triggerFunctions().size).toBe(60);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
