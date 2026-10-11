@@ -100,6 +100,65 @@ export const day = (offset: number, now: Date = new Date()) => {
 
 export const TODAY = day(0);
 
+/** Settings → Services (public.services). Awkward on purpose: a name long
+ *  enough to have to truncate beside its badges, every price unit, a service
+ *  with no price yet, the seeded zone-priced cleanup with no duration, and an
+ *  inactive one, so the page draws every branch of its row. */
+export const SERVICES = [
+  {
+    id: "aaaaaaaa-0000-4000-8000-00000000c501",
+    organization_id: ORG_ID,
+    name: "Pet waste removal",
+    service_line: "pet_waste",
+    price_unit: "visit",
+    base_price_cents: null,
+    extra_pet_cents: 0,
+    default_duration_min: null,
+    active: true,
+    created_at: "2026-10-09T12:00:00Z",
+    updated_at: "2026-10-09T12:00:00Z",
+  },
+  {
+    id: "aaaaaaaa-0000-4000-8000-00000000c502",
+    organization_id: ORG_ID,
+    name: "Extended neighbourhood adventure walk with photo report",
+    service_line: "dog_walking",
+    price_unit: "hour",
+    base_price_cents: 2250,
+    extra_pet_cents: 750,
+    default_duration_min: 90,
+    active: true,
+    created_at: "2026-10-09T12:00:00Z",
+    updated_at: "2026-10-09T12:00:00Z",
+  },
+  {
+    id: "aaaaaaaa-0000-4000-8000-00000000c503",
+    organization_id: ORG_ID,
+    name: "Overnight stay",
+    service_line: "pet_sitting",
+    price_unit: "night",
+    base_price_cents: 8500,
+    extra_pet_cents: 1500,
+    default_duration_min: 720,
+    active: true,
+    created_at: "2026-10-09T12:00:00Z",
+    updated_at: "2026-10-09T12:00:00Z",
+  },
+  {
+    id: "aaaaaaaa-0000-4000-8000-00000000c504",
+    organization_id: ORG_ID,
+    name: "Nail trim (15 min)",
+    service_line: "mobile_grooming",
+    price_unit: "visit",
+    base_price_cents: null,
+    extra_pet_cents: 0,
+    default_duration_min: 15,
+    active: false,
+    created_at: "2026-10-09T12:00:00Z",
+    updated_at: "2026-10-09T12:00:00Z",
+  },
+];
+
 export const VISIT_CHECKLIST = [
   { id: "c7a1e0de-0000-4000-8000-000000000001", label: "All areas walked", required: true },
   {

@@ -121,6 +121,9 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // a technician reaches Preferences, which is their own device. Must precede
   // the "/settings" prefix entry.
   "/settings/business": ["owner", "office_manager"],
+  // The service catalog. Same audience as its server gate, manage_pricing,
+  // which a dispatcher does not hold. Must precede the "/settings" prefix.
+  "/settings/services": ["owner", "office_manager"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   // H1: the DNA compliance workspace (cross-client registry, fines, violation

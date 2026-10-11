@@ -109,6 +109,7 @@ import { Route as AuthenticatedSettingsWebhooksRouteImport } from './routes/_aut
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
+import { Route as AuthenticatedSettingsServicesRouteImport } from './routes/_authenticated/settings.services'
 import { Route as AuthenticatedSettingsSchedulingRouteImport } from './routes/_authenticated/settings.scheduling'
 import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_authenticated/settings.reviews'
 import { Route as AuthenticatedSettingsReferralsRouteImport } from './routes/_authenticated/settings.referrals'
@@ -674,6 +675,12 @@ const AuthenticatedSettingsSkipRulesRoute =
     path: '/skip-rules',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsServicesRoute =
+  AuthenticatedSettingsServicesRouteImport.update({
+    id: '/services',
+    path: '/services',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsSchedulingRoute =
   AuthenticatedSettingsSchedulingRouteImport.update({
     id: '/scheduling',
@@ -1066,6 +1073,7 @@ export interface FileRoutesByFullPath {
   '/settings/referrals': typeof AuthenticatedSettingsReferralsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/settings/scheduling': typeof AuthenticatedSettingsSchedulingRoute
+  '/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
@@ -1209,6 +1217,7 @@ export interface FileRoutesByTo {
   '/settings/referrals': typeof AuthenticatedSettingsReferralsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/settings/scheduling': typeof AuthenticatedSettingsSchedulingRoute
+  '/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
@@ -1361,6 +1370,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/referrals': typeof AuthenticatedSettingsReferralsRoute
   '/_authenticated/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/_authenticated/settings/scheduling': typeof AuthenticatedSettingsSchedulingRoute
+  '/_authenticated/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
@@ -1514,6 +1524,7 @@ export interface FileRouteTypes {
     | '/settings/referrals'
     | '/settings/reviews'
     | '/settings/scheduling'
+    | '/settings/services'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
@@ -1657,6 +1668,7 @@ export interface FileRouteTypes {
     | '/settings/referrals'
     | '/settings/reviews'
     | '/settings/scheduling'
+    | '/settings/services'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
@@ -1808,6 +1820,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/referrals'
     | '/_authenticated/settings/reviews'
     | '/_authenticated/settings/scheduling'
+    | '/_authenticated/settings/services'
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
@@ -2608,6 +2621,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsSkipRulesRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/services': {
+      id: '/_authenticated/settings/services'
+      path: '/services'
+      fullPath: '/settings/services'
+      preLoaderRoute: typeof AuthenticatedSettingsServicesRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/scheduling': {
       id: '/_authenticated/settings/scheduling'
       path: '/scheduling'
@@ -3062,6 +3082,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsReferralsRoute: typeof AuthenticatedSettingsReferralsRoute
   AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
   AuthenticatedSettingsSchedulingRoute: typeof AuthenticatedSettingsSchedulingRoute
+  AuthenticatedSettingsServicesRoute: typeof AuthenticatedSettingsServicesRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedSettingsUsersRoute: typeof AuthenticatedSettingsUsersRoute
@@ -3094,6 +3115,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsReferralsRoute: AuthenticatedSettingsReferralsRoute,
   AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
   AuthenticatedSettingsSchedulingRoute: AuthenticatedSettingsSchedulingRoute,
+  AuthenticatedSettingsServicesRoute: AuthenticatedSettingsServicesRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedSettingsUsersRoute: AuthenticatedSettingsUsersRoute,
