@@ -2318,6 +2318,17 @@ function VisitCardView({
             return <div className="mt-0.5 text-3xs text-muted-foreground">Window {label}</div>;
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
+            {visit.services?.name && (
+              // What the visit is (services, phase 2), as the zone below: one
+              // line, ellipsis, full name on hover; the business's own text.
+              <Badge
+                variant="secondary"
+                className="h-4 min-w-0 max-w-full px-1 text-3xs"
+                title={visit.services.name}
+              >
+                <bdi className="truncate">{visit.services.name}</bdi>
+              </Badge>
+            )}
             {visit.zones?.name && (
               // `h-4` is a fixed 16px, so a zone name longer than the lane
               // wrapped to three lines inside a one-line pill and printed

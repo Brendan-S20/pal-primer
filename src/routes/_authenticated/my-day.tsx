@@ -101,6 +101,8 @@ import { useTabletTier } from "@/hooks/useTabletTier";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
+import { visitServiceLabel } from "@/lib/visit-service";
+import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { OffTheClockBanner } from "@/components/TimeClock";
@@ -1212,6 +1214,23 @@ function skipReasonLabel(t: TFunction, code: string): string {
   return english ? t(`skipReason.${code}`, { defaultValue: english }) : code;
 }
 
+/** A service line in the tech's language. One literal key per line, so
+ *  tests/en-and-es-have-the-same-keys.test.ts can see every one of them. */
+function serviceLineName(t: TFunction, line: ServiceLine): string {
+  switch (line) {
+    case "pet_waste":
+      return t("serviceLine.pet_waste");
+    case "dog_walking":
+      return t("serviceLine.dog_walking");
+    case "pet_sitting":
+      return t("serviceLine.pet_sitting");
+    case "mobile_grooming":
+      return t("serviceLine.mobile_grooming");
+    default:
+      return t("serviceLine.other");
+  }
+}
+
 /** What the badge says when the status came from the device's queue rather than
  *  the server (`queuedStatus.*`). "Syncing" rather than "queued": the work is
  *  done, the tech can move on, and the only thing outstanding is the device
@@ -1856,6 +1875,7 @@ function VisitCard({
   // residential card there are never any, so the button never appears.
   const hasStations = p?.account_type === "commercial" || !!p?.has_units;
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
+  const service = visitServiceLabel(visit.services);
 
   // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
@@ -2077,6 +2097,21 @@ function VisitCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="sr-only">{t("visit.stop", { number: visit.sequence ?? index })}</span>
             {statusBadge(visit.status, visit.queuedSync, t)}
+            {service && (
+              // What this stop is: the line in the tech's language, then the
+              // business's own name for it, untranslated and in its own
+              // direction. The seeded "Pet waste removal" is ours, so the
+              // translated line says it alone.
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {serviceLineName(t, service.line)}
+                {service.ownName && (
+                  <>
+                    {" · "}
+                    <bdi>{service.ownName}</bdi>
+                  </>
+                )}
+              </span>
+            )}
             {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">

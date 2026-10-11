@@ -232,6 +232,13 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     by: "قبل {{time}}",
     over8h: "أكثر من 8 س · بدأت {{time}}",
   },
+  serviceLine: {
+    pet_waste: "إزالة فضلات الحيوانات",
+    dog_walking: "تمشية الكلاب",
+    pet_sitting: "رعاية الحيوانات",
+    mobile_grooming: "تجميل متنقل",
+    other: "خدمة أخرى",
+  },
   access: {
     gate: "البوابة",
     lockBox: "صندوق المفاتيح",

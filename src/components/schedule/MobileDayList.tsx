@@ -163,6 +163,17 @@ export function MobileDayList({
                       )}
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         <StatusChip status={v.status} />
+                        {v.services?.name && (
+                          // What the visit is (services, phase 2): the
+                          // business's own name for it, one line, ellipsis.
+                          <Badge
+                            variant="secondary"
+                            className="h-4 min-w-0 max-w-full px-1 text-3xs"
+                            title={v.services.name}
+                          >
+                            <bdi className="truncate">{v.services.name}</bdi>
+                          </Badge>
+                        )}
                         {v.zones?.name && (
                           <Badge variant="outline" className="h-4 px-1 text-3xs">
                             {v.zones.name}

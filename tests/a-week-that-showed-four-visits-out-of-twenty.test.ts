@@ -255,12 +255,12 @@ describe("a chip is a target a thumb can hit", () => {
 
 describe("what kind of work the chip says it is", () => {
   // Owner QA, 2026-08-19: the week view should read like Jobber's, whose chip
-  // carries the SERVICE on line two. HoundStack has no service name — no
-  // services table, no per-visit service column — because it sells one service
-  // at a cadence. So "wire the service name through" had no name to wire, and
-  // what these pin is the honest substitute plus the reason it sits where it
-  // does. A future reader who goes looking for services(name) should find this
-  // rather than the absence.
+  // carries the SERVICE on line two. Until the service catalog (2026-10-09)
+  // there was no service name to carry, so the hover card showed the plan's
+  // cadence. Now a visit has a service (visits.service_id, 20261009230000):
+  // the hover card names it beside the cadence, and the chip names it only
+  // when the visits on screen are not all one service, because a business
+  // that sells one thing learns nothing from reading it on every chip.
 
   it("has no invented service name on the chip", () => {
     const src = calendar();
@@ -269,9 +269,9 @@ describe("what kind of work the chip says it is", () => {
     expect(src).not.toMatch(/Pet waste removal/i);
   });
 
-  it("builds the label from the cadence, which is the value that exists", () => {
+  it("builds the cadence label from every frequency the database has", () => {
     const src = calendar();
-    expect(src).toMatch(/const serviceLabel = \(v: CalendarVisit\) =>/);
+    expect(src).toMatch(/const cadenceLabel = \(v: CalendarVisit\) =>/);
     for (const f of ["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]) {
       expect(src, `${f} is missing from FREQUENCY_LABEL`).toMatch(
         new RegExp(`\\b${f}: "`),
@@ -283,14 +283,15 @@ describe("what kind of work the chip says it is", () => {
     expect(table.slice(0, table.indexOf("};")).match(/^\s+\w+: "/gm) ?? []).toHaveLength(5);
   });
 
-  it("and the server actually sends the two columns it is built from", () => {
+  it("and the server actually sends the columns it is built from", () => {
     // The label is composed in the browser, so a select that stops asking for
-    // account_type degrades it silently to a bare cadence rather than erroring.
+    // account_type degrades it silently to a bare cadence rather than erroring,
+    // and one that stops asking for the service drops the name the same way.
     const fn = readFileSync(join(root, "src/lib/visits.functions.ts"), "utf8");
     const q = fn.slice(fn.indexOf("export const listVisitsForDay"));
-    expect(q.slice(0, q.indexOf(".eq(\"organization_id\""))).toMatch(
-      /subscriptions\(price_cents, account_type, frequency,/,
-    );
+    const select = q.slice(0, q.indexOf(".eq(\"organization_id\""));
+    expect(select).toMatch(/subscriptions\(price_cents, account_type, frequency,/);
+    expect(select).toMatch(/service_id, services\(name, service_line/);
   });
 
   it("puts the cadence in the hover card and only the exception on the chip", () => {
@@ -300,7 +301,11 @@ describe("what kind of work the chip says it is", () => {
     // cost of the street. A one-time job among recurring ones is the thing a
     // dispatcher plans around, and it is the only part promoted to the chip.
     expect(src).toMatch(/visit\.subscriptions\?\.frequency === "one_time" \? "One-time" : null/);
-    expect(src).toMatch(/\[mins == null \? null : clock\(mins\), oneTime, street\]/);
+    expect(src).toMatch(
+      /mins == null \? null : clock\(mins\),\s*showService \? serviceName : null,\s*oneTime,\s*street,/,
+    );
+    // And the chip learns whether services vary from the whole set on screen.
+    expect(src).toMatch(/const showService = servicesVary\(visits\);/);
 
     const card = src.slice(src.indexOf("<HoverCardContent"));
     expect(card.slice(0, card.indexOf("</HoverCardContent>"))).toMatch(

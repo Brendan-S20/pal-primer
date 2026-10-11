@@ -193,6 +193,13 @@ const es: Translations = {
     by: "Antes de {{time}}",
     over8h: "Más de 8 h · empezó {{time}}",
   },
+  serviceLine: {
+    pet_waste: "Recolección de desechos",
+    dog_walking: "Paseo de perros",
+    pet_sitting: "Cuidado de mascotas",
+    mobile_grooming: "Peluquería móvil",
+    other: "Otro servicio",
+  },
   access: {
     gate: "Portón",
     lockBox: "Caja de llaves",
