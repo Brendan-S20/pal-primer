@@ -37,6 +37,7 @@ const es: Translations = {
     unlinkedStaff:
       "Tu usuario aún no está vinculado a un registro de personal. Pide al dueño que te agregue.",
     nothingScheduled: "No tienes visitas para este día.",
+    nextWorkdayHint: "Tu próximo día de trabajo es {{day}}.",
     nextUp: "Siguiente",
     jump: "Ir",
     inProgress: "En curso",

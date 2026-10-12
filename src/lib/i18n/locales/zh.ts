@@ -45,6 +45,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     notOnStaff: "不在任何员工名单中",
     unlinkedStaff: "你的账号还没有关联员工档案。请让老板把你加进来。",
     nothingScheduled: "这一天没有给你安排工作。",
+    nextWorkdayHint: "你的下一个工作日是 {{day}}。",
     nextUp: "下一站",
     jump: "跳转",
     inProgress: "进行中",
