@@ -7468,6 +7468,7 @@ export type Database = {
           awaiting_cents: number
           card_on_file: boolean
           dog_count: number
+          has_invoice_line: boolean
           open_balance_cents: number
           pays_cash_check: boolean
           visit_id: string

@@ -318,21 +318,23 @@ export function PaymentLine({
 }) {
   const { t } = useTranslation();
   const mode = paymentMode(facts);
-  const Icon = PAY_ICON[mode];
+  const Icon = mode ? PAY_ICON[mode] : null;
   const due = dueCents(facts);
   return (
     <div className="mt-2.5 space-y-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
-        <span
-          className={`inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-2xl border px-2.5 py-1 font-medium ${
-            mode === "cash_check"
-              ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300"
-              : "border-border bg-muted/50 text-foreground/80"
-          }`}
-        >
-          <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0">{t(PAY_KEY[mode])}</span>
-        </span>
+        {mode && Icon && (
+          <span
+            className={`inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-2xl border px-2.5 py-1 font-medium ${
+              mode === "cash_check"
+                ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300"
+                : "border-border bg-muted/50 text-foreground/80"
+            }`}
+          >
+            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{t(PAY_KEY[mode])}</span>
+          </span>
+        )}
         {due > 0 && (
           <span className="rounded-full bg-amber-500/15 px-2.5 py-1 font-semibold text-amber-800 dark:text-amber-300">
             {t("pay.due", { amount: formatMoney(due, locale) })}

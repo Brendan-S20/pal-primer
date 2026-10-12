@@ -82,6 +82,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     routeMayHaveChanged: "ربما تغيّر هذا المسار. تأكّد منه قبل الانطلاق.",
     pickADay: "اختر يومًا",
     skippedCount: "{{count}} متخطاة",
+    missedCount: "{{count}} فائتة",
+    progressRule: "المنجزة هي الزيارات المكتملة من إجمالي المحطات. تُحسب المحطات الفائتة والمتخطاة بشكل منفصل.",
     view: "العرض",
     viewList: "قائمة",
     viewMap: "خريطة",

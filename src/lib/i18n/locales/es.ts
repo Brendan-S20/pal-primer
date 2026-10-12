@@ -70,6 +70,8 @@ const es: Translations = {
     routeMayHaveChanged: "Es posible que la ruta haya cambiado. Confírmala antes de salir.",
     pickADay: "Elige un día",
     skippedCount: "{{count}} omitidas",
+    missedCount: "{{count}} no realizadas",
+    progressRule: "Hechas son las visitas completadas del total de paradas. Las no realizadas y omitidas se cuentan por separado.",
     view: "Vista",
     viewList: "Lista",
     viewMap: "Mapa",

@@ -21,6 +21,8 @@ export type StopFacts = {
   autopay: boolean;
   cardOnFile: boolean;
   paysCashCheck: boolean;
+  /** A line for this visit on a non-void invoice. Missing in older cached days. */
+  hasInvoiceLine?: boolean;
   openBalanceCents: number;
   /** Collected in the field and not yet confirmed by the office. */
   awaitingCents: number;
@@ -33,6 +35,7 @@ export type StopFactsRow = {
   autopay: boolean | null;
   card_on_file: boolean | null;
   pays_cash_check: boolean | null;
+  has_invoice_line?: boolean | null;
   open_balance_cents: number | string | null;
   awaiting_cents: number | string | null;
 };
@@ -43,6 +46,7 @@ export function stopFactsFromRow(r: StopFactsRow): StopFacts {
     autopay: !!r.autopay,
     cardOnFile: !!r.card_on_file,
     paysCashCheck: !!r.pays_cash_check,
+    hasInvoiceLine: r.has_invoice_line === true,
     // bigint arrives as a number from PostgREST, or a string past 2^53; a
     // balance is never that large, but Number() is right either way.
     openBalanceCents: Number(r.open_balance_cents ?? 0) || 0,
@@ -79,13 +83,15 @@ export type PaymentMode = "autopay" | "cash_check" | "invoiced";
 
 /** How this customer pays, in the order a tech needs it: a card that is
  *  charged automatically means nothing to collect; a customer whose last
- *  payment was cash or a check may hand some over; everyone else is billed. */
+ *  payment was cash or a check may hand some over. "Invoiced" requires a real
+ *  invoice line for this visit, regardless of visit status. A missing RPC
+ *  field or an older cached day cannot establish that a visit was invoiced. */
 export function paymentMode(
-  f: Pick<StopFacts, "autopay" | "cardOnFile" | "paysCashCheck">,
-): PaymentMode {
+  f: Pick<StopFacts, "autopay" | "cardOnFile" | "paysCashCheck" | "hasInvoiceLine">,
+): PaymentMode | null {
   if (f.autopay && f.cardOnFile) return "autopay";
   if (f.paysCashCheck) return "cash_check";
-  return "invoiced";
+  return f.hasInvoiceLine === true ? "invoiced" : null;
 }
 
 /** What is still owed once the collections already waiting are counted: the
