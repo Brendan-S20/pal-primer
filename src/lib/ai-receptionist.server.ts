@@ -71,17 +71,18 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
   // Booking (receptionist-booking.ts). The caller is the business whose
   // number was texted and the phone that texted it; the client match is
   // re-checked there, never trusted from here.
-  const [{ getOpenSlots, bookVisit }, { supabaseReceptionistStore }] = await Promise.all([
-    import("@/lib/receptionist-booking"),
-    import("@/lib/receptionist-booking-store.server"),
-  ]);
+  const [{ getOpenSlots, bookVisit, listServices }, { supabaseReceptionistStore }] =
+    await Promise.all([
+      import("@/lib/receptionist-booking"),
+      import("@/lib/receptionist-booking-store.server"),
+    ]);
   const caller = {
     orgId: input.organizationId,
     fromNumber: input.fromNumber,
     clientId: input.clientId,
   };
   const store = supabaseReceptionistStore(supabaseAdmin, {
-    createLead: async ({ name, note }) => (await insertLead(name, note)).id,
+    createLead: async ({ name, note, serviceId }) => (await insertLead(name, note, serviceId)).id,
   });
   async function extraCleanupPrice(): Promise<{ extra_cleanup_for_existing_clients_usd?: number }> {
     if (!input.clientId) return {};
@@ -94,30 +95,70 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
     return cents == null ? {} : { extra_cleanup_for_existing_clients_usd: cents / 100 };
   }
 
+  /** The service a tool named, or null for none: this business's, active, by
+   *  id. Anything else is "not offered", whatever the model called it. */
+  async function namedService(serviceId: string | undefined) {
+    if (!serviceId) return { ok: true as const, service: null };
+    const hit = (await store.services(input.organizationId)).find((s) => s.id === serviceId);
+    if (!hit || !hit.active) return { ok: false as const };
+    return { ok: true as const, service: hit };
+  }
+
   const tools = {
+    list_services: tool({
+      description:
+        "What this business sells, by service_id and name, in its own words. Call this before quoting or booking a specific service, and pass the service_id it returns to get_pricing_quote, get_open_slots and book_visit. It carries no prices. A caller who names nothing gets the business's default (its pet waste cleanup, where it does that).",
+      inputSchema: z.object({}),
+      execute: async () => listServices(store, caller),
+    }),
     get_pricing_quote: tool({
       description:
-        "Get an instant per-visit price quote for this business. Use this whenever the caller asks about price, cost, or how much it is.",
+        "Get an instant per-visit price quote for this business. Use this whenever the caller asks about price, cost, or how much it is. For a specific service, pass the service_id from list_services; without one the quote is for the business's default service.",
       inputSchema: z.object({
         postal_code: z.string().trim().describe("5-digit US ZIP code"),
         dogs: z.number().int().min(1).max(10),
         frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]),
+        service_id: z
+          .string()
+          .trim()
+          .max(80)
+          .optional()
+          .describe("The service to price, exactly as list_services returned it."),
       }),
-      execute: async ({ postal_code, dogs, frequency }) => {
+      execute: async ({ postal_code, dogs, frequency, service_id }) => {
+        // The service, when one was named. A walk's price is the walk's own
+        // (public_quote prices it through service_price_cents); the extra
+        // cleanup's one-off price applies to the default service only.
+        const named = await namedService(service_id);
+        if (!named.ok) return { available: false, reason: "That service is not offered." };
+        const { isZonePriced } = await import("@/lib/services");
+        const forDefault = !named.service || isZonePriced(named.service);
         // The price of an EXTRA cleanup for an existing client is the one the
         // owner set in Settings -> Client portal, and it is what book_visit
         // books at. Quoted here, and only here, so every price the
         // receptionist can say comes out of this one tool.
-        const extra = await extraCleanupPrice();
+        const extra = forDefault ? await extraCleanupPrice() : {};
         const { data, error } = await supabaseAdmin.rpc("public_quote", {
           _slug: input.orgSlug,
           _postal_code: postal_code,
           _dog_count: dogs,
           _frequency: frequency,
+          // The service, by id, so the database prices THAT and not the yard.
+          // Absent for the default, so that call is the call it always was.
+          ...(named.service && !forDefault ? { _service_id: named.service.id } : {}),
         });
         if (error) return { available: false, reason: error.message, ...extra };
         const row = Array.isArray(data) ? data[0] : data;
         if (!row) return { available: false, reason: "No service in that zip.", ...extra };
+        // A service the owner has not priced yet comes back with NULL prices:
+        // nothing to say, and nothing book_visit may book automatically.
+        if (row.recurring_price_cents == null) {
+          return {
+            available: false,
+            reason: "That service has no online price yet; the office will quote it.",
+            service_name: named.service?.name ?? null,
+          };
+        }
         // When the owner prices the first cleanup by how long since the yard
         // was last cleaned, there is no single number to quote until the
         // caller says; `initial_cleanup_cents` is null then, and reading it as
@@ -139,6 +180,7 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
               }
             : {}),
           zone_name: row.zone_name ?? null,
+          ...(named.service ? { service_name: named.service.name } : {}),
           ...extra,
         };
       },
@@ -184,6 +226,12 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
           .max(10)
           .optional()
           .describe("5-digit ZIP, for a caller who is not a client yet."),
+        service_id: z
+          .string()
+          .trim()
+          .max(80)
+          .optional()
+          .describe("The service asked about, from list_services. Omit for the default."),
       }),
       execute: async (args) => getOpenSlots(store, caller, args),
     }),
@@ -207,6 +255,12 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
           .max(300)
           .optional()
           .describe("Anything the customer said about the visit."),
+        service_id: z
+          .string()
+          .trim()
+          .max(80)
+          .optional()
+          .describe("The service to book, from list_services. Omit for the default."),
       }),
       execute: async (args) => bookVisit(store, caller, args),
     }),
@@ -219,11 +273,14 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
   };
 
   // A captured lead and a lead from book_visit are the same row: one shape.
-  async function insertLead(display_name: string, note: string) {
+  async function insertLead(display_name: string, note: string, serviceId?: string | null) {
     const digits = input.fromNumber.replace(/\D/g, "") || "unknown";
     const { data, error } = await supabaseAdmin
       .from("leads")
       .insert({
+        // The service they asked about, when book_visit was handed one
+        // (leads.service_id, 20261011150000). Absent, the row is unchanged.
+        ...(serviceId ? { service_id: serviceId } : {}),
         // Without this the lead belonged to nobody: `leads` is read per
         // organization, so every lead the receptionist ever captured was
         // invisible to every tenant, including the one it was for
@@ -255,6 +312,9 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
     "Rules:",
     channelRule,
     "- Never guess prices. Always call get_pricing_quote before quoting.",
+    // Services. The business may sell more than one thing (a cleanup, a
+    // walk, a groom); the list, and every id, comes from list_services.
+    "- This business may offer more than one service. Call list_services to see them, in its own words, and pass that service_id to get_pricing_quote, get_open_slots and book_visit when the caller wants a specific one. Never invent a service, a service name or a service id. list_services carries no prices.",
     "- If you don't know something, call lookup_faq. If the FAQ doesn't cover it, call escalate_to_human.",
     "- If the caller expresses interest in signing up, call capture_lead with their name and what they asked for.",
     "- End with a clear next step (a question, a price, or a promise to follow up).",

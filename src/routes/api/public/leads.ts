@@ -58,6 +58,10 @@ const leadSchema = z.object({
   frequency: z.string().trim().max(40).optional().or(z.literal("")),
   message: z.string().trim().max(2000).optional().or(z.literal("")),
   source: z.string().trim().max(60).optional(),
+  // The service asked about (phase 5), when the business offers more than
+  // one. An id from public_services, checked below against the business the
+  // slug resolved to; a business that sells one thing never sends it.
+  service_id: z.string().uuid().optional().nullable(),
   // The spam filters (public-form-guard.ts). Unknown rather than a bounded
   // string, so a script that stuffs the honeypot with a novel gets the same
   // calm refusal as one that writes a word, not a validation error naming it.
@@ -122,6 +126,29 @@ export const Route = createFileRoute("/api/public/leads")({
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+        // The service named has to be THIS business's. Another business's id,
+        // or one that does not exist, is a body the form never sends, so it is
+        // the same refusal as any other malformed input, before a turn is
+        // taken or anything is written. A deactivated service of this business
+        // is still recorded: the person asked for it, and the office should
+        // know that, even if it is no longer sold.
+        let service: { id: string; name: string } | null = null;
+        if (data.service_id) {
+          const { data: svc } = await (supabaseAdmin.from("services") as any)
+            .select("id, name")
+            .eq("id", data.service_id)
+            .eq("organization_id", orgId)
+            .maybeSingle();
+          if (!svc?.id) {
+            return new Response(JSON.stringify({ error: "Invalid input" }), {
+              status: 400,
+              headers: jsonHeaders,
+            });
+          }
+          service = { id: svc.id as string, name: (svc.name as string) ?? "" };
+        }
+
         const { takePublicFormTurn } = await import("@/lib/public-form-guard.server");
         const turn = await takePublicFormTurn(
           supabaseAdmin as any,
@@ -152,6 +179,9 @@ export const Route = createFileRoute("/api/public/leads")({
             message: data.message || null,
             source,
             status: "new",
+            // Only when one was named: a lead from a business that sells one
+            // thing is the row it always was, with no service_id key at all.
+            ...(service ? { service_id: service.id } : {}),
           })
           .select("id")
           .single();
@@ -173,6 +203,7 @@ export const Route = createFileRoute("/api/public/leads")({
           location,
           dogCount: data.dog_count ?? null,
           frequency: data.frequency || null,
+          serviceName: service?.name ?? null,
         });
 
         return new Response(JSON.stringify({ ok: true }), {

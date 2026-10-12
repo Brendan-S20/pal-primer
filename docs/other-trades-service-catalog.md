@@ -75,7 +75,18 @@ photos, and step 1's `service_lines`.
   report compares a non-waste plan against its service; the invoice line names
   the visit's service (`20261011100100`); the portal lists the business's
   services and the request records the one asked for (`20261011100200`).
-  Hourly prices round once, to the cent, by the minute.*
+  Hourly prices round once, to the cent, by the minute. The public paths
+  followed the same day (migration `20261011150000`): `public_services(_slug)`
+  is the anon door onto the catalog (same gate and slug resolution as
+  `public_quote`, active and priced services plus the zone-priced pet-waste
+  one, no organization column); the signup and quote form shows a picker when
+  there is more than one and passes `_service_id` to both quote calls; the
+  pick is recorded on `leads.service_id` and `signup_requests.service_id` and
+  copied onto the plan the webhook provisions; the AI receptionist gets a
+  `list_services` tool and books a service through `portal_request_one_off`
+  and `bookOneOffVisit` at the service's price. A business that sells one
+  thing sees none of it, held there by
+  `tests/a-stranger-can-see-what-is-for-sale.test.ts`.*
 - **Visit generation.** Per plan: for each day the cadence selects, one visit
   per slot (one, with a null slot, when the plan has none). Duration copied
   from the service onto the visit.

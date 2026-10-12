@@ -4,6 +4,7 @@
 // receptionist-booking-store.server.ts, the test one
 // tests/support/fake-receptionist-store.ts.
 
+import type { Service } from "@/lib/services";
 import type { ZoneMatchFields } from "@/lib/zone-match";
 
 export const RECEPTIONIST_DEFAULT_DAYS = 14;
@@ -28,6 +29,21 @@ export type OrgFacts = {
   portal_auto_accept_bookings: boolean | null;
   route_windows: string | null;
 };
+/** One of the business's services (public.services), as the booking rules
+ *  read it: enough to say what it is, whether it is still sold, and to price
+ *  it through servicePriceCents. The receptionist never says the price; it
+ *  hands the id to public_quote (get_pricing_quote) and to bookOneOffVisit. */
+export type ServiceFacts = Pick<
+  Service,
+  | "id"
+  | "name"
+  | "service_line"
+  | "active"
+  | "price_unit"
+  | "base_price_cents"
+  | "extra_pet_cents"
+  | "default_duration_min"
+>;
 export type ClientFacts = {
   id: string;
   organization_id: string;
@@ -76,6 +92,9 @@ export interface ReceptionistStore {
   /** Active clients OF THIS ORG whose primary phone has these digits. */
   clientsWithPhone(orgId: string, digits: string): Promise<ClientFacts[]>;
   properties(orgId: string, clientId: string): Promise<PropertyFacts[]>;
+  /** Every service OF THIS ORG, active or not (a retired one is refused by
+   *  name, not silently treated as unknown). */
+  services(orgId: string): Promise<ServiceFacts[]>;
   zones(orgId: string): Promise<ZoneMatchFields[]>;
   /** Days in (after, through] the property has a visit not skipped/canceled. */
   busyDays(orgId: string, propertyId: string, after: string, through: string): Promise<string[]>;
@@ -97,23 +116,31 @@ export interface ReceptionistStore {
       leadId?: string | null;
     },
   ): Promise<void>;
-  /** portal_request_one_off. Throws its refusal code as the message. */
+  /** portal_request_one_off. Throws its refusal code as the message.
+   *  `serviceId` absent is the four-argument call the receptionist always
+   *  made: the extra cleanup. */
   requestOneOff(a: {
     portalToken: string;
     propertyId: string;
     day: string;
     message: string;
+    serviceId?: string | null;
   }): Promise<{
     ticketId: string;
     created: boolean;
   }>;
   markRequestedByText(orgId: string, ticketId: string): Promise<void>;
+  /** bookOneOffVisit. `priceCents` is the org's one-off price for the extra
+   *  cleanup, or "service" with `serviceId` for anything else, priced there
+   *  through the one rule for the property's pets (the portal's auto-accept
+   *  makes the same call). */
   bookOneOff(a: {
     orgId: string;
     clientId: string;
     propertyId: string;
     day: string;
-    priceCents: number;
+    priceCents: number | "service";
+    serviceId?: string | null;
     note: string;
     window: ArrivalWindow | null;
   }): Promise<{ visitId: string; scheduledOn: string }>;
@@ -123,6 +150,8 @@ export interface ReceptionistStore {
     fromNumber: string;
     name: string;
     note: string;
+    /** The service asked about, when one was named (leads.service_id). */
+    serviceId?: string | null;
   }): Promise<string | null>;
   logActivity(a: {
     orgId: string;

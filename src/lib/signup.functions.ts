@@ -9,6 +9,7 @@ import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
+import { publicServiceChoices, type PublicService } from "@/lib/public-services";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -110,6 +111,24 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       }
     }
 
+    // What the business sells, for the picker (phase 5, public paths). Through
+    // public_services, the one door the publishable key has onto `services`:
+    // it answers only for a business whose signup switch is on, with its
+    // active, priced services and its zone-priced pet-waste one, so a
+    // quote-only business and a business that sells one thing both get an
+    // empty or one-row list and the form they always had. A lookup that
+    // fails lists nothing, for the same reason: the page must still load.
+    let services: PublicService[] = [];
+    try {
+      const { data: svcRows, error: svcErr } = await sb.rpc("public_services", {
+        _slug: data.slug,
+      });
+      if (svcErr) console.error("signup services lookup failed", found.id, svcErr);
+      else services = publicServiceChoices(svcRows);
+    } catch (e) {
+      console.error("signup services lookup failed", found.id, e);
+    }
+
     return {
       id: found.id as string,
       name: ((org?.name as string | null) ?? found.name ?? null) as string | null,
@@ -124,6 +143,7 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       instantStart,
       form,
       firstCleanup,
+      services,
     };
   });
 
@@ -135,19 +155,32 @@ const quoteSchema = z.object({
   // The customer's answer to "when was your yard last cleaned?", as the
   // owner's tier id. An id, never a price: public_quote prices it.
   last_cleaned: z.string().trim().max(40).optional().or(z.literal("")),
+  // The service the visitor picked (phase 5), when the business offers more
+  // than one. An id, never a price or a name: public_quote prices it, and
+  // refuses another business's, a deactivated one, or one it cannot price.
+  // Absent for a business that sells one thing, whose quote is the call it
+  // always was.
+  service_id: z.string().uuid().optional(),
 });
+
+/** The arguments public_quote takes from a quote request: only ever ids and
+ *  answers, never a number of cents. Both callers below build them here. */
+function publicQuoteArgs(data: z.infer<typeof quoteSchema>) {
+  return {
+    _slug: data.slug,
+    _postal_code: data.postal_code.trim(),
+    _dog_count: data.dog_count,
+    _frequency: data.frequency,
+    ...(data.last_cleaned ? { _last_cleaned: data.last_cleaned } : {}),
+    ...(data.service_id ? { _service_id: data.service_id } : {}),
+  };
+}
 
 export const getSignupQuote = createServerFn({ method: "POST" })
   .inputValidator((d) => quoteSchema.parse(d))
   .handler(async ({ data }) => {
     const sb = anon();
-    const { data: rows, error } = await sb.rpc("public_quote", {
-      _slug: data.slug,
-      _postal_code: data.postal_code.trim(),
-      _dog_count: data.dog_count,
-      _frequency: data.frequency,
-      ...(data.last_cleaned ? { _last_cleaned: data.last_cleaned } : {}),
-    });
+    const { data: rows, error } = await sb.rpc("public_quote", publicQuoteArgs(data));
     if (error) throw new Error(error.message);
     const q = rows?.[0];
     if (!q) return { available: false as const };
@@ -201,21 +234,42 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     }
 
     const sb = anon();
-    const { data: qRows, error: qErr } = await sb.rpc("public_quote", {
-      _slug: data.slug,
-      _postal_code: data.postal_code.trim(),
-      _dog_count: data.dog_count,
-      _frequency: data.frequency,
-      ...(data.last_cleaned ? { _last_cleaned: data.last_cleaned } : {}),
-    });
+    const { data: qRows, error: qErr } = await sb.rpc("public_quote", publicQuoteArgs(data));
     if (qErr) throw new Error(qErr.message);
     const q = qRows?.[0];
-    if (!q) throw new Error("No service in that ZIP code yet. Try another.");
+    if (!q) {
+      // public_quote answers nothing for a ZIP outside every zone, and the
+      // same nothing for a service that is not this business's or is no
+      // longer offered. With a service named, say the second.
+      throw new Error(
+        data.service_id
+          ? "That service isn't offered online right now. Pick another."
+          : "No service in that ZIP code yet. Try another.",
+      );
+    }
     // Everything charged below comes from `q`, which the database priced. See
     // signup-charge.ts: there is no path from the request body to an amount.
     const charge = signupChargeFromQuote(q);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // The chosen service's name, for the lead's notice and nothing else: the
+    // price is already in `q`, and public_quote has just confirmed the id is
+    // this business's. Best-effort, like every label.
+    let serviceName: string | null = null;
+    if (data.service_id) {
+      try {
+        const { data: svc } = await (supabaseAdmin as any)
+          .from("services")
+          .select("name")
+          .eq("id", data.service_id)
+          .eq("organization_id", q.organization_id)
+          .maybeSingle();
+        serviceName = (svc?.name as string | null) ?? null;
+      } catch (e) {
+        console.error("signup service name lookup failed", q.organization_id, e);
+      }
+    }
 
     // The entitlement gate, BEFORE any money moves.
     //
@@ -302,12 +356,18 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       dogCount: data.dog_count,
       frequency: data.frequency,
       message: data.message || null,
+      serviceId: data.service_id ?? null,
+      serviceName,
     });
 
     const { data: sr, error: srErr } = await supabaseAdmin
       .from("signup_requests")
       .insert({
         lead_id: leadId,
+        // The service signed up for (phase 5), only when one was picked: a
+        // business that sells one thing writes the row it always wrote, and
+        // the webhook gives its plan the business's default.
+        ...(data.service_id ? { service_id: data.service_id } : {}),
         organization_id: q.organization_id,
         zone_id: q.zone_id,
         name: data.name,
@@ -401,6 +461,10 @@ export async function recordSignupLead(
     dogCount: number;
     frequency: string;
     message: string | null;
+    /** The service picked, when the business offers more than one (phase 5).
+     *  Absent or null, the row has no service_id key at all. */
+    serviceId?: string | null;
+    serviceName?: string | null;
   },
 ): Promise<string | null> {
   try {
@@ -412,6 +476,7 @@ export async function recordSignupLead(
       dog_count: lead.dogCount,
       frequency: lead.frequency,
       message: lead.message,
+      ...(lead.serviceId ? { service_id: lead.serviceId } : {}),
     };
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: existing } = await admin
@@ -446,6 +511,7 @@ export async function recordSignupLead(
         location: lead.location || null,
         dogCount: lead.dogCount,
         frequency: lead.frequency,
+        serviceName: lead.serviceName ?? null,
       });
     }
     return id;
