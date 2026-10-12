@@ -386,14 +386,15 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
-  it("offers four lines, of which only pet waste is bookable yet", () => {
+  it("offers five lines; scooping, walking and sitting are bookable", () => {
     expect([...OFFERED_SERVICE_LINES]).toEqual([
       "pet_waste",
       "dog_walking",
       "pet_sitting",
       "mobile_grooming",
+      "training",
     ]);
-    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste"]);
+    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
   });
 
   it("refuses what the database's CHECK refuses, with a sentence", () => {
@@ -403,8 +404,9 @@ describe("what an owner can choose", () => {
     expect(serviceLinesProblem(["pet_waste", "dog_walking"])).toBeNull();
   });
 
-  it("the database knows the same five values", () => {
-    const m = read(MIGRATION);
+  it("the database knows the same values", () => {
+    const m =
+      read(MIGRATION) + read("supabase/migrations/20261011170000_training-is-a-service-line.sql");
     for (const line of SERVICE_LINES) expect(m).toContain(`'${line}'`);
     expect(m).toMatch(
       /ADD COLUMN IF NOT EXISTS service_lines text\[\] NOT NULL DEFAULT '\{pet_waste\}'::text\[\]/,
@@ -467,6 +469,17 @@ describe("lines hide; they never refuse a write and never delete", () => {
     expect(codeOnly(read(MIGRATION))).not.toMatch(
       /\bGRANT\s+(UPDATE|ALL)\b|CREATE POLICY|ALTER POLICY/i,
     );
+  });
+
+  it("the setter idempotently seeds services for the selected lines", () => {
+    const fns = codeOnly(read("src/lib/org-features.functions.ts"));
+    expect(fns).toMatch(/defaultServiceSeedsFor\(lines\)/);
+    expect(fns).toMatch(
+      /from\("services"\)\s*\.select\("name"\)\s*\.eq\("organization_id", orgId\)/,
+    );
+    expect(fns).toMatch(/if \(have\.has\(key\)\) continue/);
+    expect(fns).toMatch(/if \(error\.code === "23505"\)/);
+    expect(fns).toMatch(/ensureDefaultServicesForLines\(context\.supabase, orgId, data\.lines\)/);
   });
 
   it("a module still in use stays visible", () => {
