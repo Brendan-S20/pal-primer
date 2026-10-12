@@ -46,7 +46,7 @@ const WEEKDAY_WORDS: Array<[RegExp, number]> = [
  *  letter M T W R F that is not the start of another word ("Weekly" is not
  *  Wednesday). */
 const RANGE_DAY = String.raw`(?:\b(sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|rs|r|s|urday)?s?\b|\b([mtwrf])(?![a-z]))`;
-const RANGE_RE = new RegExp(`${RANGE_DAY}\\s*(?:-|–|—|to|thru|through)\\s*${RANGE_DAY}`, "i");
+const RANGE_RE = new RegExp(`${RANGE_DAY}\\s*(?:-|\u2013|\u2014|to|thru|through)\\s*${RANGE_DAY}`, "i");
 const STEM_DAY: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 const LETTER_DAY: Record<string, number> = { m: 1, t: 2, w: 3, r: 4, f: 5 };
 /** A cell that is nothing but day codes: "MWF", "M/W/F", "TTh", "MTWThF".
@@ -58,7 +58,7 @@ const COMPACT_DAY: Record<string, number> = { su: 0, sa: 6, th: 4, tu: 2, m: 1, 
 
 /** Weekdays named anywhere in a cell: "Tuesday", "Tue & Fri", "Weekly on
  *  Thursdays"; and, since the catalog, the ways a walker writes a week:
- *  "Mon/Wed/Fri", "weekdays", "M-F", "Mon–Fri", "Tue to Thu", "MWF", "TTh".
+ *  "Mon/Wed/Fri", "weekdays", "M-F", "Mon-Fri", "Tue to Thu", "MWF", "TTh".
  *  0 = Sunday, the numbering subscriptions.preferred_weekdays and
  *  subscriptions.weekdays use. Empty when none are named. */
 export function parseWeekdays(text: string | null | undefined): number[] {
@@ -67,10 +67,10 @@ export function parseWeekdays(text: string | null | undefined): number[] {
   for (const [re, d] of WEEKDAY_WORDS) if (re.test(text)) out.add(d);
   // "weekdays", "every weekday", "week days": Monday to Friday.
   if (/\bweek ?days?\b/i.test(text)) for (const d of [1, 2, 3, 4, 5]) out.add(d);
-  // "Mon-Fri", "M–F", "Tue thru Thu": every day from the first to the second,
+  // "Mon-Fri", "M-F", "Tue thru Thu": every day from the first to the second,
   // forward through the week (so "Fri-Mon" is Fri, Sat, Sun, Mon). One dash
   // only: "Mon - Wed - Fri" is a list spelled with dashes, not a range.
-  const range = (text.match(/-|–|—|\b(?:to|thru|through)\b/gi) ?? []).length === 1 ? RANGE_RE.exec(text) : null;
+  const range = (text.match(/-|\u2013|\u2014|\b(?:to|thru|through)\b/gi) ?? []).length === 1 ? RANGE_RE.exec(text) : null;
   if (range) {
     const from = range[1] ? STEM_DAY[range[1].toLowerCase()] : LETTER_DAY[range[2].toLowerCase()];
     const to = range[3] ? STEM_DAY[range[3].toLowerCase()] : LETTER_DAY[range[4].toLowerCase()];
