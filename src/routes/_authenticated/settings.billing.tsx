@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import {
   getBillingStatus,
-  listPlatformPlans,
   refreshBillingStatus,
   listPlatformInvoices,
   cancelBillingSubscription,
@@ -41,7 +40,6 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { appUrl } from "@/lib/app-origin";
 import { titleHead } from "@/lib/page-title";
-import { KpiValueBone, LineBones, SkeletonRegion } from "@/components/PageSkeletons";
 import { ExportDataCard } from "@/components/billing/ExportDataCard";
 
 // Moved into Settings (punch list #9): this is HoundStack's own subscription
@@ -103,31 +101,15 @@ function BillingPage() {
   const itemsFn = useServerFn(listSubscriptionItems);
   const createSubFn = useServerFn(createPlanSubscription);
 
-  const { data, isPending: isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["billing-status"],
     queryFn: () => statusFn(),
-    throwOnError: (_error, query) => query.state.data === undefined,
   });
-  const { data: subInfo, isPending: subInfoLoading } = useQuery({
+  const { data: subInfo, isLoading: subInfoLoading } = useQuery({
     queryKey: ["billing-subscription-items"],
     queryFn: () => itemsFn(),
-    throwOnError: (_error, query) => query.state.data === undefined,
+    enabled: !!data?.isPaidTier,
   });
-
-  const plansFn = useServerFn(listPlatformPlans);
-  const methodsFn = useServerFn(listOrgPaymentMethods);
-  const addonsFn = useServerFn(listPlatformAddons);
-  const invoicesFn = useServerFn(listPlatformInvoices);
-  // Start child reads alongside status, before the children can mount.
-  // Matching stale times let the children reuse these in-flight/cached reads.
-  useEffect(() => {
-    void qc.prefetchQuery({ queryKey: ["platform-invoices"], queryFn: () => invoicesFn(), staleTime: 30_000 });
-    if (canBuySaas) {
-      void qc.prefetchQuery({ queryKey: ["platform-plans"], queryFn: () => plansFn(), staleTime: 30_000 });
-      void qc.prefetchQuery({ queryKey: ["org-payment-methods"], queryFn: () => methodsFn(), staleTime: 30_000 });
-      void qc.prefetchQuery({ queryKey: ["platform-addons"], queryFn: () => addonsFn(), staleTime: 30_000 });
-    }
-  }, [qc, canBuySaas, plansFn, methodsFn, addonsFn, invoicesFn]);
 
   const invalidateBilling = () => {
     qc.invalidateQueries({ queryKey: ["billing-status"] });
@@ -236,7 +218,7 @@ function BillingPage() {
     }
   };
 
-  if (isLoading || !data) return <BillingSectionSkeleton />;
+  if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
   const chip = STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus };
   const cancelPending = !!(subInfo as any)?.cancelAtPeriodEnd;
@@ -279,10 +261,8 @@ function BillingPage() {
               <StatusChip status={chip.status} label={chip.label} />
               {cancelPending && <MetaChip>Cancels at period end</MetaChip>}
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              {data.isPaidTier && !subInfo
-                ? <KpiValueBone />
-                : annualBaseCents != null
+            <p className="mt-1 text-sm text-muted-foreground">
+              {annualBaseCents != null
                 ? `${formatUsd(annualBaseCents)}/year`
                 : data.monthlyEstimateCents != null
                   ? `${formatUsd(data.monthlyEstimateCents)}/month`
@@ -290,7 +270,7 @@ function BillingPage() {
               {data.teamSizeRange && ` · For teams of ${data.teamSizeRange}`}
               {data.includedSeats != null &&
                 ` · Includes ${data.includedSeats} employee${data.includedSeats === 1 ? "" : "s"}`}
-            </div>
+            </p>
             {data.isPaidTier && periodEnd && (
               <p className="mt-1 text-sm text-muted-foreground">
                 {cancelPending
@@ -362,7 +342,6 @@ function BillingPage() {
           />
         ) : (
           <PlanPicker
-            selecting={data.isPaidTier && !subInfo}
             currentSlug={data.planSlug}
             currentInterval={currentInterval}
             onSelect={onPickPlan}
@@ -452,11 +431,9 @@ function PaymentMethodsCard() {
   const removeFn = useServerFn(removeOrgPaymentMethod);
   const [adding, setAdding] = useState(false);
 
-  const { data, isPending: isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["org-payment-methods"],
     queryFn: () => listFn(),
-    staleTime: 30_000,
-    throwOnError: (_error, query) => query.state.data === undefined,
   });
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["org-payment-methods"] });
@@ -500,7 +477,7 @@ function PaymentMethodsCard() {
         )}
       </div>
       {isLoading ? (
-        <BillingSectionSkeleton />
+        <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
       ) : methods.length === 0 && !adding ? (
         <p className="mt-3 text-sm text-muted-foreground">
           No saved cards yet. Add one so your subscription can renew.
@@ -655,11 +632,9 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
   const listFn = useServerFn(listPlatformAddons);
   const subFn = useServerFn(subscribePlatformAddon);
   const cancelFn = useServerFn(cancelPlatformAddon);
-  const { data, isPending: isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["platform-addons"],
     queryFn: () => listFn(),
-    staleTime: 30_000,
-    throwOnError: (_error, query) => query.state.data === undefined,
   });
 
   const invalidate = () => {
@@ -709,7 +684,7 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
         </p>
       </div>
       {isLoading ? (
-        <BillingSectionSkeleton />
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {addons.map((a) => {
@@ -936,7 +911,7 @@ function NextInvoice({
         <p className="text-sm text-muted-foreground">Bills {formatDay(subInfo.currentPeriodEnd)}</p>
       )}
       {isLoading ? (
-        <BillingSectionSkeleton />
+        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
       ) : ordered.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No subscription line items to show.</p>
       ) : (
@@ -977,11 +952,9 @@ function NextInvoice({
 // to see or download an invoice.
 function InvoiceHistory() {
   const listFn = useServerFn(listPlatformInvoices);
-  const { data, isPending: isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["platform-invoices"],
     queryFn: () => listFn(),
-    staleTime: 30_000,
-    throwOnError: (_error, query) => query.state.data === undefined,
   });
   const invoices: any[] = (data as any)?.invoices ?? [];
 
@@ -991,7 +964,7 @@ function InvoiceHistory() {
     <section className="overflow-x-auto rounded-xl border bg-card p-(--card-pad) shadow-sm">
       <h2 className="text-lg font-semibold">Billing history</h2>
       {isLoading ? (
-        <BillingSectionSkeleton />
+        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
       ) : invoices.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">
           No invoices yet. Your subscription invoices will appear here once you're billed.
@@ -1061,8 +1034,4 @@ function InvoiceHistory() {
       )}
     </section>
   );
-}
-
-function BillingSectionSkeleton() {
-  return <SkeletonRegion className="py-3"><LineBones /></SkeletonRegion>;
 }
