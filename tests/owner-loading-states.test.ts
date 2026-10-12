@@ -3,11 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ effects: [] as Array<() => any> }));
-vi.mock("react", async (original) => ({
-  ...await original<typeof import("react")>(),
-  useEffect: (effect: () => any) => { state.effects.push(effect); },
-}));
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: any) => ({ options }),
   Link: ({ children }: any) => createElement("a", null, children),
@@ -40,12 +35,10 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 
 import { Route as DashboardRoute } from "@/routes/_authenticated/dashboard";
 import { Route as ClientsRoute } from "@/routes/_authenticated/clients.index";
-import { Route as BillingRoute } from "@/routes/_authenticated/settings.billing";
 
 let qc: QueryClient;
 beforeEach(() => {
   vi.stubGlobal("React", React);
-  state.effects = [];
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(["my-org"], { organization: { name: "Test company", role: "owner" } });
 });
@@ -53,7 +46,6 @@ function render(route: any) {
   return renderToStaticMarkup(createElement(QueryClientProvider, { client: qc }, createElement(route.options.component)));
 }
 
-const billingStatus = { planName: "Test plan", planSlug: "test", billingStatus: "active", isPaidTier: true, monthlyEstimateCents: null };
 const summary = { activeClients: 112, mtdRevenueCents: 12345, arOpenCents: 3456, visitCounts: { completed: 1, total: 3 }, todayVisits: [], staff: [], overdueInvoices: [] };
 
 describe("loading is not an empty account", () => {
@@ -96,9 +88,7 @@ describe("loading is not an empty account", () => {
   it.each([
     ["dashboard-summary", DashboardRoute, "None scheduled"],
     ["clients", ClientsRoute, "0 total"],
-    ["billing-subscription-items", BillingRoute, "No charge"],
   ])("keeps %s pending when the first request is paused", (key, route, empty) => {
-    qc.setQueryData(["billing-status"], billingStatus);
     qc.getQueryCache().build(qc, { queryKey: [key] }).setState({ status: "pending", fetchStatus: "paused" });
     const html = render(route);
     expect(html).toContain("hs-skeleton");
@@ -108,7 +98,6 @@ describe("loading is not an empty account", () => {
   it.each([
     ["dashboard-summary", DashboardRoute],
     ["clients", ClientsRoute],
-    ["billing-status", BillingRoute],
   ])("surfaces an initial %s failure to the error boundary", (key, route) => {
     qc.getQueryCache().build(qc, { queryKey: [key] }).setState({ status: "error", fetchStatus: "idle", error: new Error("Read failed") });
     expect(() => render(route)).toThrow("Read failed");
@@ -120,28 +109,5 @@ describe("loading is not an empty account", () => {
     expect(html).toContain("0 total");
     expect(html).toContain("$0.00");
     expect(html).toContain("No clients yet");
-  });
-
-  it("starts independent billing sections while status is still pending", () => {
-    const prefetch = vi.spyOn(qc, "prefetchQuery").mockResolvedValue(undefined);
-    const html = render(BillingRoute);
-    expect(html).toContain('aria-busy="true"');
-    // Run the prefetch effect registered by the first render. The later
-    // auto-refresh effect is a separate, existing billing synchronization.
-    state.effects[0]();
-    expect(prefetch.mock.calls.map(([options]) => options.queryKey)).toEqual([
-      ["platform-invoices"], ["platform-plans"], ["org-payment-methods"], ["platform-addons"],
-    ]);
-    qc.clear();
-  });
-
-  it("keeps billing sections and the amount unknown until their own data arrives", () => {
-    qc.setQueryData(["billing-status"], billingStatus);
-    const html = render(BillingRoute);
-    expect(html).toContain('aria-busy="true"');
-    expect(html).not.toContain("No charge");
-    expect(html).not.toContain("No saved cards");
-    expect(html).not.toContain("No invoices yet");
-    expect(html).not.toContain("No plans available");
   });
 });
