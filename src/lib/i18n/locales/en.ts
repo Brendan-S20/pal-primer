@@ -76,6 +76,8 @@ const en = {
     routeMayHaveChanged: "This route may have changed. Confirm before driving it.",
     pickADay: "Pick a day",
     skippedCount: "{{count}} skipped",
+    missedCount: "{{count}} missed",
+    progressRule: "Done means completed visits out of all stops. Missed and skipped stops count separately.",
     view: "View",
     viewList: "List",
     viewMap: "Map",
