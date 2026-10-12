@@ -132,11 +132,13 @@ export type RunOrQueueOptions = {
  * keep the bug. A single implementation is also the only way any of it can be
  * tested without a browser.
  */
-export async function runOrQueue(o: RunOrQueueOptions): Promise<{ queued: boolean }> {
+export async function runOrQueue<T = unknown>(
+  o: Omit<RunOrQueueOptions, "send"> & { send: () => Promise<T> },
+): Promise<{ queued: true } | { queued: false; result: T }> {
   if (o.online) {
     try {
-      await withDeadline(o.send(), o.deadlineMs ?? ACTION_DEADLINE_MS, o.label);
-      return { queued: false };
+      const result = await withDeadline(o.send(), o.deadlineMs ?? ACTION_DEADLINE_MS, o.label);
+      return { queued: false, result };
     } catch (e) {
       // A server rejection is the tech's answer, not a network condition.
       if (!isTransportFailure(e)) throw e;
