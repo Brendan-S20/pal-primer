@@ -178,6 +178,7 @@ export async function performLiveActivityAction(
     if (claimed === "already") return reply("already");
 
     // 6. The transition: start_visit's own body, as this tech.
+    // rpc-role: service (db is supabaseAdmin, injected at the bottom of this file)
     const { error: rpcErr } = await db.rpc("start_visit_as", {
       _actor: tok!.user_id,
       _visit_id: visitId,
