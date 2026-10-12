@@ -7,6 +7,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Check } from "lucide-react";
+import { LineBones, SkeletonRegion } from "@/components/PageSkeletons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -102,8 +103,10 @@ export function PlanPicker({
   const purchaseAllowed = saasPurchaseAllowed(platform());
 
   const listFn = useServerFn(listPlatformPlans);
-  const { data, isLoading } = useQuery({
+  const { data, isPending: isLoading } = useQuery({
     queryKey: ["platform-plans"],
+    staleTime: 30_000,
+    throwOnError: (_error, query) => query.state.data === undefined,
     queryFn: () => listFn(),
     // A store build renders the note, never a purchase — and fetches nothing.
     enabled: purchaseAllowed,
@@ -139,7 +142,7 @@ export function PlanPicker({
   // A store build renders the note, never a purchase. See StoreBuildNote.
   if (!purchaseAllowed) return <StoreBuildNote />;
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading plans…</p>;
+  if (isLoading) return <SkeletonRegion><LineBones /></SkeletonRegion>;
   if (!plans.length)
     return <p className="text-sm text-muted-foreground">No plans available yet.</p>;
 

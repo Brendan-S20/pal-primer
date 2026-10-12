@@ -26,7 +26,7 @@ export const listClients = createServerFn({ method: "GET" })
     const clients = data ?? [];
     const ids = clients.map((c: any) => c.id);
 
-    // Fetch aggregate side-data in parallel; ignore individual failures.
+    // All aggregates must succeed before the roster can report counts or balances.
     const [propsRes, subsRes, invRes] = await Promise.all([
       ids.length
         ? supabase
@@ -41,7 +41,7 @@ export const listClients = createServerFn({ method: "GET" })
             .select("id, client_id, dogs(id, active)")
             .is("archived_at", null)
             .in("client_id", ids)
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
       ids.length
         ? supabase
             // ends_on is needed to tell an ended service from a running one —
@@ -49,15 +49,19 @@ export const listClients = createServerFn({ method: "GET" })
             .from("subscriptions")
             .select("client_id, status, frequency, ends_on")
             .in("client_id", ids)
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
       ids.length
         ? supabase
             .from("invoices")
             .select("client_id, total_cents, credit_applied_cents, status")
             .in("client_id", ids)
             .eq("status", "open")
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
     ]);
+
+    for (const result of [propsRes, subsRes, invRes]) {
+      if (result.error) throw new Error(result.error.message);
+    }
 
     // Dogs live on properties (dogs.property_id), so aggregate through the
     // property → client relationship instead of a non-existent dogs.client_id.
