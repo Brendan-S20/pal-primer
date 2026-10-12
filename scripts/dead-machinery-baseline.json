@@ -47,6 +47,7 @@
     "src/routes/api/public/leads.ts": "Public lead-capture form, embedded on tenant websites. Called by a browser from outside the app.",
     "src/routes/api/public/quote-pdf.ts": "A browser, from the 'Download PDF' link on the public quote page (src/routes/q.$token.tsx), and from the office quote page's Download PDF button in the native app. Reads through public_quote_document, which answers nothing for a draft.",
     "src/routes/api/public/verify-email.ts": "Target of the verification link in a signup email.",
+    "src/routes/api/public/website-submissions.ts": "Public contact and early-access forms on houndstack.com and www.houndstack.com. Called by a browser from the marketing site.",
     "src/routes/email/auth/webhook.ts": "Supabase Auth send-email hook \u2014 Supabase calls this to render auth mail.",
     "src/routes/email/queue/process.ts": "pg_cron job 'process-email-queue', * * * * * \u2014 verified in cron.job.",
     "src/routes/email/suppression.ts": "Provider bounce/complaint webhook \u2014 writes the suppression list.",
