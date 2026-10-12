@@ -86,6 +86,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   revoke_invite: "Revoked invite",
   send_announcement_emails: "Sent announcement emails",
   set_feature_flag: "Changed feature flag",
+  update_website_submission: "Updated website submission",
 };
 
 export function humanizeAuditAction(action: string | null | undefined): string {

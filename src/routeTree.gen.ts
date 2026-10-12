@@ -28,6 +28,7 @@ import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as QTokenRouteImport } from './routes/q.$token'
 import { Route as PortalSlugRouteImport } from './routes/portal.$slug'
+import { Route as PlatformWebsiteSubmissionsRouteImport } from './routes/platform.website-submissions'
 import { Route as PlatformUsersRouteImport } from './routes/platform.users'
 import { Route as PlatformSignalsRouteImport } from './routes/platform.signals'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
@@ -101,6 +102,7 @@ import { Route as EmailTransactionalPreviewRouteImport } from './routes/email/tr
 import { Route as EmailQueueProcessRouteImport } from './routes/email/queue/process'
 import { Route as EmailAuthWebhookRouteImport } from './routes/email/auth/webhook'
 import { Route as EmailAuthPreviewRouteImport } from './routes/email/auth/preview'
+import { Route as ApiPublicWebsiteSubmissionsRouteImport } from './routes/api/public/website-submissions'
 import { Route as ApiPublicVerifyEmailRouteImport } from './routes/api/public/verify-email'
 import { Route as ApiPublicQuotePdfRouteImport } from './routes/api/public/quote-pdf'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
@@ -255,6 +257,12 @@ const PortalSlugRoute = PortalSlugRouteImport.update({
   path: '/portal/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlatformWebsiteSubmissionsRoute =
+  PlatformWebsiteSubmissionsRouteImport.update({
+    id: '/website-submissions',
+    path: '/website-submissions',
+    getParentRoute: () => PlatformRoute,
+  } as any)
 const PlatformUsersRoute = PlatformUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -631,6 +639,12 @@ const EmailAuthPreviewRoute = EmailAuthPreviewRouteImport.update({
   path: '/email/auth/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWebsiteSubmissionsRoute =
+  ApiPublicWebsiteSubmissionsRouteImport.update({
+    id: '/api/public/website-submissions',
+    path: '/api/public/website-submissions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicVerifyEmailRoute = ApiPublicVerifyEmailRouteImport.update({
   id: '/api/public/verify-email',
   path: '/api/public/verify-email',
@@ -1037,6 +1051,7 @@ export interface FileRoutesByFullPath {
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
+  '/platform/website-submissions': typeof PlatformWebsiteSubmissionsRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
@@ -1082,6 +1097,7 @@ export interface FileRoutesByFullPath {
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
+  '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -1182,6 +1198,7 @@ export interface FileRoutesByTo {
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
+  '/platform/website-submissions': typeof PlatformWebsiteSubmissionsRoute
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -1226,6 +1243,7 @@ export interface FileRoutesByTo {
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
+  '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -1334,6 +1352,7 @@ export interface FileRoutesById {
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
+  '/platform/website-submissions': typeof PlatformWebsiteSubmissionsRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
@@ -1379,6 +1398,7 @@ export interface FileRoutesById {
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
+  '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -1488,6 +1508,7 @@ export interface FileRouteTypes {
     | '/platform/revenue'
     | '/platform/signals'
     | '/platform/users'
+    | '/platform/website-submissions'
     | '/portal/$slug'
     | '/q/$token'
     | '/signup/$slug'
@@ -1533,6 +1554,7 @@ export interface FileRouteTypes {
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
+    | '/api/public/website-submissions'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -1633,6 +1655,7 @@ export interface FileRouteTypes {
     | '/platform/revenue'
     | '/platform/signals'
     | '/platform/users'
+    | '/platform/website-submissions'
     | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
@@ -1677,6 +1700,7 @@ export interface FileRouteTypes {
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
+    | '/api/public/website-submissions'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -1784,6 +1808,7 @@ export interface FileRouteTypes {
     | '/platform/revenue'
     | '/platform/signals'
     | '/platform/users'
+    | '/platform/website-submissions'
     | '/portal/$slug'
     | '/q/$token'
     | '/signup/$slug'
@@ -1829,6 +1854,7 @@ export interface FileRouteTypes {
     | '/api/public/leads'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
+    | '/api/public/website-submissions'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -1899,6 +1925,7 @@ export interface RootRouteChildren {
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
   ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
   ApiPublicVerifyEmailRoute: typeof ApiPublicVerifyEmailRoute
+  ApiPublicWebsiteSubmissionsRoute: typeof ApiPublicWebsiteSubmissionsRoute
   EmailAuthPreviewRoute: typeof EmailAuthPreviewRoute
   EmailAuthWebhookRoute: typeof EmailAuthWebhookRoute
   EmailQueueProcessRoute: typeof EmailQueueProcessRoute
@@ -2053,6 +2080,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/portal/$slug'
       preLoaderRoute: typeof PortalSlugRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/platform/website-submissions': {
+      id: '/platform/website-submissions'
+      path: '/website-submissions'
+      fullPath: '/platform/website-submissions'
+      preLoaderRoute: typeof PlatformWebsiteSubmissionsRouteImport
+      parentRoute: typeof PlatformRoute
     }
     '/platform/users': {
       id: '/platform/users'
@@ -2563,6 +2597,13 @@ declare module '@tanstack/react-router' {
       path: '/email/auth/preview'
       fullPath: '/email/auth/preview'
       preLoaderRoute: typeof EmailAuthPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/website-submissions': {
+      id: '/api/public/website-submissions'
+      path: '/api/public/website-submissions'
+      fullPath: '/api/public/website-submissions'
+      preLoaderRoute: typeof ApiPublicWebsiteSubmissionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/verify-email': {
@@ -3228,6 +3269,7 @@ interface PlatformRouteChildren {
   PlatformRevenueRoute: typeof PlatformRevenueRoute
   PlatformSignalsRoute: typeof PlatformSignalsRoute
   PlatformUsersRoute: typeof PlatformUsersRoute
+  PlatformWebsiteSubmissionsRoute: typeof PlatformWebsiteSubmissionsRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
   PlatformTenantsIdRoute: typeof PlatformTenantsIdRoute
   PlatformTenantsIndexRoute: typeof PlatformTenantsIndexRoute
@@ -3247,6 +3289,7 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformRevenueRoute: PlatformRevenueRoute,
   PlatformSignalsRoute: PlatformSignalsRoute,
   PlatformUsersRoute: PlatformUsersRoute,
+  PlatformWebsiteSubmissionsRoute: PlatformWebsiteSubmissionsRoute,
   PlatformIndexRoute: PlatformIndexRoute,
   PlatformTenantsIdRoute: PlatformTenantsIdRoute,
   PlatformTenantsIndexRoute: PlatformTenantsIndexRoute,
@@ -3325,6 +3368,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
   ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
   ApiPublicVerifyEmailRoute: ApiPublicVerifyEmailRoute,
+  ApiPublicWebsiteSubmissionsRoute: ApiPublicWebsiteSubmissionsRoute,
   EmailAuthPreviewRoute: EmailAuthPreviewRoute,
   EmailAuthWebhookRoute: EmailAuthWebhookRoute,
   EmailQueueProcessRoute: EmailQueueProcessRoute,
@@ -3347,3 +3391,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
