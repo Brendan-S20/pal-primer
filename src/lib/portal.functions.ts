@@ -482,7 +482,7 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
       // review ticket about a service that does not exist.
       sb
         .from("subscriptions")
-        .select("id, frequency, status, ends_on")
+        .select("id, frequency, status, ends_on, weekdays")
         .eq("client_id", session.clientId)
         .eq("status", "active")
         .neq("frequency", "one_time")
@@ -497,7 +497,15 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
       // Drives the Account tab's request-vs-update affordance (the plan row
       // gets the same flag via the client payload).
       autoApply: !!(org as any)?.portal_auto_apply_changes,
-      subscription: sub ? { id: sub.id as string, frequency: sub.frequency as string } : null,
+      subscription: sub
+        ? {
+            id: sub.id as string,
+            frequency: sub.frequency as string,
+            /** The days a walk plan runs on (the catalog); null for a plan
+             *  that runs by its frequency. */
+            weekdays: ((sub as { weekdays?: number[] | null }).weekdays ?? null) as number[] | null,
+          }
+        : null,
     };
   });
 
@@ -1615,9 +1623,12 @@ export const portalListMyRequests = createServerFn({ method: "GET" })
       resolution_note: string | null;
       resolved_at: string | null;
       created_at: string;
-      /** For an extra-cleanup request: the day asked for, and the day booked. */
+      /** For a one-off request: the day asked for, and the day booked. */
       requested_on: string | null;
       booked_on: string | null;
+      /** The service a one-off request named ("30-minute walk"); null for
+       *  the extra cleanup and for every other kind of request. */
+      service_name: string | null;
     }>;
   });
 

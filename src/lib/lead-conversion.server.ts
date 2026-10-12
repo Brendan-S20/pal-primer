@@ -9,24 +9,31 @@ import { leadConversionState, type ConvertibleLead } from "@/lib/lead-conversion
 export const CONVERTIBLE_LEAD_COLUMNS =
   "id, organization_id, name, email, phone, company, location, dog_count, frequency, message, source, status, converted_client_id";
 
+/** The columns above, as a list, for projecting the row read below. */
+const CONVERTIBLE_LEAD_KEYS = CONVERTIBLE_LEAD_COLUMNS.split(",").map((c) => c.trim());
+
 /** The lead, in the caller's organization, or an error that says why not.
  *  RLS already scopes leads to owners and office managers of the lead's org;
  *  the organization check is here as well so the rule does not rest on a
- *  policy in another file. */
+ *  policy in another file.
+ *
+ *  Every column, then projected, rather than the list by name: the lead's
+ *  service (`service_id`, the catalog) is read when the column is there and
+ *  is nothing when it is not, so this works on a database from before that
+ *  column and on one after it without a deploy in between. Naming it in the
+ *  select would refuse the whole lead on the first. */
 export async function loadLeadForConversion(
   supabase: any,
   orgId: string,
   leadId: string,
 ): Promise<ConvertibleLead> {
-  const { data, error } = await supabase
-    .from("leads")
-    .select(CONVERTIBLE_LEAD_COLUMNS)
-    .eq("id", leadId)
-    .maybeSingle();
+  const { data, error } = await supabase.from("leads").select("*").eq("id", leadId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data || data.organization_id !== orgId) throw new Error("That lead was not found.");
-  const { organization_id: _org, ...lead } = data;
-  return lead as ConvertibleLead;
+  const lead: Record<string, unknown> = {};
+  for (const k of CONVERTIBLE_LEAD_KEYS) if (k !== "organization_id") lead[k] = data[k] ?? null;
+  lead.service_id = typeof data.service_id === "string" ? data.service_id : null;
+  return lead as unknown as ConvertibleLead;
 }
 
 /** Throw unless this lead can still become a new client. */

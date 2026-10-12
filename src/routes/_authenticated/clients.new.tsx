@@ -39,6 +39,15 @@ import { toast } from "sonner";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
+import {
+  effectiveServiceId,
+  ServicePicker,
+  useOrgServices,
+} from "@/components/client-detail/ServicePicker";
+import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
+import { servicePickerOptions } from "@/lib/visit-service";
+import { isZonePriced, servicePriceCents } from "@/lib/services";
+import { normalizeWeekdays, WORK_WEEK } from "@/lib/weekday-set";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -537,6 +546,27 @@ function NewClientWizard({
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
   const effectiveServiceDays = serviceDays ?? [weekdayOf(startedOn)];
 
+  // ── Which service (the catalog) ─────────────────────────────────────────
+  // A business that sells more than one thing picks it here; one that sells
+  // only pet waste removal has nothing to pick, sees no picker, and its plan
+  // takes the business's default on insert, exactly as before the catalog.
+  // Started from a lead, the service the lead asked for, when it is one of
+  // the business's; the plan form's picker (ServicesTab) is the same control.
+  const { services: orgServices, isLoading: servicesLoading } = useOrgServices();
+  const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
+  const offersServicePicker = servicePickerOptions(orgServices).length > 1;
+  const chosenService = offersServicePicker
+    ? (orgServices.find((x) => x.id === effectiveServiceId(serviceId, orgServices)) ?? null)
+    : null;
+  // A walk, a sit or a groom: priced from its service through the one rule
+  // (servicePriceCents), never from a zone, and sold by the day of the week.
+  const walkLike = !!chosenService && !isZonePriced(chosenService);
+  const serviceCents = walkLike ? servicePriceCents(chosenService!, { pets: dogCount }) : null;
+  // The days a weekly walk runs on: Monday to Friday until the owner says.
+  const [weekdays, setWeekdays] = useState<number[]>([...WORK_WEEK]);
+  const setDays = walkLike && frequency === "weekly";
+  const needsDays = !skipPlan && setDays && weekdays.length === 0;
+
   // Auto-quote (residential)
   const quoteKey = useMemo(
     () => ({
@@ -553,6 +583,7 @@ function NewClientWizard({
     enabled:
       current === "Plan" &&
       !skipPlan &&
+      !walkLike &&
       accountType === "residential" &&
       quoteKey.postalCode.length >= 3 &&
       frequency !== "one_time",
@@ -560,10 +591,15 @@ function NewClientWizard({
     queryFn: () => quoteFn({ data: quoteKey as any }),
     staleTime: 30_000,
   });
+  // The zone's answer, only while the plan is zone-priced: a query turned
+  // off keeps its last data, and that was the cleanup's price, not the walk's.
+  const zoneQuote =
+    !walkLike && quoteQ.data && "quote" in (quoteQ.data as any) ? (quoteQ.data as any).quote : null;
 
-  const suggestedCents =
-    accountType === "residential" && quoteQ.data && "quote" in quoteQ.data
-      ? (quoteQ.data as any).quote.recurringPriceCents
+  const suggestedCents = walkLike
+    ? serviceCents
+    : accountType === "residential" && zoneQuote
+      ? (zoneQuote.recurringPriceCents as number)
       : null;
 
   // No zone quote and nothing typed means no price, not $25. The old
@@ -594,15 +630,14 @@ function NewClientWizard({
     !!fcPricing &&
     fcPricing.mode !== "off" &&
     accountType === "residential" &&
+    // A first cleanup is a pet-waste thing; a walk has no yard to catch up on.
+    !walkLike &&
     can("manage_client_billing") &&
     !(fromQuote && fromQuote.oneTimeCents > 0);
   // "" = no first cleanup; "flat" = the zone's fee; otherwise a tier id.
   const [fcChoice, setFcChoice] = useState("");
   const [fcOverride, setFcOverride] = useState("");
-  const zoneFlatCents =
-    quoteQ.data && "quote" in quoteQ.data
-      ? ((quoteQ.data as any).quote.initialCleanupCents as number)
-      : null;
+  const zoneFlatCents = zoneQuote ? (zoneQuote.initialCleanupCents as number) : null;
   const fcSuggestedCents =
     fcPricing && fcChoice
       ? firstCleanupPriceCents(fcPricing, {
@@ -662,14 +697,17 @@ function NewClientWizard({
                 frequency,
                 priceCents: priceCents ?? 0,
                 startedOn,
-                preferredWeekdays: frequency === "one_time" ? undefined : effectiveServiceDays,
+                preferredWeekdays:
+                  frequency === "one_time" || setDays ? undefined : effectiveServiceDays,
+                // A weekly walk's days each week; the set is its whole schedule.
+                weekdays: setDays ? normalizeWeekdays(weekdays) : undefined,
+                // Only when the business had something to pick: a pet-waste
+                // business's plan takes its default on insert, as always.
+                serviceId: chosenService?.id,
                 dogCount: accountType === "residential" ? dogCount : undefined,
                 unitCount:
                   accountType === "commercial" ? Math.max(1, parseInt(unitCount, 10) || 1) : undefined,
-                zoneId:
-                  quoteQ.data && "quote" in quoteQ.data
-                    ? ((quoteQ.data as any).quote.zoneId as string)
-                    : undefined,
+                zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
                 billingCadence,
               },
           officeNote: officeNote.trim() || undefined,
@@ -1218,6 +1256,16 @@ function NewClientWizard({
 
             {!skipPlan && (
               <>
+                {offersServicePicker && (
+                  <ServicePicker
+                    id="nc-service"
+                    value={serviceId}
+                    currentId={null}
+                    services={orgServices}
+                    isLoading={servicesLoading}
+                    onChange={setServiceId}
+                  />
+                )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Frequency</Label>
@@ -1272,7 +1320,23 @@ function NewClientWizard({
                       If that isn&apos;t a work day or a service day, it moves to the next one.
                     </p>
                   </div>
-                  {frequency !== "one_time" && (
+                  {setDays && (
+                    <div className="min-w-0 space-y-2">
+                      <WeekdayPicker
+                        id="nc-weekdays"
+                        label="Days each week"
+                        value={weekdays}
+                        onChange={setWeekdays}
+                        invalid={weekdays.length === 0}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {weekdays.length === 0
+                          ? "Choose at least one day."
+                          : "One visit on each day, every week, billed per visit. Blackout days and client holds are skipped, not moved."}
+                      </p>
+                    </div>
+                  )}
+                  {frequency !== "one_time" && !setDays && (
                     <fieldset className="space-y-2">
                       <legend className="text-sm font-medium">Service day</legend>
                       <div className="flex flex-wrap gap-1.5">
@@ -1319,23 +1383,35 @@ function NewClientWizard({
                             {money(suggestedCents, (quoteQ.data as any)?.quote?.currency)}
                           </div>
                         )}
-                        {!quoteQ.isFetching &&
+                        {!walkLike &&
+                          !quoteQ.isFetching &&
                           quoteQ.data &&
                           !("quote" in (quoteQ.data as any)) && (
                             <div className="text-sm text-amber-600">
                               No zone matches ZIP {postalCode}. Set price manually below.
                             </div>
                           )}
+                        {walkLike && serviceCents == null && (
+                          <div className="text-sm text-amber-600">
+                            {chosenService!.name} has no price yet. Set one below, or in Settings →
+                            Services.
+                          </div>
+                        )}
                       </div>
-                      {quoteQ.data && "quote" in (quoteQ.data as any) && (
-                        <Badge variant="secondary">
-                          Zone: {(quoteQ.data as any).quote.zoneName}
-                        </Badge>
+                      {zoneQuote && <Badge variant="secondary">Zone: {zoneQuote.zoneName}</Badge>}
+                      {walkLike && serviceCents != null && (
+                        <Badge variant="secondary">From the {chosenService!.name} price</Badge>
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Based on {dogCount} dog
-                      {dogCount === 1 ? "" : "s"} · {FREQS.find((f) => f.value === frequency)?.label}
+                      {dogCount === 1 ? "" : "s"} ·{" "}
+                      {setDays
+                        ? `${weekdays.length} day${weekdays.length === 1 ? "" : "s"} a week`
+                        : FREQS.find((f) => f.value === frequency)?.label}
+                      {walkLike && chosenService!.price_unit === "hour" && chosenService!.default_duration_min != null
+                        ? ` · ${chosenService!.default_duration_min} min at $${((chosenService!.base_price_cents ?? 0) / 100).toFixed(2)} per hour`
+                        : ""}
                     </p>
                   </div>
                 )}
@@ -1464,13 +1540,16 @@ function NewClientWizard({
             <div className="flex flex-col items-end gap-1">
               <Button
                 type="button"
-                disabled={mutation.isPending || linkMutation.isPending || needsPrice}
+                disabled={mutation.isPending || linkMutation.isPending || needsPrice || needsDays}
                 onClick={() => mutation.mutate()}
               >
                 {mutation.isPending ? "Creating…" : "Create client"}
               </Button>
               {needsPrice && (
                 <p className="text-xs text-muted-foreground">Set a price per visit first.</p>
+              )}
+              {!needsPrice && needsDays && (
+                <p className="text-xs text-muted-foreground">Choose at least one day first.</p>
               )}
             </div>
           )}

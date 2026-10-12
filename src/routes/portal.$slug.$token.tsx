@@ -16,9 +16,10 @@ import {
   PortalVerifyGate,
   PortalDeadEnd,
   money,
-  friendlyFrequency,
   isHex,
 } from "@/lib/portal-ui";
+import { cadenceLabel } from "@/lib/frequency-request";
+import { visitServiceLabel } from "@/lib/visit-service";
 import { customerTitle, useDocumentTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/portal/$slug/$token")({
@@ -150,9 +151,20 @@ function PortalShell() {
 
   // primary_unit_count is the subscription's billable UNITS, not waste
   // stations (G4 mislabel: "24 stations" for a 24-unit service).
+  // The plan's days when it runs on a weekday set ("Mon–Fri"), else its
+  // frequency; and, first, the business's own name for the service when it
+  // is not the seeded pet waste removal ("30-minute walk · Mon–Fri · ...").
+  // A pet-waste client's chip reads exactly as it did.
+  const cadence = cadenceLabel(c.primary_frequency, c.primary_weekdays);
+  const ownService = visitServiceLabel(
+    c.primary_service_name
+      ? { name: c.primary_service_name, service_line: c.primary_service_line }
+      : null,
+  )?.ownName;
+  const planLead = ownService ? `${ownService} · ${cadence}` : cadence;
   const planChip = isCommercial
-    ? `${friendlyFrequency(c.primary_frequency)} · ${c.primary_unit_count ?? 0} unit${c.primary_unit_count === 1 ? "" : "s"} · ${money(c.primary_price_cents)}/visit`
-    : `${friendlyFrequency(c.primary_frequency)} · ${c.primary_dog_count ?? 0} dog${c.primary_dog_count === 1 ? "" : "s"} · ${money(c.primary_price_cents)}/visit`;
+    ? `${planLead} · ${c.primary_unit_count ?? 0} unit${c.primary_unit_count === 1 ? "" : "s"} · ${money(c.primary_price_cents)}/visit`
+    : `${planLead} · ${c.primary_dog_count ?? 0} dog${c.primary_dog_count === 1 ? "" : "s"} · ${money(c.primary_price_cents)}/visit`;
 
   return (
     <div className="min-h-screen bg-muted/20 pb-28">

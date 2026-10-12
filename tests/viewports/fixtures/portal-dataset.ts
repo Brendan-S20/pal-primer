@@ -87,6 +87,11 @@ export const PORTAL_CLIENT = {
   sms_consent_at: "2026-03-04T18:12:00.000Z",
   sms_opt_out: false,
   primary_phone: "(312) 555-1000",
+  // A pet-waste plan (20261011160000): no weekday set, the seeded service,
+  // so the header chip reads "Weekly · 2 dogs · ..." exactly as before.
+  primary_weekdays: null,
+  primary_service_name: "Pet waste removal",
+  primary_service_line: "pet_waste",
   // Added by the handler, not the RPC — see portalGetClient.
   skip_billable_pct: 50,
   // Same: read from organizations by the handler. 48 is the column default.
@@ -191,6 +196,7 @@ export const PORTAL_SUBS = [
     price_cents: 2400,
     frequency: "weekly",
     property_label: "Back yard and side run",
+    weekdays: null,
   },
 ];
 
@@ -311,6 +317,10 @@ export const PORTAL_REQUESTS = [
     created_at: stamp(-2),
     requested_on: day(7),
     booked_on: day(7),
+    // A request for one of the business's services reads as that service,
+    // and this is the longest name the catalog fixture has, beside the
+    // "booked for" day: the widest title the list draws.
+    service_name: "30-minute neighbourhood walk with a long-ish name",
   },
   {
     ticket_id: "22222222-0000-4000-8000-000000002004",
@@ -324,6 +334,8 @@ export const PORTAL_REQUESTS = [
     created_at: stamp(0),
     requested_on: day(12),
     booked_on: null,
+    // The extra cleanup: no service, so it still reads "Extra visit".
+    service_name: null,
   },
 ];
 

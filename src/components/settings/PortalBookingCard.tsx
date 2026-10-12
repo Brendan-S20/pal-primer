@@ -1,9 +1,15 @@
-// Settings -> Client portal: extra cleanups customers ask for.
+// Settings -> Client portal: the extra visits clients ask for.
 //
 // Two answers. The price is what the office's "Book it" dialog starts from
 // and what auto-accept books at; left blank, the office prices each request.
 // Auto-accept is off by default and cannot be turned on without a price,
 // because it books a visit with nobody looking and a visit needs a price.
+//
+// The price here is the pet-waste one-off's (the extra cleanup, priced by
+// zone otherwise, so it needs a number of its own). A business that also
+// walks, sits or grooms offers those from the same card at each service's
+// own price (Settings -> Services), and the card says so to that business
+// only; a pet-waste business reads the card it always has.
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,9 +21,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { getPortalBookingSettings, setPortalBookingSettings } from "@/lib/portal-booking.functions";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 export function PortalBookingCard() {
   const qc = useQueryClient();
+  const { lines } = useServiceLines();
+  const otherServices = lines.some((l) => l !== "pet_waste");
   const getFn = useServerFn(getPortalBookingSettings);
   const setFn = useServerFn(setPortalBookingSettings);
   const q = useQuery({ queryKey: ["portal-booking-settings"], queryFn: () => getFn() });
@@ -59,7 +68,7 @@ export function PortalBookingCard() {
       <CardContent className="space-y-4">
         <div className="max-w-xs">
           <Label htmlFor="one-off-price" className="text-xs">
-            Price of an extra visit
+            {otherServices ? "Price of an extra pet waste visit" : "Price of an extra visit"}
           </Label>
           <Input
             id="one-off-price"
@@ -75,6 +84,8 @@ export function PortalBookingCard() {
           <p className="mt-1 text-xs text-muted-foreground">
             Shown to the client when they ask, and filled in when you book one. Leave it blank to
             price each request yourself.
+            {otherServices &&
+              " Your other services (a walk, a sit, a groom) are offered at their own price from Settings → Services; one with no price yet is not offered."}
           </p>
         </div>
 

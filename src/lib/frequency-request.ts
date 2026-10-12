@@ -4,6 +4,8 @@
 // (subscription <uuid>).") and the office Concerns page re-derives the
 // structured request from it to offer a one-click apply.
 
+import { formatWeekdaySet } from "@/lib/weekday-set";
+
 export interface ParsedFrequencyRequest {
   subscriptionId: string;
   fromFrequency: string;
@@ -36,6 +38,17 @@ export const FREQUENCY_LABELS: Record<string, string> = {
 
 export function frequencyLabel(value: string): string {
   return FREQUENCY_LABELS[value] ?? value.replace(/_/g, " ");
+}
+
+/** How a plan's cadence reads to a client: its days when it runs on a
+ *  weekday set ("Mon, Wed, Fri", "Mon–Fri"; subscriptions.weekdays, the
+ *  catalog), else its frequency's label as before. The portal is English. */
+export function cadenceLabel(
+  frequency: string | null | undefined,
+  weekdays?: readonly number[] | null,
+): string {
+  if (weekdays && weekdays.length > 0) return formatWeekdaySet(weekdays, "en-US");
+  return frequency ? frequencyLabel(frequency) : "";
 }
 
 const REQUEST_RE =
