@@ -1,9 +1,8 @@
 # Toll-free verification: what to change before resubmitting
 
 Rejected 2026-08-31 (30482, 30507), and again in October (30482, 30474). This
-is the diagnosis and the paste-ready text for the resubmission due live by
-2026-10-09. Every field under *Paste-ready replacements* is yours to paste into
-the Twilio console.
+is the diagnosis and the paste-ready text for the resubmission. Every field
+under *Paste-ready replacements* is yours to paste into the Twilio console.
 
 **The filing is account holders only.** The HoundStack toll-free number texts
 people who use HoundStack, and nobody else. Texting is not live yet: the pages
@@ -13,7 +12,7 @@ proposed a two-population filing (account holders and the businesses' own
 clients); that plan is superseded, and so is any text here that still reads
 that way.
 
-## 30482 — Business Email Address Must Use an Official Domain
+## 30482: Business Email Address Must Use an Official Domain
 
 **Corrected 2026-08-31 against Twilio's own error documentation.** An earlier
 version of this file said 30482 was not on the toll-free form at all and pointed
@@ -61,7 +60,7 @@ been reworded. It now opens:
 
 rather than the "uses a free or personal email provider instead of your business
 domain" quoted above. Softer framing, same requirement, and the second remedy
-this file already records — publishing a free address on the site — is still
+this file already records, publishing a free address on the site, is still
 there verbatim. Nothing below needs changing. The quoted line is simply no
 longer word-for-word, which matters only if somebody goes looking for it.
 
@@ -76,10 +75,9 @@ and among its solutions:
 > Make sure the contact details you submit belong to that business
 > representative, **including `businessContactEmail`**.
 
-So setting `BusinessContactEmail` to `support@houndstack.com` — the obvious
-reading of "use an official domain", and the address already visible in the
-screenshot — swaps a 30482 rejection for a plausible 30483 one. A shared
-mailbox is not the named representative's address.
+Using `support@houndstack.com` for `BusinessContactEmail` could swap a 30482
+rejection for a 30483 rejection. That address is already visible in the
+screenshot, but a shared mailbox is not the named representative's address.
 
 **Use a person's address on the business domain**, matching the
 `businessContactFirstName` / `businessContactLastName` on the same submission.
@@ -87,10 +85,9 @@ mailbox is not the named representative's address.
 field.
 
 This is inference from two error pages read together, not something Twilio
-states as a rule — but it costs one character of care to avoid and a rejection
-cycle to discover.
+states as a rule. Using the named representative's address avoids this risk.
 
-## 30507 — Opt-In Does Not Match the Use Case
+## 30507: Opt-In Does Not Match the Use Case
 
 **Rewritten 2026-10-06, when the code was changed to match the resubmission.**
 An earlier version of this section said the traffic was wider than the
@@ -200,10 +197,10 @@ filing. They no longer describe a second population on this number.
 
 # Paste-ready replacements
 
-Everything quoted here matches what is live on 2026-10-07 at
-app.houndstack.com/get-started, /legal/sms, /legal/privacy, /legal/terms and
-www.houndstack.com. If you change a word on the form, change the page too, or
-the mismatch is a rejection of its own (30507).
+The consent quote below is the wording requested in #408. Before resubmitting,
+publish the consent changes and re-capture the evidence from production. Check
+app.houndstack.com/get-started and /legal/sms against the quote word for word.
+A mismatch between the form and the page can cause another rejection (30507).
 
 ### Business information (30474 and 30482)
 
@@ -229,7 +226,8 @@ Use whatever the form requires there, but do not add one to the site.
 ### Use case description
 
 > HoundStack (operated by The North Consulting LLC) is field service software
-> for pet waste removal businesses. This toll-free number sends transactional
+> for route-based dog service businesses (scoopers, walkers, sitters, mobile
+> groomers, trainers). This toll-free number sends transactional
 > SMS to HoundStack account holders only: the business owners and staff who
 > sign in to HoundStack. Messages are verification codes, account and security
 > alerts, subscription billing notices, and replies to support requests the
@@ -254,9 +252,9 @@ Use whatever the form requires there, but do not add one to the site.
 > "I agree to receive text messages from HoundStack at the number provided about
 > my account and service notifications, including verification codes, security
 > alerts and billing notices. Consent is optional and is not a condition of
-> purchase — you can create and use a HoundStack account without it. Message
-> frequency varies. Message & data rates may apply. Reply STOP to opt out or
-> HELP for help."
+> purchase. You can create and use a HoundStack account without it. Message
+> frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP
+> for help."
 >
 > The box is unticked by default and is not a condition of signup or of
 > purchase. Our Terms of Service and Privacy Policy each state that accepting
@@ -294,8 +292,16 @@ so write the real templates to match these when they are built.
 
 ### Opt-in policy proof
 
-All of these load logged out and were re-captured from production on
-2026-10-07 (`scripts/capture-sms-opt-in.mjs https://app.houndstack.com`):
+These URLs are public. After the #408 wording is published, re-capture the
+images from production under the same filenames:
+
+```sh
+node scripts/capture-sms-opt-in.mjs https://app.houndstack.com
+```
+
+Verify that screenshots 3, 4, 5 and 6 show the new wording before submitting
+them. Screenshot 3 also shows the consent box, with no number entered.
+The capture script does not submit signup or create an account.
 
 ```
 https://app.houndstack.com/get-started
@@ -325,14 +331,18 @@ business's client gets instead"), so it is not part of this filing. It still
 matters for the per-business 10DLC registration later: prefix `org.name`
 ("Acme Pet Waste: hi Jane, …") before those numbers go live.
 
-### The signup consent string contains an em dash
+### Keep consent wording and evidence together
 
-`SMS_CONSENT_TEXT` in `get-started.tsx` has "not a condition of purchase — you
-can create…". That would normally fall under the em-dash rule. **Leave it.** It
-is the wording on the filing, word for word. It is stored per account as the
-consent record and appears in screenshots 4 and 5. Changing it would make the
-text quoted to Twilio differ from the page, which is a 30507 mismatch of our
-own making. The `em-dash-ok` exemption on it is deliberate.
+#408 replaces the em dash with a period and uses "Msg & data rates may apply."
+and "Reply STOP to opt out, HELP for help." Keep the signup box, the quote on
+/legal/sms, this document and the screenshots identical. Existing consent
+records retain the exact wording shown when the account holder opted in.
+
+For the opt-in submission, use https://app.houndstack.com/legal/sms with the
+public screenshot URLs above. The signup checkbox appears on the final step
+of /get-started; that URL alone does not show it on first load. The policy page
+explains the optional checkbox and links the evidence. No new route is needed.
+Confirm with Isa that this proof is sufficient before resubmitting.
 
 ---
 

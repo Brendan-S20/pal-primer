@@ -85,13 +85,12 @@ function SmsPolicyPage() {
           optional, and the account is created whether or not they are filled in. The box carries
           this language:
         </p>
-        {/* em-dash-ok: quotes SMS_CONSENT_TEXT verbatim. See the note there. */}
         <p className="rounded-md border bg-muted/40 p-3 text-sm">
           "I agree to receive text messages from {APP_NAME} at the number provided about my account
           and service notifications, including verification codes, security alerts and billing
-          notices. Consent is optional and is not a condition of purchase — you can create and use a{" "}
-          {APP_NAME} account without it. Message frequency varies. Message &amp; data rates may
-          apply. Reply STOP to opt out or HELP for help."
+          notices. Consent is optional and is not a condition of purchase. You can create and use a{" "}
+          {APP_NAME} account without it. Message frequency varies. Msg &amp; data rates may
+          apply. Reply STOP to opt out, HELP for help."
         </p>
         <p>
           We record when consent was given, the number it covers, and the exact language shown.
