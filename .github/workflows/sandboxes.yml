@@ -66,6 +66,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "supabase/proofs/**"
+      - "tests/integration/*.db.test.ts"
+      - "tests/run-db-tests.sh"
       - "tests/e2e/**"
       - "playwright.e2e.config.ts"
       - "tests/viewports/**"
@@ -163,6 +165,8 @@ jobs:
               # The E2E suite runs inside the database job (it needs the
               # stack that job builds), so its inputs route there too.
               supabase/migrations/*|supabase/proofs/*)     database=true ;;
+              tests/integration/*.db.test.ts)              database=true ;;
+              tests/run-db-tests.sh)                       database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.

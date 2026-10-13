@@ -197,7 +197,7 @@ jobs:
       # vitest.config.ts where the exclusion is visible next to the discovery,
       # not by omitting a filename nobody will notice is missing.
       #
-      # The three tests/integration/*.db.test.ts files self-skip unless
+      # The tests/integration/*.db.test.ts files self-skip unless
       # TEST_SUPABASE_URL / _ANON_KEY / _SERVICE_KEY are set, which this step
       # deliberately does not set.
       - name: Tests
