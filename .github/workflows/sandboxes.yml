@@ -78,9 +78,8 @@ concurrency:
 
 defaults:
   run:
-    # Git Bash is installed on DESKTOP-JUC6SL1 but not on the runner's PATH,
-    # so call it by full path.
-    shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+    # Each Windows job adds Git Bash to PATH in its first step.
+    shell: bash
 
 jobs:
   # ── WHY A GATE JOB RATHER THAN A WIDER FILTER ──────────────────────────
@@ -110,6 +109,11 @@ jobs:
       database: ${{ steps.decide.outputs.database }}
       viewports: ${{ steps.decide.outputs.viewports }}
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
         with:
           # The diff below needs the base commit, which a shallow clone of the
@@ -183,6 +187,11 @@ jobs:
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     timeout-minutes: 30
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -656,6 +665,11 @@ jobs:
     # PC is back; the 45, and everything said above it, applies to the PC.
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT (Windows only) ──────
       #
       # The same two steps as ci.yml's windows-probe, for the same reason, and
@@ -843,6 +857,11 @@ jobs:
     # PC is back; the 45, and everything said above it, applies to the PC.
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # The four setup steps are the `viewports` job's, for the reasons
       # written there.
       - name: Make git write LF
