@@ -234,7 +234,8 @@ Use whatever the form requires there, but do not add one to the site.
 > account holder opened.
 >
 > Consent is collected through an optional checkbox, unticked by default, on the
-> final step of signup at app.houndstack.com/get-started, next to an optional
+> final step of signup at app.houndstack.com/get-started (shown publicly at
+> app.houndstack.com/legal/sms-opt-in), next to an optional
 > mobile number field. The account is created whether or not the box is ticked.
 > The exact consent wording, the phone number and a timestamp are stored on the
 > account record.
@@ -303,6 +304,16 @@ Verify that screenshots 3, 4, 5 and 6 show the new wording before submitting
 them. Screenshot 3 also shows the consent box, with no number entered.
 The capture script does not submit signup or create an account.
 
+Opt-in URL to submit (#451). It lands directly on the signup opt-in step,
+with the number field, the unticked box, the consent text and the policy links
+on one screen, and it saves nothing:
+
+```
+https://app.houndstack.com/legal/sms-opt-in
+```
+
+Backup URLs and the evidence images:
+
 ```
 https://app.houndstack.com/get-started
 https://app.houndstack.com/legal/sms
@@ -338,11 +349,12 @@ and "Reply STOP to opt out, HELP for help." Keep the signup box, the quote on
 /legal/sms, this document and the screenshots identical. Existing consent
 records retain the exact wording shown when the account holder opted in.
 
-For the opt-in submission, use https://app.houndstack.com/legal/sms with the
-public screenshot URLs above. The signup checkbox appears on the final step
-of /get-started; that URL alone does not show it on first load. The policy page
-explains the optional checkbox and links the evidence. No new route is needed.
-Confirm with Isa that this proof is sufficient before resubmitting.
+For the opt-in submission, use https://app.houndstack.com/legal/sms-opt-in.
+It renders the same component and consent string as the final step of
+/get-started, so a reviewer sees the opt-in on first load without signing up.
+Use https://app.houndstack.com/get-started and
+https://app.houndstack.com/legal/sms as backup, with the public screenshot URLs
+above. Confirm with Isa that this proof is sufficient before resubmitting.
 
 ---
 
