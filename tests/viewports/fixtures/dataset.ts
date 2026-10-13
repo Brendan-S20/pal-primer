@@ -1725,6 +1725,7 @@ export const MY_DAY_STOP_EXTRAS: Array<{
       autopay: false,
       cardOnFile: false,
       paysCashCheck: false,
+      hasInvoiceLine: true,
       openBalanceCents: 125000,
       awaitingCents: 0,
     },

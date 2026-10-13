@@ -85,6 +85,34 @@ async function forceBillingState(
     } catch {
       /* fall through to the stub below */
     }
+    if (name === "getTrialState") {
+      const status = String(patch.billingStatus ?? patch.planStatus ?? "");
+      const trialEndsOn = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+      const trial =
+        status === "trialing"
+          ? {
+              phase: "trialing",
+              daysRemaining: 7,
+              endsOn: trialEndsOn,
+              restricted: false,
+              aiAvailable: false,
+              canManageBilling: true,
+            }
+          : {
+              phase: "paid",
+              daysRemaining: null,
+              endsOn: null,
+              restricted: false,
+              aiAvailable: true,
+              canManageBilling: true,
+            };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: trial }),
+      });
+      return;
+    }
     if (name !== "getBillingStatus") return route.fallback();
     await route.fulfill({
       status: 200,
@@ -95,7 +123,7 @@ async function forceBillingState(
           orgName: "Demo Pet Waste Co",
           planName: "Growth",
           planSlug: "growth",
-          currentPeriodEnd: "2026-09-16T00:00:00.000Z",
+          currentPeriodEnd: new Date(Date.now() + 14 * 864e5).toISOString(),
           ...patch,
         },
       }),
