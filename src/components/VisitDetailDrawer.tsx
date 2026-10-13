@@ -798,7 +798,7 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
                   if (window.confirm("Remove this visit photo?")) removeMut.mutate(ph.id);
                 }}
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="h-3.5 w-3.5 shrink-0" />
               </Button>
               <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
                 {photoKindLabel(ph.kind)}
