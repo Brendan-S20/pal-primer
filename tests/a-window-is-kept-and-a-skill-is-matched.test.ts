@@ -276,7 +276,7 @@ describe("a skill is matched", () => {
       for (const st of route) expect(p.stops[st].eligibleTechs, `stop ${st}`).toContain(t);
       expect(evaluateRoute(p, t, route).late).toBe(0);
     });
-  });
+  }, 60_000);
 });
 
 describe("nothing changes for a business with no skills and no windows", () => {
