@@ -429,7 +429,10 @@ jobs:
           exit 1
 
       - name: The RLS and portal-auth backstops, finally executed
-        run: npm run test:db
+        # Called through bash rather than `npm run test:db`: on the Windows
+        # runner npm runs scripts with cmd.exe, which cannot execute a .sh
+        # path ("'tests' is not recognized", run 38410171101 attempt 3).
+        run: bash tests/run-db-tests.sh
 
       # ── AND THE PROOFS, WHICH THIS WORKFLOW WATCHED WITHOUT RUNNING ─────
       #
