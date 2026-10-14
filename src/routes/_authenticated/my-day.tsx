@@ -585,13 +585,10 @@ function MyDay() {
       {/* Sticky, blurred top bar — feels like a native nav.
           `top` is the impersonation banner's measured height, 0 when there is
           no banner: both are sticky to the same edge and the banner wins on
-          z-index, so a fixed top-0 here vanished under it.
-          Below 500px tall, let the header scroll away so stop controls can
-          clear the fixed bottom bar. The list's bottom padding reserves room
-          for that bar and the tab bar. */}
+          z-index, so a fixed top-0 here vanished under it. */}
       <div
         data-page-bleed=""
-        className={`sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 [@media(max-height:500px)]:static ${PAGE_BLEED_X} ${PAGE_BLEED_TOP}`}
+        className={`sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${PAGE_BLEED_X} ${PAGE_BLEED_TOP}`}
         // Sizes to its content, so no height override — see nativeTopBarStyle.
         style={nativeTopBarStyle()}
       >
@@ -2083,7 +2080,7 @@ function VisitCard({
       // No entrance of its own: the list it is in (motion-list) animates a
       // stop added mid-session and leaves the day's first paint alone. No
       // shadow transition either: box-shadow is a repaint on every frame.
-      className={`scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm [@media(max-height:500px)]:scroll-mt-4 [@media(max-height:500px)]:scroll-mb-[calc(7rem+var(--tab-bar-h)+env(safe-area-inset-bottom))] ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}
+      className={`scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}
     >
       {!collapsed && <HazardBanner property={p} />}
       {!preview && <EnRouteLocationChip visit={visit} />}
