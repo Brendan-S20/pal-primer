@@ -42,7 +42,7 @@ import {
   stopFactsFromRow,
   type StopFacts,
 } from "../src/lib/stop-facts";
-import { defaultInvoiceSelection, selectionTotals } from "../src/lib/field-collections";
+import { allocateOldestFirst, defaultInvoiceSelection } from "../src/lib/field-collections";
 import { headerControlsForRole } from "../src/lib/header-prefs";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -385,21 +385,28 @@ describe("the collection form", () => {
   });
 });
 
-describe("the office applies whole invoices", () => {
+describe("the office applies cash oldest first, the last invoice in part", () => {
+  // Was "whole invoices": $40 against $25, $30, $15 paid $25 + $15 and left
+  // the older $30 alone. Since 20261015120000 the last invoice the money
+  // reaches can be paid in part (tests/a-check-for-less-than-the-bill.test.ts).
   const invs = [
     { id: "a", open_cents: 2500 },
     { id: "b", open_cents: 3000 },
     { id: "c", open_cents: 1500 },
   ];
-  it("proposes the oldest invoices that fit, skipping one that does not", () => {
-    expect(defaultInvoiceSelection(invs, 4000)).toEqual(["a", "c"]);
-    expect(defaultInvoiceSelection(invs, 1000)).toEqual([]);
-    expect(selectionTotals(invs, ["a", "c"], 4000)).toEqual({
+  it("proposes the oldest invoices until the money runs out", () => {
+    expect(defaultInvoiceSelection(invs, 4000)).toEqual(["a", "b"]);
+    expect(defaultInvoiceSelection(invs, 1000)).toEqual(["a"]);
+    expect(allocateOldestFirst(invs, ["a", "b"], 4000)).toEqual({
+      allocations: [
+        { id: "a", cents: 2500, partial: false },
+        { id: "b", cents: 1500, partial: true },
+      ],
       appliedCents: 4000,
       unappliedCents: 0,
-      overBy: 0,
+      starved: [],
     });
-    expect(selectionTotals(invs, ["a", "b"], 4000).overBy).toBe(1500);
+    expect(allocateOldestFirst(invs, ["a", "b", "c"], 4000).starved).toEqual(["c"]);
   });
 });
 

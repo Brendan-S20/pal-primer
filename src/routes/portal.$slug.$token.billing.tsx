@@ -233,6 +233,12 @@ function PortalBilling() {
                           after {money(i.credit_applied_cents)} credit
                         </span>
                       )}
+                      {/* Partly paid: the amount above is what is left. */}
+                      {i.status === "open" && (i.amount_paid_cents ?? 0) > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          left of {money(i.total_cents)}, {money(i.amount_paid_cents)} paid
+                        </span>
+                      )}
                       {/* Sales tax inside the total, only when there is some. */}
                       {(i.tax_cents ?? 0) > 0 && (
                         <span className="text-xs text-muted-foreground">
