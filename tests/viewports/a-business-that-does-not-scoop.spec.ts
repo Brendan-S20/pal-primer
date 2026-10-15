@@ -92,24 +92,24 @@ async function showAllSteps(page: Page) {
 const allText = (page: Page) => page.evaluate(() => document.body.textContent ?? "");
 
 /** ServiceLinesChoices, as /setup step 1 and Settings → Business defaults both
- *  draw it for a dog-walking business. Walking and sitting are bookable;
- *  mobile grooming is listed, marked, and cannot be ticked. */
+ *  draw it for a dog-walking business. Its existing walking selection stays
+ *  ticked. Unticked lines marked Coming soon cannot be selected. */
 async function expectServiceLineChoices(page: Page) {
   await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole("checkbox", { name: "Dog walking", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /^Dog walking/ })).toBeChecked();
   const petWaste = page.getByRole("checkbox", {
     name: "Pet waste removal (scooping)",
     exact: true,
   });
   await expect(petWaste).not.toBeChecked();
   await expect(petWaste).toBeEnabled();
-  // Bookable since the service catalog: shown, selectable, no badge.
-  const sitting = page.getByRole("checkbox", { name: "Pet sitting", exact: true });
+  // Pet sitting joins when its path works end to end: shown, marked, disabled.
+  const sitting = page.getByRole("checkbox", { name: /^Pet sitting/ });
   await expect(sitting).not.toBeChecked();
-  await expect(sitting).toBeEnabled();
-  await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toHaveCount(0);
+  await expect(sitting).toBeDisabled();
+  await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toBeVisible();
   // Not bookable yet: shown, marked, and not selectable.
   const grooming = page.getByRole("checkbox", { name: /^Mobile grooming/ });
   await expect(grooming).toBeDisabled();
