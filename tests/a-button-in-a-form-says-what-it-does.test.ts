@@ -196,7 +196,10 @@ describe("a button inside a form says what it does", () => {
           );
         }`,
     };
-    const { faults } = buttonsThatWouldSubmit(join(src, "components/Drawer.tsx"), (f) => files[f] ?? null);
+    const { faults } = buttonsThatWouldSubmit(
+      join(src, "components/Drawer.tsx"),
+      (f) => files[f] ?? null,
+    );
     expect(faults).toEqual(["src/components/Toolbar.tsx:5"]);
   });
 

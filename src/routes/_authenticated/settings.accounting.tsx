@@ -319,7 +319,11 @@ function AccountingSettings() {
               empty="Undeposited Funds"
             />
           </div>
-          <button type="submit" disabled={busy || choices.isLoading} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11">
+          <button
+            type="submit"
+            disabled={busy || choices.isLoading}
+            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60 touch:min-h-11"
+          >
             {busy ? "Saving…" : "Save"}
           </button>
         </form>

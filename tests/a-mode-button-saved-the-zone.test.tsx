@@ -43,18 +43,30 @@ describe("the zone coverage toolbar inside the drawer form", () => {
   it("in radius mode: Polygon, Radius and Drive time are plain buttons", () => {
     const buttons = buttonsInForm(base);
     expect(buttons.map((b) => b.label)).toEqual(["Polygon", "Radius", "Drive time"]);
-    for (const b of buttons) expect(b, `${b.label} would submit the form`).toMatchObject({ type: "button" });
+    for (const b of buttons)
+      expect(b, `${b.label} would submit the form`).toMatchObject({ type: "button" });
   });
 
   it("in polygon mode: Undo and Clear are plain buttons too", () => {
     const buttons = buttonsInForm({ ...base, mode: "polygon" });
-    expect(buttons.map((b) => b.label)).toEqual(["Polygon", "Radius", "Drive time", "Undo", "Clear"]);
-    for (const b of buttons) expect(b, `${b.label} would submit the form`).toMatchObject({ type: "button" });
+    expect(buttons.map((b) => b.label)).toEqual([
+      "Polygon",
+      "Radius",
+      "Drive time",
+      "Undo",
+      "Clear",
+    ]);
+    for (const b of buttons)
+      expect(b, `${b.label} would submit the form`).toMatchObject({ type: "button" });
   });
 
   it("standalone, the Save coverage button does not submit a form it lands in either", () => {
     const html = renderToStaticMarkup(
-      createElement("form", null, createElement(ZoneCoverageMap, { initial: base, onSave: () => {} })),
+      createElement(
+        "form",
+        null,
+        createElement(ZoneCoverageMap, { initial: base, onSave: () => {} }),
+      ),
     );
     const save = /<button\b([^>]*)>(?:(?!<\/button>)[\s\S])*Save coverage/.exec(html);
     expect(save?.[1]).toContain('type="button"');
