@@ -1,9 +1,12 @@
 // The total under Settings > Plan & billing > "Your next invoice".
 //
-// A line whose price Stripe did not give us (unitAmountCents null) is drawn as
-// "-", and the total used to skip it and print the sum of the rest: a plan row
-// reading "-" above "Monthly total $0.00/mo" (A-07). A sum with an unknown term
-// in it is unknown, so the answer is null and the page draws a dash.
+// A line whose price Stripe did not give us (unitAmountCents null) is metered
+// usage: its amount is only known once the period closes. The total used to
+// skip it and print the sum of the rest as if that were the whole bill, so a
+// usage-only plan read "Monthly total $0.00/mo" (A-07). The page now prints
+// the priced lines' sum with "+ usage" after it ("$199.00/mo + usage"), and
+// "Usage only" when no line on the plan's interval has a price, never a $0.00
+// that the server did not say.
 
 export type NextInvoiceLine = {
   quantity: number | null;
@@ -12,18 +15,33 @@ export type NextInvoiceLine = {
   intervalCount: number;
 };
 
-/** Cents per plan interval, or null when any line's price is unknown. Lines
- *  billed on a different interval are left out, as the label says. */
+export type NextInvoiceTotal = {
+  /** Sum of the priced lines on the plan's interval, in cents. */
+  knownCents: number;
+  /** At least one line on the plan's interval has a price. */
+  hasKnown: boolean;
+  /** At least one line on the plan's interval has no price (usage). */
+  hasUsage: boolean;
+};
+
+/** The plan-interval total, split into what is priced and whether usage is
+ *  added on top. Lines billed on a different interval are left out, as the
+ *  label says. */
 export function nextInvoiceTotalCents(
   items: NextInvoiceLine[],
   planInterval: string,
-): number | null {
-  let total = 0;
+): NextInvoiceTotal {
+  let knownCents = 0;
+  let hasKnown = false;
+  let hasUsage = false;
   for (const i of items) {
-    if (i.unitAmountCents == null) return null;
-    if (i.interval === planInterval && i.intervalCount === 1) {
-      total += i.unitAmountCents * (i.quantity ?? 1);
+    if (i.interval !== planInterval || i.intervalCount !== 1) continue;
+    if (i.unitAmountCents == null) {
+      hasUsage = true;
+    } else {
+      hasKnown = true;
+      knownCents += i.unitAmountCents * (i.quantity ?? 1);
     }
   }
-  return total;
+  return { knownCents, hasKnown, hasUsage };
 }

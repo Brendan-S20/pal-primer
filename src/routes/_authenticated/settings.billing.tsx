@@ -908,11 +908,16 @@ function NextInvoice({
   // Total in the subscription's own interval (all items share it; anything
   // odd an admin attached by hand is excluded and called out).
   const planInterval = subInfo?.planInterval ?? "month";
-  // Null when any line's price is unknown: a dash, never a partial sum.
+  // A line with no price is usage: the priced sum is shown with "+ usage",
+  // never as if it were the whole bill.
   const total = nextInvoiceTotalCents(items, planInterval);
   const allSameInterval = items.every((i) => i.interval === planInterval && i.intervalCount === 1);
   const totalLabel = planInterval === "year" ? "Yearly total" : "Monthly total";
   const totalSuffix = planInterval === "year" ? "/yr" : "/mo";
+  const totalText =
+    total.hasUsage && !total.hasKnown
+      ? "Usage only"
+      : `${formatUsd(total.knownCents)}${totalSuffix}${total.hasUsage ? " + usage" : ""}`;
 
   const intervalSuffix = (i: (typeof items)[number]) =>
     i.interval
@@ -927,7 +932,7 @@ function NextInvoice({
     return i.name;
   };
   const lineAmount = (i: (typeof items)[number]) => {
-    if (i.unitAmountCents == null) return "-";
+    if (i.unitAmountCents == null) return "Usage";
     const lineTotal = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
     return `${lineTotal}${intervalSuffix(i)}`;
   };
@@ -971,7 +976,7 @@ function NextInvoice({
               {allSameInterval ? totalLabel : `${totalLabel} (excludes other billing periods)`}
             </p>
             <p className="text-sm font-semibold">
-              {total == null ? "-" : `${formatUsd(total)}${totalSuffix}`}
+              {totalText}
             </p>
           </div>
         </>
