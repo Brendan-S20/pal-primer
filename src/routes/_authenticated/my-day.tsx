@@ -1235,6 +1235,8 @@ function serviceLineName(t: TFunction, line: ServiceLine): string {
       return t("serviceLine.pet_sitting");
     case "mobile_grooming":
       return t("serviceLine.mobile_grooming");
+    case "training":
+      return t("serviceLine.training");
     default:
       return t("serviceLine.other");
   }

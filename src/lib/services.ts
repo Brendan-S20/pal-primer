@@ -17,6 +17,7 @@
  */
 
 import {
+  BOOKABLE_SERVICE_LINES,
   OFFERED_SERVICE_LINES,
   SERVICE_LINES,
   SERVICE_LINE_LABEL,
@@ -69,6 +70,127 @@ export type ServiceDraft = {
   default_duration_min: number | null;
 };
 
+export type DefaultServiceSeed = ServiceDraft & { active: boolean };
+
+/** Services each selected line gets when a business turns that line on.
+ *  Prices stay blank by design. */
+export const DEFAULT_SERVICE_SEEDS: Readonly<Record<ServiceLine, readonly DefaultServiceSeed[]>> = {
+  pet_waste: [
+    {
+      name: PET_WASTE_SERVICE_NAME,
+      service_line: "pet_waste",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: null,
+      active: true,
+    },
+  ],
+  dog_walking: [
+    {
+      name: "30-minute walk",
+      service_line: "dog_walking",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 30,
+      active: true,
+    },
+    {
+      name: "60-minute walk",
+      service_line: "dog_walking",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 60,
+      active: true,
+    },
+    {
+      name: "Drop-in visit (20 min)",
+      service_line: "dog_walking",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 20,
+      active: true,
+    },
+  ],
+  pet_sitting: [
+    {
+      name: "Drop-in (30 min)",
+      service_line: "pet_sitting",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 30,
+      active: true,
+    },
+    {
+      name: "Overnight stay",
+      service_line: "pet_sitting",
+      price_unit: "night",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: null,
+      active: true,
+    },
+  ],
+  mobile_grooming: [
+    {
+      name: "Bath and brush (60 min)",
+      service_line: "mobile_grooming",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 60,
+      active: true,
+    },
+    {
+      name: "Full groom (90 min)",
+      service_line: "mobile_grooming",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 90,
+      active: true,
+    },
+    {
+      name: "Nail trim (15 min)",
+      service_line: "mobile_grooming",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 15,
+      active: true,
+    },
+  ],
+  training: [
+    {
+      name: "Private lesson (60 min)",
+      service_line: "training",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 60,
+      active: true,
+    },
+    {
+      name: "Training package (4 sessions)",
+      service_line: "training",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: 60,
+      active: true,
+    },
+  ],
+  other: [],
+};
+
+export function defaultServiceSeedsFor(lines: readonly ServiceLine[]): DefaultServiceSeed[] {
+  return lines.flatMap((line) => [...DEFAULT_SERVICE_SEEDS[line]]);
+}
+
 export function isPriceUnit(v: unknown): v is PriceUnit {
   return typeof v === "string" && (PRICE_UNITS as readonly string[]).includes(v);
 }
@@ -97,7 +219,7 @@ export function serviceLineChoices(
   current?: ServiceLine | null,
 ): ServiceLine[] {
   return SERVICE_LINES.filter(
-    (l) => OFFERED_SERVICE_LINES.includes(l) || orgLines.includes(l) || l === current,
+    (l) => BOOKABLE_SERVICE_LINES.includes(l) || orgLines.includes(l) || l === current,
   );
 }
 
