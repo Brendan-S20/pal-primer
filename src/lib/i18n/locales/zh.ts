@@ -19,6 +19,11 @@ import type { TranslationsWithPlurals } from "./en";
  * half-width where the string is a number or a code.
  */
 const zh: TranslationsWithPlurals<"other"> = {
+  recovery: {
+    title: "此页面未能加载",
+    body: "请尝试刷新页面或返回控制面板。",
+    dashboard: "返回控制面板",
+  },
   common: {
     loading: "加载中…",
     save: "保存",
@@ -386,8 +391,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     enable: "开启通知",
     onShort: "已开启",
     blockedHide: "通知已被阻止。隐藏此提示",
-    blockedHidden:
-      "已隐藏。如需接收提醒，请在浏览器或手机设置中为此应用开启通知。",
+    blockedHidden: "已隐藏。如需接收提醒，请在浏览器或手机设置中为此应用开启通知。",
   },
   nativePush: {
     title: "这部手机上的通知",

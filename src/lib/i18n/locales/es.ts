@@ -10,6 +10,11 @@ import type { Translations } from "./en";
  * English or shorter; the long ones are sentences in blocks that wrap.
  */
 const es: Translations = {
+  recovery: {
+    title: "Esta página no se cargó",
+    body: "Intenta actualizar o vuelve al panel.",
+    dashboard: "Volver al panel",
+  },
   common: {
     loading: "Cargando…",
     save: "Guardar",
@@ -71,7 +76,8 @@ const es: Translations = {
     pickADay: "Elige un día",
     skippedCount: "{{count}} omitidas",
     missedCount: "{{count}} no realizadas",
-    progressRule: "Hechas son las visitas completadas del total de paradas. Las no realizadas y omitidas se cuentan por separado.",
+    progressRule:
+      "Hechas son las visitas completadas del total de paradas. Las no realizadas y omitidas se cuentan por separado.",
     view: "Vista",
     viewList: "Lista",
     viewMap: "Mapa",

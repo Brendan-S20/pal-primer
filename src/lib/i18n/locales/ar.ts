@@ -24,6 +24,11 @@ import type { PluralCategory, TranslationsWithPlurals } from "./en";
  * الإضافية". Unicode does not mirror arrows, so → would point backwards.
  */
 const ar: TranslationsWithPlurals<PluralCategory> = {
+  recovery: {
+    title: "تعذر تحميل هذه الصفحة",
+    body: "حاول تحديث الصفحة أو عُد إلى لوحة التحكم.",
+    dashboard: "العودة إلى لوحة التحكم",
+  },
   common: {
     loading: "جارٍ التحميل…",
     save: "حفظ",
@@ -83,7 +88,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     pickADay: "اختر يومًا",
     skippedCount: "{{count}} متخطاة",
     missedCount: "{{count}} فائتة",
-    progressRule: "المنجزة هي الزيارات المكتملة من إجمالي المحطات. تُحسب المحطات الفائتة والمتخطاة بشكل منفصل.",
+    progressRule:
+      "المنجزة هي الزيارات المكتملة من إجمالي المحطات. تُحسب المحطات الفائتة والمتخطاة بشكل منفصل.",
     view: "العرض",
     viewList: "قائمة",
     viewMap: "خريطة",

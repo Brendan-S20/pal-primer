@@ -17,6 +17,11 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  recovery: {
+    title: "This page didn't load",
+    body: "Try refreshing or return to the dashboard.",
+    dashboard: "Back to dashboard",
+  },
   common: {
     loading: "Loading…",
     save: "Save",
@@ -77,7 +82,8 @@ const en = {
     pickADay: "Pick a day",
     skippedCount: "{{count}} skipped",
     missedCount: "{{count}} missed",
-    progressRule: "Done means completed visits out of all stops. Missed and skipped stops count separately.",
+    progressRule:
+      "Done means completed visits out of all stops. Missed and skipped stops count separately.",
     view: "View",
     viewList: "List",
     viewMap: "Map",
@@ -826,11 +832,9 @@ type PluralStems<T> = {
  */
 export type TranslationsWithPlurals<C extends PluralCategory> = PluralTree<typeof en, C>;
 type PluralTree<T, C extends PluralCategory> = {
-  [K in keyof T as K extends `${string}${PluralSuffix}`
-    ? T[K] extends string
-      ? never
-      : K
-    : K]: T[K] extends string ? string : PluralTree<T[K], C>;
+  [
+    K in keyof T as K extends `${string}${PluralSuffix}` ? (T[K] extends string ? never : K) : K
+  ]: T[K] extends string ? string : PluralTree<T[K], C>;
 } & { [K in `${PluralStems<T> & string}_${C}`]: string };
 
 export default en;
