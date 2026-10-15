@@ -174,7 +174,9 @@ export function InvoiceRow({
       <td className="px-4 py-2.5">
         <span className="inline-flex flex-wrap items-center gap-1.5">
           <StatusChip status={invoice.status} />
-          {isPartiallyPaid(invoice) && <MetaChip>Partially paid</MetaChip>}
+          {isPartiallyPaid(invoice) && (
+            <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
+          )}
           {showKind && <MetaChip>{invoiceKindLabel(invoice.kind)}</MetaChip>}
           {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
             <MetaChip>Scheduled to send {formatDay(invoice.send_after)}</MetaChip>
@@ -290,7 +292,9 @@ export function InvoiceCard({
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <StatusChip status={invoice.status} />
-            {isPartiallyPaid(invoice) && <MetaChip>Partially paid</MetaChip>}
+            {isPartiallyPaid(invoice) && (
+              <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
+            )}
             {showKind && <MetaChip>{invoiceKindLabel(invoice.kind)}</MetaChip>}
             {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
               <MetaChip>Scheduled to send {formatDay(invoice.send_after)}</MetaChip>
