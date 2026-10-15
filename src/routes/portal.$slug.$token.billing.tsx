@@ -207,8 +207,7 @@ function PortalBilling() {
           />
         ) : (
           <ul className="divide-y rounded-md border bg-card">
-            {invoicesQ.data!.invoices.map((i, idx) => {
-              const invNo = `#${String(invoicesQ.data!.invoices.length - idx).padStart(4, "0")}`;
+            {invoicesQ.data!.invoices.map((i) => {
               const label =
                 i.kind === "prepaid_topup"
                   ? invoiceKindLabel(i.kind)
@@ -222,7 +221,7 @@ function PortalBilling() {
                 >
                   <div>
                     <div className="font-medium">
-                      Invoice {invNo}
+                      Invoice <span dir="ltr">{i.number_label}</span>
                       <span className="text-muted-foreground"> ({label})</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-2">

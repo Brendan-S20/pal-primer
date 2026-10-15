@@ -52,6 +52,7 @@ import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
 import type { RowAction } from "@/components/RowActions";
 import { invoiceOutstandingCents } from "@/lib/ar";
+import { invoiceNumberLabel } from "@/lib/invoice-labels";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
 import { titleHead } from "@/lib/page-title";
@@ -335,6 +336,39 @@ function NewInvoiceDialog() {
   );
 }
 
+type InvoiceListRow = Awaited<ReturnType<typeof listInvoices>>[number];
+
+// The Invoices CSV. "Invoice number" is the INV-1042 the client was sent and
+// the deposit slip says; "Invoice ID" stays for anyone matching rows by id.
+const INVOICE_CSV_HEADERS = [
+  "Invoice number",
+  "Invoice ID",
+  "Client",
+  "Status",
+  "Period start",
+  "Period end",
+  "Total",
+  "Issued",
+  "Due",
+  "Paid",
+];
+
+function invoiceCsvRow(inv: InvoiceListRow): string[] {
+  const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
+  return [
+    invoiceNumberLabel(inv),
+    inv.id,
+    client?.display_name ?? "",
+    inv.status,
+    inv.period_start ?? "",
+    inv.period_end ?? "",
+    ((inv.total_cents ?? 0) / 100).toFixed(2),
+    (inv.issued_at ?? "").slice(0, 10),
+    inv.due_on ?? "",
+    (inv.paid_at ?? "").slice(0, 10),
+  ];
+}
+
 /** Clickable summary stat: clicking applies (or clears) the matching status filter. */
 function StatCard({
   label,
@@ -585,31 +619,8 @@ function InvoicesPage() {
   const exportSelectedCsv = () =>
     downloadCsv(
       `invoices-selected-${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        "Invoice ID",
-        "Client",
-        "Status",
-        "Period start",
-        "Period end",
-        "Total",
-        "Issued",
-        "Due",
-        "Paid",
-      ],
-      selectedRows.map((inv) => {
-        const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
-        return [
-          inv.id,
-          client?.display_name ?? "",
-          inv.status,
-          inv.period_start ?? "",
-          inv.period_end ?? "",
-          ((inv.total_cents ?? 0) / 100).toFixed(2),
-          (inv.issued_at ?? "").slice(0, 10),
-          inv.due_on ?? "",
-          (inv.paid_at ?? "").slice(0, 10),
-        ];
-      }),
+      INVOICE_CSV_HEADERS,
+      selectedRows.map(invoiceCsvRow),
     );
 
   // ── Per-row ••• actions (Salesforce-style row actions) ────────────────────
@@ -731,31 +742,8 @@ function InvoicesPage() {
             onClick={() =>
               downloadCsv(
                 `invoices-${new Date().toISOString().slice(0, 10)}.csv`,
-                [
-                  "Invoice ID",
-                  "Client",
-                  "Status",
-                  "Period start",
-                  "Period end",
-                  "Total",
-                  "Issued",
-                  "Due",
-                  "Paid",
-                ],
-                filtered.map((inv) => {
-                  const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
-                  return [
-                    inv.id,
-                    client?.display_name ?? "",
-                    inv.status,
-                    inv.period_start ?? "",
-                    inv.period_end ?? "",
-                    ((inv.total_cents ?? 0) / 100).toFixed(2),
-                    (inv.issued_at ?? "").slice(0, 10),
-                    inv.due_on ?? "",
-                    (inv.paid_at ?? "").slice(0, 10),
-                  ];
-                }),
+                INVOICE_CSV_HEADERS,
+                filtered.map(invoiceCsvRow),
               )
             }
           >
