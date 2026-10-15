@@ -135,6 +135,11 @@ describe("the migration, read", () => {
           "GREATEST(i.total_cents - COALESCE(i.credit_applied_cents, 0), 0)",
           "GREATEST(i.total_cents - COALESCE(i.credit_applied_cents, 0) - COALESCE(i.amount_paid_cents, 0), 0)",
         ],
+        // A comment inside the body, reworded to the repo's no-em-dash rule.
+        [
+          "from the same instant \u2014 only the zone differs",
+          "from the same instant; only the zone differs",
+        ],
       ],
     ],
     [

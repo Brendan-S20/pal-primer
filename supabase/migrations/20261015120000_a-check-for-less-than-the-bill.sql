@@ -383,8 +383,9 @@ GRANT EXECUTE ON FUNCTION public.confirm_field_collection(uuid, uuid[]) TO authe
 -- Each below is the latest definition, copied whole, with
 -- `- COALESCE(i.amount_paid_cents, 0)` added to its balance and nothing else
 -- changed (apply_credit_to_invoice also names the invoice by number in its
--- ledger note). tests/a-check-for-less-than-the-bill.test.ts diffs each copy
--- against its source to hold that.
+-- ledger note, and one comment in franchise_rollup loses an em dash).
+-- tests/a-check-for-less-than-the-bill.test.ts diffs each copy against its
+-- source to hold that.
 
 CREATE OR REPLACE FUNCTION public.record_field_collection(
   _visit_id uuid,
@@ -655,7 +656,7 @@ BEGIN
   clock AS (
     -- Each row's own day and its own month, rather than the parent's imposed on
     -- everyone. `now()` is evaluated once per statement, so every row is cut
-    -- from the same instant — only the zone differs, which is the whole point.
+    -- from the same instant; only the zone differs, which is the whole point.
     SELECT c.id, c.name, c.tz,
            (now() AT TIME ZONE c.tz)::date AS today,
            (date_trunc('month', (now() AT TIME ZONE c.tz)) AT TIME ZONE c.tz) AS month_start
