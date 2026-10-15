@@ -14,6 +14,21 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# ── GIT ON A RUNNER THAT RUNS AS A SERVICE ─────────────────────────────
+#
+# The Windows runner now runs as a service account (NETWORK SERVICE), while
+# its workspace was first created by the interactive user. Git then refuses
+# every command in the checkout ("detected dubious ownership"), and every
+# step after actions/checkout that calls git fails: the renormalise step, the
+# changed-files gate, and the tests that read `git ls-files`. checkout adds
+# safe.directory only to its own temporary config, so it does not carry over.
+# This adds it for every step of every job, through git's environment config,
+# without writing anything to the runner's own git config.
+env:
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: safe.directory
+  GIT_CONFIG_VALUE_0: "*"
+
 defaults:
   run:
     # Each Windows job adds Git Bash to PATH in its first step.
