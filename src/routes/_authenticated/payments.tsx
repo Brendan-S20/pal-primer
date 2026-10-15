@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -62,6 +63,7 @@ export const Route = createFileRoute("/_authenticated/payments")({
 });
 
 function PaymentsSettings() {
+  const copy = useLaunchCopy();
   const qc = useQueryClient();
   const statusFn = useServerFn(getStripeConnectStatus);
   const ensureFn = useServerFn(ensureStripeConnectAccount);
@@ -158,7 +160,7 @@ function PaymentsSettings() {
           <p className="text-sm text-muted-foreground">
             {cfg?.connected
               ? "Your Stripe account. Money in, money out, and the settings behind both."
-              : "Get paid by card and bank transfer, straight to your own account."}
+              : copy("Get paid by card, straight to your own bank account.")}
           </p>
         </div>
         {cfg?.connected && (

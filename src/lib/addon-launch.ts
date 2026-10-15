@@ -88,3 +88,36 @@ export function addonPlanRefusal(
   if (planSlug && allowed.includes(planSlug)) return null;
   return PRIORITY_SUPPORT_INCLUDED;
 }
+
+/**
+ * What an add-on card on Plan & billing says about it.
+ *
+ * Until 2026-10-15 a subscribed add-on always read "Active", even when its
+ * launch flag above was off, so an org that held the AI Receptionist or
+ * Managed texting (the demo org holds every add-on) was told a feature was
+ * running that nobody can use yet (#428). An add-on that has not launched
+ * reads "Coming soon" whether or not it is on the plan; being on the plan
+ * only keeps "Remove from plan" reachable.
+ *
+ * `status` is the catalog row's, as `listPlatformAddons` sends it; the slug
+ * is checked here as well so the card cannot say Active even if that mapping
+ * is ever dropped.
+ */
+export type AddonCardState = "coming_soon" | "active" | "purchased" | "included" | "for_sale";
+
+export function addonCardState(a: {
+  slug: string | null | undefined;
+  status: string;
+  subscribed: boolean;
+  billing_interval: string;
+  waivedReason?: string | null;
+}): AddonCardState {
+  if (a.status === "coming_soon" || !addonPurchasable(a.slug)) return "coming_soon";
+  if (!a.subscribed) return "for_sale";
+  if (a.waivedReason) return "included";
+  return a.billing_interval === "one_time" ? "purchased" : "active";
+}
+
+/** The line under a held add-on that is already on a plan. */
+export const HELD_ADDON_ON_PLAN =
+  "On your plan, but it has not launched yet, so it does nothing on your account. You can remove it any time.";

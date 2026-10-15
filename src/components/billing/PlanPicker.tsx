@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 // In-app plan selection + inline Stripe Payment Element (no redirect to
 // checkout.stripe.com and no embedded Checkout iframe). Used by Settings →
 // Plan & billing and the signup onboarding path.
@@ -91,6 +92,7 @@ export function PlanPicker({
   switchingPlanId?: string | null;
   chooseLabel?: string;
 }) {
+  const { t } = useTranslation();
 
   // Whether a store build may purchase never changes while the app runs,
   // which is the only reason the early return that used to sit ABOVE these
@@ -176,7 +178,7 @@ export function PlanPicker({
           data-founding-offer
           className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
         >
-          {foundingBannerText(founding.left)}
+          {foundingBannerText(founding.left, (key, values) => String(t(key, values)))}
         </div>
       )}
       {anyAnnual && (

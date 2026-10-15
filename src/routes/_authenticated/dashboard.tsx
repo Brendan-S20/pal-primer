@@ -1,3 +1,4 @@
+import { MARKETING_AI_LAUNCHED } from "@/lib/ai-launch";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AiSection, DigestPanel, MarketingPanel } from "@/components/ai/AiPanels";
 import { useQuery } from "@tanstack/react-query";
@@ -471,9 +472,11 @@ function Dashboard() {
         <AiSection title="Weekly digest" description="Your last 7 days, in numbers.">
           <DigestPanel />
         </AiSection>
-        <AiSection ai title="Marketing posts" description="Coming soon.">
-          <MarketingPanel />
-        </AiSection>
+        {MARKETING_AI_LAUNCHED && (
+          <AiSection ai title="Marketing posts" description="Coming soon.">
+            <MarketingPanel />
+          </AiSection>
+        )}
       </div>
 
       <VisitDetailDrawer

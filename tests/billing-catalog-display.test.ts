@@ -183,14 +183,16 @@ describe("renewal dates require a future Stripe subscription period", () => {
 
 describe("add-on status is exclusive", () => {
   it.each(["active", "coming_soon"] as const)(
-    "shows subscribed add-ons as Active with catalog status %s",
+    "shows subscribed held add-ons as Coming soon with catalog status %s",
     (addonStatus) => {
       const text = renderBilling({ addonStatus });
-      expect(text).toContain("AI Receptionist Active");
-      expect(text).toContain("Managed texting Active");
+      expect(text).toContain("AI Receptionist Coming soon");
+      expect(text).toContain("Managed texting Coming soon");
       expect(text.match(/Remove from plan/g)).toHaveLength(2);
       expect(text).toContain("Answers your clients' messages.");
-      expect(text).not.toContain("Coming soon");
+      expect(text).not.toContain("AI Receptionist Active");
+      expect(text).not.toContain("Managed texting Active");
+      expect(text).not.toContain("Add to my plan");
     },
   );
 
