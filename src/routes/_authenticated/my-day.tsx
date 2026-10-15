@@ -105,7 +105,7 @@ import { visitServiceLabel } from "@/lib/visit-service";
 import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
-import { OffTheClockBanner } from "@/components/TimeClock";
+import { OffTheClockBanner, StillWorkingPrompt } from "@/components/TimeClock";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
 import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
@@ -913,6 +913,10 @@ function MyDay() {
             and Clock in, one tap, queued with no signal. On the clock, or on
             any other day, it is not drawn and the list starts right here. */}
         {staff && !previewing && day === orgTodayIso && <OffTheClockBanner visitsToday={total} />}
+        {/* The other exception: a shift open 12 hours or more. Asked, never
+            closed for them (QA row 22, #438). Any day, because a shift left
+            open overnight is still open whatever day is on screen. */}
+        {staff && !previewing && <StillWorkingPrompt />}
         {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}

@@ -136,6 +136,75 @@ export const listMyRoutingRuns = createServerFn({ method: "POST" })
     return { runs: (rows ?? []) as RoutingRunRow[], serverNow: Date.now() };
   });
 
+/** What `routing_run_undo_state` answers (20261015140000). */
+export type RoutingRunUndoState = {
+  available: boolean;
+  reason: "nothing_saved" | "nothing_changed" | "expired" | "later_run" | "changed_since" | null;
+  /** Visits whose technician or place in the order the run changed. */
+  moved: number;
+  /** Technicians who hold those visits now. */
+  techs: number;
+  staff_ids: string[];
+  expires_at: string | null;
+};
+
+/**
+ * Whether the last Apply can still be undone, and what it changed. The
+ * panel asks once the run has finished, for "Moved 14 visits across 3
+ * techs. Undo" (#435).
+ */
+export const getRoutingRunUndo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ runId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: state, error } = await (context.supabase as any).rpc("routing_run_undo_state", {
+      _run_id: data.runId,
+    });
+    if (error) throw new Error(error.message);
+    return state as RoutingRunUndoState;
+  });
+
+/**
+ * Put every visit the run changed back the way it was: technician, order and
+ * arrival times. Refused (with the reason in words) once the window has
+ * passed or anything has moved since. The technicians whose day changes back
+ * are told, the same way Apply told them.
+ */
+export const undoRoutingRun = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ runId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: state, error: stateErr } = await (supabase as any).rpc("routing_run_undo_state", {
+      _run_id: data.runId,
+    });
+    if (stateErr) throw new Error(stateErr.message);
+    const staffIds = ((state as RoutingRunUndoState | null)?.staff_ids ?? []).slice(0, 50);
+
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({ actorUserId: userId, orgId, staffIds });
+    const { data: out, error } = await (supabase as any).rpc("undo_routing_run", {
+      _run_id: data.runId,
+    });
+    if (error) throw new Error(error.message);
+    await watch.finish();
+
+    const r = out as { restored: number; from_day: string; to_day: string };
+    // Lock screens show today's route; a week out it is a no-op per day, so
+    // the list is capped rather than walked across a quarter.
+    const days: string[] = [];
+    for (let d = r.from_day; d <= r.to_day && days.length < 7; ) {
+      days.push(d);
+      const next = new Date(`${d}T00:00:00Z`);
+      next.setUTCDate(next.getUTCDate() + 1);
+      d = next.toISOString().slice(0, 10);
+    }
+    const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    await refreshRouteLiveActivities(staffIds.flatMap((staffId) => days.map((day) => ({ staffId, day }))));
+    return { restored: r.restored };
+  });
+
 export const markRoutingRunSeen = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ runId: z.string().uuid() }).parse(d))

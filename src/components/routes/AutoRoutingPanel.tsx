@@ -82,7 +82,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getDispatchSettings } from "@/lib/visits.functions";
-import { markRoutingRunSeen, startRoutingRun } from "@/lib/routing-runs.functions";
+import {
+  getRoutingRunUndo,
+  markRoutingRunSeen,
+  startRoutingRun,
+  undoRoutingRun,
+} from "@/lib/routing-runs.functions";
+import { undoSummaryLine, undoToastMs, undoUnavailableLine } from "@/lib/routing-undo";
 import type { AutoRouteResult } from "@/lib/auto-routing.server";
 import type { RoadLegProblem } from "@/lib/road-legs.server";
 import {
@@ -257,7 +263,27 @@ export function AutoRoutingPanel({
   const qc = useQueryClient();
   const startFn = useServerFn(startRoutingRun);
   const seenFn = useServerFn(markRoutingRunSeen);
+  const undoStateFn = useServerFn(getRoutingRunUndo);
+  const undoFn = useServerFn(undoRoutingRun);
   const tz = useOrgTimezone();
+
+  // The board leaves room under this card for as long as it is open, so the
+  // last cards in a lane can be scrolled up out from under it (QA row 17:
+  // it covered cards at 820, 1024 and 1440). routes.tsx reads the variable.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => {
+      root.style.setProperty("--auto-routing-h", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--auto-routing-h");
+    };
+  }, []);
 
   const techs = useMemo(() => staff.filter((s: any) => s.is_field_tech), [staff]);
 
@@ -400,6 +426,7 @@ export function AutoRoutingPanel({
         finishLive(run.id, run.result as unknown as AutoRouteResult, run.from_day, run.to_day);
       else {
         announce(run.result as unknown as AutoRouteResult, run.from_day, run.to_day);
+        void offerUndo(run.id);
         void seenFn({ data: { runId: run.id } }).then(() =>
           qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY }),
         );
@@ -419,12 +446,46 @@ export function AutoRoutingPanel({
    *  it seen, and close, which is what Apply has always done. */
   function finishLive(runId: string, r: AutoRouteResult, runFrom: string, runTo: string) {
     announce(r, runFrom, runTo);
+    void offerUndo(runId);
     qc.invalidateQueries({ queryKey: ["visits"] });
     onApplied();
     void seenFn({ data: { runId } }).then(() =>
       qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY }),
     );
     onClose();
+  }
+
+  // ── UNDO, IN PLACE OF A PREVIEW (#435) ──────────────────────────────────
+  //
+  // The owner asked for the preview to go (2026-08-19), and it stays gone.
+  // What Apply lacked was any way back: it rewrites every selected tech's
+  // days. So once a run has saved, one line says what it changed, with Undo
+  // beside it, which puts back each visit's tech, order and arrival times.
+  // The server keeps the offer for 15 minutes and withdraws it the moment
+  // anything it would overwrite moves (20261015140000); the toast lasts a
+  // minute. Called after the card closes, so it does not hold the card open.
+  async function offerUndo(runId: string) {
+    // Undo is extra; a failed read leaves the result as it was.
+    const s = await undoStateFn({ data: { runId } }).catch(() => null);
+    if (!s || !s.available || s.moved === 0) return;
+    toast(undoSummaryLine(s.moved, s.techs), {
+      duration: undoToastMs(s.expires_at, Date.now()),
+      action: { label: "Undo", onClick: () => void runUndo(runId) },
+    });
+  }
+
+  async function runUndo(runId: string) {
+    try {
+      const r = await undoFn({ data: { runId } });
+      toast.success(
+        r.restored === 1 ? "Put 1 visit back as it was." : `Put ${r.restored} visits back as they were.`,
+      );
+    } catch (e) {
+      // The server's own sentence names the reason (expired, changed since).
+      toast.error(e instanceof Error ? e.message : undoUnavailableLine(null));
+    }
+    qc.invalidateQueries({ queryKey: ["visits"] });
+    onApplied();
   }
 
   /** Everything a finished run has to say, as toasts. Unchanged in wording
@@ -636,6 +697,7 @@ export function AutoRoutingPanel({
 
   return (
     <div
+      ref={cardRef}
       role="dialog"
       aria-label="Auto-routing"
       /* `bottom-3` put Apply and Cancel INSIDE the tab bar. Measured on an
@@ -655,7 +717,7 @@ export function AutoRoutingPanel({
          on iOS it resolves to the LARGE viewport. It was not the cause of the
          fault above — measured, it resolved correctly — but it is the wrong
          unit beside a tab bar that moves. */
-      className="fixed inset-x-3 bottom-3 z-40 max-h-[min(32rem,calc(100dvh-6rem))] overflow-y-auto rounded-lg border bg-card shadow-xl max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom)+0.75rem)] max-md:max-h-[calc(100dvh-11rem)] sm:left-auto sm:right-4 sm:w-80"
+      className="fixed inset-x-3 bottom-3 z-40 max-h-[min(32rem,calc(100dvh-6rem))] overflow-y-auto rounded-lg border bg-card shadow-xl max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom)+0.75rem)] max-md:max-h-[calc(100dvh-11rem)] sm:left-auto sm:right-4 sm:w-80 sm:max-w-[calc(100vw-2rem)]"
     >
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-1.5 text-sm font-semibold">
@@ -695,7 +757,13 @@ export function AutoRoutingPanel({
         {section === "dates" && (
           <div className="space-y-1.5 rounded-md border p-2">
             <Label className="text-2xs text-muted-foreground">Days to route</Label>
-            <div className="flex items-center gap-1.5">
+            {/* Stacked, not side by side. A native date field is drawn at the
+                width of its value and will not go narrower (the owner's
+                iPhone measured about 195px, see timesheets.tsx), so two of
+                them and "to" in one row of a 320px card ran out of its side
+                and gave the card a horizontal scroll (QA row 17). */}
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5">
+              <span className="text-2xs text-muted-foreground">From</span>
               <Input
                 type="date"
                 value={from}
@@ -707,16 +775,16 @@ export function AutoRoutingPanel({
                   // common case (one day) working without a second click.
                   if (to < e.target.value) setTo(e.target.value);
                 }}
-                className="h-8 text-xs"
+                className="h-8 min-w-0 text-xs touch:min-h-11"
               />
-              <span className="text-2xs text-muted-foreground">to</span>
+              <span className="text-2xs text-muted-foreground">To</span>
               <Input
                 type="date"
                 value={to}
                 min={from || undefined}
                 aria-label="Last day"
                 onChange={(e) => setTo(e.target.value)}
-                className="h-8 text-xs"
+                className="h-8 min-w-0 text-xs touch:min-h-11"
               />
             </div>
           </div>
@@ -765,7 +833,7 @@ export function AutoRoutingPanel({
               </Label>
               {picked.size > 0 && (
                 <button
-                  className="text-2xs text-muted-foreground underline-offset-2 hover:underline"
+                  className="shrink-0 text-2xs text-muted-foreground underline-offset-2 hover:underline touch:min-h-11 touch:px-2"
                   onClick={() => setPicked(new Set())}
                 >
                   Clear
