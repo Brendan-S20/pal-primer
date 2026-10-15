@@ -64,7 +64,7 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
   }> => {
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
 
-    const [{ data: catalog, error }, { data: mine }, { data: org }] = await Promise.all([
+    const [{ data: catalog, error }, mineRes, orgRes, founding] = await Promise.all([
       // Tenants see active + coming-soon add-ons; disabled ones are hidden
       // UNLESS the org is actively subscribed — a subscribed add-on must stay
       // visible so the cancel action remains reachable (and billing
@@ -85,12 +85,15 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
         .select("stripe_subscription_id, plan_status, plan_id")
         .eq("id", orgId)
         .single(),
+      // Display only. Purchase checks again before charging.
+      holdsFoundingPlace(orgId).catch(() => false),
     ]);
     if (error) throw new Error(error.message);
+    if (mineRes.error) throw new Error(mineRes.error.message);
+    if (orgRes.error) throw new Error(orgRes.error.message);
+    const mine = mineRes.data;
+    const org = orgRes.data;
     const planSlug = await planSlugOf(org?.plan_id);
-    // For display only: a failed read shows $199, and the purchase itself asks
-    // again (and refuses on an error) before anything is charged.
-    const founding = await holdsFoundingPlace(orgId).catch(() => false);
 
     const subscribed = new Set((mine ?? []).map((m: any) => m.addon_id));
     const waivedBy = new Map<string, SetupWaivedReason | null>(
