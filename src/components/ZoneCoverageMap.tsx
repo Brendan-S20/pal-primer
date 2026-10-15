@@ -226,28 +226,28 @@ export function ZoneCoverageMap({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
-          <Button size="sm" variant={mode === "polygon" ? "default" : "outline"} onClick={() => { setMode("polygon"); setTick((t) => t + 1); }}>
+          <Button type="button" size="sm" variant={mode === "polygon" ? "default" : "outline"} onClick={() => { setMode("polygon"); setTick((t) => t + 1); }}>
             <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Polygon
           </Button>
-          <Button size="sm" variant={mode === "radius" ? "default" : "outline"} onClick={() => { setMode("radius"); setTick((t) => t + 1); }}>
+          <Button type="button" size="sm" variant={mode === "radius" ? "default" : "outline"} onClick={() => { setMode("radius"); setTick((t) => t + 1); }}>
             <CircleIcon className="mr-1 h-3.5 w-3.5 shrink-0" /> Radius
           </Button>
-          <Button size="sm" variant={mode === "drive_time" ? "default" : "outline"} onClick={() => { setMode("drive_time"); setTick((t) => t + 1); }}>
+          <Button type="button" size="sm" variant={mode === "drive_time" ? "default" : "outline"} onClick={() => { setMode("drive_time"); setTick((t) => t + 1); }}>
             <Clock className="mr-1 h-3.5 w-3.5 shrink-0" /> Drive time
           </Button>
           {mode === "polygon" && (
             <>
-              <Button size="sm" variant="ghost" onClick={() => { pointsRef.current = pointsRef.current.slice(0, -1); setTick((t) => t + 1); }}>
+              <Button type="button" size="sm" variant="ghost" onClick={() => { pointsRef.current = pointsRef.current.slice(0, -1); setTick((t) => t + 1); }}>
                 <Undo2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Undo
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => { pointsRef.current = []; setTick((t) => t + 1); }}>
+              <Button type="button" size="sm" variant="ghost" onClick={() => { pointsRef.current = []; setTick((t) => t + 1); }}>
                 <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Clear
               </Button>
             </>
           )}
         </div>
         {onSave && (
-          <Button size="sm" onClick={save} disabled={!!saving}>
+          <Button type="button" size="sm" onClick={save} disabled={!!saving}>
             <Save className="mr-1 h-3.5 w-3.5 shrink-0" /> {saving ? "Saving…" : "Save coverage"}
           </Button>
         )}
