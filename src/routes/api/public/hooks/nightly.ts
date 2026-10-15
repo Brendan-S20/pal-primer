@@ -3,6 +3,7 @@ import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { invoiceEmailTaxData, taxShareCents } from "@/lib/sales-tax";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
+import { invoiceDueCents } from "@/lib/ar";
 import type { EndCustomerSmsSender } from "@/lib/twilio-credentials.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
@@ -876,7 +877,9 @@ async function sendOverdueEmails(
     invoices = await fetchAllPages<any>((a, b) =>
       supabaseAdmin
         .from("invoices")
-        .select("id, client_id, total_cents, issued_at, due_on, last_email_reminder_at")
+        .select(
+          "id, client_id, total_cents, credit_applied_cents, amount_paid_cents, issued_at, due_on, last_email_reminder_at",
+        )
         .eq("organization_id", orgId)
         .eq("status", "open")
         .not("due_on", "is", null)
@@ -921,7 +924,9 @@ async function sendOverdueEmails(
       notifyKey: "notify_email_overdue",
       idempotencyKey: `overdue-${inv.id}-${new Date().toISOString().slice(0, 10)}`,
       templateData: {
-        amountCents: inv.total_cents,
+        // What is past due: the balance, net of credit and of any part
+        // already paid, not the invoice's original total.
+        amountCents: invoiceDueCents(inv),
         daysPastDue,
         invoiceUrl,
       },
@@ -959,7 +964,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
     .select(
-      "id, client_id, total_cents, tax_cents, credit_applied_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)",
+      "id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)",
     )
     .eq("organization_id", orgId)
     // Only open invoices: drafts are unfinalized staff WIP and must never be
@@ -1034,7 +1039,8 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     // apply_credit_to_invoice is idempotent (advisory lock + row locks) and
     // only touches 'open' postpaid invoices; if credit fully covers the
     // invoice it is marked paid and there is nothing to charge.
-    let dueCents = Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
+    // Net of any partial payment too: autopay charges what is left.
+    let dueCents = invoiceDueCents(inv);
     try {
       const { data: applied, error: applyErr } = await supabaseAdmin.rpc(
         "apply_credit_to_invoice",

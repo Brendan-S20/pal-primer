@@ -266,7 +266,9 @@ export const portalListInvoices = createServerFn({ method: "GET" })
       // number: the stored invoice number, so the list prints INV-10427 like
       // the PDF, the email and the pay link (C-03). It used to number rows by
       // their position in the list.
-      .select("id, number, due_on, credit_applied_cents, tax_cents, tax_rate_bps, tax_label")
+      .select(
+        "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label",
+      )
       .eq("client_id", session.clientId);
     if (dueErr) throw new Error(dueErr.message);
     const dueById = new Map(
@@ -276,6 +278,7 @@ export const portalListInvoices = createServerFn({ method: "GET" })
           number: number | null;
           due_on: string | null;
           credit_applied_cents: number | null;
+          amount_paid_cents?: number | null;
           tax_cents?: number | null;
           tax_rate_bps?: number | null;
           tax_label?: string | null;
@@ -296,19 +299,23 @@ export const portalListInvoices = createServerFn({ method: "GET" })
       const extra = dueById.get(r.invoice_id);
       const due_on = extra?.due_on ?? null;
       const credit_applied_cents = extra?.credit_applied_cents ?? 0;
+      const amount_paid_cents = extra?.amount_paid_cents ?? 0;
       return {
         ...r,
         number_label: invoiceNumberLabel({ id: r.invoice_id, number: extra?.number ?? null }),
         due_on,
         credit_applied_cents,
+        amount_paid_cents,
         tax_cents: Number(extra?.tax_cents ?? 0),
         tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
         tax_label: (extra?.tax_label ?? null) as string | null,
-        // What the client still owes on this invoice, net of applied credit (B7).
+        // What the client still owes on this invoice, net of applied credit
+        // (B7) and of any partial payment.
         amount_due_cents: invoiceOutstandingCents({
           status: r.status,
           total_cents: r.total_cents,
           credit_applied_cents,
+          amount_paid_cents,
         }),
         overdue: isInvoiceOverdue(r.status, due_on),
       };
@@ -833,7 +840,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
       )
       .eq("id", data.invoiceId)
       .single();
@@ -1742,7 +1749,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, number, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id",
+        "id, number, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id",
       )
       .eq("id", data.invoiceId)
       .single();
