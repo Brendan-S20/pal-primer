@@ -91,6 +91,11 @@ env:
   GIT_CONFIG_KEY_0: safe.directory
   GIT_CONFIG_VALUE_0: "*"
 
+defaults:
+  run:
+    # Each Windows job adds Git Bash to PATH in its first step.
+    shell: bash
+
 jobs:
   # ── WHY A GATE JOB RATHER THAN A WIDER FILTER ──────────────────────────
   #
@@ -652,24 +657,11 @@ jobs:
     # and timed out repeatedly on 2026-10-08. DESKTOP-JUC6SL1 sat idle for
     # all of it. With this line the two jobs run side by side, one per box.
     #
-    # `[self-hosted, Windows]`, not `self-hosted`: plain `self-hosted`
-    # matches both machines and would put this back on the Mac whenever the
-    # Mac happened to be idle first -- the same trap ci.yml's windows-probe
-    # spells out. Two ways out, neither of which needs a PR:
-    #
-    #   * `VIEWPORTS_RUNNER` (unset today) overrides it. Set it to `macOS` to
-    #     send this job back to the Mac if the Windows box is ever offline --
-    #     a job addressed only to an offline runner queues for a day rather
-    #     than failing.
-    #   * Clear `CI_RUNNER` and it falls to a hosted runner like everything
-    #     else, which is the escape hatch every other job keeps.
-    #
-    # The Windows runner runs steps under PowerShell 5.1 and has no `bash` on
-    # its PATH (measured 2026-09-18, see ci.yml), so every `run:` below is a
-    # single `npm run`, `npx` or `node` command, and the one npm script that
-    # used to begin with `APPLE_SIZES=1` goes through
-    # scripts/playwright-with-env.mjs instead.
-    runs-on: ${{ vars.VIEWPORTS_RUNNER || (vars.CI_RUNNER && fromJSON('["self-hosted","Windows"]')) || 'ubuntu-latest' }}
+    # Use the full Windows runner label set, not plain `self-hosted`: the
+    # latter matches both machines and can route this back to the Mac whenever
+    # it happens to be idle first. Git Bash is the default shell for every run
+    # step in this workflow.
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     # 45, raised from 30 on 2026-09-14 after this job was cancelled at 30m13s
     # with the last step mid-run. Raising a ceiling is usually how a real
     # slowdown gets hidden, so here is the arithmetic it was raised against,
@@ -796,6 +788,11 @@ jobs:
     # PC is back; the 45, and everything said above it, applies to the PC.
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT (Windows only) ──────
       #
       # The same two steps as ci.yml's windows-probe, for the same reason, and
@@ -822,16 +819,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # npm cache on HOSTED runners only. On the self-hosted machines the
-          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
-          # nothing -- and its POST-RUN SAVE is what has now killed three
-          # otherwise-green jobs: every work step succeeds, then the save
-          # crawls on a machine at 90%+ swap until the job's timeout cancels
-          # it, and the check reports failure over bookkeeping. The expression
-          # reads empty (= caching off) whenever a self-hosted runner variable
-          # is set, and 'npm' on the hosted fallback, where a fresh VM really
-          # does need the cache.
-          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
+          # The self-hosted Windows runner keeps its own npm cache. Disable the
+          # Actions cache so its post-run save cannot fail an otherwise-green job.
+          cache: ''
       - run: npm ci
 
       # Same prerequisite, smaller number — see the long note in the database
@@ -851,14 +841,11 @@ jobs:
       # worth having is the number IN THE LOG.
       # docs/owner-actions-before-submission.md §12 is the write-up.
       #
-      # This was forty lines of bash (`df`, `sysctl`, /proc/meminfo) until
-      # 2026-10-08. The Windows runner has no bash on its PATH and no `df`, so
-      # it is now the same Node script ci.yml's `verify` uses for memory --
-      # sysctl on darwin, /proc/meminfo on linux, the pagefile on win32 --
-      # with `--need-disk-gib`, which adds the disk floor as the one thing it
-      # fails on. Disk is a certainty rather than a likelihood: a browser
-      # download that runs out of disk half way reports as a layout failure
-      # on every route at every width.
+      # This was forty lines of shell-specific `df`/`sysctl` probing until
+      # 2026-10-08. It is now the same Node script ci.yml's `verify` uses for
+      # memory, plus `--need-disk-gib` for the disk floor. Disk is a certainty
+      # rather than a likelihood: a browser download that runs out of disk half
+      # way reports as a layout failure on every route at every width.
       - name: Find room to work
         run: node scripts/runner-headroom.mjs --need-disk-gib 5
 
@@ -979,7 +966,7 @@ jobs:
     # costs to stop a slow hour on that box from cancelling a PR at 45m00s.
     needs: changes
     if: needs.changes.outputs.viewports == 'true'
-    runs-on: ${{ vars.VIEWPORTS_RUNNER || (vars.CI_RUNNER && fromJSON('["self-hosted","Windows"]')) || 'ubuntu-latest' }}
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     # ~17.5 min of tests plus ~4.5 of setup on a quiet box (2026-10-09),
     # and 20.3 min of tests in the slowest hour measured. If this ever needs most of 45, the
     # cases have outgrown one job too -- split them again by file, as this
@@ -993,6 +980,11 @@ jobs:
     # PC is back; the 45, and everything said above it, applies to the PC.
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # The four setup steps are the `viewports` job's, for the reasons
       # written there.
       - name: Make git write LF
@@ -1010,7 +1002,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
+          cache: ''
       - run: npm ci
 
       - name: Find room to work

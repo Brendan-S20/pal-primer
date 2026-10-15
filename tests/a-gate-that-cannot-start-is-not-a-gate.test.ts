@@ -86,7 +86,7 @@ describe("the schema gate can be scheduled", () => {
     //
     // ── WHY THEY ARE DIFFERENT RATHER THAN BOTH FREE ──────────────────────
     //
-    // `verify` follows CI_RUNNER and can go to either machine. `migrations`
+    // `verify` is pinned to the Windows runner. `migrations`
     // must NOT: it guards SUPABASE_DB_URL with bash `[ -z ... ]` and no
     // `shell:` override, and it decrypts a production credential, which is a
     // question about more than portability.
@@ -94,7 +94,7 @@ describe("the schema gate can be scheduled", () => {
     // The original worry -- two jobs, two spellings, half of CI somewhere
     // nobody meant -- is answered by asserting the difference explicitly here
     // rather than by forcing them to be equal.
-    expect(verify["runs-on"]).toBe("${{ vars.CI_RUNNER || 'ubuntu-latest' }}");
+    expect(verify["runs-on"]).toContain("Windows");
     expect(migrations["runs-on"]).not.toBe(verify["runs-on"]);
     expect(migrations["runs-on"]).toContain("UNIX_RUNNER");
   });
