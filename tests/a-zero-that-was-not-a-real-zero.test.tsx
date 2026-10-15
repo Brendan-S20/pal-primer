@@ -7,7 +7,8 @@
 // - The invoice drawer read `isLoading || !inv ? "Loading..."`, so a failed
 //   read spun forever: an errored query is not loading and has no invoice.
 // - Plan & billing summed the lines it knew and printed "Monthly total
-//   $0.00/mo" under a plan line drawn as "-".
+//   $0.00/mo" under a plan line with no price. It now says "+ usage" after
+//   the priced sum, or "Usage only".
 //
 // Same pattern as #442 on the dashboard and clients: a bone until the read
 // answers, a dash or a Retry after it fails, and a zero only when the server
@@ -216,22 +217,42 @@ describe("Plan & billing next-invoice total", () => {
   });
 
   it("adds the lines on the plan's interval", () => {
-    expect(nextInvoiceTotalCents([line(4900), line(1500, 2)], "month")).toBe(7900);
+    expect(nextInvoiceTotalCents([line(4900), line(1500, 2)], "month")).toEqual({
+      knownCents: 7900,
+      hasKnown: true,
+      hasUsage: false,
+    });
   });
 
-  it("is unknown, not $0.00, when any line's price is unknown", () => {
-    expect(nextInvoiceTotalCents([line(null)], "month")).toBeNull();
-    expect(nextInvoiceTotalCents([line(4900), line(null, 3)], "month")).toBeNull();
+  it("sums the priced lines and flags usage when a line has no price", () => {
+    expect(nextInvoiceTotalCents([line(19900), line(null, 3)], "month")).toEqual({
+      knownCents: 19900,
+      hasKnown: true,
+      hasUsage: true,
+    });
+  });
+
+  it("has nothing known, not a $0.00, when every line is usage", () => {
+    expect(nextInvoiceTotalCents([line(null)], "month")).toEqual({
+      knownCents: 0,
+      hasKnown: false,
+      hasUsage: true,
+    });
   });
 
   it("leaves out a line billed on another interval, as the label says", () => {
-    expect(nextInvoiceTotalCents([line(4900), line(30000, 1, "year")], "month")).toBe(4900);
+    expect(nextInvoiceTotalCents([line(4900), line(30000, 1, "year")], "month")).toEqual({
+      knownCents: 4900,
+      hasKnown: true,
+      hasUsage: false,
+    });
   });
 
-  it("is what the page prints, with a dash for unknown", () => {
+  it("is what the page prints, with + usage or Usage only for unpriced lines", () => {
     const src = readFileSync("src/routes/_authenticated/settings.billing.tsx", "utf8");
     expect(src).toContain("nextInvoiceTotalCents(items, planInterval)");
-    expect(src).toMatch(/total == null \? "-"/);
+    expect(src).toContain('" + usage"');
+    expect(src).toContain('"Usage only"');
     // A failed read of the subscription is not "No subscription line items".
     expect(src).toContain('what="your next invoice"');
   });
