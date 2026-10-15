@@ -117,7 +117,8 @@ jobs:
     name: What this change can affect
     # Pin to the Windows self-hosted runner. CI_RUNNER and UNIX_RUNNER can both
     # route to the offline Mac; WINDOWS_RUNNER_JSON is the Windows-only escape
-    # hatch if this runner has to move.
+    # hatch if this runner has to move. This job only needs git and bash, both
+    # of which Git for Windows provides.
     runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     timeout-minutes: 10
     outputs:
@@ -125,7 +126,7 @@ jobs:
       viewports: ${{ steps.decide.outputs.viewports }}
     steps:
       # Git Bash is installed but not on the runner's PATH. Add it so the
-      # bash default shell resolves for every later step.
+      # bash step below resolves.
       - name: Put Git Bash on PATH
         shell: powershell
         run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
@@ -135,6 +136,7 @@ jobs:
           # PR merge ref does not carry.
           fetch-depth: 0
       - id: decide
+        shell: bash
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
