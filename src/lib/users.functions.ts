@@ -9,6 +9,21 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
 }
 
+async function requireDemoInviteAddress(
+  supabase: any,
+  orgId: string,
+  email: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("organizations")
+    .select("slug")
+    .eq("id", orgId)
+    .maybeSingle();
+  if (data?.slug === "demo" && !email.toLowerCase().endsWith("@demo.test")) {
+    throw new Error("Demo organization invites must use an @demo.test address");
+  }
+}
+
 export const listOrgUsers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -95,7 +110,10 @@ export const setStaffActive = createServerFn({ method: "POST" })
       const orgId = await resolveOrgId(context.supabase, context.userId);
       const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
       const r = await syncOrgSeatQuantity(orgId);
-      seats = "skipped" in r ? { state: "skipped", why: r.skipped } : { state: "synced", quantity: r.quantity, changed: r.changed };
+      seats =
+        "skipped" in r
+          ? { state: "skipped", why: r.skipped }
+          : { state: "synced", quantity: r.quantity, changed: r.changed };
     } catch (e) {
       seats = { state: "failed" };
       console.error("seat sync after set_staff_active failed", (e as Error).message);
@@ -115,7 +133,10 @@ export const resyncMySeats = createServerFn({ method: "POST" })
       const orgId = await resolveOrgId(context.supabase, context.userId);
       const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
       const r = await syncOrgSeatQuantity(orgId);
-      seats = "skipped" in r ? { state: "skipped", why: r.skipped } : { state: "synced", quantity: r.quantity, changed: r.changed };
+      seats =
+        "skipped" in r
+          ? { state: "skipped", why: r.skipped }
+          : { state: "synced", quantity: r.quantity, changed: r.changed };
       // Let owners/managers know a teammate joined.
       try {
         const { data: userData } = await context.supabase.auth.getUser();
@@ -164,11 +185,12 @@ export const createOrgInvite = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const email = data.email.toLowerCase();
+    await requireDemoInviteAddress(context.supabase, orgId, email);
     // No invite past the plan's team-size cap (NP-10): the person would
     // arrive to an account with no room for them.
     const { assertRoomForAnotherUser } = await import("@/lib/team-size.server");
     await assertRoomForAnotherUser(orgId);
-    const email = data.email.toLowerCase();
     const crypto = await import("node:crypto");
     const token = crypto.randomBytes(24).toString("hex");
 
@@ -221,6 +243,7 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!invite) throw new Error("Invite not found");
     if (invite.status !== "pending") throw new Error("Only pending invites can be resent");
+    await requireDemoInviteAddress(context.supabase, orgId, invite.email as string);
 
     // Push the expiry out so a resent invite isn't immediately stale.
     await (context.supabase as any)

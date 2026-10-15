@@ -43,6 +43,7 @@ const en = {
     notOnStaff: "Not on any staff record",
     unlinkedStaff: "Your user is not linked to a staff record yet. Ask an owner to add you.",
     nothingScheduled: "Nothing scheduled for you on this day.",
+    nextWorkdayHint: "Your next workday is {{day}}.",
     nextUp: "Next up",
     jump: "Jump",
     inProgress: "In progress",

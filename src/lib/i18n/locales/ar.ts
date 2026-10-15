@@ -50,6 +50,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     notOnStaff: "لست مسجّلًا ضمن الفريق",
     unlinkedStaff: "حسابك غير مرتبط بسجل موظف بعد. اطلب من المالك إضافتك.",
     nothingScheduled: "لا توجد زيارات مجدولة لك في هذا اليوم.",
+    nextWorkdayHint: "يوم عملك التالي هو {{day}}.",
     nextUp: "التالي",
     jump: "انتقال",
     inProgress: "قيد التنفيذ",
