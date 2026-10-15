@@ -444,7 +444,7 @@ function CommercialAccountsCard() {
 }
 
 /**
- * What do you run? organizations.service_lines.
+ * Which services do you offer? organizations.service_lines.
  *
  * The rows, and the rules about which can be ticked, are ServiceLinesChoices,
  * which the first step of /setup draws too.

@@ -9,7 +9,7 @@ import {
 } from "@/lib/service-lines";
 
 /**
- * The answer to "What do you run?": one row per offered service line.
+ * The answer to "Which services do you offer?": one row per offered service line.
  *
  * Drawn by Settings → Business defaults, which saves on every tick, and by
  * the first step of /setup, which saves with the rest of its form. One

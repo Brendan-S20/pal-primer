@@ -435,7 +435,7 @@ describe("what an owner can choose", () => {
 
   it("is not on /get-started (the Twilio-reviewed signup)", () => {
     expect(read("src/routes/get-started.tsx")).not.toMatch(
-      /service_lines|serviceLines|What do you run/,
+      /service_lines|serviceLines|What do you run|Which services do you offer/,
     );
   });
 });
