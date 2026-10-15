@@ -97,6 +97,10 @@ function SmsPolicyPage() {
           Mobile numbers and texting consent records are collected only from account holders who
           opt in this way.
         </p>
+        <p>
+          You can see this step as it appears at the end of signup, without creating an account,
+          at <a href="/legal/sms-opt-in">/legal/sms-opt-in</a>.
+        </p>
       </section>
 
       <section>

@@ -107,7 +107,8 @@ const STATES: Array<{ label: string; patch: Record<string, unknown>; expect: Reg
   {
     label: "active",
     patch: { billingStatus: "active", planStatus: "active", isPaidTier: true },
-    expect: /Renews|Current plan/,
+    // SectionLabel uppercases the rendered text through CSS.
+    expect: /Renews|Current plan/i,
   },
   {
     label: "trialing",
