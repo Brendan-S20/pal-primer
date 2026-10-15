@@ -423,10 +423,35 @@ jobs:
     # not a lenient gate — it is an absent one, and it is absent while
     # reporting failure, which is the shape that trains people to ignore it.
     #
-    # Pin to the Windows self-hosted runner. CI_RUNNER and UNIX_RUNNER can both
-    # route to the offline Mac; WINDOWS_RUNNER_JSON is the Windows-only escape
-    # hatch if this runner has to move.
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
+    # ── ON THE SECRETS, PLAINLY ──────────────────────────────────────────
+    #
+    # Following CI_RUNNER means SUPABASE_DB_URL is decrypted on a long-lived
+    # machine rather than a disposable one. That is a real change and worth
+    # saying out loud rather than burying: the trade is a persistent host
+    # against a gate that runs. It is the owner's own Mac, which is already
+    # where that connection string lives, so this is not new exposure so much
+    # as the same exposure on a box that also keeps a work directory.
+    #
+    # Set the repository variable `CI_RUNNER` back to empty and this returns to
+    # hosted runners with no PR needed, exactly like `verify`.
+    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    #
+    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
+    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
+    # dispatches to whichever is idle. The steps below need a Unix shell and
+    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
+    # would fail on that box in a way that reads like a broken migration
+    # rather than a broken match.
+    #
+    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
+    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
+    # is untouched: clear both variables and everything returns to hosted
+    # runners with no edit to this file.
+    #
+    # ci.yml's `verify` job deliberately does NOT have this line. Every step
+    # in it is `npm run` and portable, which is the point -- it is the long
+    # one, and the whole reason for a second machine.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     # Skipped on pull requests, and this costs nothing real: every step below
     # already carried `continue-on-error: ${{ github.event_name ==
@@ -453,22 +478,28 @@ jobs:
     # legitimately contains migrations that have not been applied yet, whereas
     # code landing on main must not depend on schema production lacks.
     steps:
-      # Git Bash is installed but not on the runner's PATH. Add it so the
-      # bash default shell resolves for every later step.
-      - name: Put Git Bash on PATH
-        shell: powershell
-        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # ── FINDING psql ON WINDOWS ────────────────────────────────────────
+      # ── FINDING psql, WHICH IS THE WHOLE REASON THIS JOB STAYED HOSTED ──
       #
-      # Git Bash can use Windows programs, but psql may be installed outside the
-      # shell's PATH. Check PATH first, then the standard PostgreSQL directory.
-      # If neither works, fail here with the missing prerequisite named.
+      # It ships on ubuntu-latest. On a Mac it does not, and the trap is that
+      # installing it is not enough either: `brew install libpq` is KEG-ONLY,
+      # so it deliberately leaves psql off PATH on both architectures. Someone
+      # who runs the documented install and re-runs the job still gets "psql:
+      # command not found", which reads as the install having failed.
+      #
+      # So this looks in the places brew actually puts it rather than asking
+      # anyone to edit the runner's shell profile — one `brew install libpq`
+      # and nothing else. Both prefixes are checked because Apple Silicon uses
+      # /opt/homebrew and Intel uses /usr/local, and a runner can move between
+      # machines without this file knowing.
+      #
+      # It fails loudly with the exact command to run rather than letting the
+      # first check die on a confusing ENOENT three steps later.
       - name: Find psql
         id: psql
         run: |
@@ -476,22 +507,19 @@ jobs:
             echo "psql on PATH: $(command -v psql)"
             exit 0
           fi
-          shopt -s nullglob
-          candidates=(
-            /c/Program\ Files/PostgreSQL/*/bin/psql.exe
-            /c/Program\ Files/PostgreSQL/*/bin/psql
-          )
-          for p in "${candidates[@]}"; do
-            if [ -x "$p" ]; then
-              d="$(dirname "$p")"
+          for d in /opt/homebrew/opt/libpq/bin /usr/local/opt/libpq/bin \
+                   /opt/homebrew/bin /usr/local/bin /Applications/Postgres.app/Contents/Versions/latest/bin; do
+            if [ -x "$d/psql" ]; then
               echo "$d" >> "$GITHUB_PATH"
-              echo "found psql at $p; added $d to PATH for the steps below"
+              echo "found psql at $d/psql — added to PATH for the steps below"
               exit 0
             fi
           done
           echo "::error::psql not found on this runner, so the schema checks below cannot run."
-          echo "Install PostgreSQL command line tools or libpq for Windows and make psql.exe available to Git Bash."
-          echo "Checked PATH and C:/Program Files/PostgreSQL/*/bin."
+          echo "On the self-hosted macOS runner:  brew install libpq"
+          echo "No PATH edit is needed — this step looks in libpq's keg-only bin directory."
+          echo "Checked: /opt/homebrew/opt/libpq/bin, /usr/local/opt/libpq/bin, /opt/homebrew/bin,"
+          echo "         /usr/local/bin, /Applications/Postgres.app/Contents/Versions/latest/bin"
           exit 1
 
       - name: Check repo migrations against the database
@@ -636,7 +664,9 @@ jobs:
 
   deployment:
     name: The deployed site serves the worker it built
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
+    # On the Mac like `migrations`: this workflow defaults to bash, which the
+    # Windows runner only has after a PATH step this job does not carry.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     # ── WHY THIS JOB EXISTS, AND WHY IT IS NOT ON PULL REQUESTS ──────────
     #
@@ -678,19 +708,21 @@ jobs:
     # ANSWERS and the worker is missing.
     if: github.event_name != 'pull_request'
     steps:
-      # Git Bash is installed but not on the runner's PATH. Add it so the
-      # bash default shell resolves for every later step.
-      - name: Put Git Bash on PATH
-        shell: powershell
-        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # The self-hosted Windows runner keeps its own npm cache. Disable the
-          # Actions cache so its post-run save cannot fail an otherwise-green job.
-          cache: ''
+          # npm cache on HOSTED runners only. On the self-hosted machines the
+          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
+          # nothing -- and its POST-RUN SAVE is what has now killed three
+          # otherwise-green jobs: every work step succeeds, then the save
+          # crawls on a machine at 90%+ swap until the job's timeout cancels
+          # it, and the check reports failure over bookkeeping. The expression
+          # reads empty (= caching off) whenever a self-hosted runner variable
+          # is set, and 'npm' on the hosted fallback, where a fresh VM really
+          # does need the cache.
+          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
 
       - run: npm ci
 
