@@ -2636,6 +2636,7 @@ export type Database = {
           tax_label: string | null
           tax_rate_bps: number
           accounting_remote_id: string | null
+          amount_paid_cents: number
           checkout_url: string | null
           client_id: string
           created_at: string
@@ -2669,6 +2670,7 @@ export type Database = {
           tax_label?: string | null
           tax_rate_bps?: number
           accounting_remote_id?: string | null
+          amount_paid_cents?: number
           checkout_url?: string | null
           client_id: string
           created_at?: string
@@ -2702,6 +2704,7 @@ export type Database = {
           tax_label?: string | null
           tax_rate_bps?: number
           accounting_remote_id?: string | null
+          amount_paid_cents?: number
           checkout_url?: string | null
           client_id?: string
           created_at?: string
@@ -7987,6 +7990,18 @@ export type Database = {
           _visit_id: string
         }
         Returns: string
+      }
+      record_invoice_payment: {
+        Args: {
+          _amount_cents?: number
+          _field_collection_id?: string
+          _invoice_id: string
+          _method?: string
+          _note?: string
+          _paid_at?: string
+          _reference?: string
+        }
+        Returns: Json
       }
       record_franchise_adjustment: {
         Args: {
