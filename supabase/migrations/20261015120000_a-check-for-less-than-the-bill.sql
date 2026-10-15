@@ -34,7 +34,8 @@
 --
 --   4. The four functions that computed a balance the old way, re-issued with
 --      the payment subtracted and nothing else changed: record_field_collection
---      (a tech cannot collect more than is owed), my_day_stop_facts (the
+--      (a tech cannot collect more than is owed; its refusal now also says
+--      "Enter $X or less"), my_day_stop_facts (the
 --      balance on a stop card), franchise_rollup (each location's open AR) and
 --      apply_credit_to_invoice (credit covers what is left, not the whole
 --      bill; its ledger note also names INV-1042 rather than an id fragment).
@@ -331,6 +332,7 @@ BEGIN
   _left := _fc.amount_cents;
   FOR _row IN
     SELECT i.id,
+           i.number,
            GREATEST(COALESCE(i.total_cents, 0) - COALESCE(i.credit_applied_cents, 0)
                     - public.invoice_paid_cents(i.id), 0) AS balance
       FROM public.invoices i
@@ -340,7 +342,11 @@ BEGIN
      ORDER BY i.period_end, i.issued_at, i.created_at, i.id
   LOOP
     IF _row.balance > 0 AND _left <= 0 THEN
-      RAISE EXCEPTION 'Those invoices add up to more than was collected. Untick the newest one'
+      -- Names the first invoice the cash cannot reach, which is the one to
+      -- untick (the card says the same before anyone presses Confirm).
+      -- invoices.number is NOT NULL (20260928120000), so INV-% is always set.
+      RAISE EXCEPTION '% was collected, which does not reach INV-%. Untick INV-% and confirm again to apply the cash to the older invoices.',
+        '$' || to_char(_fc.amount_cents / 100.0, 'FM999,999,990.00'), _row.number, _row.number
         USING ERRCODE = '22023';
     END IF;
     _take := LEAST(_left, _row.balance);
@@ -382,8 +388,9 @@ GRANT EXECUTE ON FUNCTION public.confirm_field_collection(uuid, uuid[]) TO authe
 --
 -- Each below is the latest definition, copied whole, with
 -- `- COALESCE(i.amount_paid_cents, 0)` added to its balance and nothing else
--- changed (apply_credit_to_invoice also names the invoice by number in its
--- ledger note, and one comment in franchise_rollup loses an em dash).
+-- changed (record_field_collection's refusal also says what to enter,
+-- apply_credit_to_invoice also names the invoice by number in its ledger
+-- note, and one comment in franchise_rollup loses an em dash).
 -- tests/a-check-for-less-than-the-bill.test.ts diffs each copy against its
 -- source to hold that.
 
@@ -507,7 +514,8 @@ BEGIN
    WHERE fc.client_id = _v.client_id
      AND fc.status = 'awaiting_confirmation';
   IF _amount_cents > _open - _waiting THEN
-    RAISE EXCEPTION 'That is more than this customer owes (%)',
+    RAISE EXCEPTION 'That is more than this customer owes (%). Enter % or less.',
+      '$' || to_char(GREATEST(_open - _waiting, 0) / 100.0, 'FM999,999,990.00'),
       '$' || to_char(GREATEST(_open - _waiting, 0) / 100.0, 'FM999,999,990.00')
       USING ERRCODE = '22023';
   END IF;

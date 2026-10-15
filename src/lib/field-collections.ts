@@ -11,6 +11,24 @@
 
 export type OpenInvoice = { id: string; open_cents: number };
 
+const usd = (cents: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+
+const joinLabels = (labels: string[], word: "or" | "and") =>
+  labels.length <= 1
+    ? (labels[0] ?? "")
+    : `${labels.slice(0, -1).join(", ")} ${word} ${labels[labels.length - 1]}`;
+
+/** What the card says when the cash runs out before a ticked invoice:
+ *  how much came in, which invoices it does not reach, and what to do.
+ *  `starvedLabels` are those invoices' numbers (INV-1102), oldest first. */
+export function starvedWarning(amountCents: number, starvedLabels: string[]): string {
+  return `${usd(amountCents)} was collected, which doesn't reach ${joinLabels(
+    starvedLabels,
+    "or",
+  )}. Untick ${joinLabels(starvedLabels, "and")} to apply the cash to the older invoices.`;
+}
+
 /** Oldest first, until the money runs out: $60 against $40, $40, $15 ticks
  *  the first two (the second partly). Invoices with nothing owed are left. */
 export function defaultInvoiceSelection(invoices: OpenInvoice[], amountCents: number): string[] {

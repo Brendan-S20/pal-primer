@@ -232,15 +232,18 @@ INSERT INTO public.invoices (id, organization_id, client_id, period_end, total_c
    'c6000000-0000-4000-8000-0000000000b2', current_date - 1, 3000, 'open', now() - interval '1 day');
 SET ROLE authenticated;
 DO $$
-DECLARE _err text;
+DECLARE _err text; _f1 text;
 BEGIN
+  SELECT 'INV-' || number INTO _f1 FROM public.invoices WHERE id = '16000000-0000-4000-8000-0000000000f1';
   BEGIN
     PERFORM public.confirm_field_collection('fc600000-0000-4000-8000-0000000000b2',
               ARRAY['16000000-0000-4000-8000-0000000000d1', '16000000-0000-4000-8000-0000000000f1']::uuid[]);
     RAISE EXCEPTION 'PROOF FAILED [starved]: $10 was confirmed against $20 and $30 owed';
   EXCEPTION WHEN invalid_parameter_value THEN
     GET STACKED DIAGNOSTICS _err = MESSAGE_TEXT;
-    IF _err NOT LIKE 'Those invoices add up to more than was collected%' THEN
+    -- The $10 goes to d1 (older), so f1 is the one it cannot reach.
+    IF _err IS DISTINCT FROM '$10.00 was collected, which does not reach ' || _f1 || '. Untick ' || _f1
+                             || ' and confirm again to apply the cash to the older invoices.' THEN
       RAISE EXCEPTION 'PROOF FAILED [starved]: refused, but said "%"', _err;
     END IF;
   END;

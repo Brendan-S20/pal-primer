@@ -24,7 +24,11 @@ import {
   type FieldCollectionRow,
 } from "@/lib/field-collections.functions";
 import { bulkMarkInvoicesPaid } from "@/lib/invoices.functions";
-import { allocateOldestFirst, defaultInvoiceSelection } from "@/lib/field-collections";
+import {
+  allocateOldestFirst,
+  defaultInvoiceSelection,
+  starvedWarning,
+} from "@/lib/field-collections";
 import { describeManualPayment } from "@/lib/manual-payments";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
 import { formatDay } from "@/lib/format";
@@ -231,7 +235,12 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
             className={`mt-1 text-xs ${starved ? "font-medium text-destructive" : "text-muted-foreground"}`}
           >
             {starved
-              ? `${money(c.amount_cents)} runs out before the newest invoice you ticked. Untick it.`
+              ? starvedWarning(
+                  c.amount_cents,
+                  c.open_invoices
+                    .filter((i) => totals.starved.includes(i.id))
+                    .map((i) => invoiceNumberLabel(i)),
+                )
               : `Applies ${money(totals.appliedCents)}, oldest invoice first${
                   partly && partlyInvoice
                     ? `. ${invoiceNumberLabel(partlyInvoice)} is paid in part and stays open for ${money(partlyInvoice.open_cents - partly.cents)}`

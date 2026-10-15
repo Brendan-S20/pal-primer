@@ -26,8 +26,13 @@ import {
   outstandingAsOf,
   summarizeAr,
 } from "@/lib/ar";
-import { allocateOldestFirst, defaultInvoiceSelection } from "@/lib/field-collections";
+import {
+  allocateOldestFirst,
+  defaultInvoiceSelection,
+  starvedWarning,
+} from "@/lib/field-collections";
 import { parsePaymentAmount, paymentAmountProblem } from "@/lib/manual-payments";
+import { moreThanOwedFromRefusal } from "@/lib/stop-facts";
 
 // A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts).
 vi.setConfig({ testTimeout: 300_000 });
@@ -98,6 +103,11 @@ describe("the migration, read", () => {
     expect(body).toContain("_take := LEAST(_left, _row.balance)");
     expect(body).toContain("public.record_invoice_payment(");
     expect(body).toContain("IF _row.balance > 0 AND _left <= 0 THEN");
+    // The refusal names the invoice and what to do about it.
+    expect(body).toContain(
+      "'% was collected, which does not reach INV-%. Untick INV-% and confirm again to apply the cash to the older invoices.'",
+    );
+    expect(body).not.toContain("Those invoices add up to more than was collected");
     expect(body).toContain("'allocations', _allocations");
     // The card lists them in the same order, so it previews what happens.
     const list = readFileSync(join(ROOT, "src/lib/field-collections.functions.ts"), "utf8");
@@ -114,6 +124,11 @@ describe("the migration, read", () => {
         [
           "GREATEST(COALESCE(i.total_cents, 0) - COALESCE(i.credit_applied_cents, 0), 0)",
           "GREATEST(COALESCE(i.total_cents, 0) - COALESCE(i.credit_applied_cents, 0) - COALESCE(i.amount_paid_cents, 0), 0)",
+        ],
+        // The refusal also says what to enter, so the tech knows what to do.
+        [
+          "'That is more than this customer owes (%)',\n      '$' || to_char(GREATEST(_open - _waiting, 0) / 100.0, 'FM999,999,990.00')\n",
+          "'That is more than this customer owes (%). Enter % or less.',\n      '$' || to_char(GREATEST(_open - _waiting, 0) / 100.0, 'FM999,999,990.00'),\n      '$' || to_char(GREATEST(_open - _waiting, 0) / 100.0, 'FM999,999,990.00')\n",
         ],
       ],
     ],
@@ -162,7 +177,7 @@ describe("the migration, read", () => {
       let expected = fnBody(readFileSync(join(ROOT, "supabase/migrations", from), "utf8"), name);
       for (const [a, b] of subs) {
         expect(expected.split(a).length - 1, a).toBe(1);
-        expected = expected.replace(a, b);
+        expected = expected.replace(a, () => b); // a function, so a "$" in b is literal
       }
       expect(fnBody(sql, name)).toBe(expected);
     },
@@ -321,6 +336,36 @@ describe("cash collected in the field", () => {
     const over = allocateOldestFirst(invs, ["a"], 5000);
     expect(over.appliedCents).toBe(2000);
     expect(over.unappliedCents).toBe(3000);
+  });
+
+  it("says how much came in, which invoice it does not reach, and what to untick", () => {
+    expect(starvedWarning(6000, ["INV-1102"])).toBe(
+      "$60.00 was collected, which doesn't reach INV-1102. Untick INV-1102 to apply the cash to the older invoices.",
+    );
+    expect(starvedWarning(1000, ["INV-1102", "INV-1103"])).toBe(
+      "$10.00 was collected, which doesn't reach INV-1102 or INV-1103. Untick INV-1102 and INV-1103 to apply the cash to the older invoices.",
+    );
+    // The card draws it from the starved invoices, by number, in the card's order.
+    const card = readFileSync(join(ROOT, "src/components/FieldCollectionsCard.tsx"), "utf8");
+    expect(card).toMatch(
+      /starvedWarning\(\s*c\.amount_cents,\s*c\.open_invoices\s*\.filter\(\(i\) => totals\.starved\.includes\(i\.id\)\)\s*\.map\(\(i\) => invoiceNumberLabel\(i\)\),?\s*\)/,
+    );
+    expect(card).not.toContain("runs out before the newest invoice");
+  });
+});
+
+describe("a tech asked to record more than is owed", () => {
+  it("is told the most it can be, read back from the database's refusal", () => {
+    expect(
+      moreThanOwedFromRefusal("That is more than this customer owes ($25.00). Enter $25.00 or less."),
+    ).toBe(2500);
+    expect(moreThanOwedFromRefusal("That is more than this customer owes ($1,040.50)")).toBe(104050);
+    expect(moreThanOwedFromRefusal("This visit was canceled")).toBeNull();
+    expect(moreThanOwedFromRefusal(undefined)).toBeNull();
+    expect(sql).toContain("'That is more than this customer owes (%). Enter % or less.'");
+    const myDay = readFileSync(join(ROOT, "src/routes/_authenticated/my-day.tsx"), "utf8");
+    expect(myDay).toMatch(/moreThanOwedFromRefusal\(e\.message\)/);
+    expect(myDay).toMatch(/t\("pay\.moreThanDue", \{ amount: formatMoney\(owed, locale\) \}\)/);
   });
 });
 

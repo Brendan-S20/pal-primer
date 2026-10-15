@@ -378,6 +378,17 @@ describe("the collection form", () => {
     expect(collectionAmountProblem(parseDollars("25"), 4000)).toBeNull();
   });
 
+  it("says what to enter when it is more than is owed, in the tech's language", async () => {
+    await i18n.changeLanguage("en");
+    expect(i18n.t("pay.moreThanDue", { amount: "$40.00" })).toBe(
+      "That's more than this client owes ($40.00). Enter $40.00 or less.",
+    );
+    await i18n.changeLanguage("es");
+    expect(i18n.t("pay.moreThanDue", { amount: "$40.00" })).toBe(
+      "Es más de lo que debe este cliente ($40.00). Escribe $40.00 o menos.",
+    );
+  });
+
   it("mints a fresh v4 key per collection", () => {
     const a = newClientKey();
     expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
