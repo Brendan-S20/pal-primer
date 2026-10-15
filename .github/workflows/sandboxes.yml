@@ -110,35 +110,28 @@ jobs:
   # the assertion that both answers are literally true or false.
   changes:
     name: What this change can affect
-    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
-    #
-    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
-    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
-    # dispatches to whichever is idle. The steps below need a Unix shell and
-    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
-    # would fail on that box in a way that reads like a broken migration
-    # rather than a broken match.
-    #
-    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
-    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
-    # is untouched: clear both variables and everything returns to hosted
-    # runners with no edit to this file.
-    #
-    # ci.yml's `verify` job deliberately does NOT have this line. Every step
-    # in it is `npm run` and portable, which is the point -- it is the long
-    # one, and the whole reason for a second machine.
-    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    # Pin to the Windows self-hosted runner. CI_RUNNER and UNIX_RUNNER can both
+    # route to the offline Mac; WINDOWS_RUNNER_JSON is the Windows-only escape
+    # hatch if this runner has to move. This job only needs git and bash, both
+    # of which Git for Windows provides.
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     timeout-minutes: 10
     outputs:
       database: ${{ steps.decide.outputs.database }}
       viewports: ${{ steps.decide.outputs.viewports }}
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash step below resolves.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
         with:
           # The diff below needs the base commit, which a shallow clone of the
           # PR merge ref does not carry.
           fetch-depth: 0
       - id: decide
+        shell: bash
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
