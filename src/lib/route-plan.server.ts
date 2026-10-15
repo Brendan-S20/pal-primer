@@ -23,6 +23,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { planDay, type RouteDayInputs, type UnassignedVisit } from "@/lib/route-inputs";
+import { readWalkGroupAssignments } from "@/lib/walk-group-routing.server";
 
 export type DaySummaryRow = {
   staff_id: string;
@@ -82,7 +83,11 @@ export async function planDayRoutes(
     _reassign: args.reassign,
   });
   if (inErr) throw new Error(inErr.message);
-  const inp = inputs as unknown as RouteDayInputs;
+  const inp = await readWalkGroupAssignments(
+    supabase,
+    args.orgId,
+    inputs as unknown as RouteDayInputs,
+  );
   const honourWindows = args.honourWindows ?? inp.org.route_windows !== "ignore";
 
   const plan = planDay(inp, {

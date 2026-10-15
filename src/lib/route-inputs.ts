@@ -72,6 +72,7 @@ export type RouteDayInputs = {
     pref: string;
     assigned_staff_id: string | null;
     fixed: boolean;
+    group_walker_id?: string | null;
     /** What the visit is (visits.service_id) and its name, for the skill
      *  check and the sentence that names a stop nobody can take. */
     service_id?: string | null;
@@ -84,6 +85,23 @@ export type RouteDayInputs = {
   points: Array<[number, number]>;
   legs: Array<[number, number, number]>;
 };
+
+/** Keep group members on their walker even when the dispatcher allows reassignment. */
+export function pinWalkGroupVisits(
+  inputs: RouteDayInputs,
+  members: ReadonlyArray<{ id: string; walkerId: string | null }>,
+): RouteDayInputs {
+  const walkers = new Map(members.filter((m) => m.walkerId).map((m) => [m.id, m.walkerId!]));
+  return {
+    ...inputs,
+    visits: inputs.visits.map((visit) => {
+      const walker = walkers.get(visit.id);
+      return walker
+        ? { ...visit, fixed: true, assigned_staff_id: walker, group_walker_id: walker }
+        : visit;
+    }),
+  };
+}
 
 /** Rounded exactly as road_legs stores a coordinate. */
 const r5 = (n: number) => Number(Number(n).toFixed(5));
@@ -167,9 +185,13 @@ const minutesAfter = (day: string, hhmm: string, tz: string, start: number) =>
  * assignment stands, skills decide only what the planner may choose.
  */
 export function eligibleTechsFor(
-  visit: { service_id?: string | null; fixed?: boolean },
-  techs: Array<{ services?: string[] | null }>,
+  visit: { service_id?: string | null; fixed?: boolean; group_walker_id?: string | null },
+  techs: Array<{ id?: string; services?: string[] | null }>,
 ): number[] | null {
+  if (visit.group_walker_id) {
+    const index = techs.findIndex((tech) => tech.id === visit.group_walker_id);
+    return index < 0 ? [] : [index];
+  }
   if (visit.fixed || !visit.service_id) return null;
   const out: number[] = [];
   techs.forEach((t, i) => {

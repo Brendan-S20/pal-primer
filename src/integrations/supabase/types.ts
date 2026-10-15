@@ -5448,6 +5448,7 @@ export type Database = {
       }
       services: {
         Row: {
+          max_dogs: number | null
           active: boolean
           base_price_cents: number | null
           created_at: string
@@ -5461,6 +5462,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          max_dogs?: number | null
           active?: boolean
           base_price_cents?: number | null
           created_at?: string
@@ -5474,6 +5476,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          max_dogs?: number | null
           active?: boolean
           base_price_cents?: number | null
           created_at?: string
@@ -6400,8 +6403,73 @@ export type Database = {
           },
         ]
       }
+      walk_groups: {
+        Row: {
+          id: string
+          organization_id: string
+          service_id: string
+          scheduled_on: string
+          assigned_staff_id: string | null
+          earliest_time: string | null
+          latest_time: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          service_id: string
+          scheduled_on: string
+          assigned_staff_id?: string | null
+          earliest_time?: string | null
+          latest_time?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          service_id?: string
+          scheduled_on?: string
+          assigned_staff_id?: string | null
+          earliest_time?: string | null
+          latest_time?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "walk_groups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "walk_groups_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "walk_groups_assigned_staff_id_fkey"
+            columns: ["assigned_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       visits: {
         Row: {
+          walk_group_id: string | null
           assigned_staff_id: string | null
           client_id: string
           completed_at: string | null
@@ -6447,6 +6515,7 @@ export type Database = {
           gate_reply_at: string | null
         }
         Insert: {
+          walk_group_id?: string | null
           assigned_staff_id?: string | null
           client_id: string
           completed_at?: string | null
@@ -6492,6 +6561,7 @@ export type Database = {
           gate_reply_at?: string | null
         }
         Update: {
+          walk_group_id?: string | null
           assigned_staff_id?: string | null
           client_id?: string
           completed_at?: string | null
@@ -6537,6 +6607,13 @@ export type Database = {
           gate_reply_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "visits_walk_group_id_fkey"
+            columns: ["walk_group_id"]
+            isOneToOne: false
+            referencedRelation: "walk_groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "visits_assigned_staff_id_fkey"
             columns: ["assigned_staff_id"]
@@ -6926,6 +7003,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      walk_dogs_on_visit: {
+        Args: { _visit_id: string }
+        Returns: number
+      }
+
       accept_org_invite_for_current_user: {
         Args: { _token?: string }
         Returns: string
