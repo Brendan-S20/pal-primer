@@ -6,6 +6,11 @@ import { HELP_ARTICLES } from "@/lib/help-content";
 import { ANY_AI_FEATURE_LIVE } from "@/lib/ai-launch";
 import i18n from "@/lib/i18n";
 import { launchCopy } from "@/lib/launch-copy";
+import {
+  describeStripeCardRate,
+  describeStripeRates,
+  suppressionExplanation,
+} from "@/lib/processing-fee";
 import en from "@/lib/i18n/locales/en";
 import es from "@/lib/i18n/locales/es";
 import ar from "@/lib/i18n/locales/ar";
@@ -102,6 +107,56 @@ describe("help and portal copy makes no unavailable promises", () => {
     const ui = read("routes/_authenticated/settings.ai-receptionist.tsx");
     expect(ui).not.toMatch(/YOUR_TWILIO_INBOUND_SECRET|get_pricing_quote|Twilio Console/);
     expect(ui).toContain(en.launch.receptionistBuy);
+  });
+
+  it("offers clients card payments only (bank payments are post-launch, #461)", () => {
+    // Comments are stripped: the payments page and processing-fee.ts explain the
+    // ACH rail in comments, and that rail still exists for a payment that
+    // arrives. What is checked is what a tenant or client can read. "Bank
+    // payments take a few days to clear" is allowed: it is shown only on a bank
+    // payment that is actually processing.
+    const shown = (file: string) =>
+      read(file)
+        .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^[ \t]*\/\/.*$/gm, "");
+    const bankAsAWayToPay =
+      /card or bank|card and bank|on bank payments|bank \(ACH\)|\bACH fees|bank fees|Bank payments recover|Bank debits show|Bank:\s/i;
+    for (const file of [
+      "routes/_authenticated/payments.tsx",
+      "components/StaffInvoicePayForm.tsx",
+      "components/RefundPaymentAction.tsx",
+      "lib/processing-fee.functions.ts",
+      "lib/processing-fee.ts",
+    ]) {
+      expect(shown(file), file).not.toMatch(bankAsAWayToPay);
+    }
+    const payForm = shown("components/StaffInvoicePayForm.tsx");
+    expect(payForm).toContain('"Enter card details"');
+    expect(payForm).toContain("by card`");
+    expect(shown("routes/_authenticated/payments.tsx")).not.toMatch(/ex\.ach/);
+
+    for (const reason of [
+      "absorbed",
+      "debit",
+      "prepaid",
+      "region",
+      "unknown_funding",
+      "unknown_region",
+      "not_attested",
+    ] as const) {
+      expect(suppressionExplanation(reason)).not.toMatch(/bank|ACH/i);
+    }
+    expect(describeStripeRates()).toBe(`${describeStripeCardRate()} per card payment`);
+
+    for (const article of HELP_ARTICLES) {
+      for (const text of [...article.body, ...(article.steps ?? [])]) {
+        expect(text, article.slug).not.toMatch(/\bACH\b|pay by bank|bank payment|bank debit/i);
+      }
+    }
+    for (const locale of [en, es, ar, zh]) {
+      expect(JSON.stringify(locale)).not.toMatch(/\bACH\b|card or bank|bank payment|bank debit/i);
+    }
   });
 
   it("has translated launch copy with matching placeholders in all four locales", async () => {
