@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Eye, Pin, PinOff, StickyNote, Trash2, Wrench } from "lucide-react";
+import { Check, Eye, Pencil, Pin, PinOff, StickyNote, Trash2, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, MetaChip } from "@/components/client-detail/primitives";
@@ -72,6 +72,7 @@ export function NotesPanel({
 
   const [tab, setTab] = useState<Audience>(defaultAudience);
   const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   // Composer collapses to a single line until focused (spec 3.4).
   const [composerFocused, setComposerFocused] = useState(false);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["client-notes", clientId] });
@@ -87,6 +88,14 @@ export function NotesPanel({
   const pinMut = useMutation({
     mutationFn: (v: { id: string; pinned: boolean }) => updateFn({ data: v }),
     onSuccess: invalidate,
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const editMut = useMutation({
+    mutationFn: (v: { id: string; body: string }) => updateFn({ data: v }),
+    onSuccess: () => {
+      setEditing(null);
+      invalidate();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const delMut = useMutation({
@@ -114,7 +123,9 @@ export function NotesPanel({
               // 24.0px measured. A segmented control is a control, not prose,
               // so it takes the height directly.
               className={`inline-flex min-h-11 items-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                tab === a.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                tab === a.key
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
               {a.key === "office" ? "Office" : a.key === "technician" ? "Technician" : "Client"}
@@ -136,44 +147,94 @@ export function NotesPanel({
         <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
       ) : (
         <ul className="mt-3 space-y-2">
-          {visible.map((n: any) => (
-            <li key={n.id} className="rounded-md border p-3 text-sm">
-              <div className="flex items-start justify-between gap-2">
-                <p className="whitespace-pre-wrap">{n.body}</p>
-                <div className="flex shrink-0 items-center gap-1">
-                  {n.pinned && <MetaChip>Pinned</MetaChip>}
-                  <button
-                    type="button"
-                    aria-label={n.pinned ? "Unpin note" : "Pin note"}
-                    onClick={() => pinMut.mutate({ id: n.id, pinned: !n.pinned })}
-                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    {n.pinned ? <PinOff className="h-3.5 w-3.5 shrink-0" /> : <Pin className="h-3.5 w-3.5 shrink-0" />}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Delete note"
-                    onClick={async () => {
-                      if (
-                        await confirm({
-                          title: "Delete this note?",
-                          destructive: true,
-                          confirmLabel: "Delete note",
-                        })
-                      )
-                        delMut.mutate(n.id);
-                    }}
-                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                  </button>
+          {visible.map((n: any) => {
+            const editingNote = editing?.id === n.id ? editing : null;
+            return (
+              <li key={n.id} className="rounded-md border p-3 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  {editingNote ? (
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <Textarea
+                        value={editingNote.body}
+                        onChange={(e) => setEditing({ id: n.id, body: e.target.value })}
+                        rows={3}
+                        maxLength={4000}
+                        autoFocus
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditing(null)}
+                        >
+                          <X className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={editMut.isPending || !editingNote.body.trim()}
+                          onClick={() =>
+                            editMut.mutate({ id: n.id, body: editingNote.body.trim() })
+                          }
+                        >
+                          <Check className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                          {editMut.isPending ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{n.body}</p>
+                  )}
+                  <div className="flex shrink-0 items-center gap-1">
+                    {n.pinned && <MetaChip>Pinned</MetaChip>}
+                    {!editingNote && (
+                      <button
+                        type="button"
+                        aria-label="Edit note"
+                        onClick={() => setEditing({ id: n.id, body: n.body })}
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5 shrink-0" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={n.pinned ? "Unpin note" : "Pin note"}
+                      onClick={() => pinMut.mutate({ id: n.id, pinned: !n.pinned })}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      {n.pinned ? (
+                        <PinOff className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <Pin className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Delete note"
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: "Delete this note?",
+                            destructive: true,
+                            confirmLabel: "Delete note",
+                          })
+                        )
+                          delMut.mutate(n.id);
+                      }}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {formatDateTime(n.created_at)}
-              </div>
-            </li>
-          ))}
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {formatDateTime(n.created_at)}
+                </div>
+              </li>
+            );
+          })}
           {visible.length === 0 && (
             <li>
               <EmptyState

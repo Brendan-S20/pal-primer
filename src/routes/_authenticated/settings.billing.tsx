@@ -78,6 +78,15 @@ function formatBillingPeriod(start: string | null | undefined, end: string | nul
   return sameDay ? formatDay(start) : `${formatDay(start)} to ${formatDay(end)}`;
 }
 
+function futureSubscriptionPeriodEnd(
+  subscription: { subscriptionId: string | null; currentPeriodEnd: string | null } | undefined,
+) {
+  const end = subscription?.currentPeriodEnd;
+  return subscription?.subscriptionId && end && new Date(end).getTime() > Date.now()
+    ? end
+    : null;
+}
+
 // Map billing statuses onto the shared StatusChip tones.
 const STATUS_CHIP: Record<string, { status: string; label: string }> = {
   free: { status: "inactive", label: "Free" },
@@ -222,7 +231,9 @@ function BillingPage() {
 
   const chip = STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus };
   const cancelPending = !!(subInfo as any)?.cancelAtPeriodEnd;
-  const periodEnd = (subInfo as any)?.currentPeriodEnd ?? data.currentPeriodEnd;
+  // A saved org date can outlive its subscription. Only show a future date
+  // returned by Stripe for an actual subscription, including during refresh.
+  const periodEnd = futureSubscriptionPeriodEnd(subInfo);
   // Annual orgs: the plan card shows the real yearly amount from the
   // subscription's base item instead of the catalog's monthly price.
   const baseItem = ((subInfo as any)?.items ?? []).find((i: any) => i.kind === "base");
@@ -688,6 +699,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {addons.map((a) => {
+            // Availability belongs in the badge, not in stale catalog prose.
+            const description = a.description?.replace(/^\s*Coming soon\.\s*/i, "");
             // Owned: only what the purchase recorded (a setup paid for before
             // the org qualified stays paid). Not owned: what it would cost now.
             const freeBecause = !isSetupAddon(a.slug)
@@ -705,17 +718,16 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium">{a.name}</p>
-                  {a.subscribed && (
+                  {a.subscribed ? (
                     <StatusChip
                       status={a.billing_interval === "one_time" ? "paid" : "active"}
                       label={
                         a.waivedReason ? "Included" : a.billing_interval === "one_time" ? "Purchased" : "Active"
                       }
                     />
-                  )}
-                  {a.status === "coming_soon" && !a.subscribed && (
+                  ) : a.status === "coming_soon" ? (
                     <Badge variant="outline">Coming soon</Badge>
-                  )}
+                  ) : null}
                 </div>
                 {/* Annual orgs pay recurring add-ons yearly at 12x the monthly
                     amount (no discount), so show the amount they'll actually
@@ -746,8 +758,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                     : `${SETUP_FREE_BECAUSE[freeBecause]}. ${formatUsd(a.price_cents)} one time otherwise.`}
                 </p>
               )}
-              {a.description && (
-                <p className="mt-1 flex-1 text-sm text-muted-foreground">{a.description}</p>
+              {description && (
+                <p className="mt-1 flex-1 text-sm text-muted-foreground">{description}</p>
               )}
               <div className="mt-3">
                 {a.subscribed && a.billing_interval === "one_time" ? null : a.subscribed ? (
@@ -861,12 +873,14 @@ function NextInvoice({
           intervalCount: number;
         }>;
         currentPeriodEnd: string | null;
+        subscriptionId: string | null;
         planInterval?: "month" | "year" | null;
       }
     | undefined;
   isLoading: boolean;
 }) {
   const items = subInfo?.items ?? [];
+  const periodEnd = futureSubscriptionPeriodEnd(subInfo);
   const ordered = [
     ...items.filter((i) => i.kind === "base"),
     ...items.filter((i) => i.kind === "seat"),
@@ -907,8 +921,8 @@ function NextInvoice({
   return (
     <section className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
       <h2 className="text-lg font-semibold">Your next invoice</h2>
-      {subInfo?.currentPeriodEnd && (
-        <p className="text-sm text-muted-foreground">Bills {formatDay(subInfo.currentPeriodEnd)}</p>
+      {periodEnd && (
+        <p className="text-sm text-muted-foreground">Bills {formatDay(periodEnd)}</p>
       )}
       {isLoading ? (
         <p className="mt-2 text-sm text-muted-foreground">Loading…</p>

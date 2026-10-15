@@ -262,9 +262,8 @@ export function PlanPicker({
               {tooSmall && (
                 <p className="mt-2 text-xs text-amber-700">{tooSmall}</p>
               )}
-              {p.description && (
-                <p className="mt-2 text-sm text-muted-foreground">{p.description}</p>
-              )}
+              {/* Catalog descriptions can contain retired employee prices.
+                  The structured checkout fields above own the pricing copy. */}
               {features.length > 0 && (
                 <ul className="mt-3 space-y-1.5 text-sm">
                   {features.slice(0, 6).map((f, i) => (

@@ -481,7 +481,7 @@ function MyDay() {
   // offline Complete moves the count and promotes the next stop. The rules
   // (H1: skipped is not done; BUG-17: an open job outranks the next scheduled
   // one) live in lib/my-day-progress.ts, where they are tested.
-  const { completedCount, skippedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
+  const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
 
   // The route on the iPhone lock screen is not driven from here any more: the
   // signed-in layout runs it (RouteLockScreenHost, my-day/RouteLockScreen
@@ -837,6 +837,15 @@ function MyDay() {
                 ))}
               </div>
             </div>
+          )}
+
+          {total > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {missedCount > 0 && (
+                <span className="me-2 font-medium">{t("myDay.missedCount", { count: missedCount })}.</span>
+              )}
+              {t("myDay.progressRule")}
+            </p>
           )}
 
           {isOfficeRole && fieldStaff.length > 0 && (

@@ -1727,6 +1727,7 @@ export const MY_DAY_STOP_EXTRAS: Array<{
       paysCashCheck: false,
       openBalanceCents: 125000,
       awaitingCents: 0,
+      hasInvoiceLine: true,
     },
   },
 ];

@@ -77,6 +77,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     routeMayHaveChanged: "路线可能已变更。出发前请先确认。",
     pickADay: "选择日期",
     skippedCount: "已跳过 {{count}} 个",
+    missedCount: "未完成 {{count}} 个",
+    progressRule: "进度按已完成的上门服务占全部站点的比例计算。未服务和已跳过的站点单独统计。",
     view: "视图",
     viewList: "列表",
     viewMap: "地图",
