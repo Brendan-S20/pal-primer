@@ -1,4 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { LoadError } from "@/components/LoadError";
+import { LineBones } from "@/components/PageSkeletons";
+import { nextInvoiceTotalCents } from "@/lib/next-invoice-total";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -114,7 +117,12 @@ function BillingPage() {
     queryKey: ["billing-status"],
     queryFn: () => statusFn(),
   });
-  const { data: subInfo, isLoading: subInfoLoading } = useQuery({
+  const {
+    data: subInfo,
+    isLoading: subInfoLoading,
+    isError: subInfoError,
+    refetch: refetchSubInfo,
+  } = useQuery({
     queryKey: ["billing-subscription-items"],
     queryFn: () => itemsFn(),
     enabled: !!data?.isPaidTier,
@@ -366,7 +374,14 @@ function BillingPage() {
 
       {canBuySaas && <PlatformAddonsSection planInterval={currentInterval} />}
 
-      {data.isPaidTier && <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />}
+      {data.isPaidTier && (
+        <NextInvoice
+          subInfo={subInfo as any}
+          isLoading={subInfoLoading}
+          isError={subInfoError}
+          onRetry={() => refetchSubInfo()}
+        />
+      )}
 
       <InvoiceHistory />
 
@@ -858,6 +873,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
 function NextInvoice({
   subInfo,
   isLoading,
+  isError,
+  onRetry,
 }: {
   subInfo:
     | {
@@ -878,6 +895,8 @@ function NextInvoice({
       }
     | undefined;
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }) {
   const items = subInfo?.items ?? [];
   const periodEnd = futureSubscriptionPeriodEnd(subInfo);
@@ -889,13 +908,8 @@ function NextInvoice({
   // Total in the subscription's own interval (all items share it; anything
   // odd an admin attached by hand is excluded and called out).
   const planInterval = subInfo?.planInterval ?? "month";
-  const total = items.reduce(
-    (sum, i) =>
-      i.unitAmountCents != null && i.interval === planInterval && i.intervalCount === 1
-        ? sum + i.unitAmountCents * (i.quantity ?? 1)
-        : sum,
-    0,
-  );
+  // Null when any line's price is unknown: a dash, never a partial sum.
+  const total = nextInvoiceTotalCents(items, planInterval);
   const allSameInterval = items.every((i) => i.interval === planInterval && i.intervalCount === 1);
   const totalLabel = planInterval === "year" ? "Yearly total" : "Monthly total";
   const totalSuffix = planInterval === "year" ? "/yr" : "/mo";
@@ -925,7 +939,12 @@ function NextInvoice({
         <p className="text-sm text-muted-foreground">Bills {formatDay(periodEnd)}</p>
       )}
       {isLoading ? (
-        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+        <div className="mt-3">
+          <LineBones rows={2} />
+        </div>
+      ) : isError && !subInfo ? (
+        // Not "No subscription line items": a failed read is not an empty plan.
+        <LoadError className="mt-3" what="your next invoice" onRetry={onRetry} />
       ) : ordered.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No subscription line items to show.</p>
       ) : (
@@ -952,8 +971,7 @@ function NextInvoice({
               {allSameInterval ? totalLabel : `${totalLabel} (excludes other billing periods)`}
             </p>
             <p className="text-sm font-semibold">
-              {formatUsd(total)}
-              {totalSuffix}
+              {total == null ? "-" : `${formatUsd(total)}${totalSuffix}`}
             </p>
           </div>
         </>

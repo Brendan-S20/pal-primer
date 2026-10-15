@@ -1,9 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ListSkeleton } from "@/components/PageSkeletons";
+import { KpiValueBone, ListSkeleton } from "@/components/PageSkeletons";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LoadError } from "@/components/LoadError";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import {
   listInvoices,
   getCollectedThisMonth,
@@ -343,8 +345,8 @@ function StatCard({
   onClick,
 }: {
   label: string;
-  value: string;
-  sub?: string;
+  value: ReactNode;
+  sub?: ReactNode;
   active: boolean;
   destructive?: boolean;
   onClick: () => void;
@@ -379,7 +381,7 @@ function StatCard({
       {/* The explanatory line is what makes these cards tall. On a phone the
           number is the point, and "5 invoices open" under a card labelled Open
           invoices reading 5 is the least load-bearing sentence on the page. */}
-      {sub && <p className="mt-0.5 text-xs text-muted-foreground max-sm:hidden">{sub}</p>}
+      {sub && <div className="mt-0.5 text-xs text-muted-foreground max-sm:hidden">{sub}</div>}
     </button>
   );
 }
@@ -826,35 +828,63 @@ function InvoicesPage() {
           fit (a 430pt phone, every laptop); reflowed, not overflowed, where
           they do not. */}
       <div className="flex flex-wrap gap-2 sm:gap-3">
+        {/* A bone, never a figure, until the read that figure comes from has
+            answered: "Outstanding $0.00" over a skeleton list is a claim that
+            nobody owes anything (#420, F-05). A dash after a failed read, with
+            the Retry under the row. */}
         <StatCard
           label="Outstanding"
-          value={fmtCents(stats.outstandingCents)}
+          value={
+            invQ.data ? fmtCents(stats.outstandingCents) : invQ.isError ? "-" : <KpiValueBone />
+          }
           sub="Awaiting payment"
-          destructive={stats.outstandingCents > 0}
+          destructive={!!invQ.data && stats.outstandingCents > 0}
           active={status === "open"}
           onClick={() => toggleStatusFilter("open")}
         />
         <StatCard
           label="Open invoices"
-          value={String(stats.openCount)}
-          sub={stats.openCount === 1 ? "1 invoice open" : `${stats.openCount} invoices open`}
+          value={invQ.data ? String(stats.openCount) : invQ.isError ? "-" : <KpiValueBone />}
+          sub={
+            !invQ.data ? (
+              <Skeleton className="h-4 w-24" />
+            ) : stats.openCount === 1 ? (
+              "1 invoice open"
+            ) : (
+              `${stats.openCount} invoices open`
+            )
+          }
           active={status === "open"}
           onClick={() => toggleStatusFilter("open")}
         />
         <StatCard
           label="Collected this month"
-          value={fmtCents(collectedQ.data?.netCents ?? 0)}
+          value={
+            collectedQ.data ? (
+              fmtCents(collectedQ.data.netCents)
+            ) : collectedQ.isError ? (
+              "-"
+            ) : (
+              <KpiValueBone />
+            )
+          }
+          // When something came back, say so on the card. A figure that is
+          // lower than expected with no explanation is the thing an owner
+          // chases support about.
           sub={
-            // When something came back, say so on the card. A figure that is
-            // lower than expected with no explanation is the thing an owner
-            // chases support about.
-            (collectedQ.data?.reversalCount ?? 0) > 0
-              ? `${fmtCents(collectedQ.data?.grossCents ?? 0)} received, ${fmtCents(
-                  collectedQ.data?.refundsCents ?? 0,
-                )} refunded`
-              : (collectedQ.data?.paymentCount ?? 0) === 1
-                ? "1 payment received"
-                : `${collectedQ.data?.paymentCount ?? 0} payments received`
+            !collectedQ.data ? (
+              collectedQ.isError ? undefined : (
+                <Skeleton className="h-4 w-28" />
+              )
+            ) : collectedQ.data.reversalCount > 0 ? (
+              `${fmtCents(collectedQ.data.grossCents)} received, ${fmtCents(
+                collectedQ.data.refundsCents,
+              )} refunded`
+            ) : collectedQ.data.paymentCount === 1 ? (
+              "1 payment received"
+            ) : (
+              `${collectedQ.data.paymentCount} payments received`
+            )
           }
           active={status === "paid"}
           onClick={() => toggleStatusFilter("paid")}
@@ -869,6 +899,13 @@ function InvoicesPage() {
           />
         )}
       </div>
+      {collectedQ.isError && !collectedQ.data && invQ.data && (
+        <LoadError
+          what="this month's collected total"
+          onRetry={() => collectedQ.refetch()}
+          retrying={collectedQ.isFetching}
+        />
+      )}
 
       {/* ── FILTERS ────────────────────────────────────────────────────────
           Open on a laptop, folded on a phone. Measured at 430pt: a search
@@ -1034,8 +1071,16 @@ function InvoicesPage() {
         </div>
       )}
 
-      {invQ.isLoading ? (
-        <ListSkeleton breakpoint="md" columns={6} />
+      {!invQ.data ? (
+        invQ.isError ? (
+          <LoadError
+            what="your invoices"
+            onRetry={() => invQ.refetch()}
+            retrying={invQ.isFetching}
+          />
+        ) : (
+          <ListSkeleton breakpoint="md" columns={6} />
+        )
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={FileText}
