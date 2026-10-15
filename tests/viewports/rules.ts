@@ -80,7 +80,6 @@ export const APPLE_SIZES = [
   { w: 1024, h: 1366, label: "1024×1366 · iPad Pro portrait" },
   { w: 1180, h: 820, label: "1180×820 · iPad Air landscape" },
   { w: 1366, h: 1024, label: "1366×1024 · iPad Pro landscape" },
-  { w: 844, h: 390, label: "844×390 · iPhone landscape" },
 ] as const;
 
 /**

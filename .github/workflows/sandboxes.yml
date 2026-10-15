@@ -196,24 +196,42 @@ jobs:
     needs: changes
     if: needs.changes.outputs.database == 'true'
     name: A database built from the migrations alone
-    # Pin to the Windows self-hosted runner. CI_RUNNER and UNIX_RUNNER can both
-    # route to the offline Mac; WINDOWS_RUNNER_JSON is the Windows-only escape
-    # hatch if this runner has to move.
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
+    # Follows CI_RUNNER exactly like ci.yml — see docs/self-hosted-runner.md.
+    # Deleting that repository variable puts this back on hosted runners.
+    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    #
+    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
+    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
+    # dispatches to whichever is idle. The steps below need a Unix shell and
+    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
+    # would fail on that box in a way that reads like a broken migration
+    # rather than a broken match.
+    #
+    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
+    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
+    # is untouched: clear both variables and everything returns to hosted
+    # runners with no edit to this file.
+    #
+    # ci.yml's `verify` job deliberately does NOT have this line. Every step
+    # in it is `npm run` and portable, which is the point -- it is the long
+    # one, and the whole reason for a second machine.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
-      # Git Bash is installed but not on the runner's PATH. Add it so the
-      # bash default shell resolves for every later step.
-      - name: Put Git Bash on PATH
-        shell: powershell
-        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # The self-hosted Windows runner keeps its own npm cache. Disable the
-          # Actions cache so its post-run save cannot fail an otherwise-green job.
-          cache: ''
+          # npm cache on HOSTED runners only. On the self-hosted machines the
+          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
+          # nothing -- and its POST-RUN SAVE is what has now killed three
+          # otherwise-green jobs: every work step succeeds, then the save
+          # crawls on a machine at 90%+ swap until the job's timeout cancels
+          # it, and the check reports failure over bookkeeping. The expression
+          # reads empty (= caching off) whenever a self-hosted runner variable
+          # is set, and 'npm' on the hosted fallback, where a fresh VM really
+          # does need the cache.
+          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
       - run: npm ci
 
       - name: Find Docker and the Supabase CLI
@@ -224,15 +242,103 @@ jobs:
           command -v supabase >/dev/null 2>&1 || missing="$missing supabase"
           if [ -n "$missing" ]; then
             echo "::error::Missing on this runner:$missing"
-            echo "  Docker Desktop must be INSTALLED AND RUNNING -- 'docker info' failing while"
+            echo "  Docker Desktop must be INSTALLED AND RUNNING — 'docker info' failing while"
             echo "  the binary exists means the daemon is not up, which is the usual case on a"
             echo "  laptop that has just rebooted."
-            echo "  Supabase CLI must be installed for Windows and available in Git Bash."
+            echo "  Supabase CLI:  brew install supabase/tap/supabase"
             exit 1
           fi
           echo "docker and supabase are both present"
 
-          node scripts/runner-headroom.mjs --need-disk-gib 15
+          # ── ROOM TO WORK IS A PREREQUISITE LIKE THE OTHER TWO ───────────
+          #
+          # Read what this can and cannot do before trusting it. On
+          # 2026-08-29 the runner's disk filled and BOTH jobs died inside
+          # `Set up job`, before step one, with
+          #
+          #     System.IO.IOException: No space left on device :
+          #     '.../actions-runner/_diag/Worker_….log'
+          #
+          # No step can catch that: the worker crashed writing its own log.
+          # This check cannot have prevented that run and does not claim to.
+          #
+          # What it catches is the approach — a disk with room to start a job
+          # but not to finish one. That case otherwise surfaces as a cryptic
+          # failure several minutes in: a half-pulled image layer, an ENOSPC
+          # from initdb, a `db reset` that dies mid-replay and gets read as a
+          # migration fault. Naming it here is the same trade the docker and
+          # supabase checks above already make.
+          #
+          # 15 GiB because a cold start of this job is the whole Supabase
+          # stack — thirteen images plus a fresh Postgres volume — and the
+          # cache is empty exactly when someone has just cleared the disk,
+          # which is to say right after the failure this guards against.
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          if [ "$avail_kb" -lt 15728640 ]; then
+            echo "::error::Only $((avail_kb / 1048576)) GiB free on the runner; this job needs 15 GiB"
+            echo "  Docker's virtual disk is the usual growth vector and does not shrink on its"
+            echo "  own: 'docker system prune -a --volumes' frees space INSIDE the VM, but the"
+            echo "  .raw file keeps the blocks it has already claimed."
+            exit 1
+          fi
+          echo "$((avail_kb / 1048576)) GiB free"
+
+          # ── AND ROOM IN MEMORY, WHICH IS WHAT ACTUALLY BIT US ───────────
+          #
+          # This WARNS and never fails, deliberately. Read why before
+          # changing it to an error.
+          #
+          # On 2026-09-15 this runner was measured at 15.4 GB of swap used of
+          # 16.4 GB -- 94% -- with 277 million swapouts and a load average of
+          # 59-73 on 8 cores, after 17 days uptime. That one condition produced
+          # EIGHT failures in a single day that all looked like code: five
+          # viewport specs failing on timeouts or stability assertions, and
+          # three builds dying with SIGBUS. Every one was re-run and passed.
+          # One sent somebody down a wrong diagnosis about a search bar that
+          # had nothing to do with it.
+          #
+          # Vite, esbuild and rolldown read through mmap. When the kernel
+          # cannot back a memory-mapped page -- which is what an exhausted swap
+          # file means -- the access raises SIGBUS, not ENOMEM. That is why
+          # "✓ built in 9.24s" is followed by "Bus error: 10": the build
+          # finished and the teardown touched a page that no longer existed.
+          #
+          # Failing here would be the wrong trade. The condition is not caused
+          # by the diff, so blocking the diff on it adds a ninth failure mode
+          # to a machine that already manufactures eight. What is worth having
+          # is the number IN THE LOG, so the next unexplained timeout is an
+          # explained one. docs/owner-actions-before-submission.md §12 is the
+          # write-up.
+          #
+          # macOS has vm.swapusage; Linux runners have /proc/meminfo. If
+          # neither is readable this says so rather than passing quietly -- an
+          # unrun check and a clean one must not look alike.
+          # Portable: Git Bash on Windows has neither getconf nor uptime, and
+          # every probe below is allowed to come back empty rather than fail.
+          cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "?")
+          load1=$(uptime 2>/dev/null | sed -E 's/.*averages?:[[:space:]]*//' | awk '{gsub(",",""); print $1}')
+          [ -n "$load1" ] || load1="?"
+          if swap=$(sysctl -n vm.swapusage 2>/dev/null); then
+            used=$(echo "$swap" | awk '{gsub("M","",$6); print $6}')
+            total=$(echo "$swap" | awk '{gsub("M","",$3); print $3}')
+            pct=$(awk -v u="$used" -v t="$total" 'BEGIN{printf "%d", (t>0? u*100/t : 0)}')
+            echo "swap ${pct}% used (${used}M of ${total}M), load ${load1} on ${cores} cores"
+            if [ "$pct" -ge 50 ]; then
+              echo "::warning::Swap is ${pct}% full on this runner (${used}M of ${total}M), load ${load1} on ${cores} cores. Timeouts, stability-assertion failures and SIGBUS in this run are more likely to be the machine than the diff -- re-run once before believing any of them. See docs/owner-actions-before-submission.md §12."
+            fi
+          elif [ -r /proc/meminfo ]; then
+            st=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
+            sf=$(awk '/SwapFree/{print $2}' /proc/meminfo)
+            if [ "${st:-0}" -gt 0 ]; then
+              pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
+              echo "swap ${pct}% used, load ${load1} on ${cores} cores"
+              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+            else
+              echo "no swap configured; load ${load1} on ${cores} cores"
+            fi
+          else
+            echo "::warning::could not read swap usage on this runner (no vm.swapusage, no /proc/meminfo), so memory pressure was NOT checked for this run"
+          fi
 
       # `db reset` drops the local database and replays supabase/migrations/
       # from nothing. That is a stronger claim than anything in ci.yml, which
@@ -417,7 +523,7 @@ jobs:
             # So this reports the truth and stops, and a human decides whether
             # to free the ports or give this project its own in config.toml.
             if grep -qE 'port is already allocated|Bind for 0\.0\.0\.0:' "start-$attempt.log"; then
-              echo "::error::a local Supabase port is already in use — this is NOT the migrations and NOT Docker being unhealthy. Another stack on this machine is holding a port this job patched itself onto. This job runs on 54521-54527 (the step above rewrites config.toml so CI never shares 54421-54427 with the developer's own stack or 54321-54327 with other projects); find the holder with 'powershell.exe -NoProfile -Command \"Get-NetTCPConnection -LocalPort 54522 | Select-Object LocalAddress,LocalPort,OwningProcess\"' and 'docker ps --format \"{{.Names}}\t{{.Ports}}\" | grep supabase'. The usual cause is a previous run of THIS job whose 'Stop the stack' step never ran."
+              echo "::error::a local Supabase port is already in use — this is NOT the migrations and NOT Docker being unhealthy. Another stack on this machine is holding a port this job patched itself onto. This job runs on 54521-54527 (the step above rewrites config.toml so CI never shares 54421-54427 with the developer's own stack or 54321-54327 with other projects); find the holder with lsof -iTCP:54522 -sTCP:LISTEN and 'docker ps --format \"{{.Names}}\t{{.Ports}}\" | grep supabase'. The usual cause is a previous run of THIS job whose 'Stop the stack' step never ran."
               exit 1
             fi
             echo "::warning::supabase start failed (attempt $attempt of 3); stopping the stack and retrying"
@@ -444,10 +550,7 @@ jobs:
           exit 1
 
       - name: The RLS and portal-auth backstops, finally executed
-        # Called through bash rather than `npm run test:db`: on the Windows
-        # runner npm runs scripts with cmd.exe, which cannot execute a .sh
-        # path ("'tests' is not recognized", run 38410171101 attempt 3).
-        run: bash tests/run-db-tests.sh
+        run: npm run test:db
 
       # ── AND THE PROOFS, WHICH THIS WORKFLOW WATCHED WITHOUT RUNNING ─────
       #

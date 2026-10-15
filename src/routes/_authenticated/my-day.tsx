@@ -585,14 +585,10 @@ function MyDay() {
       {/* Sticky, blurred top bar — feels like a native nav.
           `top` is the impersonation banner's measured height, 0 when there is
           no banner: both are sticky to the same edge and the banner wins on
-          z-index, so a fixed top-0 here vanished under it.
-
-          Short landscape phones are the exception: a 200px sticky header plus
-          the bottom chrome leaves no tappable route. There the bar scrolls
-          away like ordinary content. */}
+          z-index, so a fixed top-0 here vanished under it. */}
       <div
         data-page-bleed=""
-        className={`sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur [@media(max-height:500px)]:static supports-[backdrop-filter]:bg-background/60 ${PAGE_BLEED_X} ${PAGE_BLEED_TOP}`}
+        className={`sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${PAGE_BLEED_X} ${PAGE_BLEED_TOP}`}
         // Sizes to its content, so no height override — see nativeTopBarStyle.
         style={nativeTopBarStyle()}
       >
