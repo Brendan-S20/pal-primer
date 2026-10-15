@@ -3,6 +3,7 @@
 // addresses live in Stripe and are intentionally absent.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer"
 import { useCommercialAccounts } from "@/components/CommercialOnly";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { clientNameFormDefaults } from "@/lib/client-name";
 
 export function EditClientDrawer({
   open,
@@ -28,11 +30,12 @@ export function EditClientDrawer({
   const qc = useQueryClient();
   const updateFn = useServerFn(updateClient);
 
-  const initial = useMemo(
-    () => ({
-      firstName: client?.first_name ?? "",
-      lastName: client?.last_name ?? "",
-      company: client?.company ?? "",
+  const initial = useMemo(() => {
+    const name = clientNameFormDefaults(client);
+    return {
+      firstName: name.firstName,
+      lastName: name.lastName,
+      company: name.company,
       primaryPhone: client?.primary_phone ?? "",
       primaryEmail: client?.primary_email ?? "",
       accountType: (client?.account_type ?? "residential") as "residential" | "commercial",
@@ -43,31 +46,46 @@ export function EditClientDrawer({
       smsOptOut: !!client?.sms_opt_out,
       emailOptOut: !!client?.email_opt_out,
       billingFrequency: (client?.billing_frequency ?? "monthly") as
-        | "after_each_visit"
-        | "weekly"
-        | "monthly"
-        | "quarterly"
-        | "yearly",
+        "after_each_visit" | "weekly" | "monthly" | "quarterly" | "yearly",
       taxExempt: !!client?.tax_exempt,
-    }),
-    [client],
-  );
+    };
+  }, [client]);
   const [form, setForm] = useState(initial);
   // The client's texting preference is kept and saved exactly as stored; it
   // just cannot be switched while the business cannot text anyone.
   const texting = useClientTexting();
-  // Reset only on closed -> open; background refetches must not wipe edits.
   const wasOpen = useRef(false);
+  const seededClientId = useRef<string | null>(null);
+  const edited = useRef(false);
   useEffect(() => {
-    if (open && !wasOpen.current) setForm(initial);
+    if (!open) {
+      wasOpen.current = false;
+      seededClientId.current = null;
+      edited.current = false;
+      return;
+    }
+
+    const loadedClientId = client?.id ?? null;
+    const shouldSeed =
+      !wasOpen.current ||
+      (!!loadedClientId && seededClientId.current !== loadedClientId && !edited.current);
+
+    if (shouldSeed) {
+      setForm(initial);
+      seededClientId.current = loadedClientId;
+      edited.current = false;
+    }
+
     wasOpen.current = open;
-  }, [open, initial]);
+  }, [open, initial, client?.id]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const { enabled: commercialEnabled } = useCommercialAccounts();
 
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => {
+    edited.current = true;
     setForm((f) => ({ ...f, [k]: v }));
+  };
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -224,7 +242,9 @@ export function EditClientDrawer({
             <select
               id="ec-pref"
               value={form.preferredContact}
-              onChange={(e) => set("preferredContact", e.target.value as typeof form.preferredContact)}
+              onChange={(e) =>
+                set("preferredContact", e.target.value as typeof form.preferredContact)
+              }
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             >
               <option value="">No preference</option>
@@ -248,7 +268,9 @@ export function EditClientDrawer({
           <select
             id="ec-billfreq"
             value={form.billingFrequency}
-            onChange={(e) => set("billingFrequency", e.target.value as typeof form.billingFrequency)}
+            onChange={(e) =>
+              set("billingFrequency", e.target.value as typeof form.billingFrequency)
+            }
             className="h-10 w-full rounded-md border bg-background px-3 text-sm"
           >
             <option value="after_each_visit">After each visit</option>
@@ -258,8 +280,12 @@ export function EditClientDrawer({
             <option value="yearly">Yearly</option>
           </select>
           <p className="mt-1 text-xs text-muted-foreground">
-            Invoices for completed visits generate automatically at the end of each cycle, then
-            send after your grace period (Settings, Automation).
+            Invoices for completed visits generate automatically at the end of each cycle, then send
+            after your grace period in{" "}
+            <Link to="/settings/invoicing" className="text-primary underline">
+              Settings &gt; Invoicing
+            </Link>
+            .
           </p>
         </div>
         <div>
@@ -272,8 +298,11 @@ export function EditClientDrawer({
             <span>Tax-exempt: no sales tax on this client's invoices</span>
           </label>
           <p className="mt-1 text-xs text-muted-foreground">
-            Only matters if you charge sales tax (Settings, Invoicing). Applies to invoices made
-            after you save; ones already issued keep their tax.
+            Only matters if you charge sales tax in{" "}
+            <Link to="/settings/invoicing" className="text-primary underline">
+              Settings &gt; Invoicing
+            </Link>
+            . Applies to invoices made after you save; ones already issued keep their tax.
           </p>
         </div>
         <fieldset className="rounded-md border bg-muted/20 p-3">

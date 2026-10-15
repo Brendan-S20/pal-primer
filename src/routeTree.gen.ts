@@ -43,6 +43,7 @@ import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
 import { Route as PlatformAddonsRouteImport } from './routes/platform.addons'
 import { Route as LegalTermsRouteImport } from './routes/legal.terms'
+import { Route as LegalSmsOptInRouteImport } from './routes/legal.sms-opt-in'
 import { Route as LegalSmsRouteImport } from './routes/legal.sms'
 import { Route as LegalPrivacyRouteImport } from './routes/legal.privacy'
 import { Route as LeadSlugRouteImport } from './routes/lead.$slug'
@@ -331,6 +332,11 @@ const PlatformAddonsRoute = PlatformAddonsRouteImport.update({
 const LegalTermsRoute = LegalTermsRouteImport.update({
   id: '/legal/terms',
   path: '/legal/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalSmsOptInRoute = LegalSmsOptInRouteImport.update({
+  id: '/legal/sms-opt-in',
+  path: '/legal/sms-opt-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LegalSmsRoute = LegalSmsRouteImport.update({
@@ -1037,6 +1043,7 @@ export interface FileRoutesByFullPath {
   '/lead/$slug': typeof LeadSlugRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/sms': typeof LegalSmsRoute
+  '/legal/sms-opt-in': typeof LegalSmsOptInRoute
   '/legal/terms': typeof LegalTermsRoute
   '/platform/addons': typeof PlatformAddonsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
@@ -1184,6 +1191,7 @@ export interface FileRoutesByTo {
   '/lead/$slug': typeof LeadSlugRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/sms': typeof LegalSmsRoute
+  '/legal/sms-opt-in': typeof LegalSmsOptInRoute
   '/legal/terms': typeof LegalTermsRoute
   '/platform/addons': typeof PlatformAddonsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
@@ -1338,6 +1346,7 @@ export interface FileRoutesById {
   '/lead/$slug': typeof LeadSlugRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/sms': typeof LegalSmsRoute
+  '/legal/sms-opt-in': typeof LegalSmsOptInRoute
   '/legal/terms': typeof LegalTermsRoute
   '/platform/addons': typeof PlatformAddonsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
@@ -1494,6 +1503,7 @@ export interface FileRouteTypes {
     | '/lead/$slug'
     | '/legal/privacy'
     | '/legal/sms'
+    | '/legal/sms-opt-in'
     | '/legal/terms'
     | '/platform/addons'
     | '/platform/announcements'
@@ -1641,6 +1651,7 @@ export interface FileRouteTypes {
     | '/lead/$slug'
     | '/legal/privacy'
     | '/legal/sms'
+    | '/legal/sms-opt-in'
     | '/legal/terms'
     | '/platform/addons'
     | '/platform/announcements'
@@ -1794,6 +1805,7 @@ export interface FileRouteTypes {
     | '/lead/$slug'
     | '/legal/privacy'
     | '/legal/sms'
+    | '/legal/sms-opt-in'
     | '/legal/terms'
     | '/platform/addons'
     | '/platform/announcements'
@@ -1915,6 +1927,7 @@ export interface RootRouteChildren {
   LeadSlugRoute: typeof LeadSlugRoute
   LegalPrivacyRoute: typeof LegalPrivacyRoute
   LegalSmsRoute: typeof LegalSmsRoute
+  LegalSmsOptInRoute: typeof LegalSmsOptInRoute
   LegalTermsRoute: typeof LegalTermsRoute
   PortalSlugRoute: typeof PortalSlugRouteWithChildren
   QTokenRoute: typeof QTokenRoute
@@ -2184,6 +2197,13 @@ declare module '@tanstack/react-router' {
       path: '/legal/terms'
       fullPath: '/legal/terms'
       preLoaderRoute: typeof LegalTermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/sms-opt-in': {
+      id: '/legal/sms-opt-in'
+      path: '/legal/sms-opt-in'
+      fullPath: '/legal/sms-opt-in'
+      preLoaderRoute: typeof LegalSmsOptInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/legal/sms': {
@@ -3358,6 +3378,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeadSlugRoute: LeadSlugRoute,
   LegalPrivacyRoute: LegalPrivacyRoute,
   LegalSmsRoute: LegalSmsRoute,
+  LegalSmsOptInRoute: LegalSmsOptInRoute,
   LegalTermsRoute: LegalTermsRoute,
   PortalSlugRoute: PortalSlugRouteWithChildren,
   QTokenRoute: QTokenRoute,

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
+import { buildClientNamePatch } from "@/lib/client-name";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -249,22 +250,20 @@ export const updateClient = createServerFn({ method: "POST" })
         : "view_client_directory",
     );
 
+    const { data: beforeRow, error: beforeErr } = await supabase
+      .from("clients")
+      .select(
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt",
+      )
+      .eq("id", data.clientId)
+      .single();
+    if (beforeErr) throw new Error(beforeErr.message);
+
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const changed: string[] = [];
-    if (data.firstName !== undefined || data.lastName !== undefined || data.company !== undefined) {
-      // Display-name logic (QA follow-up 4.2): person name wins; company
-      // stands in when there is no person name.
-      if (data.firstName !== undefined) patch.first_name = data.firstName || null;
-      if (data.lastName !== undefined) patch.last_name = data.lastName || null;
-      if (data.company !== undefined) patch.company = data.company || null;
-      const person = [data.firstName, data.lastName].filter(Boolean).join(" ").trim();
-      const derived = person || data.company || data.displayName || "";
-      if (derived) patch.display_name = derived;
-      changed.push("name");
-    } else if (data.displayName !== undefined) {
-      patch.display_name = data.displayName;
-      changed.push("name");
-    }
+    const namePatch = buildClientNamePatch(data, beforeRow);
+    Object.assign(patch, namePatch.patch);
+    if (namePatch.changed) changed.push("name");
     if (data.primaryEmail !== undefined) {
       patch.primary_email = data.primaryEmail || null;
       changed.push("email");
@@ -314,15 +313,6 @@ export const updateClient = createServerFn({ method: "POST" })
       changed.push("sales tax exemption");
     }
     if (changed.length === 0) return { ok: true };
-
-    // Before-image so the timeline can show before -> after (spec Stage 5).
-    const { data: beforeRow } = await supabase
-      .from("clients")
-      .select(
-        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt",
-      )
-      .eq("id", data.clientId)
-      .single();
 
     const { data: rows, error } = await supabase
       .from("clients")

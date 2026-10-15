@@ -288,7 +288,7 @@ describe("how the customer pays, for the tech", () => {
   });
 
   it("says invoiced, and offers no button when nothing is owed or nobody may record", async () => {
-    const f = { ...FACTS, paysCashCheck: false, openBalanceCents: 0 };
+    const f = { ...FACTS, paysCashCheck: false, openBalanceCents: 0, hasInvoiceLine: true };
     expect(await render(createElement(PaymentLine, { facts: f, onCollect: () => {} }))).toBe(
       "Invoiced",
     );
@@ -310,9 +310,7 @@ describe("how the customer pays, for the tech", () => {
   });
 
   it("autopay without a card is not autopay", () => {
-    expect(paymentMode({ autopay: true, cardOnFile: false, paysCashCheck: false })).toBe(
-      "invoiced",
-    );
+    expect(paymentMode({ autopay: true, cardOnFile: false, paysCashCheck: false })).toBeNull();
     expect(paymentMode({ autopay: true, cardOnFile: false, paysCashCheck: true })).toBe(
       "cash_check",
     );
@@ -335,6 +333,7 @@ describe("how the customer pays, for the tech", () => {
       autopay: false,
       cardOnFile: true,
       paysCashCheck: false,
+      hasInvoiceLine: false,
       openBalanceCents: 4000,
       awaitingCents: 0,
     });

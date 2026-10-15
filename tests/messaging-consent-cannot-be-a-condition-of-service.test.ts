@@ -39,10 +39,14 @@ const getStarted = readFileSync(join(root, "src/routes/get-started.tsx"), "utf8"
 const legalSms = readFileSync(join(root, "src/routes/legal.sms.tsx"), "utf8");
 const legalTerms = readFileSync(join(root, "src/routes/legal.terms.tsx"), "utf8");
 const legalPrivacy = readFileSync(join(root, "src/routes/legal.privacy.tsx"), "utf8");
+// #451: the consent sentence and the step 3 fields live in one shared component,
+// rendered by both /get-started and the public /legal/sms-opt-in page.
+const optInFields = readFileSync(join(root, "src/components/SmsOptInFields.tsx"), "utf8");
+const optInPage = readFileSync(join(root, "src/routes/legal.sms-opt-in.tsx"), "utf8");
 
 /** The consent string as it exists at runtime, from the template literal. */
 function storedConsentText(): string {
-  const decl = /export const SMS_CONSENT_TEXT =\n(.*?);\n/s.exec(getStarted);
+  const decl = /export const SMS_CONSENT_TEXT =\n(.*?);\n/s.exec(optInFields);
   expect(decl, "SMS_CONSENT_TEXT declaration").not.toBeNull();
   const pieces = [...decl![1].matchAll(/`([^`]*)`/g)].map((m) => m[1]);
   expect(pieces.length, "template literal pieces").toBeGreaterThan(0);
@@ -109,7 +113,7 @@ describe("messaging consent cannot be a condition of service", () => {
 
   it("keeps the checkbox unticked by default", () => {
     expect(getStarted).toMatch(/const \[smsConsent, setSmsConsent\] = useState\(false\)/);
-    expect(getStarted).toMatch(/disabled=\{!phone\.trim\(\)\}/);
+    expect(optInFields).toMatch(/disabled=\{!phone\.trim\(\)\}/);
   });
 
   it("only records consent when the box was actually ticked", () => {
@@ -196,10 +200,62 @@ describe("messaging consent cannot be a condition of service", () => {
 // the same screen as the opt-in box, not only in the footer.
 describe("the opt-in screen links the policies next to the box", () => {
   it("links Privacy, Terms and the SMS policy right after the consent label", () => {
-    const after = getStarted.slice(getStarted.indexOf("<span>{SMS_CONSENT_TEXT}</span>"));
-    const block = after.slice(0, after.indexOf("{error &&"));
+    expect(optInFields).toContain("<span>{SMS_CONSENT_TEXT}</span>");
+    const block = optInFields.slice(optInFields.indexOf("<span>{SMS_CONSENT_TEXT}</span>"));
     expect(block).toMatch(/href="\/legal\/privacy"/);
     expect(block).toMatch(/href="\/legal\/terms"/);
     expect(block).toMatch(/href="\/legal\/sms"/);
+  });
+});
+
+// #451: Twilio's reviewer needs a public URL that lands on the opt-in step.
+describe("the public opt-in page shows the signup step and writes nothing", () => {
+  it("is served at /legal/sms-opt-in, which does not collide with the evidence images", () => {
+    expect(optInPage).toMatch(/createFileRoute\("\/legal\/sms-opt-in"\)/);
+    expect(existsSync(join(root, "public/legal/sms-opt-in"))).toBe(false);
+    expect(existsSync(join(root, "public/legal"))).toBe(false);
+  });
+
+  it("renders the same component, and so the same consent string, as step 3 of /get-started", () => {
+    for (const page of [getStarted, optInPage]) {
+      expect(page).toMatch(/from "@\/components\/SmsOptInFields"/);
+      expect(page).toMatch(/<SmsOptInHeading \/>/);
+      expect(page).toMatch(/<SmsOptInFields\b/);
+    }
+    // No hand-copied consent text on either page.
+    expect(getStarted).not.toMatch(/I agree to receive text messages/);
+    expect(optInPage).not.toMatch(/I agree to receive text messages/);
+    // The doc and /legal/sms quote the same string (see "publishes exactly").
+    expect(publishedConsentText()).toBe(storedConsentText());
+  });
+
+  it("has the box unticked on load", () => {
+    expect(optInPage).toMatch(/const \[smsConsent, setSmsConsent\] = useState\(false\)/);
+    expect(optInPage).toMatch(/smsConsent=\{smsConsent\}/);
+    expect(optInFields).toMatch(/checked=\{smsConsent\}/);
+    expect(optInFields).not.toMatch(/defaultChecked/);
+  });
+
+  it("makes no write calls", () => {
+    for (const src of [optInPage, optInFields]) {
+      expect(src).not.toMatch(/recordSmsConsent|bootstrapOrganization|registerAccount/);
+      expect(src).not.toMatch(/@\/lib\/[\w-]+\.functions/);
+      expect(src).not.toMatch(/@\/integrations\/supabase/);
+      expect(src).not.toMatch(/\bfetch\(|useMutation|createServerFn/);
+      expect(src).not.toMatch(/<form\b|type="submit"/);
+    }
+  });
+
+  it("links to /get-started and is linked from /legal/sms and the resubmission doc", () => {
+    expect(optInPage).toMatch(/href="\/get-started"/);
+    expect(optInPage).toMatch(/exact opt-in step shown at the end of signup/);
+    const how = legalSms.slice(legalSms.indexOf("How consent is collected"));
+    expect(how.slice(0, how.indexOf("</section>"))).toMatch(/href="\/legal\/sms-opt-in"/);
+    const doc = readFileSync(join(root, "docs/twilio-toll-free-resubmission.md"), "utf8");
+    expect(doc).toMatch(/use https:\/\/app\.houndstack\.com\/legal\/sms-opt-in\./);
+  });
+
+  it("uses no em dashes in the new copy", () => {
+    expect(optInPage.replace(/^\s*\/\/.*$/gm, "")).not.toContain("\u2014");
   });
 });
