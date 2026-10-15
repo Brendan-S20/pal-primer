@@ -2270,18 +2270,29 @@ function VisitCardView({
     >
       <div className="flex items-start gap-2">
         {onToggleSelect && (
-          <input
-            type="checkbox"
-            checked={Boolean(selected)}
-            aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+          // 13px, and the bulk-select control on every stop card. The square
+          // stays 13px; the LABEL around it is the 44px box on a touch screen,
+          // so a tap anywhere in it toggles the box (QA row 23). It replaced a
+          // `::before` on the input itself: a native checkbox is a replaced
+          // element, and whether its pseudo-element draws, and takes the tap,
+          // is up to the browser. A label's hit area is not.
+          // stopPropagation on both: the label's own click and the click it
+          // forwards to the input each bubble to the card, whose onClick would
+          // toggle the selection a second time.
+          <label
+            data-select-hit=""
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => onToggleSelect(visit.id, e as unknown as React.MouseEvent)}
-            // 13px, and the bulk-select control on every stop card. The
-            // square stays 13px — a 44px checkbox is a different component,
-            // not a bigger one — and an out-of-flow ::before takes the tap,
-            // the same pattern ui/checkbox.tsx uses and the sweep credits.
-            className="relative mt-1 shrink-0 touch:before:absolute touch:before:left-1/2 touch:before:top-1/2 touch:before:h-11 touch:before:w-11 touch:before:-translate-x-1/2 touch:before:-translate-y-1/2 touch:before:content-['']"
-          />
+            className="mt-1 flex shrink-0 cursor-pointer items-center justify-center touch:mt-0 touch:min-h-11 touch:min-w-11"
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(selected)}
+              aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => onToggleSelect(visit.id, e as unknown as React.MouseEvent)}
+              className="shrink-0 cursor-pointer"
+            />
+          </label>
         )}
         <button
           {...(dragHandle ?? {})}
@@ -2364,7 +2375,9 @@ function VisitCardView({
                   href={dirUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted"
+                  // 25px, beside a Complete button that was already 44 on
+                  // touch (QA row 23). Same fix: only the box grows.
+                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted touch:min-h-11"
                 >
                   <Navigation className="h-3 w-3 shrink-0" /> Directions
                 </a>

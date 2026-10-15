@@ -6,6 +6,7 @@ import { PanelLeft } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { nativeSidebarStyle } from "@/lib/native-build";
+import { SIDEBAR_RAIL_BELOW, sidebarShape, type SidebarDocksFrom } from "@/lib/sidebar-shape";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -23,8 +24,24 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
-const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+
+/** Before paint, so a tablet never draws the 256px column for one frame and
+ *  then snaps to the rail. useEffect on the server, where neither runs. */
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
+
+function useMediaMatch(query: string): boolean {
+  const [matches, setMatches] = React.useState(false);
+  useIsomorphicLayoutEffect(() => {
+    const mql = window.matchMedia(query);
+    setMatches(mql.matches);
+    const onChange = () => setMatches(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
@@ -34,7 +51,13 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   /** Where the sidebar stops being a sheet and docks. See SidebarProvider. */
-  docksFrom: "md" | "lg";
+  docksFrom: SidebarDocksFrom;
+  /** Docked, but below 1280px: an icon rail whose labelled panel opens over
+   *  the page instead of beside it. See SidebarProvider. */
+  rail: boolean;
+  /** The rail's labelled panel is open over the page. */
+  railOpen: boolean;
+  setRailOpen: (open: boolean) => void;
   toggleSidebar: () => void;
 };
 
@@ -56,19 +79,25 @@ const SidebarProvider = React.forwardRef<
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     /** The width from which the sidebar docks; below it, it is a sheet.
-     *  `md` is the default and was the only answer. `lg` is for where
-     *  something else is the navigation through the tablet range — the
-     *  tech tab bar, see useTabletTier. Both halves of the decision read
+     *  `md` is the default and was the only answer. `lg-mouse` is for where
+     *  something else is the navigation through the tablet range and on
+     *  every touch screen: the tech tab bar, see useTabletTier. It docks
+     *  from `lg` and only with a mouse. Both halves of the decision read
      *  this: the JS that picks sheet-or-docked and the CSS that shows the
      *  docked column. They were two separate spellings of 768 that
      *  happened to agree, and no caller could move either. */
-    docksFrom?: "md" | "lg";
+    docksFrom?: SidebarDocksFrom;
+    /** Below 1280px, dock as the icon rail with an overlay panel. Needs a
+     *  `<Sidebar collapsible="icon">`; the platform console's offcanvas
+     *  sidebar does not ask for it and keeps the full column. */
+    railBelowXl?: boolean;
   }
 >(
   (
     {
       defaultOpen = true,
       docksFrom = "md",
+      railBelowXl = false,
       open: openProp,
       onOpenChange: setOpenProp,
       className,
@@ -78,8 +107,40 @@ const SidebarProvider = React.forwardRef<
     },
     ref,
   ) => {
-    const isMobile = useIsMobile(docksFrom === "lg" ? 1024 : 768);
+    const belowDock = useIsMobile(docksFrom === "lg-mouse" ? 1024 : 768);
+    // The CSS half spells this `lg:mouse:`; a coarse pointer never docks it.
+    const coarsePointer = useMediaMatch("(pointer: coarse)");
     const [openMobile, setOpenMobile] = React.useState(false);
+
+    // ── THE RAIL (QA row 34) ─────────────────────────────────────────────
+    //
+    // At 820px, an iPad in portrait, the docked sidebar took 256px of the
+    // screen and left the page 564. Below 1280 it is now the icon rail, and
+    // its labelled panel opens OVER the page when asked for (the rail's own
+    // button, the header toggle, or Cmd/Ctrl+B), so the content keeps the
+    // width either way. From 1280 up nothing changed: the full column, and
+    // the toggle collapses it beside the page as before.
+    //
+    // The open state is separate from `open`. That one is the desktop
+    // choice to keep the column collapsed; an overlay opened on a tablet is
+    // a moment, and closes on a route change (AppSidebar), on Escape and on
+    // a tap outside it (below).
+    const belowRail = useMediaMatch(`(max-width: ${SIDEBAR_RAIL_BELOW - 1}px)`);
+    const shape = sidebarShape({ belowDock, coarsePointer, belowRail, docksFrom, railBelowXl });
+    const isMobile = shape === "sheet";
+    const rail = shape === "rail";
+    const [railOpen, setRailOpen] = React.useState(false);
+    React.useEffect(() => {
+      if (!rail) setRailOpen(false);
+    }, [rail]);
+    React.useEffect(() => {
+      if (!railOpen) return;
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setRailOpen(false);
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, [railOpen]);
 
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
@@ -102,8 +163,10 @@ const SidebarProvider = React.forwardRef<
 
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
-      return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
-    }, [isMobile, setOpen, setOpenMobile]);
+      if (isMobile) return setOpenMobile((open) => !open);
+      if (rail) return setRailOpen((open) => !open);
+      return setOpen((open) => !open);
+    }, [isMobile, rail, setOpen, setOpenMobile]);
 
     // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
@@ -120,7 +183,13 @@ const SidebarProvider = React.forwardRef<
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.
-    const state = open ? "expanded" : "collapsed";
+    const state = (rail ? railOpen : open) ? "expanded" : "collapsed";
+    // How much of the screen the docked sidebar takes from the page, for the
+    // things fixed to the viewport that have to start beside it (My Day's
+    // NEXT UP bar). The rail's overlay never pushes the page, so on the rail
+    // this is always the icon width.
+    const dockedWidth =
+      rail || state === "collapsed" ? "var(--sidebar-width-icon)" : "var(--sidebar-width)";
 
     const contextValue = React.useMemo<SidebarContextProps>(
       () => ({
@@ -129,11 +198,25 @@ const SidebarProvider = React.forwardRef<
         setOpen,
         isMobile,
         docksFrom,
+        rail,
+        railOpen,
+        setRailOpen,
         openMobile,
         setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobile, docksFrom, openMobile, setOpenMobile, toggleSidebar],
+      [
+        state,
+        open,
+        setOpen,
+        isMobile,
+        docksFrom,
+        rail,
+        railOpen,
+        openMobile,
+        setOpenMobile,
+        toggleSidebar,
+      ],
     );
 
     return (
@@ -143,12 +226,14 @@ const SidebarProvider = React.forwardRef<
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH,
-                "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                "--sidebar-docked-width": dockedWidth,
                 ...style,
               } as React.CSSProperties
             }
             className={cn(
-              "group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar",
+              // The rail is 48px for a mouse and 60px on a touch screen, so
+              // each icon button inside its 8px padding is a 44px target.
+              "group/sidebar-wrapper flex min-h-svh w-full [--sidebar-width-icon:3rem] touch:[--sidebar-width-icon:3.75rem] has-[[data-variant=inset]]:bg-sidebar",
               className,
             )}
             ref={ref}
@@ -182,7 +267,8 @@ const Sidebar = React.forwardRef<
     },
     ref,
   ) => {
-    const { isMobile, docksFrom, state, openMobile, setOpenMobile } = useSidebar();
+    const { isMobile, docksFrom, state, openMobile, setOpenMobile, rail, railOpen, setRailOpen } =
+      useSidebar();
 
     if (collapsible === "none") {
       return (
@@ -256,28 +342,49 @@ const Sidebar = React.forwardRef<
         // Both spelled out: Tailwind finds class names by scanning source,
         // and cannot see an assembled one.
         className={`group peer hidden text-sidebar-foreground ${
-          docksFrom === "lg" ? "lg:block" : "md:block"
+          docksFrom === "lg-mouse" ? "lg:mouse:block" : "md:block"
         }`}
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
+        data-rail={rail ? (railOpen ? "open" : "closed") : undefined}
       >
-        {/* This is what handles the sidebar gap on desktop */}
+        {/* This is what handles the sidebar gap on desktop. On the rail it
+            stays the rail's width while the panel is open, so the page
+            under the overlay does not move. */}
         <div
           className={cn(
-            "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-            "group-data-[collapsible=offcanvas]:w-0",
+            "relative bg-transparent transition-[width] duration-200 ease-linear",
             "group-data-[side=right]:rotate-180",
-            variant === "floating" || variant === "inset"
-              ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+            rail
+              ? "w-(--sidebar-width-icon)"
+              : cn(
+                  "w-(--sidebar-width) group-data-[collapsible=offcanvas]:w-0",
+                  variant === "floating" || variant === "inset"
+                    ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
+                    : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+                ),
           )}
         />
+        {/* A tap anywhere outside the open panel closes it. Not a button:
+            Escape and the panel's own close control are the keyboard way
+            out, and a second focus stop over the whole page helps nobody. */}
+        {rail && railOpen && (
+          <div
+            aria-hidden="true"
+            data-sidebar="rail-backdrop"
+            onClick={() => setRailOpen(false)}
+            className="fixed inset-0 z-[44] bg-black/30"
+          />
+        )}
         <div
           className={cn(
             "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear",
-            docksFrom === "lg" ? "lg:flex" : "md:flex",
+            docksFrom === "lg-mouse" ? "lg:mouse:flex" : "md:flex",
+            // Over the header (z-30) and over My Day's NEXT UP bar and the
+            // tab bar (z-40), under dialogs and sheets (z-50).
+            rail && railOpen && "z-[45] shadow-xl",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -448,7 +555,12 @@ const SidebarContent = React.forwardRef<HTMLDivElement, React.ComponentProps<"di
         ref={ref}
         data-sidebar="content"
         className={cn(
-          "flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
+          // The rail scrolls too. It was `overflow-hidden` once collapsed,
+          // which was fine while collapsing was a desktop choice; as the
+          // tablet's rail, twenty-odd 44px icons are taller than an iPad in
+          // landscape, and the ones below the fold could not be reached.
+          // No visible scrollbar in a 48px column.
+          "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:[scrollbar-width:none]",
           className,
         )}
         {...props}
@@ -553,7 +665,7 @@ const SidebarMenuItem = React.forwardRef<HTMLLIElement, React.ComponentProps<"li
 SidebarMenuItem.displayName = "SidebarMenuItem";
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start text-sm outline-none ring-sidebar-ring cursor-pointer transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed group-has-[[data-sidebar=menu-action]]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-start text-sm outline-none ring-sidebar-ring cursor-pointer transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed group-has-[[data-sidebar=menu-action]]/menu-item:pe-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 group-data-[collapsible=icon]:justify-center touch:group-data-[collapsible=icon]:!size-11 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -571,7 +683,10 @@ const sidebarMenuButtonVariants = cva(
         //
         // `min-h` rather than `h`, so the collapsed icon rail's
         // `group-data-[collapsible=icon]:!size-8` keeps its square width while
-        // the row still takes a finger.
+        // the row still takes a finger. Since the rail became the tablet's
+        // navigation (QA row 34) the square itself is 44px on a touch screen,
+        // `touch:…:!size-11` in the base classes above, and the rail is wide
+        // enough to hold it (SidebarProvider).
         default: "h-8 text-sm touch:min-h-11",
         sm: "h-7 text-xs touch:min-h-11",
         lg: "h-12 text-sm group-data-[collapsible=icon]:!p-0",

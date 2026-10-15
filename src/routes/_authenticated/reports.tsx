@@ -259,31 +259,68 @@ function ReportsPage() {
           </CardHeader>
           {/* Four columns of figures in a half-width card. Without a scroll
               container the table sets the width of the page rather than of
-              itself, which is the one thing a layout must never do. */}
+              itself, which is the one thing a layout must never do.
+
+              QA row 31 (2026-10-15): it also carried `min-w-[720px]`, so the
+              card scrolled sideways at every width it is ever drawn at, and
+              at 390px all that showed was the names. Three counts beside a
+              name fit a phone, so the floor is gone, the figures are right
+              aligned on one baseline like any column of numbers, and below
+              `sm` each tech is one stacked row: the name, then the counts. */}
           <CardContent className="overflow-x-auto">
             {data.perTech.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits.</p>
             ) : (
-              <table className="w-full text-sm min-w-[720px]">
-                <thead className="text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="py-1">Tech</th>
-                    <th>Completed</th>
-                    <th>Skipped</th>
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul data-tech-productivity="stacked" className="divide-y text-sm sm:hidden">
                   {data.perTech.map((t) => (
-                    <tr key={t.id} className="border-t">
-                      <td className="py-1">{t.name}</td>
-                      <td>{t.completed}</td>
-                      <td>{t.skipped}</td>
-                      <td>{t.total}</td>
-                    </tr>
+                    <li key={t.id} className="py-2">
+                      <div className="truncate font-medium">{t.name}</div>
+                      <dl className="mt-1 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                        <div>
+                          <dt>Completed</dt>
+                          <dd className="text-sm tabular-nums text-foreground">{t.completed}</dd>
+                        </div>
+                        <div>
+                          <dt>Skipped</dt>
+                          <dd className="text-sm tabular-nums text-foreground">{t.skipped}</dd>
+                        </div>
+                        <div>
+                          <dt>Total</dt>
+                          <dd className="text-sm tabular-nums text-foreground">{t.total}</dd>
+                        </div>
+                      </dl>
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+                <table
+                  data-tech-productivity="table"
+                  className="hidden w-full text-sm sm:table"
+                >
+                  <thead className="text-start text-xs text-muted-foreground">
+                    <tr>
+                      <th className="py-1 text-start font-medium">Tech</th>
+                      <th className="whitespace-nowrap ps-3 text-end font-medium">Completed</th>
+                      <th className="whitespace-nowrap ps-3 text-end font-medium">Skipped</th>
+                      <th className="whitespace-nowrap ps-3 text-end font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.perTech.map((t) => (
+                      <tr key={t.id} className="border-t">
+                        {/* Takes what the counts leave, and ends in an
+                            ellipsis rather than widening the card. */}
+                        <td className="w-full max-w-0 truncate py-1" title={t.name}>
+                          {t.name}
+                        </td>
+                        <td className="ps-3 text-end tabular-nums">{t.completed}</td>
+                        <td className="ps-3 text-end tabular-nums">{t.skipped}</td>
+                        <td className="ps-3 text-end tabular-nums">{t.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
           </CardContent>
         </Card>

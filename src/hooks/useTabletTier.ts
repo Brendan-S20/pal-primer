@@ -39,11 +39,27 @@ import { useMyRole, type AppRole } from "@/hooks/useMyRole";
 /** Roles that work from a vehicle rather than a desk. */
 const FIELD_ROLES: readonly AppRole[] = ["tech"];
 
+/**
+ * ── AND ON EVERY TOUCH SCREEN, WHATEVER ITS WIDTH (QA row 35) ─────────────
+ *
+ * The bar used to stop at `lg` for a tech too, so an iPad in landscape
+ * (1180 or 1366px) gave the tech the office sidebar: a column of
+ * destinations they cannot open, at 32px rows, instead of the four tabs
+ * they use on the phone in the same hand. Width was again standing in for
+ * the question, which is whether a finger is holding it.
+ *
+ * So for a field role the bar is hidden from `lg` only on a device whose
+ * primary pointer is a mouse: `lg:mouse:hidden`. On a coarse pointer it
+ * stays at every width. Plain CSS rather than a JS media query, so the
+ * first paint is already right and the hook stays a pure function of the
+ * role (tests drive it without a renderer).
+ */
 export type TabletTier = {
-  /** Whether the bottom tab bar is shown through the 768–1024px range. */
+  /** Whether the bottom tab bar is shown through the 768–1024px range, and
+   *  at every width on a touch screen. */
   barThroughTablet: boolean;
   /** Tailwind class hiding the bar once nav lives in the sidebar instead. */
-  barHiddenFrom: "md:hidden" | "lg:hidden";
+  barHiddenFrom: "md:hidden" | "lg:mouse:hidden";
   /** Bottom padding for the scroll container, so content clears the bar for
    *  exactly as long as the bar is there. */
   mainBottomPadding: string;
@@ -59,8 +75,8 @@ export function useTabletTier(): TabletTier {
   return fieldRole
     ? {
         barThroughTablet: true,
-        barHiddenFrom: "lg:hidden",
-        mainBottomPadding: "pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-8",
+        barHiddenFrom: "lg:mouse:hidden",
+        mainBottomPadding: "pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:mouse:pb-8",
       }
     : {
         barThroughTablet: false,
@@ -81,7 +97,8 @@ export function useTabletTier(): TabletTier {
  * and the tab bar under it. Reported from a 768px tablet on 2026-09-27.
  *
  * The rule is "exactly one", so the sidebar docks where the bar is hidden:
- * `lg` when the bar reaches through the tablet range, `md` otherwise.
+ * `lg-mouse` (from `lg`, and only with a mouse) when the bar reaches through
+ * the tablet range and across every touch screen, `md` otherwise.
  *
  * `barRendered` is a separate argument because the tier is not the whole
  * answer. The bar does not render while the role is unknown (MobileTabBar
@@ -89,6 +106,6 @@ export function useTabletTier(): TabletTier {
  * side in Preferences — and in both cases the sidebar IS the navigation, so
  * it must keep docking at `md` or 768–1023 would have none at all.
  */
-export function sidebarDocksFrom(tier: TabletTier, barRendered: boolean): "md" | "lg" {
-  return barRendered && tier.barHiddenFrom === "lg:hidden" ? "lg" : "md";
+export function sidebarDocksFrom(tier: TabletTier, barRendered: boolean): "md" | "lg-mouse" {
+  return barRendered && tier.barHiddenFrom === "lg:mouse:hidden" ? "lg-mouse" : "md";
 }

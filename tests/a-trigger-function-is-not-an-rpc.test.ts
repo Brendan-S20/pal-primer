@@ -331,8 +331,10 @@ describe("the account menu follows the tab bar, like everything else in that hea
     // hook, so from 768 to 1023px the avatar was in the header AND Sign out was
     // in the sheet — the duplication the tier was introduced to remove.
     const src = codeOnly(route());
+    // `touch:hidden` too since the tech's bar stays on every touch screen
+    // (useTabletTier, QA row 35).
     expect(src).toMatch(
-      /const accountMenuHidden = barThroughTablet \? "max-lg:hidden" : "max-md:hidden"/,
+      /const accountMenuHidden = barThroughTablet \? "max-lg:hidden touch:hidden" : "max-md:hidden"/,
     );
     expect(src).toMatch(/<div className=\{accountMenuHidden\}>/);
   });
@@ -341,6 +343,6 @@ describe("the account menu follows the tab bar, like everything else in that hea
     // An assembled class name is one Tailwind never sees and never emits.
     const src = codeOnly(route());
     expect(src).not.toMatch(/`max-\$\{/);
-    expect(src).toMatch(/"max-lg:hidden"/);
+    expect(src).toMatch(/"max-lg:hidden touch:hidden"/);
   });
 });
