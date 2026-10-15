@@ -73,6 +73,8 @@ function Region({
   );
 }
 
+export { Region as SkeletonRegion };
+
 const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 
 /** A heading and the line under it, at the sizes every page heading uses. */

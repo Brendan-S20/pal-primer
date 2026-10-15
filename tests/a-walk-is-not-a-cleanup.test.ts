@@ -15,6 +15,7 @@ import {
   PRICE_UNITS,
   centsToDollarInput,
   defaultServiceLine,
+  defaultServiceSeedsFor,
   durationRequired,
   parseDollarsToCents,
   priceUnitsFor,
@@ -211,15 +212,37 @@ describe("what makes a service saveable", () => {
   });
 
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
-    expect(serviceLineChoices(["pet_waste"])).toEqual([
-      "pet_waste",
-      "dog_walking",
-      "pet_sitting",
-      "mobile_grooming",
-    ]);
+    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+    expect(serviceLineChoices(["mobile_grooming"])).toContain("mobile_grooming");
     expect(serviceLineChoices(["pet_waste"], "other")).toContain("other");
     expect(defaultServiceLine(["dog_walking", "pet_waste"])).toBe("dog_walking");
     expect(defaultServiceLine([])).toBe("pet_waste");
+  });
+
+  it("seeds every selected launch line once, with blank prices", () => {
+    const seeds = defaultServiceSeedsFor([
+      "dog_walking",
+      "pet_sitting",
+      "mobile_grooming",
+      "training",
+    ]);
+    expect(seeds.map((s) => s.name)).toEqual([
+      "30-minute walk",
+      "60-minute walk",
+      "Drop-in visit (20 min)",
+      "Drop-in (30 min)",
+      "Overnight stay",
+      "Bath and brush (60 min)",
+      "Full groom (90 min)",
+      "Nail trim (15 min)",
+      "Private lesson (60 min)",
+      "Training package (4 sessions)",
+    ]);
+    expect(seeds.every((s) => s.base_price_cents === null)).toBe(true);
+    expect(seeds.find((s) => s.name === "Private lesson (60 min)")).toMatchObject({
+      service_line: "training",
+      default_duration_min: 60,
+    });
   });
 
   it("lists active services first, then by line, then by name", () => {

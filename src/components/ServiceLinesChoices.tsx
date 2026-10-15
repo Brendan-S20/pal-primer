@@ -9,7 +9,7 @@ import {
 } from "@/lib/service-lines";
 
 /**
- * The answer to "What do you run?": one row per offered service line.
+ * The answer to "Which services do you offer?": one row per offered service line.
  *
  * Drawn by Settings → Business defaults, which saves on every tick, and by
  * the first step of /setup, which saves with the rest of its form. One
@@ -21,11 +21,6 @@ import {
  *     not offered yet (set some other way, or offered once and withdrawn);
  *   - the last ticked line cannot be unticked: the database refuses an empty
  *     set, and "runs nothing" is not a business.
- *
- * A line that is not in BOOKABLE_SERVICE_LINES is listed, marked
- * "Coming soon", and cannot be ticked: the data model cannot yet book a
- * 30-minute walk at 11:00 and another at 16:00 on the same day
- * (docs/other-trades-service-catalog.md).
  *
  * Each row is the whole label, `min-h-11`, so the 44px target is the row and
  * not the 16px box. Office-only, so English.
@@ -78,8 +73,7 @@ export function ServiceLinesChoices({
       </ul>
       {lines.length === 1 && (
         <p className="mt-2 text-xs text-muted-foreground">
-          You need at least one. Dog walking, pet sitting and mobile grooming can be added when
-          booking them arrives.
+          You need at least one. Add or remove lines as your business changes.
         </p>
       )}
     </>

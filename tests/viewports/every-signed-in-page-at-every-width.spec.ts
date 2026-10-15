@@ -127,6 +127,25 @@ async function settle(page: Page, surface: Surface, widthLabel: string) {
 
   const where = `${surface.id} at ${widthLabel}`;
 
+  // Vite can be network-idle while the lazy route is still only the router's
+  // "Loading" status. Wait for that shell to leave, or the health snapshot
+  // measures a page-shaped silence and fails before the surface proof gets
+  // its own 15 seconds.
+  await page
+    .waitForFunction(
+      () => {
+        const meaningfulText = document.body.innerText.replace(/Loading(?:…|\.{3})/gi, "").trim();
+        const loadingStatus = [...document.querySelectorAll('[role="status"]')].some((el) => {
+          const name = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
+          return el.getAttribute("aria-busy") === "true" && /^Loading(?:…|\.{3})?$/.test(name);
+        });
+        return meaningfulText.length > 0 && !loadingStatus;
+      },
+      undefined,
+      { timeout: 15_000 },
+    )
+    .catch(() => {});
+
   const health = await page.evaluate(() => ({
     path: location.pathname,
     els: document.querySelectorAll("*").length,
@@ -139,10 +158,9 @@ async function settle(page: Page, surface: Surface, widthLabel: string) {
   }));
 
   expect(health.overlay, `${where} rendered a Vite error overlay`).toBe(false);
-  expect(
-    health.boundary,
-    `${where} rendered the router's error boundary instead of the page`,
-  ).toBe(false);
+  expect(health.boundary, `${where} rendered the router's error boundary instead of the page`).toBe(
+    false,
+  );
 
   // The signed-out bounce. `_authenticated.beforeLoad` redirects to /auth on a
   // rejected identity and to /no-workspace on an account with no org; both are
