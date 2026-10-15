@@ -25,6 +25,7 @@ export const SERVICE_LINES = [
   "dog_walking",
   "pet_sitting",
   "mobile_grooming",
+  "training",
   "other",
 ] as const;
 
@@ -41,19 +42,24 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "dog_walking",
   "pet_sitting",
   "mobile_grooming",
+  "training",
 ];
 
-/** Lines an owner can actually choose today. The others are "coming soon"
- *  until the service catalog lands (docs/other-trades-service-catalog.md):
- *  the data model cannot book a 30-minute walk at 11:00 and another at 16:00
- *  on one day, so selling the line before then would sell a broken product. */
-export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
+/** Lines an owner can actually choose today. A line joins this list when its
+ *  path can be booked end to end: walking and sitting run on the service
+ *  catalog; mobile grooming (#412) and training (#413) join with their paths. */
+export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
+  "pet_waste",
+  "dog_walking",
+  "pet_sitting",
+];
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
-  pet_waste: "Pet waste removal",
+  pet_waste: "Pet waste removal (scooping)",
   dog_walking: "Dog walking",
   pet_sitting: "Pet sitting",
   mobile_grooming: "Mobile grooming",
+  training: "Dog training",
   other: "Something else",
 };
 
@@ -258,6 +264,17 @@ export const LINE_SEEDS: Readonly<Record<ServiceLine, LineSeeds>> = {
     addOnExample: { code: "teeth", name: "Teeth brushing" },
     frequencyMultipliers: FLAT_MULTIPLIERS,
     estTime: fixedVisit(60, 45),
+  },
+  training: {
+    checklist: [
+      { label: "Training goal reviewed", required: true },
+      { label: "Homework left for the client", required: true },
+      { label: "Progress note recorded", required: false },
+      { label: "Next session recommended", required: false },
+    ],
+    addOnExample: { code: "extra_training", name: "Extra training session" },
+    frequencyMultipliers: FLAT_MULTIPLIERS,
+    estTime: fixedVisit(60, 10),
   },
   other: {
     checklist: [],

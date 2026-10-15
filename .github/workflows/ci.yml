@@ -29,66 +29,18 @@ env:
   GIT_CONFIG_KEY_0: safe.directory
   GIT_CONFIG_VALUE_0: "*"
 
+defaults:
+  run:
+    # Each Windows job adds Git Bash to PATH in its first step.
+    shell: bash
+
 jobs:
   verify:
     name: Typecheck, lint, tests
-    # ── WHERE THIS RUNS, AND WHY IT IS A VARIABLE ─────────────────────────
-    #
-    # Unset — the default — means GitHub's hosted runners, exactly as before.
-    # Setting the repository variable `CI_RUNNER` to `self-hosted` points CI at
-    # a machine of ours instead, with no edit to this file and no commit.
-    #
-    # It is a variable rather than a hardcoded `self-hosted` because of how
-    # Actions behaves when no matching runner is online: the job does not fail,
-    # it QUEUES, and it keeps queueing for 24 hours before GitHub terminates
-    # it. A laptop that is closed for the evening would turn every push — and
-    # every merge to main, which is the hard migration gate — into a check that
-    # sits pending overnight and then fails for a reason that has nothing to do
-    # with the code. A red X is recoverable; a check that is neither red nor
-    # green for a day is the kind of thing people learn to ignore.
-    #
-    # So the switch back is Settings → Secrets and variables → Actions →
-    # Variables → delete `CI_RUNNER`. One click, no PR, effective on the next
-    # run. See docs/self-hosted-runner.md.
-    # ── VERIFY IS PINNED TO UNIX TOO, AND THIS IS A RETREAT ─────────────
-    #
-    # It was left on the plain CI_RUNNER line on 2026-09-16 on the reasoning
-    # that every STEP in this job is `npm run` or `npx` and therefore portable.
-    # That was true of the steps and false of the job: 86 of 271 TEST FILES
-    # fail on Windows, and the reason is not subtle --
-    #
-    #     expected [ 'src\components/RouteMap.tsx' ]
-    #       to deeply equal [ 'src/components/RouteMap.tsx' ]
-    #
-    # Path separators, in a suite where a great many tests walk `src/` and
-    # assert on the paths they find. A CRLF fault was found and fixed first
-    # (.gitattributes, and /\r?\n/ in tests/support/sql-migrations.ts); it was
-    # real and it was the smaller half.
-    #
-    # So this comes back to the Mac until the suite is genuinely
-    # platform-agnostic. A red CI is worse than an idle runner. The work to
-    # undo this is worth doing -- it is the longest job in the repo and the Mac
-    # is the machine with the memory problem -- but it is a project, not a
-    # line, and it should not be discovered by leaving main red.
-    # ── UNPINNED 2026-09-18, AND ONLY THIS JOB ──────────────────────────
-    #
-    # `UNIX_RUNNER` was set to macOS because 86 of 271 test files failed on
-    # Windows. They no longer do: six causes, all one rule -- a path that
-    # stopped being a path and became a string that was compared, keyed,
-    # printed or matched. `windows-probe` now gates that and is green.
-    #
-    # So this job follows `CI_RUNNER`, which matches BOTH runners, and the
-    # forty-minute job runs on whichever is free. That is the point of the
-    # whole exercise: the Mac was measured at 91% swap and load 86 on 8
-    # cores while this was being written.
-    #
-    # `migrations` below is NOT unpinned and must not be. It guards
-    # `SUPABASE_DB_URL` with bash `[ -z ... ]` tests and no `shell:`
-    # override, and it decrypts a production credential -- where that
-    # happens is a decision with more than portability in it. The database
-    # job in sandboxes.yml stays for a plainer reason: Docker, psql and the
-    # Supabase CLI are not on the Windows box.
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # Pin to the Windows self-hosted runner. CI_RUNNER and UNIX_RUNNER can both
+    # route to the offline Mac; WINDOWS_RUNNER_JSON is the Windows-only escape
+    # hatch if this runner has to move.
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     # A hosted runner is destroyed after each job; a self-hosted one is not, so
     # a wedged step there holds the machine until someone notices.
     #
@@ -125,21 +77,19 @@ jobs:
     # back down once a warm cache is reliable again.
     timeout-minutes: 45
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # npm cache on HOSTED runners only. On the self-hosted machines the
-          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
-          # nothing -- and its POST-RUN SAVE is what has now killed three
-          # otherwise-green jobs: every work step succeeds, then the save
-          # crawls on a machine at 90%+ swap until the job's timeout cancels
-          # it, and the check reports failure over bookkeeping. The expression
-          # reads empty (= caching off) whenever a self-hosted runner variable
-          # is set, and 'npm' on the hosted fallback, where a fresh VM really
-          # does need the cache.
-          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
+          # The self-hosted Windows runner keeps its own npm cache. Disable the
+          # Actions cache so its post-run save cannot fail an otherwise-green job.
+          cache: ''
 
       # npm, not bun: package-lock.json resolves to the public registry, which
       # is reachable from CI.
@@ -169,24 +119,6 @@ jobs:
       # sandboxes.yml carries the same check beside its disk guard. This job
       # has no disk guard to sit beside, which is part of why the gap lasted.
       # docs/owner-actions-before-submission.md §12 is the write-up.
-      # ── THE COMMENT THAT USED TO BE HERE WAS WRONG ──────────────────────
-      #
-      # This step was `shell: bash`, under a note asserting that Git Bash is
-      # on the PATH "because actions/checkout needs it". Reasonable, and
-      # false. Measured on DESKTOP-JUC6SL1 on 2026-09-18:
-      #
-      #     ##[error]bash: command not found
-      #
-      # Git IS installed there -- the logs reference
-      # `C:\Program Files\Git\usr\bin\tar.exe` -- but `bash` is not on the
-      # PATH the runner invokes steps with.
-      #
-      # That mattered the moment this job stopped being pinned to the Mac.
-      # The step carries `continue-on-error` and exits zero, so on Windows it
-      # would have failed GREEN: the check whose whole purpose is to put a
-      # number in the log, silently putting nothing there, and its silence
-      # indistinguishable from a healthy machine.
-      #
       # `scripts/runner-headroom.mjs` reads swap per platform -- sysctl on
       # darwin, /proc/meminfo on linux, the pagefile on win32 -- and says so
       # explicitly when it cannot read it, because an unread number and a good
@@ -212,7 +144,7 @@ jobs:
       # vitest.config.ts where the exclusion is visible next to the discovery,
       # not by omitting a filename nobody will notice is missing.
       #
-      # The three tests/integration/*.db.test.ts files self-skip unless
+      # The tests/integration/*.db.test.ts files self-skip unless
       # TEST_SUPABASE_URL / _ANON_KEY / _SERVICE_KEY are set, which this step
       # deliberately does not set.
       - name: Tests
@@ -269,12 +201,8 @@ jobs:
       # It builds the bundle rather than assuming one is lying around: every
       # assertion in the script is of the form "this string is absent", and all
       # of them pass on an empty directory.
-      # Two steps, not `a && b`: PowerShell 5.1 has no `&&`, and this job is
-      # unpinned, so the Windows runner can take it — which it did, on its
-      # first gating job after coming online (2026-09-21), and the parse error
-      # failed a run every check had passed. `shell: bash` is not the fix; the
-      # headroom note above measured `bash: command not found` on that box.
-      # Sequential steps are the one chaining both platforms agree on.
+      # Two steps keep the native build and the bundle assertion separately
+      # named in the required checks log.
       - name: Build the native bundle
         run: npm run build:native
 
@@ -363,13 +291,18 @@ jobs:
     # it without a commit: '"windows-latest"' for GitHub's Windows machine while
     # DESKTOP-JUC6SL1 is off (2026-10-10, owner's choice), deleted to come back.
     # Never anything that is not Windows: this job's whole answer is "on Windows".
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows"]') }}
+    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     # `continue-on-error` removed 2026-09-18, on the run that came back
     # `Suites 1163 passed, 0 failed | Tests 3653 passed, 0 failed` -- the same
     # test count as macOS. The job's own comment named this as the exit
     # condition and this is it being taken.
     timeout-minutes: 60
     steps:
+      # Git Bash is installed but not on the runner's PATH. Add it so the
+      # bash default shell resolves for every later step.
+      - name: Put Git Bash on PATH
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT ────────────────────
       #
       # `.gitattributes` says `* text=auto eol=lf`, and a FRESH clone honours
@@ -409,36 +342,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # npm cache on HOSTED runners only. On the self-hosted machines the
-          # runner's own ~/.npm persists between jobs, so the GitHub cache adds
-          # nothing -- and its POST-RUN SAVE is what has now killed three
-          # otherwise-green jobs: every work step succeeds, then the save
-          # crawls on a machine at 90%+ swap until the job's timeout cancels
-          # it, and the check reports failure over bookkeeping. The expression
-          # reads empty (= caching off) whenever a self-hosted runner variable
-          # is set, and 'npm' on the hosted fallback, where a fresh VM really
-          # does need the cache.
-          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
-      # NO `shell:` ANYWHERE IN THIS JOB, AND THAT IS THE FIX.
-      #
-      # The first version of this job said `shell: bash` on both steps. The
-      # runner answered `##[error]bash: command not found` -- Git Bash is not
-      # on its PATH -- so `npm ci` never ran, the suite never ran, and the job
-      # reported a failure that said nothing about Windows compatibility.
-      #
-      # Omitting `shell:` uses the platform default, which is PowerShell here
-      # and bash on a Unix runner, and every line below is written to work in
-      # both. The parsing that genuinely needed a shell now lives in Node,
-      # which `setup-node` has just installed.
-      #
-      # Worth knowing elsewhere: `verify` has a memory-preflight step that is
-      # also `shell: bash`. It is fine today because that job is pinned to
-      # macOS -- but it is `continue-on-error` with `exit 0`, so if the pin
-      # were ever cleared it would fail exactly like this and still read green.
+          # The self-hosted Windows runner keeps its own npm cache. Disable the
+          # Actions cache so its post-run save cannot fail an otherwise-green job.
+          cache: ''
+      # The workflow default shell is Git Bash. The parsing that genuinely
+      # needs platform awareness lives in Node, which setup-node has just
+      # installed.
       - run: npm ci
 
-      # Redirection works in both PowerShell and bash. `continue-on-error`
-      # rather than `|| true`, because `||` is not PowerShell.
+      # `continue-on-error` records the tally even when the suite itself exits
+      # red; the redirection below is handled by Git Bash.
       # Plain `npm test`. It said `--reporter=basic` for exactly one run, and
       # that reporter does not exist in vitest 4 -- it fails inside
       # `loadCustomReporterModule` before a single test runs, on every
@@ -751,7 +664,9 @@ jobs:
 
   deployment:
     name: The deployed site serves the worker it built
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # On the Mac like `migrations`: this workflow defaults to bash, which the
+    # Windows runner only has after a PATH step this job does not carry.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     # ── WHY THIS JOB EXISTS, AND WHY IT IS NOT ON PULL REQUESTS ──────────
     #

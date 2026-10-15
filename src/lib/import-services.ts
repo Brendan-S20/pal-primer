@@ -46,7 +46,10 @@ const WEEKDAY_WORDS: Array<[RegExp, number]> = [
  *  letter M T W R F that is not the start of another word ("Weekly" is not
  *  Wednesday). */
 const RANGE_DAY = String.raw`(?:\b(sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|rs|r|s|urday)?s?\b|\b([mtwrf])(?![a-z]))`;
-const RANGE_RE = new RegExp(`${RANGE_DAY}\\s*(?:-|\u2013|\u2014|to|thru|through)\\s*${RANGE_DAY}`, "i");
+const RANGE_RE = new RegExp(
+  `${RANGE_DAY}\\s*(?:-|\u2013|\u2014|to|thru|through)\\s*${RANGE_DAY}`,
+  "i",
+);
 const STEM_DAY: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 const LETTER_DAY: Record<string, number> = { m: 1, t: 2, w: 3, r: 4, f: 5 };
 /** A cell that is nothing but day codes: "MWF", "M/W/F", "TTh", "MTWThF".
@@ -54,7 +57,17 @@ const LETTER_DAY: Record<string, number> = { m: 1, t: 2, w: 3, r: 4, f: 5 };
  *  "S" is left out: it says Saturday or Sunday and we cannot tell which. */
 const COMPACT_RE = /^(?:su|sa|th|tu|m|t|w|r|f)+$/i;
 const COMPACT_TOKEN = /su|sa|th|tu|m|t|w|r|f/gi;
-const COMPACT_DAY: Record<string, number> = { su: 0, sa: 6, th: 4, tu: 2, m: 1, t: 2, w: 3, r: 4, f: 5 };
+const COMPACT_DAY: Record<string, number> = {
+  su: 0,
+  sa: 6,
+  th: 4,
+  tu: 2,
+  m: 1,
+  t: 2,
+  w: 3,
+  r: 4,
+  f: 5,
+};
 
 /** Weekdays named anywhere in a cell: "Tuesday", "Tue & Fri", "Weekly on
  *  Thursdays"; and, since the catalog, the ways a walker writes a week:
@@ -70,7 +83,10 @@ export function parseWeekdays(text: string | null | undefined): number[] {
   // "Mon-Fri", "M-F", "Tue thru Thu": every day from the first to the second,
   // forward through the week (so "Fri-Mon" is Fri, Sat, Sun, Mon). One dash
   // only: "Mon - Wed - Fri" is a list spelled with dashes, not a range.
-  const range = (text.match(/-|\u2013|\u2014|\b(?:to|thru|through)\b/gi) ?? []).length === 1 ? RANGE_RE.exec(text) : null;
+  const range =
+    (text.match(/-|\u2013|\u2014|\b(?:to|thru|through)\b/gi) ?? []).length === 1
+      ? RANGE_RE.exec(text)
+      : null;
   if (range) {
     const from = range[1] ? STEM_DAY[range[1].toLowerCase()] : LETTER_DAY[range[2].toLowerCase()];
     const to = range[3] ? STEM_DAY[range[3].toLowerCase()] : LETTER_DAY[range[4].toLowerCase()];
@@ -91,7 +107,13 @@ export function parseWeekdays(text: string | null | undefined): number[] {
 }
 
 const NUMBER_WORDS: Record<string, number> = {
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, other: 2,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  other: 2,
 };
 
 /**
@@ -211,10 +233,18 @@ const SERVICE_NAME_MAX = 80;
 export function inferServiceLine(name: string, orgLines: readonly ServiceLine[]): ServiceLine {
   const s = name.toLowerCase();
   if (/\b(walks?|walking|strolls?|hikes?)\b/.test(s)) return "dog_walking";
-  if (/\b(sit|sits|sitting|sitter|drop[- ]?ins?|overnights?|boarding|house ?visits?|feeding|check[- ]?ins?)\b/.test(s))
+  if (
+    /\b(sit|sits|sitting|sitter|drop[- ]?ins?|overnights?|boarding|house ?visits?|feeding|check[- ]?ins?)\b/.test(
+      s,
+    )
+  )
     return "pet_sitting";
   if (/\b(grooms?|grooming|baths?|nails?|trims?|brush(ing)?|de-?shed(ding)?|shampoo)\b/.test(s))
     return "mobile_grooming";
+  if (
+    /\b(train|trains|training|trainer|lesson|lessons|obedience|behavior|behaviour|puppy)\b/.test(s)
+  )
+    return "training";
   if (/\b(waste|scoop(s|ing)?|poop|pooper|doody|doo|clean(s|ing|up)?|clean-up|yards?)\b/.test(s))
     return "pet_waste";
   return orgLines.length === 1 ? orgLines[0] : "other";
@@ -349,12 +379,16 @@ export function mapServiceRow(
   const priceText = cell(raw, mapping, "price_per_visit");
   const price = parseMoneyCents(priceText);
   if (price == null || price < 0) {
-    return { mapped: null, error: priceText ? `Price not understood: "${priceText}"` : "Missing price per visit" };
+    return {
+      mapped: null,
+      error: priceText ? `Price not understood: "${priceText}"` : "Missing price per visit",
+    };
   }
   const days = parseWeekdays(dayText ?? freqText);
   const startText = cell(raw, mapping, "start_date");
   const started_on = startText ? parseImportDate(startText) : null;
-  if (startText && !started_on) return { mapped: null, error: `Start date not understood: "${startText}"` };
+  if (startText && !started_on)
+    return { mapped: null, error: `Start date not understood: "${startText}"` };
   const dogText = cell(raw, mapping, "dog_count");
   const dogs = dogText ? Number(dogText.replace(/[^\d]/g, "")) : NaN;
   const billText = (cell(raw, mapping, "billing") ?? "").toLowerCase();
@@ -396,17 +430,27 @@ export function mapBalanceRow(
   const amountText = cell(raw, mapping, "amount");
   const amount = parseMoneyCents(amountText);
   if (amount == null) {
-    return { mapped: null, error: amountText ? `Amount not understood: "${amountText}"` : "Missing amount" };
+    return {
+      mapped: null,
+      error: amountText ? `Amount not understood: "${amountText}"` : "Missing amount",
+    };
   }
   // Nothing owed is not a row to import; a credit is a different conversation
   // (the credit ledger) and is refused rather than turned into a negative bill.
   if (amount === 0) return { mapped: null, error: "Balance is zero; nothing to carry over" };
-  if (amount < 0) return { mapped: null, error: "Balance is a credit; add it as account credit instead" };
+  if (amount < 0)
+    return { mapped: null, error: "Balance is a credit; add it as account credit instead" };
   const dueText = cell(raw, mapping, "due_date");
   const due_on = dueText ? parseImportDate(dueText) : null;
   if (dueText && !due_on) return { mapped: null, error: `Due date not understood: "${dueText}"` };
   return {
-    mapped: { client_external_id, client_name, amount_cents: amount, due_on, note: cell(raw, mapping, "note") },
+    mapped: {
+      client_external_id,
+      client_name,
+      amount_cents: amount,
+      due_on,
+      note: cell(raw, mapping, "note"),
+    },
     error: null,
   };
 }

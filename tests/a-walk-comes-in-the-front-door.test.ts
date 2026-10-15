@@ -140,6 +140,7 @@ describe("the service a row names", () => {
     expect(inferServiceLine("Overnight stay", ["pet_waste", "pet_sitting"])).toBe("pet_sitting");
     expect(inferServiceLine("Full groom", ["mobile_grooming"])).toBe("mobile_grooming");
     expect(inferServiceLine("Nail trim", ["pet_waste", "mobile_grooming"])).toBe("mobile_grooming");
+    expect(inferServiceLine("Private training lesson", ["training"])).toBe("training");
     expect(inferServiceLine("Weekly scoop", ["pet_waste", "dog_walking"])).toBe("pet_waste");
     expect(inferServiceLine("Yard cleanup", ["dog_walking"])).toBe("pet_waste");
     expect(inferServiceLine("Standard plan", ["dog_walking"])).toBe("dog_walking");
