@@ -3260,6 +3260,8 @@ export type Database = {
       }
       organizations: {
         Row: {
+          vaccine_rule: string
+          required_vaccines: string[]
           sales_tax_label: string
           sales_tax_rate_bps: number
           active_client_count: number
@@ -3403,6 +3405,8 @@ export type Database = {
           quote_followup_days: number
         }
         Insert: {
+          vaccine_rule?: string
+          required_vaccines?: string[]
           sales_tax_label?: string
           sales_tax_rate_bps?: number
           active_client_count?: number
@@ -3546,6 +3550,8 @@ export type Database = {
           quote_followup_days?: number
         }
         Update: {
+          vaccine_rule?: string
+          required_vaccines?: string[]
           sales_tax_label?: string
           sales_tax_rate_bps?: number
           active_client_count?: number
@@ -3710,6 +3716,63 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      pet_vaccinations: {
+        Row: {
+          id: string
+          organization_id: string
+          dog_id: string
+          vaccine: string
+          vaccine_note: string | null
+          given_on: string | null
+          expires_on: string
+          storage_path: string | null
+          file_name: string | null
+          source: string
+          verified_by: string | null
+          verified_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id?: string
+          dog_id: string
+          vaccine: string
+          vaccine_note?: string | null
+          given_on?: string | null
+          expires_on: string
+          storage_path?: string | null
+          file_name?: string | null
+          source: string
+          verified_by?: string | null
+          verified_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          dog_id?: string
+          vaccine?: string
+          vaccine_note?: string | null
+          given_on?: string | null
+          expires_on?: string
+          storage_path?: string | null
+          file_name?: string | null
+          source?: string
+          verified_by?: string | null
+          verified_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "pet_vaccinations_dog_id_fkey"; columns: ["dog_id"]; isOneToOne: false; referencedRelation: "dogs"; referencedColumns: ["id"] },
+          { foreignKeyName: "pet_vaccinations_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
         ]
       }
       payments: {
@@ -6989,6 +7052,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_use_vaccine_record: {
+        Args: { name: string; write: boolean }
+        Returns: boolean
+      }
       accept_org_invite_for_current_user: {
         Args: { _token?: string }
         Returns: string

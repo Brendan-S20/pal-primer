@@ -24,6 +24,12 @@ import type { PluralCategory, TranslationsWithPlurals } from "./en";
  * الإضافية". Unicode does not mirror arrows, so → would point backwards.
  */
 const ar: TranslationsWithPlurals<PluralCategory> = {
+  vaccineStatus: {
+    ok: "سارية",
+    expiring: "تنتهي قريبًا",
+    expired: "منتهية",
+    missing: "مفقودة",
+  },
   common: {
     loading: "جارٍ التحميل…",
     save: "حفظ",

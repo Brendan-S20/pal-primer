@@ -194,6 +194,9 @@ export function FieldClientView({
                         <div className="font-medium">
                           {d.name ? <bdi>{d.name}</bdi> : t("dog.fallbackName")}
                         </div>
+                        {d.vaccine_status && (
+                          <span className="inline-block rounded-md border px-2 py-1 text-xs">{t(`vaccineStatus.${d.vaccine_status}`)}</span>
+                        )}
                         {details.length > 0 && (
                           <div className="text-xs text-muted-foreground">
                             {details.map((part, i) => (

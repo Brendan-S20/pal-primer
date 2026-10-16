@@ -17,6 +17,12 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  vaccineStatus: {
+    ok: "Up to date",
+    expiring: "Expires soon",
+    expired: "Expired",
+    missing: "Missing",
+  },
   common: {
     loading: "Loading…",
     save: "Save",

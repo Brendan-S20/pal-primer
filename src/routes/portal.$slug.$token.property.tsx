@@ -7,6 +7,7 @@ import {
   usePortalCtx, StationsPanel, DogsGrid, AddonCard, EmptyBox,
   money, fmtDayShort, friendlyFrequency,
 } from "@/lib/portal-ui";
+import { PortalVaccines } from "@/components/portal/PortalVaccines";
 import { portalListProperties } from "@/lib/portal.functions";
 
 export const Route = createFileRoute("/portal/$slug/$token/property")({
@@ -30,6 +31,8 @@ function PortalProperty() {
 
   return (
     <div className="space-y-6">
+      {c?.mobile_grooming && <PortalVaccines token={token} />}
+
       {properties.length > 1 && (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">

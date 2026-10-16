@@ -201,8 +201,10 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 60 -> 61 on 2026-10-10 (20261010200000, a window is kept and a skill
     // is matched): tg_staff_services_same_org, which keeps a technician's
     // service skill inside their own business. REVOKEd in the same file.
-    // 61 -> 62: tg_service_size_rules_service derives the tenant from the groom.
-    expect(triggerFunctions().size).toBe(62);
+    // 61 -> 63: tg_service_size_rules_service derives the tenant from the
+    // groom, and pet_vaccinations_before_write derives the tenant, validates
+    // the document path and caps portal records. Both revoked in their files.
+    expect(triggerFunctions().size).toBe(63);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -10,6 +10,12 @@ import type { Translations } from "./en";
  * English or shorter; the long ones are sentences in blocks that wrap.
  */
 const es: Translations = {
+  vaccineStatus: {
+    ok: "Al día",
+    expiring: "Vence pronto",
+    expired: "Vencida",
+    missing: "Falta",
+  },
   common: {
     loading: "Cargando…",
     save: "Guardar",

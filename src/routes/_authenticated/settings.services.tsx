@@ -65,6 +65,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { VaccineSettings } from "@/components/settings/VaccineSettings";
 import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/services")({
@@ -267,6 +268,8 @@ function ServicesPage() {
           </ul>
         )}
       </section>
+
+      {lines.includes("mobile_grooming") && <VaccineSettings />}
 
       <Dialog open={sizeService !== null} onOpenChange={(open) => !open && setSizeService(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl">

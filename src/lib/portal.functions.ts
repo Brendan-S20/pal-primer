@@ -212,6 +212,7 @@ export const portalGetClient = createServerFn({ method: "GET" })
       ...row,
       skip_billable_pct: rule?.billable_pct ?? 0,
       reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
+      mobile_grooming: serviceLinesOrDefault(lines?.service_lines).includes("mobile_grooming"),
     };
   });
 

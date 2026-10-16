@@ -265,10 +265,28 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
       : { data: [], error: null };
     if (dogErr) throw new Error(dogErr.message);
 
+    const { loadVaccineSettings } = await import("@/lib/vaccines.server");
+    const vaccineSettings = await loadVaccineSettings(supabase, caller.orgId);
+    const vaccineStatuses: Record<string, import("@/lib/vaccines").VaccineState> = {};
+    if (vaccineSettings.enabled && dogs?.length) {
+      // Use the caller for pet and record reads so property access still applies.
+      const { data: visibleDogs, error: visibleError } = await supabase.from("dogs")
+        .select("id").in("id", dogs.map((d) => d.id)).eq("organization_id", caller.orgId);
+      if (visibleError) throw new Error(visibleError.message);
+      const ids = (visibleDogs ?? []).map((d) => d.id);
+      if (ids.length) {
+        const { data: records, error } = await supabase.from("pet_vaccinations")
+          .select("dog_id, vaccine, expires_on, source, verified_at").in("dog_id", ids).eq("organization_id", caller.orgId);
+        if (error) throw new Error(error.message);
+        const { vaccineStatus } = await import("@/lib/vaccines");
+        for (const id of ids) vaccineStatuses[id] = vaccineStatus((records ?? []).filter((r) => r.dog_id === id), vaccineSettings.required, vaccineSettings.today).overall;
+      }
+    }
     return {
       client,
       properties: properties ?? [],
-      dogs: (dogs ?? []).filter((d: any) => d.active !== false),
+      dogs: (dogs ?? []).filter((d: any) => d.active !== false).map((d) =>
+        vaccineStatuses[d.id] ? { ...d, vaccine_status: vaccineStatuses[d.id] } : d),
     };
   });
 
