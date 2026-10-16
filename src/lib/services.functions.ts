@@ -30,7 +30,7 @@ import {
 } from "@/lib/services";
 
 const SERVICE_COLUMNS =
-  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, max_dogs, active, created_at, updated_at";
+  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, max_dogs, holiday_surcharge_pct, active, created_at, updated_at";
 
 const cents = z.number().int().min(0).max(SERVICE_MAX_CENTS);
 
@@ -40,6 +40,7 @@ export const serviceDraftSchema = z.object({
   price_unit: z.enum(PRICE_UNITS),
   base_price_cents: cents.nullable(),
   extra_pet_cents: cents.default(0),
+  holiday_surcharge_pct: z.number().int().min(0).max(500).optional(),
   max_dogs: z.number().int().min(1).max(50).nullable().optional(),
   default_duration_min: z
     .number()
@@ -55,6 +56,7 @@ export function parseServiceDraft(d: unknown): ServiceDraft {
   const parsed = serviceDraftSchema.parse(d);
   const draft: ServiceDraft = {
     ...parsed,
+    ...(parsed.service_line !== "pet_sitting" ? { holiday_surcharge_pct: 0 } : {}),
     max_dogs: parsed.service_line === "dog_walking" ? (parsed.max_dogs ?? null) : null,
   };
   const problem = serviceProblem(draft);

@@ -26,12 +26,15 @@ export const getEmailSettings = createServerFn({ method: "GET" })
     // business that runs dog walking.
     const { data: walk } = await (context.supabase as any)
       .from("organizations")
-      .select("service_lines, notify_email_walk_not_done, notify_email_walk_schedule_change")
+      .select("service_lines, notify_email_walk_not_done, notify_email_walk_schedule_change, notify_email_stay_confirmed, notify_email_stay_ending")
       .eq("id", orgId)
       .maybeSingle();
     const { serviceLinesOrDefault } = await import("@/lib/service-lines");
     return {
       ...data,
+      runs_pet_sitting: serviceLinesOrDefault(walk?.service_lines).includes("pet_sitting"),
+      notify_email_stay_confirmed: walk?.notify_email_stay_confirmed !== false,
+      notify_email_stay_ending: walk?.notify_email_stay_ending !== false,
       runs_dog_walking: serviceLinesOrDefault(walk?.service_lines).includes("dog_walking"),
       notify_email_walk_not_done: walk?.notify_email_walk_not_done !== false,
       notify_email_walk_schedule_change: walk?.notify_email_walk_schedule_change !== false,
@@ -50,6 +53,8 @@ const schema = z.object({
   notify_email_quote_sent: z.boolean(),
   // The walk emails (#410). Optional, so a page that did not draw them
   // leaves them as they are.
+  notify_email_stay_confirmed: z.boolean().optional(),
+  notify_email_stay_ending: z.boolean().optional(),
   notify_email_walk_not_done: z.boolean().optional(),
   notify_email_walk_schedule_change: z.boolean().optional(),
   // Days after a quote is sent that the nightly job emails one reminder.

@@ -212,8 +212,8 @@ describe("what makes a service saveable", () => {
   });
 
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
-    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste", "dog_walking"]);
-    expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+    expect(serviceLineChoices(["pet_waste"])).toContain("pet_sitting");
     expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
     expect(serviceLineChoices(["mobile_grooming"])).toContain("mobile_grooming");
     expect(serviceLineChoices(["pet_waste"], "other")).toContain("other");

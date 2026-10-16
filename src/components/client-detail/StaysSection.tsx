@@ -1,3 +1,4 @@
+import { ConfirmStayButton } from "@/components/client-detail/ConfirmStayButton";
 // Client > Services > Stays (#411): a sitter's bookings for this client, and
 // "Book a stay". Drawn only for a business that runs pet sitting; a pet-waste
 // or walking business sees the Services tab exactly as before. Office screen,
@@ -119,7 +120,7 @@ export function StaysSection({
       ) : (
         <ul className="space-y-2">
           {stays.map((s) => (
-            <StayRowView key={s.id} stay={s} clientId={clientId} pets={pets} />
+            <StayRowView key={s.id} stay={s} clientId={clientId} pets={pets} canConfirm={canManagePricing} />
           ))}
         </ul>
       )}
@@ -135,7 +136,7 @@ export function StaysSection({
   );
 }
 
-function StayRowView({ stay, clientId, pets }: { stay: StayRow; clientId: string; pets: any[] }) {
+function StayRowView({ stay, clientId, pets, canConfirm }: { stay: StayRow; clientId: string; pets: any[]; canConfirm: boolean }) {
   const qc = useQueryClient();
   const today = useOrgToday();
   const { confirm, dialog } = useConfirmDialog();
@@ -254,6 +255,8 @@ function StayRowView({ stay, clientId, pets }: { stay: StayRow; clientId: string
           </div>
         )}
       </div>
+      {stay.status === "requested" && canConfirm && <ConfirmStayButton stayId={stay.id} clientId={clientId} />}
+
       {changingSitter && (
         <div className="mt-2 flex flex-wrap items-end gap-2">
           <div className="min-w-0 flex-1 sm:max-w-xs">
