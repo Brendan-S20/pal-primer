@@ -16,9 +16,10 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { initClientMonitoring, reportBoundaryError } from "../lib/monitoring/client";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import { RouteProgress } from "../components/motion/RouteProgress";
-import "../lib/i18n";
+import i18n from "../lib/i18n";
 import { appOrigin, appUrl } from "@/lib/app-origin";
 import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
+import { RootRecovery } from "@/components/RootRecovery";
 import { markAppMounted } from "@/lib/app-mounted";
 
 // Error monitoring starts here, at module load on the client, so it is armed
@@ -48,7 +49,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -71,15 +72,15 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Try again
           </button>
           <a
-            href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            href="/dashboard"
+            className="inline-flex min-h-11 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
-            Go home
+            {i18n.t("recovery.dashboard")}
           </a>
         </div>
       </div>
@@ -207,7 +208,7 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <RootRecovery>{children}</RootRecovery>
         <Scripts />
       </body>
     </html>

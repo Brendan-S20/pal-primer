@@ -2416,7 +2416,10 @@ function VisitCard({
         </div>
       )}
 
-      {!collapsed && visit.client_id && (
+      {/* On a stop not yet started it waits under More options with the
+          other occasional actions; once the visit is under way or done, it
+          is here on the card. */}
+      {!collapsed && !scheduled && visit.client_id && (
         <Link
           to="/clients/$clientId"
           params={{ clientId: visit.client_id }}
@@ -2706,6 +2709,16 @@ function VisitCard({
                   >
                     {t("visit.dnaSample")}
                   </Button>
+                )}
+                {scheduled && visit.client_id && (
+                  <Link
+                    to="/clients/$clientId"
+                    params={{ clientId: visit.client_id }}
+                    className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent sm:h-8 sm:px-3"
+                  >
+                    <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    {t("visit.clientInfo")}
+                  </Link>
                 )}
                 {canText && visit.clients?.primary_phone && (
                   <Button

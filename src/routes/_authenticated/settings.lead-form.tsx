@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { RedirectFallback } from "@/components/RedirectFallback";
 
 // Settings → Lead form is now part of Settings → Signup & quote form, because
@@ -7,9 +7,7 @@ import { RedirectFallback } from "@/components/RedirectFallback";
 // Knowledge Center's older wording and anybody's muscle memory still land on
 // the page that holds these settings.
 export const Route = createFileRoute("/_authenticated/settings/lead-form")({
-  beforeLoad: () => {
-    throw redirect({ to: "/settings/online-signup", replace: true });
-  },
+  staticData: { clientRedirect: true },
   component: () => (
     <RedirectFallback to="/settings/online-signup" label="Signup & quote form settings" />
   ),

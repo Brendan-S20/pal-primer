@@ -17,6 +17,11 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  recovery: {
+    title: "This page didn't load",
+    body: "Try refreshing or return to the dashboard.",
+    dashboard: "Back to dashboard",
+  },
   common: {
     loading: "Loading…",
     save: "Save",

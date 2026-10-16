@@ -24,6 +24,11 @@ import type { PluralCategory, TranslationsWithPlurals } from "./en";
  * الإضافية". Unicode does not mirror arrows, so → would point backwards.
  */
 const ar: TranslationsWithPlurals<PluralCategory> = {
+  recovery: {
+    title: "تعذر تحميل هذه الصفحة",
+    body: "حاول تحديث الصفحة أو عُد إلى لوحة التحكم.",
+    dashboard: "العودة إلى لوحة التحكم",
+  },
   common: {
     loading: "جارٍ التحميل…",
     save: "حفظ",

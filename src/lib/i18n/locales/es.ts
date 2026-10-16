@@ -10,6 +10,11 @@ import type { Translations } from "./en";
  * English or shorter; the long ones are sentences in blocks that wrap.
  */
 const es: Translations = {
+  recovery: {
+    title: "Esta página no se cargó",
+    body: "Intenta actualizar o vuelve al panel.",
+    dashboard: "Volver al panel",
+  },
   common: {
     loading: "Cargando…",
     save: "Guardar",

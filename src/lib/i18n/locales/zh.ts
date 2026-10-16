@@ -19,6 +19,11 @@ import type { TranslationsWithPlurals } from "./en";
  * half-width where the string is a number or a code.
  */
 const zh: TranslationsWithPlurals<"other"> = {
+  recovery: {
+    title: "此页面未能加载",
+    body: "请尝试刷新页面或返回控制面板。",
+    dashboard: "返回控制面板",
+  },
   common: {
     loading: "加载中…",
     save: "保存",
