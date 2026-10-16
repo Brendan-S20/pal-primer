@@ -475,18 +475,25 @@ BEGIN
   ) THEN
     RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose a lesson from this business.';
   END IF;
-  IF TG_TABLE_NAME = 'session_progress' AND NOT EXISTS (
-    SELECT 1 FROM public.training_skills s
-    WHERE s.id = NEW.skill_id AND s.organization_id = NEW.organization_id
-  ) THEN
-    RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose a skill from this business.';
+  -- Each table's own column is read inside its own IF. PL/pgSQL resolves every
+  -- NEW field in an expression when it runs it, so NEW.skill_id in a shared
+  -- condition fails on training_session_notes and homework, which lack it.
+  IF TG_TABLE_NAME = 'session_progress' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.training_skills s
+      WHERE s.id = NEW.skill_id AND s.organization_id = NEW.organization_id
+    ) THEN
+      RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose a skill from this business.';
+    END IF;
   END IF;
-  IF TG_TABLE_NAME = 'homework' AND NEW.dog_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM public.dogs d
-    JOIN public.visits v ON v.property_id = d.property_id
-    WHERE d.id = NEW.dog_id AND v.id = NEW.visit_id AND d.organization_id = NEW.organization_id
-  ) THEN
-    RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose a dog at this lesson.';
+  IF TG_TABLE_NAME = 'homework' THEN
+    IF NEW.dog_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.dogs d
+      JOIN public.visits v ON v.property_id = d.property_id
+      WHERE d.id = NEW.dog_id AND v.id = NEW.visit_id AND d.organization_id = NEW.organization_id
+    ) THEN
+      RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose a dog at this lesson.';
+    END IF;
   END IF;
   NEW.updated_at := now();
   RETURN NEW;
