@@ -16,7 +16,7 @@ export const getEmailSettings = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("organizations")
       .select(
-        "notify_email_invoice_sent, notify_email_payment_received, notify_email_visit_completed, notify_email_weather_reschedule, notify_email_welcome, notify_email_overdue, notify_email_visit_reminder, notify_email_on_my_way, notify_email_quote_sent, quote_followup_days",
+        "notify_email_invoice_sent, notify_email_payment_received, notify_email_visit_completed, notify_email_weather_reschedule, notify_email_welcome, notify_email_overdue, notify_email_visit_reminder, notify_email_on_my_way, notify_email_quote_sent, notify_email_training_package, quote_followup_days",
       )
       .eq("id", orgId)
       .single();
@@ -34,6 +34,7 @@ const schema = z.object({
   notify_email_visit_reminder: z.boolean(),
   notify_email_on_my_way: z.boolean(),
   notify_email_quote_sent: z.boolean(),
+  notify_email_training_package: z.boolean(),
   // Days after a quote is sent that the nightly job emails one reminder.
   quote_followup_days: z.number().int().min(0).max(30),
 });

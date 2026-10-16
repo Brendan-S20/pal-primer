@@ -496,6 +496,9 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
       kind: "visit.completed",
       summary: `Marked the visit on ${v.scheduled_on} completed from the office`,
     });
+    // A lesson that leaves one session on its package. Never throws.
+    const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
+    await afterLessonSessionChange(data.visitId);
     return { ok: true };
   });
 
@@ -598,6 +601,9 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
       summary: `Canceled the visit on ${v.scheduled_on}: ${data.reason}`,
       meta: { reason: data.reason, code: data.code },
     });
+    // A late-canceled lesson can use a session. Never throws.
+    const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
+    await afterLessonSessionChange(data.visitId);
     return { ok: true };
   });
 
