@@ -51,6 +51,7 @@ import {
   PET_WASTE_ROUTES,
   SERVICE_LINES,
   addOnExampleFor,
+  customerCanRequestService,
   newClientWizardSteps,
   runsPetWaste,
   serviceLinesOrDefault,
@@ -387,7 +388,7 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
-  it("offers five lines; scooping, walking, sitting and training are bookable", () => {
+  it("offers five lines; scooping, walking and sitting are bookable", () => {
     expect([...OFFERED_SERVICE_LINES]).toEqual([
       "pet_waste",
       "dog_walking",
@@ -395,12 +396,19 @@ describe("what an owner can choose", () => {
       "mobile_grooming",
       "training",
     ]);
-    expect([...BOOKABLE_SERVICE_LINES]).toEqual([
-      "pet_waste",
-      "dog_walking",
-      "pet_sitting",
-      "training",
-    ]);
+    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+  });
+
+  it("training is offered as Coming soon, and neither an owner nor a customer can turn it on", () => {
+    expect(OFFERED_SERVICE_LINES).toContain("training");
+    expect(BOOKABLE_SERVICE_LINES).not.toContain("training");
+    expect(customerCanRequestService("training")).toBe(false);
+    expect(customerCanRequestService("dog_walking")).toBe(true);
+    // The row draws the badge and refuses the tick for any line that is not
+    // bookable, so training reads Coming soon and its box cannot be ticked.
+    const rows = codeOnly(read("src/components/ServiceLinesChoices.tsx"));
+    expect(rows).toMatch(/const bookable = BOOKABLE_SERVICE_LINES\.includes\(line\);/);
+    expect(rows).toMatch(/\{!bookable && <ComingSoonBadge \/>\}/);
   });
 
   it("refuses what the database's CHECK refuses, with a sentence", () => {

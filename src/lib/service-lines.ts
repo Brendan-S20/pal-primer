@@ -45,15 +45,16 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** Lines an owner can actually choose today. A line joins this list when the
- *  office can book it end to end. Training is on the list for the office.
- *  Customers, the public form and the receptionist still cannot request it
- *  (`customerCanRequestService`). Mobile grooming (#412) joins with its path. */
+/** Lines an owner can actually choose today. A line joins this list when its
+ *  path can be booked end to end: walking and sitting run on the service
+ *  catalog. Mobile grooming (#412) and training (#413) are offered and read
+ *  Coming soon, and an owner cannot tick either. An org runs training only
+ *  when its `organizations.service_lines` is set to include it directly, and
+ *  customers still cannot request it (`customerCanRequestService`). */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
   "pet_waste",
   "dog_walking",
   "pet_sitting",
-  "training",
 ];
 
 /** Whether a customer, the public signup form, or the receptionist may ask
