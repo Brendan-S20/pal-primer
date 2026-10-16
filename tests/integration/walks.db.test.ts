@@ -425,6 +425,157 @@ describe.skipIf(!enabled)("walk scheduling and group walks in the database", () 
     expect(unchanged.data?.walk_group_id).toBe(groupId);
   });
 
+  async function walkedGroup() {
+    const groupId = await makeGroup();
+    expect(
+      (await admin.from("walk_groups").update({ assigned_staff_id: techStaffId }).eq("id", groupId))
+        .error,
+    ).toBeNull();
+    const a = await makeWalk({ groupId });
+    const b = await makeWalk({ groupId });
+    return { groupId, a, b };
+  }
+
+  async function readVisit(visitId: string) {
+    const { data, error } = await admin
+      .from("visits")
+      .select("scheduled_on, status, walk_group_id, assigned_staff_id")
+      .eq("id", visitId)
+      .single();
+    expect(error).toBeNull();
+    return data!;
+  }
+
+  const tuesday = (() => {
+    const date = new Date(nextMonday);
+    date.setUTCDate(date.getUTCDate() + 1);
+    return date.toISOString().slice(0, 10);
+  })();
+
+  it("moves a group member to another day and takes it out of the group", async () => {
+    const { groupId, a, b } = await walkedGroup();
+    const moved = await admin.from("visits").update({ scheduled_on: tuesday }).eq("id", a.visitId);
+    expect(moved.error).toBeNull();
+    expect(await readVisit(a.visitId)).toEqual({
+      scheduled_on: tuesday,
+      status: "scheduled",
+      walk_group_id: null,
+      assigned_staff_id: techStaffId,
+    });
+    expect(await readVisit(b.visitId)).toEqual({
+      scheduled_on: monday,
+      status: "scheduled",
+      walk_group_id: groupId,
+      assigned_staff_id: techStaffId,
+    });
+  });
+
+  it("moves several visits in one statement when one of them is in a group", async () => {
+    const { groupId, a, b } = await walkedGroup();
+    const solo = await makeWalk();
+    const moved = await admin
+      .from("visits")
+      .update({ scheduled_on: tuesday })
+      .in("id", [a.visitId, solo.visitId]);
+    expect(moved.error).toBeNull();
+    for (const visitId of [a.visitId, solo.visitId]) {
+      const visit = await readVisit(visitId);
+      expect(visit.scheduled_on).toBe(tuesday);
+      expect(visit.walk_group_id).toBeNull();
+    }
+    expect((await readVisit(b.visitId)).walk_group_id).toBe(groupId);
+  });
+
+  it("reschedules a group member through the office functions and leaves the group", async () => {
+    const email = `dispatch-${runId}@walktest.local`;
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    expect(error).toBeNull();
+    const uid = data.user!.id;
+    userIds.push(uid);
+    await ins("user_roles", { user_id: uid, organization_id: orgId, role: "dispatcher" });
+    const dispatcher = createClient(URL!, ANON!, { auth: { persistSession: false } });
+    const signedIn = await dispatcher.auth.signInWithPassword({ email, password });
+    expect(signedIn.error).toBeNull();
+
+    const { groupId, a, b } = await walkedGroup();
+    const one = await dispatcher.rpc("reschedule_visit", {
+      _visit_id: a.visitId,
+      _new_date: tuesday,
+      _note: null,
+    });
+    expect(one.error).toBeNull();
+    expect(await readVisit(a.visitId)).toMatchObject({
+      scheduled_on: tuesday,
+      status: "scheduled",
+      walk_group_id: null,
+      assigned_staff_id: null,
+    });
+
+    const bulk = await dispatcher.rpc("bulk_reschedule_visits", {
+      _visit_ids: [b.visitId],
+      _to_date: tuesday,
+    });
+    expect(bulk.error).toBeNull();
+    expect(bulk.data).toEqual([{ moved: 1, skipped: 0 }]);
+    expect(await readVisit(b.visitId)).toMatchObject({
+      scheduled_on: tuesday,
+      walk_group_id: null,
+      assigned_staff_id: techStaffId,
+    });
+    expect(groupId).toBeTruthy();
+  });
+
+  it("still refuses a walk that is put into a group on another day", async () => {
+    const groupId = await makeGroup();
+    const walk = await makeWalk();
+    const refused = await admin
+      .from("visits")
+      .update({ scheduled_on: tuesday, walk_group_id: groupId })
+      .eq("id", walk.visitId);
+    expect(refused.error?.code).toBe("23514");
+    expect(refused.error?.message).toBe("That walk is on another day or for another service.");
+  });
+
+  it("frees a place in a full group when a dog is skipped, so another can join", async () => {
+    const { groupId, a, b } = await walkedGroup();
+    const waiting = await makeWalk();
+    const full = await join(waiting.visitId, groupId);
+    expect(full.error?.message).toBe("This group walk is full: 3 of 2 dogs.");
+    expect(
+      (await admin.from("visits").update({ status: "skipped" }).eq("id", a.visitId)).error,
+    ).toBeNull();
+    expect(await readVisit(a.visitId)).toMatchObject({
+      status: "skipped",
+      walk_group_id: null,
+      assigned_staff_id: techStaffId,
+    });
+    expect((await join(waiting.visitId, groupId)).error).toBeNull();
+    const members = await admin.from("visits").select("id").eq("walk_group_id", groupId);
+    expect(members.error).toBeNull();
+    expect(members.data!.map((visit) => visit.id).sort()).toEqual(
+      [b.visitId, waiting.visitId].sort(),
+    );
+  });
+
+  it("keeps a completed walk in its group without holding a place", async () => {
+    const { groupId, a } = await walkedGroup();
+    expect(
+      (
+        await admin
+          .from("visits")
+          .update({ status: "completed", completed_at: new Date().toISOString() })
+          .eq("id", a.visitId)
+      ).error,
+    ).toBeNull();
+    expect((await readVisit(a.visitId)).walk_group_id).toBe(groupId);
+    const another = await makeWalk();
+    expect((await join(another.visitId, groupId)).error).toBeNull();
+  });
+
   it("copies group walker changes onto scheduled members, including a cleared walker", async () => {
     const groupId = await makeGroup();
     const a = await makeWalk({ groupId });

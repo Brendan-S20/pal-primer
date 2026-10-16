@@ -155,3 +155,69 @@ describe("the calendar", () => {
     expect(feed).not.toMatch(/`Lock box: \$\{|`Gate code: \$\{|`Key: \$\{/);
   });
 });
+
+const CODE_COLUMN = /\b(lock_box_code|key_location|key_tag)\b/;
+
+/** String arguments to `.select(`, including template literals. */
+function selectLiterals(file: string, source: string): string[] {
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const out: string[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === "select") {
+      const arg = n.arguments[0];
+      if (arg && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg) || ts.isTemplateExpression(arg))) {
+        out.push(arg.getText(sf));
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+describe("plain selects", () => {
+  const readers = [
+    "src/lib/my-day.functions.ts",
+    "src/lib/properties.functions.ts",
+    "src/lib/visits.functions.ts",
+    "src/lib/clients.functions.ts",
+  ];
+
+  it("do not name a lock box code, key location or key tag", () => {
+    const findings: string[] = [];
+    for (const rel of readers) {
+      const source = readFileSync(join(root, rel), "utf8");
+      for (const literal of selectLiterals(rel, source)) {
+        if (CODE_COLUMN.test(literal)) findings.push(`${rel} ${literal.slice(0, 80)}`);
+      }
+    }
+    expect(findings).toEqual([]);
+  });
+
+  it("ask property_access_codes on the caller's client", () => {
+    const helper = readFileSync(join(root, "src/lib/property-access.ts"), "utf8");
+    expect(helper).toMatch(/rpc\("property_access_codes"/);
+    const field = readFileSync(join(root, "src/lib/clients.functions.ts"), "utf8");
+    const start = field.indexOf("export const getFieldClientInfo");
+    const fn = field.slice(start, field.indexOf("export const updateClient", start));
+    expect(fn).toMatch(/readPropertyAccess\(\s*supabase,/);
+    expect(fn).not.toMatch(/readPropertyAccess\(\s*supabaseAdmin/);
+    for (const rel of readers) {
+      expect(readFileSync(join(root, rel), "utf8")).toMatch(/property-access/);
+    }
+  });
+
+  it("revokes table select and grants the other columns back", () => {
+    const sql = readFileSync(
+      join(root, "supabase/migrations/20261015215000_a-lock-box-code-is-for-the-assigned-day.sql"),
+      "utf8",
+    );
+    expect(sql).toMatch(
+      /REVOKE SELECT ON TABLE public\.properties FROM PUBLIC, anon, authenticated;/,
+    );
+    expect(sql).toMatch(/GRANT SELECT \(%s\) ON TABLE public\.properties TO authenticated/);
+    expect(sql).toMatch(/column_name NOT IN \('lock_box_code', 'key_location', 'key_tag'\)/);
+    expect(sql).toMatch(/view_client_directory/);
+    expect(sql).toMatch(/scheduled_on = \(now\(\) AT TIME ZONE/);
+  });
+});

@@ -246,13 +246,18 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: properties, error: propErr } = await supabaseAdmin
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
+        "id, label, street, city, region, postal_code, gate_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
       )
       .eq("client_id", data.clientId)
       .eq("organization_id", caller.orgId)
       .is("archived_at", null)
       .order("street");
     if (propErr) throw new Error(propErr.message);
+    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const access = await readPropertyAccess(
+      supabase,
+      (properties ?? []).map((p) => p.id),
+    );
 
     const propertyIds = (properties ?? []).map((p) => p.id);
     const { data: dogs, error: dogErr } = propertyIds.length
@@ -266,7 +271,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
 
     return {
       client,
-      properties: properties ?? [],
+      properties: (properties ?? []).map((p) => ({ ...p, ...accessFor(access, p.id) })),
       dogs: (dogs ?? []).filter((d: any) => d.active !== false),
     };
   });

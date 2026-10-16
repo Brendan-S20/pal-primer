@@ -7037,6 +7037,15 @@ export type Database = {
         Args: { _visit_id: string }
         Returns: number
       }
+      property_access_codes: {
+        Args: { _property_ids: string[] }
+        Returns: {
+          key_location: string | null
+          key_tag: string | null
+          lock_box_code: string | null
+          property_id: string
+        }[]
+      }
 
       accept_org_invite_for_current_user: {
         Args: { _token?: string }

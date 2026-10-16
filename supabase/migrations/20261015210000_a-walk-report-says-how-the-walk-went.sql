@@ -3,8 +3,9 @@
 -- 1. How the walker gets in. A dog walker goes inside, so the office records
 --    the way in (key, lock box, door code, garage code, someone home) and
 --    whether the business holds a physical key, with the office's tag on it.
---    gate_code, lock_box_code, key_location and access_notes are unchanged,
---    and so is who may read them (may_read_property_row).
+--    gate_code and access_notes stay ordinary columns. Who may read
+--    lock_box_code, key_location and key_tag is tightened by the next
+--    migration: plain SELECT is revoked, and property_access_codes returns them.
 --
 -- 2. What the client is told. pee and poo are yes/no, NULL until the walker
 --    records them. report_note is written FOR THE CLIENT and goes in the walk
@@ -35,7 +36,7 @@ COMMENT ON COLUMN public.properties.access_method IS
 COMMENT ON COLUMN public.properties.key_held IS
   'The business holds a physical key to this property.';
 COMMENT ON COLUMN public.properties.key_tag IS
-  'The office''s tag on the key it holds, up to 40 characters. Same readers as lock_box_code.';
+  'The office''s tag on the key it holds, up to 40 characters. Same readers as lock_box_code: property_access_codes, not a plain SELECT.';
 
 ALTER TABLE public.visits
   ADD COLUMN IF NOT EXISTS pee boolean,

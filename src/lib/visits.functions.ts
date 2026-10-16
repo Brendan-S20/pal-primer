@@ -65,7 +65,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
-         properties(id, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
+         properties(id, street, city, region, postal_code, gate_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
          subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via),
@@ -76,6 +76,14 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .eq("organization_id", orgId)
       .single();
     if (error) throw new Error(error.message);
+
+    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const propertyId = (v as { property_id: string | null }).property_id;
+    const access = accessFor(await readPropertyAccess(supabase, [propertyId]), propertyId);
+    const visit =
+      v.properties && typeof v.properties === "object" && !Array.isArray(v.properties)
+        ? { ...v, properties: { ...v.properties, ...access } }
+        : v;
 
     // dogs at this property
     const { data: dogs } = await supabase
@@ -108,7 +116,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       others().gte("scheduled_on", today).order("scheduled_on", { ascending: true }).limit(3),
     ]);
 
-    return { visit: v, dogs: dogs ?? [], recent: recent ?? [], upcoming: upcoming ?? [] };
+    return { visit, dogs: dogs ?? [], recent: recent ?? [], upcoming: upcoming ?? [] };
   });
 
 export const listStaff = createServerFn({ method: "GET" })
