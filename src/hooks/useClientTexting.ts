@@ -1,3 +1,4 @@
+import { addonPurchasable } from "@/lib/addon-launch";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getClientTextingAvailability } from "@/lib/client-texting.functions";
@@ -15,5 +16,5 @@ export function useClientTexting(): boolean {
     queryFn: () => fn(),
     staleTime: 5 * 60_000,
   });
-  return data?.available ?? CLIENT_TEXTING_DEFAULT;
+  return addonPurchasable("managed-sms") && (data?.available ?? CLIENT_TEXTING_DEFAULT);
 }

@@ -17,6 +17,45 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  launch: {
+    visits: "Your next visit will show here once it is scheduled.",
+    cards: "We accept credit and debit cards. Your card details never touch our servers.",
+    pay: "Payments are processed securely. Cards accepted.",
+    texts: "Texts are coming soon. Until then, these updates come by email.",
+    cardPayments: "Get paid by card, straight to your own bank account.",
+    held: "On your plan, but it has not launched yet, so it does nothing on your account. You can remove it any time.",
+    soon: "Coming soon",
+    aiSoon: "AI features are coming soon",
+    usageSoon: "Usage and limits will show here once the first one launches.",
+    aiIntro:
+      "The AI receptionist and marketing posts are coming soon. They will run on HoundStack's own models, so there will be no key to set up and no separate provider bill.",
+    receptionistBuy:
+      "Coming soon. It can be added to your plan once it launches. You can draft the persona and FAQ below now.",
+    persona:
+      "You are a friendly, concise receptionist for a pet service company. Answer in one or two short sentences. Only give prices you have looked up for this business, never a guess. Offer to have someone from the office follow up when you are unsure.",
+    voiceFuture:
+      "When it launches, it will use the same persona and FAQ as texts. The caller's words are transcribed and the reply is read back to them. If it can't help, the caller is asked to leave a voicemail.",
+    founding:
+      "Founding pricing: the first {{spots}} paying accounts get {{percent}}% off their plan price for as long as they stay subscribed. Extra people and add-ons are billed at regular price. Use code {{code}} at checkout.",
+    remaining: "{{left}} of {{spots}} left.",
+    help0:
+      "Clients sign in with a one-time code sent by email. Codes by text are coming soon. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+    help1:
+      "Coming soon: marketing posts, and the [AI Receptionist](article:platform-addons), which will answer client texts and calls for you. Neither is switched on for anyone yet.",
+    help2:
+      "Available now: **priority support** (on the Launch plan; Growth and Scale already include it), and a one-time **done-for-you setup** where we configure the whole platform with you.",
+    help3:
+      "Coming soon: the **AI Receptionist**, which will answer client texts and calls using your FAQ and your own prices; **managed texting**; and **white label** (your own domain on the client portal and emails). They show a Coming soon badge on Billing and cannot be bought yet. You can draft the receptionist's persona and FAQ now in [AI receptionist settings](/settings/ai-receptionist).",
+    addonsTitle: "Plan add-ons",
+    contact: "Call or email us to schedule a visit.",
+    updateDetails: "Need to update your details? Call or email us and we'll take care of it.",
+  },
+
+  recovery: {
+    title: "This page didn't load",
+    body: "Try refreshing or return to the dashboard.",
+    dashboard: "Back to dashboard",
+  },
   common: {
     loading: "Loading…",
     save: "Save",
@@ -78,7 +117,8 @@ const en = {
     pickADay: "Pick a day",
     skippedCount: "{{count}} skipped",
     missedCount: "{{count}} missed",
-    progressRule: "Done means completed visits out of all stops. Missed and skipped stops count separately.",
+    progressRule:
+      "Done means completed visits out of all stops. Missed and skipped stops count separately.",
     view: "View",
     viewList: "List",
     viewMap: "Map",
@@ -159,6 +199,33 @@ const en = {
     nervous: "nervous",
     aggressive: "aggressive",
     unknown: "temperament unknown",
+  },
+  /** The client page a tech opens from a stop's "Client info"
+   *  (components/client-detail/FieldClientView.tsx). Hazard flags use
+   *  `hazard.*` and temperaments `dog.*`, the words the stop card uses. */
+  fieldClient: {
+    backToMyDay: "Back to My Day",
+    heading: "Field client info",
+    /** After the client's name in the browser tab: "Smith · Clients". */
+    pageSection: "Clients",
+    propertyFallback: "Property",
+    gate: "Gate:",
+    lockBox: "Lock box:",
+    key: "Key:",
+    parking: "Parking:",
+    access: "Access:",
+    hazards: "Hazards:",
+    dogsHeading: "Dogs ({{number}})",
+    noDogs: "No dogs on file.",
+    /** Between hazard names in one line. */
+    listSeparator: ", ",
+    /** The sizes the office's dog form offers. */
+    dogSize: {
+      small: "small",
+      medium: "medium",
+      large: "large",
+      giant: "giant",
+    },
   },
   yard: {
     label: "{{size}} property",
@@ -292,10 +359,20 @@ const en = {
     expand: "Expand",
     collapse: "Collapse",
     navigate: "Navigate",
+    clientInfo: "Client info",
     started: "Started",
     startQueued: "Queued. Starts when back online",
     completed: "Completed",
+    completedWithNotices: "Completed. Client notices: {{notices}}.",
+    completedWithNoticesPending:
+      "Completed. Client notices sent: {{notices}}. More are still sending.",
+    completedNoNotices: "Completed. No client notices went out.",
+    completedNoticePending: "Completed. Client notices are still sending.",
     completeQueued: "Queued. Completes when back online",
+    noticeCompletionEmail: "completion email",
+    noticePush: "push",
+    noticeReviewSms: "review text",
+    noticeReviewEmail: "review email",
     markedSkipped: "Marked skipped",
     skipQueued: "Queued. Will skip when back online",
     onMyWayEmailed: "Emailed: on my way",
@@ -893,11 +970,9 @@ type PluralStems<T> = {
  */
 export type TranslationsWithPlurals<C extends PluralCategory> = PluralTree<typeof en, C>;
 type PluralTree<T, C extends PluralCategory> = {
-  [K in keyof T as K extends `${string}${PluralSuffix}`
-    ? T[K] extends string
-      ? never
-      : K
-    : K]: T[K] extends string ? string : PluralTree<T[K], C>;
+  [
+    K in keyof T as K extends `${string}${PluralSuffix}` ? (T[K] extends string ? never : K) : K
+  ]: T[K] extends string ? string : PluralTree<T[K], C>;
 } & { [K in `${PluralStems<T> & string}_${C}`]: string };
 
 export default en;

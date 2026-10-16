@@ -198,8 +198,10 @@ describe("where an add-on charge was billed", () => {
       invoice_line_item_id: "li1",
       billed_invoice_id: "0f3c9a11-2222-3333-4444-555555555555",
       billed_invoice_status: "paid",
+      billed_invoice_number: 1042,
     });
-    expect(t.label).toBe("Billed on invoice #0f3c9a11 (paid)");
+    // The stored number, as the PDF, the email and every invoice list print it.
+    expect(t.label).toBe("Billed on invoice INV-1042 (paid)");
     expect(t.invoiceId).toBe("0f3c9a11-2222-3333-4444-555555555555");
     expect(t.warning).toBeNull();
   });
@@ -236,7 +238,8 @@ describe("where an add-on charge was billed", () => {
     expect(addonBillingTrail({ status: "voided" }).label).toBe("Voided, never billed");
   });
 
-  it("shortens an invoice id the way the payments list does", () => {
+  it("names an invoice by its stored number, and by a fragment of its id only without one", () => {
+    expect(shortInvoiceRef("0f3c9a11-2222-3333-4444-555555555555", 1042)).toBe("INV-1042");
     expect(shortInvoiceRef("0f3c9a11-2222-3333-4444-555555555555")).toBe("#0f3c9a11");
   });
 });

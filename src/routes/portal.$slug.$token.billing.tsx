@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -56,6 +57,7 @@ function getStripe(pk: string, stripeAccount?: string) {
 }
 
 function PortalBilling() {
+  const copy = useLaunchCopy();
   const { slug, token } = Route.useParams();
   const { paid } = Route.useSearch();
   const navigate = useNavigate();
@@ -176,8 +178,7 @@ function PortalBilling() {
           />
         )}
         <p className="text-xs text-muted-foreground">
-          We accept credit and debit cards plus ACH bank transfers. Your card details never touch
-          our servers.
+          {copy("We accept credit and debit cards. Your card details never touch our servers.")}
         </p>
       </div>
 
@@ -207,8 +208,7 @@ function PortalBilling() {
           />
         ) : (
           <ul className="divide-y rounded-md border bg-card">
-            {invoicesQ.data!.invoices.map((i, idx) => {
-              const invNo = `#${String(invoicesQ.data!.invoices.length - idx).padStart(4, "0")}`;
+            {invoicesQ.data!.invoices.map((i) => {
               const label =
                 i.kind === "prepaid_topup"
                   ? invoiceKindLabel(i.kind)
@@ -222,7 +222,7 @@ function PortalBilling() {
                 >
                   <div>
                     <div className="font-medium">
-                      Invoice {invNo}
+                      Invoice <span dir="ltr">{i.number_label}</span>
                       <span className="text-muted-foreground"> ({label})</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-2">
