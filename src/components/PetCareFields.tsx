@@ -4,19 +4,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { FEEDING_MAX, MED_DOSE_MAX, MED_NAME_MAX, MED_NOTES_MAX, MED_TIMES_MAX, MEDS_MAX, OTHER_CARE_MAX, type PetCare, type PetMed } from "@/lib/pets";
+import {
+  FEEDING_MAX,
+  MED_DOSE_MAX,
+  MED_NAME_MAX,
+  MED_NOTES_MAX,
+  MED_TIMES_MAX,
+  MEDS_MAX,
+  OTHER_CARE_MAX,
+  type PetCare,
+  type PetMed,
+} from "@/lib/pets";
 
 const blankMed = (): PetMed => ({ name: "", dose: null, times: ["08:00"], notes: null });
 
-export function PetCareFields({ petId, value, onChange }: { petId: string; value: PetCare; onChange: (next: PetCare) => void }) {
+export function PetCareFields({
+  petId,
+  value,
+  onChange,
+}: {
+  petId: string;
+  value: PetCare;
+  onChange: (next: PetCare) => void;
+}) {
   const feeding = value.feeding ?? "";
   const otherCare = value.other_care ?? "";
   const meds = value.meds;
   const setFeeding = (feeding: string) => onChange({ ...value, feeding });
   const setOtherCare = (other_care: string) => onChange({ ...value, other_care });
-  const setMeds = (next: PetMed[] | ((list: PetMed[]) => PetMed[])) => onChange({ ...value, meds: typeof next === "function" ? next(meds) : next });
-  const setMed = (i: number, patch: Partial<PetMed>) => setMeds(meds.map((m, j) => j === i ? { ...m, ...patch } : m));
-  return <div className="space-y-3">
+  const setMeds = (next: PetMed[] | ((list: PetMed[]) => PetMed[])) =>
+    onChange({ ...value, meds: typeof next === "function" ? next(meds) : next });
+  const setMed = (i: number, patch: Partial<PetMed>) =>
+    setMeds(meds.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  return (
+    <div className="space-y-3">
       <div>
         <Label htmlFor={`care-feeding-${petId}`} className="text-xs">
           Feeding
@@ -154,6 +175,6 @@ export function PetCareFields({ petId, value, onChange }: { petId: string; value
           onChange={(e) => setOtherCare(e.target.value)}
         />
       </div>
-
-  </div>;
+    </div>
+  );
 }

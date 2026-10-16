@@ -18,13 +18,36 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
     mutationFn: () => fn({ data: { stayId, ...(cents != null ? { depositCents: cents } : {}) } }),
     onSuccess: () => {
       toast.success("Stay confirmed. Visits and the invoice are ready.");
-      for (const queryKey of [["stays", clientId], ["requested-stays"], ["subs", clientId], ["client-visit-history", clientId], ["invoices"], ["client-invoices", clientId]]) qc.invalidateQueries({ queryKey });
+      for (const queryKey of [
+        ["stays", clientId],
+        ["requested-stays"],
+        ["subs", clientId],
+        ["client-visit-history", clientId],
+        ["invoices"],
+        ["client-invoices", clientId],
+      ])
+        qc.invalidateQueries({ queryKey });
     },
     onError: (e) => toast.error((e as Error).message),
   });
-  return <div className="flex flex-wrap items-end gap-2">
-    <div className="min-w-0"><Label htmlFor={`stay-deposit-${stayId}`}>Deposit ($), optional</Label><Input id={`stay-deposit-${stayId}`} className="w-40" inputMode="decimal" placeholder="0.00" value={deposit} onChange={(e) => setDeposit(e.target.value)} disabled={mut.isPending} /></div>
-    <Button size="sm" disabled={mut.isPending || invalid} onClick={() => mut.mutate()}>{mut.isPending ? "Confirming…" : "Confirm stay"}</Button>
-    {invalid && <p className="text-xs text-destructive">Enter a deposit in dollars and cents.</p>}
-  </div>;
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="min-w-0">
+        <Label htmlFor={`stay-deposit-${stayId}`}>Deposit ($), optional</Label>
+        <Input
+          id={`stay-deposit-${stayId}`}
+          className="w-40"
+          inputMode="decimal"
+          placeholder="0.00"
+          value={deposit}
+          onChange={(e) => setDeposit(e.target.value)}
+          disabled={mut.isPending}
+        />
+      </div>
+      <Button size="sm" disabled={mut.isPending || invalid} onClick={() => mut.mutate()}>
+        {mut.isPending ? "Confirming…" : "Confirm stay"}
+      </Button>
+      {invalid && <p className="text-xs text-destructive">Enter a deposit in dollars and cents.</p>}
+    </div>
+  );
 }

@@ -3,11 +3,20 @@ import { addDays, stayDatesLabel } from "@/lib/stays";
 
 async function sendStayNotice(stayId: string, kind: "confirmed" | "ending") {
   const { supabaseAdmin: sb } = await import("@/integrations/supabase/client.server");
-  const { data: stay, error } = await sb.from("stays")
-    .select("id, organization_id, client_id, kind, status, starts_on, ends_on, deposit_cents, deposit_invoice_id, services(name), organizations(service_lines), clients(portal_token)")
-    .eq("id", stayId).maybeSingle();
+  const { data: stay, error } = await sb
+    .from("stays")
+    .select(
+      "id, organization_id, client_id, kind, status, starts_on, ends_on, deposit_cents, deposit_invoice_id, services(name), organizations(service_lines), clients(portal_token)",
+    )
+    .eq("id", stayId)
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!stay || stay.status !== "confirmed" || !stay.organizations?.service_lines?.includes("pet_sitting")) return;
+  if (
+    !stay ||
+    stay.status !== "confirmed" ||
+    !stay.organizations?.service_lines?.includes("pet_sitting")
+  )
+    return;
   const { buildPortalLink } = await import("@/lib/portal-links.server");
   const portal = await buildPortalLink(stay.organization_id, stay.clients?.portal_token);
   const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
@@ -22,7 +31,10 @@ async function sendStayNotice(stayId: string, kind: "confirmed" | "ending") {
       serviceName: stay.services?.name ?? "Pet sitting",
       dates: stayDatesLabel(stay.kind as "drop_in" | "overnight", stay.starts_on, stay.ends_on),
       portalUrl: portal ? `${portal}/visits` : undefined,
-      depositUrl: kind === "confirmed" && stay.deposit_invoice_id && portal ? `${portal}/pay/${stay.deposit_invoice_id}` : undefined,
+      depositUrl:
+        kind === "confirmed" && stay.deposit_invoice_id && portal
+          ? `${portal}/pay/${stay.deposit_invoice_id}`
+          : undefined,
     },
   });
 }
@@ -43,10 +55,19 @@ export async function notifyStayConfirmed(stayId: string): Promise<void> {
  *  job on that day queues at most one ending message per stay. */
 export async function notifyStaysEnding(orgId: string, today: string): Promise<number> {
   const { supabaseAdmin: sb } = await import("@/integrations/supabase/client.server");
-  const { data: org, error: orgError } = await sb.from("organizations").select("service_lines, notify_email_stay_ending").eq("id", orgId).single();
+  const { data: org, error: orgError } = await sb
+    .from("organizations")
+    .select("service_lines, notify_email_stay_ending")
+    .eq("id", orgId)
+    .single();
   if (orgError) throw new Error(orgError.message);
   if (!org.service_lines?.includes("pet_sitting") || !org.notify_email_stay_ending) return 0;
-  const { data: rows, error } = await sb.from("stays").select("id").eq("organization_id", orgId).eq("status", "confirmed").eq("ends_on", addDays(today, 1));
+  const { data: rows, error } = await sb
+    .from("stays")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("status", "confirmed")
+    .eq("ends_on", addDays(today, 1));
   if (error) throw new Error(error.message);
   let queued = 0;
   for (const stay of rows ?? []) {
