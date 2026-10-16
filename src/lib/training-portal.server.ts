@@ -22,7 +22,6 @@ import {
 import { createPackageSale, type TrainingDb } from "@/lib/training-packages.server";
 
 // The admin client, typed loosely as every portal handler holds it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Admin = any;
 type Session = { clientId: string; organizationId: string };
 
