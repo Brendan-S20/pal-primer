@@ -92,8 +92,8 @@ async function showAllSteps(page: Page) {
 const allText = (page: Page) => page.evaluate(() => document.body.textContent ?? "");
 
 /** ServiceLinesChoices, as /setup step 1 and Settings → Business defaults both
- *  draw it for a dog-walking business. Walking and sitting are bookable;
- *  mobile grooming is listed, marked, and cannot be ticked. */
+ *  draw it for a dog-walking business. Walking, sitting and training are
+ *  bookable; mobile grooming is listed, marked, and cannot be ticked. */
 async function expectServiceLineChoices(page: Page) {
   await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
     timeout: 30_000,
@@ -110,6 +110,10 @@ async function expectServiceLineChoices(page: Page) {
   await expect(sitting).not.toBeChecked();
   await expect(sitting).toBeEnabled();
   await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toHaveCount(0);
+  const training = page.getByRole("checkbox", { name: "Dog training", exact: true });
+  await expect(training).not.toBeChecked();
+  await expect(training).toBeEnabled();
+  await expect(page.locator("li").filter({ has: training }).getByText("Coming soon")).toHaveCount(0);
   // Not bookable yet: shown, marked, and not selectable.
   const grooming = page.getByRole("checkbox", { name: /^Mobile grooming/ });
   await expect(grooming).toBeDisabled();

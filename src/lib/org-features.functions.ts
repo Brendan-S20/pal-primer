@@ -13,6 +13,7 @@ import {
 } from "@/lib/visit-checklist";
 import { SERVICE_LINES, serviceLinesProblem, type ServiceLine } from "@/lib/service-lines";
 import { defaultServiceSeedsFor } from "@/lib/services";
+import { seedTrainingPackage, seedTrainingSkills } from "@/lib/training-package-seed.server";
 
 // What KIND of business this org is, for rendering.
 //
@@ -257,5 +258,9 @@ export const setServiceLines = createServerFn({ method: "POST" })
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
     await ensureDefaultServicesForLines(context.supabase, orgId, data.lines);
+    if (data.lines.includes("training")) {
+      await seedTrainingPackage(context.supabase, orgId);
+      await seedTrainingSkills(context.supabase, orgId);
+    }
     return { ok: true, serviceLines: data.lines };
   });

@@ -34,6 +34,7 @@ import { DateField, TimeField } from "@/components/fields";
 import { formatDay, formatWindow } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
+import { TrainingPackagesSection } from "@/components/clients/TrainingPackagesSection";
 import {
   createSubscription,
   updateSubscription,
@@ -618,6 +619,7 @@ export function ServicesTab({
   return (
     <div className="space-y-4">
       {confirmDialog}
+      <TrainingPackagesSection clientId={clientId} />
       {canBill && <AddonRequestsPanel clientId={clientId} />}
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-muted-foreground">

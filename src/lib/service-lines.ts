@@ -45,14 +45,22 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** Lines an owner can actually choose today. A line joins this list when its
- *  path can be booked end to end: walking and sitting run on the service
- *  catalog; mobile grooming (#412) and training (#413) join with their paths. */
+/** Lines an owner can actually choose today. A line joins this list when the
+ *  office can book it end to end. Training is on the list for the office.
+ *  Customers, the public form and the receptionist still cannot request it
+ *  (`customerCanRequestService`). Mobile grooming (#412) joins with its path. */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
   "pet_waste",
   "dog_walking",
   "pet_sitting",
+  "training",
 ];
+
+/** Whether a customer, the public signup form, or the receptionist may ask
+ *  for this line. Training is sold and scheduled by the office. */
+export function customerCanRequestService(line: string): boolean {
+  return line !== "training";
+}
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
   pet_waste: "Pet waste removal (scooping)",

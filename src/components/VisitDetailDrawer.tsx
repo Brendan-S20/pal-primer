@@ -52,6 +52,10 @@ import { Link } from "@tanstack/react-router";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
+import {
+  TrainingProgressPanel,
+  TrainingSessionBadge,
+} from "@/components/training/TrainingProgressPanel";
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -293,6 +297,10 @@ export function VisitDetailDrawer({
           </SheetDescription>
         </SheetHeader>
 
+        {v?.id && (
+          <TrainingSessionBadge visitId={v.id} serviceLine={v.services?.service_line} />
+        )}
+
         {isLoading || !v ? (
           <div className="flex justify-center py-8 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin shrink-0" />
@@ -407,6 +415,10 @@ export function VisitDetailDrawer({
               dogs={dogs}
               onChanged={() => qc.invalidateQueries({ queryKey: ["visit-detail", visitId] })}
             />
+
+            {v?.id && (
+              <TrainingProgressPanel visitId={v.id} serviceLine={v.services?.service_line} />
+            )}
 
             {(v.eta_start || v.travel_min != null) && (
               <section className="rounded-md border p-2 text-xs">
