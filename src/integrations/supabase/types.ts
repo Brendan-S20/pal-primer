@@ -2582,6 +2582,38 @@ export type Database = {
           },
         ]
       }
+      holiday_dates: {
+        Row: {
+          created_at: string
+          holiday_on: string
+          id: string
+          name: string | null
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          holiday_on: string
+          id?: string
+          name?: string | null
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          holiday_on?: string
+          id?: string
+          name?: string | null
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "holiday_dates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       impersonation_grants: {
         Row: {
           actor_user_id: string

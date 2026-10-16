@@ -353,6 +353,34 @@ export function stayContactGapsSentence(gaps: readonly string[] | null | undefin
   } if a pet is sick.`;
 }
 
+// ── Holiday dates ────────────────────────────────────────────────────────
+//
+// holiday_dates (migration 20261017040000) price a sitting visit on the date
+// at its service's holiday surcharge. An overnight's visit is dated the
+// evening it starts, so the night that counts starts on the date.
+
+/** "Thu, Dec 24, 2026" */
+export function holidayDateLabel(day: string): string {
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** "Overnights: the night of Dec 24 into Dec 25" */
+export function holidayNightLabel(day: string): string {
+  const md = (d: string) =>
+    new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  return `Overnights: the night of ${md(day)} into ${md(addDays(day, 1))}`;
+}
+
 // ── A sitter's evening ───────────────────────────────────────────────────
 //
 // overnight_clashes (migration 20261017030000) finds a sitter's other visits

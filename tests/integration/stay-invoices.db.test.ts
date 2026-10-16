@@ -280,7 +280,7 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     expect(balance.data?.credit_balance_cents).toBe(10000);
   });
 
-  it("adds the configured holiday percentage only on blackout dates, without skipping care", async () => {
+  it("adds the configured holiday percentage only on holiday dates, not on a blackout", async () => {
     const h = await home();
     expect(
       (
@@ -293,8 +293,16 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     expect(
       (
         await org.admin
+          .from("holiday_dates")
+          .insert({ organization_id: org.orgId, holiday_on: day(2), name: "Holiday" })
+      ).error,
+    ).toBeNull();
+    // A closure is not a holiday rate, and care still happens on it.
+    expect(
+      (
+        await org.admin
           .from("blackout_dates")
-          .insert({ organization_id: org.orgId, blackout_on: day(2), reason: "Holiday" })
+          .insert({ organization_id: org.orgId, blackout_on: day(3), reason: "Closed" })
       ).error,
     ).toBeNull();
     const { stayId } = await request(h);
@@ -302,10 +310,39 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     expect(await visits(stayId)).toHaveLength(5);
     const invoice = await org.admin.from("invoices").select("total_cents").eq("id", id).single();
     expect(invoice.data?.total_cents).toBe(39000);
+    const lines = await org.admin
+      .from("invoice_line_items")
+      .select("description")
+      .eq("invoice_id", id)
+      .like("description", "%(holiday rate)");
+    expect(lines.data?.map((l) => l.description)).toEqual([
+      `Overnight care on ${day(2)} (holiday rate)`,
+    ]);
     expect(
       (await org.admin.from("services").update({ holiday_surcharge_pct: 0 }).eq("id", nightService))
         .error,
     ).toBeNull();
+  });
+
+  it("holiday dates are the office's to write and the business's to read", async () => {
+    const own = await org.owner.client
+      .from("holiday_dates")
+      .insert({ organization_id: org.orgId, holiday_on: day(40), name: "New Year" })
+      .select("id")
+      .single();
+    expect(own.error).toBeNull();
+    const tech = await org.walker.client
+      .from("holiday_dates")
+      .insert({ organization_id: org.orgId, holiday_on: day(41) });
+    expect(tech.error).not.toBeNull();
+    expect(
+      (await org.walker.client.from("holiday_dates").select("id").eq("id", own.data!.id)).data,
+    ).toHaveLength(1);
+    expect(
+      (await other.owner.client.from("holiday_dates").select("id").eq("organization_id", org.orgId))
+        .data,
+    ).toEqual([]);
+    expect((await org.anon.from("holiday_dates").select("id")).error).not.toBeNull();
   });
 
   it("rolls failed confirmation back and refuses other clients, tenants, techs and API-role requests", async () => {
