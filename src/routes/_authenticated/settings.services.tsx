@@ -1,4 +1,3 @@
-import { ServiceSizeRulesEditor } from "@/components/settings/ServiceSizeRulesEditor";
 // Settings → Services: what this business sells.
 //
 // The catalog behind dog walking, pet sitting and mobile grooming going live
@@ -15,6 +14,7 @@ import { ServiceSizeRulesEditor } from "@/components/settings/ServiceSizeRulesEd
 // Nothing is deleted here. A service is deactivated, because from phase 2
 // plans and visits point at it.
 
+import { ServiceSizeRulesEditor } from "@/components/settings/ServiceSizeRulesEditor";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -238,7 +238,16 @@ function ServicesPage() {
                   </div>
                   {canEdit && (
                     <div className="flex shrink-0 flex-wrap gap-2">
-                      {s.service_line === "mobile_grooming" && <Button className="min-h-11" size="sm" variant="outline" onClick={() => setSizeService(s)}>Prices by size</Button>}
+                      {s.service_line === "mobile_grooming" && (
+                        <Button
+                          className="min-h-11"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSizeService(s)}
+                        >
+                          Prices by size
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" onClick={() => open(s)}>
                         Edit
                       </Button>
@@ -261,8 +270,16 @@ function ServicesPage() {
 
       <Dialog open={sizeService !== null} onOpenChange={(open) => !open && setSizeService(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl">
-          <DialogHeader><DialogTitle>Prices by size</DialogTitle><DialogDescription>{sizeService?.name}</DialogDescription></DialogHeader>
-          {sizeService && <ServiceSizeRulesEditor serviceId={sizeService.id} serviceLine={sizeService.service_line} />}
+          <DialogHeader>
+            <DialogTitle>Prices by size</DialogTitle>
+            <DialogDescription>{sizeService?.name}</DialogDescription>
+          </DialogHeader>
+          {sizeService && (
+            <ServiceSizeRulesEditor
+              serviceId={sizeService.id}
+              serviceLine={sizeService.service_line}
+            />
+          )}
         </DialogContent>
       </Dialog>
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>

@@ -1,11 +1,11 @@
-import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
-import { useServiceLines } from "@/components/CommercialOnly";
-import type { CoatType } from "@/lib/groom";
 // Properties tab (spec): expandable read-only summaries, boundary displayed
 // automatically (no "View Boundary" click), yard size derived from the
 // boundary, auto-calculated estimated time with override indicator, zone
 // with detected/override badges, dogs per property (deactivate, don't
 // delete), commercial-only fields, and Archive / Delete-when-allowed.
+import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
+import { useServiceLines } from "@/components/CommercialOnly";
+import type { CoatType } from "@/lib/groom";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -933,12 +933,17 @@ function DogsSection({
               />
             )}
           </div>
-          <PetSizeFields size={size} coatType={coatType} weightLb={weightLb} grooming={grooming}
+          <PetSizeFields
+            size={size}
+            coatType={coatType}
+            weightLb={weightLb}
+            grooming={grooming}
             onChange={(patch) => {
               if (patch.size !== undefined) setSize(patch.size);
               if (patch.coatType !== undefined) setCoatType(patch.coatType);
               if (patch.weightLb !== undefined) setWeightLb(patch.weightLb);
-            }} />
+            }}
+          />
           <div>
             <Label className="text-xs">Temperament</Label>
             <select

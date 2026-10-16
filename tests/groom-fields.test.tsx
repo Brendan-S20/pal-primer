@@ -18,6 +18,9 @@ import { AddonGroomFields } from "@/components/settings/AddonGroomFields";
 import { ServiceSizeRulesEditor } from "@/components/settings/ServiceSizeRulesEditor";
 import { FieldClientView } from "@/components/client-detail/FieldClientView";
 import i18n from "@/lib/i18n";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+vi.mock("@tanstack/react-start", () => ({ useServerFn: (fn: unknown) => fn }));
 
 const petFields = (grooming: boolean, size = "small") =>
   renderToStaticMarkup(
@@ -84,11 +87,57 @@ describe("grooming owner fields", () => {
       expect(src).toMatch(/<PetSizeFields[\s\S]*?grooming=\{grooming\}/);
     }
     expect(read("src/routes/_authenticated/settings.services.tsx")).toMatch(
-      /s\.service_line === "mobile_grooming" && <Button/,
+      /s\.service_line === "mobile_grooming" && \(\s*<Button/,
     );
     expect(read("src/components/settings/ServiceSizeRulesEditor.tsx")).toContain(
       "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]",
     );
+  });
+  it("renders all four size rows, defaults and a saved coat rule", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["service-size-rules", "groom"], {
+      rules: [
+        {
+          id: "small-rule",
+          service_id: "groom",
+          organization_id: "org",
+          size: "small",
+          coat_type: null,
+          duration_min: 60,
+          price_cents: 6000,
+        },
+        {
+          id: "coat-rule",
+          service_id: "groom",
+          organization_id: "org",
+          size: "large",
+          coat_type: "long",
+          duration_min: 120,
+          price_cents: 11000,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client: qc },
+        createElement(ServiceSizeRulesEditor, {
+          serviceId: "groom",
+          serviceLine: "mobile_grooming",
+        }),
+      ),
+    );
+    expect(html).toContain('data-testid="size-matrix"');
+    for (const size of ["Small", "Medium", "Large", "Extra large"]) expect(html).toContain(size);
+    expect(html.match(/<form/g)).toHaveLength(5);
+    expect(html).toContain('value="60"');
+    expect(html).toContain('value="60.00"');
+    expect(html).toContain('value="120"');
+    expect(html).toContain('value="110.00"');
+    expect(html).toContain('value="long" selected=""');
+    expect(html).toContain("Add coat rule");
+    expect(html).toContain("Leave both fields empty");
+    qc.clear();
   });
 });
 
