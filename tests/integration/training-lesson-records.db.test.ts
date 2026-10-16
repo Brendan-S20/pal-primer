@@ -1,7 +1,8 @@
 /**
  * DB-layer proof that a lesson's note, homework and scores can be saved.
  * training_progress_row_guard runs on all three tables, and each reads only
- * its own columns.
+ * its own columns. The nightly missed sweep records a reason on a package
+ * lesson, and the lesson uses a session.
  *
  * Local stack only. Skipped without TEST_SUPABASE_* env.
  */
@@ -18,6 +19,10 @@ let orgId: string;
 let visitId: string;
 let dogId: string;
 let skillId: string;
+let clientId: string;
+let propertyId: string;
+let serviceId: string;
+let subId: string;
 
 async function insert(table: string, row: Record<string, unknown>): Promise<string> {
   const { data, error } = await admin.from(table).insert(row).select("id").single();
@@ -32,12 +37,12 @@ describe.skipIf(!enabled)("training lesson records", () => {
       name: `Lesson Records ${runId}`,
       service_lines: ["training"],
     });
-    const clientId = await insert("clients", {
+    clientId = await insert("clients", {
       organization_id: orgId,
       display_name: `Client ${runId}`,
       account_type: "residential",
     });
-    const propertyId = await insert("properties", {
+    propertyId = await insert("properties", {
       organization_id: orgId,
       client_id: clientId,
       street: "1 Test St",
@@ -45,7 +50,7 @@ describe.skipIf(!enabled)("training lesson records", () => {
       postal_code: "48000",
     });
     dogId = await insert("dogs", { organization_id: orgId, property_id: propertyId, name: "Rex" });
-    const serviceId = await insert("services", {
+    serviceId = await insert("services", {
       organization_id: orgId,
       name: `Private lesson ${runId}`,
       service_line: "training",
@@ -53,7 +58,7 @@ describe.skipIf(!enabled)("training lesson records", () => {
       default_duration_min: 60,
       active: true,
     });
-    const subId = await insert("subscriptions", {
+    subId = await insert("subscriptions", {
       organization_id: orgId,
       client_id: clientId,
       property_id: propertyId,
@@ -109,5 +114,68 @@ describe.skipIf(!enabled)("training lesson records", () => {
       .from("session_progress")
       .insert({ organization_id: orgId, visit_id: visitId, skill_id: foreignSkill, score: 2 });
     expect(bad.error?.message).toContain("Choose a skill from this business.");
+  });
+
+  it("the nightly sweep marks a past package lesson missed with reason other, and it uses a session", async () => {
+    const servicePackageId = await insert("service_packages", {
+      organization_id: orgId,
+      service_id: serviceId,
+      name: `Five lessons ${runId}`,
+      sessions_count: 5,
+      price_cents: 40000,
+    });
+    const packageId = await insert("client_packages", {
+      organization_id: orgId,
+      client_id: clientId,
+      service_package_id: servicePackageId,
+      service_id: serviceId,
+      name: "Five lessons",
+      sessions_count: 5,
+      price_cents: 40000,
+      purchased_on: "2026-01-01",
+    });
+    const lessonId = await insert("visits", {
+      organization_id: orgId,
+      subscription_id: subId,
+      client_id: clientId,
+      property_id: propertyId,
+      service_id: serviceId,
+      client_package_id: packageId,
+      scheduled_on: "2020-01-06",
+    });
+    // A past visit that is not a lesson keeps no reason.
+    const plainId = await insert("visits", {
+      organization_id: orgId,
+      subscription_id: subId,
+      client_id: clientId,
+      property_id: propertyId,
+      service_id: serviceId,
+      scheduled_on: "2020-01-07",
+    });
+
+    const { error } = await admin.rpc("admin_transition_missed_visits", { _org_id: orgId });
+    expect(error).toBeNull();
+
+    const { data: rows, error: readError } = await admin
+      .from("visits")
+      .select("id, status, skip_reason_code, skip_billable")
+      .in("id", [lessonId, plainId]);
+    expect(readError).toBeNull();
+    expect(rows!.find((r) => r.id === lessonId)).toMatchObject({
+      status: "missed",
+      skip_reason_code: "other",
+      skip_billable: true,
+    });
+    expect(rows!.find((r) => r.id === plainId)).toMatchObject({
+      status: "missed",
+      skip_reason_code: null,
+    });
+
+    const { data: pkg } = await admin
+      .from("client_packages")
+      .select("sessions_used")
+      .eq("id", packageId)
+      .single();
+    expect(pkg!.sessions_used).toBe(1);
   });
 });
