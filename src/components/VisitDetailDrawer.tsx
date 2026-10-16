@@ -57,6 +57,11 @@ import {
   TrainingSessionBadge,
 } from "@/components/training/TrainingProgressPanel";
 import { LessonSessionUse } from "@/components/training/LessonSessionUse";
+import {
+  ClientCalledAtField,
+  clientCalledAtIso,
+  nowAsCalledAt,
+} from "@/components/training/ClientCalledAtField";
 import { BUSINESS_REASONS } from "@/lib/training-packages";
 
 const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
@@ -213,11 +218,22 @@ export function VisitDetailDrawer({
     onError: (e: Error) => toast.error(e.message),
   });
   const [skipReason, setSkipReason] = useState("");
+  // On a training package lesson: when the client called to cancel.
+  const [calledAt, setCalledAt] = useState("");
+  useEffect(() => setCalledAt(nowAsCalledAt()), [visitId]);
   const cancelMut = useMutation({
     // The office variant requires a reason — no silent "Skipped from dispatch"
     // default, because that string was being written to real visits as if a
     // human had given it.
-    mutationFn: () => doCancel({ data: { visitId: visitId!, reason: skipReason, code: "other" } }),
+    mutationFn: () =>
+      doCancel({
+        data: {
+          visitId: visitId!,
+          reason: skipReason,
+          code: "other",
+          clientCancelledAt: data?.visit?.client_package_id ? clientCalledAtIso(calledAt) : null,
+        },
+      }),
     onSuccess: () => {
       toast.success("Visit canceled");
       invalidate();
@@ -587,6 +603,13 @@ export function VisitDetailDrawer({
                           onChange={(e) => setSkipReason(e.target.value)}
                           placeholder="Gate locked, dog outside, weather…"
                         />
+                        {v.client_package_id && (
+                          <ClientCalledAtField
+                            id="skip-called-at"
+                            value={calledAt}
+                            onChange={setCalledAt}
+                          />
+                        )}
                         <Button
                           size="sm"
                           variant="destructive"

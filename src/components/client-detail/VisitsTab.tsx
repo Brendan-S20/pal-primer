@@ -32,6 +32,11 @@ import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  ClientCalledAtField,
+  clientCalledAtIso,
+  nowAsCalledAt,
+} from "@/components/training/ClientCalledAtField";
 
 function fmtWindow(v: any, tz: string): string {
   // ETAs are instants and read on the ORG's clock; the service/property
@@ -959,7 +964,7 @@ function VisitDetailDrawer({
           visitId: v.id,
           reason: cancelReason.trim(),
           code: cancelCode as any,
-          clientCancelledAt: v.client_package_id ? fromLocalInput(calledAt) : null,
+          clientCancelledAt: v.client_package_id ? clientCalledAtIso(calledAt) : null,
         },
       }),
     onSuccess: () => afterAction("Visit canceled"),
@@ -1108,7 +1113,7 @@ function VisitDetailDrawer({
                     variant={action === "cancel" ? "destructive" : "outline"}
                     className={action === "cancel" ? undefined : "text-destructive"}
                     onClick={() => {
-                      setCalledAt(toLocalInput(new Date().toISOString()));
+                      setCalledAt(nowAsCalledAt());
                       setAction(action === "cancel" ? null : "cancel");
                     }}
                   >
@@ -1224,22 +1229,7 @@ function VisitDetailDrawer({
                   </div>
                 </div>
                 {v.client_package_id && (
-                  <div>
-                    <Label htmlFor="va-called-at" className="text-xs">
-                      Client called to cancel at
-                    </Label>
-                    <Input
-                      id="va-called-at"
-                      type="datetime-local"
-                      className="w-full sm:w-56"
-                      value={calledAt}
-                      max={toLocalInput(new Date().toISOString())}
-                      onChange={(e) => setCalledAt(e.target.value)}
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      The late-cancel window is measured from this time, not from when you save.
-                    </p>
-                  </div>
+                  <ClientCalledAtField id="va-called-at" value={calledAt} onChange={setCalledAt} />
                 )}
                 <p className="text-xs text-muted-foreground">
                   The visit is recorded as skipped with this reason; the org's skip-billing rules
