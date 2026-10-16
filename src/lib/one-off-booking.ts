@@ -15,6 +15,7 @@
 // be offered the day after.
 
 import { addDaysToDay } from "@/lib/reclean";
+import { customerCanRequestService } from "@/lib/service-lines";
 import { isZonePriced, servicePriceCents, type Service } from "@/lib/services";
 import { servicePickerOptions } from "@/lib/visit-service";
 
@@ -124,7 +125,7 @@ export function oneOffServiceOptions(
 ): OneOffServiceOption[] {
   const out: OneOffServiceOption[] = [];
   for (const s of servicePickerOptions(services)) {
-    if (!s.active) continue;
+    if (!s.active || !customerCanRequestService(s.service_line)) continue;
     const fields = {
       price_unit: s.price_unit,
       base_price_cents: s.base_price_cents,

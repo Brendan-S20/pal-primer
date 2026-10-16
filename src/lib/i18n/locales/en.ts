@@ -882,6 +882,22 @@ const en = {
       complete: "Complete",
     },
   },
+  training: {
+    sessionLabel: "Session {{n}} of {{total}}",
+    progressTitle: "Session progress",
+    showProgress: "Record progress",
+    hideProgress: "Hide progress",
+    skillScore: "Score for {{skill}}",
+    note: "Session note",
+    notePlaceholder: "What the dog worked on",
+    homework: "Homework",
+    homeworkPlaceholder: "What to practice before the next lesson",
+    due: "Due",
+    save: "Save progress",
+    saving: "Saving…",
+    saved: "Progress saved",
+    noSkills: "No skills are set up yet.",
+  },
   // The screen the shell sends a person to once the owner has turned their
   // access off (src/routes/access-off.tsx). The business name goes in as
   // <business/>'s own child, never by interpolation: it is text the office typed.

@@ -1018,6 +1018,79 @@ export type Database = {
           },
         ]
       }
+      client_packages: {
+        Row: {
+          id: string
+          organization_id: string
+          client_id: string
+          dog_id: string | null
+          service_package_id: string
+          service_id: string
+          name: string
+          sessions_count: number
+          price_cents: number
+          purchased_on: string
+          expires_on: string | null
+          sessions_used: number
+          invoice_id: string | null
+          request_id: string | null
+          status: string
+          canceled_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          client_id: string
+          dog_id?: string | null
+          service_package_id: string
+          service_id?: string
+          name?: string
+          sessions_count?: number
+          price_cents?: number
+          purchased_on?: string
+          expires_on?: string | null
+          sessions_used?: number
+          invoice_id?: string | null
+          request_id?: string | null
+          status?: string
+          canceled_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          client_id?: string
+          dog_id?: string | null
+          service_package_id?: string
+          service_id?: string
+          name?: string
+          sessions_count?: number
+          price_cents?: number
+          purchased_on?: string
+          expires_on?: string | null
+          sessions_used?: number
+          invoice_id?: string | null
+          request_id?: string | null
+          status?: string
+          canceled_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "client_packages_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_service_id_fkey"; columns: ["service_id"]; isOneToOne: false; referencedRelation: "services"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_client_id_fkey"; columns: ["client_id"]; isOneToOne: false; referencedRelation: "clients"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_dog_id_fkey"; columns: ["dog_id"]; isOneToOne: false; referencedRelation: "dogs"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_service_package_id_fkey"; columns: ["service_package_id"]; isOneToOne: false; referencedRelation: "service_packages"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_invoice_id_fkey"; columns: ["invoice_id"]; isOneToOne: false; referencedRelation: "invoices"; referencedColumns: ["id"] },
+        ]
+      }
       client_unsubscribe_tokens: {
         Row: {
           client_id: string
@@ -5446,6 +5519,175 @@ export type Database = {
         }
         Relationships: []
       }
+      service_packages: {
+        Row: {
+          id: string
+          organization_id: string
+          service_id: string
+          name: string
+          sessions_count: number
+          price_cents: number
+          expires_after_days: number | null
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          service_id: string
+          name: string
+          sessions_count: number
+          price_cents: number
+          expires_after_days?: number | null
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          service_id?: string
+          name?: string
+          sessions_count?: number
+          price_cents?: number
+          expires_after_days?: number | null
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "service_packages_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "service_packages_service_id_fkey"; columns: ["service_id"]; isOneToOne: false; referencedRelation: "services"; referencedColumns: ["id"] },
+        ]
+      }
+      session_progress: {
+        Row: {
+          id: string
+          organization_id: string
+          visit_id: string
+          skill_id: string
+          score: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          visit_id: string
+          skill_id: string
+          score: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          visit_id?: string
+          skill_id?: string
+          score?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "session_progress_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: false; referencedRelation: "visits"; referencedColumns: ["id"] },
+          { foreignKeyName: "session_progress_skill_id_fkey"; columns: ["skill_id"]; isOneToOne: false; referencedRelation: "training_skills"; referencedColumns: ["id"] },
+        ]
+      }
+      homework: {
+        Row: {
+          visit_id: string
+          organization_id: string
+          dog_id: string | null
+          body: string
+          due_on: string | null
+          client_marked_done_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          visit_id: string
+          organization_id: string
+          dog_id?: string | null
+          body: string
+          due_on?: string | null
+          client_marked_done_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          visit_id?: string
+          organization_id?: string
+          dog_id?: string | null
+          body?: string
+          due_on?: string | null
+          client_marked_done_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "homework_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: true; referencedRelation: "visits"; referencedColumns: ["id"] },
+          { foreignKeyName: "homework_dog_id_fkey"; columns: ["dog_id"]; isOneToOne: false; referencedRelation: "dogs"; referencedColumns: ["id"] },
+        ]
+      }
+      training_session_notes: {
+        Row: {
+          visit_id: string
+          organization_id: string
+          note: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          visit_id: string
+          organization_id: string
+          note: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          visit_id?: string
+          organization_id?: string
+          note?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "training_session_notes_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: true; referencedRelation: "visits"; referencedColumns: ["id"] },
+        ]
+      }
+      training_skills: {
+        Row: {
+          id: string
+          organization_id: string
+          name: string
+          sort_order: number
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          name: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          name?: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "training_skills_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+        ]
+      }
       services: {
         Row: {
           active: boolean
@@ -5901,6 +6143,7 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          client_package_id: string | null
           account_type: Database["public"]["Enums"]["account_type"]
           billing_cadence: Database["public"]["Enums"]["billing_cadence"]
           booked_via: string | null
@@ -5934,6 +6177,7 @@ export type Database = {
           zone_id: string | null
         }
         Insert: {
+          client_package_id?: string | null
           account_type: Database["public"]["Enums"]["account_type"]
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
@@ -5967,6 +6211,7 @@ export type Database = {
           zone_id?: string | null
         }
         Update: {
+          client_package_id?: string | null
           account_type?: Database["public"]["Enums"]["account_type"]
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
@@ -6000,6 +6245,7 @@ export type Database = {
           zone_id?: string | null
         }
         Relationships: [
+          { foreignKeyName: "subscriptions_client_package_id_fkey"; columns: ["client_package_id"]; isOneToOne: false; referencedRelation: "client_packages"; referencedColumns: ["id"] },
           {
             foreignKeyName: "subscriptions_client_id_fkey"
             columns: ["client_id"]
@@ -6402,6 +6648,7 @@ export type Database = {
       }
       visits: {
         Row: {
+          client_package_id: string | null
           assigned_staff_id: string | null
           client_id: string
           completed_at: string | null
@@ -6447,6 +6694,7 @@ export type Database = {
           gate_reply_at: string | null
         }
         Insert: {
+          client_package_id?: string | null
           assigned_staff_id?: string | null
           client_id: string
           completed_at?: string | null
@@ -6492,6 +6740,7 @@ export type Database = {
           gate_reply_at?: string | null
         }
         Update: {
+          client_package_id?: string | null
           assigned_staff_id?: string | null
           client_id?: string
           completed_at?: string | null
@@ -6537,6 +6786,7 @@ export type Database = {
           gate_reply_at?: string | null
         }
         Relationships: [
+          { foreignKeyName: "visits_client_package_id_fkey"; columns: ["client_package_id"]; isOneToOne: false; referencedRelation: "client_packages"; referencedColumns: ["id"] },
           {
             foreignKeyName: "visits_assigned_staff_id_fkey"
             columns: ["assigned_staff_id"]
@@ -6926,6 +7176,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      client_package_session_number: { Args: { _visit_id: string }; Returns: number }
       accept_org_invite_for_current_user: {
         Args: { _token?: string }
         Returns: string

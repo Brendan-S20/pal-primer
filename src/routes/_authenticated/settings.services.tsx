@@ -17,7 +17,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -65,6 +65,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { titleHead } from "@/lib/page-title";
+import { TrainingOnly } from "@/components/training/TrainingOnly";
+import { TrainingPackagesCard } from "@/components/settings/TrainingPackagesCard";
+import { TrainingSkillsCard } from "@/components/settings/TrainingSkillsCard";
+import { ensureTrainingCatalog } from "@/lib/training-packages.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/services")({
   head: () => titleHead("Services", "Settings"),
@@ -140,7 +144,21 @@ function ServicesPage() {
   const setActive = useServerFn(setServiceActive);
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
-  const { lines } = useServiceLines();
+  const { lines, known } = useServiceLines();
+  const ensure = useServerFn(ensureTrainingCatalog);
+  const seeded = useRef(false);
+  const trainingOn = known && lines.includes("training");
+  useEffect(() => {
+    if (seeded.current || !trainingOn || !canEdit) return;
+    seeded.current = true;
+    void ensure()
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["services"] });
+        qc.invalidateQueries({ queryKey: ["service-packages"] });
+        qc.invalidateQueries({ queryKey: ["training-skills"] });
+      })
+      .catch(() => {});
+  }, [trainingOn, canEdit, ensure, qc]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: QUERY_KEY,
@@ -255,6 +273,11 @@ function ServicesPage() {
           </ul>
         )}
       </section>
+
+      <TrainingOnly>
+        <TrainingPackagesCard services={services} canEdit={canEdit} />
+        <TrainingSkillsCard canEdit={canEdit} />
+      </TrainingOnly>
 
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
