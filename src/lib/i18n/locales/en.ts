@@ -51,6 +51,11 @@ const en = {
     updateDetails: "Need to update your details? Call or email us and we'll take care of it.",
   },
 
+  recovery: {
+    title: "This page didn't load",
+    body: "Try refreshing or return to the dashboard.",
+    dashboard: "Back to dashboard",
+  },
   common: {
     loading: "Loading…",
     save: "Save",

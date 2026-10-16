@@ -47,6 +47,11 @@ const es: Translations = {
       "¿Necesitas actualizar tus datos? Llámanos o escríbenos por correo electrónico y nos encargaremos.",
   },
 
+  recovery: {
+    title: "Esta página no se cargó",
+    body: "Intenta actualizar o vuelve al panel.",
+    dashboard: "Volver al panel",
+  },
   common: {
     loading: "Cargando…",
     save: "Guardar",

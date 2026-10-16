@@ -52,6 +52,11 @@ const zh: TranslationsWithPlurals<"other"> = {
     updateDetails: "需要更新您的信息？请致电或发送电子邮件，我们会为您处理。",
   },
 
+  recovery: {
+    title: "此页面未能加载",
+    body: "请尝试刷新页面或返回控制面板。",
+    dashboard: "返回控制面板",
+  },
   common: {
     loading: "加载中…",
     save: "保存",
