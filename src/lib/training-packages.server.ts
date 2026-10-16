@@ -3,10 +3,14 @@ import type { Database } from "@/integrations/supabase/types";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { insertManualInvoice } from "@/lib/manual-invoice.server";
 import {
+  CHOOSE_DOG,
+  TRAINER_BUSY,
   canBook,
   holdsSession,
+  lessonEnd,
   packageState,
   sessionsLeft,
+  timesOverlap,
   weeklySessionDates,
   type TrainingPackage,
 } from "@/lib/training-packages";
@@ -36,6 +40,7 @@ export type ClientPackage = TrainingPackage & {
 };
 export type ListedClientPackage = ClientPackage & {
   held: number;
+  bookedAfterToday: number;
   left: number;
   free: number;
   state: ReturnType<typeof packageState>;
@@ -65,13 +70,65 @@ export async function trainingPackage(
   return data as ClientPackage;
 }
 
-export async function holdingCount(db: TrainingDb, packageId: string) {
+async function packageLessons(db: TrainingDb, packageId: string) {
   const { data, error } = await db
     .from("visits")
-    .select("status, skip_billable")
+    .select("status, skip_billable, scheduled_on")
     .eq("client_package_id", packageId);
   if (error) throw new Error(error.message);
-  return (data ?? []).filter(holdsSession).length;
+  return (data ?? []) as { status: string; skip_billable: boolean; scheduled_on?: string }[];
+}
+
+export async function holdingCount(db: TrainingDb, packageId: string) {
+  return (await packageLessons(db, packageId)).filter(holdsSession).length;
+}
+
+/** Held sessions, and the scheduled lessons after today that canceling the
+ * package could cancel with it. */
+export async function lessonCounts(db: TrainingDb, packageId: string, today: string) {
+  const lessons = await packageLessons(db, packageId);
+  return {
+    held: lessons.filter(holdsSession).length,
+    bookedAfterToday: lessons.filter(
+      (v) => v.status === "scheduled" && !!v.scheduled_on && v.scheduled_on > today,
+    ).length,
+  };
+}
+
+type Busy = { date: string; start: string; end: string };
+
+/** Lessons and stops the trainer already has that overlap the new lesson on
+ * any of the given days. A stop with no start time cannot clash. */
+export async function trainerConflicts(
+  db: TrainingDb,
+  orgId: string,
+  staffId: string,
+  dates: string[],
+  slot: { start: string; end: string },
+): Promise<Busy[]> {
+  const { data, error } = await db
+    .from("visits")
+    .select("scheduled_on, subscriptions(earliest_time, latest_time), services(default_duration_min)")
+    .eq("organization_id", orgId)
+    .eq("assigned_staff_id", staffId)
+    .in("scheduled_on", dates)
+    .in("status", ["scheduled", "in_progress"]);
+  if (error) throw new Error(error.message);
+  const out: Busy[] = [];
+  for (const row of (data ?? []) as {
+    scheduled_on: string;
+    subscriptions: { earliest_time: string | null; latest_time: string | null } | null;
+    services: { default_duration_min: number | null } | null;
+  }[]) {
+    const start = row.subscriptions?.earliest_time?.slice(0, 5);
+    if (!start) continue;
+    const end =
+      row.subscriptions?.latest_time?.slice(0, 5) ??
+      lessonEnd(start, row.services?.default_duration_min ?? 60) ??
+      "23:59";
+    if (timesOverlap(slot, { start, end })) out.push({ date: row.scheduled_on, start, end });
+  }
+  return out.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 }
 
 export async function sellTrainingPackage(
@@ -92,6 +149,18 @@ export async function sellTrainingPackage(
     .eq("organization_id", orgId)
     .single();
   if (clientError || !client) throw new Error(clientError?.message ?? "That client was not found.");
+  if (!input.dogId) {
+    // Progress and homework are kept per dog, so a household with two dogs
+    // has to say which one the package is for.
+    const { count, error: dogsError } = await db
+      .from("dogs")
+      .select("id, properties!inner(client_id)", { count: "exact", head: true })
+      .eq("properties.client_id", input.clientId)
+      .eq("organization_id", orgId)
+      .eq("active", true);
+    if (dogsError) throw new Error(dogsError.message);
+    if ((count ?? 0) > 1) throw new Error(CHOOSE_DOG);
+  }
   const { data: previous, error: requestError } = await db
     .from("client_packages")
     .select("id")
@@ -160,10 +229,13 @@ export type SessionBooking = {
   propertyId: string;
   startOn: string;
   weekday: number;
-  earliestTime?: string | null;
-  latestTime?: string | null;
+  /** "HH:MM". A lesson with a start time occupies start to start + minutes. */
+  startTime?: string | null;
+  minutes?: number;
   staffId?: string;
   count?: number;
+  /** The office saw the trainer's clash and booked anyway. */
+  allowOverlap?: boolean;
 };
 
 /** Package plans use the existing subscription generator, limited to this plan. */
@@ -222,6 +294,33 @@ export async function bookTrainingSessions(
       .single();
     if (error || !staff) throw new Error("Choose a trainer from this business.");
   }
+  let slot: { start: string; end: string } | null = null;
+  if (input.startTime) {
+    let minutes = input.minutes;
+    if (!minutes) {
+      const { data: service, error: serviceError } = await db
+        .from("services")
+        .select("default_duration_min")
+        .eq("id", pack.service_id)
+        .eq("organization_id", orgId)
+        .maybeSingle();
+      if (serviceError) throw new Error(serviceError.message);
+      minutes = service?.default_duration_min ?? 60;
+    }
+    const end = lessonEnd(input.startTime, minutes);
+    if (!end) throw new Error("This lesson would run past midnight. Choose an earlier start.");
+    slot = { start: input.startTime, end };
+    if (input.staffId && !input.allowOverlap) {
+      const busy = await trainerConflicts(db, orgId, input.staffId, dates, slot);
+      if (busy.length)
+        throw new Error(
+          `${TRAINER_BUSY}: ${busy
+            .slice(0, 3)
+            .map((b) => `${b.date}, ${b.start} to ${b.end}`)
+            .join("; ")}${busy.length > 3 ? ` and ${busy.length - 3} more` : ""}.`,
+        );
+    }
+  }
   const account = (
     Array.isArray(property.clients) ? property.clients[0] : property.clients
   ) as { account_type: "residential" | "commercial" };
@@ -246,8 +345,9 @@ export async function bookTrainingSessions(
       ends_on: dates[dates.length - 1],
       zone_id: property.zone_id,
       priced_from_zone_id: null,
-      earliest_time: input.earliestTime ?? null,
-      latest_time: input.latestTime ?? null,
+      // The lesson's own time slot. The late-cancel rule reads its start.
+      earliest_time: slot?.start ?? null,
+      latest_time: slot?.end ?? null,
     })
     .select("id")
     .single();

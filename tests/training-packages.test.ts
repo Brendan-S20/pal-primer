@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canBook, expiresOnFor, holdsSession, packageState, sessionLabel, sessionsLeft, weeklySessionDates } from "@/lib/training-packages";
+import { canBook, expiresOnFor, holdsSession, lessonEnd, packageState, sessionLabel, sessionsLeft, timesOverlap, usesSession, weeklySessionDates } from "@/lib/training-packages";
 
 const pack = { sessions_count: 6, sessions_used: 2, expires_on: "2026-04-30", status: "active" as const };
 describe("training package calendar and session rules", () => {
@@ -38,5 +38,31 @@ describe("training package calendar and session rules", () => {
     for (const status of ["scheduled", "in_progress", "completed"]) expect(holdsSession({ status, skip_billable: false })).toBe(true);
     for (const status of ["canceled", "missed", "skipped"]) expect(holdsSession({ status, skip_billable: false })).toBe(false);
     expect(holdsSession({ status: "skipped", skip_billable: true })).toBe(true);
+  });
+  it("counts a no-show or late cancel the rule charged, and gives back one the office waived", () => {
+    // The database sets skip_billable on a missed or skipped package lesson
+    // from the business rule; the office override flips it.
+    expect(usesSession({ status: "missed", skip_billable: true })).toBe(true);
+    expect(holdsSession({ status: "missed", skip_billable: true })).toBe(true);
+    expect(usesSession({ status: "missed", skip_billable: false })).toBe(false);
+    expect(usesSession({ status: "skipped", skip_billable: true })).toBe(true);
+    expect(usesSession({ status: "completed", skip_billable: false })).toBe(true);
+    for (const status of ["scheduled", "in_progress"]) {
+      expect(usesSession({ status, skip_billable: false })).toBe(false);
+      expect(holdsSession({ status, skip_billable: false })).toBe(true);
+    }
+    // A canceled lesson never uses a session, whatever the flag says.
+    expect(holdsSession({ status: "canceled", skip_billable: true })).toBe(false);
+    expect(usesSession({ status: "missed", skip_billable: null })).toBe(false);
+  });
+  it("ends a lesson by its length and finds overlaps that share more than an edge", () => {
+    expect(lessonEnd("10:00", 60)).toBe("11:00");
+    expect(lessonEnd("09:45", 45)).toBe("10:30");
+    expect(lessonEnd("23:00", 59)).toBe("23:59");
+    expect(lessonEnd("23:30", 60)).toBeNull();
+    expect(timesOverlap({ start: "10:00", end: "11:00" }, { start: "10:30", end: "11:30" })).toBe(true);
+    expect(timesOverlap({ start: "10:00", end: "11:00" }, { start: "09:00", end: "12:00" })).toBe(true);
+    expect(timesOverlap({ start: "10:00", end: "11:00" }, { start: "11:00", end: "12:00" })).toBe(false);
+    expect(timesOverlap({ start: "10:00", end: "11:00" }, { start: "08:00", end: "10:00" })).toBe(false);
   });
 });
