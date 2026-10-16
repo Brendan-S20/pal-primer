@@ -3455,6 +3455,8 @@ export type Database = {
           traffic_profile: string
           training_late_cancel_hours: number
           training_missed_uses_session: boolean
+          training_share_progress: boolean
+          notify_email_training_package: boolean
           trial_ends_at: string | null
           updated_at: string
           work_days: number[]
@@ -3600,6 +3602,8 @@ export type Database = {
           traffic_profile?: string
           training_late_cancel_hours?: number
           training_missed_uses_session?: boolean
+          training_share_progress?: boolean
+          notify_email_training_package?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           work_days?: number[]
@@ -3745,6 +3749,8 @@ export type Database = {
           traffic_profile?: string
           training_late_cancel_hours?: number
           training_missed_uses_session?: boolean
+          training_share_progress?: boolean
+          notify_email_training_package?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           work_days?: number[]
@@ -5078,6 +5084,7 @@ export type Database = {
           category: string
           booked_visit_id: string | null
           client_id: string
+          client_package_id: string | null
           created_at: string
           id: string
           last_reply: string | null
@@ -5087,6 +5094,7 @@ export type Database = {
           property_id: string | null
           reclean_visit_id: string | null
           requested_on: string | null
+          requested_time: string | null
           requested_via: string | null
           resolution_note: string | null
           resolved_at: string | null
@@ -5100,6 +5108,7 @@ export type Database = {
           category: string
           booked_visit_id?: string | null
           client_id: string
+          client_package_id?: string | null
           created_at?: string
           id?: string
           last_reply?: string | null
@@ -5109,6 +5118,7 @@ export type Database = {
           property_id?: string | null
           reclean_visit_id?: string | null
           requested_on?: string | null
+          requested_time?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5122,6 +5132,7 @@ export type Database = {
           category?: string
           booked_visit_id?: string | null
           client_id?: string
+          client_package_id?: string | null
           created_at?: string
           id?: string
           last_reply?: string | null
@@ -5131,6 +5142,7 @@ export type Database = {
           property_id?: string | null
           reclean_visit_id?: string | null
           requested_on?: string | null
+          requested_time?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5146,6 +5158,13 @@ export type Database = {
             columns: ["booked_visit_id"]
             isOneToOne: false
             referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_client_package_id_fkey"
+            columns: ["client_package_id"]
+            isOneToOne: false
+            referencedRelation: "client_packages"
             referencedColumns: ["id"]
           },
           {
@@ -5660,6 +5679,33 @@ export type Database = {
         }
         Relationships: [
           { foreignKeyName: "training_session_notes_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: true; referencedRelation: "visits"; referencedColumns: ["id"] },
+        ]
+      }
+      training_package_notices: {
+        Row: {
+          dedupe_key: string
+          organization_id: string
+          client_package_id: string
+          kind: string
+          created_at: string
+        }
+        Insert: {
+          dedupe_key: string
+          organization_id: string
+          client_package_id: string
+          kind: string
+          created_at?: string
+        }
+        Update: {
+          dedupe_key?: string
+          organization_id?: string
+          client_package_id?: string
+          kind?: string
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "training_package_notices_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "training_package_notices_client_package_id_fkey"; columns: ["client_package_id"]; isOneToOne: false; referencedRelation: "client_packages"; referencedColumns: ["id"] },
         ]
       }
       training_skills: {
@@ -7187,6 +7233,10 @@ export type Database = {
         Args: { _cancel_booked: boolean; _client_package_id: string }
         Returns: number
       }
+      set_training_share_progress: {
+        Args: { _org_id: string; _share: boolean }
+        Returns: undefined
+      }
       set_training_session_rules: {
         Args: {
           _late_cancel_hours: number
@@ -8085,6 +8135,20 @@ export type Database = {
           _on: string
           _property_id: string
           _service_id?: string
+          _token: string
+        }
+        Returns: {
+          created: boolean
+          ticket_id: string
+        }[]
+      }
+      portal_request_training_lesson: {
+        Args: {
+          _at: string | null
+          _client_package_id: string
+          _message: string
+          _on: string
+          _property_id: string
           _token: string
         }
         Returns: {
