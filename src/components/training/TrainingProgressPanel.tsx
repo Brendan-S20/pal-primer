@@ -89,6 +89,12 @@ function LessonHistoryList({
                   <bdi>{lesson.note}</bdi>
                 </p>
               )}
+              {lesson.trainerNote && (
+                <p className="break-words">
+                  <span className="text-muted-foreground">{t("training.trainerNote")}: </span>
+                  <bdi>{lesson.trainerNote}</bdi>
+                </p>
+              )}
               {lesson.homework && (
                 <p className="break-words">
                   <span className="text-muted-foreground">{t("training.homework")}: </span>
@@ -127,6 +133,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
   const [open, setOpen] = useState(false);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [note, setNote] = useState("");
+  const [trainerNote, setTrainerNote] = useState("");
   const [homework, setHomework] = useState("");
   const [due, setDue] = useState("");
 
@@ -136,6 +143,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
     for (const row of q.data.scores) next[row.skill_id] = row.score;
     setScores(next);
     setNote(q.data.note);
+    setTrainerNote(q.data.trainerNote);
     setHomework(q.data.homework);
     setDue(q.data.homeworkDue ?? "");
   }, [q.data]);
@@ -154,6 +162,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
           visitId,
           scores: [...fromList, ...kept],
           note,
+          trainerNote,
           homework,
           homeworkDue: due || null,
         },
@@ -233,13 +242,27 @@ function ProgressForm({ visitId }: { visitId: string }) {
             ))}
           </ul>
           <div className="space-y-1">
-            <Label htmlFor={`lesson-note-${visitId}`}>{t("training.note")}</Label>
+            <Label htmlFor={`lesson-note-${visitId}`}>
+              {q.data?.shared === false
+                ? t("training.noteClientDoesNotSee")
+                : t("training.noteClientSees")}
+            </Label>
             <Textarea
               id={`lesson-note-${visitId}`}
               value={note}
               maxLength={2000}
               placeholder={t("training.notePlaceholder")}
               onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`lesson-trainer-note-${visitId}`}>{t("training.trainerNote")}</Label>
+            <Textarea
+              id={`lesson-trainer-note-${visitId}`}
+              value={trainerNote}
+              maxLength={2000}
+              placeholder={t("training.trainerNotePlaceholder")}
+              onChange={(e) => setTrainerNote(e.target.value)}
             />
           </div>
           <div className="space-y-1">
