@@ -178,6 +178,8 @@ const en = {
     hazards: "Hazards:",
     dogsHeading: "Dogs ({{number}})",
     noDogs: "No dogs on file.",
+    petsHeading: "Pets ({{number}})",
+    noPets: "No pets on file.",
     /** Between hazard names in one line. */
     listSeparator: ", ",
     /** The sizes the office's dog form offers. */

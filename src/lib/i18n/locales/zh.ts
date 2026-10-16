@@ -164,6 +164,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     hazards: "隐患：",
     dogsHeading: "狗（{{number}}）",
     noDogs: "没有登记的狗。",
+    petsHeading: "宠物（{{number}}）",
+    noPets: "没有登记的宠物。",
     listSeparator: "、",
     dogSize: {
       small: "小型",

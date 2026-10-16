@@ -120,7 +120,13 @@ export function StaysSection({
       ) : (
         <ul className="space-y-2">
           {stays.map((s) => (
-            <StayRowView key={s.id} stay={s} clientId={clientId} pets={pets} canConfirm={canManagePricing} />
+            <StayRowView
+              key={s.id}
+              stay={s}
+              clientId={clientId}
+              pets={pets}
+              canConfirm={canManagePricing}
+            />
           ))}
         </ul>
       )}
@@ -136,7 +142,17 @@ export function StaysSection({
   );
 }
 
-function StayRowView({ stay, clientId, pets, canConfirm }: { stay: StayRow; clientId: string; pets: any[]; canConfirm: boolean }) {
+function StayRowView({
+  stay,
+  clientId,
+  pets,
+  canConfirm,
+}: {
+  stay: StayRow;
+  clientId: string;
+  pets: any[];
+  canConfirm: boolean;
+}) {
   const qc = useQueryClient();
   const today = useOrgToday();
   const { confirm, dialog } = useConfirmDialog();
@@ -255,7 +271,9 @@ function StayRowView({ stay, clientId, pets, canConfirm }: { stay: StayRow; clie
           </div>
         )}
       </div>
-      {stay.status === "requested" && canConfirm && <ConfirmStayButton stayId={stay.id} clientId={clientId} />}
+      {stay.status === "requested" && canConfirm && (
+        <ConfirmStayButton stayId={stay.id} clientId={clientId} />
+      )}
 
       {changingSitter && (
         <div className="mt-2 flex flex-wrap items-end gap-2">
@@ -414,7 +432,7 @@ function BookStayDrawer({
             {service && (
               <p className="mt-1 text-xs text-muted-foreground">
                 {kind === "overnight"
-                  ? "Priced per night: one overnight visit a night."
+                  ? "Priced per night: one visit a night, from check-in until the morning the sitter leaves."
                   : "Drop-ins: one visit per time, every day of the stay."}
               </p>
             )}

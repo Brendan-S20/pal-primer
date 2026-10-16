@@ -207,6 +207,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     hazards: "المخاطر:",
     dogsHeading: "الكلاب ({{number}})",
     noDogs: "لا توجد كلاب مسجّلة.",
+    petsHeading: "الحيوانات ({{number}})",
+    noPets: "لا توجد حيوانات مسجّلة.",
     listSeparator: "، ",
     dogSize: {
       small: "صغير",

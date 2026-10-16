@@ -168,6 +168,8 @@ const es: Translations = {
     hazards: "Riesgos:",
     dogsHeading: "Perros ({{number}})",
     noDogs: "No hay perros registrados.",
+    petsHeading: "Mascotas ({{number}})",
+    noPets: "No hay mascotas registradas.",
     listSeparator: ", ",
     dogSize: {
       small: "pequeño",

@@ -198,8 +198,9 @@ function ServicesPage() {
         <div className="min-w-0">
           <h2 className="text-lg font-semibold">Services</h2>
           <p className="text-sm text-muted-foreground">
-            What you sell, and how each one is priced: a flat price per visit or by the hour.
-            Pet waste removal, dog walking and pet sitting are bookable. Grooming and training are Coming soon.
+            What you sell, and how each one is priced: a flat price per visit or by the hour. Pet
+            waste removal, dog walking and pet sitting are bookable. Grooming and training are
+            Coming soon.
           </p>
         </div>
         {canEdit && (
@@ -307,7 +308,7 @@ function ServiceForm({
   onSubmit: () => void;
 }) {
   const units = priceUnitsFor(form.service_line);
-  const minutesRequired = durationRequired(form.service_line);
+  const minutesRequired = durationRequired(form.service_line) && form.price_unit !== "night";
   const per = form.price_unit;
 
   return (
@@ -422,7 +423,9 @@ function ServiceForm({
             inputMode="numeric"
             min={1}
             max={720}
-            placeholder={minutesRequired ? "30" : "Set by each yard"}
+            placeholder={
+              form.price_unit === "night" ? "Optional" : minutesRequired ? "30" : "Set by each yard"
+            }
             value={form.minutes}
             onChange={(e) => setForm({ ...form, minutes: e.target.value })}
             required={minutesRequired}
@@ -430,11 +433,24 @@ function ServiceForm({
         </div>
       </div>
 
-      {form.service_line === "pet_sitting" && <div className="space-y-1.5">
-        <Label htmlFor="service-holiday">Holiday surcharge (%)</Label>
-        <Input id="service-holiday" type="number" min={0} max={500} step={1} value={form.holidayPct} onChange={(e) => setForm({ ...form, holidayPct: e.target.value })} />
-        <p className="text-xs text-muted-foreground">Applied to sitting visits on dates in Settings &gt; Blackouts. Zero means the usual rate.</p>
-      </div>}
+      {form.service_line === "pet_sitting" && (
+        <div className="space-y-1.5">
+          <Label htmlFor="service-holiday">Holiday surcharge (%)</Label>
+          <Input
+            id="service-holiday"
+            type="number"
+            min={0}
+            max={500}
+            step={1}
+            value={form.holidayPct}
+            onChange={(e) => setForm({ ...form, holidayPct: e.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Applied to sitting visits on dates in Settings &gt; Blackouts. Zero means the usual
+            rate.
+          </p>
+        </div>
+      )}
 
       {form.service_line === "dog_walking" && (
         <fieldset className="space-y-2">
