@@ -43,6 +43,8 @@ describe.skipIf(!dbEnabled)("what a stay is missing for an emergency", () => {
       organization_id: org.orgId,
       client_id: clientId,
       street: "3 Vet Ln",
+      city: "Austin",
+      postal_code: "78701",
     });
     const petId = await insertRow(org.admin, "dogs", {
       organization_id: org.orgId,

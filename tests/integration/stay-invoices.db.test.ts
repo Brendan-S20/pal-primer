@@ -357,16 +357,19 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     const clientId = await insertRow(other.admin, "clients", {
       organization_id: other.orgId,
       display_name: "Scooping client",
+      account_type: "residential",
       active: true,
     });
     const propertyId = await insertRow(other.admin, "properties", {
       organization_id: other.orgId,
       client_id: clientId,
       street: "1 Yard Ln",
+      city: "Austin",
+      postal_code: "78701",
     });
     const serviceId = await insertRow(other.admin, "services", {
       organization_id: other.orgId,
-      name: "Pet waste removal",
+      name: "Weekly scoop",
       service_line: "pet_waste",
       price_unit: "visit",
     });
@@ -418,7 +421,7 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
       .eq("invoice_id", billed.data)
       .single();
     expect(line.data?.amount_cents).toBe(2200);
-    expect(line.data?.description).toMatch(/^Service on /);
+    expect(line.data?.description).toMatch(/^Weekly scoop on /);
     expect((await other.admin.from("stays").select("id").eq("client_id", clientId)).data).toEqual(
       [],
     );
