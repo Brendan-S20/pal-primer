@@ -404,7 +404,7 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     const { data: dogs, error } = await supabase
       .from("dogs")
       .select(
-        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status",
+        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status, species, species_note",
       )
       .in("property_id", ids)
       .order("name");

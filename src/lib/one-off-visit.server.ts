@@ -90,6 +90,8 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
           // NOT (active IS false) — `neq("active", false)` would drop rows
           // where active is NULL, which is how most dogs are stored.
           .not("active", "is", false)
+          // dog_count counts dogs, not a sitting client's cat (#411).
+          .eq("species", "dog")
           .then((r: any) => Math.max(1, r.count ?? 1))
       : null;
 

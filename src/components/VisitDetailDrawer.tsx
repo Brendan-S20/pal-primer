@@ -47,6 +47,7 @@ import { Link } from "@tanstack/react-router";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
+import { visitStayDates } from "@/lib/stays";
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -252,6 +253,10 @@ export function VisitDetailDrawer({
             {/* Booked by text, through the AI receptionist (subscriptions.booked_via). */}
             {(v as any)?.subscriptions?.booked_via === "ai_receptionist" && (
               <Badge variant="outline">Booked by AI receptionist</Badge>
+            )}
+            {/* Part of a sitter's stay (#411): the stay's dates. */}
+            {visitStayDates((v as any)?.subscriptions?.stays) && (
+              <Badge variant="outline">Stay, {visitStayDates((v as any).subscriptions.stays)}</Badge>
             )}
           </SheetTitle>
           <SheetDescription>

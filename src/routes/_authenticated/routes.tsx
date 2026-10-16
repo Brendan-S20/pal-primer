@@ -80,6 +80,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { visitStayDates } from "@/lib/stays";
 
 export const Route = createFileRoute("/_authenticated/routes")({
   head: () => titleHead("Schedule"),
@@ -2338,6 +2339,14 @@ function VisitCardView({
                 title={visit.services.name}
               >
                 <bdi className="truncate">{visit.services.name}</bdi>
+              </Badge>
+            )}
+            {visitStayDates((visit as any).subscriptions?.stays) && (
+              // Part of a sitter's stay (#411), with its dates.
+              <Badge variant="outline" className="h-4 min-w-0 max-w-full px-1 text-3xs">
+                <span className="truncate">
+                  Stay, {visitStayDates((visit as any).subscriptions?.stays)}
+                </span>
               </Badge>
             )}
             {visit.zones?.name && (

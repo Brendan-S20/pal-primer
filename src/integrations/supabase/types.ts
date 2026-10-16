@@ -1452,6 +1452,8 @@ export type Database = {
           notes: string | null
           organization_id: string
           property_id: string
+          species: string
+          species_note: string | null
           temperament: Database["public"]["Enums"]["dog_temperament"]
           unit_id: string | null
           unit_review_needed: boolean
@@ -1471,6 +1473,8 @@ export type Database = {
           notes?: string | null
           organization_id: string
           property_id: string
+          species?: string
+          species_note?: string | null
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
           unit_review_needed?: boolean
@@ -1490,6 +1494,8 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           property_id?: string
+          species?: string
+          species_note?: string | null
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
           unit_review_needed?: boolean
@@ -3804,6 +3810,51 @@ export type Database = {
           },
         ]
       }
+      pet_care_instructions: {
+        Row: {
+          feeding: string | null
+          meds: Json
+          organization_id: string
+          other_care: string | null
+          pet_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          feeding?: string | null
+          meds?: Json
+          organization_id: string
+          other_care?: string | null
+          pet_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          feeding?: string | null
+          meds?: Json
+          organization_id?: string
+          other_care?: string | null
+          pet_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_care_instructions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pet_care_instructions_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: true
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_addons: {
         Row: {
           billing_interval: string
@@ -5923,6 +5974,111 @@ export type Database = {
           },
         ]
       }
+      stays: {
+        Row: {
+          assigned_staff_id: string | null
+          care_snapshot: Json | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          deposit_cents: number | null
+          drop_in_windows: Json | null
+          ends_on: string
+          id: string
+          kind: string
+          notes: string | null
+          organization_id: string
+          overnight_arrival_earliest: string | null
+          overnight_arrival_latest: string | null
+          pet_ids: string[]
+          property_id: string
+          service_id: string
+          starts_on: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_staff_id?: string | null
+          care_snapshot?: Json | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          deposit_cents?: number | null
+          drop_in_windows?: Json | null
+          ends_on: string
+          id?: string
+          kind?: string
+          notes?: string | null
+          organization_id: string
+          overnight_arrival_earliest?: string | null
+          overnight_arrival_latest?: string | null
+          pet_ids?: string[]
+          property_id: string
+          service_id: string
+          starts_on: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_staff_id?: string | null
+          care_snapshot?: Json | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          deposit_cents?: number | null
+          drop_in_windows?: Json | null
+          ends_on?: string
+          id?: string
+          kind?: string
+          notes?: string | null
+          organization_id?: string
+          overnight_arrival_earliest?: string | null
+          overnight_arrival_latest?: string | null
+          pet_ids?: string[]
+          property_id?: string
+          service_id?: string
+          starts_on?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stays_assigned_staff_id_fkey"
+            columns: ["assigned_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stays_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stays_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stays_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stays_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -5953,6 +6109,7 @@ export type Database = {
           service_id: string | null
           started_on: string
           status: Database["public"]["Enums"]["subscription_status"]
+          stay_id: string | null
           unit_count: number | null
           weekdays: number[] | null
           zone_id: string | null
@@ -5986,6 +6143,7 @@ export type Database = {
           service_id?: string | null
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
+          stay_id?: string | null
           unit_count?: number | null
           weekdays?: number[] | null
           zone_id?: string | null
@@ -6019,6 +6177,7 @@ export type Database = {
           service_id?: string | null
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
+          stay_id?: string | null
           unit_count?: number | null
           weekdays?: number[] | null
           zone_id?: string | null
@@ -6057,6 +6216,13 @@ export type Database = {
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
             referencedColumns: ["id"]
           },
           {

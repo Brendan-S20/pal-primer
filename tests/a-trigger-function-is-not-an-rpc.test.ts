@@ -206,7 +206,14 @@ describe("no trigger function is executable by a signed-in user", () => {
     // validate_walk_group, validate_walk_group_member, copy_walk_group_walker
     // and guard_visit_walk_group. Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
-    expect(triggerFunctions().size).toBe(65);
+    //
+    // 65 -> 70 on 2026-10-16 (pet sitting, #411): tg_pet_care_instructions_pet
+    // (20261016110000) keeps a pet's care in the pet's business;
+    // tg_stays_validate, tg_stays_follow, tg_subscriptions_stay and
+    // tg_visits_stay_sitter (20261016120000) keep a stay, its plans and its
+    // sitter consistent. validate_walk_group_member is restated there, not
+    // new. Each REVOKEd from PUBLIC, anon and authenticated in the same file.
+    expect(triggerFunctions().size).toBe(70);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

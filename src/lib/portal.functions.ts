@@ -1253,7 +1253,8 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       const { data: dogs } = await (sb.from("dogs") as any)
         .select("property_id")
         .in("property_id", propertyIds)
-        .not("active", "is", false);
+        .not("active", "is", false)
+        .eq("species", "dog");
       for (const d of (dogs ?? []) as Array<{ property_id: string }>) {
         if (d.property_id in petsByProperty) petsByProperty[d.property_id] += 1;
       }

@@ -46,7 +46,9 @@ export async function recomputePropertyEstimate(
       .from("dogs")
       .select("id", { count: "exact", head: true })
       .eq("property_id", propertyId)
-      .eq("active", true),
+      .eq("active", true)
+      // Dogs only: a sitting client's cat leaves nothing in the yard (#411).
+      .eq("species", "dog"),
     // The property's routine service time must come from the RECURRING service
     // that defines its routine — not from whatever row was created last.
     //

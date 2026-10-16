@@ -21,5 +21,5 @@ export const createWalkPlans = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(parseWalkPlans)
   .handler(async ({ data, context }) =>
-    createSubscriptionPlans(context.supabase, context.userId, data, true),
+    createSubscriptionPlans(context.supabase, context.userId, data, "dog_walking"),
   );
