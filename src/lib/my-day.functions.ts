@@ -276,7 +276,7 @@ async function withGroomPets<
         : Promise.resolve({ data: null, error: null }),
       supabase
         .from("pet_vaccinations")
-        .select("dog_id, vaccine, expires_on, source, verified_at")
+        .select("dog_id, vaccine, expires_on, source, verified_at, rejected_at")
         .in("dog_id", dogIds),
     ]);
     if (noteRes.error) throw noteRes.error;

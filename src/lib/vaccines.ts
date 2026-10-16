@@ -14,6 +14,9 @@ export type VaccineRecord = {
   expires_on: string;
   source: string;
   verified_at: string | null;
+  /** Set when the office rejected a portal upload. A rejected record is not a
+   *  record: it never counts, verified or not. */
+  rejected_at?: string | null;
 };
 export type VaccineStatus = {
   vaccines: {
@@ -37,7 +40,7 @@ export function vaccineStatus(
   const soon = end.toISOString().slice(0, 10);
   const vaccines = [...new Set(required)].map((vaccine) => {
     const latest = records
-      .filter((r) => r.vaccine === vaccine)
+      .filter((r) => r.vaccine === vaccine && !r.rejected_at)
       .sort(
         (a, b) =>
           b.expires_on.localeCompare(a.expires_on) ||

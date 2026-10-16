@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Building2, Dog, Sparkles, CheckCircle2, MapPin } from "lucide-react";
@@ -7,7 +7,6 @@ import {
   usePortalCtx, StationsPanel, DogsGrid, AddonCard, EmptyBox,
   money, fmtDayShort, friendlyFrequency,
 } from "@/lib/portal-ui";
-import { PortalVaccines } from "@/components/portal/PortalVaccines";
 import { portalListProperties } from "@/lib/portal.functions";
 
 export const Route = createFileRoute("/portal/$slug/$token/property")({
@@ -16,7 +15,7 @@ export const Route = createFileRoute("/portal/$slug/$token/property")({
 
 function PortalProperty() {
   const {
-    token, clientQ, dogsQ, stationsQ, catalogQ, clientAddonsQ,
+    token, slug, clientQ, dogsQ, stationsQ, catalogQ, clientAddonsQ,
     subscribeAddonMut, cancelAddonMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
@@ -31,7 +30,19 @@ function PortalProperty() {
 
   return (
     <div className="space-y-6">
-      {c?.mobile_grooming && <PortalVaccines token={token} />}
+      {c?.mobile_grooming && (
+        <p className="rounded-lg border bg-card p-4 text-sm">
+          Vaccine records and groom requests are on the{" "}
+          <Link
+            to="/portal/$slug/$token/grooming"
+            params={{ slug, token }}
+            className="font-medium underline underline-offset-2"
+          >
+            Grooming page
+          </Link>
+          .
+        </p>
+      )}
 
       {properties.length > 1 && (
         <section>

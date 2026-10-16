@@ -68,7 +68,7 @@ export const getDogVaccineStatus = createServerFn({ method: "GET" })
     if (!settings.enabled) return null;
     const { data: rows, error } = await context.supabase
       .from("pet_vaccinations")
-      .select("vaccine, expires_on, source, verified_at")
+      .select("vaccine, expires_on, source, verified_at, rejected_at")
       .eq("dog_id", data.dogId)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
@@ -167,15 +167,114 @@ export const verifyVaccination = createServerFn({ method: "POST" })
       .single();
     if (readError || !record) throw new Error("Vaccine record not found");
     const { orgId } = await officeDog(context.supabase, context.userId, record.dog_id, true);
+    // Approving clears a rejection, so the office can change its mind.
     const { data: saved, error } = await context.supabase
       .from("pet_vaccinations")
-      .update({ verified_by: context.userId, verified_at: new Date().toISOString() })
+      .update({
+        verified_by: context.userId,
+        verified_at: new Date().toISOString(),
+        rejected_at: null,
+        rejected_by: null,
+        rejection_reason: null,
+      })
       .eq("id", data.id)
       .eq("organization_id", orgId)
       .select("id")
       .single();
     if (error || !saved) throw new Error(error?.message ?? "Vaccine record not found");
     return { ok: true };
+  });
+
+/** Reject a client's portal upload with the reason the client will read. It
+ *  stays on file, unverified, and never counts as current. */
+export const rejectVaccination = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    recordInput.extend({ reason: z.string().trim().min(1).max(500) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: record, error: readError } = await context.supabase
+      .from("pet_vaccinations")
+      .select("dog_id, source, verified_at")
+      .eq("id", data.id)
+      .single();
+    if (readError || !record) throw new Error("Vaccine record not found");
+    const { orgId } = await officeDog(context.supabase, context.userId, record.dog_id, true);
+    if (record.source !== "portal" || record.verified_at)
+      throw new Error("Only an unverified upload from the client can be rejected.");
+    const { data: saved, error } = await context.supabase
+      .from("pet_vaccinations")
+      .update({
+        rejected_at: new Date().toISOString(),
+        rejected_by: context.userId,
+        rejection_reason: data.reason,
+      })
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .is("verified_at", null)
+      .select("id")
+      .single();
+    if (error || !saved) throw new Error(error?.message ?? "Vaccine record not found");
+    return { ok: true };
+  });
+
+/** Client uploads nobody has approved or rejected yet, oldest first, with a
+ *  link to each document. Empty for a business that does not run grooming. */
+export const listPendingVaccineUploads = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await resolveCaller(context.supabase, context.userId);
+    const settings = await loadVaccineSettings(context.supabase, orgId);
+    if (!settings.enabled) return [];
+    const { data: rows, error } = await context.supabase
+      .from("pet_vaccinations")
+      .select(
+        "id, dog_id, vaccine, vaccine_note, given_on, expires_on, file_name, storage_path, created_at, dog:dogs!pet_vaccinations_dog_id_fkey(name, property:properties(client_id, client:clients(display_name)))",
+      )
+      .eq("organization_id", orgId)
+      .eq("source", "portal")
+      .is("verified_at", null)
+      .is("rejected_at", null)
+      .order("created_at", { ascending: true })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return Promise.all(
+      (rows ?? []).map(async (r) => {
+        const dog = (Array.isArray(r.dog) ? r.dog[0] : r.dog) as {
+          name: string;
+          property: unknown;
+        } | null;
+        const property = (Array.isArray(dog?.property) ? dog?.property[0] : dog?.property) as {
+          client_id: string;
+          client: unknown;
+        } | null;
+        const client = (Array.isArray(property?.client) ? property?.client[0] : property?.client) as {
+          display_name: string;
+        } | null;
+        let signedUrl: string | null = null;
+        if (r.storage_path) {
+          // The request client signs, so storage RLS checks the caller again.
+          const { data: signed } = await context.supabase.storage
+            .from(VACCINE_BUCKET)
+            .createSignedUrl(r.storage_path, 300);
+          signedUrl = signed?.signedUrl ?? null;
+        }
+        return {
+          id: r.id,
+          dogId: r.dog_id,
+          petName: dog?.name ?? null,
+          clientId: property?.client_id ?? null,
+          clientName: client?.display_name ?? null,
+          vaccine: r.vaccine,
+          vaccineNote: r.vaccine_note,
+          givenOn: r.given_on,
+          expiresOn: r.expires_on,
+          fileName: r.file_name,
+          uploadedAt: r.created_at,
+          signedUrl,
+        };
+      }),
+    );
   });
 
 export const deleteVaccination = createServerFn({ method: "POST" })

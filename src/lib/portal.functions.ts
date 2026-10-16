@@ -1455,7 +1455,9 @@ const CONCERN_LABELS: Record<string, string> = {
   one_off_request: "Extra cleanup request",
 };
 
-async function notifyOfficeOfConcern(
+/** Exported for the groom request (portal-groom.server.ts), which tells the
+ *  office the same way a one-off request does. */
+export async function notifyOfficeOfConcern(
   sb: any,
   token: string,
   category: string,

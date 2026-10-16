@@ -7,7 +7,10 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { addVaccination, deleteVaccination, getDogVaccineStatus, listDogVaccinations, verifyVaccination } from "@/lib/vaccines.functions";
+import { useTranslation } from "react-i18next";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { addVaccination, deleteVaccination, getDogVaccineStatus, listDogVaccinations, rejectVaccination, verifyVaccination } from "@/lib/vaccines.functions";
 import { VACCINE_LABELS, VACCINE_STATUS_LABELS, type Vaccine } from "@/lib/vaccines";
 
 export function PetVaccines({ dogId, name }: { dogId: string; name: string }) {
@@ -33,6 +36,11 @@ function OfficePetVaccines({ dogId, name }: { dogId: string; name: string }) {
   const save = useMutation({ mutationFn: (data: FormData) => add({ data }), onSuccess: () => { refresh(); toast.success("Vaccine record added"); }, onError: (e: Error) => toast.error(e.message) });
   const mark = useMutation({ mutationFn: (id: string) => verify({ data: { id } }), onSuccess: refresh, onError: (e: Error) => toast.error(e.message) });
   const del = useMutation({ mutationFn: (id: string) => remove({ data: { id } }), onSuccess: refresh, onError: (e: Error) => toast.error(e.message) });
+  const { t } = useTranslation();
+  const rejectFn = useServerFn(rejectVaccination);
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const rejectMut = useMutation({ mutationFn: (v: { id: string; reason: string }) => rejectFn({ data: v }), onSuccess: () => { setRejecting(null); setReason(""); refresh(); qc.invalidateQueries({ queryKey: ["vaccine-review"] }); toast.success(t("vaccineReview.rejected")); }, onError: (e: Error) => toast.error(e.message) });
   return (
     <div className="w-full min-w-0 space-y-2 border-t pt-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -51,11 +59,21 @@ function OfficePetVaccines({ dogId, name }: { dogId: string; name: string }) {
               <p className="break-words font-medium">{VACCINE_LABELS[r.vaccine as Vaccine]}{r.vaccine_note ? `: ${r.vaccine_note}` : ""}</p>
               <p>Expires {r.expires_on}{r.given_on ? `, given ${r.given_on}` : ""}</p>
               <p className="text-xs text-muted-foreground">{r.verified_at ? "Verified" : "Unverified"}{r.source === "portal" ? ", uploaded by client" : ""}</p>
+              {r.rejected_at && <p className="break-words text-xs text-destructive">{t("vaccineReview.rejectedLabel", { reason: r.rejection_reason ?? "" })}</p>}
               <div className="flex flex-wrap gap-2">
                 {r.signedUrl && <Button asChild size="sm" variant="outline" className="min-h-11"><a href={r.signedUrl} target="_blank" rel="noopener noreferrer">Open document</a></Button>}
                 {!r.verified_at && <Button size="sm" variant="outline" className="min-h-11" disabled={mark.isPending} onClick={() => mark.mutate(r.id)}>Mark verified</Button>}
+                {r.source === "portal" && !r.verified_at && !r.rejected_at && <Button size="sm" variant="outline" className="min-h-11" disabled={rejectMut.isPending} onClick={() => { setRejecting(rejecting === r.id ? null : r.id); setReason(""); }}>{t("vaccineReview.reject")}</Button>}
                 <Button size="sm" variant="ghost" className="min-h-11" disabled={del.isPending} onClick={() => { if (window.confirm("Delete this vaccine record and its document?")) del.mutate(r.id); }}>Delete</Button>
               </div>
+              {rejecting === r.id && <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (reason.trim()) rejectMut.mutate({ id: r.id, reason: reason.trim() }); }}>
+                <Label htmlFor={`pet-reject-${r.id}`} className="text-xs">{t("vaccineReview.reason")}</Label>
+                <Textarea id={`pet-reject-${r.id}`} rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button type="button" size="sm" variant="ghost" className="min-h-11" onClick={() => setRejecting(null)}>{t("common.cancel")}</Button>
+                  <Button type="submit" size="sm" className="min-h-11" disabled={rejectMut.isPending || !reason.trim()}>{t("vaccineReview.confirmReject")}</Button>
+                </div>
+              </form>}
             </li>)}
           </ul>
           {records.data?.length === 0 && <p className="text-sm text-muted-foreground">No vaccine records yet.</p>}
