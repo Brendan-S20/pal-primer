@@ -230,6 +230,20 @@ describe("portalContext home", () => {
     expect(await loading).toHaveProperty("home.dogs", rpcRows.portal_list_dogs);
   });
 
+  it("leaves out a part that is not back within the budget", async () => {
+    state.rpc.mockImplementation(async (name: string) => {
+      if (name === "portal_list_dogs") return new Promise(() => {});
+      return { data: rpcRows[name] ?? [], error: null };
+    });
+    const started = Date.now();
+    const answer = await portal.portalContext({ data: { token, withHome: true } });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(portal.PORTAL_HOME_BUDGET_MS - 50);
+    const home = "home" in answer ? answer.home : undefined;
+    expect(home).not.toHaveProperty("dogs");
+    expect(home?.visits).toEqual(rpcRows.portal_list_upcoming_visits);
+    expect(Object.keys(home ?? {})).toHaveLength(10);
+  });
+
   it("does not load home when it was not requested", async () => {
     const answer = await portal.portalContext({ data: { token } });
     expect(answer).not.toHaveProperty("home");

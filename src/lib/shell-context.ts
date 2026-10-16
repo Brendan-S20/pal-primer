@@ -43,13 +43,23 @@ export const SHELL_PART_KEYS: { [K in keyof Required<ShellParts>]: readonly unkn
 let seededFor: string | null = null;
 let inflight: Promise<{ userId: string; answer: ShellContext } | null> | null = null;
 
+/** A my-org this recent is answer enough; the usual path reads it from cache. */
+const FRESH_ORG_MS = 60_000;
+
 /**
  * Ask for the shell, when it has not been loaded yet on this page and there
  * is a session on the device to ask with. Null when there is nothing to ask;
  * the promise never rejects, and resolves null for "take the usual path".
+ *
+ * Also null while my-org is fresh, so a person with no organization (who
+ * never marks the page loaded) does not ask on every navigation.
  */
-export function startShellContext(): Promise<{ userId: string; answer: ShellContext } | null> | null {
+export function startShellContext(
+  queryClient: QueryClient,
+): Promise<{ userId: string; answer: ShellContext } | null> | null {
   if (seededFor !== null) return null;
+  const org = queryClient.getQueryState(["my-org"]);
+  if (org?.data !== undefined && Date.now() - org.dataUpdatedAt < FRESH_ORG_MS) return null;
   inflight ??= (async () => {
     try {
       const { data } = await supabase.auth.getSession();
@@ -91,24 +101,63 @@ export function seedShellContext(queryClient: QueryClient, userId: string, shell
  *  failed, or late), so the entry can be reset rather than left in error. */
 class ShellPartMissing extends Error {}
 
-/** Put each part under its key. A part already cached is left alone. While
- *  the parts are on their way, a component that mounts joins this fetch
- *  rather than sending its own. A part that did not come back is reset, so a
- *  component that wants it fetches it itself, exactly as before. */
+/** The client's own retry default, read the way TanStack Query reads it. */
+function defaultRetry(queryClient: QueryClient, count: number, error: Error): boolean {
+  const retry = queryClient.getDefaultOptions().queries?.retry ?? 3;
+  if (typeof retry === "function") return retry(count, error as never);
+  if (typeof retry === "number") return count < retry;
+  return retry;
+}
+
+/** The queryFn of a mounted observer whose query is enabled, if any. */
+function observerQueryFn(queryClient: QueryClient, key: readonly unknown[]) {
+  const query = queryClient.getQueryCache().find({ queryKey: key, exact: true });
+  if (!query) return undefined;
+  const observer = query.observers.find((o) => {
+    const enabled = o.options.enabled;
+    const on = typeof enabled === "function" ? enabled(query as never) : enabled;
+    return on !== false && typeof o.options.queryFn === "function";
+  });
+  const fn = observer?.options.queryFn;
+  return typeof fn === "function" ? fn : undefined;
+}
+
+const has = (got: Record<string, unknown>, name: string) =>
+  Object.prototype.hasOwnProperty.call(got, name);
+
+/** Put each part under its key. While the parts are on their way, a
+ *  component that mounts joins this fetch rather than sending its own. A part
+ *  that did not come back is fetched with a mounted component's own queryFn,
+ *  or reset when nothing is watching it, so a component that mounts later
+ *  fetches it itself, exactly as before. A part already cached (restored from
+ *  the device, say) is replaced only if nothing wrote it since. */
 function primeShellParts(queryClient: QueryClient, parts: ShellParts | Promise<ShellParts>) {
   const answer = Promise.resolve(parts) as Promise<Record<string, unknown>>;
   for (const [name, key] of Object.entries(SHELL_PART_KEYS)) {
-    if (queryClient.getQueryData(key) !== undefined) continue;
+    const cached = queryClient.getQueryState(key);
+    if (cached?.data !== undefined) {
+      const { data, dataUpdatedAt } = cached;
+      void answer.then((got) => {
+        if (!has(got, name)) return;
+        const now = queryClient.getQueryState(key);
+        if (now?.dataUpdatedAt !== dataUpdatedAt || now.data !== data) return;
+        queryClient.setQueryData(key, got[name]);
+      });
+      continue;
+    }
     let first = true;
     void queryClient
       .prefetchQuery({
         queryKey: key,
-        retry: false,
+        retry: (count, error) =>
+          error instanceof ShellPartMissing ? false : defaultRetry(queryClient, count, error),
         queryFn: async (ctx) => {
           if (first) {
             first = false;
             const got = await answer;
-            if (Object.prototype.hasOwnProperty.call(got, name)) return got[name];
+            if (has(got, name)) return got[name];
+            const own = observerQueryFn(queryClient, key);
+            if (own) return own(ctx as never);
             throw new ShellPartMissing(name);
           }
           // A later refetch that still carries this queryFn uses the one a

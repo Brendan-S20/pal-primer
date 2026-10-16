@@ -18,6 +18,7 @@ const loaders = vi.hoisted(() => ({
   notifications: vi.fn(),
   routingRuns: vi.fn(),
   clock: vi.fn(),
+  getSession: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-start", () => ({
@@ -31,7 +32,9 @@ vi.mock("@tanstack/react-start", () => ({
   },
 }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: { auth: { getSession: loaders.getSession } },
+}));
 vi.mock("@/lib/org.functions", () => ({ loadMyOrg: loaders.org, getMyOrg: vi.fn() }));
 vi.mock("@/lib/account-lock.functions", () => ({ loadAccountLock: loaders.lock }));
 vi.mock("@/lib/profile.functions", () => ({ loadMyProfile: loaders.profile }));
@@ -50,7 +53,12 @@ vi.mock("@/components/TimeClock", () => ({ MY_CLOCK_QUERY_KEY: ["my-day", "clock
 vi.mock("@/hooks/useRoutingRuns", () => ({ ROUTING_RUNS_KEY: ["routing-runs", "mine"] }));
 
 import { loadShellContext, loadShellPartsForCaller, SHELL_PARTS_BUDGET_MS } from "@/lib/shell-context.functions";
-import { resetShellContextForTests, seedShellContext, SHELL_PART_KEYS } from "@/lib/shell-context";
+import {
+  resetShellContextForTests,
+  seedShellContext,
+  SHELL_PART_KEYS,
+  startShellContext,
+} from "@/lib/shell-context";
 
 const org = { organization: { id: "org-1", role: "owner" } } as ShellAnswer["org"];
 const lock: ShellAnswer["lock"] = { locked: false, canChoosePlan: true };
@@ -64,6 +72,7 @@ beforeEach(() => {
   loaders.org.mockResolvedValue(org);
   loaders.lock.mockResolvedValue(lock);
   for (const name of partNames) loaders[name].mockResolvedValue({ part: name });
+  loaders.getSession.mockResolvedValue({ data: { session: null } });
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -100,16 +109,52 @@ describe("seedShellContext", () => {
     qc.clear();
   });
 
-  it("an absent part is fetched with the mounted component's own queryFn", async () => {
+  it("an absent part is fetched with the mounted component's own queryFn on the first call", async () => {
     const qc = new QueryClient();
     const own = vi.fn().mockResolvedValue({ part: "own profile" });
     const { QueryObserver } = await import("@tanstack/react-query");
     const observer = new QueryObserver(qc, { queryKey: SHELL_PART_KEYS.profile, queryFn: own, staleTime: 60_000 });
+    let errored = false;
+    const stop = qc.getQueryCache().subscribe((event) => {
+      if (event.query.queryHash === JSON.stringify(SHELL_PART_KEYS.profile) && event.query.state.error) errored = true;
+    });
     seedShellContext(qc, "user-1", { org, lock, parts: Promise.resolve({ notifications }) });
     const unsubscribe = observer.subscribe(() => {});
     for (let i = 0; i < 5; i++) await settle();
     expect(own).toHaveBeenCalledTimes(1);
     expect(qc.getQueryData(SHELL_PART_KEYS.profile)).toEqual({ part: "own profile" });
+    // Fetched in place, never put in error and reset.
+    expect(errored).toBe(false);
+    stop();
+    unsubscribe();
+    qc.clear();
+  });
+
+  it("does not use a disabled observer's queryFn for an absent part", async () => {
+    const qc = new QueryClient();
+    const own = vi.fn().mockResolvedValue({ part: "own profile" });
+    const { QueryObserver } = await import("@tanstack/react-query");
+    const observer = new QueryObserver(qc, { queryKey: SHELL_PART_KEYS.profile, queryFn: own, enabled: false });
+    seedShellContext(qc, "user-1", { org, lock, parts: Promise.resolve({ notifications }) });
+    const unsubscribe = observer.subscribe(() => {});
+    for (let i = 0; i < 5; i++) await settle();
+    expect(own).not.toHaveBeenCalled();
+    const state = qc.getQueryState(SHELL_PART_KEYS.profile);
+    expect(state?.data).toBeUndefined();
+    expect(state?.error ?? null).toBeNull();
+    unsubscribe();
+    qc.clear();
+  });
+
+  it("keeps the client's retry default for an ordinary error", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, retryDelay: 0 } } });
+    const own = vi.fn().mockRejectedValueOnce(new Error("blip")).mockResolvedValue({ part: "own profile" });
+    const { QueryObserver } = await import("@tanstack/react-query");
+    const observer = new QueryObserver(qc, { queryKey: SHELL_PART_KEYS.profile, queryFn: own, staleTime: 60_000 });
+    seedShellContext(qc, "user-1", { org, lock, parts: Promise.resolve({ notifications }) });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.waitFor(() => expect(qc.getQueryData(SHELL_PART_KEYS.profile)).toEqual({ part: "own profile" }));
+    expect(own).toHaveBeenCalledTimes(2);
     unsubscribe();
     qc.clear();
   });
@@ -123,12 +168,48 @@ describe("seedShellContext", () => {
     qc.clear();
   });
 
-  it("keeps existing parts", async () => {
+  it("replaces a cached part without fetching when nothing wrote it since", async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(SHELL_PART_KEYS.clock, { part: "restored" });
+    seedShellContext(qc, "user-1", { org, lock, parts: Promise.resolve({ clock: { part: "fresh" } }) });
+    expect(qc.getQueryState(SHELL_PART_KEYS.clock)?.fetchStatus).toBe("idle");
+    await settle();
+    expect(qc.getQueryData(SHELL_PART_KEYS.clock)).toEqual({ part: "fresh" });
+    qc.clear();
+  });
+
+  it("keeps a cached part a component wrote after priming started", async () => {
     const qc = new QueryClient();
     qc.setQueryData(SHELL_PART_KEYS.notifications, notifications);
-    seedShellContext(qc, "user-1", { org, lock, parts: { notifications: { notifications: [], unread: 9 } } });
+    let arrive!: (parts: { notifications: typeof notifications }) => void;
+    const parts = new Promise<{ notifications: typeof notifications }>((resolve) => {
+      arrive = resolve;
+    });
+    seedShellContext(qc, "user-1", { org, lock, parts });
+    const newer = { notifications: [], unread: 2 };
+    qc.setQueryData(SHELL_PART_KEYS.notifications, newer, { updatedAt: Date.now() + 1 });
+    arrive({ notifications: { notifications: [], unread: 9 } });
     await settle();
-    expect(qc.getQueryData(SHELL_PART_KEYS.notifications)).toEqual(notifications);
+    expect(qc.getQueryData(SHELL_PART_KEYS.notifications)).toEqual(newer);
+    qc.clear();
+  });
+});
+
+describe("startShellContext", () => {
+  it("takes the usual path while my-org is fresh", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["my-org"], { organization: null, accessTurnedOff: null });
+    expect(startShellContext(qc)).toBeNull();
+    expect(loaders.getSession).not.toHaveBeenCalled();
+    qc.clear();
+  });
+
+  it("asks when my-org is missing or older than a minute", async () => {
+    const qc = new QueryClient();
+    expect(await startShellContext(qc)).toBeNull();
+    qc.setQueryData(["my-org"], org, { updatedAt: Date.now() - 61_000 });
+    expect(await startShellContext(qc)).toBeNull();
+    expect(loaders.getSession).toHaveBeenCalledTimes(2);
     qc.clear();
   });
 });

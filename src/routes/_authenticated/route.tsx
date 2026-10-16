@@ -74,7 +74,7 @@ export const Route = createFileRoute("/_authenticated")({
       // The shell's first load, started beside the identity
       // check rather than after it. The server checks the token itself; the
       // answer is used only once identity says yes. See lib/shell-context.ts.
-      const shellRequest = online ? startShellContext() : null;
+      const shellRequest = online ? startShellContext(context.queryClient) : null;
       const identity = await resolveIdentity();
       if (!identity.ok) {
         // A REJECTED identity has to take the device copy with it.

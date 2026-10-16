@@ -48,19 +48,32 @@ type PortalHome = {
   [K in keyof typeof portalHomeLoaders]?: Awaited<ReturnType<(typeof portalHomeLoaders)[K]>>;
 };
 
+/** How long the home parts may take. */
+export const PORTAL_HOME_BUDGET_MS = 1200;
+
 async function loadPortalHome(token: string, session: PortalSession): Promise<PortalHome> {
   // getPortalSession applies every check required by a read-only session.
-  const parts = await Promise.all(
+  // Parts that fail, or are not back within the budget, are left out for
+  // their own queries to fetch.
+  const done: Record<string, unknown> = {};
+  const all = Promise.all(
     Object.entries(portalHomeLoaders).map(async ([name, load]) => {
       try {
-        return [name, await load(token, session)] as const;
+        done[name] = await load(token, session);
       } catch {
-        // Leave failed parts for their own queries to fetch.
-        return null;
+        // Left out.
       }
     }),
   );
-  return Object.fromEntries(parts.filter((part) => part !== null)) as PortalHome;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    all,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, PORTAL_HOME_BUDGET_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  return { ...done } as PortalHome;
 }
 
 // ============ Auth entry points (no session required) ============

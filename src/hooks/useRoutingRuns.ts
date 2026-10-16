@@ -75,7 +75,8 @@ export function useRoutingRuns(enabled = true) {
   const onRoutes = useRouterState({ select: (s) => s.location.pathname === "/routes" });
   const q = useQuery({
     queryKey: ROUTING_RUNS_KEY,
-    staleTime: 30_000,
+    // On /routes every mount asks again, so the server hears watching: true.
+    staleTime: onRoutes ? 0 : 30_000,
     enabled,
     queryFn: () =>
       listFn({
