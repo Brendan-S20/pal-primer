@@ -135,6 +135,10 @@ export const PORTAL_RECENT_VISITS = [-3, -10, -17, -24].map((offset, i) => ({
 const INVOICE_ROWS = [
   {
     invoice_id: "99999999-0000-4000-8000-000000009001",
+    // The stored number, as portalListInvoices returns it: the same INV-10427
+    // the pay link, the PDF and the email print for this invoice.
+    number: 10427,
+    number_label: "INV-10427",
     status: "open",
     kind: "recurring",
     total_cents: 10400,
@@ -154,6 +158,8 @@ const INVOICE_ROWS = [
   },
   {
     invoice_id: "99999999-0000-4000-8000-000000009002",
+    number: 10398,
+    number_label: "INV-10398",
     status: "paid",
     kind: "recurring",
     total_cents: 9600,
@@ -167,6 +173,8 @@ const INVOICE_ROWS = [
   },
   {
     invoice_id: "99999999-0000-4000-8000-000000009003",
+    number: 10371,
+    number_label: "INV-10371",
     status: "void",
     kind: "one_time",
     total_cents: 4500,
@@ -515,6 +523,7 @@ export const PORTAL_INVOICE_INTENT = {
   amountCents: INVOICE_ROWS[0].amount_due_cents,
   dueCents: INVOICE_ROWS[0].amount_due_cents,
   invoiceId: PORTAL_PAY_INVOICE_ID,
+  invoiceLabel: INVOICE_ROWS[0].number_label,
   businessName: PORTAL_CLIENT_NAME,
 };
 
