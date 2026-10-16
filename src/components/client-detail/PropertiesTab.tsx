@@ -48,7 +48,7 @@ import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
 import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-time";
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
-import { ACCESS_METHOD_LABEL, isAccessMethod } from "@/lib/walk-access";
+import { ACCESS_METHOD_LABEL, isAccessMethod, type AccessMethod } from "@/lib/walk-access";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 const HAZARD_LABELS: Array<[string, string]> = [
@@ -622,7 +622,7 @@ function PropertyCard({
                   {isAccessMethod(p.access_method) && (
                     <span>
                       Way in:{" "}
-                      <span className="text-foreground">{ACCESS_METHOD_LABEL[p.access_method]}</span>
+                      <span className="text-foreground">{ACCESS_METHOD_LABEL[p.access_method as AccessMethod]}</span>
                     </span>
                   )}
                   {p.key_held && (
