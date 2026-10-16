@@ -85,6 +85,7 @@ const soldPackage = {
   status: "active",
   canceled_at: null,
   held: 3,
+  bookedAfterToday: 2,
   left: 5,
   free: 3,
   state: "active",
@@ -107,7 +108,9 @@ function serverFnName(route: Route): string {
 }
 
 function lessonVisit() {
-  const v = fx.visitsBetween(fx.TODAY, fx.TODAY).find((x) => x.assigned_staff_id === fx.STAFF[0].id);
+  const v = fx
+    .visitsBetween(fx.TODAY, fx.TODAY)
+    .find((x) => x.assigned_staff_id === fx.STAFF[0].id);
   if (!v) throw new Error("the fixture day has no visit for the first technician");
   return {
     ...v,
@@ -152,7 +155,9 @@ const ANSWERS: Record<string, unknown> = {
     dogs: [{ id: DOG_ID, name: "Biscuit", property_id: "pppppppp-0000-4000-8000-000000000001" }],
     staff: [{ id: fx.STAFF[0].id, display_name: fx.STAFF[0].display_name }],
     packages: [{ ...catalogPackage, services: { name: "Private lesson (60 min)" } }],
+    lessonMinutes: { [LESSON_ID]: 60 },
   },
+  getTrainingSessionRules: { lateCancelHours: 24, missedUsesSession: true },
   getTrainingSession: { n: 2, total: 6 },
   getSessionProgress: {
     skills,
@@ -160,6 +165,22 @@ const ANSWERS: Record<string, unknown> = {
     note: "Held a sit while the door opened.",
     homework: "Five sits before dinner.",
     homeworkDue: "2026-10-20",
+    dog: { id: DOG_ID, name: "Biscuit" },
+    // Long on purpose: an earlier lesson's note and homework wrap rather
+    // than widen the stop card.
+    history: [
+      {
+        visitId: "vvvvvvvv-0000-4000-8000-000000000101",
+        scheduledOn: "2026-10-09",
+        scores: [
+          { skill: "Sit", score: 2 },
+          { skill: "Loose-leash walking past the neighbour's reactive terrier", score: 1 },
+        ],
+        note: "Pulled hard at the corner of Wilson and Ashland every time the bus went past, settled after about ten minutes of turns.",
+        homework:
+          "Three five-minute loose-leash walks a day, turning away before the corner, treats at the hip.",
+      },
+    ],
   },
   getMyDay: () => ({
     staff: { ...fx.STAFF[0], organization_id: fx.ORG_ID },
@@ -210,7 +231,9 @@ for (const { w, h, label } of WIDTHS) {
       await open(page, "/settings/services", w, h);
       await expect(page.getByTestId("training-packages-settings")).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText("6-session package")).toBeVisible();
-      await expect(page.getByText("Clients cannot book a training lesson from the portal yet.")).toBeVisible();
+      await expect(
+        page.getByText("Clients cannot book a training lesson from the portal yet."),
+      ).toBeVisible();
       await expect(page.getByTestId("training-skills-settings")).toBeVisible();
       await measure(page, w, `settings ${label}`);
       await page.screenshot({ path: `${shotDir}/settings-${w}.png`, fullPage: true });
@@ -226,7 +249,9 @@ for (const { w, h, label } of WIDTHS) {
       await expect(page.getByText("Session 2 of 6")).toBeVisible({ timeout: 30_000 });
       await page.getByRole("button", { name: "Record progress" }).click();
       await expect(page.getByRole("group", { name: "Score for Sit" })).toBeVisible();
-      await expect(page.getByLabel("Session note")).toHaveValue("Held a sit while the door opened.");
+      await expect(page.getByLabel("Session note")).toHaveValue(
+        "Held a sit while the door opened.",
+      );
       await measure(page, w, `my day ${label}`);
       await page.screenshot({ path: `${shotDir}/lesson-progress-${w}.png`, fullPage: true });
     });
