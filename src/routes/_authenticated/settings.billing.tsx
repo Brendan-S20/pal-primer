@@ -1,4 +1,8 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
+import { LoadError } from "@/components/LoadError";
+import { LineBones } from "@/components/PageSkeletons";
+import { nextInvoiceTotalCents } from "@/lib/next-invoice-total";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -29,6 +33,7 @@ import {
   cancelPlatformAddon,
 } from "@/lib/platform-addons.functions";
 import { isSetupAddon, setupIsFreeFor, SETUP_FREE_BECAUSE } from "@/lib/done-for-you-setup";
+import { addonCardState, HELD_ADDON_ON_PLAN } from "@/lib/addon-launch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -114,7 +119,12 @@ function BillingPage() {
     queryKey: ["billing-status"],
     queryFn: () => statusFn(),
   });
-  const { data: subInfo, isLoading: subInfoLoading } = useQuery({
+  const {
+    data: subInfo,
+    isLoading: subInfoLoading,
+    isError: subInfoError,
+    refetch: refetchSubInfo,
+  } = useQuery({
     queryKey: ["billing-subscription-items"],
     queryFn: () => itemsFn(),
     enabled: !!data?.isPaidTier,
@@ -366,7 +376,14 @@ function BillingPage() {
 
       {canBuySaas && <PlatformAddonsSection planInterval={currentInterval} />}
 
-      {data.isPaidTier && <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />}
+      {data.isPaidTier && (
+        <NextInvoice
+          subInfo={subInfo as any}
+          isLoading={subInfoLoading}
+          isError={subInfoError}
+          onRetry={() => refetchSubInfo()}
+        />
+      )}
 
       <InvoiceHistory />
 
@@ -638,6 +655,7 @@ function OrgCardSetupInner({ onDone, onCancel }: { onDone: () => void; onCancel:
 // AI Receptionist that attach to the org's existing plan subscription as a
 // Stripe subscription item and flip the matching feature on.
 function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval | null }) {
+  const copy = useLaunchCopy();
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listPlatformAddons);
@@ -708,6 +726,7 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               : a.subscribed
                 ? (a.waivedReason ?? null)
                 : setupFree;
+            const state = addonCardState(a);
             return (
             <div
               key={a.id}
@@ -718,16 +737,22 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium">{a.name}</p>
-                  {a.subscribed ? (
+                    {/* An add-on that has not launched reads Coming soon even
+                      when it is on the plan (addonCardState, #428). */}
+                    {state === "coming_soon" ? (
+                      <Badge variant="outline">{copy("Coming soon")}</Badge>
+                    ) : state === "for_sale" ? null : (
                     <StatusChip
-                      status={a.billing_interval === "one_time" ? "paid" : "active"}
+                        status={state === "purchased" ? "paid" : "active"}
                       label={
-                        a.waivedReason ? "Included" : a.billing_interval === "one_time" ? "Purchased" : "Active"
+                          state === "included"
+                            ? "Included"
+                            : state === "purchased"
+                              ? "Purchased"
+                              : "Active"
                       }
                     />
-                  ) : a.status === "coming_soon" ? (
-                    <Badge variant="outline">Coming soon</Badge>
-                  ) : null}
+                    )}
                 </div>
                 {/* Annual orgs pay recurring add-ons yearly at 12x the monthly
                     amount (no discount), so show the amount they'll actually
@@ -761,6 +786,11 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               {description && (
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{description}</p>
               )}
+                {state === "coming_soon" && a.subscribed && (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    {copy(HELD_ADDON_ON_PLAN)}
+                  </p>
+                )}
               <div className="mt-3">
                 {a.subscribed && a.billing_interval === "one_time" ? null : a.subscribed ? (
                   <Button
@@ -780,11 +810,7 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                   >
                     {removingId === a.id ? "Removing…" : "Remove from plan"}
                   </Button>
-                ) : a.status === "coming_soon" ? (
-                  <Button size="sm" disabled title="This add-on isn't available yet">
-                    Coming soon
-                  </Button>
-                ) : a.includedReason ? (
+                  ) : state === "coming_soon" ? null : a.includedReason ? (
                   <Button size="sm" disabled title={a.includedReason}>
                     Included on your plan
                   </Button>
@@ -858,6 +884,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
 function NextInvoice({
   subInfo,
   isLoading,
+  isError,
+  onRetry,
 }: {
   subInfo:
     | {
@@ -878,6 +906,8 @@ function NextInvoice({
       }
     | undefined;
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }) {
   const items = subInfo?.items ?? [];
   const periodEnd = futureSubscriptionPeriodEnd(subInfo);
@@ -889,16 +919,16 @@ function NextInvoice({
   // Total in the subscription's own interval (all items share it; anything
   // odd an admin attached by hand is excluded and called out).
   const planInterval = subInfo?.planInterval ?? "month";
-  const total = items.reduce(
-    (sum, i) =>
-      i.unitAmountCents != null && i.interval === planInterval && i.intervalCount === 1
-        ? sum + i.unitAmountCents * (i.quantity ?? 1)
-        : sum,
-    0,
-  );
+  // A line with no price is usage: the priced sum is shown with "+ usage",
+  // never as if it were the whole bill.
+  const total = nextInvoiceTotalCents(items, planInterval);
   const allSameInterval = items.every((i) => i.interval === planInterval && i.intervalCount === 1);
   const totalLabel = planInterval === "year" ? "Yearly total" : "Monthly total";
   const totalSuffix = planInterval === "year" ? "/yr" : "/mo";
+  const totalText =
+    total.hasUsage && !total.hasKnown
+      ? "Usage only"
+      : `${formatUsd(total.knownCents)}${totalSuffix}${total.hasUsage ? " + usage" : ""}`;
 
   const intervalSuffix = (i: (typeof items)[number]) =>
     i.interval
@@ -913,7 +943,7 @@ function NextInvoice({
     return i.name;
   };
   const lineAmount = (i: (typeof items)[number]) => {
-    if (i.unitAmountCents == null) return "-";
+    if (i.unitAmountCents == null) return "Usage";
     const lineTotal = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
     return `${lineTotal}${intervalSuffix(i)}`;
   };
@@ -925,7 +955,12 @@ function NextInvoice({
         <p className="text-sm text-muted-foreground">Bills {formatDay(periodEnd)}</p>
       )}
       {isLoading ? (
-        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+        <div className="mt-3">
+          <LineBones rows={2} />
+        </div>
+      ) : isError && !subInfo ? (
+        // Not "No subscription line items": a failed read is not an empty plan.
+        <LoadError className="mt-3" what="your next invoice" onRetry={onRetry} />
       ) : ordered.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No subscription line items to show.</p>
       ) : (
@@ -952,8 +987,7 @@ function NextInvoice({
               {allSameInterval ? totalLabel : `${totalLabel} (excludes other billing periods)`}
             </p>
             <p className="text-sm font-semibold">
-              {formatUsd(total)}
-              {totalSuffix}
+              {totalText}
             </p>
           </div>
         </>

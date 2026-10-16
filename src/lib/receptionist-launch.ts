@@ -1,3 +1,5 @@
+import { ADDON_LAUNCHED } from "@/lib/addon-launch";
+
 /**
  * Whether the AI receptionist (texts and calls) is live.
  *
@@ -10,4 +12,4 @@
  *
  * Turning it on is this line plus that row's status.
  */
-export const RECEPTIONIST_LAUNCHED = false;
+export const RECEPTIONIST_LAUNCHED = ADDON_LAUNCHED["ai-receptionist"];
