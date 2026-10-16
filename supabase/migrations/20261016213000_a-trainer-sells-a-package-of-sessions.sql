@@ -189,7 +189,7 @@ BEGIN
     SELECT count(*) INTO _held FROM public.visits v
       WHERE v.client_package_id = _p.id AND v.id <> NEW.id
       AND (v.status IN ('scheduled', 'in_progress', 'completed') OR (v.status = 'skipped' AND v.skip_billable = true));
-    IF _held + CASE WHEN NEW.status IN ('scheduled', 'in_progress', 'completed') OR (NEW.status = 'skipped' AND NEW.skip_billable = true) THEN 1 ELSE 0 END > _p.sessions_count THEN
+    IF _held + (CASE WHEN NEW.status IN ('scheduled', 'in_progress', 'completed') OR (NEW.status = 'skipped' AND NEW.skip_billable = true) THEN 1 ELSE 0 END) > _p.sessions_count THEN
       _message := format('No sessions left in this package: %s of %s are booked or used.', _held, _p.sessions_count);
     END IF;
   END IF;
