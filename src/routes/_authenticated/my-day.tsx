@@ -90,6 +90,7 @@ import {
   Ban,
   ShieldCheck,
   ReceiptText,
+  BellRing,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
@@ -132,6 +133,7 @@ import {
 } from "@/components/my-day/WalkParts";
 import {
   SitCareLog,
+  SitCodesHint,
   SitMeta,
   SitNoteField,
   SitPetsCare,
@@ -2343,7 +2345,8 @@ function VisitCard({
               {(walk || sit) && <WalkAccess property={p} />}
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
-              {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
+              {sit && <SitCodesHint visit={visit} locale={locale} />}
+              {(p?.gate_code || p?.lock_box_code || p?.key_location || p?.alarm_notes) && (
                 <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border bg-muted/30 p-2.5">
                   {p?.gate_code && (
                     <AccessFact icon={Fence} label={t("access.gate")} value={p.gate_code} mono />
@@ -2359,6 +2362,11 @@ function VisitCard({
                   {p?.key_location && (
                     <div className="col-span-2">
                       <AccessFact icon={KeyRound} label={t("access.key")} value={p.key_location} />
+                    </div>
+                  )}
+                  {p?.alarm_notes && (
+                    <div className="col-span-2">
+                      <AccessFact icon={BellRing} label={t("access.alarm")} value={p.alarm_notes} />
                     </div>
                   )}
                 </div>

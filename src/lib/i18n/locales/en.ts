@@ -348,6 +348,7 @@ const en = {
     gate: "Gate",
     lockBox: "Lock box",
     key: "Key",
+    alarm: "Alarm",
   },
   /** A dog walk's card (#410): components/my-day/WalkParts.tsx. */
   walk: {
@@ -429,6 +430,8 @@ const en = {
     medNotLogged: "{{pet}}'s {{med}} is not logged",
     noteForClient: "Note for the client",
     noteForClientPlaceholder: "Luna ate everything and napped in the sun",
+    codesFrom: "Codes and keys show from {{date}}.",
+    codesSitterOnly: "Only the stay's sitter sees the codes and keys.",
   },
   visit: {
     stop: "Stop {{number}}.",

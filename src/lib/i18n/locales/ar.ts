@@ -373,6 +373,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     gate: "البوابة",
     lockBox: "صندوق المفاتيح",
     key: "المفتاح",
+    alarm: "جهاز الإنذار",
   },
   walk: {
     start: "ابدأ النزهة",
@@ -452,6 +453,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     medNotLogged: "لم يُسجَّل {{med}} لـ {{pet}}",
     noteForClient: "ملاحظة للعميل",
     noteForClientPlaceholder: "أكلت لونا كل طعامها ونامت في الشمس",
+    codesFrom: "تظهر الرموز والمفاتيح من {{date}}.",
+    codesSitterOnly: "لا يرى الرموز والمفاتيح إلا جليس هذه الإقامة.",
   },
   visit: {
     stop: "الزيارة {{number}}.",

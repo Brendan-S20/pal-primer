@@ -22,6 +22,7 @@ import {
   Dog,
   Droplets,
   Footprints,
+  LockKeyhole,
   PawPrint,
   Pill,
   Sparkles,
@@ -33,6 +34,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { deleteCareEntry, recordCareEntry } from "@/lib/care-log.functions";
 import { REPORT_NOTE_MAX } from "@/lib/walk-report";
+import { stayAccessOpen, stayAccessWindow, stayDays } from "@/lib/stays";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { orgLocalTime } from "@/lib/org-day";
 import { haptic } from "@/lib/haptics";
 import { newClientKey } from "@/lib/stop-facts";
@@ -61,6 +64,8 @@ export { isSitVisit } from "@/lib/sit-day";
 type SitVisit = {
   id: string;
   sit_facts?: SitFacts | null;
+  /** Whether stay_access_codes returned this stay (src/lib/sit-day.server.ts). */
+  stay_codes_shown?: boolean;
   care_entries?: CareEntry[] | null;
   properties?: { dogs?: unknown[] | null } | null;
 };
@@ -120,6 +125,28 @@ export function SitMeta({ visit, locale }: { visit: SitVisit; locale?: string })
         <span className="min-w-0">
           {overnight ? t("sit.checkInOut", { from, to }) : t("sit.dates", { from, to })}
         </span>
+      </span>
+    </div>
+  );
+}
+
+/** When the stay's codes are not on the card: the day they show, or that
+ *  only the stay's sitter sees them. Nothing once the stay is over. */
+export function SitCodesHint({ visit, locale }: { visit: SitVisit; locale?: string }) {
+  const { t } = useTranslation();
+  const today = useOrgToday();
+  const facts = visit.sit_facts;
+  if (!facts || visit.stay_codes_shown) return null;
+  const kind = isOvernight(facts) ? "overnight" : "drop_in";
+  const open = stayAccessWindow(stayDays(kind, facts.starts_on, facts.ends_on));
+  if (!open || today > open.through) return null;
+  return (
+    <div className="mt-2 flex items-start gap-2 text-sm text-muted-foreground">
+      <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0">
+        {stayAccessOpen(today, open)
+          ? t("sit.codesSitterOnly")
+          : t("sit.codesFrom", { date: dayLabel(open.from, locale) })}
       </span>
     </div>
   );
