@@ -170,6 +170,15 @@ const zh: TranslationsWithPlurals<"other"> = {
       medium: "中型",
       large: "大型",
       giant: "超大型",
+      xlarge: "超大型",
+    },
+    coatType: {
+      short: "短毛",
+      medium: "中长毛",
+      long: "长毛",
+      double: "双层毛",
+      curly: "卷毛",
+      wire: "刚毛",
     },
   },
   yard: {

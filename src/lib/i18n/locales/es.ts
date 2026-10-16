@@ -174,6 +174,15 @@ const es: Translations = {
       medium: "mediano",
       large: "grande",
       giant: "gigante",
+      xlarge: "extra grande",
+    },
+    coatType: {
+      short: "Pelo corto",
+      medium: "Pelo medio",
+      long: "Pelo largo",
+      double: "Doble capa",
+      curly: "Pelo rizado",
+      wire: "Pelo duro",
     },
   },
   yard: {

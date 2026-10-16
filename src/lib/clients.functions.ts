@@ -1,3 +1,4 @@
+import { COAT_TYPES } from "@/lib/groom";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -258,7 +259,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: dogs, error: dogErr } = propertyIds.length
       ? await supabaseAdmin
           .from("dogs")
-          .select("id, property_id, name, breed, weight_class, temperament, notes, active")
+          .select("id, property_id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, active")
           .in("property_id", propertyIds)
           .order("name")
       : { data: [], error: null };
@@ -472,7 +473,7 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     const { data: dogs, error } = await supabase
       .from("dogs")
       .select(
-        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status",
+        "id, property_id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, active, unit_id, dna_status",
       )
       .in("property_id", ids)
       .order("name");
@@ -780,6 +781,8 @@ const onboardSchema = z.object({
         name: z.string().min(1).max(80),
         breed: z.string().max(120).optional(),
         weightClass: z.string().max(40).optional(),
+        coatType: z.enum(COAT_TYPES).nullable().optional(),
+        weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
         // The dog_temperament enum's own values. The wizard offered "shy" and
         // "anxious", which the enum has never had, so any dog marked either
         // failed the whole onboarding on the dogs insert.
@@ -977,6 +980,8 @@ export const onboardClient = createServerFn({ method: "POST" })
         name: d.name,
         breed: d.breed || null,
         weight_class: d.weightClass || null,
+        coat_type: d.coatType ?? null,
+        weight_lb: d.weightLb ?? null,
         temperament: (d.temperament ?? "unknown") as any,
         notes: d.notes || null,
       }));

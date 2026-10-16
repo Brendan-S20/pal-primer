@@ -52,6 +52,8 @@ export type ConvertibleLead = {
 };
 
 export type WizardDog = {
+  coatType?: import("@/lib/groom").CoatType | "";
+  weightLb?: string;
   name: string;
   breed: string;
   weightClass: string;

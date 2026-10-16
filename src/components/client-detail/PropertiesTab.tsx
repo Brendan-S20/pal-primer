@@ -1,3 +1,6 @@
+import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
+import { useServiceLines } from "@/components/CommercialOnly";
+import type { CoatType } from "@/lib/groom";
 // Properties tab (spec): expandable read-only summaries, boundary displayed
 // automatically (no "View Boundary" click), yard size derived from the
 // boundary, auto-calculated estimated time with override indicator, zone
@@ -714,6 +717,8 @@ function DogsSection({
   dogs: any[];
   billedDogCounts?: number[];
 }) {
+  const { lines } = useServiceLines();
+  const grooming = lines.includes("mobile_grooming");
   const qc = useQueryClient();
   const addFn = useServerFn(addDog);
   const updateFn = useServerFn(updateDog);
@@ -730,6 +735,8 @@ function DogsSection({
   const [breed, setBreed] = useState("");
   const [breedChoice, setBreedChoice] = useState("");
   const [size, setSize] = useState("");
+  const [coatType, setCoatType] = useState<CoatType | "">("");
+  const [weightLb, setWeightLb] = useState("");
   const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("unknown");
   const [notes, setNotes] = useState("");
 
@@ -740,6 +747,8 @@ function DogsSection({
     setBreed("");
     setBreedChoice("");
     setSize("");
+    setCoatType("");
+    setWeightLb("");
     setNotes("");
     setTemperament("unknown");
   };
@@ -752,6 +761,8 @@ function DogsSection({
     setBreed(d.breed ?? "");
     setBreedChoice(d.breed ? (knownBreed ? d.breed : "__other") : "");
     setSize(d.weight_class ?? "");
+    setCoatType(d.coat_type ?? "");
+    setWeightLb(d.weight_lb == null ? "" : String(d.weight_lb));
     setTemperament((d.temperament ?? "unknown") as typeof temperament);
     setNotes(d.notes ?? "");
   };
@@ -762,6 +773,7 @@ function DogsSection({
         name: name.trim(),
         breed: breed || null,
         weightClass: size || null,
+        ...(grooming ? { coatType: coatType || null, weightLb: weightLb === "" ? null : Number(weightLb) } : {}),
         temperament,
         notes: notes || null,
       };
@@ -921,20 +933,12 @@ function DogsSection({
               />
             )}
           </div>
-          <div>
-            <Label className="text-xs">Size</Label>
-            <select
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              className="h-10 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="">-</option>
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
-              <option value="giant">Giant</option>
-            </select>
-          </div>
+          <PetSizeFields size={size} coatType={coatType} weightLb={weightLb} grooming={grooming}
+            onChange={(patch) => {
+              if (patch.size !== undefined) setSize(patch.size);
+              if (patch.coatType !== undefined) setCoatType(patch.coatType);
+              if (patch.weightLb !== undefined) setWeightLb(patch.weightLb);
+            }} />
           <div>
             <Label className="text-xs">Temperament</Label>
             <select

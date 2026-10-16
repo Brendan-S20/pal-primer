@@ -1,3 +1,4 @@
+import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -391,7 +392,8 @@ function NewClientWizard({
   const linkFn = useServerFn(linkLeadToExistingClient);
 
   const [step, setStep] = useState(0);
-  const { petWaste } = useServiceLines();
+  const { petWaste, lines } = useServiceLines();
+  const grooming = lines.includes("mobile_grooming");
   const steps = newClientWizardSteps(petWaste);
   // Clamped: if the answer arrives while somebody is on the last step, the
   // list can be one shorter than the index they were on.
@@ -687,6 +689,7 @@ function NewClientWizard({
                 name: d.name.trim(),
                 breed: d.breed || undefined,
                 weightClass: d.weightClass || undefined,
+                ...(grooming ? { coatType: d.coatType || null, weightLb: d.weightLb ? Number(d.weightLb) : null } : {}),
                 temperament: d.temperament,
                 notes: d.notes || undefined,
               }))
@@ -1182,24 +1185,13 @@ function NewClientWizard({
                       placeholder="Lab mix"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Weight</Label>
-                    <select
-                      value={d.weightClass}
-                      onChange={(e) => {
-                        const next = [...dogs];
-                        next[i] = { ...next[i], weightClass: e.target.value };
-                        setDogs(next);
-                      }}
-                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                    >
-                      <option value="">-</option>
-                      <option value="small">Small (&lt; 25 lb)</option>
-                      <option value="medium">Medium (25-60 lb)</option>
-                      <option value="large">Large (60-100 lb)</option>
-                      <option value="xlarge">XL (100+ lb)</option>
-                    </select>
-                  </div>
+                  <PetSizeFields size={d.weightClass} coatType={d.coatType ?? ""} weightLb={d.weightLb ?? ""} grooming={grooming}
+                    onChange={(patch) => setDogs(dogs.map((dog, index) => index === i ? {
+                      ...dog,
+                      ...(patch.size !== undefined ? { weightClass: patch.size } : {}),
+                      ...(patch.coatType !== undefined ? { coatType: patch.coatType } : {}),
+                      ...(patch.weightLb !== undefined ? { weightLb: patch.weightLb } : {}),
+                    } : dog))} />
                   <div className="space-y-1">
                     <Label className="text-xs">Temperament</Label>
                     <select

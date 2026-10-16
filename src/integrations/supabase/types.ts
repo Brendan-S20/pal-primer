@@ -440,6 +440,8 @@ export type Database = {
       }
       addon_services: {
         Row: {
+          duration_min: number
+          service_line: string | null
           active: boolean
           audience: Database["public"]["Enums"]["addon_audience"]
           code: string
@@ -457,6 +459,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          duration_min?: number
+          service_line?: string | null
           active?: boolean
           audience?: Database["public"]["Enums"]["addon_audience"]
           code: string
@@ -474,6 +478,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          duration_min?: number
+          service_line?: string | null
           active?: boolean
           audience?: Database["public"]["Enums"]["addon_audience"]
           code?: string
@@ -1439,6 +1445,8 @@ export type Database = {
       }
       dogs: {
         Row: {
+          coat_type: string | null
+          weight_lb: number | null
           active: boolean
           breed: string | null
           created_at: string
@@ -1458,6 +1466,8 @@ export type Database = {
           weight_class: string | null
         }
         Insert: {
+          coat_type?: string | null
+          weight_lb?: number | null
           active?: boolean
           breed?: string | null
           created_at?: string
@@ -1477,6 +1487,8 @@ export type Database = {
           weight_class?: string | null
         }
         Update: {
+          coat_type?: string | null
+          weight_lb?: number | null
           active?: boolean
           breed?: string | null
           created_at?: string
@@ -5445,6 +5457,57 @@ export type Database = {
           voter_id?: string
         }
         Relationships: []
+      }
+      service_size_rules: {
+        Row: {
+          id: string
+          organization_id: string
+          service_id: string
+          size: string
+          coat_type: string | null
+          duration_min: number
+          price_cents: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id?: string
+          service_id: string
+          size: string
+          coat_type?: string | null
+          duration_min: number
+          price_cents: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          service_id?: string
+          size?: string
+          coat_type?: string | null
+          duration_min?: number
+          price_cents?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_size_rules_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_size_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       services: {
         Row: {

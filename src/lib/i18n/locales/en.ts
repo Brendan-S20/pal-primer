@@ -186,6 +186,15 @@ const en = {
       medium: "medium",
       large: "large",
       giant: "giant",
+      xlarge: "extra large",
+    },
+    coatType: {
+      short: "Short coat",
+      medium: "Medium coat",
+      long: "Long coat",
+      double: "Double coat",
+      curly: "Curly coat",
+      wire: "Wire coat",
     },
   },
   yard: {

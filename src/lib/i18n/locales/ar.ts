@@ -213,6 +213,15 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       medium: "متوسط",
       large: "كبير",
       giant: "ضخم",
+      xlarge: "كبير جدًا",
+    },
+    coatType: {
+      short: "فرو قصير",
+      medium: "فرو متوسط",
+      long: "فرو طويل",
+      double: "فرو مزدوج",
+      curly: "فرو مجعد",
+      wire: "فرو سلكي",
     },
   },
   yard: {

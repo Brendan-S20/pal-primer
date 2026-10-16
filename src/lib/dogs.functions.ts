@@ -1,3 +1,4 @@
+import { COAT_TYPES } from "@/lib/groom";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -33,6 +34,8 @@ const addDogSchema = z.object({
   name: z.string().min(1).max(80),
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
+  coatType: z.enum(COAT_TYPES).nullable().optional(),
+  weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
   temperament: temperament.optional(),
   notes: z.string().max(1000).optional().nullable(),
   /** Commercial: scope the dog to a unit on the property. */
@@ -82,6 +85,8 @@ export const addDog = createServerFn({ method: "POST" })
         name: dogName,
         breed: data.breed || null,
         weight_class: data.weightClass || null,
+        coat_type: data.coatType ?? null,
+        weight_lb: data.weightLb ?? null,
         temperament: data.temperament ?? "unknown",
         notes: data.notes || null,
         unit_id: data.unitId ?? null,
@@ -119,6 +124,8 @@ const editDogSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
+  coatType: z.enum(COAT_TYPES).nullable().optional(),
+  weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
   temperament: temperament.optional(),
   notes: z.string().max(1000).optional().nullable(),
   active: z.boolean().optional(),
@@ -169,7 +176,7 @@ export const updateDog = createServerFn({ method: "POST" })
       }
     }
 
-    const patch: Record<string, string | boolean | null> = {};
+    const patch: Record<string, string | number | boolean | null> = {};
     if (data.name !== undefined) patch.name = data.name.trim();
     // Reassigning a unit clears/sets the management-review flag (I5): assigning
     // resolves review; unassigning on a unit-bearing property re-flags it.
@@ -183,6 +190,8 @@ export const updateDog = createServerFn({ method: "POST" })
     }
     if (data.breed !== undefined) patch.breed = data.breed || null;
     if (data.weightClass !== undefined) patch.weight_class = data.weightClass || null;
+    if (data.coatType !== undefined) patch.coat_type = data.coatType;
+    if (data.weightLb !== undefined) patch.weight_lb = data.weightLb;
     if (data.temperament !== undefined) patch.temperament = data.temperament;
     if (data.notes !== undefined) patch.notes = data.notes || null;
     if (data.active !== undefined) patch.active = data.active;
