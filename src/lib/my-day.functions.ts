@@ -111,6 +111,25 @@ async function businessCanText(orgId: string): Promise<boolean> {
   }
 }
 
+const VISIT_NOTICE_DEADLINE_MS = 2_500;
+
+async function withNoticeDeadline<T>(
+  label: string,
+  work: Promise<T>,
+): Promise<{ timedOut: true } | { timedOut: false; value: T }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), VISIT_NOTICE_DEADLINE_MS);
+  });
+  const result = await Promise.race([work, timeout]);
+  if (timer) clearTimeout(timer);
+  if (result === "timeout") {
+    work.catch((e) => console.error(`${label} failed after timeout`, e));
+    return { timedOut: true };
+  }
+  return { timedOut: false, value: result as T };
+}
+
 /**
  * What the card needs that the visit's own row does not carry: the dog count
  * the subscription is priced on, how the customer pays and what they owe
@@ -286,10 +305,27 @@ export const completeVisit = createServerFn({ method: "POST" })
       console.warn("visit.completed activity log failed", data.visitId, e);
     }
 
+    const sentClientNotices: Array<
+      "completion_email" | "push" | "review_sms" | "review_email"
+    > = [];
+    let noticesPending = false;
+
     // The office hears when the route is finished, or when the NEXT stop is
-    // now going to be late (field-notify.server.ts). Never throws.
-    const { afterStopResolved } = await import("@/lib/field-notify.server");
-    await afterStopResolved({ visitId: data.visitId, actorUserId: context.userId });
+    // now going to be late (field-notify.server.ts). It is not a client
+    // notice, so a timeout here must not make the tech's toast say client
+    // notices are still sending. Start it now and await it near the return so
+    // it does not add another wait before the client-facing work begins.
+    const routeNoticeDone = (async () => {
+      try {
+        const { afterStopResolved } = await import("@/lib/field-notify.server");
+        await withNoticeDeadline(
+          "route follow-up after completion",
+          afterStopResolved({ visitId: data.visitId, actorUserId: context.userId }),
+        );
+      } catch (e) {
+        console.warn("route follow-up after completion failed", data.visitId, e);
+      }
+    })();
 
     // Fire visit-completed email (best-effort)
     try {
@@ -349,37 +385,48 @@ export const completeVisit = createServerFn({ method: "POST" })
         } catch (e) {
           console.warn("visit-completed photos could not be signed", data.visitId, e);
         }
-        const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-        await enqueueAppEmail({
-          organizationId: v.organization_id,
-          clientId: v.client_id,
-          templateName: "visit-completed",
-          notifyKey: "notify_email_visit_completed",
-          idempotencyKey: `visit-done-${data.visitId}`,
-          // P3.5: visit emails go to the property's own contact when one is
-          // set (tenant/manager); billing emails stay with the client.
-          toOverride: prop?.visit_contact_email || undefined,
-          templateData: {
-            // "Mon, Sep 28", not the column's 2026-09-28.
-            visitDate: formatDay(v.scheduled_on),
-            address,
-            photoUrls,
-            gatePhotoUrl,
-            checklist,
-          },
-        });
-        // Best-effort push notification to the client (if they subscribed via portal).
-        try {
-          const { sendPushToClient } = await import("@/lib/push.server");
-          await sendPushToClient(v.client_id, {
-            title: "Visit completed",
-            body: address ? `We just cleaned up at ${address}.` : "Your yard visit is complete.",
-            tag: `visit-${data.visitId}`,
-            url: "/portal",
-          });
-        } catch (e) {
-          console.error("client push failed", e);
-        }
+        const [{ enqueueAppEmail }, { sendPushToClient }] = await Promise.all([
+          import("@/lib/email/enqueue.server"),
+          import("@/lib/push.server"),
+        ]);
+        const [emailResult, pushResult] = await Promise.all([
+          withNoticeDeadline(
+            "visit-completed email enqueue",
+            enqueueAppEmail({
+              organizationId: v.organization_id,
+              clientId: v.client_id,
+              templateName: "visit-completed",
+              notifyKey: "notify_email_visit_completed",
+              idempotencyKey: `visit-done-${data.visitId}`,
+              // P3.5: visit emails go to the property's own contact when one is
+              // set (tenant/manager); billing emails stay with the client.
+              toOverride: prop?.visit_contact_email || undefined,
+              templateData: {
+                // "Mon, Sep 28", not the column's 2026-09-28.
+                visitDate: formatDay(v.scheduled_on),
+                address,
+                photoUrls,
+                gatePhotoUrl,
+                checklist,
+              },
+            }),
+          ),
+          withNoticeDeadline(
+            "visit-completed push",
+            sendPushToClient(v.client_id, {
+              title: "Visit completed",
+              body: address ? `We just cleaned up at ${address}.` : "Your yard visit is complete.",
+              tag: `visit-${data.visitId}`,
+              url: "/portal",
+            }),
+          ),
+        ]);
+        if (emailResult.timedOut) noticesPending = true;
+        else if ((emailResult.value as { ok?: boolean })?.ok)
+          sentClientNotices.push("completion_email");
+        if (pushResult.timedOut) noticesPending = true;
+        else if (((pushResult.value as { sent?: number })?.sent ?? 0) > 0)
+          sentClientNotices.push("push");
       }
     } catch (e) {
       console.error("visit-completed email failed", e);
@@ -433,45 +480,65 @@ export const completeVisit = createServerFn({ method: "POST" })
             .replace(/\{link\}/g, o.google_review_url);
           const { sendTwilioSms } = await import("@/lib/twilio.server");
           try {
-            const res = await sendTwilioSms({
-              to: c.primary_phone,
-              body,
-              from: sender.from ?? undefined,
-              messagingServiceSid: sender.messagingServiceSid ?? undefined,
-              credentials: sender.credentials,
-            });
-            await context.supabase.from("messages").insert({
-              organization_id: orgId,
-              client_id: c.id,
-              visit_id: data.visitId,
-              direction: "outbound",
-              body,
-              from_number: sender.from,
-              to_number: c.primary_phone,
-              twilio_sid: res.sid,
-              status: (res.status || "sent") as any,
-            });
-            await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+            const smsResult = await withNoticeDeadline(
+              "review SMS",
+              sendTwilioSms({
+                to: c.primary_phone,
+                body,
+                from: sender.from ?? undefined,
+                messagingServiceSid: sender.messagingServiceSid ?? undefined,
+                credentials: sender.credentials,
+              }),
+            );
+            if (smsResult.timedOut) {
+              noticesPending = true;
+            } else {
+              const res = smsResult.value;
+              await context.supabase.from("messages").insert({
+                organization_id: orgId,
+                client_id: c.id,
+                visit_id: data.visitId,
+                direction: "outbound",
+                body,
+                from_number: sender.from,
+                to_number: c.primary_phone,
+                twilio_sid: res.sid,
+                status: (res.status || "sent") as any,
+              });
+              await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+              sentClientNotices.push("review_sms");
+            }
           } catch (err) {
             console.error("auto review SMS failed", err);
           }
         } else {
           const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-          const r = await enqueueAppEmail({
-            organizationId: orgId,
-            clientId: c.id,
-            templateName: "review-request",
-            notifyKey: "notify_email_review_request",
-            idempotencyKey: `review-${c.id}-${new Date().toISOString().slice(0, 10)}`,
-            templateData: { reviewUrl: o.google_review_url },
-          });
-          if (r.ok) await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+          const reviewEmail = await withNoticeDeadline(
+            "review email enqueue",
+            enqueueAppEmail({
+              organizationId: orgId,
+              clientId: c.id,
+              templateName: "review-request",
+              notifyKey: "notify_email_review_request",
+              idempotencyKey: `review-${c.id}-${new Date().toISOString().slice(0, 10)}`,
+              templateData: { reviewUrl: o.google_review_url },
+            }),
+          );
+          if (reviewEmail.timedOut) {
+            noticesPending = true;
+          } else {
+            if ((reviewEmail.value as { ok?: boolean })?.ok) {
+              await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+              sentClientNotices.push("review_email");
+            }
+          }
         }
       }
     } catch (e) {
       console.error("auto review request failed", e);
     }
-    return { ok: true };
+    await routeNoticeDone;
+    return { ok: true, notificationSummary: { sent: sentClientNotices, pending: noticesPending } };
   });
 
 export const skipVisit = createServerFn({ method: "POST" })

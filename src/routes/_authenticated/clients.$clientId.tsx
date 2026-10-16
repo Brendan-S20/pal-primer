@@ -6,7 +6,12 @@ import { ClientDetailSkeleton } from "@/components/PageSkeletons";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clients.functions";
+import {
+  getClient,
+  getFieldClientInfo,
+  listClientVisitHistory,
+  listDogsForClient,
+} from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
@@ -93,6 +98,139 @@ function TabLoading({ children }: { children: ReactNode }) {
   );
 }
 
+function FieldClientInfoView({
+  client,
+  properties,
+  dogs,
+}: {
+  client: any;
+  properties: any[];
+  dogs: any[];
+}) {
+  useDocumentTitle(pageTitle(client.display_name ?? "Client", "Clients"));
+  const dogsByProperty = new Map<string, any[]>();
+  for (const dog of dogs) {
+    const list = dogsByProperty.get(dog.property_id) ?? [];
+    list.push(dog);
+    dogsByProperty.set(dog.property_id, list);
+  }
+
+  const flagsFor = (p: any) =>
+    [
+      [p.aggressive_dog, "Aggressive dog"],
+      [p.dog_in_yard_during_service, "Dog in yard during service"],
+      [p.escape_risk, "Escape risk"],
+      [p.invisible_fence, "Invisible fence"],
+      [p.bees_wasps, "Bees or wasps"],
+      [p.sharp_objects, "Sharp objects"],
+      [p.slippery_surfaces, "Slippery surfaces"],
+      [p.do_not_enter_if_dog_out, "Do not enter if dog is out"],
+    ]
+      .filter(([on]) => on)
+      .map(([, label]) => label as string);
+
+  return (
+    <div className="space-y-4">
+      <Link
+        to="/my-day"
+        className="inline-flex items-center text-sm text-muted-foreground hover:underline touch:min-h-11"
+      >
+        Back to My Day
+      </Link>
+
+      <header className="space-y-1">
+        <p className="text-xs font-semibold uppercase text-muted-foreground">Field client info</p>
+        <h1 className="text-2xl font-bold tracking-tight">{client.display_name}</h1>
+        {client.primary_phone && (
+          <a className="text-sm font-medium underline" href={`tel:${client.primary_phone}`}>
+            {client.primary_phone}
+          </a>
+        )}
+        {client.notes && <p className="whitespace-pre-wrap text-sm">{client.notes}</p>}
+      </header>
+
+      {properties.map((p) => {
+        const dogRows = dogsByProperty.get(p.id) ?? [];
+        const flags = flagsFor(p);
+        return (
+          <section key={p.id} className="space-y-3 border-t pt-4">
+            <div>
+              <h2 className="text-lg font-semibold">{p.street || p.label || "Property"}</h2>
+              <p className="text-sm text-muted-foreground">
+                {[p.city, p.region, p.postal_code].filter(Boolean).join(" ")}
+              </p>
+            </div>
+
+            {(p.gate_code || p.lock_box_code || p.key_location) && (
+              <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+                {p.gate_code && (
+                  <div>
+                    <span className="text-muted-foreground">Gate:</span>{" "}
+                    <span className="font-mono">{p.gate_code}</span>
+                  </div>
+                )}
+                {p.lock_box_code && (
+                  <div>
+                    <span className="text-muted-foreground">Lock box:</span>{" "}
+                    <span className="font-mono">{p.lock_box_code}</span>
+                  </div>
+                )}
+                {p.key_location && (
+                  <div className="sm:col-span-2">
+                    <span className="text-muted-foreground">Key:</span> {p.key_location}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(p.parking_notes || p.access_notes || p.hazard_notes || flags.length > 0) && (
+              <div className="space-y-2 text-sm">
+                {p.parking_notes && (
+                  <p>
+                    <span className="font-medium">Parking:</span> {p.parking_notes}
+                  </p>
+                )}
+                {p.access_notes && (
+                  <p>
+                    <span className="font-medium">Access:</span> {p.access_notes}
+                  </p>
+                )}
+                {flags.length > 0 && (
+                  <p>
+                    <span className="font-medium">Hazards:</span> {flags.join(", ")}
+                  </p>
+                )}
+                {p.hazard_notes && <p className="whitespace-pre-wrap">{p.hazard_notes}</p>}
+              </div>
+            )}
+
+            <div>
+              <h3 className="text-xs font-semibold uppercase text-muted-foreground">
+                Dogs ({dogRows.length})
+              </h3>
+              {dogRows.length ? (
+                <ul className="mt-1 space-y-2">
+                  {dogRows.map((d) => (
+                    <li key={d.id} className="rounded-md border p-2 text-sm">
+                      <div className="font-medium">{d.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+                      </div>
+                      {d.notes && <p className="mt-1 whitespace-pre-wrap text-xs">{d.notes}</p>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">No dogs on file.</p>
+              )}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 const TABS = [
   "summary",
   "properties",
@@ -146,10 +284,12 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
 function ClientDetail() {
   const { clientId } = Route.useParams();
   const { can, loading: roleLoading } = usePermissions();
+  const canViewDirectory = can("view_client_directory");
   const canBill = can("manage_client_billing");
   const canManagePricing = can("manage_pricing");
 
   const getClientFn = useServerFn(getClient);
+  const getFieldClientInfoFn = useServerFn(getFieldClientInfo);
   const listPropsFn = useServerFn(listPropertiesForClient);
   const listSubsFn = useServerFn(listSubscriptionsForClient);
   const listZonesFn = useServerFn(listZones);
@@ -163,6 +303,16 @@ function ClientDetail() {
   } = useQuery({
     queryKey: ["client", clientId],
     queryFn: () => getClientFn({ data: { clientId } }),
+    enabled: canViewDirectory,
+  });
+  const {
+    data: fieldData,
+    isLoading: fieldLoading,
+    error: fieldError,
+  } = useQuery({
+    queryKey: ["client-field-info", clientId],
+    queryFn: () => getFieldClientInfoFn({ data: { clientId } }),
+    enabled: !roleLoading && !canViewDirectory,
   });
   // The tab names the client, so five clients open in five tabs are five
   // different tabs. The route's head says "Client" until this loads.
@@ -172,20 +322,28 @@ function ClientDetail() {
   const { data: propsData } = useQuery({
     queryKey: ["properties", clientId],
     queryFn: () => listPropsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
   const { data: subsData } = useQuery({
     queryKey: ["subs", clientId],
     queryFn: () => listSubsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
-  const { data: zonesData } = useQuery({ queryKey: ["zones"], queryFn: () => listZonesFn() });
+  const { data: zonesData } = useQuery({
+    queryKey: ["zones"],
+    queryFn: () => listZonesFn(),
+    enabled: canViewDirectory,
+  });
   const { data: visitsData, isLoading: visitsLoading } = useQuery({
     queryKey: ["client-visit-history", clientId],
     queryFn: () => listVisitsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
   const listDogsFn = useServerFn(listDogsForClient);
   const { data: dogsData } = useQuery({
     queryKey: ["client-dogs", clientId],
     queryFn: () => listDogsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
   const { data: billing } = useQuery({
     queryKey: ["billing-summary", clientId],
@@ -263,7 +421,22 @@ function ClientDetail() {
     </Link>
   );
 
-  if (isLoading)
+  if (!roleLoading && !canViewDirectory) {
+    if (fieldLoading) return <ClientDetailSkeleton />;
+    if (fieldError) return <p className="text-destructive">{(fieldError as Error).message}</p>;
+    if (fieldData?.client?.display_name) {
+      return (
+        <FieldClientInfoView
+          client={fieldData.client}
+          properties={fieldData.properties ?? []}
+          dogs={fieldData.dogs ?? []}
+        />
+      );
+    }
+    return null;
+  }
+
+  if (isLoading || roleLoading)
     return (
       <>
         {backLink}
