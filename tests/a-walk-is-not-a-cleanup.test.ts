@@ -317,6 +317,7 @@ describe("the server functions", () => {
       ...WALK,
       name: "30-minute walk",
       max_dogs: null,
+      holiday_surcharge_pct: 0,
       organization_id: "org-a",
       active: true,
     });

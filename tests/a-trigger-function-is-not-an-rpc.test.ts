@@ -213,7 +213,10 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_visits_stay_sitter (20261016120000) keep a stay, its plans and its
     // sitter consistent. validate_walk_group_member is restated there, not
     // new. Each REVOKEd from PUBLIC, anon and authenticated in the same file.
-    expect(triggerFunctions().size).toBe(70);
+    // 70 -> 71 on 2026-10-16 (20261016140000): tg_stays_invoice_guard
+    // keeps confirmation and invoice links on the transactional booking path.
+    // It revokes EXECUTE from PUBLIC, anon and authenticated in the same file.
+    expect(triggerFunctions().size).toBe(71);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
