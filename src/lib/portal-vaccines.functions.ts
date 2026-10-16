@@ -47,7 +47,7 @@ export const portalListVaccines = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const pets = await Promise.all((dogs ?? []).map(async (dog) => {
       const { data: records, error } = await db.from("pet_vaccinations")
-        .select("id, vaccine, vaccine_note, given_on, expires_on, file_name, source, verified_at")
+        .select("id, vaccine, vaccine_note, given_on, expires_on, file_name, source, verified_at, rejected_at, rejection_reason")
         .eq("dog_id", dog.id).eq("organization_id", session.organizationId).order("expires_on", { ascending: false });
       if (error) throw new Error(error.message);
       return { id: dog.id, name: dog.name, records: records ?? [], status: vaccineStatus(records ?? [], settings.required, settings.today) };

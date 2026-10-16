@@ -205,7 +205,7 @@ export async function bookGroomAppointment(
   if (settings.enabled && settings.rule !== "off") {
     const { data: records, error: vErr } = await db
       .from("pet_vaccinations")
-      .select("dog_id, vaccine, expires_on, source, verified_at")
+      .select("dog_id, vaccine, expires_on, source, verified_at, rejected_at")
       .eq("organization_id", input.orgId)
       .in("dog_id", petIds);
     if (vErr) throw new Error(vErr.message);

@@ -285,7 +285,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
       if (ids.length) {
         const { data: records, error } = await supabase
           .from("pet_vaccinations")
-          .select("dog_id, vaccine, expires_on, source, verified_at")
+          .select("dog_id, vaccine, expires_on, source, verified_at, rejected_at")
           .in("dog_id", ids)
           .eq("organization_id", caller.orgId);
         if (error) throw new Error(error.message);

@@ -150,14 +150,15 @@ export const groomBookingOptions = createServerFn({ method: "GET" })
     if (settings.enabled && petRows.length > 0) {
       const { data: rows, error } = await supabase
         .from("pet_vaccinations")
-        .select("dog_id, vaccine, expires_on, source, verified_at")
+        .select("dog_id, vaccine, expires_on, source, verified_at, rejected_at")
         .eq("organization_id", orgId)
         .in(
           "dog_id",
           petRows.map((d) => d.id),
         );
       if (error) throw new Error(error.message);
-      vaccines = rows ?? [];
+      // A rejected upload is not a record; the dialog never sees it.
+      vaccines = (rows ?? []).filter((r) => !r.rejected_at);
     }
 
     return {
