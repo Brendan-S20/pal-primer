@@ -35,19 +35,26 @@ export async function withSitDay<V extends { id: string; services?: unknown }>(
 
   const facts = new Map<string, SitFacts>();
   const entries = new Map<string, CareEntry[]>();
+  // Both at once: neither waits on the other.
+  const [factsRes, careRes] = await Promise.allSettled([
+    supabase.rpc("sit_visit_facts", { _visit_ids: ids }),
+    (supabase as any)
+      .from("care_log")
+      .select("id, visit_id, pet_id, kind, med_name, status, missed_reason, note, at, staff(display_name)")
+      .in("visit_id", ids)
+      .order("at"),
+  ]);
   try {
-    const { data, error } = await supabase.rpc("sit_visit_facts", { _visit_ids: ids });
+    if (factsRes.status === "rejected") throw factsRes.reason;
+    const { data, error } = factsRes.value;
     if (error) throw error;
     for (const r of (data ?? []) as SitFacts[]) facts.set(r.visit_id, r);
   } catch (e) {
     console.warn("sit_visit_facts failed; the sit cards will omit stay dates", e);
   }
   try {
-    const { data, error } = await (supabase as any)
-      .from("care_log")
-      .select("id, visit_id, pet_id, kind, med_name, status, missed_reason, note, at, staff(display_name)")
-      .in("visit_id", ids)
-      .order("at");
+    if (careRes.status === "rejected") throw careRes.reason;
+    const { data, error } = careRes.value;
     if (error) throw error;
     for (const r of (data ?? []) as CareRow[]) {
       const list = entries.get(r.visit_id) ?? [];
