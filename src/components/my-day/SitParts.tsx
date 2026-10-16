@@ -22,10 +22,13 @@ import {
   Dog,
   Droplets,
   Footprints,
+  HeartPulse,
   LockKeyhole,
   PawPrint,
+  PhoneCall,
   Pill,
   Sparkles,
+  Stethoscope,
   Undo2,
   UtensilsCrossed,
 } from "lucide-react";
@@ -54,12 +57,13 @@ import {
   unloggedDueMeds,
   type CareEntry,
   type CareKind,
+  type SitEmergency,
   type SitFacts,
   type SitPet,
 } from "@/lib/sit-day";
 import type { WalkReportState } from "@/components/my-day/WalkParts";
 
-export { isSitVisit } from "@/lib/sit-day";
+export { isSitVisit, sitEmergency } from "@/lib/sit-day";
 
 type SitVisit = {
   id: string;
@@ -232,9 +236,75 @@ export function SitPetsCare({ pets, locale }: { pets: SitPet[]; locale?: string 
               <bdi className="whitespace-pre-line">{pet.care.other_care}</bdi>
             </CareFact>
           )}
+          <CareFact icon={Stethoscope} label={t("sit.vet")}>
+            {pet.vet ? (
+              <>
+                {pet.vet.name && <bdi>{pet.vet.name}</bdi>}
+                {pet.vet.name && pet.vet.phone ? " · " : null}
+                {pet.vet.phone && <PhoneLink phone={pet.vet.phone} />}
+              </>
+            ) : (
+              <span className="text-amber-700 dark:text-amber-400">{t("sit.noVet")}</span>
+            )}
+          </CareFact>
         </li>
       ))}
     </ul>
+  );
+}
+
+function PhoneLink({ phone }: { phone: string }) {
+  return (
+    <a
+      href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+      className="inline-flex items-center font-medium text-primary underline-offset-2 hover:underline touch:min-h-11"
+    >
+      <span dir="ltr">{phone}</span>
+    </a>
+  );
+}
+
+/** Who to call when a pet is sick: the client's emergency contact, whether
+ *  they may approve vet care, and what the sitter may spend without asking.
+ *  Each pet's vet is with the pet (SitPetsCare). */
+export function SitEmergencyFacts({
+  emergency,
+  locale,
+}: {
+  emergency: SitEmergency;
+  locale?: string;
+}) {
+  const { t } = useTranslation();
+  const limit =
+    emergency.limitCents == null
+      ? null
+      : new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).format(
+          emergency.limitCents / 100,
+        );
+  return (
+    <div className="mt-2.5 rounded-lg border bg-muted/30 p-2.5 text-sm">
+      <CareFact icon={PhoneCall} label={t("sit.emergencyContact")}>
+        {emergency.name || emergency.phone ? (
+          <>
+            {emergency.name && <bdi>{emergency.name}</bdi>}
+            {emergency.name && emergency.phone ? " · " : null}
+            {emergency.phone && <PhoneLink phone={emergency.phone} />}
+            <span className="block text-muted-foreground">
+              {emergency.mayApproveVet ? t("sit.mayApproveVet") : t("sit.mayNotApproveVet")}
+            </span>
+          </>
+        ) : (
+          <span className="text-amber-700 dark:text-amber-400">{t("sit.noEmergencyContact")}</span>
+        )}
+      </CareFact>
+      <CareFact icon={HeartPulse} label={t("sit.treatmentLimit")}>
+        {limit ? (
+          t("sit.treatmentLimitValue", { amount: limit })
+        ) : (
+          <span className="text-amber-700 dark:text-amber-400">{t("sit.noTreatmentLimit")}</span>
+        )}
+      </CareFact>
+    </div>
   );
 }
 

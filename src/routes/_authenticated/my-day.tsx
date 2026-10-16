@@ -134,10 +134,12 @@ import {
 import {
   SitCareLog,
   SitCodesHint,
+  SitEmergencyFacts,
   SitMeta,
   SitNoteField,
   SitPetsCare,
   isSitVisit,
+  sitEmergency,
   sitStepLabel,
   useSitCare,
   useSitPets,
@@ -2337,7 +2339,10 @@ function VisitCard({
                   there are no dog records, "No dogs on file" when there is
                   neither -- see DogsLine. */}
               {sit ? (
-                <SitPetsCare pets={sitPets} locale={locale} />
+                <>
+                  <SitPetsCare pets={sitPets} locale={locale} />
+                  <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
+                </>
               ) : (
                 <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
               )}

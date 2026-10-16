@@ -22,7 +22,26 @@ export const confirmStay = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const { notifyStayConfirmed } = await import("@/lib/stay-notify.server");
     await notifyStayConfirmed(data.stayId);
-    return { invoiceId };
+    return { invoiceId, gaps: await contactGaps(context.supabase, data.stayId) };
+  });
+
+/** What the stay is missing for an emergency (stay_contact_gaps). A failed
+ *  check is no warning rather than a failed confirm. */
+async function contactGaps(supabase: any, stayId: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc("stay_contact_gaps", { _stay_id: stayId });
+  if (error) {
+    console.warn("stay contact check failed");
+    return [];
+  }
+  return (data as string[] | null) ?? [];
+}
+
+export const getStayContactGaps = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ stayId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "view_client_directory");
+    return { gaps: await contactGaps(context.supabase, data.stayId) };
   });
 
 export const listRequestedStays = createServerFn({ method: "GET" })

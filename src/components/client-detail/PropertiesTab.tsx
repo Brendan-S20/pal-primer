@@ -788,12 +788,16 @@ export function DogsSection({
   const [size, setSize] = useState("");
   const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("unknown");
   const [notes, setNotes] = useState("");
+  const [vetName, setVetName] = useState("");
+  const [vetPhone, setVetPhone] = useState("");
 
   const resetForm = () => {
     setAdding(false);
     setEditingDogId(null);
     setSpecies("dog");
     setSpeciesNote("");
+    setVetName("");
+    setVetPhone("");
     setName("");
     setBreed("");
     setBreedChoice("");
@@ -807,6 +811,8 @@ export function DogsSection({
     setAdding(true);
     setSpecies((d.species ?? "dog") as PetSpecies);
     setSpeciesNote(d.species_note ?? "");
+    setVetName(d.vet_clinic_name ?? "");
+    setVetPhone(d.vet_clinic_phone ?? "");
     setName(d.name ?? "");
     const knownBreed = d.breed && COMMON_BREEDS.includes(d.breed);
     setBreed(d.breed ?? "");
@@ -823,6 +829,9 @@ export function DogsSection({
         // Only a sitting business picks a species; a dog form sends none and
         // the row stays a dog.
         ...(sitting ? { species, speciesNote: cleanSpeciesNote(species, speciesNote) } : {}),
+        ...(sitting
+          ? { vetClinicName: vetName.trim() || null, vetClinicPhone: vetPhone.trim() || null }
+          : {}),
         breed: breed || null,
         weightClass: size || null,
         temperament,
@@ -892,6 +901,11 @@ export function DogsSection({
                 {d.temperament ?? "unknown"}
               </span>
               {d.notes && <span className="text-xs text-muted-foreground">{d.notes}</span>}
+              {sitting && (d.vet_clinic_name || d.vet_clinic_phone) && (
+                <span className="text-xs text-muted-foreground">
+                  Vet: <bdi>{[d.vet_clinic_name, d.vet_clinic_phone].filter(Boolean).join(", ")}</bdi>
+                </span>
+              )}
             </span>
             <span className="flex flex-wrap items-center gap-1">
               {sitting && (
@@ -1102,6 +1116,34 @@ export function DogsSection({
             <Label className="text-xs">Notes</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
+          {sitting && (
+            <>
+              <div className="min-w-0">
+                <Label className="text-xs" htmlFor={`pet-vet-${propertyId}`}>
+                  Vet clinic
+                </Label>
+                <Input
+                  id={`pet-vet-${propertyId}`}
+                  value={vetName}
+                  maxLength={200}
+                  onChange={(e) => setVetName(e.target.value)}
+                  placeholder="Eastside Animal Hospital"
+                />
+              </div>
+              <div className="min-w-0">
+                <Label className="text-xs" htmlFor={`pet-vet-phone-${propertyId}`}>
+                  Vet phone
+                </Label>
+                <Input
+                  id={`pet-vet-phone-${propertyId}`}
+                  type="tel"
+                  value={vetPhone}
+                  maxLength={40}
+                  onChange={(e) => setVetPhone(e.target.value)}
+                />
+              </div>
+            </>
+          )}
           <div
             className={`flex gap-2 ${sitting ? "sm:col-span-2 lg:col-span-3" : "sm:col-span-5"}`}
           >

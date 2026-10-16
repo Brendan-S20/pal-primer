@@ -271,11 +271,18 @@ export const createStay = createServerFn({ method: "POST" })
       meta: { stay_id: stayId, kind, invoice_id: invoiceId },
     });
 
+    // Warns, never refuses: the stay is booked either way.
+    const { data: gaps, error: gapsError } = await supabase.rpc("stay_contact_gaps", {
+      _stay_id: stayId,
+    });
+    if (gapsError) console.warn("stay contact check failed");
+
     return {
       id: stayId,
       kind,
       visits: expected,
       expected,
+      gaps: (gaps as string[] | null) ?? [],
     };
   });
 

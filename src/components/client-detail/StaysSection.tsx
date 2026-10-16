@@ -46,6 +46,8 @@ import {
   STAY_KIND_LABEL,
   STAY_STATUS_LABEL,
   stayChangeDifferenceCents,
+  stayContactGapsFor,
+  stayContactGapsSentence,
   stayDatesLabel,
   stayDatesProblem,
   stayKindFor,
@@ -139,6 +141,7 @@ export function StaysSection({
       {booking && (
         <BookStayDrawer
           clientId={clientId}
+          client={client}
           properties={properties}
           pets={pets}
           onClose={() => setBooking(false)}
@@ -499,11 +502,13 @@ function ChangeStayDrawer({
 
 function BookStayDrawer({
   clientId,
+  client,
   properties,
   pets,
   onClose,
 }: {
   clientId: string;
+  client: any;
   properties: any[];
   pets: any[];
   onClose: () => void;
@@ -557,6 +562,12 @@ function BookStayDrawer({
           ? "The deposit is not an amount."
           : null);
   const count = datesProblem ? 0 : stayVisitCount(kind, startsOn, endsOn, windows.length);
+  const missing = stayContactGapsSentence(
+    stayContactGapsFor(
+      client,
+      propertyPets.filter((p) => petIds.includes(p.id)),
+    ),
+  );
 
   const save = useMutation({
     mutationFn: () =>
@@ -578,6 +589,8 @@ function BookStayDrawer({
       }),
     onSuccess: (r) => {
       toast.success(`Stay booked. ${r.visits} visit${r.visits === 1 ? "" : "s"} on the schedule.`);
+      const missing = stayContactGapsSentence(r.gaps);
+      if (missing) toast.warning(missing);
       invalidateStay(qc, clientId);
       onClose();
     },
@@ -835,6 +848,11 @@ function BookStayDrawer({
         </p>
         {submitted && problem && !datesProblem && !windowsProblem && (
           <p className="text-xs text-destructive">{problem}</p>
+        )}
+        {missing && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            {missing} You can book now and add them on the client and pet forms.
+          </p>
         )}
 
         <DrawerFooter>

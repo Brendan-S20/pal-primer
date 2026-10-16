@@ -1309,6 +1309,9 @@ export type Database = {
           display_name: string
           dna_compliance_enabled: boolean
           email_opt_out: boolean
+          emergency_contact_may_approve_vet: boolean
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
           first_name: string | null
           id: string
           import_batch_id: string | null
@@ -1337,6 +1340,7 @@ export type Database = {
           tags: string[]
           tax_exempt: boolean
           updated_at: string
+          vet_treatment_limit_cents: number | null
         }
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -1362,6 +1366,9 @@ export type Database = {
           display_name: string
           dna_compliance_enabled?: boolean
           email_opt_out?: boolean
+          emergency_contact_may_approve_vet?: boolean
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           first_name?: string | null
           id?: string
           import_batch_id?: string | null
@@ -1390,6 +1397,7 @@ export type Database = {
           tags?: string[]
           tax_exempt?: boolean
           updated_at?: string
+          vet_treatment_limit_cents?: number | null
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
@@ -1415,6 +1423,9 @@ export type Database = {
           display_name?: string
           dna_compliance_enabled?: boolean
           email_opt_out?: boolean
+          emergency_contact_may_approve_vet?: boolean
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           first_name?: string | null
           id?: string
           import_batch_id?: string | null
@@ -1443,6 +1454,7 @@ export type Database = {
           tags?: string[]
           tax_exempt?: boolean
           updated_at?: string
+          vet_treatment_limit_cents?: number | null
         }
         Relationships: [
           {
@@ -1681,6 +1693,8 @@ export type Database = {
           temperament: Database["public"]["Enums"]["dog_temperament"]
           unit_id: string | null
           unit_review_needed: boolean
+          vet_clinic_name: string | null
+          vet_clinic_phone: string | null
           weight_class: string | null
         }
         Insert: {
@@ -1702,6 +1716,8 @@ export type Database = {
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
           unit_review_needed?: boolean
+          vet_clinic_name?: string | null
+          vet_clinic_phone?: string | null
           weight_class?: string | null
         }
         Update: {
@@ -1723,6 +1739,8 @@ export type Database = {
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
           unit_review_needed?: boolean
+          vet_clinic_name?: string | null
+          vet_clinic_phone?: string | null
           weight_class?: string | null
         }
         Relationships: [
@@ -9653,6 +9671,10 @@ export type Database = {
           property_id: string
           stay_id: string
         }[]
+      }
+      stay_contact_gaps: {
+        Args: { _stay_id: string }
+        Returns: string[]
       }
       start_visit_as: {
         Args: { _actor: string; _started_at?: string; _visit_id: string }

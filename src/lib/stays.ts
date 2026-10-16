@@ -306,3 +306,48 @@ export function stayAccessWindow(visitDays: readonly string[]): StayAccessWindow
 export function stayAccessOpen(today: string, window: StayAccessWindow | null): boolean {
   return !!window && today >= window.from && today <= window.through;
 }
+
+// ── Who to call ──────────────────────────────────────────────────────────
+//
+// stay_contact_gaps (migration 20261017020000) names what a stay is missing
+// for an emergency. Confirming warns about it and never refuses.
+
+export const STAY_CONTACT_GAPS = ["emergency_contact", "vet", "treatment_limit"] as const;
+export type StayContactGap = (typeof STAY_CONTACT_GAPS)[number];
+
+const GAP_LABEL: Record<StayContactGap, string> = {
+  emergency_contact: "an emergency contact with a phone",
+  vet: "a vet clinic and phone for every pet",
+  treatment_limit: "a vet treatment limit",
+};
+
+const filled = (v: string | null | undefined) => !!v?.trim();
+
+/** The same answer stay_contact_gaps gives, from the client and the pets on
+ *  the stay, for the booking form before anything is saved. */
+export function stayContactGapsFor(
+  client: {
+    emergency_contact_name?: string | null;
+    emergency_contact_phone?: string | null;
+    vet_treatment_limit_cents?: number | null;
+  } | null,
+  pets: ReadonlyArray<{ vet_clinic_name?: string | null; vet_clinic_phone?: string | null }>,
+): StayContactGap[] {
+  const gaps: StayContactGap[] = [];
+  if (!filled(client?.emergency_contact_name) || !filled(client?.emergency_contact_phone))
+    gaps.push("emergency_contact");
+  if (pets.some((p) => !filled(p.vet_clinic_name) || !filled(p.vet_clinic_phone))) gaps.push("vet");
+  if (client?.vet_treatment_limit_cents == null) gaps.push("treatment_limit");
+  return gaps;
+}
+
+/** "Missing: an emergency contact with a phone. The sitter needs this if a
+ *  pet is sick." for the office, or null when nothing is missing. Unknown
+ *  codes are ignored. */
+export function stayContactGapsSentence(gaps: readonly string[] | null | undefined): string | null {
+  const known = STAY_CONTACT_GAPS.filter((g) => gaps?.includes(g)).map((g) => GAP_LABEL[g]);
+  if (known.length === 0) return null;
+  return `Missing: ${known.join(", ")}. The sitter needs ${
+    known.length === 1 ? "this" : "these"
+  } if a pet is sick.`;
+}

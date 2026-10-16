@@ -105,6 +105,8 @@ export type SitPet = {
   species: PetSpecies;
   speciesNote: string | null;
   care: PetCare | null;
+  /** The pet's vet (#411), or null when neither is on file. */
+  vet: { name: string | null; phone: string | null } | null;
 };
 
 type PetRow = {
@@ -113,6 +115,8 @@ type PetRow = {
   species?: string | null;
   species_note?: string | null;
   active?: boolean | null;
+  vet_clinic_name?: string | null;
+  vet_clinic_phone?: string | null;
   pet_care_instructions?:
     | { feeding?: string | null; meds?: unknown; other_care?: string | null }
     | { feeding?: string | null; meds?: unknown; other_care?: string | null }[]
@@ -131,7 +135,10 @@ export function sitPets(
     .filter((r) => (onStay.size > 0 ? onStay.has(r.id) : r.active !== false))
     .map((r) => {
       const c = one(r.pet_care_instructions ?? null);
+      const vetName = (r.vet_clinic_name ?? "").trim() || null;
+      const vetPhone = (r.vet_clinic_phone ?? "").trim() || null;
       return {
+        vet: vetName || vetPhone ? { name: vetName, phone: vetPhone } : null,
         id: r.id,
         name: (r.name ?? "").trim(),
         species: isPetSpecies(r.species) ? r.species : "dog",
@@ -145,6 +152,33 @@ export function sitPets(
           : null,
       };
     });
+}
+
+/** Who the sitter calls when a pet is sick, from the visit's client row. */
+export type SitEmergency = {
+  name: string | null;
+  phone: string | null;
+  mayApproveVet: boolean;
+  limitCents: number | null;
+};
+
+export function sitEmergency(
+  client:
+    | {
+        emergency_contact_name?: string | null;
+        emergency_contact_phone?: string | null;
+        emergency_contact_may_approve_vet?: boolean | null;
+        vet_treatment_limit_cents?: number | null;
+      }
+    | null
+    | undefined,
+): SitEmergency {
+  return {
+    name: (client?.emergency_contact_name ?? "").trim() || null,
+    phone: (client?.emergency_contact_phone ?? "").trim() || null,
+    mayApproveVet: !!client?.emergency_contact_may_approve_vet,
+    limitCents: client?.vet_treatment_limit_cents ?? null,
+  };
 }
 
 /** A care log entry, as the card holds it. `queued` is an entry still in the
