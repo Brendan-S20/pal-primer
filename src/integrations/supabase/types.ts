@@ -6073,6 +6073,7 @@ export type Database = {
           client_id: string
           created_at: string
           created_by: string | null
+          credited_cents: number
           deposit_cents: number | null
           drop_in_windows: Json | null
           ends_on: string
@@ -6098,6 +6099,7 @@ export type Database = {
           client_id: string
           created_at?: string
           created_by?: string | null
+          credited_cents?: number
           deposit_cents?: number | null
           drop_in_windows?: Json | null
           ends_on: string
@@ -6123,6 +6125,7 @@ export type Database = {
           client_id?: string
           created_at?: string
           created_by?: string | null
+          credited_cents?: number
           deposit_cents?: number | null
           drop_in_windows?: Json | null
           ends_on?: string
@@ -7449,6 +7452,15 @@ export type Database = {
       cast_roadmap_vote: {
         Args: { p_feature: string; p_voter: string }
         Returns: undefined
+      }
+      change_stay: {
+        Args: {
+          _ends_on: string
+          _pet_ids?: string[]
+          _starts_on?: string
+          _stay_id: string
+        }
+        Returns: Json
       }
       change_user_role: {
         Args: {

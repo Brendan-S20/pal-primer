@@ -28,6 +28,7 @@ import { useOrgToday } from "@/hooks/useOrgToday";
 import { listStaff } from "@/lib/visits.functions";
 import {
   cancelStay,
+  changeStay,
   createStay,
   listStaysForClient,
   setStaySitter,
@@ -35,11 +36,16 @@ import {
 } from "@/lib/stays.functions";
 import {
   arrivalWindowProblem,
+  changedVisitPriceCents,
   DEFAULT_DROP_IN_WINDOW,
+  earliestStayEnd,
   DEFAULT_OVERNIGHT_ARRIVAL,
   MAX_DROP_IN_WINDOWS,
+  priceDifferenceSentence,
+  splitStayVisits,
   STAY_KIND_LABEL,
   STAY_STATUS_LABEL,
+  stayChangeDifferenceCents,
   stayDatesLabel,
   stayDatesProblem,
   stayKindFor,
@@ -160,6 +166,7 @@ function StayRowView({
   const sitterFn = useServerFn(setStaySitter);
   const staffFn = useServerFn(listStaff);
   const [changingSitter, setChangingSitter] = useState(false);
+  const [changing, setChanging] = useState(false);
   const staffQ = useQuery({
     queryKey: ["staff"],
     queryFn: () => staffFn(),
@@ -169,7 +176,7 @@ function StayRowView({
   const cancel = useMutation({
     mutationFn: () => cancelFn({ data: { stayId: stay.id } }),
     onSuccess: () => {
-      toast.success("Stay canceled. Its upcoming visits are canceled too.");
+      toast.success("Stay canceled. Its upcoming visits are canceled too. Visits already done stay billed.");
       invalidate();
     },
     onError: (e) => toast.error((e as Error).message),
@@ -242,6 +249,11 @@ function StayRowView({
         </div>
         {live && (
           <div className="flex flex-wrap gap-1">
+            {stay.status === "confirmed" && stay.invoice_id && (
+              <Button size="sm" variant="outline" onClick={() => setChanging(true)}>
+                Change dates or pets
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -259,7 +271,7 @@ function StayRowView({
                 const ok = await confirm({
                   title: "Cancel this stay?",
                   description:
-                    "Its upcoming visits are canceled and its plans end. Visits already done stay on record.",
+                    "Its upcoming visits are canceled and its plans end. Visits already done stay on record and stay billed. Upcoming nights come off the invoice, or are credited to the client's account if it is paid.",
                   confirmLabel: "Cancel stay",
                   destructive: true,
                 });
@@ -298,7 +310,188 @@ function StayRowView({
           </div>
         </div>
       )}
+      {changing && (
+        <ChangeStayDrawer
+          stay={stay}
+          clientId={clientId}
+          pets={pets}
+          onClose={() => setChanging(false)}
+        />
+      )}
     </li>
+  );
+}
+
+// ── Change dates or pets ─────────────────────────────────────────────────
+
+function ChangeStayDrawer({
+  stay,
+  clientId,
+  pets,
+  onClose,
+}: {
+  stay: StayRow;
+  clientId: string;
+  pets: any[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const today = useOrgToday();
+  const changeFn = useServerFn(changeStay);
+  const { services } = useOrgServices();
+  const service = services.find((s) => s.id === stay.service_id) ?? null;
+  const kind = stay.kind;
+  const started = stay.starts_on < today || splitStayVisits(stay.visits, today).worked.length > 0;
+  const [startsOn, setStartsOn] = useState(stay.starts_on);
+  const [endsOn, setEndsOn] = useState(stay.ends_on);
+  const [petIds, setPetIds] = useState<string[]>(stay.pet_ids);
+  const propertyPets = pets.filter(
+    (p) => p.property_id === stay.property_id && (p.active !== false || stay.pet_ids.includes(p.id)),
+  );
+  const minEnd = earliestStayEnd(kind, stay.visits, today);
+
+  const datesProblem =
+    stayDatesProblem(kind, startsOn, endsOn) ||
+    (!started && startsOn < today ? "Choose a first day from today on." : null) ||
+    (endsOn < minEnd ? "The stay already has visits up to then. Choose a later end date." : null);
+  const current = stay.visit_price_cents ?? 0;
+  const nextPrice = service
+    ? changedVisitPriceCents(current, service, stay.pet_ids.length, petIds.length)
+    : current;
+  const problem =
+    datesProblem ||
+    (petIds.length === 0 ? "Choose at least one pet." : null) ||
+    (nextPrice == null ? "Set a price for this service before changing the pets." : null);
+  const difference =
+    datesProblem || nextPrice == null
+      ? null
+      : stayChangeDifferenceCents({
+          kind,
+          windowCount: kind === "overnight" ? 1 : (stay.drop_in_windows ?? []).length,
+          today,
+          visits: stay.visits,
+          currentVisitCents: current,
+          newVisitCents: nextPrice,
+          startsOn,
+          endsOn,
+        });
+  const unchanged =
+    startsOn === stay.starts_on &&
+    endsOn === stay.ends_on &&
+    petIds.length === stay.pet_ids.length &&
+    petIds.every((id) => stay.pet_ids.includes(id));
+
+  const save = useMutation({
+    mutationFn: () => changeFn({ data: { stayId: stay.id, startsOn, endsOn, petIds } }),
+    onSuccess: (r) => {
+      toast.success(
+        r.invoiceId
+          ? "Stay changed. The added nights are on a new invoice."
+          : "Stay changed. Its visits and invoice are updated.",
+      );
+      invalidateStay(qc, clientId);
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["client-invoices", clientId] });
+      onClose();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <EditDrawer
+      open
+      onClose={onClose}
+      title="Change dates or pets"
+      description="Visits already done stay as they are and stay billed."
+      dirty={!unchanged}
+    >
+      <form
+        className="space-y-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!problem && !unchanged) save.mutate();
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {started ? (
+            <div className="min-w-0">
+              <Label>{kind === "overnight" ? "Check-in day" : "First day"}</Label>
+              <p className="mt-2 text-sm">{stayDatesLabel("drop_in", stay.starts_on, stay.starts_on)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">The stay has started.</p>
+            </div>
+          ) : (
+            <DateField
+              label={kind === "overnight" ? "Check-in day" : "First day"}
+              value={startsOn}
+              onChange={setStartsOn}
+              minISO={today}
+            />
+          )}
+          <DateField
+            label={kind === "overnight" ? "Check-out day" : "Last day"}
+            value={endsOn}
+            onChange={setEndsOn}
+            minISO={minEnd > startsOn ? minEnd : startsOn}
+            hint={kind === "overnight" ? "The morning the sitter leaves." : undefined}
+          />
+        </div>
+        {datesProblem && <p className="text-xs text-destructive">{datesProblem}</p>}
+
+        <fieldset className="min-w-0 space-y-2">
+          <legend className="text-sm font-medium">Pets on the stay</legend>
+          <ul className="grid gap-1 sm:grid-cols-2">
+            {propertyPets.map((p) => {
+              const checked = petIds.includes(p.id);
+              return (
+                <li key={p.id} className="min-w-0">
+                  <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(v) =>
+                        setPetIds(v ? [...petIds, p.id] : petIds.filter((id) => id !== p.id))
+                      }
+                    />
+                    <span className="min-w-0 truncate">
+                      <bdi>{p.name}</bdi>
+                      {speciesLabel(p) ? ` (${speciesLabel(p)})` : ""}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </fieldset>
+
+        <div className="rounded-md border bg-muted/30 p-3 text-sm" aria-live="polite">
+          {unchanged ? (
+            <p className="text-muted-foreground">Change the dates or pets to see the price difference.</p>
+          ) : difference == null ? (
+            <p className="text-muted-foreground">Fix the dates to see the price difference.</p>
+          ) : (
+            <>
+              <p className="font-medium">{priceDifferenceSentence(difference, formatServiceMoney)}</p>
+              {nextPrice != null && nextPrice !== current && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {kind === "overnight" ? "Each night to come" : "Each visit to come"}:{" "}
+                  {formatServiceMoney(current)} to {formatServiceMoney(nextPrice)}.
+                </p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                An unpaid stay invoice is updated. If it is paid, added nights go on a new invoice and
+                removed ones are credited to the client's account. Holiday rates apply on save.
+              </p>
+            </>
+          )}
+        </div>
+        {problem && !datesProblem && <p className="text-xs text-destructive">{problem}</p>}
+
+        <DrawerFooter>
+          <Button type="submit" disabled={save.isPending || !!problem || unchanged}>
+            {save.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </DrawerFooter>
+      </form>
+    </EditDrawer>
   );
 }
 

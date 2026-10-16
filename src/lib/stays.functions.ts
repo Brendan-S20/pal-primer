@@ -301,6 +301,10 @@ export type StayRow = {
   service_name: string | null;
   sitter_name: string | null;
   visit_count: number;
+  /** One visit's price on the stay's plans, for the change form. */
+  visit_price_cents: number | null;
+  /** The stay's visits, for the change form's worked and future split. */
+  visits: Array<{ scheduled_on: string; status: string }>;
 };
 
 export const listStaysForClient = createServerFn({ method: "GET" })
@@ -312,7 +316,7 @@ export const listStaysForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await (supabase as any)
       .from("stays")
       .select(
-        "id, property_id, service_id, starts_on, ends_on, kind, status, drop_in_windows, overnight_arrival_earliest, overnight_arrival_latest, pet_ids, assigned_staff_id, deposit_cents, invoice_id, deposit_invoice_id, notes, services(name), staff(display_name), subscriptions(id, visits(count))",
+        "id, property_id, service_id, starts_on, ends_on, kind, status, drop_in_windows, overnight_arrival_earliest, overnight_arrival_latest, pet_ids, assigned_staff_id, deposit_cents, invoice_id, deposit_invoice_id, notes, services(name), staff(display_name), subscriptions(id, price_cents, visits(scheduled_on, status))",
       )
       .eq("client_id", data.clientId)
       .order("starts_on", { ascending: false });
@@ -338,8 +342,15 @@ export const listStaysForClient = createServerFn({ method: "GET" })
         service_name: r.services?.name ?? null,
         sitter_name: r.staff?.display_name ?? null,
         visit_count: ((r.subscriptions ?? []) as any[]).reduce(
-          (n, s) => n + (s.visits?.[0]?.count ?? 0),
+          (n, s) => n + (s.visits?.length ?? 0),
           0,
+        ),
+        visit_price_cents: (r.subscriptions ?? [])[0]?.price_cents ?? null,
+        visits: ((r.subscriptions ?? []) as any[]).flatMap((s) =>
+          ((s.visits ?? []) as any[]).map((v) => ({
+            scheduled_on: v.scheduled_on as string,
+            status: v.status as string,
+          })),
         ),
       })),
     };
@@ -379,6 +390,71 @@ export const cancelStay = createServerFn({ method: "POST" })
       meta: { stay_id: row.id },
     });
     return { ok: true };
+  });
+
+/** Moves a confirmed stay's dates or changes its pets. change_stay does the
+ *  work in one transaction: visits canceled or added, completed visits left
+ *  alone, the stay invoice restated or, once paid, a new invoice for added
+ *  nights and account credit for removed ones. */
+export const changeStay = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        stayId: z.string().uuid(),
+        startsOn: daySchema,
+        endsOn: daySchema,
+        petIds: z.array(z.string().uuid()).min(1, "Choose at least one pet.").max(30),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const supabase = context.supabase as SupabaseClient<Database>;
+    const orgId = await requireOffice(supabase, context.userId);
+    const { data: stay, error: sErr } = await (supabase as any)
+      .from("stays")
+      .select("id, client_id, property_id, starts_on, ends_on, pet_ids, invoice_id")
+      .eq("id", data.stayId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (sErr) throw new Error(sErr.message);
+    if (!stay) throw new Error("That stay was not found.");
+    const { data: result, error } = await supabase.rpc("change_stay", {
+      _stay_id: data.stayId,
+      _ends_on: data.endsOn,
+      _starts_on: data.startsOn,
+      _pet_ids: [...new Set(data.petIds)],
+    });
+    if (error) throw new Error(error.message);
+    const r = (result ?? {}) as {
+      visits_added?: number;
+      visits_canceled?: number;
+      invoice_id?: string | null;
+    };
+    const { syncInvoicePaymentIntentAmount } = await import("@/lib/invoice-reconcile.server");
+    for (const id of [stay.invoice_id, r.invoice_id]) {
+      if (id) await syncInvoicePaymentIntentAmount(id);
+    }
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId,
+      clientId: stay.client_id,
+      propertyId: stay.property_id,
+      actorUserId: context.userId,
+      kind: "stay.changed",
+      summary: `Changed the stay to ${data.startsOn} to ${data.endsOn}`,
+      meta: {
+        stay_id: stay.id,
+        from: { starts_on: stay.starts_on, ends_on: stay.ends_on, pet_ids: stay.pet_ids },
+        to: { starts_on: data.startsOn, ends_on: data.endsOn, pet_ids: data.petIds },
+        invoice_id: r.invoice_id ?? null,
+      },
+    });
+    return {
+      added: r.visits_added ?? 0,
+      canceled: r.visits_canceled ?? 0,
+      invoiceId: r.invoice_id ?? null,
+    };
   });
 
 export const setStaySitter = createServerFn({ method: "POST" })

@@ -196,3 +196,92 @@ export function stayDatesLabel(kind: StayKind, startsOn: string, endsOn: string)
   if (kind === "overnight") return `Check-in ${fmt(startsOn)}, check-out ${fmt(endsOn)}`;
   return startsOn === endsOn ? fmt(startsOn) : `${fmt(startsOn)} to ${fmt(endsOn)}`;
 }
+
+// ── Changing a confirmed stay ────────────────────────────────────────────
+//
+// change_stay (migration 20261017000000) holds the same rules: a scheduled
+// visit from the business's today on is still to come, and the stay can end
+// no earlier than its last visit already under way or done, nor before
+// yesterday.
+
+/** A stay visit as the change form and a cancel read it. */
+export type StayVisitRef = { scheduled_on: string; status: string };
+
+/** Which visits are worked and which are still to come. A scheduled visit
+ *  from today on is to come; a canceled one is neither; every other visit is
+ *  worked and stays billed. */
+export function splitStayVisits<V extends StayVisitRef>(
+  visits: readonly V[],
+  today: string,
+): { worked: V[]; future: V[] } {
+  const worked: V[] = [];
+  const future: V[] = [];
+  for (const v of visits) {
+    if (v.status === "canceled") continue;
+    if (v.status === "scheduled" && v.scheduled_on >= today) future.push(v);
+    else worked.push(v);
+  }
+  return { worked, future };
+}
+
+/** The earliest end date the office can pick: the last day a visit was under
+ *  way or done, and never before yesterday. Overnights give the checkout
+ *  morning, the day after that night. */
+export function earliestStayEnd(
+  kind: StayKind,
+  visits: readonly StayVisitRef[],
+  today: string,
+): string {
+  let last = addDays(today, -1);
+  for (const v of visits)
+    if ((v.status === "in_progress" || v.status === "completed") && v.scheduled_on > last)
+      last = v.scheduled_on;
+  return kind === "overnight" ? addDays(last, 1) : last;
+}
+
+/** One visit's price after the pets change: the current price moved by the
+ *  service's own difference between the two pet counts, so a price the
+ *  office typed at booking keeps its offset. Null when the service has no
+ *  price. Never below zero. */
+export function changedVisitPriceCents(
+  currentCents: number,
+  service: Parameters<typeof stayVisitPriceCents>[0],
+  oldPets: number,
+  newPets: number,
+): number | null {
+  if (oldPets === newPets) return currentCents;
+  const before = stayVisitPriceCents(service, oldPets);
+  const after = stayVisitPriceCents(service, newPets);
+  if (before == null || after == null) return null;
+  return Math.max(0, currentCents + after - before);
+}
+
+/** What a change adds to the stay's bill (positive) or takes off (negative),
+ *  before tax and holiday rates. Worked visits keep their price; the visits
+ *  still to come are replaced by the new days at the new price. */
+export function stayChangeDifferenceCents(input: {
+  kind: StayKind;
+  windowCount: number;
+  today: string;
+  visits: readonly StayVisitRef[];
+  currentVisitCents: number;
+  newVisitCents: number;
+  startsOn: string;
+  endsOn: string;
+}): number {
+  const { worked, future } = splitStayVisits(input.visits, input.today);
+  const perDay = input.kind === "overnight" ? 1 : Math.max(0, input.windowCount);
+  const days = stayDays(input.kind, input.startsOn, input.endsOn).filter((d) => d >= input.today);
+  // A visit done today already fills one of today's slots.
+  const doneFromToday = worked.filter((v) => v.scheduled_on >= input.today).length;
+  const toCome = Math.max(0, days.length * perDay - doneFromToday);
+  return toCome * input.newVisitCents - future.length * input.currentVisitCents;
+}
+
+/** "Adds $45.00 before tax.", "Takes $30.00 off before tax." or "No change
+ *  to the price." */
+export function priceDifferenceSentence(cents: number, money: (c: number) => string): string {
+  if (cents > 0) return `Adds ${money(cents)} before tax.`;
+  if (cents < 0) return `Takes ${money(-cents)} off before tax.`;
+  return "No change to the price.";
+}
