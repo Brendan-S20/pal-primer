@@ -7040,6 +7040,15 @@ export type Database = {
         Args: { _visit_id: string }
         Returns: number
       }
+      property_access_codes: {
+        Args: { _property_ids: string[] }
+        Returns: {
+          key_location: string | null
+          key_tag: string | null
+          lock_box_code: string | null
+          property_id: string
+        }[]
+      }
 
       accept_org_invite_for_current_user: {
         Args: { _token?: string }
@@ -8506,6 +8515,9 @@ export type Database = {
         | "unsafe_conditions"
         | "other"
         | "customer_requested"
+        | "key_failed"
+        | "no_one_home"
+        | "dog_unwell"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
       visit_status:
@@ -8715,6 +8727,9 @@ export const Constants = {
         "unsafe_conditions",
         "other",
         "customer_requested",
+        "key_failed",
+        "no_one_home",
+        "dog_unwell",
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],

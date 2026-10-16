@@ -16,7 +16,9 @@ interface Props extends OrgContact {
   dogs?: string;
   /** "Mon, Oct 19". */
   day?: string;
-  /** The skip reason in plain words (walkSkipReason). Skipped only. */
+  /** The skip reason in plain words (walkSkipReason). A walk's own codes
+   *  read as: could not get in, the key or code did not work, no one was
+   *  home, the dog was not well enough, or the weather. Skipped only. */
   reason?: string;
 }
 

@@ -108,6 +108,12 @@ describe("what the client is told", () => {
     for (const code of SKIP_CODES) expect(walkSkipReason(code)).toMatch(/^[A-Z].*\.$/);
     expect(walkSkipReason("something_new")).toBe(walkSkipReason("other"));
     expect(walkSkipReason(null)).toBe(walkSkipReason("other"));
+    expect(walkSkipReason("access_blocked")).toBe("The walker could not get in.");
+    expect(walkSkipReason("key_failed")).toBe(
+      "The key or the code did not work, so the walker could not get in.",
+    );
+    expect(walkSkipReason("no_one_home")).toBe("No one was home to hand the dog over.");
+    expect(walkSkipReason("dog_unwell")).toBe("The dog was not well enough to walk.");
   });
 
   it("names the dog when skipped and the day when missed", () => {

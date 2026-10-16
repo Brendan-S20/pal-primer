@@ -12,7 +12,7 @@ import { join } from "node:path";
 import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
-import { etaPhrase, onMyWayText, shouldSendOnNavigate, techFirstName } from "@/lib/on-my-way";
+import { etaPhrase, onMyWayText, shouldSendOnNavigate, techFirstName, walkOnMyWayText } from "@/lib/on-my-way";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -65,6 +65,47 @@ describe("what it says", () => {
     expect(
       onMyWayText({ customerName: "Jane", orgName: "Acme Scoop", techName: null, eta: null }),
     ).toBe("Hi Jane, your Acme Scoop tech is on the way for today's visit. Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.");
+  });
+
+  it("tells a walk's customer the walker is coming to pick the dog up, with no yard reply", () => {
+    expect(
+      walkOnMyWayText({
+        customerName: "Jane",
+        orgName: "Acme Walks",
+        techName: "Sam",
+        eta: "by 10:30 AM",
+        dogs: "Bella",
+      }),
+    ).toBe(
+      "Hi Jane, Sam from Acme Walks is on the way to pick up Bella for today's walk, arriving by 10:30 AM. Reply STOP to opt out.",
+    );
+    expect(
+      walkOnMyWayText({
+        customerName: "Jane",
+        orgName: "Acme Walks",
+        techName: null,
+        eta: null,
+        dogs: "Bella and Max",
+        trackUrl: "https://app.houndstack.com/track/7a000000-0000-4000-8000-0000000000a1",
+      }),
+    ).toBe(
+      "Hi Jane, your Acme Walks walker is on the way to pick up Bella and Max for today's walk. Live map: https://app.houndstack.com/track/7a000000-0000-4000-8000-0000000000a1 Reply STOP to opt out.",
+    );
+    const noReply = walkOnMyWayText({
+      customerName: "Jane",
+      orgName: "Acme Walks",
+      techName: "Sam",
+      eta: null,
+      dogs: "Bella",
+    });
+    expect(noReply).not.toMatch(/Reply ENT|Reply DNE/);
+  });
+
+  it("sends that text only for a dog walk", () => {
+    const src = read("src/lib/on-my-way.server.ts");
+    expect(src).toMatch(/walkOnMyWayText\(/);
+    expect(src).toMatch(/isDogWalk/);
+    expect(src).toMatch(/dogs\(name, active\)/);
   });
 
   it("adds the live map link only when it is handed one, and keeps the handshake after it", () => {

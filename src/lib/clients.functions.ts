@@ -203,6 +203,79 @@ export const getClient = createServerFn({ method: "GET" })
     return { client };
   });
 
+export const getFieldClientInfo = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const caller = await resolveCaller(supabase, userId);
+    const canReadDirectory = caller.role !== "tech";
+
+    if (!canReadDirectory) {
+      const { data: staff, error: staffErr } = await supabase
+        .from("staff")
+        .select("id, organization_id, active")
+        .eq("user_id", userId)
+        .eq("organization_id", caller.orgId)
+        .maybeSingle();
+      if (staffErr) throw new Error(staffErr.message);
+      if (!staff?.id || staff.active === false) throw new Error("Not authorized");
+
+      const { data: assigned, error: visitErr } = await supabase
+        .from("visits")
+        .select("id")
+        .eq("client_id", data.clientId)
+        .eq("organization_id", caller.orgId)
+        .eq("assigned_staff_id", staff.id)
+        .neq("status", "canceled")
+        .limit(1);
+      if (visitErr) throw new Error(visitErr.message);
+      if (!assigned?.length) throw new Error("Not authorized");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: client, error: clientErr } = await supabaseAdmin
+      .from("clients")
+      .select("id, organization_id, display_name, account_type, primary_phone, notes")
+      .eq("id", data.clientId)
+      .eq("organization_id", caller.orgId)
+      .maybeSingle();
+    if (clientErr) throw new Error(clientErr.message);
+    if (!client) throw new Error("Client not found");
+
+    const { data: properties, error: propErr } = await supabaseAdmin
+      .from("properties")
+      .select(
+        "id, label, street, city, region, postal_code, gate_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
+      )
+      .eq("client_id", data.clientId)
+      .eq("organization_id", caller.orgId)
+      .is("archived_at", null)
+      .order("street");
+    if (propErr) throw new Error(propErr.message);
+    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const access = await readPropertyAccess(
+      supabase,
+      (properties ?? []).map((p) => p.id),
+    );
+
+    const propertyIds = (properties ?? []).map((p) => p.id);
+    const { data: dogs, error: dogErr } = propertyIds.length
+      ? await supabaseAdmin
+          .from("dogs")
+          .select("id, property_id, name, breed, weight_class, temperament, notes, active")
+          .in("property_id", propertyIds)
+          .order("name")
+      : { data: [], error: null };
+    if (dogErr) throw new Error(dogErr.message);
+
+    return {
+      client,
+      properties: (properties ?? []).map((p) => ({ ...p, ...accessFor(access, p.id) })),
+      dogs: (dogs ?? []).filter((d: any) => d.active !== false),
+    };
+  });
+
 /** Edit-client drawer (client detail refactor): contact, status, tags,
  * preferences. Billing addresses live in Stripe, never here. */
 export const updateClient = createServerFn({ method: "POST" })

@@ -65,7 +65,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
-         properties(id, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
+         properties(id, street, city, region, postal_code, gate_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
          subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via),
@@ -76,6 +76,14 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .eq("organization_id", orgId)
       .single();
     if (error) throw new Error(error.message);
+
+    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const propertyId = (v as { property_id: string | null }).property_id;
+    const access = accessFor(await readPropertyAccess(supabase, [propertyId]), propertyId);
+    const visit =
+      v.properties && typeof v.properties === "object" && !Array.isArray(v.properties)
+        ? { ...v, properties: { ...v.properties, ...access } }
+        : v;
 
     // dogs at this property
     const { data: dogs } = await supabase
@@ -108,7 +116,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       others().gte("scheduled_on", today).order("scheduled_on", { ascending: true }).limit(3),
     ]);
 
-    return { visit: v, dogs: dogs ?? [], recent: recent ?? [], upcoming: upcoming ?? [] };
+    return { visit, dogs: dogs ?? [], recent: recent ?? [], upcoming: upcoming ?? [] };
   });
 
 export const listStaff = createServerFn({ method: "GET" })
@@ -612,6 +620,137 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
       kind: "visit.canceled",
       summary: `Canceled the visit on ${v.scheduled_on}: ${data.reason}`,
       meta: { reason: data.reason, code: data.code },
+    });
+    return { ok: true };
+  });
+
+async function loadVisitForDispatchAction(supabase: any, userId: string, visitId: string) {
+  const caller = await resolveCaller(supabase, userId);
+  if (!["owner", "office_manager", "dispatcher"].includes(caller.role)) {
+    throw new Error("Not authorized");
+  }
+  const { data: v, error } = await supabase
+    .from("visits")
+    .select("id, organization_id, client_id, property_id, scheduled_on, status")
+    .eq("id", visitId)
+    .eq("organization_id", caller.orgId)
+    .single();
+  if (error) throw new Error(error.message);
+  return v as {
+    id: string;
+    organization_id: string;
+    client_id: string;
+    property_id: string | null;
+    scheduled_on: string;
+    status: string;
+  };
+}
+
+export const reopenVisitFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
+    if (v.status !== "completed") throw new Error("Only completed visits can be reopened");
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: userId,
+      orgId: v.organization_id,
+      visitIds: [data.visitId],
+    });
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    const { error } = await (supabase as any).rpc("office_reopen_visit", {
+      _visit_id: data.visitId,
+    });
+    if (error) throw new Error(error.message);
+    await watch.finish();
+    await pushRoutes();
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.reopened",
+      summary: `Reopened the visit on ${v.scheduled_on}`,
+    });
+    return { ok: true };
+  });
+
+export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
+    if (v.status !== "completed") throw new Error("Only completed visits can be marked missed");
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: userId,
+      orgId: v.organization_id,
+      visitIds: [data.visitId],
+    });
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    const { error } = await (supabase as any).rpc("office_mark_visit_missed", {
+      _visit_id: data.visitId,
+    });
+    if (error) throw new Error(error.message);
+    await watch.finish();
+    await pushRoutes();
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.missed",
+      summary: `Marked the visit on ${v.scheduled_on} missed`,
+    });
+    return { ok: true };
+  });
+
+export const deleteVisitPhotoFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ visitId: z.string().uuid(), photoId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
+    const { data: photo, error: pErr } = await supabase
+      .from("visit_photos")
+      .select("id, storage_path, kind")
+      .eq("id", data.photoId)
+      .eq("visit_id", data.visitId)
+      .eq("organization_id", v.organization_id)
+      .single();
+    if (pErr) throw new Error(pErr.message);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error: storageErr } = await supabaseAdmin.storage
+      .from("visit-photos")
+      .remove([photo.storage_path]);
+    if (storageErr) throw new Error(storageErr.message);
+
+    const { error } = await supabase
+      .from("visit_photos")
+      .delete()
+      .eq("id", data.photoId)
+      .eq("visit_id", data.visitId)
+      .eq("organization_id", v.organization_id);
+    if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.photo_removed",
+      summary: `Removed a ${photo.kind ?? "visit"} photo from the visit on ${v.scheduled_on}`,
     });
     return { ok: true };
   });

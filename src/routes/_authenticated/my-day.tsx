@@ -37,7 +37,11 @@ import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendOnMyWayMessage, sendVisitStatusSms } from "@/lib/messages.functions";
-import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
+import {
+  SKIP_REASON_LABELS,
+  WALK_SKIP_REASON_LABELS,
+  techSkipReasonCodes,
+} from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
@@ -1242,9 +1246,13 @@ function cacheAgeText(t: TFunction, ageMs: number): string {
     : t(`cacheAge.${age.unit}`);
 }
 
-/** A skip reason code in the tech's language, by code (`skipReason.<code>`),
- *  with the office's English as the fallback and an unknown code shown as-is. */
-function skipReasonLabel(t: TFunction, code: string): string {
+/** A skip reason code in the tech's language. A walk uses the walker labels
+ *  (`walkSkipReason.<code>`). An unknown code is shown as-is. */
+function skipReasonLabel(t: TFunction, code: string, walk = false): string {
+  if (walk) {
+    const english = WALK_SKIP_REASON_LABELS[code as keyof typeof WALK_SKIP_REASON_LABELS];
+    if (english) return t(`walkSkipReason.${code}`, { defaultValue: english });
+  }
   const english = SKIP_REASON_LABELS[code as keyof typeof SKIP_REASON_LABELS];
   return english ? t(`skipReason.${code}`, { defaultValue: english }) : code;
 }
@@ -1621,7 +1629,7 @@ function VisitCard({
     onError: (e: Error) => toast.error(e.message),
   });
   const [reason, setReason] = useState("");
-  const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
+  const [reasonCode, setReasonCode] = useState("other");
   // What the tech tells the office on completion, why there is no photo when
   // the business requires one, and which checklist items were checked. All
   // three travel with the queued action.
@@ -1766,6 +1774,33 @@ function VisitCard({
       toast.error(e.message);
     },
   });
+  const completeToast = (r: { queued: boolean; result?: unknown }) => {
+    if (r.queued) return t("visit.completeQueued");
+    const summary = (r.result as any)?.notificationSummary as
+      | { sent?: string[]; pending?: boolean }
+      | undefined;
+    const sent = summary?.sent ?? [];
+    const labels = sent
+      .map((name) =>
+        name === "completion_email"
+          ? t("visit.noticeCompletionEmail")
+          : name === "push"
+            ? t("visit.noticePush")
+            : name === "review_sms"
+              ? t("visit.noticeReviewSms")
+              : name === "review_email"
+                ? t("visit.noticeReviewEmail")
+                : name,
+      )
+      .join(", ");
+    if (summary?.pending) {
+      return sent.length > 0
+        ? t("visit.completedWithNoticesPending", { notices: labels })
+        : t("visit.completedNoticePending");
+    }
+    if (sent.length === 0) return t("visit.completedNoNotices");
+    return t("visit.completedWithNotices", { notices: labels });
+  };
   const complete = useMutation({
     mutationFn: async () => {
       // A walk's report goes first, so the completion email is written from
@@ -1786,7 +1821,7 @@ function VisitCard({
     onSuccess: (r) => {
       haptic("success");
       showCompletionCheck();
-      toast.success(r.queued ? t("visit.completeQueued") : t("visit.completed"));
+      toast.success(completeToast(r));
       walkReport.reset();
       setCheckedItems([]);
       setNote("");
@@ -1926,6 +1961,8 @@ function VisitCard({
   const hasStations = p?.account_type === "commercial" || !!p?.has_units;
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
   const service = visitServiceLabel(visit.services);
+  const walkStop = service?.line === "dog_walking";
+  const skipCodes = techSkipReasonCodes(walkStop);
 
   // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
@@ -2360,7 +2397,9 @@ function VisitCard({
                   {visit.skipped_at
                     ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
-                  {visit.skip_reason_code ? ` (${skipReasonLabel(t, visit.skip_reason_code)})` : ""}
+                  {visit.skip_reason_code
+                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, walkStop)})`
+                    : ""}
                   {visit.skip_reason ? ": " : ""}
                   {visit.skip_reason ? <bdi>{visit.skip_reason}</bdi> : null}
                 </div>
@@ -2416,6 +2455,16 @@ function VisitCard({
             </a>
           )}
         </div>
+      )}
+
+      {!collapsed && visit.client_id && (
+        <Link
+          to="/clients/$clientId"
+          params={{ clientId: visit.client_id }}
+          className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold transition-colors hover:bg-accent active:bg-accent"
+        >
+          <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("visit.clientInfo")}
+        </Link>
       )}
 
       {!collapsed && photos.length > 0 && (
@@ -2563,10 +2612,10 @@ function VisitCard({
               above. */}
           {underWay && photoCapture()}
 
-          {/* The owner's checklist, once the visit is under way. Complete
-              waits for its required items. Absent entirely for an org with
-              no checklist. */}
-          {underWay && canPerformVisit && checklist.length > 0 && (
+          {/* The owner's checklist is visible on the open stop before Complete
+              can be pressed. Complete waits for its required items. Absent
+              entirely for an org with no checklist. */}
+          {canPerformVisit && checklist.length > 0 && (
             <fieldset className="space-y-0.5 rounded-lg border p-1.5">
               <legend className="px-1.5 text-xs font-semibold uppercase text-muted-foreground">
                 {t("visit.checklist")}
@@ -2663,7 +2712,7 @@ function VisitCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  className="h-11 px-4"
                   onClick={() => setShowSkip((s) => !s)}
                 >
                   {t("myDay.skip")}
@@ -2748,11 +2797,11 @@ function VisitCard({
                 <select
                   value={reasonCode}
                   onChange={(e) => setReasonCode(e.target.value as any)}
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className="mt-1 h-11 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  {TECH_SKIP_REASON_CODES.map((c) => (
+                  {skipCodes.map((c) => (
                     <option key={c} value={c}>
-                      {skipReasonLabel(t, c)}
+                      {skipReasonLabel(t, c, walkStop)}
                     </option>
                   ))}
                 </select>

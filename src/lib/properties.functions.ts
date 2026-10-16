@@ -480,12 +480,19 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source, access_method, key_held, key_tag, lock_box_code, key_location",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source, access_method, key_held",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
-    return { properties: rows ?? [] };
+    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const access = await readPropertyAccess(
+      supabase,
+      (rows ?? []).map((r) => r.id),
+    );
+    return {
+      properties: (rows ?? []).map((r) => ({ ...r, ...accessFor(access, r.id) })),
+    };
   });
 
 // Shoelace on lat/lng, projected as equirectangular around the polygon centroid.
