@@ -62,50 +62,57 @@ vi.mock("@/hooks/useMyRole", () => ({
 vi.mock("@/components/ui/sidebar", () => ({
   useSidebar: () => ({ docksFrom: "lg", isMobile: true, state: "expanded" }),
 }));
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {},
+}));
 
 import i18n from "@/lib/i18n";
 import { Route } from "@/routes/_authenticated/my-day";
 
-function myDay() {
+function myDay(visits = defaultVisits()) {
   return {
     staff: { id: "s-1", display_name: "Jordan Tech", organization_id: "org-1" },
     previewing: false,
-    visits: [
-      {
-        id: "v-1",
-        organization_id: "org-1",
-        assigned_staff_id: "s-1",
-        sequence: 1,
-        status: "scheduled",
-        scheduled_on: DAY,
-        eta_start: `${DAY}T14:15:00Z`,
-        eta_end: `${DAY}T14:45:00Z`,
-        visit_photos: [],
-        zones: { name: "Lakeview East" },
-        clients: {
-          display_name: "Anastasia Vandermolen-Whitaker",
-          primary_phone: null,
-          dna_compliance_enabled: false,
-        },
-        stop_facts: { dogCount: 0, openBalanceCents: 0, awaitingCents: 0 },
-        properties: {
-          id: "p-1",
-          street: "1418 W Wolfram St",
-          city: "Chicago",
-          postal_code: "60657",
-          account_type: "residential",
-          gate_code: "*5521#",
-          dogs: [],
-          waste_stations: [],
-        },
-      },
-    ],
+    visits,
   };
+}
+
+function defaultVisits() {
+  return [
+    {
+      id: "v-1",
+      organization_id: "org-1",
+      assigned_staff_id: "s-1",
+      sequence: 1,
+      status: "scheduled",
+      scheduled_on: DAY,
+      eta_start: `${DAY}T14:15:00Z`,
+      eta_end: `${DAY}T14:45:00Z`,
+      visit_photos: [],
+      zones: { name: "Lakeview East" },
+      clients: {
+        display_name: "Anastasia Vandermolen-Whitaker",
+        primary_phone: null,
+        dna_compliance_enabled: false,
+      },
+      stop_facts: { dogCount: 0, openBalanceCents: 0, awaitingCents: 0 },
+      properties: {
+        id: "p-1",
+        street: "1418 W Wolfram St",
+        city: "Chicago",
+        postal_code: "60657",
+        account_type: "residential",
+        gate_code: "*5521#",
+        dogs: [],
+        waste_stations: [],
+      },
+    },
+  ];
 }
 
 /** Render My Day with the day query in the state a failed refetch leaves:
  *  "error", and — unless `withData` is false — the last good copy still in it. */
-function render(opts: { withData: boolean }) {
+function render(opts: { withData: boolean; visits?: unknown[]; upcoming?: unknown[] }) {
   // retryOnMount: false holds the failure as it stands. Otherwise a query in
   // "error" with NO data is fetched again on mount, which on a server render
   // means the loading skeleton — a state the contrast case below is not about.
@@ -113,7 +120,15 @@ function render(opts: { withData: boolean }) {
     defaultOptions: { queries: { retry: false, retryOnMount: false } },
   });
   const key = ["my-day", DAY, ""];
-  if (opts.withData) qc.setQueryData(key, myDay(), { updatedAt: Date.now() - 3 * HOUR });
+  if (opts.withData)
+    qc.setQueryData(key, myDay(opts.visits ?? defaultVisits()), {
+      updatedAt: Date.now() - 3 * HOUR,
+    });
+  if (opts.upcoming)
+    qc.setQueryData(["my-upcoming-days"], {
+      staff: { id: "s-1", display_name: "Jordan Tech", organization_id: "org-1" },
+      days: opts.upcoming,
+    });
   const query = qc.getQueryCache().build(qc, { queryKey: key });
   query.setState({
     status: "error",
@@ -171,5 +186,18 @@ describe("My Day after a failed refresh", () => {
     const text = render({ withData: false });
     expect(text).toContain("Couldn't load this day (you're offline)");
     expect(text).not.toContain("Anastasia Vandermolen-Whitaker");
+  });
+
+  it("with an empty day, points to the next workday when one is known", () => {
+    vi.stubGlobal("navigator", { onLine: true });
+    const text = render({
+      withData: true,
+      visits: [],
+      upcoming: [
+        { date: "2026-10-08", stops: 4, done: 0, zones: [], firstEta: null, lastEta: null },
+      ],
+    });
+    expect(text).toContain("Nothing scheduled for you on this day.");
+    expect(text).toContain("Your next workday is Thu, Oct 8.");
   });
 });

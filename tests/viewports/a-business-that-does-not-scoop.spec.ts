@@ -91,6 +91,31 @@ async function showAllSteps(page: Page) {
  *  shows only some of them at a given width. */
 const allText = (page: Page) => page.evaluate(() => document.body.textContent ?? "");
 
+/** ServiceLinesChoices, as /setup step 1 and Settings → Business defaults both
+ *  draw it for a dog-walking business. Walking and sitting are bookable;
+ *  mobile grooming is listed, marked, and cannot be ticked. */
+async function expectServiceLineChoices(page: Page) {
+  await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("checkbox", { name: "Dog walking", exact: true })).toBeChecked();
+  const petWaste = page.getByRole("checkbox", {
+    name: "Pet waste removal (scooping)",
+    exact: true,
+  });
+  await expect(petWaste).not.toBeChecked();
+  await expect(petWaste).toBeEnabled();
+  // Bookable since the service catalog: shown, selectable, no badge.
+  const sitting = page.getByRole("checkbox", { name: "Pet sitting", exact: true });
+  await expect(sitting).not.toBeChecked();
+  await expect(sitting).toBeEnabled();
+  await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toHaveCount(0);
+  // Not bookable yet: shown, marked, and not selectable.
+  const grooming = page.getByRole("checkbox", { name: /^Mobile grooming/ });
+  await expect(grooming).toBeDisabled();
+  await expect(page.locator("li").filter({ has: grooming }).getByText("Coming soon")).toBeVisible();
+}
+
 for (const { w, h, label } of WIDTHS) {
   test.describe(`a dog-walking business, ${label}`, () => {
     test(`the setup checklist asks where the day ends, not for a dump site @${w}px`, async ({
@@ -107,12 +132,7 @@ for (const { w, h, label } of WIDTHS) {
 
     test(`/setup asks what the business runs, first in step 1 @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/setup?step=business", w, h);
-      await expect(page.getByText("What do you run?").first()).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("checkbox", { name: "Dog walking" })).toBeChecked();
-      await expect(page.getByRole("checkbox", { name: "Pet waste removal" })).not.toBeChecked();
-      // Not bookable yet: shown, marked, and not selectable.
-      await expect(page.getByRole("checkbox", { name: "Pet sitting" })).toBeDisabled();
-      await expect(page.getByText("Coming soon").first()).toBeVisible();
+      await expectServiceLineChoices(page);
       await measure(page, w, `/setup step 1 (dog walking) @${w}px`);
     });
 
@@ -140,9 +160,7 @@ for (const { w, h, label } of WIDTHS) {
 
     test(`Settings → Business defaults says what the business runs @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/settings/business", w, h);
-      await expect(page.getByText("What do you run?").first()).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("checkbox", { name: "Dog walking" })).toBeChecked();
-      await expect(page.getByRole("checkbox", { name: "Pet waste removal" })).not.toBeChecked();
+      await expectServiceLineChoices(page);
       // A re-clean is a pet-waste promise: no guarantee card for this business.
       await expect(page.getByText("Re-clean guarantee")).toHaveCount(0);
       // The rail is drawn from md up; Deep clean is not in it.

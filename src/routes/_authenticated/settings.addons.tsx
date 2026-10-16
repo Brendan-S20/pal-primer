@@ -18,6 +18,13 @@ export const Route = createFileRoute("/_authenticated/settings/addons")({
 });
 
 const FREQS = ["", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
+const FREQUENCY_LABELS: Record<string, string> = {
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  yearly: "Yearly",
+};
 
 function AddonsCatalog() {
   const qc = useQueryClient();
@@ -79,22 +86,42 @@ function AddonsCatalog() {
               default_frequency: draft.default_frequency || null,
               description: draft.description || null,
             });
-            setDraft({ code: "", name: "", price: "", kind: "one_time", default_frequency: "", description: "" });
+            setDraft({
+              code: "",
+              name: "",
+              price: "",
+              kind: "one_time",
+              default_frequency: "",
+              description: "",
+            });
           }}
         >
           <div className="sm:col-span-2">
             <Label>Code</Label>
-            <Input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} placeholder={example.code} />
+            <Input
+              value={draft.code}
+              onChange={(e) => setDraft({ ...draft, code: e.target.value })}
+              placeholder={example.code}
+            />
           </div>
           <div className="sm:col-span-3">
             <Label>Name</Label>
-            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={example.name} />
+            <Input
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              placeholder={example.name}
+            />
           </div>
           <div className="sm:col-span-1">
             <Label>Price ($)</Label>
-            <Input type="number" step="0.01" min="0" placeholder="0.00"
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
               value={draft.price}
-              onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
+              onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+            />
           </div>
           <div className="sm:col-span-2">
             <Label>Type</Label>
@@ -114,11 +141,17 @@ function AddonsCatalog() {
               value={draft.default_frequency}
               onChange={(e) => setDraft({ ...draft, default_frequency: e.target.value })}
             >
-              {FREQS.map((f) => <option key={f} value={f}>{f || "-"}</option>)}
+              {FREQS.map((f) => (
+                <option key={f} value={f}>
+                  {f ? FREQUENCY_LABELS[f] : "-"}
+                </option>
+              ))}
             </select>
           </div>
           <div className="sm:col-span-2 flex items-end">
-            <Button type="submit" disabled={upsertMut.isPending}>Add service</Button>
+            <Button type="submit" disabled={upsertMut.isPending}>
+              Add service
+            </Button>
           </div>
         </form>
       </section>
@@ -134,15 +167,25 @@ function AddonsCatalog() {
                 <div>
                   <div className="text-sm font-medium">
                     {s.name}
-                    <span className="ml-2 text-xs text-muted-foreground">({s.code})</span>
-                    {!s.active && <Badge variant="outline" className="ml-2">inactive</Badge>}
-                    <Badge variant="secondary" className="ml-2 text-3xs">{s.kind}</Badge>
+                    {!s.active && (
+                      <Badge variant="outline" className="ml-2">
+                        inactive
+                      </Badge>
+                    )}
+                    <Badge variant="secondary" className="ml-2 text-3xs">
+                      {s.kind === "one_time" ? "One-time" : "Recurring"}
+                    </Badge>
                   </div>
-                  {s.description && <div className="text-xs text-muted-foreground">{s.description}</div>}
+                  {s.description && (
+                    <div className="text-xs text-muted-foreground">{s.description}</div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <Input
-                    type="number" step="0.01" min="0" className="h-8 w-24"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="h-8 w-24"
                     defaultValue={(s.unit_price_cents / 100).toFixed(2)}
                     onBlur={(e) => {
                       const cents = Math.round(parseFloat(e.target.value || "0") * 100);
@@ -151,8 +194,11 @@ function AddonsCatalog() {
                       }
                     }}
                   />
-                  <Button size="sm" variant="outline"
-                    onClick={() => upsertMut.mutate({ ...s, active: !s.active })}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => upsertMut.mutate({ ...s, active: !s.active })}
+                  >
                     {s.active ? "Deactivate" : "Activate"}
                   </Button>
                 </div>

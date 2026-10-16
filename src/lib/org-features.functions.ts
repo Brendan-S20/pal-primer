@@ -12,6 +12,7 @@ import {
   type ChecklistItem,
 } from "@/lib/visit-checklist";
 import { SERVICE_LINES, serviceLinesProblem, type ServiceLine } from "@/lib/service-lines";
+import { defaultServiceSeedsFor } from "@/lib/services";
 
 // What KIND of business this org is, for rendering.
 //
@@ -185,6 +186,45 @@ export const setEmailVisitChecklist = createServerFn({ method: "POST" })
     return { ok: true, emailVisitChecklist: data.enabled };
   });
 
+async function ensureDefaultServicesForLines(
+  supabase: any,
+  orgId: string,
+  lines: readonly ServiceLine[],
+): Promise<void> {
+  const seeds = defaultServiceSeedsFor(lines);
+  if (seeds.length === 0) return;
+
+  const { data: existing, error: readError } = await supabase
+    .from("services")
+    .select("name")
+    .eq("organization_id", orgId);
+  if (readError) throw new Error(readError.message);
+
+  const have = new Set(
+    ((existing ?? []) as { name?: string | null }[])
+      .map((s) => s.name?.trim().toLowerCase())
+      .filter(Boolean) as string[],
+  );
+
+  for (const seed of seeds) {
+    const key = seed.name.trim().toLowerCase();
+    if (have.has(key)) continue;
+    const { error } = await supabase.from("services").insert({
+      ...seed,
+      name: seed.name.trim(),
+      organization_id: orgId,
+    });
+    if (error) {
+      if (error.code === "23505") {
+        have.add(key);
+        continue;
+      }
+      throw new Error(error.message);
+    }
+    have.add(key);
+  }
+}
+
 /** What the business runs. Written the way the photo rule and the checklist
  *  are -- manage_settings, then a plain update through updateOwnOrg under the
  *  "Settings managers update own org" policy -- so nothing is widened; the
@@ -216,5 +256,6 @@ export const setServiceLines = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
+    await ensureDefaultServicesForLines(context.supabase, orgId, data.lines);
     return { ok: true, serviceLines: data.lines };
   });

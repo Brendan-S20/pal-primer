@@ -352,6 +352,7 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
       if (linesChanged) {
         setLines(null);
         qc.invalidateQueries({ queryKey: ["my-org-features"] });
+        qc.invalidateQueries({ queryKey: ["services"] });
       }
       onSaved();
     },
@@ -370,15 +371,12 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
         m.mutate();
       }}
     >
-      {/* "What do you run?" (organizations.service_lines), first in this
-          form: pet waste removal preselected (the column's default), and dog
-          walking, pet sitting and mobile grooming listed as "Coming soon" and
-          not selectable, by the same component Settings → Business defaults
-          draws. It belongs in this step rather than a seventh one, because it
-          changes what the later steps ask: a dog walker's "where the day
-          ends" is not a dump site. */}
+      {/* "Which services do you offer?" (organizations.service_lines), first
+          in this form. It belongs in this step rather than a seventh one,
+          because it changes what the later steps ask: a dog walker's "where
+          the day ends" is not a dump site. */}
       <fieldset className={fieldClass}>
-        <legend className="text-sm font-medium">What do you run?</legend>
+        <legend className="text-sm font-medium">Which services do you offer?</legend>
         <p className="pb-1.5 text-xs text-muted-foreground">
           {APP_NAME} shows the tools for the services you run. You can change this later in
           Settings.
