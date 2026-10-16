@@ -4839,6 +4839,7 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"] | null
           address_source: string | null
           aggressive_dog: boolean
+          alarm_notes: string | null
           archived_at: string | null
           auto_zone_id: string | null
           bees_wasps: boolean
@@ -4894,6 +4895,7 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           address_source?: string | null
           aggressive_dog?: boolean
+          alarm_notes?: string | null
           archived_at?: string | null
           auto_zone_id?: string | null
           bees_wasps?: boolean
@@ -4949,6 +4951,7 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           address_source?: string | null
           aggressive_dog?: boolean
+          alarm_notes?: string | null
           archived_at?: string | null
           auto_zone_id?: string | null
           bees_wasps?: boolean
@@ -7323,6 +7326,7 @@ export type Database = {
       property_access_codes: {
         Args: { _property_ids: string[] }
         Returns: {
+          alarm_notes: string | null
           key_location: string | null
           key_tag: string | null
           lock_box_code: string | null
@@ -8684,6 +8688,18 @@ export type Database = {
       start_visit: {
         Args: { _started_at?: string; _visit_id: string }
         Returns: undefined
+      }
+      stay_access_codes: {
+        Args: { _stay_ids: string[] }
+        Returns: {
+          alarm_notes: string | null
+          gate_code: string | null
+          key_location: string | null
+          key_tag: string | null
+          lock_box_code: string | null
+          property_id: string
+          stay_id: string
+        }[]
       }
       service_line_item_name: {
         Args: { _fallback?: string; _service_name: string }

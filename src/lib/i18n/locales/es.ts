@@ -294,6 +294,7 @@ const es: Translations = {
     gate: "Portón",
     lockBox: "Caja de llaves",
     key: "Llave",
+    alarm: "Alarma",
   },
   walk: {
     start: "Empezar paseo",
@@ -373,6 +374,8 @@ const es: Translations = {
     medNotLogged: "{{med}} de {{pet}} no está registrado",
     noteForClient: "Nota para el cliente",
     noteForClientPlaceholder: "Luna comió todo y durmió al sol",
+    codesFrom: "Los códigos y llaves se muestran desde el {{date}}.",
+    codesSitterOnly: "Solo el cuidador de la estancia ve los códigos y llaves.",
   },
   visit: {
     stop: "Parada {{number}}.",

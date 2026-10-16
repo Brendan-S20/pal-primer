@@ -290,6 +290,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     gate: "大门",
     lockBox: "钥匙盒",
     key: "钥匙",
+    alarm: "警报器",
   },
   walk: {
     start: "开始遛狗",
@@ -368,6 +369,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     medNotLogged: "{{pet}}的{{med}}尚未记录",
     noteForClient: "给客户的留言",
     noteForClientPlaceholder: "Luna 吃光了，还在阳光下睡了午觉",
+    codesFrom: "代码和钥匙从 {{date}} 起显示。",
+    codesSitterOnly: "只有这次寄养的看护人能看到代码和钥匙。",
   },
   visit: {
     stop: "第 {{number}} 站。",

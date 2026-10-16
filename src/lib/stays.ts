@@ -285,3 +285,24 @@ export function priceDifferenceSentence(cents: number, money: (c: number) => str
   if (cents < 0) return `Takes ${money(-cents)} off before tax.`;
   return "No change to the price.";
 }
+
+// ── Who sees the codes, and when ─────────────────────────────────────────
+//
+// stay_access_codes (migration 20261017010000) gives a stay's sitter the
+// gate code, lock box code, key and alarm details from the day before the
+// stay's first visit to the end of its last visit day. The sit card uses the
+// same window to say when the codes will show.
+
+export type StayAccessWindow = { from: string; through: string };
+
+/** The window for a stay with visits on these days, or null with none. */
+export function stayAccessWindow(visitDays: readonly string[]): StayAccessWindow | null {
+  const days = visitDays.filter((d) => DAY.test(d)).sort();
+  if (days.length === 0) return null;
+  return { from: addDays(days[0], -1), through: days[days.length - 1] };
+}
+
+/** Whether `today` is inside the window. */
+export function stayAccessOpen(today: string, window: StayAccessWindow | null): boolean {
+  return !!window && today >= window.from && today <= window.through;
+}

@@ -58,7 +58,11 @@ export type WalkAccessForm = {
   keyTag: string;
   lockBoxCode: string;
   keyLocation: string;
+  /** Alarm details (#411). Read and saved like the lock box code. */
+  alarmNotes?: string;
 };
+
+export const ALARM_NOTES_MAX = 500;
 
 /** What the property drawer sends for walker access on save.
  *
@@ -72,14 +76,15 @@ export type WalkAccessForm = {
  *
  *  Turning "key held" off in this edit still clears the key tag. */
 export function walkAccessSave(initial: WalkAccessForm, form: WalkAccessForm) {
-  const changed = (k: "keyTag" | "lockBoxCode" | "keyLocation") =>
-    form[k].trim() !== initial[k].trim();
+  const changed = (k: "keyTag" | "lockBoxCode" | "keyLocation" | "alarmNotes") =>
+    (form[k] ?? "").trim() !== (initial[k] ?? "").trim();
   const out: {
     accessMethod: AccessMethod | null;
     keyHeld: boolean;
     keyTag?: string | null;
     lockBoxCode?: string | null;
     keyLocation?: string | null;
+    alarmNotes?: string | null;
   } = {
     accessMethod: form.accessMethod || null,
     keyHeld: form.keyHeld,
@@ -88,6 +93,7 @@ export function walkAccessSave(initial: WalkAccessForm, form: WalkAccessForm) {
   else if (form.keyHeld && changed("keyTag")) out.keyTag = form.keyTag.trim() || null;
   if (changed("lockBoxCode")) out.lockBoxCode = form.lockBoxCode.trim() || null;
   if (changed("keyLocation")) out.keyLocation = form.keyLocation.trim() || null;
+  if (changed("alarmNotes")) out.alarmNotes = (form.alarmNotes ?? "").trim() || null;
   return out;
 }
 
