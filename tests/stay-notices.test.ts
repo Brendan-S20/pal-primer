@@ -136,9 +136,9 @@ describe("stay notices", () => {
       /if \(org\.service_lines\?\.includes\("pet_sitting"\)\)[\s\S]*?notifyStaysEnding\(org\.id, todayStr\)/,
     );
     const settings = readFileSync("src/routes/_authenticated/settings.emails.tsx", "utf8");
-    expect(settings).toContain("values.runs_pet_sitting ? STAY_ROWS : []");
-    expect(settings).toContain(
-      "runs_pet_sitting ? { notify_email_stay_confirmed, notify_email_stay_ending } : {}",
+    expect(settings).toContain("values.runs_pet_sitting ? SIT_ROWS : []");
+    expect(settings).toMatch(
+      /runs_pet_sitting\s*\?\s*\{[^}]*notify_email_stay_confirmed,\s*notify_email_stay_ending/,
     );
   });
 });

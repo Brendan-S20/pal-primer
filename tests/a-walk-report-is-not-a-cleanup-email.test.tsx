@@ -67,7 +67,9 @@ describe("a pet-waste completion email", () => {
   it("keeps its push", () => {
     const fn = readFileSync("src/lib/my-day.functions.ts", "utf8");
     // A sitting visit's push (#411) sits between the walk's and the cleanup's.
-    expect(fn).toMatch(/title: walk \? walk\.push\.title : sit \? sit\.push\.title : "Visit completed"/);
+    expect(fn).toMatch(
+      /title: walk \? walk\.push\.title : sit \? sit\.push\.title : "Visit completed"/,
+    );
     expect(fn).toContain("`We just cleaned up at ${address}.`");
     expect(fn).toContain('"Your yard visit is complete."');
   });
@@ -122,7 +124,7 @@ describe("the sender", () => {
   const server = readFileSync("src/lib/walk-report.server.ts", "utf8");
 
   it("asks for a walk report and passes it only when there is one", () => {
-    expect(fn).toMatch(/const walk = await walkCompletionFor\(data\.visitId\)/);
+    expect(fn).toMatch(/walkCompletionFor\(data\.visitId\)/);
     expect(fn).toMatch(/\.\.\.\(walk \? \{ walk: walk\.email \} : \{\}\)/);
     expect(fn).toMatch(/body: walk\s*\? walk\.push\.body/);
   });

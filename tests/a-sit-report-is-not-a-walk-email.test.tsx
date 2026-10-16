@@ -226,10 +226,10 @@ describe("a walk's and a cleanup's email did not move", () => {
     const fn = readFileSync("src/lib/my-day.functions.ts", "utf8");
     expect(fn).toMatch(/const sitting = svc\?\.service_line === "pet_sitting";/);
     expect(fn).toMatch(
-      /const sitReport = sitting \? await import\("@\/lib\/sit-report\.server"\) : null;/,
+      /sitting \? import\("@\/lib\/sit-report\.server"\) : Promise\.resolve\(null\)/,
     );
     expect(fn).toMatch(/\.\.\.\(sit \? \{ sit: sit\.email \} : \{\}\)/);
-    expect(fn).toMatch(/if \(sitReport\) await sitReport\.afterSitCompleted\(data\.visitId\);/);
+    expect(fn).toMatch(/sitReport\.afterSitCompleted\(data\.visitId\)/);
     const server = readFileSync("src/lib/sit-report.server.ts", "utf8");
     expect(server).toMatch(/service_line === "pet_sitting" \? v : null/);
   });

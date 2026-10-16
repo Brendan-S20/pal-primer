@@ -11,6 +11,7 @@ import {
   type StayKind,
   type StayStatus,
 } from "@/lib/stays";
+import { careLine, type CareRow } from "@/lib/sit-report";
 import { walkReportEmail } from "@/lib/walk-report";
 import { windowLabel } from "@/lib/walk-windows";
 
@@ -62,7 +63,10 @@ export type PortalStayVisit = {
   durationMin?: number;
   reportNote?: string;
   photos: Array<{ url: string; kind: string }>;
+  /** What each pet got, on a completed visit. Empty before the visit is done. */
+  care: PortalCareLine[];
 };
+export type PortalCareLine = { id: string; pet: string; line: string };
 export type PortalStay = {
   id: string;
   startsOn: string;
@@ -88,10 +92,35 @@ const one = (v: any): any => (Array.isArray(v) ? v[0] : v);
 
 /** Explicit output allowlist. Only completed visits disclose a client report
  *  or photos. Private fields on a fetched row never enter the response. */
+/** One line per care-log row, oldest first. A note the sitter typed is kept
+ *  when the shared line does not already include it. */
+export function portalCareLines(
+  rows: Array<CareRow & { id: string }>,
+  pets: Array<{ id: string; name: string }>,
+  timezone: string,
+): PortalCareLine[] {
+  const names = new Map(pets.map((p) => [p.id, (p.name ?? "").trim() || "Pet"]));
+  return [...rows]
+    .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))
+    .map((r) => {
+      const line = careLine(r, timezone);
+      const note = (r.note ?? "").trim();
+      const already = note && line.includes(note);
+      const withNote =
+        note && r.status !== "missed" && r.kind !== "meds" && !already ? `${line}. ${note}` : line;
+      return {
+        id: r.id,
+        pet: r.pet_id ? (names.get(r.pet_id) ?? "Pet") : "All pets",
+        line: withNote,
+      };
+    });
+}
+
 export function portalStayVisitOf(
   row: any,
   timezone: string,
   photos: PortalStayVisit["photos"],
+  care: PortalCareLine[] = [],
 ): PortalStayVisit {
   const completed = row.status === "completed";
   const report = walkReportEmail({
@@ -115,6 +144,7 @@ export function portalStayVisitOf(
     durationMin: report.durationMin,
     reportNote: report.reportNote,
     photos: completed ? photos : [],
+    care: completed ? care : [],
   };
 }
 
@@ -214,11 +244,23 @@ export const portalListStays = createServerFn({ method: "GET" })
             .range(a, b),
         )
       : [];
+    const completedIds = visits.filter((v) => v.status === "completed").map((v) => v.id);
     const { portalVisitPhotos } = await import("@/lib/portal-visit-photos.server");
-    const photos = await portalVisitPhotos(
-      sb,
-      visits.filter((v) => v.status === "completed").map((v) => v.id),
-    );
+    const photos = await portalVisitPhotos(sb, completedIds);
+    const logged = completedIds.length
+      ? await sb
+          .from("care_log")
+          .select("id, visit_id, pet_id, kind, med_name, status, missed_reason, note, at")
+          .eq("organization_id", session.organizationId)
+          .in("visit_id", completedIds)
+      : { data: [] as any[], error: null };
+    if (logged.error) throw new Error(logged.error.message);
+    const careByVisit = new Map<string, any[]>();
+    for (const row of logged.data ?? []) {
+      const list = careByVisit.get(row.visit_id) ?? [];
+      list.push(row);
+      careByVisit.set(row.visit_id, list);
+    }
     const depIds = rows.map((s) => s.deposit_invoice_id).filter((id): id is string => !!id);
     const deposits = depIds.length
       ? await sb
@@ -256,7 +298,12 @@ export const portalListStays = createServerFn({ method: "GET" })
               ),
           )
           .map((v) =>
-            portalStayVisitOf(v, org.timezone || "America/Chicago", photos.get(v.id) ?? []),
+            portalStayVisitOf(
+              v,
+              org.timezone || "America/Chicago",
+              photos.get(v.id) ?? [],
+              portalCareLines(careByVisit.get(v.id) ?? [], pets, org.timezone || "America/Chicago"),
+            ),
           ),
       })),
     };

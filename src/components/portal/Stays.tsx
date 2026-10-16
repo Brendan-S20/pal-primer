@@ -350,10 +350,16 @@ export function PortalStayTimeline() {
                   {v.window ? ` · ${v.window}` : ""}
                 </p>
                 <PortalVisitReport report={v} photoLabel="Sitting visit" />
-                {v.status === "completed" && (
-                  <div data-stay-care-log={v.id} className="text-xs text-muted-foreground">
-                    {/* S2: replace this slot with the per-pet care log. */}Per-pet care log
-                  </div>
+                {v.care.length > 0 && (
+                  <ul data-stay-care-log={v.id} className="space-y-1 text-sm">
+                    {v.care.map((entry) => (
+                      <li key={entry.id} className="min-w-0 break-words">
+                        <bdi>{entry.pet}</bdi>
+                        {": "}
+                        {entry.line}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </li>
             ))}

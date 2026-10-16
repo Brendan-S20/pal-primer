@@ -100,8 +100,13 @@ vi.mock("@/integrations/supabase/client.server", () => ({
     },
   },
 }));
-const { portalListStays, portalRequestStay, portalStayVisitOf, portalStayRequestSchema } =
-  await import("@/lib/portal-stays.functions");
+const {
+  portalListStays,
+  portalRequestStay,
+  portalStayVisitOf,
+  portalStayRequestSchema,
+  portalCareLines,
+} = await import("@/lib/portal-stays.functions");
 const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -219,6 +224,32 @@ beforeEach(() => {
         subscriptions: { stay_id: "stay-a" },
       },
     ],
+    care_log: [
+      {
+        id: "care-a",
+        organization_id: "org-a",
+        visit_id: "visit-a",
+        pet_id: PET,
+        kind: "feed",
+        med_name: null,
+        status: "done",
+        missed_reason: null,
+        note: "Ate the full cup",
+        at: "2030-06-02T00:10:00Z",
+      },
+      {
+        id: "care-b",
+        organization_id: "org-a",
+        visit_id: "visit-b",
+        pet_id: PET,
+        kind: "meds",
+        med_name: "Pill",
+        status: "missed",
+        missed_reason: "PRIVATE-CARE",
+        note: null,
+        at: "2030-06-02T00:12:00Z",
+      },
+    ],
     visit_photos: [
       { visit_id: "visit-a", storage_path: "a.jpg", kind: "completion" },
       { visit_id: "visit-b", storage_path: "PRIVATE-PHOTO.jpg", kind: "completion" },
@@ -284,6 +315,37 @@ describe("the client stay request", () => {
 });
 
 describe("the portal timeline", () => {
+  it("names the pet and keeps a sitter's note on the care line", () => {
+    const lines = portalCareLines(
+      [
+        {
+          id: "b",
+          pet_id: null,
+          kind: "water",
+          med_name: null,
+          status: "done",
+          missed_reason: null,
+          note: null,
+          at: "2030-06-02T01:00:00Z",
+        },
+        {
+          id: "a",
+          pet_id: PET,
+          kind: "meds",
+          med_name: "Apoquel",
+          status: "missed",
+          missed_reason: "She hid under the bed",
+          note: null,
+          at: "2030-06-02T00:10:00Z",
+        },
+      ],
+      [{ id: PET, name: "Miso" }],
+      "UTC",
+    );
+    expect(lines.map((l) => l.pet)).toEqual(["Miso", "All pets"]);
+    expect(lines[0].line).toContain("Apoquel missed");
+    expect(lines[0].line).toContain("She hid under the bed");
+  });
   it("returns only this client's reports and signed photos, with species and saved care", async () => {
     state.preview = true;
     const result = await portalListStays({ data: { token: TOKEN } });
@@ -300,6 +362,7 @@ describe("the portal timeline", () => {
           reportNote: "Miso ate well",
           durationMin: 30,
           photos: [{ url: "https://photos.example/a.jpg" }],
+          care: [{ id: "care-a", pet: "Miso", line: expect.stringContaining("Ate the full cup") }],
         },
       ],
     });
@@ -312,6 +375,7 @@ describe("the portal timeline", () => {
       "SECRET-BOX",
       "OTHER-CLIENT",
       "PRIVATE-PHOTO",
+      "PRIVATE-CARE",
     ])
       expect(wire).not.toContain(secret);
   });
@@ -322,6 +386,7 @@ describe("the portal timeline", () => {
     expect(result.stays[0].depositDue).toBe(false);
     expect(result.stays[0].visits[0].reportNote).toBeUndefined();
     expect(result.stays[0].visits[0].photos).toEqual([]);
+    expect(result.stays[0].visits[0].care).toEqual([]);
     expect(
       portalStayVisitOf({ ...state.tables.visits[0], status: "canceled" }, "UTC", [
         { url: "secret", kind: "completion" },

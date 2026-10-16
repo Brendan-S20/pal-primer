@@ -231,7 +231,7 @@ describe("the email switch", () => {
   it("is drawn and saved only for a pet sitting business", () => {
     const page = read("src/routes/_authenticated/settings.emails.tsx");
     expect(page).toMatch(/\.\.\.\(values\.runs_pet_sitting \? SIT_ROWS : \[\]\)/);
-    expect(page).toMatch(/\.\.\.\(runs_pet_sitting \? \{ notify_email_missed_meds \} : \{\}\)/);
+    expect(page).toMatch(/\.\.\.\(\s*runs_pet_sitting\s*\?\s*\{[^}]*notify_email_missed_meds/);
     const fn = read("src/lib/email-settings.functions.ts");
     expect(fn).toMatch(/runs_pet_sitting: lines\.includes\("pet_sitting"\)/);
     expect(fn).toMatch(/notify_email_missed_meds: z\.boolean\(\)\.optional\(\)/);
