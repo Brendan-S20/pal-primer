@@ -8512,6 +8512,9 @@ export type Database = {
         | "unsafe_conditions"
         | "other"
         | "customer_requested"
+        | "key_failed"
+        | "no_one_home"
+        | "dog_unwell"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
       visit_status:
@@ -8721,6 +8724,9 @@ export const Constants = {
         "unsafe_conditions",
         "other",
         "customer_requested",
+        "key_failed",
+        "no_one_home",
+        "dog_unwell",
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],

@@ -18,6 +18,9 @@ export const SKIP_CODES = [
   "access_blocked",
   "unsafe_conditions",
   "other",
+  "key_failed",
+  "no_one_home",
+  "dog_unwell",
 ] as const;
 
 /** A skip reason in plain words for the client. The walker's own typed reason
@@ -31,6 +34,9 @@ const WALK_SKIP_REASON: Record<(typeof SKIP_CODES)[number], string> = {
   access_blocked: "The walker could not get in.",
   unsafe_conditions: "It was not safe to walk today.",
   other: "The walker could not do the walk today.",
+  key_failed: "The key or the code did not work, so the walker could not get in.",
+  no_one_home: "No one was home to hand the dog over.",
+  dog_unwell: "The dog was not well enough to walk.",
 };
 
 export function walkSkipReason(code: string | null | undefined): string {

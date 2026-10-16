@@ -411,6 +411,17 @@ const en = {
     access_blocked: "Access blocked (car, construction, etc.)",
     unsafe_conditions: "Unsafe conditions",
     other: "Other",
+    key_failed: "Key or code did not work",
+    no_one_home: "No one home",
+    dog_unwell: "Dog unwell",
+  },
+  walkSkipReason: {
+    access_blocked: "Could not get in",
+    key_failed: "Key or code did not work",
+    no_one_home: "No one home",
+    dog_unwell: "Dog unwell",
+    weather: "Weather",
+    other: "Other",
   },
   addon: {
     billed: "Add-on billed",

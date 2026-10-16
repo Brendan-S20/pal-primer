@@ -597,6 +597,9 @@ export const skipVisit = createServerFn({ method: "POST" })
             "access_blocked",
             "unsafe_conditions",
             "other",
+            "key_failed",
+            "no_one_home",
+            "dog_unwell",
           ])
           .default("other"),
         /** When the tech actually skipped, for a REPLAYED action. */
