@@ -78,7 +78,8 @@ const en = {
     pickADay: "Pick a day",
     skippedCount: "{{count}} skipped",
     missedCount: "{{count}} missed",
-    progressRule: "Done means completed visits out of all stops. Missed and skipped stops count separately.",
+    progressRule:
+      "Done means completed visits out of all stops. Missed and skipped stops count separately.",
     view: "View",
     viewList: "List",
     viewMap: "Map",
@@ -159,6 +160,33 @@ const en = {
     nervous: "nervous",
     aggressive: "aggressive",
     unknown: "temperament unknown",
+  },
+  /** The client page a tech opens from a stop's "Client info"
+   *  (components/client-detail/FieldClientView.tsx). Hazard flags use
+   *  `hazard.*` and temperaments `dog.*`, the words the stop card uses. */
+  fieldClient: {
+    backToMyDay: "Back to My Day",
+    heading: "Field client info",
+    /** After the client's name in the browser tab: "Smith · Clients". */
+    pageSection: "Clients",
+    propertyFallback: "Property",
+    gate: "Gate:",
+    lockBox: "Lock box:",
+    key: "Key:",
+    parking: "Parking:",
+    access: "Access:",
+    hazards: "Hazards:",
+    dogsHeading: "Dogs ({{number}})",
+    noDogs: "No dogs on file.",
+    /** Between hazard names in one line. */
+    listSeparator: ", ",
+    /** The sizes the office's dog form offers. */
+    dogSize: {
+      small: "small",
+      medium: "medium",
+      large: "large",
+      giant: "giant",
+    },
   },
   yard: {
     label: "{{size}} property",
@@ -370,10 +398,20 @@ const en = {
     expand: "Expand",
     collapse: "Collapse",
     navigate: "Navigate",
+    clientInfo: "Client info",
     started: "Started",
     startQueued: "Queued. Starts when back online",
     completed: "Completed",
+    completedWithNotices: "Completed. Client notices: {{notices}}.",
+    completedWithNoticesPending:
+      "Completed. Client notices sent: {{notices}}. More are still sending.",
+    completedNoNotices: "Completed. No client notices went out.",
+    completedNoticePending: "Completed. Client notices are still sending.",
     completeQueued: "Queued. Completes when back online",
+    noticeCompletionEmail: "completion email",
+    noticePush: "push",
+    noticeReviewSms: "review text",
+    noticeReviewEmail: "review email",
     markedSkipped: "Marked skipped",
     skipQueued: "Queued. Will skip when back online",
     onMyWayEmailed: "Emailed: on my way",
@@ -969,11 +1007,9 @@ type PluralStems<T> = {
  */
 export type TranslationsWithPlurals<C extends PluralCategory> = PluralTree<typeof en, C>;
 type PluralTree<T, C extends PluralCategory> = {
-  [K in keyof T as K extends `${string}${PluralSuffix}`
-    ? T[K] extends string
-      ? never
-      : K
-    : K]: T[K] extends string ? string : PluralTree<T[K], C>;
+  [
+    K in keyof T as K extends `${string}${PluralSuffix}` ? (T[K] extends string ? never : K) : K
+  ]: T[K] extends string ? string : PluralTree<T[K], C>;
 } & { [K in `${PluralStems<T> & string}_${C}`]: string };
 
 export default en;

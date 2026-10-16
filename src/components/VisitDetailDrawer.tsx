@@ -20,6 +20,9 @@ import {
   getVisitDetail,
   completeVisitFromOffice,
   cancelVisitFromOffice,
+  deleteVisitPhotoFromOffice,
+  markVisitMissedFromOffice,
+  reopenVisitFromOffice,
   reassignVisit,
   rescheduleVisitFromOffice,
   listStaff,
@@ -41,6 +44,8 @@ import {
   Camera,
   PawPrint,
   Plus,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
@@ -123,6 +128,8 @@ export function VisitDetailDrawer({
   // can_write_org.
   const doComplete = useServerFn(completeVisitFromOffice);
   const doCancel = useServerFn(cancelVisitFromOffice);
+  const doReopen = useServerFn(reopenVisitFromOffice);
+  const doMarkMissed = useServerFn(markVisitMissedFromOffice);
   // Cosmetic gate only — requirePermission("manage_client_billing") inside the
   // office server functions is the real one. Showing a dispatcher a button
   // that throws is the failure this whole change is about, so hide it.
@@ -207,6 +214,22 @@ export function VisitDetailDrawer({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const reopenMut = useMutation({
+    mutationFn: () => doReopen({ data: { visitId: visitId! } }),
+    onSuccess: () => {
+      toast.success("Visit reopened");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const markMissedMut = useMutation({
+    mutationFn: () => doMarkMissed({ data: { visitId: visitId! } }),
+    onSuccess: () => {
+      toast.success("Visit marked missed");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const v: any = data?.visit;
   const p = v?.properties;
@@ -224,6 +247,7 @@ export function VisitDetailDrawer({
   // already in progress has a tech on site, and cancelling it from a desk
   // would overwrite what they are doing.
   const canCancel = v?.status === "scheduled";
+  const canReviewCompleted = v?.status === "completed";
   // Only work that has not happened yet can be moved. Reassigning a completed
   // visit would rewrite who did it.
   const canReassign = v?.status === "scheduled";
@@ -560,6 +584,37 @@ export function VisitDetailDrawer({
                 )}
               </section>
             )}
+
+            {canReviewCompleted && (
+              <section className="space-y-2 border-t pt-3">
+                {canActFromOffice || role === "dispatcher" ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => reopenMut.mutate()}
+                      disabled={reopenMut.isPending || markMissedMut.isPending}
+                    >
+                      <RotateCcw className="mr-1.5 h-4 w-4 shrink-0" />
+                      Reopen
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => markMissedMut.mutate()}
+                      disabled={reopenMut.isPending || markMissedMut.isPending}
+                    >
+                      <SkipForward className="mr-1.5 h-4 w-4 shrink-0" />
+                      Mark missed
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    You do not have permission to change this completed visit.
+                  </p>
+                )}
+              </section>
+            )}
           </div>
         )}
       </SheetContent>
@@ -701,8 +756,17 @@ function DogsSection({
 function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) {
   const qc = useQueryClient();
   const actions = useOfflineVisitActions(visitId, undefined);
+  const deletePhoto = useServerFn(deleteVisitPhotoFromOffice);
   const [uploading, setUploading] = useState(false);
   const [kind, setKind] = useState<PhotoKind>("completion");
+  const removeMut = useMutation({
+    mutationFn: (photoId: string) => deletePhoto({ data: { visitId, photoId } }),
+    onSuccess: () => {
+      toast.success("Photo removed");
+      qc.invalidateQueries({ queryKey: ["visit-detail", visitId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -727,6 +791,20 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
           {photos.map((ph: any) => (
             <div key={ph.id} className="relative">
               <PhotoThumb path={ph.storage_path} />
+              <Button
+                type="button"
+                size="icon"
+                variant="destructive"
+                className="absolute -right-2 -top-2 h-7 w-7 rounded-full"
+                title="Remove photo"
+                aria-label="Remove photo"
+                disabled={removeMut.isPending}
+                onClick={() => {
+                  if (window.confirm("Remove this visit photo?")) removeMut.mutate(ph.id);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5 shrink-0" />
+              </Button>
               <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
                 {photoKindLabel(ph.kind)}
               </span>

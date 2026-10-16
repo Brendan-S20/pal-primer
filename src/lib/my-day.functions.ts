@@ -113,6 +113,40 @@ async function businessCanText(orgId: string): Promise<boolean> {
   }
 }
 
+const VISIT_NOTICE_DEADLINE_MS = 2_500;
+
+/** lib/keep-alive.server.ts's KeepAlive, spelled here so this file, which the
+ *  browser bundle also reads, imports nothing from a .server module. */
+type KeepAlive = (job: Promise<unknown>) => void;
+
+/**
+ * How long Complete waits for one notice before answering the tech.
+ *
+ * Work that misses the deadline keeps going, and the tech is told the notices
+ * are "still sending". On a Worker that is only true if the work is handed to
+ * waitUntil (`keepAlive`, lib/keep-alive.server.ts): a promise nobody holds can
+ * be cut off once the response has gone out, and the email never sends. Where
+ * there is no waitUntil (Node in dev, vitest) `keepAlive` does nothing and the
+ * promise runs on by itself.
+ */
+async function withNoticeDeadline<T>(
+  label: string,
+  work: Promise<T>,
+  keepAlive: KeepAlive,
+): Promise<{ timedOut: true } | { timedOut: false; value: T }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), VISIT_NOTICE_DEADLINE_MS);
+  });
+  const result = await Promise.race([work, timeout]);
+  if (timer) clearTimeout(timer);
+  if (result === "timeout") {
+    keepAlive(work.catch((e) => console.error(`${label} failed after timeout`, e)));
+    return { timedOut: true };
+  }
+  return { timedOut: false, value: result as T };
+}
+
 /**
  * What the card needs that the visit's own row does not carry: the dog count
  * the subscription is priced on, how the customer pays and what they owe
@@ -288,10 +322,31 @@ export const completeVisit = createServerFn({ method: "POST" })
       console.warn("visit.completed activity log failed", data.visitId, e);
     }
 
+    const sentClientNotices: Array<"completion_email" | "push" | "review_sms" | "review_email"> =
+      [];
+    let noticesPending = false;
+    // What a notice that misses its deadline is handed to, so "still
+    // sending" stays true after this returns (see withNoticeDeadline).
+    const { keepAliveForThisRequest } = await import("@/lib/keep-alive.server");
+    const keepAlive = await keepAliveForThisRequest();
+
     // The office hears when the route is finished, or when the NEXT stop is
-    // now going to be late (field-notify.server.ts). Never throws.
-    const { afterStopResolved } = await import("@/lib/field-notify.server");
-    await afterStopResolved({ visitId: data.visitId, actorUserId: context.userId });
+    // now going to be late (field-notify.server.ts). It is not a client
+    // notice, so a timeout here must not make the tech's toast say client
+    // notices are still sending. Start it now and await it near the return so
+    // it does not add another wait before the client-facing work begins.
+    const routeNoticeDone = (async () => {
+      try {
+        const { afterStopResolved } = await import("@/lib/field-notify.server");
+        await withNoticeDeadline(
+          "route follow-up after completion",
+          afterStopResolved({ visitId: data.visitId, actorUserId: context.userId }),
+          keepAlive,
+        );
+      } catch (e) {
+        console.warn("route follow-up after completion failed", data.visitId, e);
+      }
+    })();
 
     // Fire visit-completed email (best-effort)
     try {
@@ -351,60 +406,84 @@ export const completeVisit = createServerFn({ method: "POST" })
         } catch (e) {
           console.warn("visit-completed photos could not be signed", data.visitId, e);
         }
-        // A dog walk's email is a walk report (#410); null for every other
-        // visit, which leaves the email and push below exactly as they were.
-        const { walkCompletionFor } = await import("@/lib/walk-report.server");
-        const walk = await walkCompletionFor(data.visitId);
-        // A pet sitting visit's email is a visit report (#411), read only for
-        // a sitting visit, so every other completion costs what it did.
+        // A dog walk's email is a walk report (#410). A pet sitting visit's
+        // email is a visit report (#411), read only for a sitting visit.
+        // Null for every other visit, which leaves the email and push as they
+        // were. Both reads finish before the sends, which stay on the notice
+        // deadline so a slow inbox does not hold the tech's button.
         const svc: any = Array.isArray((v as any).services)
           ? (v as any).services[0]
           : (v as any).services;
         const sitting = svc?.service_line === "pet_sitting";
-        const sitReport = sitting ? await import("@/lib/sit-report.server") : null;
-        const sit = sitReport ? await sitReport.sitCompletionFor(data.visitId) : null;
-        const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-        await enqueueAppEmail({
-          organizationId: v.organization_id,
-          clientId: v.client_id,
-          templateName: "visit-completed",
-          notifyKey: "notify_email_visit_completed",
-          idempotencyKey: `visit-done-${data.visitId}`,
-          // P3.5: visit emails go to the property's own contact when one is
-          // set (tenant/manager); billing emails stay with the client.
-          toOverride: prop?.visit_contact_email || undefined,
-          templateData: {
-            // "Mon, Sep 28", not the column's 2026-09-28.
-            visitDate: formatDay(v.scheduled_on),
-            address,
-            photoUrls,
-            gatePhotoUrl,
-            checklist,
-            ...(walk ? { walk: walk.email } : {}),
-            ...(sit ? { sit: sit.email } : {}),
-          },
-        });
-        // The missed medication email and, after a stay's last visit, the
-        // stay summary. Never throws.
-        if (sitReport) await sitReport.afterSitCompleted(data.visitId);
-        // Best-effort push notification to the client (if they subscribed via portal).
-        try {
-          const { sendPushToClient } = await import("@/lib/push.server");
-          await sendPushToClient(v.client_id, {
-            title: walk ? walk.push.title : sit ? sit.push.title : "Visit completed",
-            body: walk
-              ? walk.push.body
-              : sit
-                ? sit.push.body
-                : address
-                ? `We just cleaned up at ${address}.`
-                : "Your yard visit is complete.",
-            tag: `visit-${data.visitId}`,
-            url: "/portal",
-          });
-        } catch (e) {
-          console.error("client push failed", e);
-        }
+        const [{ walkCompletionFor }, sitReport, { enqueueAppEmail }, { sendPushToClient }] =
+          await Promise.all([
+            import("@/lib/walk-report.server"),
+            sitting ? import("@/lib/sit-report.server") : Promise.resolve(null),
+            import("@/lib/email/enqueue.server"),
+            import("@/lib/push.server"),
+          ]);
+        const [walk, sit] = await Promise.all([
+          walkCompletionFor(data.visitId),
+          sitReport ? sitReport.sitCompletionFor(data.visitId) : Promise.resolve(null),
+        ]);
+        const [emailResult, pushResult, sitFollowup] = await Promise.all([
+          withNoticeDeadline(
+            "visit-completed email enqueue",
+            enqueueAppEmail({
+              organizationId: v.organization_id,
+              clientId: v.client_id,
+              templateName: "visit-completed",
+              notifyKey: "notify_email_visit_completed",
+              idempotencyKey: `visit-done-${data.visitId}`,
+              // P3.5: visit emails go to the property's own contact when one is
+              // set (tenant/manager); billing emails stay with the client.
+              toOverride: prop?.visit_contact_email || undefined,
+              templateData: {
+                // "Mon, Sep 28", not the column's 2026-09-28.
+                visitDate: formatDay(v.scheduled_on),
+                address,
+                photoUrls,
+                gatePhotoUrl,
+                checklist,
+                ...(walk ? { walk: walk.email } : {}),
+                ...(sit ? { sit: sit.email } : {}),
+              },
+            }),
+            keepAlive,
+          ),
+          withNoticeDeadline(
+            "visit-completed push",
+            sendPushToClient(v.client_id, {
+              title: walk ? walk.push.title : sit ? sit.push.title : "Visit completed",
+              body: walk
+                ? walk.push.body
+                : sit
+                  ? sit.push.body
+                  : address
+                    ? `We just cleaned up at ${address}.`
+                    : "Your yard visit is complete.",
+              tag: `visit-${data.visitId}`,
+              url: "/portal",
+            }),
+            keepAlive,
+          ),
+          // Missed medication email, and the stay summary after the last
+          // visit. Never throws.
+          sitReport
+            ? withNoticeDeadline(
+                "sit follow-up after completion",
+                sitReport.afterSitCompleted(data.visitId),
+                keepAlive,
+              )
+            : Promise.resolve(null),
+        ]);
+        if (emailResult.timedOut) noticesPending = true;
+        else if ((emailResult.value as { ok?: boolean })?.ok)
+          sentClientNotices.push("completion_email");
+        if (pushResult.timedOut) noticesPending = true;
+        else if (((pushResult.value as { sent?: number })?.sent ?? 0) > 0)
+          sentClientNotices.push("push");
+        if (sitFollowup?.timedOut) noticesPending = true;
       }
     } catch (e) {
       console.error("visit-completed email failed", e);
@@ -458,45 +537,73 @@ export const completeVisit = createServerFn({ method: "POST" })
             .replace(/\{link\}/g, o.google_review_url);
           const { sendTwilioSms } = await import("@/lib/twilio.server");
           try {
-            const res = await sendTwilioSms({
-              to: c.primary_phone,
-              body,
-              from: sender.from ?? undefined,
-              messagingServiceSid: sender.messagingServiceSid ?? undefined,
-              credentials: sender.credentials,
-            });
-            await context.supabase.from("messages").insert({
-              organization_id: orgId,
-              client_id: c.id,
-              visit_id: data.visitId,
-              direction: "outbound",
-              body,
-              from_number: sender.from,
-              to_number: c.primary_phone,
-              twilio_sid: res.sid,
-              status: (res.status || "sent") as any,
-            });
-            await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+            // The send and its record are one piece of work, so a text that
+            // lands after the deadline is still logged and still marks the
+            // client asked; otherwise the next visit would ask again.
+            const smsResult = await withNoticeDeadline(
+              "review SMS",
+              sendTwilioSms({
+                to: c.primary_phone,
+                body,
+                from: sender.from ?? undefined,
+                messagingServiceSid: sender.messagingServiceSid ?? undefined,
+                credentials: sender.credentials,
+              }).then(async (res) => {
+                await context.supabase.from("messages").insert({
+                  organization_id: orgId,
+                  client_id: c.id,
+                  visit_id: data.visitId,
+                  direction: "outbound",
+                  body,
+                  from_number: sender.from,
+                  to_number: c.primary_phone,
+                  twilio_sid: res.sid,
+                  status: (res.status || "sent") as any,
+                });
+                await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+                return res;
+              }),
+              keepAlive,
+            );
+            if (smsResult.timedOut) {
+              noticesPending = true;
+            } else {
+              sentClientNotices.push("review_sms");
+            }
           } catch (err) {
             console.error("auto review SMS failed", err);
           }
         } else {
           const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-          const r = await enqueueAppEmail({
-            organizationId: orgId,
-            clientId: c.id,
-            templateName: "review-request",
-            notifyKey: "notify_email_review_request",
-            idempotencyKey: `review-${c.id}-${new Date().toISOString().slice(0, 10)}`,
-            templateData: { reviewUrl: o.google_review_url },
-          });
-          if (r.ok) await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+          const reviewEmail = await withNoticeDeadline(
+            "review email enqueue",
+            enqueueAppEmail({
+              organizationId: orgId,
+              clientId: c.id,
+              templateName: "review-request",
+              notifyKey: "notify_email_review_request",
+              idempotencyKey: `review-${c.id}-${new Date().toISOString().slice(0, 10)}`,
+              templateData: { reviewUrl: o.google_review_url },
+            }).then(async (r) => {
+              // Marked with the enqueue, for the same reason as the text.
+              if ((r as { ok?: boolean })?.ok)
+                await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+              return r;
+            }),
+            keepAlive,
+          );
+          if (reviewEmail.timedOut) {
+            noticesPending = true;
+          } else if ((reviewEmail.value as { ok?: boolean })?.ok) {
+            sentClientNotices.push("review_email");
+          }
         }
       }
     } catch (e) {
       console.error("auto review request failed", e);
     }
-    return { ok: true };
+    await routeNoticeDone;
+    return { ok: true, notificationSummary: { sent: sentClientNotices, pending: noticesPending } };
   });
 
 export const skipVisit = createServerFn({ method: "POST" })
