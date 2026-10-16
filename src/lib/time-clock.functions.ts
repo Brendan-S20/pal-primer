@@ -255,7 +255,8 @@ export const editTimeEntry = createServerFn({ method: "POST" })
     const { error } = await context.supabase.rpc("office_edit_time_entry", {
       _id: data.id,
       _clock_in: data.clockIn,
-      _clock_out: data.clockOut,
+      // The SQL function takes NULL: it leaves a running shift running.
+      _clock_out: data.clockOut as string,
       _note: data.note ?? "",
     });
     if (error) throw new Error(error.message);
