@@ -44,7 +44,8 @@ vi.mock("@/integrations/supabase/client.server", () => {
           .filter((r: any) => filters.every((f) => f(r)))
           .map((r: any) => structuredClone(r)),
       maybeSingle: async () => ({ data: q.rows()[0] ?? null, error: null }),
-      then: (res: (v: unknown) => unknown) => Promise.resolve({ data: q.rows(), error: null }).then(res),
+      then: (res: (v: unknown) => unknown) =>
+        Promise.resolve({ data: q.rows(), error: null }).then(res),
     };
     return q;
   };
@@ -58,13 +59,8 @@ vi.mock("@/lib/email/enqueue.server", () => ({
   },
 }));
 
-const {
-  notifyWalkNotDone,
-  notifyMissedWalks,
-  watchWalkSchedule,
-  notifyWalkPlanChanged,
-  moveKey,
-} = await import("@/lib/walk-notify.server");
+const { notifyWalkNotDone, notifyMissedWalks, watchWalkSchedule, notifyWalkPlanChanged, moveKey } =
+  await import("@/lib/walk-notify.server");
 const {
   SKIP_CODES,
   walkSkipReason,
@@ -115,7 +111,9 @@ describe("what the client is told", () => {
   });
 
   it("names the dog when skipped and the day when missed", () => {
-    expect(walkNotDoneSubject("skipped", "Bella", "Mon, Oct 19")).toBe("We could not walk Bella today");
+    expect(walkNotDoneSubject("skipped", "Bella", "Mon, Oct 19")).toBe(
+      "We could not walk Bella today",
+    );
     expect(walkNotDoneSubject("missed", "Bella", "Mon, Oct 19")).toBe(
       "Your walk on Mon, Oct 19 did not happen",
     );
@@ -139,7 +137,9 @@ describe("what the client is told", () => {
 
   it("a plan's schedule is its days and window, nothing else", () => {
     const a = { weekdays: [1, 3], earliest: "10:00:00", latest: "12:00:00" };
-    expect(walkPlanScheduleChanged(a, { weekdays: [3, 1], earliest: "10:00", latest: "12:00" })).toBe(false);
+    expect(
+      walkPlanScheduleChanged(a, { weekdays: [3, 1], earliest: "10:00", latest: "12:00" }),
+    ).toBe(false);
     expect(walkPlanScheduleChanged(a, { ...a, weekdays: [1, 3, 5] })).toBe(true);
     expect(walkPlanScheduleChanged(a, { ...a, latest: "13:00" })).toBe(true);
   });
@@ -174,7 +174,7 @@ describe("the templates", () => {
       }),
     );
     expect(missed).toContain("Mon, Oct 19");
-    expect(missed).toContain("Acme Walks will be in touch.");
+    expect(missed.replace(/<!-- -->/g, "")).toContain("Acme Walks will be in touch.");
   });
 
   it("a schedule change shows each walk as was and now", async () => {
@@ -234,7 +234,9 @@ describe("on my way", () => {
   it("is told it is a walk only by the visit's service line", () => {
     const server = read("src/lib/on-my-way.server.ts");
     expect(server).toMatch(/services\(service_line\)/);
-    expect(server).toMatch(/\.\.\.\(isDogWalk\(\(v as any\)\.services\) \? \{ walk: true \} : \{\}\)/);
+    expect(server).toMatch(
+      /\.\.\.\(isDogWalk\(\(v as any\)\.services\) \? \{ walk: true \} : \{\}\)/,
+    );
     expect(server).toMatch(/service_line === "dog_walking"/);
   });
 });
@@ -351,7 +353,10 @@ describe("a walk plan changed", () => {
 describe("the call sites", () => {
   it("a walker's skip tells the client after the skip is saved", () => {
     const src = read("src/lib/my-day.functions.ts");
-    const skip = src.slice(src.indexOf("export const skipVisit"), src.indexOf("export const recordVisitPhoto"));
+    const skip = src.slice(
+      src.indexOf("export const skipVisit"),
+      src.indexOf("export const recordVisitPhoto"),
+    );
     expect(skip.indexOf('rpc("skip_visit"')).toBeLessThan(skip.indexOf("notifyWalkNotDone"));
     expect(skip).toMatch(/notifyWalkNotDone\(\{ visitId: data\.visitId, kind: "skipped" \}\)/);
   });
@@ -390,7 +395,9 @@ describe("the call sites", () => {
     expect(enqueue).toMatch(/"notify_email_walk_not_done"/);
     expect(enqueue).toMatch(/"notify_email_walk_schedule_change"/);
     const page = read("src/routes/_authenticated/settings.emails.tsx");
-    expect(page).toMatch(/const rows = values\.runs_dog_walking \? \[\.\.\.ROWS, \.\.\.WALK_ROWS\] : ROWS;/);
+    expect(page).toMatch(
+      /const rows = values\.runs_dog_walking \? \[\.\.\.ROWS, \.\.\.WALK_ROWS\] : ROWS;/,
+    );
     const sql = read("supabase/migrations/20261015220000_a-client-hears-when-a-walk-changes.sql");
     expect(sql).toMatch(/notify_email_walk_not_done boolean NOT NULL DEFAULT true/);
     expect(sql).toMatch(/notify_email_walk_schedule_change boolean NOT NULL DEFAULT true/);

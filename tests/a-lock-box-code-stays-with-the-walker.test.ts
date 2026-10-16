@@ -74,9 +74,14 @@ describe("the client portal", () => {
     expect(portal.length).toBeGreaterThan(5);
   });
 
+  // The one portal file that names the codes is the write-only access path:
+  // it writes them and answers "On file" or "Not set". Its replies are pinned
+  // to carry no code in tests/a-portal-shows-the-walk-and-never-the-code.test.ts.
+  const WRITE_ONLY = "src/lib/portal-access.functions.ts";
+
   it("never selects or returns a lock box code, gate code or key tag", () => {
     const findings: string[] = [];
-    for (const f of portal) {
+    for (const f of portal.filter((x) => x.rel !== WRITE_ONLY)) {
       for (const tok of tokens(f.rel, readFileSync(f.abs, "utf8"))) {
         if (SECRET_COLUMN.test(tok.text)) findings.push(`${f.rel}:${tok.line} ${tok.text}`);
       }
@@ -96,7 +101,10 @@ describe("the client portal", () => {
   });
 
   it("would catch one (the rule is not dead)", () => {
-    const planted = tokens("x.ts", 'const q = sb.from("properties").select("street, lock_box_code");');
+    const planted = tokens(
+      "x.ts",
+      'const q = sb.from("properties").select("street, lock_box_code");',
+    );
     expect(planted.some((t) => SECRET_COLUMN.test(t.text))).toBe(true);
     const commented = tokens("x.ts", "// lock_box_code is never read here\nconst a = 1;");
     expect(commented.some((t) => SECRET_COLUMN.test(t.text))).toBe(false);
