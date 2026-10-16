@@ -9,14 +9,20 @@ import { ACCESS_CODE_MAX, ACCESS_METHODS } from "@/lib/walk-access";
 // The codes are WRITE-ONLY. Nothing here ever returns one: the portal is
 // told "On file" or "Not set", and a client changes a code by typing a new
 // one or removes it. A code read back over the portal would be a code anyone
-// holding the link, or the phone, could read. The door code is stored in
-// properties.gate_code, the column the walker's card already shows as the
-// code at the entrance.
+// holding the link, or the phone, could read.
+//
+// The door code is stored in properties.gate_code. Like the lock box code,
+// a signed-in user cannot select it from properties: the walker reads it
+// only through property_access_codes, on the day of a scheduled or
+// in-progress visit there, and the office reads it the same way
+// (20261015215000_a-lock-box-code-is-for-the-assigned-day.sql).
 //
 // Session rules as every portal call (portal-auth.server.ts): the read lets
-// a staff preview look, the write refuses it. Every query is filtered by the
-// session's own client and organization, so another client's property is
-// "not found" whatever id is sent.
+// a staff preview look, the write refuses it. Both use the service role
+// client, so every query is filtered by the session's own client and
+// organization, and another client's property is "not found" whatever id is
+// sent. The service role reads the codes only to answer "On file" or "Not
+// set" through portalAccessOf.
 
 async function portalAuth() {
   return import("@/lib/portal-auth.server");

@@ -104,7 +104,12 @@ export async function setStaffActive(org: WalkOrg, staffId: string, active: bool
 /** A home with one dog and a lock box, and a walk there today. */
 export async function makeWalkVisit(
   org: WalkOrg,
-  opts: { assignedStaffId?: string | null; status?: string; lockBoxCode?: string } = {},
+  opts: {
+    assignedStaffId?: string | null;
+    status?: string;
+    lockBoxCode?: string;
+    gateCode?: string;
+  } = {},
 ) {
   const { admin, orgId, serviceId } = org;
   const n = Math.random().toString(36).slice(2, 8);
@@ -120,6 +125,7 @@ export async function makeWalkVisit(
     street: `${n} Walk St`,
     city: "Austin",
     postal_code: "78701",
+    gate_code: opts.gateCode ?? null,
     lock_box_code: opts.lockBoxCode ?? null,
     access_method: opts.lockBoxCode ? "lockbox" : null,
     key_held: true,

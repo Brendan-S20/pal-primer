@@ -59,6 +59,22 @@ export type WalkAccessForm = {
   keyLocation: string;
 };
 
+/** The gate code under the same save rule as the walker-access codes. It is
+ *  on every property drawer, so it has its own helper. */
+export type GateCodeForm = { gateCode: string };
+
+/** What the property drawer sends for the gate code on save.
+ *
+ *  The gate code comes from property_access_codes, like the lock box code.
+ *  When that call failed or refused, the field opens blank, and sending the
+ *  blank would wipe what is stored. So the gate code goes out only when the
+ *  user changed it. Left alone, it is omitted. Cleared after a load, it is
+ *  sent as null. */
+export function gateCodeSave(initial: GateCodeForm, form: GateCodeForm): { gateCode?: string | null } {
+  if (form.gateCode.trim() === initial.gateCode.trim()) return {};
+  return { gateCode: form.gateCode.trim() || null };
+}
+
 /** What the property drawer sends for walker access on save.
  *
  *  The lock box code, key location and key tag come from
@@ -67,7 +83,8 @@ export type WalkAccessForm = {
  *  each of the three goes out only when the user changed it from what the
  *  form opened with. A field left alone is omitted, and the server leaves
  *  the column as it is. A field the user cleared after a load is sent as
- *  null, which clears it.
+ *  null, which clears it. The gate code follows the same rule
+ *  (gateCodeSave), and is sent with or without the walker-access fields.
  *
  *  Turning "key held" off in this edit still clears the key tag. */
 export function walkAccessSave(initial: WalkAccessForm, form: WalkAccessForm) {
