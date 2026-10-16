@@ -201,7 +201,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 60 -> 61 on 2026-10-10 (20261010200000, a window is kept and a skill
     // is matched): tg_staff_services_same_org, which keeps a technician's
     // service skill inside their own business. REVOKEd in the same file.
-    expect(triggerFunctions().size).toBe(61);
+    //
+    // 61 -> 65 on 2026-10-15 (20261015200000, a walk can be a group walk):
+    // validate_walk_group, validate_walk_group_member, copy_walk_group_walker
+    // and guard_visit_walk_group. Each REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    expect(triggerFunctions().size).toBe(65);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

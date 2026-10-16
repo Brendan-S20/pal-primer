@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-let context: { supabase: unknown; userId: string } = { supabase: null, userId: "walker-user" };
+const context: { supabase: unknown; userId: string } = { supabase: null, userId: "walker-user" };
 const mocks = vi.hoisted(() => ({
   permission: vi.fn(async () => ({ orgId: "org-a", role: "owner" })),
   caller: vi.fn(async () => ({ orgId: "org-a", role: "dispatcher" })),
