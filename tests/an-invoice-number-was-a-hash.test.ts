@@ -38,6 +38,11 @@ describe("no screen prints the fragment any more", () => {
     "src/lib/invoices.functions.ts",
     "src/lib/invoice-reconcile.server.ts",
     "src/lib/cpa-reports.functions.ts",
+    // QA batch 6: the portal printed a list position, and the add-on trail on
+    // client detail printed the fragment.
+    "src/routes/portal.$slug.$token.billing.tsx",
+    "src/routes/portal.$slug.$token.pay.$invoiceId.tsx",
+    "src/lib/addon-billing.ts",
   ])("%s", (file) => {
     const src = readFileSync(file, "utf8");
     expect(src).not.toMatch(/#\{?\$?\{?[a-zA-Z.()_]*\bid\b[a-zA-Z.()_]*\.slice\(0, 8\)/i);
