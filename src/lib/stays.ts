@@ -11,6 +11,7 @@
 
 import { arrivalWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { servicePriceCents, type ServiceDraft } from "@/lib/services";
+import { clockLabel, normalizeClock, windowLabel } from "@/lib/walk-windows";
 
 export type StayKind = "drop_in" | "overnight";
 export type StayStatus = "requested" | "confirmed" | "canceled" | "completed";
@@ -350,4 +351,71 @@ export function stayContactGapsSentence(gaps: readonly string[] | null | undefin
   return `Missing: ${known.join(", ")}. The sitter needs ${
     known.length === 1 ? "this" : "these"
   } if a pet is sick.`;
+}
+
+// ── A sitter's evening ───────────────────────────────────────────────────
+//
+// overnight_clashes (migration 20261017030000) finds a sitter's other visits
+// inside one of their overnights: after the arrival window opens that
+// evening, or before 8 AM the next morning. It warns and never refuses.
+
+/** When an overnight sitter is free again the next morning. */
+export const OVERNIGHT_ENDS = "08:00";
+
+/** The same rule as public.overnight_covers. Clocks are "HH:MM" or
+ *  "HH:MM:SS". A visit with no window never clashes. */
+export function overnightCovers(
+  night: string,
+  arrival: string,
+  on: string,
+  earliest: string | null,
+  latest: string | null,
+): boolean {
+  const a = normalizeClock(arrival);
+  const e = normalizeClock(earliest);
+  const l = normalizeClock(latest) ?? e;
+  if (!a || !l) return false;
+  if (on === night) return l > a;
+  if (on === addDays(night, 1)) return !!e && e < OVERNIGHT_ENDS;
+  return false;
+}
+
+export type OvernightClash = {
+  sitter_name: string | null;
+  night_of: string;
+  arrival: string | null;
+  visit_on: string;
+  visit_earliest: string | null;
+  visit_latest: string | null;
+  client_name: string | null;
+};
+
+function shortDay(day: string): string {
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** One warning for the office, or null when nothing clashes. */
+export function overnightClashSentence(
+  clashes: readonly OvernightClash[] | null | undefined,
+): string | null {
+  const first = clashes?.[0];
+  if (!first) return null;
+  const sitter = first.sitter_name?.trim() || "This sitter";
+  const arrives = clockLabel(first.arrival);
+  const when = windowLabel(first.visit_earliest, first.visit_latest);
+  const client = first.client_name?.trim();
+  let s =
+    `${sitter} has an overnight stay the night of ${shortDay(first.night_of)}` +
+    (arrives ? `, arriving from ${arrives}` : "") +
+    `. Their visit${client ? ` for ${client}` : ""} on ${shortDay(first.visit_on)}` +
+    (when ? `, ${when},` : "") +
+    " falls inside it.";
+  const more = clashes!.length - 1;
+  if (more > 0) s += ` ${more} more ${more === 1 ? "visit does" : "visits do"} too.`;
+  return s;
 }

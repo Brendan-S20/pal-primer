@@ -186,8 +186,9 @@ function StayRowView({
   });
   const sitter = useMutation({
     mutationFn: (sitterId: string | null) => sitterFn({ data: { stayId: stay.id, sitterId } }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       toast.success("Sitter changed. Upcoming visits moved to them.");
+      if (r.clash) toast.warning(r.clash);
       setChangingSitter(false);
       invalidate();
     },
@@ -392,6 +393,7 @@ function ChangeStayDrawer({
           ? "Stay changed. The added nights are on a new invoice."
           : "Stay changed. Its visits and invoice are updated.",
       );
+      if (r.clash) toast.warning(r.clash);
       invalidateStay(qc, clientId);
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["client-invoices", clientId] });
@@ -591,6 +593,7 @@ function BookStayDrawer({
       toast.success(`Stay booked. ${r.visits} visit${r.visits === 1 ? "" : "s"} on the schedule.`);
       const missing = stayContactGapsSentence(r.gaps);
       if (missing) toast.warning(missing);
+      if (r.clash) toast.warning(r.clash);
       invalidateStay(qc, clientId);
       onClose();
     },

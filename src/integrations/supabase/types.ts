@@ -8827,6 +8827,28 @@ export type Database = {
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       org_has_commercial_data: { Args: { _org_id: string }; Returns: boolean }
       org_seat_overage_cents: { Args: { _org_id: string }; Returns: number }
+      overnight_clashes: {
+        Args: { _visit_ids: string[] }
+        Returns: {
+          arrival: string | null
+          client_name: string | null
+          night_of: string
+          sitter_name: string | null
+          visit_earliest: string | null
+          visit_latest: string | null
+          visit_on: string
+        }[]
+      }
+      overnight_covers: {
+        Args: {
+          _arrival: string
+          _earliest: string
+          _latest: string
+          _night: string
+          _on: string
+        }
+        Returns: boolean
+      }
       pet_meds_are_valid: { Args: { _meds: Json }; Returns: boolean }
       phone_digits: { Args: { _p: string }; Returns: string }
       plan_day_across_staff: {
@@ -9675,6 +9697,18 @@ export type Database = {
       stay_contact_gaps: {
         Args: { _stay_id: string }
         Returns: string[]
+      }
+      stay_sitter_clashes: {
+        Args: { _stay_id: string }
+        Returns: {
+          arrival: string | null
+          client_name: string | null
+          night_of: string
+          sitter_name: string | null
+          visit_earliest: string | null
+          visit_latest: string | null
+          visit_on: string
+        }[]
       }
       start_visit_as: {
         Args: { _actor: string; _started_at?: string; _visit_id: string }

@@ -276,6 +276,7 @@ export const createStay = createServerFn({ method: "POST" })
       _stay_id: stayId,
     });
     if (gapsError) console.warn("stay contact check failed");
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
 
     return {
       id: stayId,
@@ -283,6 +284,7 @@ export const createStay = createServerFn({ method: "POST" })
       visits: expected,
       expected,
       gaps: (gaps as string[] | null) ?? [],
+      clash: await overnightClashWarning(supabase, { stayId }),
     };
   });
 
@@ -457,10 +459,12 @@ export const changeStay = createServerFn({ method: "POST" })
         invoice_id: r.invoice_id ?? null,
       },
     });
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     return {
       added: r.visits_added ?? 0,
       canceled: r.visits_canceled ?? 0,
       invoiceId: r.invoice_id ?? null,
+      clash: await overnightClashWarning(supabase, { stayId: stay.id }),
     };
   });
 
@@ -507,7 +511,8 @@ export const setStaySitter = createServerFn({ method: "POST" })
       summary: data.sitterId ? "Changed the stay's sitter" : "Took the sitter off the stay",
       meta: { stay_id: stay.id, sitter_id: data.sitterId },
     });
-    return { ok: true };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    return { ok: true, clash: await overnightClashWarning(supabase, { stayId: stay.id }) };
   });
 
 // ── Care instructions ────────────────────────────────────────────────────

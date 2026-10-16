@@ -22,7 +22,12 @@ export const confirmStay = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const { notifyStayConfirmed } = await import("@/lib/stay-notify.server");
     await notifyStayConfirmed(data.stayId);
-    return { invoiceId, gaps: await contactGaps(context.supabase, data.stayId) };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    return {
+      invoiceId,
+      gaps: await contactGaps(context.supabase, data.stayId),
+      clash: await overnightClashWarning(context.supabase, { stayId: data.stayId }),
+    };
   });
 
 /** What the stay is missing for an emergency (stay_contact_gaps). A failed

@@ -713,6 +713,7 @@ function RoutesPage() {
           ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
           : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
       );
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -732,6 +733,7 @@ function RoutesPage() {
       } else {
         toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
       }
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -906,9 +908,10 @@ function RoutesPage() {
     setLocalColumns(next);
 
     try {
-      await reassign({
+      const r = await reassign({
         data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
       });
+      if (r.clash) toast.warning(r.clash);
       if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
       if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
     } catch (err) {

@@ -28,6 +28,7 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
       toast.success("Stay confirmed. Visits and the invoice are ready.");
       const after = stayContactGapsSentence(r.gaps);
       if (after) toast.warning(after);
+      if (r.clash) toast.warning(r.clash);
       for (const queryKey of [
         ["stays", clientId],
         ["requested-stays"],

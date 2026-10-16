@@ -162,8 +162,9 @@ export function VisitDetailDrawer({
   useEffect(() => setMoveTo(""), [visitId]);
   const rescheduleMut = useMutation({
     mutationFn: () => doReschedule({ data: { visitId: visitId!, newDate: moveTo } }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       toast.success(`Visit moved to ${formatDay(moveTo)}`);
+      if (r.clash) toast.warning(r.clash);
       setMoveTo("");
       invalidate();
     },
@@ -171,8 +172,9 @@ export function VisitDetailDrawer({
   });
   const reassignMut = useMutation({
     mutationFn: (staffId: string | null) => doReassign({ data: { visitId: visitId!, staffId } }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       toast.success("Visit reassigned");
+      if (r.clash) toast.warning(r.clash);
       invalidate();
       // The board and the mobile day list both key off "visits"; invalidate()
       // covers those, but the tech lanes are grouped client-side from the same

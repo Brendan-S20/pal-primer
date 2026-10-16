@@ -268,7 +268,11 @@ export const reassignVisit = createServerFn({ method: "POST" })
         });
       }
     } catch {}
-    return { ok: true };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    return {
+      ok: true,
+      clash: await overnightClashWarning(context.supabase, { visitIds: [data.visitId] }),
+    };
   });
 
 export const reorderRoute = createServerFn({ method: "POST" })
@@ -556,7 +560,11 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       summary: `Rescheduled the visit from ${v.scheduled_on} to ${data.newDate}`,
       meta: { from: v.scheduled_on, to: data.newDate },
     });
-    return { ok: true };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    return {
+      ok: true,
+      clash: await overnightClashWarning(supabase, { visitIds: [data.visitId] }),
+    };
   });
 
 /** Cancel (skip) a scheduled visit from the office. A reason is required;
@@ -791,7 +799,11 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
-    return { moved: (n as number) ?? 0 };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    return {
+      moved: (n as number) ?? 0,
+      clash: await overnightClashWarning(context.supabase, { visitIds: data.visitIds }),
+    };
   });
 
 export const bulkRescheduleVisits = createServerFn({ method: "POST" })
@@ -824,7 +836,12 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     // moved exactly a week already has a visit there, and the honest report is
     // "moved 12, left 2 alone", not silence.
     const row = Array.isArray(rows) ? rows[0] : rows;
-    return { moved: row?.moved ?? 0, skipped: row?.skipped ?? 0 };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    return {
+      moved: row?.moved ?? 0,
+      skipped: row?.skipped ?? 0,
+      clash: await overnightClashWarning(context.supabase, { visitIds: data.visitIds }),
+    };
   });
 
 /** What a tech is still holding, by day — read BEFORE offering to move it. */
