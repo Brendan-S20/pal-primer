@@ -13,7 +13,6 @@ import type { LedgerInvoice } from "@/lib/ar";
 
 // The same loose client shape invoice-labels.ts takes: callers hold either
 // the RLS-bound client or the admin one.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = { from: (table: string) => any };
 
 export async function attachDatedPartialPayments<T extends LedgerInvoice & { id: string }>(
