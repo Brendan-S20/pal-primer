@@ -889,23 +889,18 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Billing is not configured.");
     const stripe = await makeStripe(secret);
-    const sub = await stripe.subscriptions.retrieve(s.stripeSubscriptionId, {
-      expand: ["items.data.price.product"],
-    });
-    // Label rows against the FULL plan catalog: any plan's base price (monthly
-    // or annual) is "the plan" line and any plan's seat price is the
-    // seat-overage line, so the labels stay right even mid-switch or on a
-    // retired plan. Anything else is a bolt-on add-on. The org's own plan row
-    // supplies the display name.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: planRows } = await (supabaseAdmin as any)
-      .from("platform_plans")
-      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id");
-    // Resolved by name as well as by stored id: a subscription in the account
-    // the stored ids do NOT belong to would otherwise label every line
-    // "Subscription item", which is what a customer would then see on the
-    // billing screen instead of their plan name.
-    const catalog = await loadPriceCatalog(stripe);
+    // These reads share no results. Keep Stripe latency off the catalog path.
+    const [sub, { data: planRows, error: plansError }, catalog] = await Promise.all([
+      stripe.subscriptions.retrieve(s.stripeSubscriptionId, {
+        expand: ["items.data.price.product"],
+      }),
+      (supabaseAdmin as any)
+        .from("platform_plans")
+        .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id"),
+      loadPriceCatalog(stripe),
+    ]);
+    if (plansError) throw new Error(plansError.message);
     const planByPriceId = new Map<string, { name: string }>();
     const seatPriceIds = new Set<string>();
     for (const p of (planRows ?? []) as any[]) {
@@ -1036,8 +1031,10 @@ export const listOrgPaymentMethods = createServerFn({ method: "GET" })
     }
     if (customer.deleted) return { methods: [], hasCustomer: false };
 
-    const defaultId = await orgDefaultPaymentMethodId(stripe, customer, s.stripeSubscriptionId);
-    const pms = await stripe.customers.listPaymentMethods(customerId, { type: "card", limit: 20 });
+    const [defaultId, pms] = await Promise.all([
+      orgDefaultPaymentMethodId(stripe, customer, s.stripeSubscriptionId),
+      stripe.customers.listPaymentMethods(customerId, { type: "card", limit: 20 }),
+    ]);
     const methods: OrgPaymentMethod[] = (pms.data ?? [])
       .filter((pm: any) => pm.card)
       .map((pm: any) => ({

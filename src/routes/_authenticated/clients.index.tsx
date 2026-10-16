@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ListSkeleton } from "@/components/PageSkeletons";
+import { KpiValueBone, ListSkeleton } from "@/components/PageSkeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { RowActions } from "@/components/RowActions";
@@ -102,6 +102,7 @@ function ClientsList() {
   const { data, isLoading } = useQuery({
     queryKey: ["clients"],
     queryFn: () => fn(),
+    throwOnError: (_error, query) => query.state.data === undefined,
   });
 
   const [q, setQ] = useState("");
@@ -311,9 +312,9 @@ function ClientsList() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Clients</h1>
-          <p className="text-sm text-muted-foreground">
-            {stats.total} total · {stats.active} active
-          </p>
+          <div className="text-sm text-muted-foreground">
+            {!data ? <Skeleton className="h-5 w-36" /> : `${stats.total} total · ${stats.active} active`}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -336,18 +337,18 @@ function ClientsList() {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Users className="h-4 w-4 shrink-0" /> Active
           </div>
-          <p className="mt-1 text-2xl font-semibold">{stats.active}</p>
+          <div className="mt-1 text-2xl font-semibold">{!data ? <KpiValueBone /> : stats.active}</div>
         </Card>
         <Card className="p-4">
           <div className="text-xs text-muted-foreground">Outstanding</div>
-          <p className="mt-1 text-2xl font-semibold">{money(stats.owedTotal)}</p>
-          <p className="text-xs text-muted-foreground">{stats.outstanding} clients</p>
+          <div className="mt-1 text-2xl font-semibold">{!data ? <KpiValueBone /> : money(stats.owedTotal)}</div>
+          <div className="text-xs text-muted-foreground">{!data ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <AlertTriangle className="h-4 w-4 shrink-0" /> At churn risk
           </div>
-          <p className="mt-1 text-2xl font-semibold">{stats.atRisk}</p>
+          <div className="mt-1 text-2xl font-semibold">{!data ? <KpiValueBone /> : stats.atRisk}</div>
         </Card>
         {/* Replaces the "Inactive" tile. Inactive was already derivable from
             Active and the total, and it is the less useful of the two: an
@@ -365,14 +366,14 @@ function ClientsList() {
           >
             No service plan
           </div>
-          <p
+          <div
             className={`mt-1 text-2xl font-semibold ${stats.noPlan > 0 ? "text-amber-600" : ""}`}
           >
-            {stats.noPlan}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {stats.total - stats.active} archived
-          </p>
+            {!data ? <KpiValueBone /> : stats.noPlan}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {!data ? <Skeleton className="h-4 w-20" /> : `${stats.total - stats.active} archived`}
+          </div>
         </Card>
       </div>
 
@@ -499,7 +500,7 @@ function ClientsList() {
         </div>
       )}
 
-      {isLoading ? (
+      {!data ? (
         <ListSkeleton breakpoint="sm" columns={7} />
       ) : !filtered.length ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">

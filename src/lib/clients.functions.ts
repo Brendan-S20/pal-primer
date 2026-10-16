@@ -27,7 +27,7 @@ export const listClients = createServerFn({ method: "GET" })
     const clients = data ?? [];
     const ids = clients.map((c: any) => c.id);
 
-    // Fetch aggregate side-data in parallel; ignore individual failures.
+    // All aggregates must succeed before the roster can report counts or balances.
     const [propsRes, subsRes, invRes] = await Promise.all([
       ids.length
         ? supabase
@@ -42,7 +42,7 @@ export const listClients = createServerFn({ method: "GET" })
             .select("id, client_id, dogs(id, active)")
             .is("archived_at", null)
             .in("client_id", ids)
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
       ids.length
         ? supabase
             // ends_on is needed to tell an ended service from a running one —
@@ -50,15 +50,19 @@ export const listClients = createServerFn({ method: "GET" })
             .from("subscriptions")
             .select("client_id, status, frequency, ends_on")
             .in("client_id", ids)
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
       ids.length
         ? supabase
             .from("invoices")
             .select("client_id, total_cents, credit_applied_cents, status")
             .in("client_id", ids)
             .eq("status", "open")
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
     ]);
+
+    for (const result of [propsRes, subsRes, invRes]) {
+      if (result.error) throw new Error(result.error.message);
+    }
 
     // Dogs live on properties (dogs.property_id), so aggregate through the
     // property → client relationship instead of a non-existent dogs.client_id.
@@ -197,6 +201,74 @@ export const getClient = createServerFn({ method: "GET" })
       .single();
     if (error) throw new Error(error.message);
     return { client };
+  });
+
+export const getFieldClientInfo = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const caller = await resolveCaller(supabase, userId);
+    const canReadDirectory = caller.role !== "tech";
+
+    if (!canReadDirectory) {
+      const { data: staff, error: staffErr } = await supabase
+        .from("staff")
+        .select("id, organization_id, active")
+        .eq("user_id", userId)
+        .eq("organization_id", caller.orgId)
+        .maybeSingle();
+      if (staffErr) throw new Error(staffErr.message);
+      if (!staff?.id || staff.active === false) throw new Error("Not authorized");
+
+      const { data: assigned, error: visitErr } = await supabase
+        .from("visits")
+        .select("id")
+        .eq("client_id", data.clientId)
+        .eq("organization_id", caller.orgId)
+        .eq("assigned_staff_id", staff.id)
+        .neq("status", "canceled")
+        .limit(1);
+      if (visitErr) throw new Error(visitErr.message);
+      if (!assigned?.length) throw new Error("Not authorized");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: client, error: clientErr } = await supabaseAdmin
+      .from("clients")
+      .select("id, organization_id, display_name, account_type, primary_phone, notes")
+      .eq("id", data.clientId)
+      .eq("organization_id", caller.orgId)
+      .maybeSingle();
+    if (clientErr) throw new Error(clientErr.message);
+    if (!client) throw new Error("Client not found");
+
+    const { data: properties, error: propErr } = await supabaseAdmin
+      .from("properties")
+      .select(
+        "id, label, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
+      )
+      .eq("client_id", data.clientId)
+      .eq("organization_id", caller.orgId)
+      .is("archived_at", null)
+      .order("street");
+    if (propErr) throw new Error(propErr.message);
+
+    const propertyIds = (properties ?? []).map((p) => p.id);
+    const { data: dogs, error: dogErr } = propertyIds.length
+      ? await supabaseAdmin
+          .from("dogs")
+          .select("id, property_id, name, breed, weight_class, temperament, notes, active")
+          .in("property_id", propertyIds)
+          .order("name")
+      : { data: [], error: null };
+    if (dogErr) throw new Error(dogErr.message);
+
+    return {
+      client,
+      properties: properties ?? [],
+      dogs: (dogs ?? []).filter((d: any) => d.active !== false),
+    };
   });
 
 /** Edit-client drawer (client detail refactor): contact, status, tags,

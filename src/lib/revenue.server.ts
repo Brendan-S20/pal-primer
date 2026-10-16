@@ -145,37 +145,43 @@ export async function collectedInPeriod(
   hi.setUTCDate(hi.getUTCDate() + 4);
 
   const PAGE = 1000;
-  const rows: Array<{
-    id: string;
-    invoice_id: string | null;
-    amount_cents: number | null;
-    tax_cents?: number | null;
-    status: string;
-    paid_at: string | null;
-    created_at: string;
-  }> = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase
-      .from("payments")
-      // tax_cents: the sales-tax share inside amount_cents, which is owed to
-      // the state and comes back OUT of every figure this returns.
-      .select("id, invoice_id, amount_cents, tax_cents, status, paid_at, created_at")
-      .eq("organization_id", orgId)
-      .in("status", receivedPaymentStatuses())
-      .gte("created_at", lo.toISOString())
-      .lte("created_at", hi.toISOString())
-      // `id` is the tiebreaker, not decoration: a billing batch writes many
-      // payments on an identical created_at, and paging on a non-unique sort
-      // key is undefined between pages — a tie group straddling a boundary can
-      // return a row twice or lose it.
-      .order("created_at")
-      .order("id")
-      .range(offset, offset + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const batch = (data ?? []) as typeof rows;
-    rows.push(...batch);
-    if (batch.length < PAGE) break;
-  }
+  const [rows, loadedReversals] = await Promise.all([
+    (async () => {
+      const rows: Array<{
+        id: string;
+        invoice_id: string | null;
+        amount_cents: number | null;
+        tax_cents?: number | null;
+        status: string;
+        paid_at: string | null;
+        created_at: string;
+      }> = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const { data, error } = await supabase
+          .from("payments")
+          // tax_cents: the sales-tax share inside amount_cents, which is owed to
+          // the state and comes back OUT of every figure this returns.
+          .select("id, invoice_id, amount_cents, tax_cents, status, paid_at, created_at")
+          .eq("organization_id", orgId)
+          .in("status", receivedPaymentStatuses())
+          .gte("created_at", lo.toISOString())
+          .lte("created_at", hi.toISOString())
+          // `id` is the tiebreaker, not decoration: a billing batch writes many
+          // payments on an identical created_at, and paging on a non-unique sort
+          // key is undefined between pages. A tie group straddling a boundary can
+          // return a row twice or lose it.
+          .order("created_at")
+          .order("id")
+          .range(offset, offset + PAGE - 1);
+        if (error) throw new Error(error.message);
+        const batch = (data ?? []) as typeof rows;
+        rows.push(...batch);
+        if (batch.length < PAGE) break;
+      }
+      return rows;
+    })(),
+    loadOrgReversals(supabase, { orgId, timezone, from, to }),
+  ]);
 
   const inPeriod = rows.filter((p) => {
     // paid_at is when the money moved; created_at is when we wrote the row.
@@ -196,7 +202,7 @@ export async function collectedInPeriod(
       day: orgLocalDay(p.paid_at ?? p.created_at, timezone),
     }));
 
-  let reversalRows = await loadOrgReversals(supabase, { orgId, timezone, from, to });
+  let reversalRows = loadedReversals;
 
   if (opts.includeOpenDisputes) {
     // Drop the deduction for disputes that are STILL OPEN. A lost one always
@@ -246,13 +252,14 @@ export async function collectedMonthToDate(
   supabase: any,
   orgId: string,
 ): Promise<CollectedSummary> {
-  const timezone = await orgTimezone(supabase, orgId);
-  const { from, to } = monthToDate(timezone);
-  const { data: org } = await supabase
+  const { data: org, error } = await supabase
     .from("organizations")
-    .select("disputes_in_analytics")
+    .select("timezone, disputes_in_analytics")
     .eq("id", orgId)
     .maybeSingle();
+  if (error) throw new Error(error.message);
+  const timezone = org?.timezone || "UTC";
+  const { from, to } = monthToDate(timezone);
   return collectedInPeriod(supabase, {
     orgId,
     from,
