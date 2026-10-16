@@ -568,6 +568,9 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
             "other",
           ])
           .default("other"),
+        // When the client called. A training lesson's late-cancel rule
+        // measures notice from here instead of from now.
+        clientCancelledAt: z.string().datetime().nullable().optional(),
       })
       .parse(d),
   )
@@ -587,6 +590,7 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _reason: data.reason,
       _code: data.code,
+      ...(data.clientCancelledAt ? { _client_cancelled_at: data.clientCancelledAt } : {}),
     });
     if (error) throw new Error(error.message);
     await watch.finish();
@@ -664,7 +668,16 @@ export const reopenVisitFromOffice = createServerFn({ method: "POST" })
 
 export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        // The business's own reason. On a training package lesson it means
+        // no session is used.
+        code: z.enum(["our_fault", "weather", "unsafe_conditions"]).nullable().default(null),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
@@ -679,6 +692,7 @@ export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_mark_visit_missed", {
       _visit_id: data.visitId,
+      _code: data.code,
     });
     if (error) throw new Error(error.message);
     await watch.finish();
@@ -691,6 +705,7 @@ export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
       actorUserId: userId,
       kind: "visit.missed",
       summary: `Marked the visit on ${v.scheduled_on} missed`,
+      ...(data.code ? { meta: { code: data.code } } : {}),
     });
     return { ok: true };
   });

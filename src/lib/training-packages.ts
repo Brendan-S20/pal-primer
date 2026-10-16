@@ -84,6 +84,14 @@ export function usesSession(visit: LessonUse): boolean {
   );
 }
 
+/** The business's own reasons. A lesson skipped or missed for one of these
+ * never uses a session. Mirrors public.training_lesson_session_rule. */
+export const BUSINESS_REASONS = ["our_fault", "weather", "unsafe_conditions"] as const;
+
+export function isBusinessReason(code: string | null | undefined): boolean {
+  return (BUSINESS_REASONS as readonly string[]).includes(code ?? "");
+}
+
 /** Mirrors public.training_visit_holds_session. */
 export function holdsSession(visit: LessonUse): boolean {
   return visit.status === "scheduled" || visit.status === "in_progress" || usesSession(visit);

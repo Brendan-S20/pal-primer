@@ -3,6 +3,7 @@ import {
   canBook,
   expiresOnFor,
   holdsSession,
+  isBusinessReason,
   lessonEnd,
   packageState,
   sessionLabel,
@@ -87,6 +88,12 @@ describe("training package calendar and session rules", () => {
     // A canceled lesson never uses a session, whatever the flag says.
     expect(holdsSession({ status: "canceled", skip_billable: true })).toBe(false);
     expect(usesSession({ status: "missed", skip_billable: null })).toBe(false);
+  });
+  it("names the business's own reasons, the ones that never use a session", () => {
+    for (const code of ["our_fault", "weather", "unsafe_conditions"])
+      expect(isBusinessReason(code)).toBe(true);
+    for (const code of ["client_cancelled_late", "gate_locked", "other", "", null, undefined])
+      expect(isBusinessReason(code)).toBe(false);
   });
   it("ends a lesson by its length and finds overlaps that share more than an edge", () => {
     expect(lessonEnd("10:00", 60)).toBe("11:00");

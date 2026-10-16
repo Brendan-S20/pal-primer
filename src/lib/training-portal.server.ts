@@ -224,7 +224,11 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
     scoresBy.set(s.visit_id, list);
   }
   const noteBy = new Map(
-    ((notes.data ?? []) as { visit_id: string; note: string }[]).map((n) => [n.visit_id, n.note]),
+    // `note` only. trainer_note is staff only and is never selected here.
+    ((notes.data ?? []) as { visit_id: string; note: string | null }[]).map((n) => [
+      n.visit_id,
+      n.note,
+    ]),
   );
   const homeworkBy = new Map(
     ((homework.data ?? []) as { visit_id: string; body: string; due_on: string | null }[]).map(

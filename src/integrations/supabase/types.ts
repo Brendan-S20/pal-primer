@@ -5673,25 +5673,28 @@ export type Database = {
       }
       training_session_notes: {
         Row: {
-          visit_id: string
-          organization_id: string
-          note: string
           created_at: string
+          note: string | null
+          organization_id: string
+          trainer_note: string | null
           updated_at: string
+          visit_id: string
         }
         Insert: {
-          visit_id: string
-          organization_id: string
-          note: string
           created_at?: string
+          note?: string | null
+          organization_id: string
+          trainer_note?: string | null
           updated_at?: string
+          visit_id: string
         }
         Update: {
-          visit_id?: string
-          organization_id?: string
-          note?: string
           created_at?: string
+          note?: string | null
+          organization_id?: string
+          trainer_note?: string | null
           updated_at?: string
+          visit_id?: string
         }
         Relationships: [
           { foreignKeyName: "training_session_notes_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: true; referencedRelation: "visits"; referencedColumns: ["id"] },
@@ -6718,6 +6721,7 @@ export type Database = {
         Row: {
           client_package_id: string | null
           assigned_staff_id: string | null
+          client_cancelled_at: string | null
           client_id: string
           completed_at: string | null
           completion_source: string | null
@@ -6764,6 +6768,7 @@ export type Database = {
         Insert: {
           client_package_id?: string | null
           assigned_staff_id?: string | null
+          client_cancelled_at?: string | null
           client_id: string
           completed_at?: string | null
           completion_source?: string | null
@@ -6810,6 +6815,7 @@ export type Database = {
         Update: {
           client_package_id?: string | null
           assigned_staff_id?: string | null
+          client_cancelled_at?: string | null
           client_id?: string
           completed_at?: string | null
           completion_source?: string | null
@@ -7837,6 +7843,7 @@ export type Database = {
       }
       office_skip_visit: {
         Args: {
+          _client_cancelled_at?: string
           _code?: Database["public"]["Enums"]["skip_reason_code"]
           _reason: string
           _visit_id: string

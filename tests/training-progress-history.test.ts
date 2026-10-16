@@ -30,7 +30,13 @@ const EARLIER = "22222222-2222-4222-8222-222222222222";
 const PACK = "33333333-3333-4333-8333-333333333333";
 type Call = { table: string; op: string; args: unknown[] };
 
-function fake(options: { packageDog?: string | null; dogs?: { id: string; name: string }[] } = {}) {
+function fake(
+  options: {
+    packageDog?: string | null;
+    dogs?: { id: string; name: string }[];
+    share?: boolean;
+  } = {},
+) {
   const calls: Call[] = [];
   const dogs = options.dogs ?? [
     { id: "dog-1", name: "Biscuit" },
@@ -70,8 +76,15 @@ function fake(options: { packageDog?: string | null; dogs?: { id: string; name: 
             ],
             error: null,
           };
-        if (table === "training_session_notes" && columns === "visit_id, note")
-          return { data: [{ visit_id: EARLIER, note: "Pulled on the leash" }], error: null };
+        if (table === "training_session_notes" && columns === "visit_id, note, trainer_note")
+          return {
+            data: [
+              { visit_id: EARLIER, note: "Pulled on the leash", trainer_note: "Owner skips practice" },
+            ],
+            error: null,
+          };
+        if (table === "organizations")
+          return { data: { training_share_progress: options.share ?? true }, error: null };
         if (table === "homework" && columns === "visit_id, body")
           return {
             data: [{ visit_id: EARLIER, body: "Five minutes of loose-leash walking" }],
@@ -139,6 +152,37 @@ describe("a lesson knows its dog", () => {
   });
 });
 
+describe("the shared note and the trainer-only note", () => {
+  it("saves both notes on one row, and a trainer note alone leaves the shared note empty", async () => {
+    let db = fake();
+    await saveSessionProgress({
+      data: { visitId: VISIT, scores: [], note: "Good focus", trainerNote: "Lunged once" },
+    });
+    expect(db.writes("training_session_notes", "upsert")[0].args[0]).toMatchObject({
+      note: "Good focus",
+      trainer_note: "Lunged once",
+    });
+    db = fake();
+    await saveSessionProgress({
+      data: { visitId: VISIT, scores: [], note: "  ", trainerNote: "Owner is not practicing" },
+    });
+    expect(db.writes("training_session_notes", "upsert")[0].args[0]).toMatchObject({
+      note: null,
+      trainer_note: "Owner is not practicing",
+    });
+    db = fake();
+    await saveSessionProgress({ data: { visitId: VISIT, scores: [], note: "", trainerNote: "" } });
+    expect(db.writes("training_session_notes", "upsert")).toEqual([]);
+    expect(db.writes("training_session_notes", "delete")).toHaveLength(1);
+  });
+  it("tells the panel whether the client sees the shared note", async () => {
+    fake({ share: false });
+    expect((await getSessionProgress({ data: { visitId: VISIT } })).shared).toBe(false);
+    fake();
+    expect((await getSessionProgress({ data: { visitId: VISIT } })).shared).toBe(true);
+  });
+});
+
 describe("the dog's earlier lessons", () => {
   it("returns scores in skill order, the note and the homework from the dog's last completed lessons", async () => {
     const db = fake();
@@ -153,6 +197,7 @@ describe("the dog's earlier lessons", () => {
           { skill: "Heel", score: 2 },
         ],
         note: "Pulled on the leash",
+        trainerNote: "Owner skips practice",
         homework: "Five minutes of loose-leash walking",
       },
     ]);

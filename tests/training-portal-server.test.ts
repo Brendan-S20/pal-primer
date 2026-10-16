@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The portal's training server functions, the package notices and the
@@ -278,6 +279,21 @@ describe("the portal Training page", () => {
         homework: { body: "Practice sit", dueOn: null },
       },
     ]);
+    // The shared note only. The trainer's own note is never asked for.
+    const notes = state.queries.filter((q) => q.table === "training_session_notes");
+    expect(notes.map((q) => q.cols)).toEqual(["visit_id, note"]);
+  });
+
+  it("never names the trainer-only note anywhere in the portal code", () => {
+    for (const file of [
+      "src/lib/training-portal.server.ts",
+      "src/lib/training-portal.ts",
+      "src/lib/portal-training.functions.ts",
+      "src/routes/portal.$slug.$token.training.tsx",
+    ])
+      expect(readFileSync(file, "utf8").replace(/\/\/.*$/gm, ""), file).not.toMatch(
+        /trainer_note|trainerNote/,
+      );
   });
 
   it("keeps notes and homework back when the business turns sharing off, and does not read them", async () => {

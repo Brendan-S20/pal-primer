@@ -11,6 +11,7 @@ const progressInput = z.object({
   visitId: id,
   scores: z.array(z.object({ skillId: id, score: z.number().int().min(1).max(5) })).max(40),
   note: z.string().max(2000).default(""),
+  trainerNote: z.string().max(2000).default(""),
   homework: z.string().max(2000).default(""),
   homeworkDue: z
     .string()
@@ -75,6 +76,7 @@ export type LessonHistory = {
   scheduledOn: string;
   scores: { skill: string; score: number }[];
   note: string;
+  trainerNote: string;
   homework: string;
 };
 
@@ -118,7 +120,7 @@ async function lessonHistory(
       .from("session_progress")
       .select("visit_id, score, training_skills(name, sort_order)")
       .in("visit_id", ids),
-    db.from("training_session_notes").select("visit_id, note").in("visit_id", ids),
+    db.from("training_session_notes").select("visit_id, note, trainer_note").in("visit_id", ids),
     db.from("homework").select("visit_id, body").in("visit_id", ids),
   ]);
   for (const result of [scores, notes, homework])
@@ -128,6 +130,9 @@ async function lessonHistory(
     score: number;
     training_skills: { name: string; sort_order: number } | null;
   };
+  type NoteRow = { visit_id: string; note: string | null; trainer_note: string | null };
+  const noteFor = (visitId: string) =>
+    ((notes.data ?? []) as NoteRow[]).find((n) => n.visit_id === visitId);
   return rows.map((v) => ({
     visitId: v.id,
     scheduledOn: v.scheduled_on,
@@ -135,9 +140,8 @@ async function lessonHistory(
       .filter((s) => s.visit_id === v.id && s.training_skills)
       .sort((a, b) => a.training_skills!.sort_order - b.training_skills!.sort_order)
       .map((s) => ({ skill: s.training_skills!.name, score: s.score })),
-    note:
-      ((notes.data ?? []) as { visit_id: string; note: string }[]).find((n) => n.visit_id === v.id)
-        ?.note ?? "",
+    note: noteFor(v.id)?.note ?? "",
+    trainerNote: noteFor(v.id)?.trainer_note ?? "",
     homework:
       ((homework.data ?? []) as { visit_id: string; body: string }[]).find(
         (h) => h.visit_id === v.id,
@@ -205,7 +209,7 @@ export const getSessionProgress = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const db = context.supabase as TrainingDb;
     const visit = await trainingVisit(db, context.userId, data.visitId);
-    const [skills, scores, note, homework] = await Promise.all([
+    const [skills, scores, note, homework, org] = await Promise.all([
       db
         .from("training_skills")
         .select("id, name, sort_order, active")
@@ -214,10 +218,15 @@ export const getSessionProgress = createServerFn({ method: "GET" })
         .order("sort_order")
         .order("name"),
       db.from("session_progress").select("skill_id, score").eq("visit_id", visit.visitId),
-      db.from("training_session_notes").select("note").eq("visit_id", visit.visitId).maybeSingle(),
+      db
+        .from("training_session_notes")
+        .select("note, trainer_note")
+        .eq("visit_id", visit.visitId)
+        .maybeSingle(),
       db.from("homework").select("body, due_on").eq("visit_id", visit.visitId).maybeSingle(),
+      db.from("organizations").select("training_share_progress").eq("id", visit.orgId).single(),
     ]);
-    for (const result of [skills, scores, note, homework]) {
+    for (const result of [skills, scores, note, homework, org]) {
       if (result.error) throw new Error(result.error.message);
     }
     const dog = await lessonDog(db, visit);
@@ -225,6 +234,9 @@ export const getSessionProgress = createServerFn({ method: "GET" })
       skills: skills.data ?? [],
       scores: scores.data ?? [],
       note: note.data?.note ?? "",
+      trainerNote: note.data?.trainer_note ?? "",
+      /** Whether the client portal shows `note`. It never shows `trainerNote`. */
+      shared: org.data?.training_share_progress !== false,
       homework: homework.data?.body ?? "",
       homeworkDue: homework.data?.due_on ?? null,
       dog,
@@ -244,6 +256,8 @@ export const saveSessionProgress = createServerFn({ method: "POST" })
     }
     const note = progressText(data.note, 2000, "session note");
     if (note.problem) throw new Error(note.problem);
+    const trainerNote = progressText(data.trainerNote, 2000, "trainer note");
+    if (trainerNote.problem) throw new Error(trainerNote.problem);
     const homework = progressText(data.homework, 2000, "homework");
     if (homework.problem) throw new Error(homework.problem);
     const seen = new Set<string>();
@@ -265,11 +279,12 @@ export const saveSessionProgress = createServerFn({ method: "POST" })
     const cleared =
       seen.size === 0 ? await drop : await drop.not("skill_id", "in", `(${[...seen].join(",")})`);
     if (cleared.error) throw writeError(cleared.error);
-    if (note.text) {
+    if (note.text || trainerNote.text) {
       const saved = await db.from("training_session_notes").upsert({
         visit_id: visit.visitId,
         organization_id: visit.orgId,
-        note: note.text,
+        note: note.text || null,
+        trainer_note: trainerNote.text || null,
       });
       if (saved.error) throw writeError(saved.error);
     } else {
