@@ -60,7 +60,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .from("visits")
       .select(
         `id, scheduled_on, status, sequence, assigned_staff_id,
-         started_at, completed_at, skip_reason, skip_reason_code,
+         started_at, completed_at, skip_reason, skip_reason_code, skip_billable, client_package_id,
          weather_flagged, weather_note, tech_note, completion_photo_waived_reason, visit_checklist,
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,

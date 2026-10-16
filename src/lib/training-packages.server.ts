@@ -108,7 +108,9 @@ export async function trainerConflicts(
 ): Promise<Busy[]> {
   const { data, error } = await db
     .from("visits")
-    .select("scheduled_on, subscriptions(earliest_time, latest_time), services(default_duration_min)")
+    .select(
+      "scheduled_on, subscriptions(earliest_time, latest_time), services(default_duration_min)",
+    )
     .eq("organization_id", orgId)
     .eq("assigned_staff_id", staffId)
     .in("scheduled_on", dates)
@@ -321,9 +323,9 @@ export async function bookTrainingSessions(
         );
     }
   }
-  const account = (
-    Array.isArray(property.clients) ? property.clients[0] : property.clients
-  ) as { account_type: "residential" | "commercial" };
+  const account = (Array.isArray(property.clients) ? property.clients[0] : property.clients) as {
+    account_type: "residential" | "commercial";
+  };
   const commercial = account.account_type === "commercial";
   const { data: plan, error } = await db
     .from("subscriptions")

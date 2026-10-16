@@ -237,7 +237,7 @@ export const getTrainingSessionRules = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const db = context.supabase as TrainingDb;
-    const orgId = await requireTrainingOffice(db, context.userId);
+    const { orgId } = await resolveCaller(db, context.userId);
     const { data, error } = await db
       .from("organizations")
       .select("training_late_cancel_hours, training_missed_uses_session")

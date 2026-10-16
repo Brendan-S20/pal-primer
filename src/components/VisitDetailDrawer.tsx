@@ -56,6 +56,7 @@ import {
   TrainingProgressPanel,
   TrainingSessionBadge,
 } from "@/components/training/TrainingProgressPanel";
+import { LessonSessionUse } from "@/components/training/LessonSessionUse";
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -297,9 +298,7 @@ export function VisitDetailDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        {v?.id && (
-          <TrainingSessionBadge visitId={v.id} serviceLine={v.services?.service_line} />
-        )}
+        {v?.id && <TrainingSessionBadge visitId={v.id} serviceLine={v.services?.service_line} />}
 
         {isLoading || !v ? (
           <div className="flex justify-center py-8 text-muted-foreground">
@@ -419,6 +418,7 @@ export function VisitDetailDrawer({
             {v?.id && (
               <TrainingProgressPanel visitId={v.id} serviceLine={v.services?.service_line} />
             )}
+            {v?.id && <LessonSessionUse visit={v} />}
 
             {(v.eta_start || v.travel_min != null) && (
               <section className="rounded-md border p-2 text-xs">

@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { formatDay } from "@/lib/format";
+import { useIntlLocale } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getTrainingSession } from "@/lib/training-packages.functions";
-import { getSessionProgress, saveSessionProgress } from "@/lib/training-progress.functions";
+import {
+  getSessionProgress,
+  saveSessionProgress,
+  type LessonHistory,
+} from "@/lib/training-progress.functions";
 
 /** No lookup or UI for another service line. */
 export function TrainingSessionBadge({
@@ -34,6 +40,66 @@ function SessionBadge({ visitId }: { visitId: string }) {
     <Badge variant="secondary" className="max-w-full whitespace-normal text-xs">
       {t("training.sessionLabel", { n: data.n, total: data.total })}
     </Badge>
+  );
+}
+
+/** The dog's last few lessons, so the trainer starts where the last one left off. */
+function LessonHistoryList({
+  data,
+}: {
+  data: { dog: { name: string } | null; history: LessonHistory[] };
+}) {
+  const { t } = useTranslation();
+  const locale = useIntlLocale();
+  return (
+    <section className="min-w-0 space-y-2" data-testid="training-lesson-history">
+      <h4 className="text-sm font-medium">
+        {data.dog ? (
+          <Trans
+            i18nKey="training.historyForDog"
+            components={{ dog: <bdi /> }}
+            values={{ dog: data.dog.name }}
+          />
+        ) : (
+          t("training.history")
+        )}
+      </h4>
+      {data.history.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("training.historyEmpty")}</p>
+      ) : (
+        <ol className="space-y-2">
+          {data.history.map((lesson) => (
+            <li
+              key={lesson.visitId}
+              className="min-w-0 space-y-1 rounded-md bg-muted/50 p-2 text-sm"
+            >
+              <p className="font-medium">{formatDay(lesson.scheduledOn, locale)}</p>
+              {lesson.scores.length > 0 && (
+                <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                  {lesson.scores.map((s) => (
+                    <li key={s.skill} className="min-w-0 break-words">
+                      <bdi>{s.skill}</bdi> <span dir="ltr">{s.score}/5</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {lesson.note && (
+                <p className="break-words">
+                  <span className="text-muted-foreground">{t("training.note")}: </span>
+                  <bdi>{lesson.note}</bdi>
+                </p>
+              )}
+              {lesson.homework && (
+                <p className="break-words">
+                  <span className="text-muted-foreground">{t("training.homework")}: </span>
+                  <bdi>{lesson.homework}</bdi>
+                </p>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 
@@ -125,6 +191,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
           {skills.length === 0 && !q.isLoading && (
             <p className="text-sm text-muted-foreground">{t("training.noSkills")}</p>
           )}
+          {q.data && <LessonHistoryList data={q.data} />}
           <ul className="space-y-3">
             {skills.map((skill) => (
               <li key={skill.id} className="flex min-w-0 flex-wrap items-center gap-2">
@@ -144,7 +211,9 @@ function ProgressForm({ visitId }: { visitId: string }) {
                         type="button"
                         aria-pressed={on}
                         className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border text-sm ${
-                          on ? "border-primary bg-primary/10 font-medium text-primary" : "bg-background"
+                          on
+                            ? "border-primary bg-primary/10 font-medium text-primary"
+                            : "bg-background"
                         }`}
                         onClick={() =>
                           setScores((prev) => {
@@ -192,7 +261,12 @@ function ProgressForm({ visitId }: { visitId: string }) {
               onChange={(e) => setDue(e.target.value)}
             />
           </div>
-          <Button type="button" className="shrink-0" disabled={save.isPending} onClick={() => save.mutate()}>
+          <Button
+            type="button"
+            className="shrink-0"
+            disabled={save.isPending}
+            onClick={() => save.mutate()}
+          >
             {save.isPending ? t("training.saving") : t("training.save")}
           </Button>
         </div>
