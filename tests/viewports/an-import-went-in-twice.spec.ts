@@ -40,7 +40,10 @@ for (const width of [390, 820, 1024, 1440]) {
       });
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1180 });
       await page.goto("/imports/7a11e000-0000-4000-8000-0000000000a1");
-      await expect(page.getByRole("link", { name: "Start a fresh import" })).toBeVisible();
+      // The first load on the CI runner can take longer than 5 seconds.
+      await expect(page.getByRole("link", { name: "Start a fresh import" })).toBeVisible({
+        timeout: 20_000,
+      });
       await expect(page.getByRole("button", { name: /Commit import/ })).toHaveCount(0);
       await expect(page.getByRole("status")).toContainText(
         reason === "stale" ? "24 hours" : "already imported",
