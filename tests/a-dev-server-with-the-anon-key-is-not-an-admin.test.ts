@@ -10,6 +10,12 @@ import { serviceKeyProblem } from "@/integrations/supabase/service-key";
 // client now refuses a key that is provably not a service key, and the
 // migration below gives anon a clean table-level refusal on both tables.
 
+// The admin client tests ask whether createClient is reached, not what it
+// builds. The real one constructs a realtime client, which throws on a Node
+// with no native WebSocket (Node 20), so it is replaced with a stub.
+const supabase = vi.hoisted(() => ({ createClient: vi.fn() }));
+vi.mock("@supabase/supabase-js", () => ({ createClient: supabase.createClient }));
+
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MIGRATION = join(
   ROOT,
@@ -68,6 +74,8 @@ describe("serviceKeyProblem", () => {
 describe("the admin client", () => {
   beforeEach(() => {
     vi.resetModules();
+    supabase.createClient.mockReset();
+    supabase.createClient.mockImplementation(() => ({ from: vi.fn() }));
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54421");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
@@ -82,12 +90,14 @@ describe("the admin client", () => {
     vi.stubEnv("SERVICE_ROLE_KEY", ANON_JWT);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     expect(() => supabaseAdmin.from).toThrow(/SERVICE_ROLE_KEY holds the anon\/publishable key/);
+    expect(supabase.createClient).not.toHaveBeenCalled();
   });
 
   it("builds normally with a service_role JWT", async () => {
     vi.stubEnv("SERVICE_ROLE_KEY", SERVICE_JWT);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     expect(() => supabaseAdmin.from).not.toThrow();
+    expect(supabase.createClient).toHaveBeenCalledTimes(1);
   });
 });
 
