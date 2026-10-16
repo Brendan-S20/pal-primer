@@ -275,15 +275,53 @@ export const BASE_STUBS: Record<string, Stub> = {
       },
     ],
   },
+  // The shape listSubscriptionItems returns (name, unitAmountCents, interval).
+  // Until 2026-10-15 this carried `label` and `amountCents`, which the page
+  // does not read, so every line drew "-" and the total, which skipped them,
+  // drew "Monthly total $0.00/mo": QA's A-07, reproduced by the fixture and
+  // measured green. One add-on has no price on purpose: Stripe can return a
+  // price with no unit_amount (tiered or metered), and that line is the
+  // reason the total is a dash rather than a partial sum.
   listSubscriptionItems: {
     planInterval: "month",
     cancelAtPeriodEnd: false,
     currentPeriodEnd: fx.ORGANIZATION.current_period_end,
+    subscriptionId: fx.ORGANIZATION.stripe_subscription_id,
     items: [
-      { kind: "base", label: "Growth (monthly)", quantity: 1, amountCents: 19_900 },
-      { kind: "seat", label: "Additional active employees", quantity: 4, amountCents: 4_000 },
+      {
+        id: "si_base",
+        kind: "base",
+        name: "Growth",
+        description: "Unlimited clients, routes and zones, billed per employee.",
+        quantity: 1,
+        unitAmountCents: 19_900,
+        currency: "usd",
+        interval: "month",
+        intervalCount: 1,
+      },
+      {
+        id: "si_seat",
+        kind: "seat",
+        name: "Additional active employees",
+        description: null,
+        quantity: 4,
+        unitAmountCents: 1_000,
+        currency: "usd",
+        interval: "month",
+        intervalCount: 1,
+      },
+      {
+        id: "si_addon",
+        kind: "addon",
+        name: "AI receptionist (metered usage)",
+        description: "Billed by the minute at the end of the period.",
+        quantity: 1,
+        unitAmountCents: null,
+        currency: "usd",
+        interval: "month",
+        intervalCount: 1,
+      },
     ],
-    nextInvoiceCents: 23_900,
   },
   getReviewQueueCount: { openCount: 4 },
   // ── The setup checklist on /dashboard ───────────────────────────────────
