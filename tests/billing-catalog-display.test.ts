@@ -38,6 +38,9 @@ vi.mock("@/components/ConfirmDialog", () => ({
 }));
 vi.mock("@/components/billing/ExportDataCard", () => ({ ExportDataCard: () => null }));
 
+import { PlanPicker } from "@/components/billing/PlanPicker";
+import { PLATFORM_PLANS } from "./viewports/fixtures/dataset";
+
 import { Route } from "@/routes/_authenticated/settings.billing";
 
 const PAST = "2026-08-16T12:00:00Z";
@@ -249,14 +252,16 @@ describe("next invoice with a metered line", () => {
 
 describe("add-on status is exclusive", () => {
   it.each(["active", "coming_soon"] as const)(
-    "shows subscribed add-ons as Active with catalog status %s",
+    "shows subscribed held add-ons as Coming soon with catalog status %s",
     (addonStatus) => {
       const text = renderBilling({ addonStatus });
-      expect(text).toContain("AI Receptionist Active");
-      expect(text).toContain("Managed texting Active");
+      expect(text).toContain("AI Receptionist Coming soon");
+      expect(text).toContain("Managed texting Coming soon");
       expect(text.match(/Remove from plan/g)).toHaveLength(2);
       expect(text).toContain("Answers your clients' messages.");
-      expect(text).not.toContain("Coming soon");
+      expect(text).not.toContain("AI Receptionist Active");
+      expect(text).not.toContain("Managed texting Active");
+      expect(text).not.toContain("Add to my plan");
     },
   );
 
@@ -270,4 +275,59 @@ describe("add-on status is exclusive", () => {
     expect(text).not.toContain("Remove from plan");
     expect(text).not.toContain("Add to my plan");
   });
+});
+
+describe("every plan card has a complete price and action", () => {
+  const variants = [
+    ...plans,
+    ...PLATFORM_PLANS,
+    { name: "Trial", is_free: true, price_cents: 0, included_seats: null },
+    { name: "Enterprise", is_enterprise: true, price_cents: null, included_seats: null },
+    { name: "Custom without flag", price_cents: null, included_seats: null },
+    { name: "Missing seats", price_cents: 7900, included_seats: null },
+    { name: "Missing price", price_cents: null, included_seats: 1 },
+    { name: "Flagged enterprise", is_enterprise: true, price_cents: 0, included_seats: 50 },
+  ];
+  it.each(variants.flatMap((plan) => ["month", "year"].map((interval) => ({ plan, interval }))))(
+    "$plan.name in $interval view",
+    ({ plan, interval }) => {
+      const client = new QueryClient();
+      client.setQueryData(["platform-plans"], {
+        plans: [{ ...plan, id: plan.name }],
+        enabledUsers: 1,
+      });
+      client.setQueryData(["founding-offer"], { visible: false });
+      const html = renderToStaticMarkup(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(PlanPicker, {
+            currentInterval: interval as "month" | "year",
+            onSelect: vi.fn(),
+            chooseLabel: "Switch to this plan",
+          }),
+        ),
+      );
+      client.clear();
+      const text = html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ");
+      expect(text).not.toMatch(/null|undefined|NaN|-[\s]*\/(?:month|year)/);
+      if ("is_free" in plan && plan.is_free) {
+        expect(text).not.toContain(plan.name);
+      } else if (
+        ("is_enterprise" in plan && plan.is_enterprise) ||
+        plan.price_cents == null ||
+        plan.included_seats == null
+      ) {
+        expect(text).toContain("Custom pricing");
+        expect(text).toContain("For larger teams. We set up pricing with you.");
+        expect(html).toContain('href="mailto:support@houndstack.com"');
+        expect(text).toContain("Contact us");
+        expect(text).not.toContain("Switch to this plan");
+        expect(text).not.toMatch(/\/(?:month|year)/);
+      } else {
+        expect(text).toMatch(/\$[\d,.]+\/(?:month|year)/);
+        expect(text).toContain(`${plan.included_seats} active employee`);
+      }
+    },
+  );
 });

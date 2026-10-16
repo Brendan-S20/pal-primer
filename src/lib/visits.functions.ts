@@ -601,6 +601,137 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+async function loadVisitForDispatchAction(supabase: any, userId: string, visitId: string) {
+  const caller = await resolveCaller(supabase, userId);
+  if (!["owner", "office_manager", "dispatcher"].includes(caller.role)) {
+    throw new Error("Not authorized");
+  }
+  const { data: v, error } = await supabase
+    .from("visits")
+    .select("id, organization_id, client_id, property_id, scheduled_on, status")
+    .eq("id", visitId)
+    .eq("organization_id", caller.orgId)
+    .single();
+  if (error) throw new Error(error.message);
+  return v as {
+    id: string;
+    organization_id: string;
+    client_id: string;
+    property_id: string | null;
+    scheduled_on: string;
+    status: string;
+  };
+}
+
+export const reopenVisitFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
+    if (v.status !== "completed") throw new Error("Only completed visits can be reopened");
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: userId,
+      orgId: v.organization_id,
+      visitIds: [data.visitId],
+    });
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    const { error } = await (supabase as any).rpc("office_reopen_visit", {
+      _visit_id: data.visitId,
+    });
+    if (error) throw new Error(error.message);
+    await watch.finish();
+    await pushRoutes();
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.reopened",
+      summary: `Reopened the visit on ${v.scheduled_on}`,
+    });
+    return { ok: true };
+  });
+
+export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
+    if (v.status !== "completed") throw new Error("Only completed visits can be marked missed");
+    const { startRouteWatch } = await import("@/lib/field-notify.server");
+    const watch = await startRouteWatch({
+      actorUserId: userId,
+      orgId: v.organization_id,
+      visitIds: [data.visitId],
+    });
+    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    const { error } = await (supabase as any).rpc("office_mark_visit_missed", {
+      _visit_id: data.visitId,
+    });
+    if (error) throw new Error(error.message);
+    await watch.finish();
+    await pushRoutes();
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.missed",
+      summary: `Marked the visit on ${v.scheduled_on} missed`,
+    });
+    return { ok: true };
+  });
+
+export const deleteVisitPhotoFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ visitId: z.string().uuid(), photoId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
+    const { data: photo, error: pErr } = await supabase
+      .from("visit_photos")
+      .select("id, storage_path, kind")
+      .eq("id", data.photoId)
+      .eq("visit_id", data.visitId)
+      .eq("organization_id", v.organization_id)
+      .single();
+    if (pErr) throw new Error(pErr.message);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error: storageErr } = await supabaseAdmin.storage
+      .from("visit-photos")
+      .remove([photo.storage_path]);
+    if (storageErr) throw new Error(storageErr.message);
+
+    const { error } = await supabase
+      .from("visit_photos")
+      .delete()
+      .eq("id", data.photoId)
+      .eq("visit_id", data.visitId)
+      .eq("organization_id", v.organization_id);
+    if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.photo_removed",
+      summary: `Removed a ${photo.kind ?? "visit"} photo from the visit on ${v.scheduled_on}`,
+    });
+    return { ok: true };
+  });
+
 // ── Bulk dispatch ─────────────────────────────────────────────────────────
 //
 // Dispatch could move exactly one visit at a time, by dragging it. Reassigning

@@ -153,7 +153,7 @@ export const attestCardSurcharge = createServerFn({ method: "POST" })
       }
       if (SURCHARGE_BANNED_REGIONS.includes(region)) {
         throw new Error(
-          `Card surcharging is prohibited in ${region}. You can still pass bank (ACH) fees through.`,
+          `Card surcharging is prohibited in ${region}, so card fees stay with your business.`,
         );
       }
     }

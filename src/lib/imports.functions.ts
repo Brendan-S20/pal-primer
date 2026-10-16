@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -12,10 +14,24 @@ import {
 import { serviceLinesOrDefault } from "@/lib/service-lines";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import {
+  alreadyInDatabase,
+  clientDuplicateIndex,
+  commitRefusal,
+  dogKey,
+  findExistingClient,
+  importContentHash,
+  importDisplayStatus,
+  propertyKey,
+  refusalMessage,
+  type CommitBlock,
+  type ExistingClient,
+  type ExistingRecords,
+} from "@/lib/import-commit-guard";
 
 // Bulk import creates/overwrites client data — every function in this file
 // is gated on manage_imports, matching the /imports route boundary.
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
+async function resolveOrgId(supabase: SupabaseClient<Database>, userId: string): Promise<string> {
   return (await requirePermission(supabase, userId, "manage_imports")).orgId;
 }
 
@@ -654,6 +670,197 @@ function mapRow(entity: ImportEntity, raw: Record<string, any>, mapping: Record<
 // second import of the same file can find and skip what the first created.
 const OPENING_BALANCE_NOTE = "Opening balance";
 
+// Every page of a select. PostgREST answers at most 1000 rows a request, and a
+// duplicate check that saw only the first thousand clients would wave the
+// rest through as new.
+async function selectAll<T>(
+  page: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await page(from, from + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) return out;
+  }
+}
+
+/** What the business already has, for the entity being imported. Read by the
+ *  preview to label rows, and again by the commit, because a preview can be
+ *  hours old and the clients it was checked against are not the clients now. */
+async function loadExisting(
+  supabase: SupabaseClient<Database>,
+  orgId: string,
+  entity: ImportEntity,
+  source: string,
+) {
+  const clients = await selectAll<ExistingClient>((a, b) =>
+    supabase
+      .from("clients")
+      .select("id, display_name, primary_email, primary_phone, import_source, import_external_id")
+      .eq("organization_id", orgId)
+      .order("id")
+      .range(a, b),
+  );
+  const records: ExistingRecords = {
+    clients: clientDuplicateIndex([], source),
+    propertyKeys: new Set(),
+    dogKeys: new Set(),
+    clientsWithActivePlan: new Set(),
+    clientsWithOpeningBalance: new Set(),
+  };
+  if (entity === "clients" || entity === "properties") {
+    const props = await selectAll<{
+      client_id: string;
+      street: string | null;
+      postal_code: string | null;
+    }>((a, b) =>
+      supabase
+        .from("properties")
+        .select("client_id, street, postal_code")
+        .eq("organization_id", orgId)
+        .order("id")
+        .range(a, b),
+    );
+    const streets = new Map<string, { street: string | null; postal_code: string | null }[]>();
+    for (const p of props) {
+      records.propertyKeys.add(propertyKey(p.client_id, p.street, p.postal_code));
+      streets.set(p.client_id, [...(streets.get(p.client_id) ?? []), p]);
+    }
+    for (const c of clients) c.streets = streets.get(c.id) ?? [];
+  }
+  records.clients = clientDuplicateIndex(clients, source);
+  if (entity === "services") {
+    const subs = await selectAll<{ client_id: string }>((a, b) =>
+      supabase
+        .from("subscriptions")
+        .select("client_id")
+        .eq("organization_id", orgId)
+        .in("status", ["active", "paused"])
+        .order("id")
+        .range(a, b),
+    );
+    for (const x of subs) records.clientsWithActivePlan.add(x.client_id);
+  } else if (entity === "balances") {
+    const invs = await selectAll<{ client_id: string }>((a, b) =>
+      supabase
+        .from("invoices")
+        .select("client_id")
+        .eq("organization_id", orgId)
+        .like("notes", `${OPENING_BALANCE_NOTE}%`)
+        .order("id")
+        .range(a, b),
+    );
+    for (const x of invs) records.clientsWithOpeningBalance.add(x.client_id);
+  } else if (entity === "dogs") {
+    const dogs = await selectAll<{ name: string; properties: { client_id: string } }>((a, b) =>
+      supabase
+        .from("dogs")
+        .select("name, properties!inner(client_id)")
+        .eq("organization_id", orgId)
+        .order("id")
+        .range(a, b),
+    );
+    for (const d of dogs) {
+      const cid = d.properties?.client_id;
+      if (cid) records.dogKeys.add(dogKey(cid, d.name));
+    }
+  }
+  return { clients, records };
+}
+
+type TwinCandidate = {
+  id: string;
+  status: string;
+  entity: string;
+  filename: string | null;
+  content_hash: string | null;
+  commit_started_at: string | null;
+  committed_at: string | null;
+  created_at: string;
+};
+
+/** The hash of a stored batch's rows, for batches from before content_hash. */
+async function storedRowsHash(
+  supabase: SupabaseClient<Database>,
+  batchId: string,
+  entity: string,
+): Promise<string> {
+  const rows = await selectAll<{ raw: unknown }>((a, b) =>
+    supabase.from("import_rows").select("raw").eq("batch_id", batchId).order("row_num").range(a, b),
+  );
+  return importContentHash(
+    entity,
+    rows.map((r) => r.raw),
+  );
+}
+
+/**
+ * Another batch of this business that already committed (or is committing)
+ * the same file, or null. By content_hash first; a batch from before the
+ * column existed is matched on filename, entity and row count, and then on
+ * its stored rows hashed the same way.
+ */
+async function findCommittedTwin(
+  supabase: SupabaseClient<Database>,
+  orgId: string,
+  batch: TwinCandidate & { total: number },
+): Promise<TwinCandidate | null> {
+  const cols =
+    "id, status, entity, filename, content_hash, commit_started_at, committed_at, created_at";
+  const hash = batch.content_hash ?? (await storedRowsHash(supabase, batch.id, batch.entity));
+  const { data: same, error } = await supabase
+    .from("import_batches")
+    .select(cols)
+    .eq("organization_id", orgId)
+    .eq("content_hash", hash)
+    .neq("id", batch.id)
+    .not("commit_started_at", "is", null)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  if (same?.length) return same[0];
+
+  const filename = batch.filename;
+  if (!filename) return null;
+  const legacy = await selectAll<TwinCandidate>((from, to) =>
+    supabase
+      .from("import_batches")
+      .select(cols)
+      .eq("organization_id", orgId)
+      .eq("entity", batch.entity)
+      .eq("filename", filename)
+      .eq("status", "committed")
+      .is("content_hash", null)
+      .neq("id", batch.id)
+      .order("id")
+      .range(from, to),
+  );
+  for (const old of legacy ?? []) {
+    const { count } = await supabase
+      .from("import_rows")
+      .select("id", { count: "exact", head: true })
+      .eq("batch_id", old.id);
+    if (count !== batch.total) continue;
+    if ((await storedRowsHash(supabase, old.id, old.entity)) === hash) return old;
+  }
+  return null;
+}
+
+/** Close a preview because `twinId` committed the same file. Only a preview
+ *  nobody has started committing is changed. */
+async function markSuperseded(supabase: SupabaseClient<Database>, batchId: string, twinId: string) {
+  const { error } = await supabase
+    .from("import_batches")
+    .update({ status: "cancelled", superseded_by: twinId })
+    .eq("id", batchId)
+    .eq("status", "previewing")
+    .is("commit_started_at", null);
+  if (error) throw new Error(error.message);
+}
+
 // ---------- Server functions ----------
 
 export const listImportBatches = createServerFn({ method: "GET" })
@@ -663,12 +870,17 @@ export const listImportBatches = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(supabase, userId);
     const { data, error } = await supabase
       .from("import_batches")
-      .select("id, source, entity, filename, status, stats, error, committed_at, created_at")
+      .select(
+        "id, source, entity, filename, status, stats, error, committed_at, created_at, commit_started_at, superseded_by",
+      )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(50);
     if (error) throw new Error(error.message);
-    return { batches: data ?? [] };
+    // "committing" and "superseded" are spelled with columns, not statuses.
+    return {
+      batches: (data ?? []).map((b) => ({ ...b, status: importDisplayStatus(b) })),
+    };
   });
 
 export const getImportBatch = createServerFn({ method: "GET" })
@@ -676,13 +888,44 @@ export const getImportBatch = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ batchId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    await resolveOrgId(supabase, context.userId);
+    const orgId = await resolveOrgId(supabase, context.userId);
     const { data: batch, error: be } = await supabase
       .from("import_batches")
       .select("*")
       .eq("id", data.batchId)
+      .eq("organization_id", orgId)
       .single();
     if (be) throw new Error(be.message);
+    // Why Commit is not offered, when it is not: the same checks commitImport
+    // makes, so the page never shows a button the server would refuse.
+    let commitBlock: CommitBlock | null = null;
+    const refusal = commitRefusal(batch);
+    if (refusal) {
+      commitBlock = {
+        reason: refusal,
+        committedBatchId: batch.superseded_by ?? null,
+        committedAt: null,
+      };
+    } else {
+      const twin = await findCommittedTwin(supabase, orgId, {
+        ...batch,
+        total: Number((batch.stats as { total?: number } | null)?.total ?? 0),
+      });
+      if (twin)
+        commitBlock = {
+          reason: "superseded",
+          committedBatchId: twin.id,
+          committedAt: twin.committed_at,
+        };
+    }
+    if (commitBlock?.committedBatchId && !commitBlock.committedAt) {
+      const { data: twin } = await supabase
+        .from("import_batches")
+        .select("committed_at")
+        .eq("id", commitBlock.committedBatchId)
+        .maybeSingle();
+      commitBlock.committedAt = twin?.committed_at ?? null;
+    }
     const { data: rows, error: re } = await supabase
       .from("import_rows")
       .select("id, row_num, raw, mapped, action, target_id, error")
@@ -690,7 +933,11 @@ export const getImportBatch = createServerFn({ method: "GET" })
       .order("row_num", { ascending: true })
       .limit(2000);
     if (re) throw new Error(re.message);
-    return { batch, rows: rows ?? [] };
+    return {
+      batch: { ...batch, status: importDisplayStatus(batch) },
+      rows: rows ?? [],
+      commitBlock,
+    };
   });
 
 const previewSchema = z.object({
@@ -709,23 +956,20 @@ export const previewImport = createServerFn({ method: "POST" })
     const orgId = await resolveOrgId(supabase, userId);
     const entity = data.entity;
 
-    // Load existing rows for dedupe/linking depending on entity
-    const { data: existingClients, error: ecErr } = await supabase
-      .from("clients")
-      .select("id, primary_email, import_external_id, import_source, display_name")
-      .eq("organization_id", orgId);
-    if (ecErr) throw new Error(ecErr.message);
-    const clientByExternal = new Map<string, string>();
-    const clientByEmail = new Map<string, string>();
+    // What already exists, for labelling rows create / update / skip. The
+    // commit reads it again (loadExisting), so a stale label cannot create.
+    const { clients: existingClients, records: existing } = await loadExisting(
+      supabase,
+      orgId,
+      entity,
+      data.source,
+    );
+    const clientByExternal = existing.clients.byExternal;
     // By exact name, for exports that carry no id. A name two clients share
     // resolves to nobody: guessing which one owes the balance is worse than
     // refusing the row and saying why.
     const clientByName = new Map<string, string | null>();
-    for (const c of existingClients ?? []) {
-      if (c.import_external_id && c.import_source === data.source) {
-        clientByExternal.set(c.import_external_id, c.id);
-      }
-      if (c.primary_email) clientByEmail.set(c.primary_email.toLowerCase(), c.id);
+    for (const c of existingClients) {
       const nm = (c.display_name ?? "").trim().toLowerCase();
       if (nm) clientByName.set(nm, clientByName.has(nm) ? null : c.id);
     }
@@ -746,45 +990,6 @@ export const previewImport = createServerFn({ method: "POST" })
       };
     };
 
-    let existingPropertyKeys = new Set<string>();
-    let existingDogKeys = new Set<string>();
-    // Re-running an import must not double anyone's plan or bill.
-    const clientsWithActivePlan = new Set<string>();
-    const clientsWithOpeningBalance = new Set<string>();
-    if (entity === "services") {
-      const { data: subs } = await supabase
-        .from("subscriptions")
-        .select("client_id")
-        .eq("organization_id", orgId)
-        .in("status", ["active", "paused"]);
-      for (const x of subs ?? []) clientsWithActivePlan.add(x.client_id);
-    } else if (entity === "balances") {
-      const { data: invs } = await supabase
-        .from("invoices")
-        .select("client_id")
-        .eq("organization_id", orgId)
-        .like("notes", `${OPENING_BALANCE_NOTE}%`);
-      for (const x of invs ?? []) clientsWithOpeningBalance.add(x.client_id);
-    }
-    if (entity === "properties") {
-      const { data: props } = await supabase
-        .from("properties")
-        .select("client_id, street, postal_code")
-        .eq("organization_id", orgId);
-      for (const p of props ?? []) {
-        existingPropertyKeys.add(`${p.client_id}::${(p.street ?? "").toLowerCase()}::${p.postal_code ?? ""}`);
-      }
-    } else if (entity === "dogs") {
-      const { data: dogs } = await supabase
-        .from("dogs")
-        .select("property_id, name, properties!inner(client_id)")
-        .eq("organization_id", orgId);
-      for (const d of (dogs ?? []) as any[]) {
-        const cid = d.properties?.client_id;
-        if (cid) existingDogKeys.add(`${cid}::${(d.name ?? "").toLowerCase()}`);
-      }
-    }
-
     // Create batch
     const { data: batch, error: bErr } = await supabase
       .from("import_batches")
@@ -796,6 +1001,7 @@ export const previewImport = createServerFn({ method: "POST" })
         filename: data.filename ?? null,
         status: "previewing",
         mapping: data.mapping,
+        content_hash: await importContentHash(entity, data.rows),
       })
       .select("id")
       .single();
@@ -823,9 +1029,13 @@ export const previewImport = createServerFn({ method: "POST" })
         if (m.external_id && clientByExternal.has(m.external_id)) {
           action = "update";
           target_id = clientByExternal.get(m.external_id)!;
-        } else if (m.primary_email && clientByEmail.has(m.primary_email.toLowerCase())) {
-          action = "skip";
-          target_id = clientByEmail.get(m.primary_email.toLowerCase())!;
+        } else {
+          // Email, phone, or the same name at the same service address.
+          const match = findExistingClient(m, existing.clients);
+          if (match) {
+            action = "skip";
+            target_id = match.id;
+          }
         }
       } else if (entity === "properties") {
         const m = mapped as any;
@@ -840,8 +1050,7 @@ export const previewImport = createServerFn({ method: "POST" })
           return;
         }
         target_id = clientId;
-        const key = `${clientId}::${m.street.toLowerCase()}::${m.postal_code ?? ""}`;
-        if (existingPropertyKeys.has(key)) action = "skip";
+        if (alreadyInDatabase(entity, m, clientId, existing)) action = "skip";
       } else if (entity === "dogs") {
         const m = mapped as any;
         const clientId = clientByExternal.get(m.client_external_id);
@@ -855,8 +1064,7 @@ export const previewImport = createServerFn({ method: "POST" })
           return;
         }
         target_id = clientId;
-        const key = `${clientId}::${m.name.toLowerCase()}`;
-        if (existingDogKeys.has(key)) action = "skip";
+        if (alreadyInDatabase(entity, m, clientId, existing)) action = "skip";
       } else if (entity === "services" || entity === "balances") {
         const m = mapped as any;
         const who = resolveClient(m);
@@ -869,8 +1077,7 @@ export const previewImport = createServerFn({ method: "POST" })
           return;
         }
         target_id = who.id;
-        if (entity === "services" && clientsWithActivePlan.has(who.id)) action = "skip";
-        if (entity === "balances" && clientsWithOpeningBalance.has(who.id)) action = "skip";
+        if (alreadyInDatabase(entity, m, who.id, existing)) action = "skip";
         // Only what is already in the database counts as a repeat. Two rows
         // for one client in the same file are two plans, or two open
         // invoices from an aged-receivables export, and both are kept.
@@ -893,6 +1100,15 @@ export const previewImport = createServerFn({ method: "POST" })
 
     const stats = { total: data.rows.length, create, update, skip, errors };
     await supabase.from("import_batches").update({ stats }).eq("id", batchId);
+    const { data: preview, error: previewError } = await supabase
+      .from("import_batches")
+      .select("*")
+      .eq("id", batchId)
+      .single();
+    if (previewError) throw new Error(previewError.message);
+    if (!preview) throw new Error("Import preview was not found.");
+    const twin = await findCommittedTwin(supabase, orgId, { ...preview, total: data.rows.length });
+    if (twin) await markSuperseded(supabase, batchId, twin.id);
 
     return { batchId, stats };
   });
@@ -906,19 +1122,36 @@ export const commitImport = createServerFn({ method: "POST" })
 
     const { data: batch, error: bErr } = await supabase
       .from("import_batches")
-      .select("id, status, source, entity, organization_id")
+      .select("*")
       .eq("id", data.batchId)
       .single();
     if (bErr) throw new Error(bErr.message);
     if (batch.organization_id !== orgId) throw new Error("Forbidden");
-    if (batch.status !== "previewing") throw new Error(`Batch is ${batch.status}; cannot commit.`);
+    const refusal = commitRefusal(batch);
+    if (refusal) throw new Error(refusalMessage(refusal));
+    const twin = await findCommittedTwin(supabase, orgId, {
+      ...batch,
+      total: Number((batch.stats as { total?: number } | null)?.total ?? 0),
+    });
+    if (twin) {
+      await markSuperseded(supabase, batch.id, twin.id);
+      throw new Error(refusalMessage("superseded"));
+    }
 
-    const { data: rows, error: rErr } = await supabase
-      .from("import_rows")
-      .select("id, mapped, action, target_id")
-      .eq("batch_id", data.batchId)
-      .in("action", ["create", "update"]);
-    if (rErr) throw new Error(rErr.message);
+    const rows = await selectAll<
+      Pick<
+        Database["public"]["Tables"]["import_rows"]["Row"],
+        "id" | "mapped" | "action" | "target_id"
+      >
+    >((from, to) =>
+      supabase
+        .from("import_rows")
+        .select("id, mapped, action, target_id")
+        .eq("batch_id", data.batchId)
+        .in("action", ["create", "update"])
+        .order("row_num")
+        .range(from, to),
+    );
 
     const entity = (batch.entity ?? "clients") as ImportEntity;
 
@@ -952,6 +1185,36 @@ export const commitImport = createServerFn({ method: "POST" })
         .single();
       netDays = org?.invoice_net_days ?? 15;
     }
+    // Claim before any writes or geocoding. A second request gets no row;
+    // another batch of this file collides with the unique file index.
+    const contentHash = batch.content_hash ?? (await storedRowsHash(supabase, batch.id, entity));
+    const { data: claimed, error: claimError } = await supabase
+      .from("import_batches")
+      .update({ commit_started_at: new Date().toISOString(), content_hash: contentHash })
+      .eq("id", batch.id)
+      .eq("organization_id", orgId)
+      .eq("status", "previewing")
+      .is("commit_started_at", null)
+      .is("superseded_by", null)
+      .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .select("id")
+      .maybeSingle();
+    if (claimError) {
+      if (claimError.code === "23505") {
+        const winner = await findCommittedTwin(supabase, orgId, {
+          ...batch,
+          content_hash: contentHash,
+          total: rows.length,
+        });
+        if (winner) await markSuperseded(supabase, batch.id, winner.id);
+        throw new Error(refusalMessage("superseded"));
+      }
+      throw new Error(claimError.message);
+    }
+    if (!claimed)
+      throw new Error("This preview can no longer commit. Refresh to see its current status.");
+    // Never release a claim after partial work: retrying could repeat writes.
+    const { records: existing } = await loadExisting(supabase, orgId, entity, batch.source);
     const sourceLabel = batch.source === "jobber" ? "Jobber" : batch.source === "sweepgo" ? "Sweep&Go" : "your previous system";
 
     // The business's services, for a plan row that names one. Read once; a
@@ -993,7 +1256,10 @@ export const commitImport = createServerFn({ method: "POST" })
       return made;
     };
 
-    let created = 0, updated = 0, failed = 0;
+    let created = 0,
+      updated = 0,
+      failed = 0,
+      skipped = 0;
 
     // Every new client's service address, geocoded up front in ONE call. With
     // a Geocodio key that is one batch request for the whole import instead
@@ -1032,6 +1298,16 @@ export const commitImport = createServerFn({ method: "POST" })
     for (const row of rows ?? []) {
       const m = row.mapped as any;
       try {
+        const duplicate = alreadyInDatabase(entity, m, row.target_id, existing);
+        if (duplicate) {
+          const { error } = await supabase
+            .from("import_rows")
+            .update({ action: "skip", target_id: duplicate })
+            .eq("id", row.id);
+          if (error) throw error;
+          skipped += 1;
+          continue;
+        }
         if (entity === "clients") {
           if (row.action === "create") {
             const { data: ins, error: cErr } = await supabase
@@ -1107,6 +1383,24 @@ export const commitImport = createServerFn({ method: "POST" })
                 // shouldn't roll back the client. Logged for follow-up.
                 console.error("import: property create/geocode failed", (pe as Error).message);
               }
+            }
+            // Include clients created earlier in this file in the next check.
+            const added = clientDuplicateIndex(
+              [
+                {
+                  id: ins.id,
+                  display_name: m.display_name,
+                  primary_email: m.primary_email,
+                  primary_phone: m.primary_phone,
+                  import_source: batch.source,
+                  import_external_id: m.external_id,
+                  streets: [{ street: m.street, postal_code: m.postal_code }],
+                },
+              ],
+              batch.source,
+            );
+            for (const key of ["byExternal", "byEmail", "byPhone", "byNameAndStreet"] as const) {
+              for (const [value, id] of added[key]) existing.clients[key].set(value, id);
             }
             created += 1;
           } else if (row.action === "update" && row.target_id) {
@@ -1293,13 +1587,25 @@ export const commitImport = createServerFn({ method: "POST" })
       await generateVisitHorizon(supabase, orgId);
     }
 
-    const stats = { created, updated, failed };
-    await supabase.from("import_batches").update({
+    const stats = { created, updated, failed, skipped };
+    const { error: finishError } = await supabase
+      .from("import_batches")
+      .update({
       status: failed && !created && !updated ? "failed" : "committed",
       stats,
       committed_at: new Date().toISOString(),
     }).eq("id", data.batchId);
 
+    if (finishError) throw new Error(finishError.message);
+    const { error: supersedeError } = await supabase
+      .from("import_batches")
+      .update({ status: "cancelled", superseded_by: batch.id })
+      .eq("organization_id", orgId)
+      .eq("content_hash", contentHash)
+      .neq("id", batch.id)
+      .eq("status", "previewing")
+      .is("commit_started_at", null);
+    if (supersedeError) throw new Error(supersedeError.message);
     return stats;
   });
 
@@ -1313,7 +1619,8 @@ export const cancelImport = createServerFn({ method: "POST" })
       .from("import_batches")
       .update({ status: "cancelled" })
       .eq("id", data.batchId)
-      .eq("status", "previewing");
+      .eq("status", "previewing")
+      .is("commit_started_at", null);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

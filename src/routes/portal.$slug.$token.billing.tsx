@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -56,6 +57,7 @@ function getStripe(pk: string, stripeAccount?: string) {
 }
 
 function PortalBilling() {
+  const copy = useLaunchCopy();
   const { slug, token } = Route.useParams();
   const { paid } = Route.useSearch();
   const navigate = useNavigate();
@@ -176,8 +178,7 @@ function PortalBilling() {
           />
         )}
         <p className="text-xs text-muted-foreground">
-          We accept credit and debit cards plus ACH bank transfers. Your card details never touch
-          our servers.
+          {copy("We accept credit and debit cards. Your card details never touch our servers.")}
         </p>
       </div>
 

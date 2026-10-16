@@ -1961,16 +1961,22 @@ function MapPanel({
           hoveredVisitId={hoveredVisitId}
           onHoverVisit={onHoverVisit}
         />
-        {mappable === 0 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
-            <span>No coordinates yet. Geocode your properties to plot them.</span>
-            {onGeocode && (
-              <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
-                <MapPin className="mr-1 h-3.5 w-3.5 shrink-0" />
-                {geocoding ? "Geocoding…" : "Geocode addresses"}
-              </Button>
-            )}
+        {visits.length === 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 text-sm text-muted-foreground">
+            No visits to show.
           </div>
+        ) : (
+          mappable === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
+              <span>No coordinates yet. Geocode your properties to plot them.</span>
+              {onGeocode && (
+                <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
+                  <MapPin className="mr-1 h-3.5 w-3.5 shrink-0" />
+                  {geocoding ? "Geocoding…" : "Geocode addresses"}
+                </Button>
+              )}
+            </div>
+          )
         )}
       </div>
     </div>
@@ -2290,7 +2296,9 @@ function VisitCardView({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {seq != null && <span className="text-muted-foreground">#{seq}</span>}
-            <span className="truncate font-medium">{visit.clients?.display_name ?? "-"}</span>
+            <span className="truncate font-medium" title={visit.clients?.display_name ?? undefined}>
+              {visit.clients?.display_name ?? "-"}
+            </span>
           </div>
           {p && (
             <div className="truncate text-muted-foreground">
