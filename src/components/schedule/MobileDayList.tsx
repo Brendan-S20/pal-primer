@@ -1,3 +1,4 @@
+import { TrainingSessionBadge } from "@/components/training/TrainingSessionBadge";
 // Mobile Phase 2: the phone-sized schedule for office roles. The dnd-kit
 // dispatch board is touch-hostile and can't fit a phone, so below `md` the
 // Board view renders this instead — an ordered read-only day list grouped by
@@ -163,6 +164,7 @@ export function MobileDayList({
                       )}
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         <StatusChip status={v.status} />
+                        <TrainingSessionBadge visitId={v.id} serviceLine={v.services?.service_line} />
                         {v.services?.name && (
                           // What the visit is (services, phase 2): the
                           // business's own name for it, one line, ellipsis.

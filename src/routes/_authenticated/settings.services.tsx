@@ -64,6 +64,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TrainingPackagesCard } from "@/components/settings/TrainingPackagesCard";
 import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/services")({
@@ -265,6 +266,8 @@ function ServicesPage() {
           </ul>
         )}
       </section>
+
+      {lines.includes("training") && <TrainingPackagesCard services={services} canEdit={canEdit} />}
 
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">

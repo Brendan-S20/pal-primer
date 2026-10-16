@@ -1,3 +1,4 @@
+import { TrainingSessionBadge } from "@/components/training/TrainingSessionBadge";
 // The week/month calendar on /routes.
 //
 // ── WHAT IT REPLACES ──────────────────────────────────────────────────────
@@ -305,6 +306,7 @@ function VisitChip({
               until something above them has a narrow box to be narrow in. */}
           <span className="min-w-0 flex-1">
             <span className={`block truncate ${statusTone(visit.status)}`}>{name}</span>
+            <TrainingSessionBadge visitId={visit.id} serviceLine={visit.services?.service_line} />
             {second && (
               <span className="block truncate text-3xs text-muted-foreground">{second}</span>
             )}
@@ -334,6 +336,7 @@ function VisitChip({
               <dt className="text-muted-foreground">Service</dt>
               <dd>
                 {serviceName && <bdi>{serviceName}</bdi>}
+                <TrainingSessionBadge visitId={visit.id} serviceLine={visit.services?.service_line} />
                 {serviceName && cadence ? " · " : null}
                 {cadence}
               </dd>

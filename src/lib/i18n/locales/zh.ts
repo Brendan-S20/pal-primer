@@ -201,7 +201,19 @@ const zh: TranslationsWithPlurals<"other"> = {
     training: "训狗",
     other: "其他服务",
   },
+  training: {
+    sessionLabel: "第 {{n}} 节，共 {{total}} 节",
+  },
   term: {
+    staff: "技术员",
+    staff_pet_waste: "技术员",
+    staff_dog_walking: "遛狗员",
+    staff_pet_sitting: "宠物看护员",
+    staff_mobile_grooming: "宠物美容师",
+    staff_training: "训犬师",
+    session: "节课",
+    session_training: "节课",
+
     visit: "服务",
     visit_pet_waste: "服务",
     visit_dog_walking: "遛狗",

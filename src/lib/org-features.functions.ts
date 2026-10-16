@@ -257,5 +257,9 @@ export const setServiceLines = createServerFn({ method: "POST" })
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
     await ensureDefaultServicesForLines(context.supabase, orgId, data.lines);
+    if (data.lines.includes("training")) {
+      const { seedTrainingPackage } = await import("@/lib/training-package-seed.server");
+      await seedTrainingPackage(context.supabase, orgId);
+    }
     return { ok: true, serviceLines: data.lines };
   });

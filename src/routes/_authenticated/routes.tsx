@@ -1,3 +1,4 @@
+import { TrainingSessionBadge } from "@/components/training/TrainingSessionBadge";
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
@@ -2329,6 +2330,7 @@ function VisitCardView({
             return <div className="mt-0.5 text-3xs text-muted-foreground">Window {label}</div>;
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
+            <TrainingSessionBadge visitId={visit.id} serviceLine={visit.services?.service_line} />
             {visit.services?.name && (
               // What the visit is (services, phase 2), as the zone below: one
               // line, ellipsis, full name on hover; the business's own text.

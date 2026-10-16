@@ -204,7 +204,19 @@ const es: Translations = {
     training: "Entrenamiento canino",
     other: "Otro servicio",
   },
+  training: {
+    sessionLabel: "Sesión {{n}} de {{total}}",
+  },
   term: {
+    staff: "Técnico",
+    staff_pet_waste: "Técnico",
+    staff_dog_walking: "Paseador",
+    staff_pet_sitting: "Cuidador",
+    staff_mobile_grooming: "Peluquero",
+    staff_training: "Entrenador",
+    session: "Sesión",
+    session_training: "Sesión",
+
     visit: "Visita",
     visit_pet_waste: "Visita",
     visit_dog_walking: "Paseo",

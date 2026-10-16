@@ -1,3 +1,4 @@
+import { TrainingPackagesSection } from "@/components/clients/TrainingPackagesSection";
 // Client detail page (docs/client-detail-refactor.md): a persistent header,
 // eight tabs, read-only by default, editing in right-side drawers. The heavy
 // lifting lives in src/components/client-detail/*.
@@ -449,6 +450,7 @@ function ClientDetail() {
               newServiceFromQuoteId={pendingFromQuoteId}
               onNewServiceFromQuoteConsumed={() => setPendingFromQuoteId(null)}
             />
+            <TrainingPackagesSection clientId={clientId} />
             {canBill && <AddonsPanel clientId={clientId} />}
             {isCommercial && <StationsPanel clientId={clientId} properties={activeProperties} />}
           </TabLoading>

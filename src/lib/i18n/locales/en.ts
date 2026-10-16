@@ -213,7 +213,19 @@ const en = {
     training: "Dog training",
     other: "Other service",
   },
+  training: {
+    sessionLabel: "Session {{n}} of {{total}}",
+  },
   term: {
+    staff: "Technician",
+    staff_pet_waste: "Technician",
+    staff_dog_walking: "Walker",
+    staff_pet_sitting: "Sitter",
+    staff_mobile_grooming: "Groomer",
+    staff_training: "Trainer",
+    session: "Session",
+    session_training: "Session",
+
     visit: "Visit",
     visit_pet_waste: "Visit",
     visit_dog_walking: "Walk",

@@ -15,6 +15,7 @@
  * Adding a screen here is the whole of extending the rule to it.
  */
 export const TECH_SCREENS: { file: string; only?: string[] }[] = [
+  { file: "src/components/training/TrainingSessionBadge.tsx" },
   { file: "src/routes/_authenticated/my-day.tsx" },
   // The offline queue's sync toasts ("Synced 3 queued actions", the dead-letter
   // message that names the stop). They moved out of My Day so the queue

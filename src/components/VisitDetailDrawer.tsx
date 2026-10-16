@@ -1,3 +1,4 @@
+import { TrainingSessionBadge } from "@/components/training/TrainingSessionBadge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -264,6 +265,7 @@ export function VisitDetailDrawer({
                 <bdi className="font-medium text-foreground">{v.services.name}</bdi>
               </>
             ) : null}{" "}
+            {v && <TrainingSessionBadge visitId={v.id} serviceLine={v.services?.service_line} />}
             {v?.zones?.name ? `· ${v.zones.name}` : ""}
             {v?.staff?.display_name ? ` · ${v.staff.display_name}` : ""}
           </SheetDescription>

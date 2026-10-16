@@ -1,3 +1,4 @@
+import { TrainingSessionBadge } from "@/components/training/TrainingSessionBadge";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { daysBetweenOrgDays, orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
@@ -2166,6 +2167,7 @@ function VisitCard({
                 )}
               </span>
             )}
+            <TrainingSessionBadge visitId={visit.id} serviceLine={visit.services?.service_line} />
             {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">

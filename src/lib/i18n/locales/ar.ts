@@ -243,7 +243,19 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     training: "تدريب الكلاب",
     other: "خدمة أخرى",
   },
+  training: {
+    sessionLabel: "الجلسة {{n}} من {{total}}",
+  },
   term: {
+    staff: "فني",
+    staff_pet_waste: "فني",
+    staff_dog_walking: "مُنزّه كلاب",
+    staff_pet_sitting: "جليس حيوانات",
+    staff_mobile_grooming: "مصفف حيوانات",
+    staff_training: "مدرب",
+    session: "جلسة",
+    session_training: "جلسة",
+
     visit: "زيارة",
     visit_pet_waste: "زيارة",
     visit_dog_walking: "مشية",
