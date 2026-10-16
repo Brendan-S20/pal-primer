@@ -28,6 +28,9 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // A dog walk's card (#410): length and group, how the walker gets in, the
   // minutes out, and the walk report (pee, poo, the note for the client).
   { file: "src/components/my-day/WalkParts.tsx" },
+  // A pet sitting visit's card (#411): the stay, the pets and their care,
+  // the care log, and the note for the client.
+  { file: "src/components/my-day/SitParts.tsx" },
   // (src/components/my-day/RouteLockScreen.tsx left this list on 2026-10-08:
   // its toggle and toasts are gone, and what remains draws nothing. The
   // card's words are built in the tech's language by live-activity-state.ts,

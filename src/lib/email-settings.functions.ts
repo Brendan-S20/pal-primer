@@ -24,17 +24,24 @@ export const getEmailSettings = createServerFn({ method: "GET" })
     // The walk emails (#410), read on their own so a database without
     // 20261015220000 still loads this page; they are shown only to a
     // business that runs dog walking.
+    // The missed medication email (#411, 20261016130000) rides the same read,
+    // and is shown only to a pet sitting business.
     const { data: walk } = await (context.supabase as any)
       .from("organizations")
-      .select("service_lines, notify_email_walk_not_done, notify_email_walk_schedule_change")
+      .select(
+        "service_lines, notify_email_walk_not_done, notify_email_walk_schedule_change, notify_email_missed_meds",
+      )
       .eq("id", orgId)
       .maybeSingle();
     const { serviceLinesOrDefault } = await import("@/lib/service-lines");
+    const lines = serviceLinesOrDefault(walk?.service_lines);
     return {
       ...data,
-      runs_dog_walking: serviceLinesOrDefault(walk?.service_lines).includes("dog_walking"),
+      runs_dog_walking: lines.includes("dog_walking"),
+      runs_pet_sitting: lines.includes("pet_sitting"),
       notify_email_walk_not_done: walk?.notify_email_walk_not_done !== false,
       notify_email_walk_schedule_change: walk?.notify_email_walk_schedule_change !== false,
+      notify_email_missed_meds: walk?.notify_email_missed_meds !== false,
     };
   });
 
@@ -52,6 +59,8 @@ const schema = z.object({
   // leaves them as they are.
   notify_email_walk_not_done: z.boolean().optional(),
   notify_email_walk_schedule_change: z.boolean().optional(),
+  // The missed medication email (#411). Optional, the same way.
+  notify_email_missed_meds: z.boolean().optional(),
   // Days after a quote is sent that the nightly job emails one reminder.
   quote_followup_days: z.number().int().min(0).max(30),
 });

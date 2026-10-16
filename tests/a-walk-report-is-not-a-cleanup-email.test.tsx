@@ -66,7 +66,8 @@ describe("a pet-waste completion email", () => {
 
   it("keeps its push", () => {
     const fn = readFileSync("src/lib/my-day.functions.ts", "utf8");
-    expect(fn).toMatch(/title: walk \? walk\.push\.title : "Visit completed"/);
+    // A sitting visit's push (#411) sits between the walk's and the cleanup's.
+    expect(fn).toMatch(/title: walk \? walk\.push\.title : sit \? sit\.push\.title : "Visit completed"/);
     expect(fn).toContain("`We just cleaned up at ${address}.`");
     expect(fn).toContain('"Your yard visit is complete."');
   });
