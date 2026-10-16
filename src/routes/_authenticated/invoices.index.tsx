@@ -416,7 +416,7 @@ function InvoicesPage() {
   const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn() });
+  const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const invQ = useQuery({ queryKey: ["invoices"], queryFn: () => list() });
   // IMP-10: collected money is a question about PAYMENTS, so it is asked of the
   // server rather than derived from the invoice list in the browser. The old

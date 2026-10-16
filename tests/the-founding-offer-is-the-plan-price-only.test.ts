@@ -340,6 +340,7 @@ function chain(table: string) {
 const db = { from: (t: string) => chain(t), auth: { getUser: async () => ({ data: { user: { email: "o@example.test" } } }) } };
 
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     let validate: (d: unknown) => unknown = (d) => d;
     const b: any = {

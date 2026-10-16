@@ -75,6 +75,7 @@ export function useRoutingRuns(enabled = true) {
   const onRoutes = useRouterState({ select: (s) => s.location.pathname === "/routes" });
   const q = useQuery({
     queryKey: ROUTING_RUNS_KEY,
+    staleTime: 30_000,
     enabled,
     queryFn: () =>
       listFn({

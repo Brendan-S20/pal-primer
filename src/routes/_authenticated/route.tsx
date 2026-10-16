@@ -17,6 +17,7 @@ import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
 import { getAccountLock } from "@/lib/account-lock.functions";
+import { seedShellContext, startShellContext } from "@/lib/shell-context";
 import { pathOpenWhenLocked } from "@/lib/account-lock";
 import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
@@ -70,6 +71,10 @@ export const Route = createFileRoute("/_authenticated")({
       const online = IS_NATIVE_BUNDLE
         ? !isDefinitelyOffline()
         : typeof navigator === "undefined" || navigator.onLine !== false;
+      // The shell's first load, started beside the identity
+      // check rather than after it. The server checks the token itself; the
+      // answer is used only once identity says yes. See lib/shell-context.ts.
+      const shellRequest = online ? startShellContext() : null;
       const identity = await resolveIdentity();
       if (!identity.ok) {
         // A REJECTED identity has to take the device copy with it.
@@ -115,20 +120,29 @@ export const Route = createFileRoute("/_authenticated")({
       // and every child that calls it reuse this fetch instead of adding one.
       // ensureQueryData answers from cache when one exists, so offline this is
       // the restored copy rather than a request that cannot be made.
-      let org: Awaited<ReturnType<typeof getMyOrg>> | undefined;
-      try {
-        org = await context.queryClient.ensureQueryData({
-          queryKey: ["my-org"],
-          queryFn: () => getMyOrg(),
-          staleTime: 60_000,
-        });
-      } catch (e) {
-        if (online) throw e;
-        // Offline with nothing cached: bouncing to /auth would strand a tech on
-        // a sign-in form they cannot submit, so say what is actually wrong.
-        throw new Error(
-          "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
-        );
+      //
+      // The one-request answer, when there is one, fills that same entry (and
+      // the shell's others). Without it (offline, a failed request, or this
+      // user's shell already loaded on this page) this is the path it was.
+      const shell = shellRequest ? await shellRequest : null;
+      const fromShell = shell && shell.userId === identity.userId ? shell.answer : null;
+      if (fromShell) seedShellContext(context.queryClient, identity.userId, fromShell);
+      let org: Awaited<ReturnType<typeof getMyOrg>> | undefined = fromShell?.org;
+      if (!fromShell) {
+        try {
+          org = await context.queryClient.ensureQueryData({
+            queryKey: ["my-org"],
+            queryFn: () => getMyOrg(),
+            staleTime: 60_000,
+          });
+        } catch (e) {
+          if (online) throw e;
+          // Offline with nothing cached: bouncing to /auth would strand a tech on
+          // a sign-in form they cannot submit, so say what is actually wrong.
+          throw new Error(
+            "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
+          );
+        }
       }
       if (!org?.organization) {
         // Platform admins have a real home; everyone else gets an explicit
@@ -160,14 +174,18 @@ export const Route = createFileRoute("/_authenticated")({
       // A failed check lets the person through: offline there is nothing to pay
       // with, and online the server's refusal still holds.
       let lock: Awaited<ReturnType<typeof getAccountLock>> | null = null;
-      try {
-        lock = await context.queryClient.fetchQuery({
-          queryKey: ["account-lock"],
-          queryFn: () => getAccountLock(),
-          staleTime: 15_000,
-        });
-      } catch {
-        lock = null;
+      if (fromShell) {
+        lock = fromShell.lock;
+      } else {
+        try {
+          lock = await context.queryClient.fetchQuery({
+            queryKey: ["account-lock"],
+            queryFn: () => getAccountLock(),
+            staleTime: 15_000,
+          });
+        } catch {
+          lock = null;
+        }
       }
       if (lock?.locked && lock.canChoosePlan && !pathOpenWhenLocked(location.pathname)) {
         throw redirect({ to: "/settings/billing" });

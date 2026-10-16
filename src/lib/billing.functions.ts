@@ -1,6 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.server";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
@@ -32,11 +33,14 @@ async function resolveOrgIdForCaller(supabase: any, userId: string): Promise<str
 // role-gated separately.
 export const getBillingBannerStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const caller = await resolveCaller(context.supabase, context.userId);
-    const s = await getOrgBillingState(context.supabase, caller.orgId);
-    return { planStatus: s.billingStatus, role: caller.role };
-  });
+  .handler(async ({ context }) => loadBillingBannerStatus(context));
+
+/** getBillingBannerStatus's answer, also asked by getShellContext. */
+export const loadBillingBannerStatus = createServerOnlyFn(async (context: AuthedContext) => {
+  const caller = await resolveCaller(context.supabase, context.userId);
+  const s = await getOrgBillingState(context.supabase, caller.orgId);
+  return { planStatus: s.billingStatus, role: caller.role };
+});
 
 
 export const getBillingStatus = createServerFn({ method: "GET" })

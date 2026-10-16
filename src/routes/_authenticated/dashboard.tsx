@@ -59,6 +59,7 @@ function Dashboard() {
   const { data: orgData, isPending: orgLoading } = useQuery({
     queryKey: ["my-org"],
     queryFn: () => orgFn(),
+    staleTime: 60_000,
     throwOnError: (_error, query) => query.state.data === undefined,
   });
   const { data: sum, isPending: sumLoading } = useQuery({

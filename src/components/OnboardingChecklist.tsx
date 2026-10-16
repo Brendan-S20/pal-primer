@@ -69,6 +69,7 @@ export function OnboardingChecklist() {
   const { data } = useQuery({
     queryKey: ["onboarding-status"],
     queryFn: () => statusFn(),
+    staleTime: 30_000,
   });
 
   if (!data) return null;

@@ -1,6 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { requirePermission } from "@/lib/authz.server";
 import {
   REVIEW_KINDS,
@@ -186,20 +187,24 @@ export const resolveReviewItem = createServerFn({ method: "POST" })
  *  find nothing, and after the second time they stop going. */
 export const getReviewQueueCount = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "view_client_directory",
-    );
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { count } = await (supabaseAdmin as any)
-      .from("review_items")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId)
-      .in("kind", [...REVIEW_QUEUE_KINDS])
-      .eq("status", "open");
-    return { openCount: count ?? 0 };
-  });
+  .handler(async ({ context }) => loadReviewQueueCount(context));
 
-export { REVIEW_KINDS, REVIEW_QUEUE_KINDS, REVIEW_STATUSES };
+// getReviewQueueCount's answer, also asked by getShellContext. Exported below
+// rather than here, so the function above still reads as one piece.
+const loadReviewQueueCount = createServerOnlyFn(async (context: AuthedContext) => {
+  const { orgId } = await requirePermission(
+    context.supabase,
+    context.userId,
+    "view_client_directory",
+  );
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { count } = await (supabaseAdmin as any)
+    .from("review_items")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .in("kind", [...REVIEW_QUEUE_KINDS])
+    .eq("status", "open");
+  return { openCount: count ?? 0 };
+});
+
+export { REVIEW_KINDS, REVIEW_QUEUE_KINDS, REVIEW_STATUSES, loadReviewQueueCount };
