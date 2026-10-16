@@ -15,7 +15,12 @@ export const SKIP_REASON_CODES = [
   "access_blocked",
   "unsafe_conditions",
   "other",
+  "key_failed",
+  "no_one_home",
+  "dog_unwell",
 ] as const;
+
+export type SkipReasonCode = (typeof SKIP_REASON_CODES)[number];
 
 export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
   customer_requested: "Customer skipped via portal",
@@ -27,6 +32,9 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
   access_blocked: "Access blocked (car, construction, etc.)",
   unsafe_conditions: "Unsafe conditions",
   other: "Other",
+  key_failed: "Key or door code did not work",
+  no_one_home: "No one home",
+  dog_unwell: "Dog unwell",
 };
 
 /**
@@ -52,6 +60,9 @@ export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[numb
   access_blocked: "We could not get to the yard",
   unsafe_conditions: "It was not safe to work",
   other: "Skipped",
+  key_failed: "The key or door code did not work, so we could not get in",
+  no_one_home: "Nobody was home when we arrived",
+  dog_unwell: "Your dog seemed unwell, so we did not walk them",
 };
 
 /** The customer-facing sentence for a code, or a plain fallback for a code
@@ -76,10 +87,26 @@ const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
   access_blocked: 100,
   unsafe_conditions: 50,
   other: 0,
+  // The walker's three, matching default_skip_billable_pct
+  // (20261015220000): a key that does not work and nobody home to hand the
+  // dog over are lockouts, charged like a locked gate; a sick dog is nobody's
+  // fault, free like weather.
+  key_failed: 100,
+  no_one_home: 100,
+  dog_unwell: 0,
 };
 
+/** Codes only a dog walk offers. A pet-waste stop never shows them, and a
+ *  business that does not walk dogs does not see them in Settings. */
+export const WALK_ONLY_SKIP_REASON_CODES: ReadonlyArray<SkipReasonCode> = [
+  "key_failed",
+  "no_one_home",
+  "dog_unwell",
+];
+
 /**
- * The reasons a TECH may pick in the field.
+ * The reasons a TECH may pick in the field at a pet-waste stop (or any stop
+ * that is not a dog walk).
  *
  * `customer_requested` is written only by `portal_skip_visit` when a client
  * skips their own visit. A tech choosing it would be recording the customer's
@@ -88,8 +115,29 @@ const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
  * settings screen gets the full one.
  */
 export const TECH_SKIP_REASON_CODES = SKIP_REASON_CODES.filter(
-  (c) => c !== "customer_requested",
+  (c) => c !== "customer_requested" && !WALK_ONLY_SKIP_REASON_CODES.includes(c),
 ) as ReadonlyArray<(typeof SKIP_REASON_CODES)[number]>;
+
+/**
+ * The reasons a walker may pick on a dog walk (#410). A walker always goes
+ * in, so the yard reasons (the dog was out, the gate was locked, a car in the
+ * way) do not apply. access_blocked is "Could not get in" on a walk
+ * (walkSkipReason.access_blocked in lib/i18n).
+ */
+export const WALK_SKIP_REASON_CODES: ReadonlyArray<SkipReasonCode> = [
+  "access_blocked",
+  "key_failed",
+  "no_one_home",
+  "dog_unwell",
+  "weather",
+  "other",
+];
+
+/** The picker's list for a stop: the walker's on a dog walk, otherwise the
+ *  list every stop has always had. */
+export function techSkipReasonCodes(walk: boolean): ReadonlyArray<SkipReasonCode> {
+  return walk ? WALK_SKIP_REASON_CODES : TECH_SKIP_REASON_CODES;
+}
 
 async function getOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is

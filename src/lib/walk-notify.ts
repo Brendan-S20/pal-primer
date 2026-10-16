@@ -8,7 +8,10 @@
 import { formatDay } from "@/lib/format";
 import { windowLabel } from "@/lib/walk-windows";
 
-/** The skip codes skip_visit accepts (my-day.functions.ts, skipVisit). */
+/** The skip codes skip_visit accepts (my-day.functions.ts, skipVisit). The
+ *  last three are a walker's own (WALK_SKIP_REASON_CODES in
+ *  skip-rules.functions.ts). The rest are older codes a walk may still carry
+ *  from before the walker had a list of its own, or from the office. */
 export const SKIP_CODES = [
   "client_cancelled_late",
   "gate_locked",
@@ -18,23 +21,51 @@ export const SKIP_CODES = [
   "access_blocked",
   "unsafe_conditions",
   "other",
+  "key_failed",
+  "no_one_home",
+  "dog_unwell",
 ] as const;
 
 /** A skip reason in plain words for the client. The walker's own typed reason
- *  is never sent: it was written for the office. */
+ *  is never sent: it was written for the office.
+ *
+ *  dog_outside is a yard reason (the dog was out in the yard, so the scooper
+ *  stayed out). It says nothing true about a walk, so a walk skipped with it
+ *  before the walker's list existed reads as the general sentence. */
 const WALK_SKIP_REASON: Record<(typeof SKIP_CODES)[number], string> = {
   client_cancelled_late: "The walk was cancelled at short notice.",
   gate_locked: "The walker could not get in because the gate was locked.",
-  dog_outside: "Your dog was not there when the walker arrived.",
+  dog_outside: "The walker could not do the walk today.",
   weather: "The weather made it unsafe to walk.",
   our_fault: "We could not make it today, and that is on us.",
   access_blocked: "The walker could not get in.",
   unsafe_conditions: "It was not safe to walk today.",
   other: "The walker could not do the walk today.",
+  key_failed: "The walker could not get in because the key or door code did not work.",
+  no_one_home: "Nobody was home to hand over your dog when the walker arrived.",
+  dog_unwell: "Your dog seemed unwell, so the walker did not take them out.",
 };
 
 export function walkSkipReason(code: string | null | undefined): string {
   return (WALK_SKIP_REASON as Record<string, string>)[code ?? ""] ?? WALK_SKIP_REASON.other;
+}
+
+/** The "on my way" text for a dog walk. A walker always comes in, so there is
+ *  no ENT / DNE: the pet-waste text's handshake (on-my-way.ts) asks whether
+ *  to enter a yard with the dogs out, which a walk never does. `dogs` is
+ *  dogNamesPhrase's "Bella and Max", or "your dog". */
+export function walkOnMyWayText(p: {
+  customerName: string;
+  orgName: string;
+  techName: string | null;
+  dogs: string;
+  eta: string | null;
+  trackUrl?: string | null;
+}): string {
+  const who = p.techName ? `${p.techName} from ${p.orgName}` : `your ${p.orgName} walker`;
+  const when = p.eta ? `, arriving ${p.eta}` : "";
+  const track = p.trackUrl ? ` Live map: ${p.trackUrl}` : "";
+  return `Hi ${p.customerName}, ${who} is on the way to pick up ${p.dogs} for today's walk${when}.${track} Reply STOP to opt out.`;
 }
 
 export type WalkNotDoneKind = "skipped" | "missed";
