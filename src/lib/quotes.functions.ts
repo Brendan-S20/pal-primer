@@ -23,6 +23,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { appOrigin, appUrl } from "@/lib/app-origin";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { newQuote } from "@/lib/db-insert";
 import {
   QUOTE_LIMITS,
   defaultQuoteValidUntil,
@@ -336,7 +337,7 @@ export const saveQuoteDraft = createServerFn({ method: "POST" })
     } else {
       const { data: ins, error } = await supabase
         .from("quotes")
-        .insert({ ...fields, organization_id: orgId, created_by: userId })
+        .insert(newQuote({ ...fields, organization_id: orgId, created_by: userId }))
         .select("id")
         .single();
       if (error) throw new Error(error.message);
@@ -423,12 +424,14 @@ export const duplicateQuote = createServerFn({ method: "POST" })
     const clock = await orgClock(supabase, orgId);
     const { data: ins, error: iErr } = await supabase
       .from("quotes")
-      .insert({
-        ...q,
-        organization_id: orgId,
-        created_by: userId,
-        valid_until: defaultQuoteValidUntil(clock.today),
-      })
+      .insert(
+        newQuote({
+          ...q,
+          organization_id: orgId,
+          created_by: userId,
+          valid_until: defaultQuoteValidUntil(clock.today),
+        }),
+      )
       .select("id")
       .single();
     if (iErr) throw new Error(iErr.message);

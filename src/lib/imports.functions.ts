@@ -12,6 +12,7 @@ import {
   type ImportService,
 } from "@/lib/import-services";
 import { serviceLinesOrDefault } from "@/lib/service-lines";
+import { newInvoice } from "@/lib/db-insert";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import {
@@ -1541,22 +1542,24 @@ export const commitImport = createServerFn({ method: "POST" })
             const description = `Opening balance carried over from ${sourceLabel}`;
             const { data: inv, error: iErr } = await supabase
               .from("invoices")
-              .insert({
-                organization_id: orgId,
-                client_id: row.target_id,
-                kind: "postpaid",
-                status: "open",
-                // No sales tax, whatever the org's rate: an opening balance is
-                // historical, already taxed (or not) in the books it came from.
-                // tax_cents and tax_rate_bps default to 0.
-                subtotal_cents: m.amount_cents,
-                total_cents: m.amount_cents,
-                period_start: today,
-                period_end: today,
-                issued_at: nowIso,
-                due_on: dueOn,
-                notes: m.note ? `${OPENING_BALANCE_NOTE}: ${m.note}` : OPENING_BALANCE_NOTE,
-              })
+              .insert(
+                newInvoice({
+                  organization_id: orgId,
+                  client_id: row.target_id,
+                  kind: "postpaid",
+                  status: "open",
+                  // No sales tax, whatever the org's rate: an opening balance is
+                  // historical, already taxed (or not) in the books it came from.
+                  // tax_cents and tax_rate_bps default to 0.
+                  subtotal_cents: m.amount_cents,
+                  total_cents: m.amount_cents,
+                  period_start: today,
+                  period_end: today,
+                  issued_at: nowIso,
+                  due_on: dueOn,
+                  notes: m.note ? `${OPENING_BALANCE_NOTE}: ${m.note}` : OPENING_BALANCE_NOTE,
+                }),
+              )
               .select("id")
               .single();
             if (iErr) throw iErr;

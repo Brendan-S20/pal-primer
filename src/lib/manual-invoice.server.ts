@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { addDaysToDay } from "@/lib/reclean";
 import { invoiceRef } from "@/lib/invoice-labels";
+import { newInvoice } from "@/lib/db-insert";
 import { effectiveTaxRateBps, invoiceTotals } from "@/lib/sales-tax";
 
 /** One line of a hand-made invoice. `amountCents` is the line total; a line
@@ -66,22 +67,24 @@ export async function insertManualInvoice(
   const dueOn = addDaysToDay(today, netDays);
   const { data: inv, error: iErr } = await supabase
     .from("invoices")
-    .insert({
-      organization_id: p.orgId,
-      client_id: p.clientId,
-      kind: "postpaid",
-      status: "open",
-      subtotal_cents: totals.subtotalCents,
-      tax_rate_bps: totals.taxRateBps,
-      tax_cents: totals.taxCents,
-      tax_label: totals.taxLabel,
-      total_cents: total,
-      period_start: today,
-      period_end: today,
-      issued_at: nowIso,
-      due_on: dueOn,
-      notes: p.notes ?? "Manual invoice",
-    })
+    .insert(
+      newInvoice({
+        organization_id: p.orgId,
+        client_id: p.clientId,
+        kind: "postpaid",
+        status: "open",
+        subtotal_cents: totals.subtotalCents,
+        tax_rate_bps: totals.taxRateBps,
+        tax_cents: totals.taxCents,
+        tax_label: totals.taxLabel,
+        total_cents: total,
+        period_start: today,
+        period_end: today,
+        issued_at: nowIso,
+        due_on: dueOn,
+        notes: p.notes ?? "Manual invoice",
+      }),
+    )
     .select("id")
     .single();
   if (iErr) throw new Error(iErr.message);
