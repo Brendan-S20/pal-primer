@@ -1,7 +1,8 @@
 /**
  * DB-layer proof that a lesson's note, homework and scores can be saved.
  * training_progress_row_guard runs on all three tables, and each reads only
- * its own columns. The nightly missed sweep records a reason on a package
+ * its own columns. The portal's read of notes returns the shared note and
+ * never the trainer's. The nightly missed sweep records a reason on a package
  * lesson, and the lesson uses a session.
  *
  * Local stack only. Skipped without TEST_SUPABASE_* env.
@@ -88,6 +89,53 @@ describe.skipIf(!enabled)("training lesson records", () => {
       trainer_note: "Owner skipped practice.",
     });
     expect(error).toBeNull();
+  });
+
+  it("the portal read returns the shared note and never the trainer-only note", async () => {
+    // A second lesson with only a trainer note: the portal gets no row for it.
+    const trainerOnlyId = await insert("visits", {
+      organization_id: orgId,
+      subscription_id: subId,
+      client_id: clientId,
+      property_id: propertyId,
+      service_id: serviceId,
+      scheduled_on: "2026-10-21",
+    });
+    const saved = await admin.from("training_session_notes").insert({
+      visit_id: trainerOnlyId,
+      organization_id: orgId,
+      trainer_note: "Staff only.",
+    });
+    expect(saved.error).toBeNull();
+
+    const { data, error } = await admin.rpc("portal_training_lesson_notes", {
+      _organization_id: orgId,
+      _visit_ids: [visitId, trainerOnlyId],
+    });
+    expect(error).toBeNull();
+    expect(data).toEqual([{ visit_id: visitId, note: "Recall at 20 feet." }]);
+    expect(JSON.stringify(data)).not.toContain("Owner skipped practice.");
+    expect(JSON.stringify(data)).not.toContain("trainer_note");
+
+    // Another business's id returns nothing for these lessons.
+    const other = await admin.rpc("portal_training_lesson_notes", {
+      _organization_id: "00000000-0000-4000-8000-000000000000",
+      _visit_ids: [visitId],
+    });
+    expect(other.error).toBeNull();
+    expect(other.data).toEqual([]);
+  });
+
+  it("the portal read is the service role's only", async () => {
+    const ANON = process.env.TEST_SUPABASE_ANON_KEY;
+    if (!ANON) throw new Error("TEST_SUPABASE_ANON_KEY is not set");
+    const anon = createClient(URL!, ANON, { auth: { persistSession: false } });
+    const { data, error } = await anon.rpc("portal_training_lesson_notes", {
+      _organization_id: orgId,
+      _visit_ids: [visitId],
+    });
+    expect(data).toBeNull();
+    expect(error).not.toBeNull();
   });
 
   it("saves homework for a dog at the lesson", async () => {
