@@ -19,6 +19,8 @@ import {
   hasWalkAccess,
   isAccessMethod,
   showsWalkAccess,
+  walkAccessSave,
+  type WalkAccessForm,
 } from "@/lib/walk-access";
 import { readFileSync } from "node:fs";
 
@@ -204,8 +206,66 @@ describe("the office's access fields", () => {
     expect(fn).toMatch(/if \(data\.accessMethod !== undefined\) patch\.access_method/);
     expect(fn).toMatch(/if \(data\.keyHeld !== undefined\) patch\.key_held/);
     expect(fn).toMatch(/if \(data\.keyTag !== undefined\) patch\.key_tag/);
+    expect(fn).toMatch(/if \(data\.lockBoxCode !== undefined\) patch\.lock_box_code/);
+    expect(fn).toMatch(/if \(data\.keyLocation !== undefined\) patch\.key_location/);
     const drawer = readFileSync("src/components/client-detail/PropertyDrawer.tsx", "utf8");
-    expect(drawer).toMatch(/\.\.\.\(walkAccess\s*\?\s*\{\s*accessMethod:/);
+    expect(drawer).toMatch(/\.\.\.\(walkAccess \? walkAccessSave\(initial, form\) : \{\}\)/);
     expect(drawer).toMatch(/const walkAccess = linesKnown && showsWalkAccess\(serviceLines, property\)/);
+  });
+});
+
+describe("saving codes the editor could not see", () => {
+  const blank: WalkAccessForm = {
+    accessMethod: "",
+    keyHeld: false,
+    keyTag: "",
+    lockBoxCode: "",
+    keyLocation: "",
+  };
+
+  it("sends no code fields when the codes were not loaded and nobody touched them", () => {
+    // Not loaded: the form opens blank over whatever is stored.
+    const initial = { ...blank, accessMethod: "lockbox" as const, keyHeld: true };
+    const out = walkAccessSave(initial, { ...initial });
+    expect(out).toEqual({ accessMethod: "lockbox", keyHeld: true });
+    expect("lockBoxCode" in out).toBe(false);
+    expect("keyLocation" in out).toBe(false);
+    expect("keyTag" in out).toBe(false);
+  });
+
+  it("does not send a field that was typed in and then deleted again", () => {
+    const out = walkAccessSave(blank, { ...blank, lockBoxCode: "  " });
+    expect("lockBoxCode" in out).toBe(false);
+  });
+
+  it("sends a field the user edited, and only that one", () => {
+    const initial = { ...blank, keyHeld: true };
+    const out = walkAccessSave(initial, { ...initial, lockBoxCode: " 4471 " });
+    expect(out.lockBoxCode).toBe("4471");
+    expect("keyLocation" in out).toBe(false);
+    expect("keyTag" in out).toBe(false);
+    const tag = walkAccessSave(initial, { ...initial, keyTag: "K-9" });
+    expect(tag.keyTag).toBe("K-9");
+  });
+
+  it("sends null for a field the user cleared after the codes loaded", () => {
+    const loaded = {
+      ...blank,
+      keyHeld: true,
+      keyTag: "K-12",
+      lockBoxCode: "4471",
+      keyLocation: "Blue pot",
+    };
+    const out = walkAccessSave(loaded, { ...loaded, lockBoxCode: "", keyLocation: " " });
+    expect(out.lockBoxCode).toBeNull();
+    expect(out.keyLocation).toBeNull();
+    expect("keyTag" in out).toBe(false);
+  });
+
+  it("clears the key tag only when the user turned key held off in this edit", () => {
+    const held = { ...blank, keyHeld: true };
+    expect(walkAccessSave(held, { ...held, keyHeld: false }).keyTag).toBeNull();
+    const notHeld = walkAccessSave(blank, { ...blank });
+    expect("keyTag" in notHeld).toBe(false);
   });
 });

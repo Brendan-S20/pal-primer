@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { ACCESS_METHODS, KEY_TAG_MAX, cleanKeyTag } from "@/lib/walk-access";
+import { ACCESS_CODE_MAX, ACCESS_METHODS, KEY_TAG_MAX, cleanKeyTag } from "@/lib/walk-access";
 
 // yard_size is derived from the boundary by a DB trigger now; the field is
 // still accepted (older forms send it) but never written.
@@ -30,7 +30,7 @@ const createPropSchema = z.object({
   city: z.string().min(1).max(120),
   region: z.string().max(120).optional(),
   postalCode: z.string().min(1).max(20),
-  gateCode: z.string().max(60).optional(),
+  gateCode: z.string().max(ACCESS_CODE_MAX).optional(),
   // Provider-resolved coordinates (skip Nominatim when present) + whether
   // the address came from the search provider or manual entry.
   latitude: z.number().min(-90).max(90).optional(),
@@ -57,11 +57,13 @@ const createPropSchema = z.object({
   boundary: polygonSchema.optional(),
   // How the walker gets in (#410). Sent only by a drawer that shows the
   // walker-access fields; absent means "leave the stored value alone", so a
-  // pet-waste business's saves never touch these columns.
+  // pet-waste business's saves never touch these columns. The drawer also
+  // leaves out a code the user did not change, so an editor who could not
+  // load the codes does not wipe them. Null still clears.
   accessMethod: z.enum(ACCESS_METHODS).nullable().optional(),
   keyHeld: z.boolean().optional(),
   keyTag: z.string().max(KEY_TAG_MAX).nullable().optional(),
-  lockBoxCode: z.string().max(60).nullable().optional(),
+  lockBoxCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
   keyLocation: z.string().max(200).nullable().optional(),
 });
 
@@ -485,13 +487,18 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
-    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const { accessFor, accessLoaded, readPropertyAccess } = await import("@/lib/property-access");
     const access = await readPropertyAccess(
       supabase,
       (rows ?? []).map((r) => r.id),
     );
     return {
-      properties: (rows ?? []).map((r) => ({ ...r, ...accessFor(access, r.id) })),
+      properties: (rows ?? []).map((r) => ({
+        ...r,
+        ...accessFor(access, r.id),
+        // The drawer sends the codes only when they were loaded or typed.
+        access_codes_loaded: accessLoaded(access, r.id),
+      })),
     };
   });
 

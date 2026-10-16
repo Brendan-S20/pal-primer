@@ -318,6 +318,8 @@ const es: Translations = {
     no: "No",
     noteForClient: "Nota para el cliente",
     noteForClientPlaceholder: "Buen paseo, olió cada árbol",
+    codesNotLoaded:
+      "Los códigos guardados están ocultos o no se pudieron cargar. Se quedan como están a menos que escribas otros nuevos.",
   },
   visit: {
     stop: "Parada {{number}}.",

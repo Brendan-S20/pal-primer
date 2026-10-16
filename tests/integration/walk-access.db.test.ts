@@ -8,7 +8,13 @@
  *  Local stack only. CI builds the database from migrations before running
  *  this suite; skipped without TEST_SUPABASE_* env. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { dbEnabled, makeWalkOrg, makeWalkVisit, type WalkOrg } from "../support/walk-db";
+import {
+  dbEnabled,
+  makeWalkOrg,
+  makeWalkVisit,
+  setStaffActive,
+  type WalkOrg,
+} from "../support/walk-db";
 
 let org: WalkOrg;
 let propertyId: string;
@@ -126,6 +132,64 @@ describe.skipIf(!dbEnabled)("who can read a lock box code", () => {
     const { data, error } = await codes(org.walker, [pastPropertyId, futurePropertyId]);
     expect(error).toBeNull();
     expect(data ?? []).toEqual([]);
+  });
+
+  it("a visit today that is canceled or skipped gives no code", async () => {
+    for (const status of ["canceled", "skipped"]) {
+      const { propertyId: id } = await makeWalkVisit(org, {
+        assignedStaffId: org.walker.staffId,
+        lockBoxCode: "3333",
+        status,
+      });
+      const { data, error } = await codes(org.walker, [id]);
+      expect(error).toBeNull();
+      expect(data ?? []).toEqual([]);
+    }
+  });
+
+  it("a visit today that is in progress still gives the code", async () => {
+    const { propertyId: id } = await makeWalkVisit(org, {
+      assignedStaffId: org.walker.staffId,
+      lockBoxCode: "5555",
+      status: "in_progress",
+    });
+    const { data, error } = await codes(org.walker, [id]);
+    expect(error).toBeNull();
+    expect(data).toEqual([expect.objectContaining({ property_id: id, lock_box_code: "5555" })]);
+  });
+
+  it("a visit today that was completed no longer gives the code", async () => {
+    const { propertyId: id, visitId } = await makeWalkVisit(org, {
+      assignedStaffId: org.walker.staffId,
+      lockBoxCode: "6666",
+    });
+    const before = await codes(org.walker, [id]);
+    expect(before.data).toEqual([expect.objectContaining({ lock_box_code: "6666" })]);
+    const done = await org.admin
+      .from("visits")
+      .update({ status: "completed", completed_at: new Date().toISOString() })
+      .eq("id", visitId);
+    if (done.error) throw new Error(done.error.message);
+    const after = await codes(org.walker, [id]);
+    expect(after.error).toBeNull();
+    expect(after.data ?? []).toEqual([]);
+  });
+
+  it("a walker who was turned off gets no code for a scheduled visit today", async () => {
+    const off = await makeWalkOrg("Walk access off");
+    try {
+      const { propertyId: id } = await makeWalkVisit(off, {
+        assignedStaffId: off.walker.staffId,
+        lockBoxCode: "7777",
+      });
+      const on = await codes(off.walker, [id]);
+      expect(on.data).toEqual([expect.objectContaining({ lock_box_code: "7777" })]);
+      await setStaffActive(off, off.walker.staffId!, false);
+      const { data } = await codes(off.walker, [id]);
+      expect(data ?? []).toEqual([]);
+    } finally {
+      await off.cleanup();
+    }
   });
 
   it("another walker gets no code", async () => {

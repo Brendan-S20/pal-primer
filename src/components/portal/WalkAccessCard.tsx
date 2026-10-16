@@ -19,12 +19,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   KEY_LOCATION_MAX,
-  PORTAL_CODE_MAX,
   portalGetAccess,
   portalUpdateAccess,
   type PortalAccess,
 } from "@/lib/portal-access.functions";
-import { ACCESS_METHODS, ACCESS_METHOD_LABEL, isAccessMethod } from "@/lib/walk-access";
+import {
+  ACCESS_CODE_MAX,
+  ACCESS_METHODS,
+  ACCESS_METHOD_LABEL,
+  isAccessMethod,
+} from "@/lib/walk-access";
 import { usePortalCtx } from "@/lib/portal-ui";
 
 const selectClass =
@@ -199,7 +203,7 @@ function CodeField({
           autoComplete="off"
           inputMode="text"
           value={value}
-          maxLength={PORTAL_CODE_MAX}
+          maxLength={ACCESS_CODE_MAX}
           onChange={(e) => onChange(e.target.value)}
           placeholder={isSet ? "Type a new code to replace it" : "Type the code"}
           className="min-w-0 flex-1 touch:min-h-11"

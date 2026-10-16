@@ -95,6 +95,12 @@ export async function makeWalkOrg(label: string): Promise<WalkOrg> {
   };
 }
 
+/** Turns a staff row on or off, as Settings -> Users does. */
+export async function setStaffActive(org: WalkOrg, staffId: string, active: boolean) {
+  const { error } = await org.admin.from("staff").update({ active }).eq("id", staffId);
+  if (error) throw new Error(`staff active: ${error.message}`);
+}
+
 /** A home with one dog and a lock box, and a walk there today. */
 export async function makeWalkVisit(
   org: WalkOrg,

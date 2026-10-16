@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,11 +25,13 @@ import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressA
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 import { useServiceLines } from "@/components/CommercialOnly";
 import {
+  ACCESS_CODE_MAX,
   ACCESS_METHODS,
   ACCESS_METHOD_LABEL,
   KEY_TAG_MAX,
   isAccessMethod,
   showsWalkAccess,
+  walkAccessSave,
   type AccessMethod,
 } from "@/lib/walk-access";
 
@@ -112,6 +115,10 @@ export function PropertyDrawer({
   // drawer exactly as before, and its saves do not send these fields.
   const { lines: serviceLines, known: linesKnown } = useServiceLines();
   const walkAccess = linesKnown && showsWalkAccess(serviceLines, property);
+  // listPropertiesForClient says whether property_access_codes returned this
+  // row. When it did not, the code fields open blank over stored values.
+  const codesNotLoaded = !!property && property.access_codes_loaded === false;
+  const { t } = useTranslation();
   const initialBoundary = useMemo(
     () => ((property?.boundary as PolygonGeoJSON | null) ?? null),
     [property],
@@ -232,15 +239,8 @@ export function PropertyDrawer({
         beesWasps: form.beesWasps,
         sharpObjects: form.sharpObjects,
         slipperySurfaces: form.slipperySurfaces,
-        ...(walkAccess
-          ? {
-              accessMethod: form.accessMethod || null,
-              keyHeld: form.keyHeld,
-              keyTag: form.keyHeld ? form.keyTag.trim() || null : null,
-              lockBoxCode: form.lockBoxCode.trim() || null,
-              keyLocation: form.keyLocation.trim() || null,
-            }
-          : {}),
+        // Codes go out only when the user changed them (walkAccessSave).
+        ...(walkAccess ? walkAccessSave(initial, form) : {}),
       };
       if (property) {
         await updateFn({ data: { propertyId: property.id, ...common } });
@@ -386,6 +386,11 @@ export function PropertyDrawer({
               Only the walker on a visit here and the office can see these. They never go in a
               calendar or the client portal.
             </p>
+            {codesNotLoaded && (
+              <p className="mt-1 text-xs text-muted-foreground" role="note">
+                {t("walk.codesNotLoaded")}
+              </p>
+            )}
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <div className="min-w-0">
                 <Label htmlFor="pd-access-method" className="text-xs">
@@ -412,7 +417,7 @@ export function PropertyDrawer({
                 <Input
                   id="pd-lockbox"
                   value={form.lockBoxCode}
-                  maxLength={60}
+                  maxLength={ACCESS_CODE_MAX}
                   autoComplete="off"
                   onChange={(e) => set("lockBoxCode", e.target.value)}
                 />

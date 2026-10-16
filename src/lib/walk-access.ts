@@ -21,6 +21,11 @@ export const ACCESS_METHOD_LABEL: Record<AccessMethod, string> = {
 
 export const KEY_TAG_MAX = 40;
 
+/** The longest lock box or door code, in the office drawer, the portal form
+ *  and both server schemas. One number, so a code the office saved is never
+ *  one the client cannot retype. */
+export const ACCESS_CODE_MAX = 60;
+
 export function isAccessMethod(v: unknown): v is AccessMethod {
   return typeof v === "string" && (ACCESS_METHODS as readonly string[]).includes(v);
 }
@@ -44,6 +49,45 @@ export function showsWalkAccess(
   p: WalkAccessFields | null | undefined,
 ): boolean {
   return lines.includes("dog_walking") || hasWalkAccess(p);
+}
+
+export type WalkAccessForm = {
+  accessMethod: AccessMethod | "";
+  keyHeld: boolean;
+  keyTag: string;
+  lockBoxCode: string;
+  keyLocation: string;
+};
+
+/** What the property drawer sends for walker access on save.
+ *
+ *  The lock box code, key location and key tag come from
+ *  property_access_codes, which can fail or refuse. When it did, the form
+ *  shows them blank, and sending that blank would wipe what is stored. So
+ *  each of the three goes out only when the user changed it from what the
+ *  form opened with. A field left alone is omitted, and the server leaves
+ *  the column as it is. A field the user cleared after a load is sent as
+ *  null, which clears it.
+ *
+ *  Turning "key held" off in this edit still clears the key tag. */
+export function walkAccessSave(initial: WalkAccessForm, form: WalkAccessForm) {
+  const changed = (k: "keyTag" | "lockBoxCode" | "keyLocation") =>
+    form[k].trim() !== initial[k].trim();
+  const out: {
+    accessMethod: AccessMethod | null;
+    keyHeld: boolean;
+    keyTag?: string | null;
+    lockBoxCode?: string | null;
+    keyLocation?: string | null;
+  } = {
+    accessMethod: form.accessMethod || null,
+    keyHeld: form.keyHeld,
+  };
+  if (initial.keyHeld && !form.keyHeld) out.keyTag = null;
+  else if (form.keyHeld && changed("keyTag")) out.keyTag = form.keyTag.trim() || null;
+  if (changed("lockBoxCode")) out.lockBoxCode = form.lockBoxCode.trim() || null;
+  if (changed("keyLocation")) out.keyLocation = form.keyLocation.trim() || null;
+  return out;
 }
 
 /** Trimmed key tag, or null. Never longer than the column allows. */

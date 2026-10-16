@@ -8,6 +8,14 @@ import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
 import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
+import {
+  WALK_ISSUE_CODES,
+  WALK_ISSUE_LABELS,
+  YARD_ONLY_CONCERNS,
+  isWalkIssue,
+  isWalkLine,
+  walkConcernRow,
+} from "@/lib/walk-concerns";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -998,15 +1006,71 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
 
 // ── Portal: history, dogs, concerns, photo signing ──────────────────────────
 
+/** The service line of each of these visits, for the session's own client.
+ *  A visit that is not theirs, or a read that fails, is simply absent. */
+async function serviceLinesOf(
+  sb: any,
+  session: { clientId: string; organizationId: string },
+  visitIds: string[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (visitIds.length === 0) return out;
+  try {
+    const { data } = await sb
+      .from("visits")
+      .select("id, services(service_line)")
+      .in("id", visitIds)
+      .eq("client_id", session.clientId)
+      .eq("organization_id", session.organizationId);
+    for (const v of (Array.isArray(data) ? data : []) as Array<{ id: string; services: any }>) {
+      const svc = Array.isArray(v.services) ? v.services[0] : v.services;
+      out.set(v.id, (svc?.service_line as string | null | undefined) ?? null);
+    }
+  } catch (e) {
+    console.warn("portal could not read visit service lines", (e as Error).message);
+  }
+  return out;
+}
+
+/** Whether this visit of the session's client is a dog walk (#410). Throws
+ *  when it cannot tell, so a refusal that depends on it cannot be skipped by
+ *  a failed read. A visit that is not the client's is not a walk here; the
+ *  RPC refuses it on its own. */
+async function visitIsWalk(
+  sb: any,
+  session: { clientId: string; organizationId: string },
+  visitId: string | null,
+): Promise<boolean> {
+  if (!visitId) return false;
+  const { data, error } = await sb
+    .from("visits")
+    .select("id, services(service_line)")
+    .eq("id", visitId)
+    .eq("client_id", session.clientId)
+    .eq("organization_id", session.organizationId)
+    .maybeSingle();
+  if (error) throw new Error("We couldn't check that visit. Please try again.");
+  const svc = Array.isArray(data?.services) ? data.services[0] : data?.services;
+  return isWalkLine(svc?.service_line);
+}
+
 export const portalListRecentVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
+    const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
     if (error) throw new Error(error.message);
-    return (rows ?? []) as Array<{
+    const list = (rows ?? []) as Array<Record<string, any> & { visit_id: string }>;
+    // Which rows are dog walks (#410): a walk is offered no re-clean and no
+    // yard options, and reads in walk words. The RPC does not return it.
+    const lines = await serviceLinesOf(
+      sb,
+      session,
+      list.map((r) => r.visit_id),
+    );
+    return list.map((r) => ({ ...r, service_line: lines.get(r.visit_id) ?? null })) as Array<{
       visit_id: string;
       scheduled_on: string;
       status: string;
@@ -1024,6 +1088,9 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
       // is shown only when the customer wrote it.
       skip_reason: string | null;
       skip_reason_code: string | null;
+      // The visit's service line, or null when it could not be read. A walk
+      // is "dog_walking".
+      service_line: string | null;
     }>;
   });
 
@@ -1051,20 +1118,41 @@ export const portalReportConcern = createServerFn({ method: "POST" })
       .object({
         token: z.string().uuid(),
         visitId: z.string().uuid().nullable(),
-        category: z.enum(["missed_spot", "gate_left_open", "damage", "wrong_yard", "other"]),
+        // The yard categories, and the walk issues (#410), which are stored
+        // as yard categories with the issue in the message. See
+        // walk-concerns.ts.
+        category: z.enum([
+          "missed_spot",
+          "gate_left_open",
+          "damage",
+          "wrong_yard",
+          "other",
+          ...WALK_ISSUE_CODES,
+        ]),
         message: z.string().max(1000).optional().default(""),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+    // A walk is not a yard: the portal does not offer these on a walk, and
+    // a request that sends one anyway is refused.
+    if (
+      (YARD_ONLY_CONCERNS as readonly string[]).includes(data.category) &&
+      (await visitIsWalk(sb, session, data.visitId))
+    ) {
+      throw new Error("That option is for a yard visit. Pick one that fits the walk.");
+    }
+    const row = isWalkIssue(data.category)
+      ? walkConcernRow(data.category, data.message)
+      : { category: data.category, message: data.message };
     const { data: id, error } = await sb.rpc("portal_report_concern", {
       _token: data.token,
       _visit_id: data.visitId as string,
-      _category: data.category,
-      _message: data.message,
+      _category: row.category,
+      _message: row.message,
     });
     if (error) throw new Error(error.message);
 
@@ -1088,7 +1176,7 @@ export const portalReportConcern = createServerFn({ method: "POST" })
         await notifyRoles(["owner", "office_manager"], {
           orgId: cl.organization_id,
           type: "concern",
-          title: `New concern: ${CONCERN_LABELS[data.category] ?? "Concern"}`,
+          title: `New concern: ${concernLabel(data.category) ?? "Concern"}`,
           body: `${cl.display_name ?? "A client"}${data.message ? `: ${data.message.slice(0, 120)}` : ""}`,
           link: "/concerns",
         });
@@ -1124,8 +1212,15 @@ export const portalRequestReclean = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+
+    // The guarantee is for pet waste. A walk is refused here, before
+    // anything is written, so a request sent past the portal is refused too.
+    if (await visitIsWalk(sb, session, data.visitId)) {
+      const { recleanRefusalMessage } = await import("@/lib/reclean");
+      throw new Error(recleanRefusalMessage("visit_is_a_walk"));
+    }
 
     // Was there already an open request? Asked before the RPC so the office
     // is not told twice about one request.
@@ -1469,6 +1564,11 @@ const CONCERN_LABELS: Record<string, string> = {
   one_off_request: "Extra cleanup request",
 };
 
+/** The office's words for a category, or for a walk issue (#410). */
+function concernLabel(category: string): string | undefined {
+  return isWalkIssue(category) ? `Walk: ${WALK_ISSUE_LABELS.en[category]}` : CONCERN_LABELS[category];
+}
+
 async function notifyOfficeOfConcern(
   sb: any,
   token: string,
@@ -1497,7 +1597,7 @@ async function notifyOfficeOfConcern(
   const to = org?.contact_email;
   if (!to) return; // no office inbox on file
 
-  const label = CONCERN_LABELS[category] ?? category;
+  const label = concernLabel(category) ?? category;
   const isReclean = category === "reclean_request";
   // For a one-off request `visitDay` is the day the customer ASKED for, and
   // `booked` says whether auto-accept already put it on the schedule.
