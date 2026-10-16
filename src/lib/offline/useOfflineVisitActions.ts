@@ -38,7 +38,9 @@ export interface OfflineVisitActions {
   /** `queueOnly` is not sent anywhere: it puts the completion straight on the
    *  queue, no network attempt, so it replays behind something already queued
    *  there (a walk's report, #410). */
-  complete: (extra?: CompleteExtra & { queueOnly?: boolean }) => Promise<{ queued: boolean }>;
+  complete: (
+    extra?: CompleteExtra & { queueOnly?: boolean },
+  ) => Promise<{ queued: boolean; result?: unknown }>;
   skip: (reason: string, code: string) => Promise<{ queued: boolean }>;
   uploadPhoto: (file: File, kind: PhotoKind) => Promise<{ queued: boolean }>;
 }
