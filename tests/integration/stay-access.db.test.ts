@@ -73,6 +73,20 @@ async function stayAt(startIn: number, days: number, sitter: string | null) {
 const codes = (who: WalkOrg["walker"], stayIds: string[]) =>
   who.client.rpc("stay_access_codes", { _stay_ids: stayIds });
 
+/** Hands the stay's visit on `day` to `staffId`, as the board does. */
+async function coverVisit(stayId: string, day: string, staffId: string) {
+  const subs = await org.admin.from("subscriptions").select("id").eq("stay_id", stayId);
+  if (subs.error) throw new Error(subs.error.message);
+  const r = await org.admin
+    .from("visits")
+    .update({ assigned_staff_id: staffId })
+    .in("subscription_id", (subs.data ?? []).map((x) => x.id))
+    .eq("scheduled_on", day)
+    .select("id");
+  expect(r.error).toBeNull();
+  expect(r.data).toHaveLength(1);
+}
+
 async function views(stayId: string, userId: string) {
   const r = await org.admin
     .from("activity_log")
@@ -169,6 +183,34 @@ describe.skipIf(!dbEnabled)("who can read a stay's codes", () => {
     expect(canceled.error).toBeNull();
     expect((await codes(org.owner, [s.stayId])).data ?? []).toEqual([]);
   });
+
+  it("a sitter covering one visit gets the codes on that visit's day and no other", async () => {
+    const s = await stayAt(0, 3, org.walker.staffId);
+    // Tomorrow's visit goes to the other sitter: today is the day before it.
+    await coverVisit(s.stayId, shift(1), org.otherWalker.staffId!);
+    expect((await codes(org.otherWalker, [s.stayId])).data ?? []).toEqual([]);
+    expect(await views(s.stayId, org.otherWalker.userId)).toEqual([]);
+    // Today's visit too: now it is their day.
+    await coverVisit(s.stayId, today, org.otherWalker.staffId!);
+    const { data, error } = await codes(org.otherWalker, [s.stayId]);
+    expect(error).toBeNull();
+    expect(data).toEqual([expect.objectContaining({ stay_id: s.stayId, lock_box_code: "BOX-2" })]);
+    expect((await views(s.stayId, org.otherWalker.userId))[0]?.meta).toMatchObject({ as: "sitter" });
+  });
+
+  it("the stay's sitter keeps the whole window when someone else covers a day", async () => {
+    const s = await stayAt(0, 3, org.walker.staffId);
+    await coverVisit(s.stayId, today, org.otherWalker.staffId!);
+    expect((await codes(org.walker, [s.stayId])).data).toHaveLength(1);
+    const tomorrow = await stayAt(1, 3, org.walker.staffId);
+    await coverVisit(tomorrow.stayId, shift(1), org.otherWalker.staffId!);
+    expect((await codes(org.walker, [tomorrow.stayId])).data).toHaveLength(1);
+    expect((await codes(org.otherWalker, [tomorrow.stayId])).data ?? []).toEqual([]);
+  });
+
+  // No case for an office role without view_client_directory: today every
+  // role that passes can_write_org (owner, office_manager, dispatcher) also
+  // holds view_client_directory, so no fixture role can show the difference.
 
   it("a stay visit today does not open property_access_codes for the sitter", async () => {
     const s = await stayAt(0, 2, org.walker.staffId);

@@ -52,6 +52,19 @@ describe("the database reads", () => {
     expect(fn).toMatch(/WHERE st\.status <> 'canceled'/);
   });
 
+  it("20261017060000 keeps the window for the stay's sitter, gives a covering sitter their day, and checks the office as walking does", () => {
+    const next = read("supabase/migrations/20261017060000_a-covering-sitter-sees-codes-on-their-days.sql");
+    const at = next.indexOf("FUNCTION public.stay_access_codes(");
+    const fn = next.slice(at, next.indexOf("$function$;", at));
+    expect(fn).not.toMatch(/can_write_org/);
+    expect(fn).toMatch(/public\.has_permission\(_uid, st\.organization_id, 'view_client_directory'\)/);
+    expect(fn).toMatch(/sf\.id = st\.assigned_staff_id/);
+    expect(fn).toMatch(/BETWEEN w\.first_day - 1 AND w\.last_day/);
+    expect(fn).toMatch(/v\.scheduled_on = t\.today/);
+    expect(fn).toMatch(/INSERT INTO public\.activity_log/);
+    expect(next).toMatch(/REVOKE ALL ON FUNCTION public\.stay_access_codes\(uuid\[\]\) FROM PUBLIC, anon;/);
+  });
+
   it("a stay visit no longer opens property_access_codes", () => {
     expect(body("property_access_codes")).toMatch(/sub\.stay_id IS NOT NULL/);
   });
