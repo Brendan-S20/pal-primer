@@ -23,7 +23,8 @@ export async function insertManualInvoice(
   supabase: SupabaseClient<any>,
   p: {
     orgId: string;
-    userId: string;
+    /** Null when nobody signed in made it: a client buying in the portal. */
+    userId: string | null;
     clientId: string;
     items: ManualInvoiceItem[];
     notes?: string;
@@ -106,6 +107,7 @@ export async function insertManualInvoice(
     orgId: p.orgId,
     clientId: p.clientId,
     actorUserId: p.userId,
+    ...(p.userId ? {} : { actorLabel: "Client portal" }),
     kind: "invoice.created",
     summary: `Created ${p.activityLabel ?? "manual invoice"} ${await invoiceRef(supabase, String(inv.id))} for $${(total / 100).toFixed(2)}`,
   });

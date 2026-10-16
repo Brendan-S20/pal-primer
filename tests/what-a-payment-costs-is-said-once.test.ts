@@ -62,9 +62,14 @@ describe("the rate is computed from the constants", () => {
     // way the code does agrees with the code even when both are wrong.
     expect(describeStripeCardRate()).toBe("2.9% + 30¢");
     expect(describeStripeAchRate()).toBe("0.8% (capped at $5)");
-    expect(describeStripeRates()).toBe(
-      "2.9% + 30¢ on cards and 0.8% (capped at $5) on bank payments",
-    );
+    expect(describeStripeRates()).toBe("2.9% + 30¢ per card payment");
+  });
+
+  it("quotes cards only, because clients pay by card at launch (#461)", () => {
+    // The ACH rate still exists for the fee math on an ACH payment that does
+    // arrive. What a tenant reads must not offer bank payments as a way to pay.
+    expect(describeStripeRates()).not.toMatch(/bank|ACH/i);
+    expect(describeStripeRates()).not.toContain(describeStripeAchRate());
   });
 
   it("and those literals are what the constants actually say", () => {

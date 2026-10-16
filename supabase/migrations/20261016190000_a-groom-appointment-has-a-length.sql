@@ -71,6 +71,8 @@ END
 $patch$;
 
 -- Strangers and the portal's public list. The office catalog is unchanged.
+-- 20261016180000 (#476) spliced the training line out of this function, and
+-- this file runs after it, so the full definition below hides both lines.
 CREATE OR REPLACE FUNCTION public.public_services(_slug text)
 RETURNS TABLE(
   id uuid,
@@ -103,6 +105,7 @@ BEGIN
      WHERE s.organization_id = _org.id
        AND s.active
        AND s.service_line <> 'mobile_grooming'
+       AND s.service_line <> 'training'
        AND (s.service_line = 'pet_waste' OR s.base_price_cents IS NOT NULL)
      ORDER BY array_position(ARRAY['pet_waste','dog_walking','pet_sitting','mobile_grooming','training','other'], s.service_line),
               lower(s.name),
@@ -181,6 +184,9 @@ BEGIN
    WHERE p.oid = 'public.public_services(text)'::regprocedure;
   IF _src NOT LIKE '%service_line <> ''mobile_grooming''%' THEN
     RAISE EXCEPTION 'public_services still lists mobile grooming';
+  END IF;
+  IF _src NOT LIKE '%service_line <> ''training''%' THEN
+    RAISE EXCEPTION 'public_services lists training again';
   END IF;
   IF pg_get_function_result('public.public_services(text)'::regprocedure) ~* 'organization|slug|stripe|key|email|phone' THEN
     RAISE EXCEPTION 'public_services returns an organization column';

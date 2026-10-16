@@ -15,6 +15,7 @@
 // be offered the day after.
 
 import { addDaysToDay } from "@/lib/reclean";
+import { customerCanRequestService } from "@/lib/service-lines";
 import { isZonePriced, servicePriceCents, type Service } from "@/lib/services";
 import { servicePickerOptions } from "@/lib/visit-service";
 
@@ -125,10 +126,9 @@ export function oneOffServiceOptions(
 ): OneOffServiceOption[] {
   const out: OneOffServiceOption[] = [];
   for (const s of servicePickerOptions(services)) {
-    if (!s.active) continue;
-    // The office books a groom by pet size. A customer request would price
-    // it as a flat visit, so the portal does not offer the line.
-    if (s.service_line === "mobile_grooming") continue;
+    // Training and grooming are booked by the office. A groom is priced by
+    // pet size, so a customer request would price it as a flat visit.
+    if (!s.active || !customerCanRequestService(s.service_line)) continue;
     const fields = {
       price_unit: s.price_unit,
       base_price_cents: s.base_price_cents,

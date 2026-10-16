@@ -17,7 +17,7 @@
  */
 
 import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
-import { SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
+import { customerCanRequestService, SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
 
 /** One row of public_services: what public_quote needs back, and what a
  *  visitor needs to choose. No organization column. */
@@ -50,6 +50,7 @@ export function publicServiceChoices(raw: unknown): PublicService[] {
     const o = r as Record<string, unknown>;
     if (typeof o.id !== "string" || typeof o.name !== "string") continue;
     if (!isServiceLine(o.service_line) || !isPriceUnit(o.price_unit)) continue;
+    if (!customerCanRequestService(o.service_line)) continue;
     if (seen.has(o.id)) continue;
     seen.add(o.id);
     out.push({

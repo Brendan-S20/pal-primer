@@ -25,8 +25,11 @@ import { readFileSync } from "node:fs";
 // second skip_visit nothing had called since July. Handler twenty-three is the
 // one to worry about, and nothing mechanical was stopping it.
 
-const SRC = fileURLToPath(new URL("../src/lib/portal.functions.ts", import.meta.url));
-const source = readFileSync(SRC, "utf8");
+// portal-training.functions.ts (2026-10-16) holds the Training page's
+// handlers; the same rule covers them.
+const source = ["portal.functions.ts", "portal-training.functions.ts"]
+  .map((f) => readFileSync(fileURLToPath(new URL(`../src/lib/${f}`, import.meta.url)), "utf8"))
+  .join("\n");
 
 /** Each `export const NAME = createServerFn…` block, to the start of the next. */
 function handlers(): Array<{ name: string; body: string }> {
@@ -45,6 +48,7 @@ describe("no portal handler reaches client data without a session", () => {
     // elsewhere.
     expect(handlers().length).toBeGreaterThan(20);
     expect(touchingClientData.length).toBeGreaterThanOrEqual(20);
+    expect(touchingClientData.map((h) => h.name)).toContain("portalRequestTrainingLesson");
   });
 
   for (const h of touchingClientData) {

@@ -394,7 +394,7 @@ describe("every signup lands in Leads too", () => {
 describe("one settings page", () => {
   it("Lead form forwards to Signup & quote form", () => {
     const old = codeOnly(read("src/routes/_authenticated/settings.lead-form.tsx"));
-    expect(old).toMatch(/throw redirect\(\{ to: "\/settings\/online-signup"/);
+    expect(old).not.toMatch(/beforeLoad\s*:/);
     expect(old).toMatch(/<RedirectFallback to="\/settings\/online-signup"/);
   });
 

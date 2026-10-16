@@ -81,6 +81,49 @@ const es: Translations = {
     rejected: "Archivo rechazado",
     rejectedLabel: "Rechazado: {{reason}}",
   },
+
+  launch: {
+    visits: "Tu próxima visita aparecerá aquí cuando esté programada.",
+    cards:
+      "Aceptamos tarjetas de crédito y débito. Los datos de tu tarjeta nunca pasan por nuestros servidores.",
+    pay: "Los pagos se procesan de forma segura. Se aceptan tarjetas.",
+    texts:
+      "Los mensajes de texto estarán disponibles próximamente. Hasta entonces, recibirás estas novedades por correo electrónico.",
+    cardPayments: "Recibe pagos con tarjeta directamente en tu cuenta bancaria.",
+    held: "Está en tu plan, pero aún no se ha lanzado y no tiene efecto en tu cuenta. Puedes quitarlo cuando quieras.",
+    soon: "Próximamente",
+    aiSoon: "Las funciones de IA estarán disponibles próximamente",
+    usageSoon: "El uso y los límites aparecerán aquí cuando se lance la primera función.",
+    aiIntro:
+      "La recepción con IA y las publicaciones de marketing estarán disponibles próximamente. Usarán los modelos de HoundStack, sin claves que configurar ni facturas de otro proveedor.",
+    receptionistBuy:
+      "Próximamente. Podrás agregarlo a tu plan cuando se lance. Ya puedes redactar la personalidad y las preguntas frecuentes abajo.",
+    persona:
+      "Eres un recepcionista amable y conciso de una empresa de servicios para mascotas. Responde en una o dos frases cortas. Solo indica precios que hayas consultado para esta empresa, sin adivinar. Si tienes dudas, ofrece que alguien de la oficina se comunique con el cliente.",
+    voiceFuture:
+      "Cuando se lance, usará la misma personalidad y preguntas frecuentes que los textos. Se transcribirá lo que diga la persona y se leerá la respuesta. Si no puede ayudar, se le pedirá que deje un mensaje de voz.",
+    founding:
+      "Clientes fundadores: las primeras {{spots}} cuentas de pago reciben un {{percent}}% de descuento en su plan mientras mantengan la suscripción. Las personas adicionales y los complementos se cobran al precio normal. Usa el código {{code}} al pagar.",
+    remaining: "Quedan {{left}} de {{spots}}.",
+    help0:
+      "Los clientes inician sesión con un código de un solo uso enviado por correo electrónico. Los códigos por texto estarán disponibles próximamente. Si un cliente no recibe su código, el personal puede leérselo por teléfono desde su página de detalle en [Clientes](/clients).",
+    help1:
+      "Próximamente: publicaciones de marketing y [recepción con IA](article:platform-addons), que responderá mensajes y llamadas de clientes. Ninguna está activada todavía.",
+    help2:
+      "Disponibles ahora: **soporte prioritario** (en Launch; Growth y Scale ya lo incluyen) y **configuración por nuestro equipo** con un pago único.",
+    help3:
+      "Próximamente: **recepción con IA**, que responderá mensajes y llamadas con tus preguntas frecuentes y precios; **mensajería gestionada**; y **marca blanca** (tu dominio en el portal y los correos). En Facturación aparecen como Próximamente y aún no se pueden comprar. Ya puedes redactar la personalidad y las preguntas frecuentes en [Recepción con IA](/settings/ai-receptionist).",
+    addonsTitle: "Complementos del plan",
+    contact: "Llámanos o escríbenos por correo electrónico para programar una visita.",
+    updateDetails:
+      "¿Necesitas actualizar tus datos? Llámanos o escríbenos por correo electrónico y nos encargaremos.",
+  },
+
+  recovery: {
+    title: "Esta página no se cargó",
+    body: "Intenta actualizar o vuelve al panel.",
+    dashboard: "Volver al panel",
+  },
   common: {
     loading: "Cargando…",
     save: "Guardar",
@@ -950,6 +993,60 @@ const es: Translations = {
       start: "Iniciar",
       complete: "Completar",
     },
+  },
+  training: {
+    sessionLabel: "Sesión {{n}} de {{total}}",
+    progressTitle: "Progreso de la sesión",
+    showProgress: "Registrar progreso",
+    hideProgress: "Ocultar progreso",
+    skillScore: "Puntuación de {{skill}}",
+    note: "Nota de la sesión",
+    notePlaceholder: "En qué trabajó el perro",
+    noteClientSees: "Nota de la clase. El cliente la verá",
+    noteClientDoesNotSee: "Nota de la clase. Los clientes no la ven mientras compartir esté desactivado",
+    trainerNote: "Solo para el entrenador",
+    trainerNotePlaceholder: "Para ti y el próximo entrenador. El cliente nunca la ve.",
+    homework: "Tarea",
+    homeworkPlaceholder: "Qué practicar antes de la próxima lección",
+    due: "Fecha límite",
+    save: "Guardar progreso",
+    saving: "Guardando…",
+    saved: "Progreso guardado",
+    noSkills: "Todavía no hay habilidades.",
+    history: "Clases anteriores",
+    historyForDog: "Clases anteriores de <dog>{{dog}}</dog>",
+    historyEmpty: "No hay clases anteriores registradas.",
+    lessonUsesSession: "Esta clase usa una sesión del paquete.",
+    lessonGivenBack: "Esta clase no usa una sesión.",
+    giveSessionBack: "Devolver la sesión",
+    useSession: "Usar una sesión",
+    rulesTitle: "Clases perdidas y canceladas tarde",
+    rulesDescription:
+      "Si una ausencia, o una cancelación dentro del plazo, usa una de las sesiones del paquete. Una cancelación por clima, seguridad o motivo propio del negocio nunca la usa. La oficina puede cambiarlo en cualquier clase.",
+    missedUsesSession: "Una ausencia o cancelación tardía usa una sesión",
+    lateCancelHours: "Plazo de cancelación tardía, en horas antes de la clase",
+    rulesSave: "Guardar reglas",
+    rulesSaved: "Reglas de entrenamiento guardadas",
+    cancelDescription:
+      "Cancelar detiene las nuevas reservas. No anula la factura. Use las herramientas de reembolso o anulación de la factura.",
+    cancelBookedCount: "Clases reservadas después de hoy: {{n}}",
+    cancelBookedCancel: "Cancelarlas. Sus sesiones vuelven al paquete.",
+    cancelBookedKeep: "Mantenerlas. El entrenador aún puede completarlas.",
+    cancelChoose: "Elija qué pasa con las clases reservadas.",
+    cancelPastLessons:
+      "Las clases de hoy o antes no cambian y aún se pueden completar u omitir.",
+    canceledLessons: "Paquete cancelado. Clases canceladas con él: {{n}}",
+    startTime: "Hora de inicio",
+    lessonMinutes: "Duración en minutos",
+    startTimeHint:
+      "Con hora de inicio y entrenador, la reserva revisa las otras clases del entrenador. Déjela en blanco para reservar solo el día.",
+    bookAnyway: "Reservar de todos modos, aunque se cruce con otra clase del entrenador",
+    dog: "Perro",
+    chooseDog: "Elija un perro",
+    dogRequiredHint: "Este hogar tiene más de un perro. El progreso y la tarea se guardan por perro.",
+    shareProgress: "Compartir las notas y la tarea de cada clase con los clientes",
+    shareProgressHint:
+      "Los clientes ven la nota y la tarea de cada clase en la página de entrenamiento de su portal. Las puntuaciones, las fechas y las sesiones restantes se muestran siempre.",
   },
   accessOff: {
     pageTitle: "Acceso desactivado",

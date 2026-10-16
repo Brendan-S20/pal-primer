@@ -948,6 +948,8 @@ function VisitDetailDrawer({
   const [newDate, setNewDate] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [cancelCode, setCancelCode] = useState("other");
+  // On a training package lesson: when the client called to cancel.
+  const [calledAt, setCalledAt] = useState("");
   const [newStaffId, setNewStaffId] = useState("");
 
   const completeFn = useServerFn(completeVisitFromOffice);
@@ -992,7 +994,12 @@ function VisitDetailDrawer({
   const cancelMut = useMutation({
     mutationFn: () =>
       cancelFn({
-        data: { visitId: v.id, reason: cancelReason.trim(), code: cancelCode as any },
+        data: {
+          visitId: v.id,
+          reason: cancelReason.trim(),
+          code: cancelCode as any,
+          clientCancelledAt: v.client_package_id ? fromLocalInput(calledAt) : null,
+        },
       }),
     onSuccess: () => afterAction("Visit canceled"),
     onError: (e) => toast.error((e as Error).message),
@@ -1151,7 +1158,10 @@ function VisitDetailDrawer({
                     size="sm"
                     variant={action === "cancel" ? "destructive" : "outline"}
                     className={action === "cancel" ? undefined : "text-destructive"}
-                    onClick={() => setAction(action === "cancel" ? null : "cancel")}
+                    onClick={() => {
+                      setCalledAt(toLocalInput(new Date().toISOString()));
+                      setAction(action === "cancel" ? null : "cancel");
+                    }}
                   >
                     Cancel visit…
                   </Button>
@@ -1264,6 +1274,24 @@ function VisitDetailDrawer({
                     />
                   </div>
                 </div>
+                {v.client_package_id && (
+                  <div>
+                    <Label htmlFor="va-called-at" className="text-xs">
+                      Client called to cancel at
+                    </Label>
+                    <Input
+                      id="va-called-at"
+                      type="datetime-local"
+                      className="w-full sm:w-56"
+                      value={calledAt}
+                      max={toLocalInput(new Date().toISOString())}
+                      onChange={(e) => setCalledAt(e.target.value)}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      The late-cancel window is measured from this time, not from when you save.
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                   The visit is recorded as skipped with this reason; the org's skip-billing rules
                   decide whether any charge applies.

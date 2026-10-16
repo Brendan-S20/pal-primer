@@ -89,6 +89,7 @@ const navItem = (url: string) => {
 const vis = (lines: ServiceLine[], commercial = true): NavVisibility => ({
   commercialEnabled: commercial,
   franchiseParent: false,
+  texting: false,
   petWaste: runsPetWaste(lines),
 });
 
@@ -386,7 +387,7 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
-  it("offers five lines; scooping, walking, sitting and grooming are bookable", () => {
+  it("offers five lines, and every one of them is bookable by the office", () => {
     expect([...OFFERED_SERVICE_LINES]).toEqual([
       "pet_waste",
       "dog_walking",
@@ -399,6 +400,7 @@ describe("what an owner can choose", () => {
       "dog_walking",
       "pet_sitting",
       "mobile_grooming",
+      "training",
     ]);
   });
 
@@ -577,5 +579,15 @@ describe("every signpost to a pet-waste page carries petWasteOnly", () => {
     expect(read("src/components/CommandPalette.tsx")).toMatch(
       /\(!item\.petWasteOnly \|\| petWaste\)/,
     );
+  });
+});
+
+describe("Messages follows client texting availability", () => {
+  it("hides the entry until this business can text and restores it when ready", () => {
+    const item = navItem("/messages");
+    for (const role of ["owner", "office_manager", "dispatcher"] as const) {
+      expect(isNavItemVisible(item, role, vis(["pet_waste"]))).toBe(false);
+      expect(isNavItemVisible(item, role, { ...vis(["pet_waste"]), texting: true })).toBe(true);
+    }
   });
 });

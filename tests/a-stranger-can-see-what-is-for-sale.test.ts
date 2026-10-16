@@ -188,8 +188,33 @@ const GROOM = {
   extra_pet_cents: 1000,
   default_duration_min: 90,
 };
+const SIT = {
+  id: "44444444-4444-4444-8444-444444444444",
+  name: "Drop-in visit",
+  service_line: "pet_sitting",
+  price_unit: "visit",
+  base_price_cents: 3000,
+  extra_pet_cents: 500,
+  default_duration_min: 90,
+};
+const TRAIN = {
+  id: "55555555-5555-4555-8555-555555555555",
+  name: "Private lesson",
+  service_line: "training",
+  price_unit: "visit",
+  base_price_cents: 8000,
+  extra_pet_cents: 0,
+  default_duration_min: 60,
+};
 
 describe("what a stranger may pick from", () => {
+  it("never lists a groom or a training lesson, each by its own gate", () => {
+    expect(publicServiceChoices([PW, GROOM, WALK, TRAIN]).map((r) => r.id)).toEqual([
+      PW.id,
+      WALK.id,
+    ]);
+  });
+
   it("keeps the rows the RPC returned, in its order, and drops anything malformed", () => {
     const rows = publicServiceChoices([
       PW,
@@ -215,7 +240,7 @@ describe("what a stranger may pick from", () => {
 
   it("with a choice, starts on the pet-waste service when there is one, else the first listed", () => {
     expect(defaultPublicServiceId(publicServiceChoices([WALK, PW]))).toBe(PW.id);
-    expect(defaultPublicServiceId(publicServiceChoices([WALK, GROOM]))).toBe(WALK.id);
+    expect(defaultPublicServiceId(publicServiceChoices([WALK, SIT]))).toBe(WALK.id);
     expect(chosenPublicService(publicServiceChoices([PW, WALK]), "")?.id).toBe(PW.id);
     expect(chosenPublicService(publicServiceChoices([PW, WALK]), WALK.id)?.id).toBe(WALK.id);
     // An id that is not listed (a service retired since the page loaded)
@@ -230,11 +255,11 @@ describe("what a stranger may pick from", () => {
   });
 
   it("labels an option with the business's name and its length, never a price", () => {
-    const [pw, walk, groom] = publicServiceChoices([PW, WALK, GROOM]);
+    const [pw, walk, sit] = publicServiceChoices([PW, WALK, SIT]);
     expect(publicServiceOptionLabel(pw)).toBe("Pet waste removal");
     expect(publicServiceOptionLabel(walk)).toBe("30-minute walk (30 min)");
-    expect(publicServiceOptionLabel(groom)).toBe("Full groom (1 hr 30 min)");
-    for (const s of [pw, walk, groom])
+    expect(publicServiceOptionLabel(sit)).toBe("Drop-in visit (1 hr 30 min)");
+    for (const s of [pw, walk, sit])
       expect(publicServiceOptionLabel(s)).not.toMatch(/\$|\d\.\d\d/);
   });
 });

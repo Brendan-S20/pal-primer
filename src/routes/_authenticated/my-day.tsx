@@ -103,6 +103,10 @@ import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { visitServiceLabel } from "@/lib/visit-service";
 import { GroomPetPanel } from "@/components/my-day/GroomPetPanel";
+import {
+  TrainingProgressPanel,
+  TrainingSessionBadge,
+} from "@/components/training/TrainingProgressPanel";
 import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
@@ -2183,6 +2187,7 @@ function VisitCard({
                 )}
               </span>
             )}
+            <TrainingSessionBadge visitId={visit.id} serviceLine={service?.line} />
             {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">
@@ -2221,6 +2226,9 @@ function VisitCard({
             {p?.city || p?.postal_code ? " · " : ""}
             {visit.clients?.display_name ?? t("visit.fallbackClient")}
           </div>
+          {!collapsed && (
+            <TrainingProgressPanel visitId={visit.id} serviceLine={service?.line} />
+          )}
 
           {/* When this stop is expected, and how big the yard is — one line of
               context, wrapping rather than stacking.
@@ -2470,7 +2478,10 @@ function VisitCard({
         </div>
       )}
 
-      {!collapsed && visit.client_id && (
+      {/* On a stop not yet started it waits under More options with the
+          other occasional actions; once the visit is under way or done, it
+          is here on the card. */}
+      {!collapsed && !scheduled && visit.client_id && (
         <Link
           to="/clients/$clientId"
           params={{ clientId: visit.client_id }}
@@ -2760,6 +2771,16 @@ function VisitCard({
                   >
                     {t("visit.dnaSample")}
                   </Button>
+                )}
+                {scheduled && visit.client_id && (
+                  <Link
+                    to="/clients/$clientId"
+                    params={{ clientId: visit.client_id }}
+                    className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent sm:h-8 sm:px-3"
+                  >
+                    <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    {t("visit.clientInfo")}
+                  </Link>
                 )}
                 {canText && visit.clients?.primary_phone && (
                   <Button

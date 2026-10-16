@@ -88,6 +88,46 @@ const en = {
     rejected: "Upload rejected",
     rejectedLabel: "Rejected: {{reason}}",
   },
+
+  launch: {
+    visits: "Your next visit will show here once it is scheduled.",
+    cards: "We accept credit and debit cards. Your card details never touch our servers.",
+    pay: "Payments are processed securely. Cards accepted.",
+    texts: "Texts are coming soon. Until then, these updates come by email.",
+    cardPayments: "Get paid by card, straight to your own bank account.",
+    held: "On your plan, but it has not launched yet, so it does nothing on your account. You can remove it any time.",
+    soon: "Coming soon",
+    aiSoon: "AI features are coming soon",
+    usageSoon: "Usage and limits will show here once the first one launches.",
+    aiIntro:
+      "The AI receptionist and marketing posts are coming soon. They will run on HoundStack's own models, so there will be no key to set up and no separate provider bill.",
+    receptionistBuy:
+      "Coming soon. It can be added to your plan once it launches. You can draft the persona and FAQ below now.",
+    persona:
+      "You are a friendly, concise receptionist for a pet service company. Answer in one or two short sentences. Only give prices you have looked up for this business, never a guess. Offer to have someone from the office follow up when you are unsure.",
+    voiceFuture:
+      "When it launches, it will use the same persona and FAQ as texts. The caller's words are transcribed and the reply is read back to them. If it can't help, the caller is asked to leave a voicemail.",
+    founding:
+      "Founding pricing: the first {{spots}} paying accounts get {{percent}}% off their plan price for as long as they stay subscribed. Extra people and add-ons are billed at regular price. Use code {{code}} at checkout.",
+    remaining: "{{left}} of {{spots}} left.",
+    help0:
+      "Clients sign in with a one-time code sent by email. Codes by text are coming soon. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+    help1:
+      "Coming soon: marketing posts, and the [AI Receptionist](article:platform-addons), which will answer client texts and calls for you. Neither is switched on for anyone yet.",
+    help2:
+      "Available now: **priority support** (on the Launch plan; Growth and Scale already include it), and a one-time **done-for-you setup** where we configure the whole platform with you.",
+    help3:
+      "Coming soon: the **AI Receptionist**, which will answer client texts and calls using your FAQ and your own prices; **managed texting**; and **white label** (your own domain on the client portal and emails). They show a Coming soon badge on Billing and cannot be bought yet. You can draft the receptionist's persona and FAQ now in [AI receptionist settings](/settings/ai-receptionist).",
+    addonsTitle: "Plan add-ons",
+    contact: "Call or email us to schedule a visit.",
+    updateDetails: "Need to update your details? Call or email us and we'll take care of it.",
+  },
+
+  recovery: {
+    title: "This page didn't load",
+    body: "Try refreshing or return to the dashboard.",
+    dashboard: "Back to dashboard",
+  },
   common: {
     loading: "Loading…",
     save: "Save",
@@ -964,6 +1004,60 @@ const en = {
       start: "Start",
       complete: "Complete",
     },
+  },
+  training: {
+    sessionLabel: "Session {{n}} of {{total}}",
+    progressTitle: "Session progress",
+    showProgress: "Record progress",
+    hideProgress: "Hide progress",
+    skillScore: "Score for {{skill}}",
+    note: "Session note",
+    notePlaceholder: "What the dog worked on",
+    noteClientSees: "Session note. Client will see this",
+    noteClientDoesNotSee: "Session note. Clients do not see it while sharing is off",
+    trainerNote: "Trainer only",
+    trainerNotePlaceholder: "For you and the next trainer. The client never sees this.",
+    homework: "Homework",
+    homeworkPlaceholder: "What to practice before the next lesson",
+    due: "Due",
+    save: "Save progress",
+    saving: "Saving…",
+    saved: "Progress saved",
+    noSkills: "No skills are set up yet.",
+    history: "Earlier lessons",
+    historyForDog: "Earlier lessons for <dog>{{dog}}</dog>",
+    historyEmpty: "No earlier lessons recorded.",
+    lessonUsesSession: "This lesson uses a session from the package.",
+    lessonGivenBack: "This lesson does not use a session.",
+    giveSessionBack: "Give the session back",
+    useSession: "Use a session",
+    rulesTitle: "Missed and late-canceled lessons",
+    rulesDescription:
+      "Whether a no-show, or a cancel inside the window, uses one of the package's sessions. A cancel for weather, safety or the business's own reason never does. The office can change it on any lesson.",
+    missedUsesSession: "A no-show or late cancel uses a session",
+    lateCancelHours: "Late-cancel window, in hours before the lesson",
+    rulesSave: "Save rules",
+    rulesSaved: "Training rules saved",
+    cancelDescription:
+      "Canceling stops new bookings. It does not void the invoice. Use the existing refund or void tools for the invoice.",
+    cancelBookedCount: "Lessons booked after today: {{n}}",
+    cancelBookedCancel: "Cancel them. Their sessions go back to the package.",
+    cancelBookedKeep: "Keep them. The trainer can still complete them.",
+    cancelChoose: "Choose what happens to the booked lessons.",
+    cancelPastLessons:
+      "Lessons on or before today stay as they are and can still be completed or skipped.",
+    canceledLessons: "Package canceled. Lessons canceled with it: {{n}}",
+    startTime: "Start time",
+    lessonMinutes: "Length in minutes",
+    startTimeHint:
+      "With a start time and a trainer, booking checks the trainer's other lessons. Leave it blank to book the day only.",
+    bookAnyway: "Book anyway, overlapping the trainer's other lesson",
+    dog: "Dog",
+    chooseDog: "Choose a dog",
+    dogRequiredHint: "This household has more than one dog. Progress and homework are kept per dog.",
+    shareProgress: "Share lesson notes and homework with clients",
+    shareProgressHint:
+      "Clients see each lesson's note and homework on the Training page of their portal. Scores, dates and sessions left show either way.",
   },
   // The screen the shell sends a person to once the owner has turned their
   // access off (src/routes/access-off.tsx). The business name goes in as

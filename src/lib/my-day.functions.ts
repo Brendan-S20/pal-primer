@@ -725,6 +725,10 @@ export const completeVisit = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("auto review request failed", e);
     }
+    // A lesson that leaves one session on its package tells the client and
+    // the office, once. One read for any other visit. Never throws.
+    const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
+    await afterLessonSessionChange(data.visitId);
     await routeNoticeDone;
     return { ok: true, notificationSummary: { sent: sentClientNotices, pending: noticesPending } };
   });
@@ -766,6 +770,9 @@ export const skipVisit = createServerFn({ method: "POST" })
     // or the next stop late. Never throws.
     const { notifyVisitSkipped } = await import("@/lib/field-notify.server");
     await notifyVisitSkipped({ visitId: data.visitId, actorUserId: context.userId });
+    // A late-canceled lesson can use a session. Never throws.
+    const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
+    await afterLessonSessionChange(data.visitId);
     return { ok: true };
   });
 

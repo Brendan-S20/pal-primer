@@ -188,6 +188,8 @@ describe("emails say who sent them", () => {
     "on-my-way",
     "quote-sent",
     "campaign",
+    // 2026-10-16: one session left, or 14 days to expiry, on a training package.
+    "training-package-notice",
   ];
 
   it("there is a shared footer", () => {

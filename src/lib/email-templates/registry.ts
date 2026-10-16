@@ -14,6 +14,7 @@ import { template as visitReminderTemplate } from "./visit-reminder";
 import { template as onMyWayTemplate } from "./on-my-way";
 import { template as quoteSentTemplate } from "./quote-sent";
 import { template as campaignTemplate } from "./campaign";
+import { template as trainingPackageNoticeTemplate } from "./training-package-notice";
 
 export interface TemplateEntry {
   component: ComponentType<any>;
@@ -39,4 +40,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   "on-my-way": onMyWayTemplate,
   "quote-sent": quoteSentTemplate,
   campaign: campaignTemplate,
+  "training-package-notice": trainingPackageNoticeTemplate,
 };

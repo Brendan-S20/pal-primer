@@ -189,6 +189,7 @@ export function friendlyCategory(c: string | null | undefined) {
     reclean_request: "Re-clean request",
     one_off_request: "Extra visit",
     groom_request: "Groom request",
+    training_lesson_request: "Training lesson",
   };
   return map[c ?? ""] ?? c ?? "";
 }
@@ -2172,8 +2173,12 @@ export function RequestsList({ rows }: { rows: Array<any> }) {
         // An extra cleanup is answered by being booked or not, and "Resolved"
         // says neither. Booked wins over the status, since it is the fact the
         // customer is waiting for.
-        // A groom request is answered the same way: booked or not.
-        const oneOff = r.category === "one_off_request" || r.category === "groom_request";
+        // A groom request, and a training lesson asked for from a package, are
+        // answered the same way: booked or not.
+        const oneOff =
+          r.category === "one_off_request" ||
+          r.category === "groom_request" ||
+          r.category === "training_lesson_request";
         const oneOffState = oneOff ? oneOffRequestState(r) : null;
         const badge = oneOffState === "booked" ? (
           <Badge className="bg-emerald-600 hover:bg-emerald-600">Booked</Badge>

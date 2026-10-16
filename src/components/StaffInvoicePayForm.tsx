@@ -332,7 +332,7 @@ export function StaffInvoicePayForm({
                   : // NATIVE ONLY — web keeps the original single label.
                     IS_NATIVE_BUNDLE && intentM.isError
                     ? "Try again"
-                    : "Enter card or bank details"}
+                    : "Enter card details"}
               </Button>
               {/* NATIVE ONLY — web keeps the toast alone.
                 Inline as well as the toast, because this panel opens the card
@@ -372,9 +372,7 @@ export function StaffInvoicePayForm({
                   }}
                 />
               </Elements>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Card charges confirm right away. Bank debits show as pending until they clear.
-              </p>
+              <p className="mt-2 text-xs text-muted-foreground">Card charges confirm right away.</p>
             </div>
           )}
         </div>
@@ -444,7 +442,7 @@ function PayElementForm({
         className="w-full"
         disabled={!stripe || !elements || !ready || submitting}
       >
-        {submitting ? "Processing…" : `Pay ${fmtCents(amountCents, currency)} by card or bank`}
+        {submitting ? "Processing…" : `Pay ${fmtCents(amountCents, currency)} by card`}
       </Button>
     </form>
   );

@@ -45,20 +45,24 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** Lines an owner can choose today. Mobile grooming joins because the office
- *  can set it up, book a pet, put a groomer on the route, run the appointment
- *  and invoice it. Training (#413) joins when its path can be booked end to
- *  end. Customers still cannot book a groom: see CUSTOMER_BOOKABLE_SERVICE_LINES. */
+/** Lines an owner can choose today. A line joins this list when the office
+ *  can book it end to end. Mobile grooming (#412) joins because the office can
+ *  set it up, book a pet, put a groomer on the route, run the appointment and
+ *  invoice it. Training (#413) is on the list for the office too. Customers,
+ *  the public form and the receptionist still cannot request either: see
+ *  CUSTOMER_BOOKABLE_SERVICE_LINES and customerCanRequestService. */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
   "pet_waste",
   "dog_walking",
   "pet_sitting",
   "mobile_grooming",
+  "training",
 ];
 
 /** Lines a customer may ask for (public signup, the portal, the receptionist).
  *  Mobile grooming stays with the office until a customer can pick pets,
- *  add-ons and a price the same way the office books one. */
+ *  add-ons and a price the same way the office books one. Training is sold
+ *  and scheduled by the office. */
 export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
   "pet_waste",
   "dog_walking",
@@ -70,6 +74,13 @@ export function customerMayBook(line: string | null | undefined): boolean {
     typeof line === "string" &&
     (CUSTOMER_BOOKABLE_SERVICE_LINES as readonly string[]).includes(line)
   );
+}
+
+/** Whether a customer, the public signup form, or the receptionist may ask
+ *  for this line. Training and mobile grooming are booked by the office, and
+ *  each keeps its own gate here so opening one never opens the other. */
+export function customerCanRequestService(line: string): boolean {
+  return line !== "training" && line !== "mobile_grooming";
 }
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {

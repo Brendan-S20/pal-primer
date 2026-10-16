@@ -201,17 +201,31 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 60 -> 61 on 2026-10-10 (20261010200000, a window is kept and a skill
     // is matched): tg_staff_services_same_org, which keeps a technician's
     // service skill inside their own business. REVOKEd in the same file.
-    // 61 -> 63: tg_service_size_rules_service derives the tenant from the
-    // groom, and pet_vaccinations_before_write derives the tenant, validates
-    // the document path and caps portal records. Both revoked in their files.
-    // 63 -> 66 (20261016220000): tg_visits_groom_plan_stamp copies a groom
+    //
+    // 61 -> 68 on 2026-10-16 (20261016180000, a trainer sells a package of
+    // sessions): training_service_package_guard, training_client_package_guard,
+    // training_visit_package_guard, training_package_recount,
+    // training_subscription_package_guard, training_skill_guard and
+    // training_progress_row_guard. Each REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    //
+    // 68 -> 69 on 2026-10-16 (20261016200000, training cancel and no-show):
+    // training_lesson_session_rule, which decides whether a missed or late
+    // canceled package lesson uses a session. REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    //
+    // 69 -> 71 (mobile grooming): tg_service_size_rules_service derives the
+    // tenant from the groom, and pet_vaccinations_before_write derives the
+    // tenant, validates the document path and caps portal records. Both
+    // revoked in their files.
+    // 71 -> 74 (20261016220000): tg_visits_groom_plan_stamp copies a groom
     // plan onto every visit it generates, tg_visits_groom_plan_addons charges
     // the plan's add-ons when a groom is completed, and
     // tg_pet_groom_notes_before_write derives a note's tenant from its visit.
     // All three revoked in that file.
-    // 66 -> 67 (20261016230000): pet_vaccinations_review_stamp takes the
+    // 74 -> 75 (20261016230000): pet_vaccinations_review_stamp takes the
     // reviewer who rejected a portal upload from the session. Revoked there.
-    expect(triggerFunctions().size).toBe(67);
+    expect(triggerFunctions().size).toBe(75);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

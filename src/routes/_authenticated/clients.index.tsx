@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { KpiValueBone, ListSkeleton } from "@/components/PageSkeletons";
+import { ListSkeleton } from "@/components/PageSkeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { RowActions } from "@/components/RowActions";
@@ -86,6 +86,13 @@ function exportClientsCsv(rows: any[]) {
   );
 }
 
+/** A tile value while the list loads. text-2xl is a 2rem line box, so the bone
+ *  is h-8: the tile keeps its height when the number replaces it, and the list
+ *  under the tiles does not move. (KpiValueBone is sized for text-3xl.) */
+function TileValueBone() {
+  return <Skeleton className="h-8 w-20" />;
+}
+
 function ClientsList() {
   const motionList = useMotionList<HTMLDivElement>();
   const navigate = useNavigate();
@@ -93,6 +100,7 @@ function ClientsList() {
   const fn = useServerFn(listClients);
   const updateFn = useServerFn(updateClient);
   const { can } = usePermissions();
+  const rowTexting = useClientTexting();
   // Archiving is a manager-class write (updateClient enforces this
   // server-side when `active` changes) — hide the bulk button for roles
   // that would only get an error.
@@ -336,18 +344,18 @@ function ClientsList() {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Users className="h-4 w-4 shrink-0" /> Active
           </div>
-          <div className="mt-1 text-2xl font-semibold">{!data ? <KpiValueBone /> : stats.active}</div>
+          <div className="mt-1 text-2xl font-semibold">{!data ? <TileValueBone /> : stats.active}</div>
         </Card>
         <Card className="p-4">
           <div className="text-xs text-muted-foreground">Outstanding</div>
-          <div className="mt-1 text-2xl font-semibold">{!data ? <KpiValueBone /> : money(stats.owedTotal)}</div>
+          <div className="mt-1 text-2xl font-semibold">{!data ? <TileValueBone /> : money(stats.owedTotal)}</div>
           <div className="text-xs text-muted-foreground">{!data ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <AlertTriangle className="h-4 w-4 shrink-0" /> At churn risk
           </div>
-          <div className="mt-1 text-2xl font-semibold">{!data ? <KpiValueBone /> : stats.atRisk}</div>
+          <div className="mt-1 text-2xl font-semibold">{!data ? <TileValueBone /> : stats.atRisk}</div>
         </Card>
         {/* Replaces the "Inactive" tile. Inactive was already derivable from
             Active and the total, and it is the less useful of the two: an
@@ -368,7 +376,7 @@ function ClientsList() {
           <div
             className={`mt-1 text-2xl font-semibold ${stats.noPlan > 0 ? "text-amber-600" : ""}`}
           >
-            {!data ? <KpiValueBone /> : stats.noPlan}
+            {!data ? <TileValueBone /> : stats.noPlan}
           </div>
           <div className="text-xs text-muted-foreground">
             {!data ? <Skeleton className="h-4 w-20" /> : `${stats.total - stats.active} archived`}
@@ -724,14 +732,22 @@ function ClientsList() {
                               search: { edit: true },
                             }),
                         }}
-                        actions={[
-                          {
-                            // Existing messaging surface — /messages/$clientId.
-                            label: "Message",
-                            onSelect: () =>
-                              navigate({ to: "/messages/$clientId", params: { clientId: c.id } }),
-                          },
-                        ]}
+                        // Message only where this business can text; until
+                        // then the thread page is a coming-soon dead end.
+                        actions={
+                          rowTexting
+                            ? [
+                                {
+                                  label: "Message",
+                                  onSelect: () =>
+                                    navigate({
+                                      to: "/messages/$clientId",
+                                      params: { clientId: c.id },
+                                    }),
+                                },
+                              ]
+                            : []
+                        }
                       />
                     </td>
                   </tr>

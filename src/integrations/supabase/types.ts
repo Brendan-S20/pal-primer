@@ -1024,6 +1024,79 @@ export type Database = {
           },
         ]
       }
+      client_packages: {
+        Row: {
+          id: string
+          organization_id: string
+          client_id: string
+          dog_id: string | null
+          service_package_id: string
+          service_id: string
+          name: string
+          sessions_count: number
+          price_cents: number
+          purchased_on: string
+          expires_on: string | null
+          sessions_used: number
+          invoice_id: string | null
+          request_id: string | null
+          status: string
+          canceled_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          client_id: string
+          dog_id?: string | null
+          service_package_id: string
+          service_id?: string
+          name?: string
+          sessions_count?: number
+          price_cents?: number
+          purchased_on?: string
+          expires_on?: string | null
+          sessions_used?: number
+          invoice_id?: string | null
+          request_id?: string | null
+          status?: string
+          canceled_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          client_id?: string
+          dog_id?: string | null
+          service_package_id?: string
+          service_id?: string
+          name?: string
+          sessions_count?: number
+          price_cents?: number
+          purchased_on?: string
+          expires_on?: string | null
+          sessions_used?: number
+          invoice_id?: string | null
+          request_id?: string | null
+          status?: string
+          canceled_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "client_packages_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_service_id_fkey"; columns: ["service_id"]; isOneToOne: false; referencedRelation: "services"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_client_id_fkey"; columns: ["client_id"]; isOneToOne: false; referencedRelation: "clients"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_dog_id_fkey"; columns: ["dog_id"]; isOneToOne: false; referencedRelation: "dogs"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_service_package_id_fkey"; columns: ["service_package_id"]; isOneToOne: false; referencedRelation: "service_packages"; referencedColumns: ["id"] },
+          { foreignKeyName: "client_packages_invoice_id_fkey"; columns: ["invoice_id"]; isOneToOne: false; referencedRelation: "invoices"; referencedColumns: ["id"] },
+        ]
+      }
       client_unsubscribe_tokens: {
         Row: {
           client_id: string
@@ -2312,7 +2385,9 @@ export type Database = {
       }
       import_batches: {
         Row: {
+          commit_started_at: string | null;
           committed_at: string | null
+          content_hash: string | null;
           created_at: string
           created_by: string
           entity: string
@@ -2324,10 +2399,13 @@ export type Database = {
           source: Database["public"]["Enums"]["import_source"]
           stats: Json
           status: Database["public"]["Enums"]["import_status"]
+          superseded_by: string | null;
           updated_at: string
         }
         Insert: {
+          commit_started_at?: string | null;
           committed_at?: string | null
+          content_hash?: string | null;
           created_at?: string
           created_by: string
           entity?: string
@@ -2339,10 +2417,13 @@ export type Database = {
           source: Database["public"]["Enums"]["import_source"]
           stats?: Json
           status?: Database["public"]["Enums"]["import_status"]
-          updated_at?: string
-        }
+          superseded_by?: string | null;
+          updated_at?: string;
+        };
         Update: {
+          commit_started_at?: string | null;
           committed_at?: string | null
+          content_hash?: string | null;
           created_at?: string
           created_by?: string
           entity?: string
@@ -2354,9 +2435,17 @@ export type Database = {
           source?: Database["public"]["Enums"]["import_source"]
           stats?: Json
           status?: Database["public"]["Enums"]["import_status"]
+          superseded_by?: string | null;
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "import_batches_superseded_by_fkey";
+            columns: ["superseded_by"];
+            isOneToOne: false;
+            referencedRelation: "import_batches";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "import_batches_organization_id_fkey"
             columns: ["organization_id"]
@@ -3407,6 +3496,10 @@ export type Database = {
           suspended_reason: string | null
           timezone: string
           traffic_profile: string
+          training_late_cancel_hours: number
+          training_missed_uses_session: boolean
+          training_share_progress: boolean
+          notify_email_training_package: boolean
           trial_ends_at: string | null
           updated_at: string
           work_days: number[]
@@ -3553,6 +3646,10 @@ export type Database = {
           suspended_reason?: string | null
           timezone?: string
           traffic_profile?: string
+          training_late_cancel_hours?: number
+          training_missed_uses_session?: boolean
+          training_share_progress?: boolean
+          notify_email_training_package?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           work_days?: number[]
@@ -3699,6 +3796,10 @@ export type Database = {
           suspended_reason?: string | null
           timezone?: string
           traffic_profile?: string
+          training_late_cancel_hours?: number
+          training_missed_uses_session?: boolean
+          training_share_progress?: boolean
+          notify_email_training_package?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           work_days?: number[]
@@ -5144,6 +5245,7 @@ export type Database = {
           category: string
           booked_visit_id: string | null
           client_id: string
+          client_package_id: string | null
           created_at: string
           dog_id: string | null
           groom_addons: Json
@@ -5172,6 +5274,7 @@ export type Database = {
           category: string
           booked_visit_id?: string | null
           client_id: string
+          client_package_id?: string | null
           created_at?: string
           dog_id?: string | null
           groom_addons?: Json
@@ -5200,6 +5303,7 @@ export type Database = {
           category?: string
           booked_visit_id?: string | null
           client_id?: string
+          client_package_id?: string | null
           created_at?: string
           dog_id?: string | null
           groom_addons?: Json
@@ -5230,6 +5334,13 @@ export type Database = {
             columns: ["booked_visit_id"]
             isOneToOne: false
             referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_client_package_id_fkey"
+            columns: ["client_package_id"]
+            isOneToOne: false
+            referencedRelation: "client_packages"
             referencedColumns: ["id"]
           },
           {
@@ -5616,6 +5727,48 @@ export type Database = {
         }
         Relationships: []
       }
+      service_packages: {
+        Row: {
+          id: string
+          organization_id: string
+          service_id: string
+          name: string
+          sessions_count: number
+          price_cents: number
+          expires_after_days: number | null
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          service_id: string
+          name: string
+          sessions_count: number
+          price_cents: number
+          expires_after_days?: number | null
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          service_id?: string
+          name?: string
+          sessions_count?: number
+          price_cents?: number
+          expires_after_days?: number | null
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "service_packages_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "service_packages_service_id_fkey"; columns: ["service_id"]; isOneToOne: false; referencedRelation: "services"; referencedColumns: ["id"] },
+        ]
+      }
       service_size_rules: {
         Row: {
           id: string
@@ -5665,6 +5818,163 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      session_progress: {
+        Row: {
+          id: string
+          organization_id: string
+          visit_id: string
+          skill_id: string
+          score: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          visit_id: string
+          skill_id: string
+          score: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          visit_id?: string
+          skill_id?: string
+          score?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "session_progress_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: false; referencedRelation: "visits"; referencedColumns: ["id"] },
+          { foreignKeyName: "session_progress_skill_id_fkey"; columns: ["skill_id"]; isOneToOne: false; referencedRelation: "training_skills"; referencedColumns: ["id"] },
+        ]
+      }
+      homework: {
+        Row: {
+          visit_id: string
+          organization_id: string
+          dog_id: string | null
+          body: string
+          due_on: string | null
+          client_marked_done_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          visit_id: string
+          organization_id: string
+          dog_id?: string | null
+          body: string
+          due_on?: string | null
+          client_marked_done_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          visit_id?: string
+          organization_id?: string
+          dog_id?: string | null
+          body?: string
+          due_on?: string | null
+          client_marked_done_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "homework_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: true; referencedRelation: "visits"; referencedColumns: ["id"] },
+          { foreignKeyName: "homework_dog_id_fkey"; columns: ["dog_id"]; isOneToOne: false; referencedRelation: "dogs"; referencedColumns: ["id"] },
+        ]
+      }
+      training_session_notes: {
+        Row: {
+          created_at: string
+          note: string | null
+          organization_id: string
+          trainer_note: string | null
+          updated_at: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          note?: string | null
+          organization_id: string
+          trainer_note?: string | null
+          updated_at?: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          note?: string | null
+          organization_id?: string
+          trainer_note?: string | null
+          updated_at?: string
+          visit_id?: string
+        }
+        Relationships: [
+          { foreignKeyName: "training_session_notes_visit_id_fkey"; columns: ["visit_id"]; isOneToOne: true; referencedRelation: "visits"; referencedColumns: ["id"] },
+        ]
+      }
+      training_package_notices: {
+        Row: {
+          dedupe_key: string
+          organization_id: string
+          client_package_id: string
+          kind: string
+          created_at: string
+        }
+        Insert: {
+          dedupe_key: string
+          organization_id: string
+          client_package_id: string
+          kind: string
+          created_at?: string
+        }
+        Update: {
+          dedupe_key?: string
+          organization_id?: string
+          client_package_id?: string
+          kind?: string
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "training_package_notices_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "training_package_notices_client_package_id_fkey"; columns: ["client_package_id"]; isOneToOne: false; referencedRelation: "client_packages"; referencedColumns: ["id"] },
+        ]
+      }
+      training_skills: {
+        Row: {
+          id: string
+          organization_id: string
+          name: string
+          sort_order: number
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          name: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          name?: string
+          sort_order?: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "training_skills_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
         ]
       }
       services: {
@@ -6122,6 +6432,7 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          client_package_id: string | null
           account_type: Database["public"]["Enums"]["account_type"]
           billing_cadence: Database["public"]["Enums"]["billing_cadence"]
           booked_via: string | null
@@ -6160,6 +6471,7 @@ export type Database = {
           zone_id: string | null
         }
         Insert: {
+          client_package_id?: string | null
           account_type: Database["public"]["Enums"]["account_type"]
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
@@ -6198,6 +6510,7 @@ export type Database = {
           zone_id?: string | null
         }
         Update: {
+          client_package_id?: string | null
           account_type?: Database["public"]["Enums"]["account_type"]
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
@@ -6236,6 +6549,7 @@ export type Database = {
           zone_id?: string | null
         }
         Relationships: [
+          { foreignKeyName: "subscriptions_client_package_id_fkey"; columns: ["client_package_id"]; isOneToOne: false; referencedRelation: "client_packages"; referencedColumns: ["id"] },
           {
             foreignKeyName: "subscriptions_client_id_fkey"
             columns: ["client_id"]
@@ -6638,7 +6952,9 @@ export type Database = {
       }
       visits: {
         Row: {
+          client_package_id: string | null
           assigned_staff_id: string | null
+          client_cancelled_at: string | null
           client_id: string
           completed_at: string | null
           completion_source: string | null
@@ -6687,7 +7003,9 @@ export type Database = {
           gate_reply_at: string | null
         }
         Insert: {
+          client_package_id?: string | null
           assigned_staff_id?: string | null
+          client_cancelled_at?: string | null
           client_id: string
           completed_at?: string | null
           completion_source?: string | null
@@ -6736,7 +7054,9 @@ export type Database = {
           gate_reply_at?: string | null
         }
         Update: {
+          client_package_id?: string | null
           assigned_staff_id?: string | null
+          client_cancelled_at?: string | null
           client_id?: string
           completed_at?: string | null
           completion_source?: string | null
@@ -6785,6 +7105,7 @@ export type Database = {
           gate_reply_at?: string | null
         }
         Relationships: [
+          { foreignKeyName: "visits_client_package_id_fkey"; columns: ["client_package_id"]; isOneToOne: false; referencedRelation: "client_packages"; referencedColumns: ["id"] },
           {
             foreignKeyName: "visits_assigned_staff_id_fkey"
             columns: ["assigned_staff_id"]
@@ -7177,6 +7498,23 @@ export type Database = {
       can_use_vaccine_record: {
         Args: { name: string; write: boolean }
         Returns: boolean
+      }
+      client_package_session_number: { Args: { _visit_id: string }; Returns: number }
+      cancel_client_package: {
+        Args: { _cancel_booked: boolean; _client_package_id: string }
+        Returns: number
+      }
+      set_training_share_progress: {
+        Args: { _org_id: string; _share: boolean }
+        Returns: undefined
+      }
+      set_training_session_rules: {
+        Args: {
+          _late_cancel_hours: number
+          _missed_uses_session: boolean
+          _org_id: string
+        }
+        Returns: undefined
       }
       accept_org_invite_for_current_user: {
         Args: { _token?: string }
@@ -7754,6 +8092,7 @@ export type Database = {
       }
       office_skip_visit: {
         Args: {
+          _client_cancelled_at?: string
           _code?: Database["public"]["Enums"]["skip_reason_code"]
           _reason: string
           _visit_id: string
@@ -8086,6 +8425,20 @@ export type Database = {
           _on: string
           _property_id: string
           _service_id?: string
+          _token: string
+        }
+        Returns: {
+          created: boolean
+          ticket_id: string
+        }[]
+      }
+      portal_request_training_lesson: {
+        Args: {
+          _at: string | null
+          _client_package_id: string
+          _message: string
+          _on: string
+          _property_id: string
           _token: string
         }
         Returns: {
