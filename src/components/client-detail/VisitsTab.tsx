@@ -25,6 +25,8 @@ import {
   listStaff,
 } from "@/lib/visits.functions";
 import { listClientHolds } from "@/lib/clients.functions";
+import { notifyCanceledWalks } from "@/lib/walk-notify.functions";
+import { useServiceLines } from "@/components/CommercialOnly";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { formatVisitDuration } from "@/lib/visit-lifecycle";
@@ -131,6 +133,8 @@ export function VisitsTab({
   const qc = useQueryClient();
   const { confirm, dialog: bulkConfirmDialog } = useConfirmDialog();
   const bulkCancelFn = useServerFn(cancelVisitFromOffice);
+  const notifyWalksFn = useServerFn(notifyCanceledWalks);
+  const runsWalks = useServiceLines().lines.includes("dog_walking");
   const bulkReassignFn = useServerFn(reassignVisit);
   const bulkStaffFn = useServerFn(listStaff);
 
@@ -168,10 +172,20 @@ export function VisitsTab({
       const results = await Promise.allSettled(
         ids.map((visitId) =>
           bulkCancelFn({
-            data: { visitId, reason: bulkCancelReason.trim(), code: bulkCancelCode as any },
+            data: {
+              visitId,
+              reason: bulkCancelReason.trim(),
+              code: bulkCancelCode as any,
+              // A walk's client gets one email for the whole set, below.
+              notifyClient: !runsWalks,
+            },
           }),
         ),
       );
+      const canceled = ids.filter((_, i) => results[i].status === "fulfilled");
+      if (runsWalks && canceled.length > 0) {
+        await notifyWalksFn({ data: { visitIds: canceled } }).catch(() => undefined);
+      }
       const ok = results.filter((r) => r.status === "fulfilled").length;
       return { ok, failed: results.length - ok };
     },

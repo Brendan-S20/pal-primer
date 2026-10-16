@@ -101,3 +101,18 @@ export function walkPlanScheduleChanged(before: WalkSlot, after: WalkSlot): bool
 /** At most this many lines in one email. A bulk move of a whole month says
  *  the first few and "and N more". */
 export const SCHEDULE_LINES_MAX = 10;
+
+// ── The office canceled a walk ──────────────────────────────────────────────
+
+/** "Mon, Oct 19, 10 AM to 12 PM", or just "Mon, Oct 19" when the plan has no
+ *  window. */
+export function canceledWalkLabel(s: Pick<WalkSlot, "day" | "earliest" | "latest">): string {
+  const day = s.day ? formatDay(s.day) : "";
+  const window = windowLabel(s.earliest, s.latest);
+  return window ? `${day}, ${window}` : day;
+}
+
+/** One canceled walk names its day; several say how many. */
+export function walkCanceledSubject(count: number, day: string): string {
+  return count > 1 ? `${count} of your walks are canceled` : `Your walk on ${day} is canceled`;
+}
