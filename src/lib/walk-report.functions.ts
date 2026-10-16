@@ -22,9 +22,10 @@ export const recordWalkReport = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("record_walk_report", {
       _visit_id: data.visitId,
-      _pee: data.pee,
-      _poo: data.poo,
-      _report_note: cleanReportNote(data.reportNote),
+      // The SQL function takes NULL for these: it means the walker did not say.
+      _pee: data.pee as boolean,
+      _poo: data.poo as boolean,
+      _report_note: cleanReportNote(data.reportNote) as string,
     });
     if (error) throw new Error(error.message);
     return { ok: true };

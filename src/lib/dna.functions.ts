@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { hasPermission } from "@/lib/permissions";
+import { newInvoice } from "@/lib/db-insert";
 
 export type DnaMatch = {
   id: string;
@@ -476,20 +477,22 @@ export const billDnaViolation = createServerFn({ method: "POST" })
     const today = nowIso.slice(0, 10);
     const { data: inv, error: iErr } = await supabase
       .from("invoices")
-      .insert({
-        organization_id: orgId,
-        client_id: clientId,
-        kind: "postpaid",
-        status: "open",
-        // No sales tax: a fine is a penalty, not a sale of service.
-        // tax_cents and tax_rate_bps default to 0.
-        subtotal_cents: m.fine_cents,
-        total_cents: m.fine_cents,
-        period_start: today,
-        period_end: today,
-        issued_at: nowIso,
-        notes: `DNA violation fine: sample ${m.lab_reference ?? m.id.slice(0, 8)}${m.location_note ? ` (${m.location_note})` : ""}`,
-      })
+      .insert(
+        newInvoice({
+          organization_id: orgId,
+          client_id: clientId,
+          kind: "postpaid",
+          status: "open",
+          // No sales tax: a fine is a penalty, not a sale of service.
+          // tax_cents and tax_rate_bps default to 0.
+          subtotal_cents: m.fine_cents,
+          total_cents: m.fine_cents,
+          period_start: today,
+          period_end: today,
+          issued_at: nowIso,
+          notes: `DNA violation fine: sample ${m.lab_reference ?? m.id.slice(0, 8)}${m.location_note ? ` (${m.location_note})` : ""}`,
+        }),
+      )
       .select("id")
       .single();
     if (iErr) throw new Error(iErr.message);
