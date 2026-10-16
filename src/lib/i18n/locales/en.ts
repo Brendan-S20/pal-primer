@@ -334,6 +334,9 @@ const en = {
     no: "No",
     noteForClient: "Note for the client",
     noteForClientPlaceholder: "Happy walk, sniffed every tree",
+    /** Property drawer, when property_access_codes did not return the row. */
+    codesNotLoaded:
+      "The saved codes are hidden or could not be loaded. They stay as they are unless you type new ones.",
   },
   visit: {
     stop: "Stop {{number}}.",

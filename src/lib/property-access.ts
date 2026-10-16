@@ -3,6 +3,11 @@
 // (view_client_directory) or the tech assigned to a visit at the property
 // today. A miss, including a failed call, is empty codes: the rest of the
 // property still loads, and the code is not shown.
+//
+// The map holds only the rows the function returned. accessLoaded tells a
+// property whose codes came back empty from one whose codes were refused or
+// failed to load. An editor needs that, or saving blank fields would wipe
+// codes it was never shown.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -49,6 +54,15 @@ export function accessFor(
 ): PropertyAccessCodes {
   if (!propertyId) return EMPTY;
   return map.get(propertyId) ?? EMPTY;
+}
+
+/** Whether property_access_codes returned this property's row. False when the
+ *  caller may not read the codes or the call failed. */
+export function accessLoaded(
+  map: Map<string, PropertyAccessCodes>,
+  propertyId: string | null | undefined,
+): boolean {
+  return !!propertyId && map.has(propertyId);
 }
 
 /** Puts the codes onto each visit's property. The visit query must not

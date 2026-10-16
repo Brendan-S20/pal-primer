@@ -212,4 +212,15 @@ describe("plain selects", () => {
     expect(sql).toMatch(/view_client_directory/);
     expect(sql).toMatch(/scheduled_on = \(now\(\) AT TIME ZONE/);
   });
+
+  it("gives the codes only to an active tech on a visit that is still open", () => {
+    const sql = readFileSync(
+      join(root, "supabase/migrations/20261015215000_a-lock-box-code-is-for-the-assigned-day.sql"),
+      "utf8",
+    );
+    const body = sql.slice(sql.indexOf("AS $function$"), sql.lastIndexOf("$function$;"));
+    expect(body).toMatch(/AND s\.active\b/);
+    expect(body).toMatch(/AND v\.status IN \('scheduled', 'in_progress'\)/);
+    expect(sql).not.toMatch(/Any status counts/);
+  });
 });

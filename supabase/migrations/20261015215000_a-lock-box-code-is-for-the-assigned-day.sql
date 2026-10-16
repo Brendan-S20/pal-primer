@@ -13,7 +13,10 @@
 --
 -- property_access_codes returns the three columns only to the office
 -- (view_client_directory) or to the tech assigned to a visit at that property
--- today, in the business's timezone. Any status counts: the visit is today.
+-- today, in the business's timezone. The tech's staff row must be active and
+-- the visit must be scheduled or in progress. A visit canceled, skipped or
+-- completed today no longer gives the codes. Neither does a staff member who
+-- was turned off.
 
 REVOKE SELECT ON TABLE public.properties FROM PUBLIC, anon, authenticated;
 
@@ -55,6 +58,8 @@ AS $function$
             AND v.organization_id = p.organization_id
             AND s.user_id = (SELECT auth.uid())
             AND s.organization_id = p.organization_id
+            AND s.active
+            AND v.status IN ('scheduled', 'in_progress')
             AND v.scheduled_on = (now() AT TIME ZONE COALESCE(o.timezone, 'America/Chicago'))::date
        )
      );
@@ -64,7 +69,7 @@ REVOKE ALL ON FUNCTION public.property_access_codes(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.property_access_codes(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.property_access_codes(uuid[]) IS
-  'Lock box code, key location and key tag. Office (view_client_directory), or the tech assigned to a visit at the property today. Plain SELECT of these columns is revoked from authenticated.';
+  'Lock box code, key location and key tag. Office (view_client_directory), or an active tech assigned to a scheduled or in-progress visit at the property today. Plain SELECT of these columns is revoked from authenticated.';
 
 DO $check$
 DECLARE
@@ -86,6 +91,15 @@ BEGIN
      OR (SELECT prosrc FROM pg_proc
           WHERE oid = 'public.property_access_codes(uuid[])'::regprocedure) NOT LIKE '%scheduled_on%' THEN
     RAISE EXCEPTION 'property_access_codes does not check the office or the day';
+  END IF;
+  IF (SELECT prosrc FROM pg_proc
+       WHERE oid = 'public.property_access_codes(uuid[])'::regprocedure)
+     NOT LIKE '%v.status IN (''scheduled'', ''in_progress'')%' THEN
+    RAISE EXCEPTION 'property_access_codes does not limit the visit to scheduled or in progress';
+  END IF;
+  IF (SELECT prosrc FROM pg_proc
+       WHERE oid = 'public.property_access_codes(uuid[])'::regprocedure) !~ '\ms\.active\M' THEN
+    RAISE EXCEPTION 'property_access_codes does not check that the staff row is active';
   END IF;
   IF NOT has_column_privilege('authenticated', 'public.properties', 'gate_code', 'SELECT')
      OR NOT has_column_privilege('authenticated', 'public.properties', 'street', 'SELECT') THEN
