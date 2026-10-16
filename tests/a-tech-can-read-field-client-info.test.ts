@@ -13,9 +13,13 @@ describe("a tech opens field-safe client info", () => {
     const fn = clients.slice(start, clients.indexOf("/** Edit-client drawer", start));
     expect(fn).toMatch(/resolveCaller\(supabase, userId\)/);
     expect(fn).toMatch(/\.from\("staff"\)[\s\S]*?\.eq\("user_id", userId\)/);
-    expect(fn).toMatch(/\.from\("visits"\)[\s\S]*?\.eq\("client_id", data\.clientId\)[\s\S]*?\.eq\("assigned_staff_id", staff\.id\)/);
+    expect(fn).toMatch(
+      /\.from\("visits"\)[\s\S]*?\.eq\("client_id", data\.clientId\)[\s\S]*?\.eq\("assigned_staff_id", staff\.id\)/,
+    );
     expect(fn.indexOf('from("visits")')).toBeLessThan(fn.indexOf("supabaseAdmin"));
-    expect(fn).toMatch(/select\("id, organization_id, display_name, account_type, primary_phone, notes"\)/);
+    expect(fn).toMatch(
+      /select\("id, organization_id, display_name, account_type, primary_phone, notes"\)/,
+    );
     expect(fn).not.toMatch(/portal_token|credit_balance_cents|autopay|tax_exempt/);
   });
 
@@ -23,7 +27,9 @@ describe("a tech opens field-safe client info", () => {
     expect(roles).toMatch(/role === "tech"[\s\S]*?\^\\\/clients\\\/\[0-9a-f\]/);
     expect(route).toMatch(/getFieldClientInfo/);
     expect(route).toMatch(/enabled: !roleLoading && !canViewDirectory/);
-    expect(route).toMatch(/<FieldClientInfoView/);
+    // The restricted page is its own component, on the TECH_SCREENS list.
+    expect(route).toMatch(/<FieldClientView/);
+    expect(route).toMatch(/from "@\/components\/client-detail\/FieldClientView"/);
     expect(route).toMatch(/enabled: canViewDirectory/);
   });
 });

@@ -113,9 +113,24 @@ async function businessCanText(orgId: string): Promise<boolean> {
 
 const VISIT_NOTICE_DEADLINE_MS = 2_500;
 
+/** lib/keep-alive.server.ts's KeepAlive, spelled here so this file, which the
+ *  browser bundle also reads, imports nothing from a .server module. */
+type KeepAlive = (job: Promise<unknown>) => void;
+
+/**
+ * How long Complete waits for one notice before answering the tech.
+ *
+ * Work that misses the deadline keeps going, and the tech is told the notices
+ * are "still sending". On a Worker that is only true if the work is handed to
+ * waitUntil (`keepAlive`, lib/keep-alive.server.ts): a promise nobody holds can
+ * be cut off once the response has gone out, and the email never sends. Where
+ * there is no waitUntil (Node in dev, vitest) `keepAlive` does nothing and the
+ * promise runs on by itself.
+ */
 async function withNoticeDeadline<T>(
   label: string,
   work: Promise<T>,
+  keepAlive: KeepAlive,
 ): Promise<{ timedOut: true } | { timedOut: false; value: T }> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const timeout = new Promise<"timeout">((resolve) => {
@@ -124,7 +139,7 @@ async function withNoticeDeadline<T>(
   const result = await Promise.race([work, timeout]);
   if (timer) clearTimeout(timer);
   if (result === "timeout") {
-    work.catch((e) => console.error(`${label} failed after timeout`, e));
+    keepAlive(work.catch((e) => console.error(`${label} failed after timeout`, e)));
     return { timedOut: true };
   }
   return { timedOut: false, value: result as T };
@@ -305,10 +320,13 @@ export const completeVisit = createServerFn({ method: "POST" })
       console.warn("visit.completed activity log failed", data.visitId, e);
     }
 
-    const sentClientNotices: Array<
-      "completion_email" | "push" | "review_sms" | "review_email"
-    > = [];
+    const sentClientNotices: Array<"completion_email" | "push" | "review_sms" | "review_email"> =
+      [];
     let noticesPending = false;
+    // What a notice that misses its deadline is handed to, so "still
+    // sending" stays true after this returns (see withNoticeDeadline).
+    const { keepAliveForThisRequest } = await import("@/lib/keep-alive.server");
+    const keepAlive = await keepAliveForThisRequest();
 
     // The office hears when the route is finished, or when the NEXT stop is
     // now going to be late (field-notify.server.ts). It is not a client
@@ -321,6 +339,7 @@ export const completeVisit = createServerFn({ method: "POST" })
         await withNoticeDeadline(
           "route follow-up after completion",
           afterStopResolved({ visitId: data.visitId, actorUserId: context.userId }),
+          keepAlive,
         );
       } catch (e) {
         console.warn("route follow-up after completion failed", data.visitId, e);
@@ -410,6 +429,7 @@ export const completeVisit = createServerFn({ method: "POST" })
                 checklist,
               },
             }),
+            keepAlive,
           ),
           withNoticeDeadline(
             "visit-completed push",
@@ -419,6 +439,7 @@ export const completeVisit = createServerFn({ method: "POST" })
               tag: `visit-${data.visitId}`,
               url: "/portal",
             }),
+            keepAlive,
           ),
         ]);
         if (emailResult.timedOut) noticesPending = true;
@@ -480,6 +501,9 @@ export const completeVisit = createServerFn({ method: "POST" })
             .replace(/\{link\}/g, o.google_review_url);
           const { sendTwilioSms } = await import("@/lib/twilio.server");
           try {
+            // The send and its record are one piece of work, so a text that
+            // lands after the deadline is still logged and still marks the
+            // client asked; otherwise the next visit would ask again.
             const smsResult = await withNoticeDeadline(
               "review SMS",
               sendTwilioSms({
@@ -488,24 +512,26 @@ export const completeVisit = createServerFn({ method: "POST" })
                 from: sender.from ?? undefined,
                 messagingServiceSid: sender.messagingServiceSid ?? undefined,
                 credentials: sender.credentials,
+              }).then(async (res) => {
+                await context.supabase.from("messages").insert({
+                  organization_id: orgId,
+                  client_id: c.id,
+                  visit_id: data.visitId,
+                  direction: "outbound",
+                  body,
+                  from_number: sender.from,
+                  to_number: c.primary_phone,
+                  twilio_sid: res.sid,
+                  status: (res.status || "sent") as any,
+                });
+                await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+                return res;
               }),
+              keepAlive,
             );
             if (smsResult.timedOut) {
               noticesPending = true;
             } else {
-              const res = smsResult.value;
-              await context.supabase.from("messages").insert({
-                organization_id: orgId,
-                client_id: c.id,
-                visit_id: data.visitId,
-                direction: "outbound",
-                body,
-                from_number: sender.from,
-                to_number: c.primary_phone,
-                twilio_sid: res.sid,
-                status: (res.status || "sent") as any,
-              });
-              await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
               sentClientNotices.push("review_sms");
             }
           } catch (err) {
@@ -522,15 +548,18 @@ export const completeVisit = createServerFn({ method: "POST" })
               notifyKey: "notify_email_review_request",
               idempotencyKey: `review-${c.id}-${new Date().toISOString().slice(0, 10)}`,
               templateData: { reviewUrl: o.google_review_url },
+            }).then(async (r) => {
+              // Marked with the enqueue, for the same reason as the text.
+              if ((r as { ok?: boolean })?.ok)
+                await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+              return r;
             }),
+            keepAlive,
           );
           if (reviewEmail.timedOut) {
             noticesPending = true;
-          } else {
-            if ((reviewEmail.value as { ok?: boolean })?.ok) {
-              await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
-              sentClientNotices.push("review_email");
-            }
+          } else if ((reviewEmail.value as { ok?: boolean })?.ok) {
+            sentClientNotices.push("review_email");
           }
         }
       }
