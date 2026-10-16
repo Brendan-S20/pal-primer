@@ -32,7 +32,11 @@ export function careSummary(care: PetCare | null | undefined): string | null {
   if (!care) return null;
   const parts = [
     care.feeding?.trim() ? "Feeding" : null,
-    care.meds.length === 1 ? "1 medication" : care.meds.length > 1 ? `${care.meds.length} medications` : null,
+    care.meds.length === 1
+      ? "1 medication"
+      : care.meds.length > 1
+        ? `${care.meds.length} medications`
+        : null,
     care.other_care?.trim() ? "Other care" : null,
   ].filter(Boolean);
   return parts.length ? parts.join(", ") : null;
@@ -41,7 +45,9 @@ export function careSummary(care: PetCare | null | undefined): string | null {
 /** "Insulin, 2 units at 8 AM and 8 PM". */
 export function medLine(m: PetMed): string {
   const times = m.times.map((t) => clockLabel(t)).filter(Boolean);
-  return [m.name, m.dose].filter(Boolean).join(", ") + (times.length ? ` at ${times.join(" and ")}` : "");
+  return (
+    [m.name, m.dose].filter(Boolean).join(", ") + (times.length ? ` at ${times.join(" and ")}` : "")
+  );
 }
 
 const blankMed = (): PetMed => ({ name: "", dose: null, times: ["08:00"], notes: null });

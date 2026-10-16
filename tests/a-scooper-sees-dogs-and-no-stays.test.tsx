@@ -12,12 +12,20 @@ const lines = vi.hoisted(() => ({ current: ["pet_waste"] as string[] }));
 vi.mock("@tanstack/react-start", () => ({
   useServerFn: (f: unknown) => f,
   createServerFn: () => {
-    const chain: any = { middleware: () => chain, inputValidator: () => chain, handler: () => vi.fn() };
+    const chain: any = {
+      middleware: () => chain,
+      inputValidator: () => chain,
+      handler: () => vi.fn(),
+    };
     return chain;
   },
 }));
 vi.mock("@/components/CommercialOnly", () => ({
-  useServiceLines: () => ({ lines: lines.current, petWaste: lines.current.includes("pet_waste"), known: true }),
+  useServiceLines: () => ({
+    lines: lines.current,
+    petWaste: lines.current.includes("pet_waste"),
+    known: true,
+  }),
 }));
 vi.mock("@/lib/dogs.functions", () => ({ addDog: vi.fn(), updateDog: vi.fn() }));
 vi.mock("@/lib/stays.functions", () => ({
@@ -45,9 +53,23 @@ import { DogsSection } from "@/components/client-detail/PropertiesTab";
 import { StaysSection } from "@/components/client-detail/StaysSection";
 
 const pets = [
-  { id: "d1", property_id: "p1", name: "Biscuit", species: "dog", temperament: "friendly", active: true },
+  {
+    id: "d1",
+    property_id: "p1",
+    name: "Biscuit",
+    species: "dog",
+    temperament: "friendly",
+    active: true,
+  },
   { id: "d2", property_id: "p1", name: "Rex", temperament: "unknown", active: true },
-  { id: "c1", property_id: "p1", name: "Miso", species: "cat", temperament: "unknown", active: true },
+  {
+    id: "c1",
+    property_id: "p1",
+    name: "Miso",
+    species: "cat",
+    temperament: "unknown",
+    active: true,
+  },
 ];
 const dogsOnly = pets.filter((p) => p.species !== "cat");
 

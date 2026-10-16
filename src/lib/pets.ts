@@ -40,7 +40,10 @@ export function activeDogCount(pets: readonly PetLike[]): number {
 
 /** What kind of pet, for a list: "Cat", "Rabbit", "Other pet". Null for a
  *  dog, whose breed already says it. */
-export function speciesLabel(p: { species?: string | null; species_note?: string | null }): string | null {
+export function speciesLabel(p: {
+  species?: string | null;
+  species_note?: string | null;
+}): string | null {
   if (isDog(p)) return null;
   if (p.species === "other") {
     const note = (p.species_note ?? "").trim();
@@ -50,7 +53,10 @@ export function speciesLabel(p: { species?: string | null; species_note?: string
 }
 
 /** The note is kept only for "other", trimmed and no longer than the column. */
-export function cleanSpeciesNote(species: PetSpecies, note: string | null | undefined): string | null {
+export function cleanSpeciesNote(
+  species: PetSpecies,
+  note: string | null | undefined,
+): string | null {
   if (species !== "other") return null;
   const t = (note ?? "").trim();
   return t ? t.slice(0, SPECIES_NOTE_MAX) : null;
@@ -99,10 +105,12 @@ export function medsProblem(meds: readonly PetMed[]): string | null {
     const name = (med.name ?? "").trim();
     if (!name) return "Give each medication a name.";
     if (name.length > MED_NAME_MAX) return `A medication name is up to ${MED_NAME_MAX} characters.`;
-    if ((med.dose ?? "").length > MED_DOSE_MAX) return `A dose is up to ${MED_DOSE_MAX} characters.`;
+    if ((med.dose ?? "").length > MED_DOSE_MAX)
+      return `A dose is up to ${MED_DOSE_MAX} characters.`;
     if ((med.notes ?? "").length > MED_NOTES_MAX)
       return `Medication notes are up to ${MED_NOTES_MAX} characters.`;
-    if (med.times.length > MED_TIMES_MAX) return `Up to ${MED_TIMES_MAX} times a day for one medication.`;
+    if (med.times.length > MED_TIMES_MAX)
+      return `Up to ${MED_TIMES_MAX} times a day for one medication.`;
     if (!med.times.every((t) => CLOCK.test(t))) return "Write each medication time as HH:MM.";
   }
   return null;
@@ -134,7 +142,9 @@ export function readMeds(raw: unknown): PetMed[] {
     .map((m) => ({
       name: typeof m.name === "string" ? m.name : "",
       dose: typeof m.dose === "string" ? m.dose : null,
-      times: Array.isArray(m.times) ? m.times.filter((t): t is string => typeof t === "string") : [],
+      times: Array.isArray(m.times)
+        ? m.times.filter((t): t is string => typeof t === "string")
+        : [],
       notes: typeof m.notes === "string" ? m.notes : null,
     }))
     .filter((m) => m.name);

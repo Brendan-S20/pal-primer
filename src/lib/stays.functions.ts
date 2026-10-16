@@ -77,7 +77,9 @@ async function takenNights(
     .not("status", "in", "(canceled,skipped,missed)")
     .eq("subscriptions.stays.kind", "overnight");
   if (error) throw new Error(error.message);
-  return ((data ?? []) as Array<{ scheduled_on: string; subscriptions: { stay_id: string } | null }>)
+  return (
+    (data ?? []) as Array<{ scheduled_on: string; subscriptions: { stay_id: string } | null }>
+  )
     .filter((v) => v.subscriptions?.stay_id !== exceptStayId)
     .map((v) => v.scheduled_on);
 }
@@ -109,7 +111,10 @@ async function careSnapshot(
 ): Promise<Json> {
   if (petIds.length === 0) return [];
   const [pets, care] = await Promise.all([
-    supabase.from("dogs").select("id, name, species, species_note").in("id", [...petIds]),
+    supabase
+      .from("dogs")
+      .select("id, name, species, species_note")
+      .in("id", [...petIds]),
     (supabase as any)
       .from("pet_care_instructions")
       .select("pet_id, feeding, meds, other_care")
@@ -118,9 +123,14 @@ async function careSnapshot(
   if (pets.error) throw new Error(pets.error.message);
   if (care.error) throw new Error(care.error.message);
   const byPet = new Map(
-    ((care.data ?? []) as Array<{ pet_id: string; feeding: string | null; meds: unknown; other_care: string | null }>).map(
-      (c) => [c.pet_id, c],
-    ),
+    (
+      (care.data ?? []) as Array<{
+        pet_id: string;
+        feeding: string | null;
+        meds: unknown;
+        other_care: string | null;
+      }>
+    ).map((c) => [c.pet_id, c]),
   );
   return (pets.data ?? []).map((p: any) => {
     const c = byPet.get(p.id);
@@ -207,7 +217,9 @@ export const createStay = createServerFn({ method: "POST" })
 
     const priceCents = data.priceCents ?? stayVisitPriceCents(service as any, petIds.length);
     if (priceCents == null)
-      throw new Error("This service has no price yet. Type a price, or set one in Settings > Services.");
+      throw new Error(
+        "This service has no price yet. Type a price, or set one in Settings > Services.",
+      );
 
     const days = stayDays(kind, data.startsOn, data.endsOn);
     if (data.sitterId && kind === "overnight")
@@ -262,7 +274,13 @@ export const createStay = createServerFn({ method: "POST" })
     );
     let ids: string[];
     try {
-      ({ ids } = await createSubscriptionPlans(supabase, context.userId, plans, "pet_sitting", stayId));
+      ({ ids } = await createSubscriptionPlans(
+        supabase,
+        context.userId,
+        plans,
+        "pet_sitting",
+        stayId,
+      ));
     } catch (e) {
       // Nothing half-booked: the stay goes with its plans.
       await (supabase as any).from("stays").delete().eq("id", stayId);

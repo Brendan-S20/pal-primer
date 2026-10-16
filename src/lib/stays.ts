@@ -96,13 +96,16 @@ export function visitCountSentence(n: number): string {
 /** Why these dates cannot be booked, or null. */
 export function stayDatesProblem(kind: StayKind, startsOn: string, endsOn: string): string | null {
   if (!DAY.test(startsOn) || !DAY.test(endsOn))
-    return kind === "overnight" ? "Choose a check-in and check-out day." : "Choose a first and last day.";
+    return kind === "overnight"
+      ? "Choose a check-in and check-out day."
+      : "Choose a first and last day.";
   if (kind === "overnight") {
     if (endsOn <= startsOn) return "Check-out has to be at least one day after check-in.";
   } else if (endsOn < startsOn) {
     return "The last day can't be before the first day.";
   }
-  if (daysBetween(startsOn, endsOn) > STAY_MAX_DAYS) return `A stay is up to ${STAY_MAX_DAYS} days.`;
+  if (daysBetween(startsOn, endsOn) > STAY_MAX_DAYS)
+    return `A stay is up to ${STAY_MAX_DAYS} days.`;
   return null;
 }
 
@@ -131,7 +134,10 @@ export function stayPlanWindows(
 /** One visit's price: the service's rule for the pets on the stay, one night
  *  per overnight visit. Null when the service has no price yet. */
 export function stayVisitPriceCents(
-  service: Pick<ServiceDraft, "price_unit" | "base_price_cents" | "extra_pet_cents" | "default_duration_min">,
+  service: Pick<
+    ServiceDraft,
+    "price_unit" | "base_price_cents" | "extra_pet_cents" | "default_duration_min"
+  >,
   pets: number,
 ): number | null {
   return servicePriceCents(service, { pets: Math.max(1, pets), nights: 1 });
@@ -140,7 +146,10 @@ export function stayVisitPriceCents(
 /** The sentence the database raises (tg_visits_stay_sitter) when a sitter
  *  would have two overnights on one night, written the same way here for the
  *  check the server makes before it writes anything. */
-export function overnightConflictSentence(sitter: string | null | undefined, night: string): string {
+export function overnightConflictSentence(
+  sitter: string | null | undefined,
+  night: string,
+): string {
   const d = new Date(`${night}T12:00:00Z`);
   const when = d.toLocaleDateString("en-US", {
     weekday: "long",
@@ -153,10 +162,7 @@ export function overnightConflictSentence(sitter: string | null | undefined, nig
 }
 
 /** The first night in `nights` that is already taken, or null. */
-export function firstTakenNight(
-  nights: readonly string[],
-  taken: Iterable<string>,
-): string | null {
+export function firstTakenNight(nights: readonly string[], taken: Iterable<string>): string | null {
   const set = new Set(taken);
   return nights.find((n) => set.has(n)) ?? null;
 }
@@ -172,7 +178,11 @@ export type VisitStayRef = {
  *  when the visit is not part of a stay. */
 export function visitStayDates(stay: VisitStayRef | undefined): string | null {
   if (!stay?.starts_on || !stay.ends_on) return null;
-  return stayDatesLabel(stay.kind === "overnight" ? "overnight" : "drop_in", stay.starts_on, stay.ends_on);
+  return stayDatesLabel(
+    stay.kind === "overnight" ? "overnight" : "drop_in",
+    stay.starts_on,
+    stay.ends_on,
+  );
 }
 
 /** "Oct 19 to Oct 23", or "Check-in Oct 19, check-out Oct 24" for an overnight. */

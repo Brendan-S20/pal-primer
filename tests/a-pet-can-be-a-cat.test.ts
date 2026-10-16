@@ -41,9 +41,7 @@ describe("the migration", () => {
   });
 
   it("adds care instructions, one row per pet, removed with the pet", () => {
-    expect(code).toMatch(
-      /pet_id uuid PRIMARY KEY REFERENCES public\.dogs\(id\) ON DELETE CASCADE/,
-    );
+    expect(code).toMatch(/pet_id uuid PRIMARY KEY REFERENCES public\.dogs\(id\) ON DELETE CASCADE/);
     expect(code).toMatch(/char_length\(feeding\) <= 500/);
     expect(code).toMatch(/char_length\(other_care\) <= 1000/);
     expect(code).toMatch(/meds jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
@@ -145,7 +143,12 @@ describe("pets that are not dogs", () => {
 });
 
 describe("medications", () => {
-  const insulin: PetMed = { name: "Insulin", dose: "2 units", times: ["08:00", "20:00"], notes: null };
+  const insulin: PetMed = {
+    name: "Insulin",
+    dose: "2 units",
+    times: ["08:00", "20:00"],
+    notes: null,
+  };
 
   it("accepts the shape the database accepts", () => {
     expect(medsProblem([])).toBeNull();

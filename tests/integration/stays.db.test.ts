@@ -57,7 +57,11 @@ async function signIn(email: string) {
 
 async function person(org: string, name: string, role: "owner" | "tech") {
   const email = `${name}-${runId}@staytest.local`;
-  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
   if (error) throw new Error(error.message);
   const userId = data.user!.id;
   userIds.push(userId);
@@ -132,7 +136,9 @@ async function bookStay(
     assigned_staff_id: opts.sitterId ?? null,
   });
   const lastDay = overnight
-    ? new Date(new Date(`${opts.endsOn}T00:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 10)
+    ? new Date(new Date(`${opts.endsOn}T00:00:00Z`).getTime() - 86_400_000)
+        .toISOString()
+        .slice(0, 10)
     : opts.endsOn;
   const planIds: string[] = [];
   for (const [earliest, latest] of windows)
@@ -319,9 +325,9 @@ describe.skipIf(!dbEnabled)("pet sitting in the database", () => {
       endsOn: day(10),
       sitterId: otherSitter.staffId,
     });
-    expect((await visitsOf(planIds)).every((v) => v.assigned_staff_id === otherSitter.staffId)).toBe(
-      true,
-    );
+    expect(
+      (await visitsOf(planIds)).every((v) => v.assigned_staff_id === otherSitter.staffId),
+    ).toBe(true);
 
     // A second overnight overlapping two of those nights, booked unassigned,
     // then given the same sitter: refused, naming the night.

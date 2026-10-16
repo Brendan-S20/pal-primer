@@ -129,11 +129,21 @@ describe("kind, price and the sentences", () => {
   });
 
   it("prices one visit for the pets on the stay, one night at a time", () => {
-    const night = { price_unit: "night", base_price_cents: 6000, extra_pet_cents: 1000, default_duration_min: null } as const;
+    const night = {
+      price_unit: "night",
+      base_price_cents: 6000,
+      extra_pet_cents: 1000,
+      default_duration_min: null,
+    } as const;
     expect(stayVisitPriceCents(night, 1)).toBe(6000);
     expect(stayVisitPriceCents(night, 3)).toBe(8000);
     expect(stayVisitPriceCents(night, 0)).toBe(6000);
-    const dropIn = { price_unit: "visit", base_price_cents: 2500, extra_pet_cents: 0, default_duration_min: 30 } as const;
+    const dropIn = {
+      price_unit: "visit",
+      base_price_cents: 2500,
+      extra_pet_cents: 0,
+      default_duration_min: 30,
+    } as const;
     expect(stayVisitPriceCents(dropIn, 2)).toBe(2500);
     expect(stayVisitPriceCents({ ...dropIn, base_price_cents: null }, 2)).toBeNull();
   });
@@ -183,10 +193,14 @@ describe("the migration", () => {
     ])
       expect(code, col).toContain(col);
     expect(code).toMatch(/CHECK \(kind IN \('drop_in', 'overnight'\)\)/);
-    expect(code).toMatch(/CHECK \(status IN \('requested', 'confirmed', 'canceled', 'completed'\)\)/);
+    expect(code).toMatch(
+      /CHECK \(status IN \('requested', 'confirmed', 'canceled', 'completed'\)\)/,
+    );
     expect(code).toMatch(/CHECK \(ends_on >= starts_on\)/);
     expect(code).toMatch(/CHECK \(kind <> 'overnight' OR ends_on > starts_on\)/);
-    expect(code).toMatch(/CREATE INDEX IF NOT EXISTS stays_org_starts_idx ON public\.stays\(organization_id, starts_on\)/);
+    expect(code).toMatch(
+      /CREATE INDEX IF NOT EXISTS stays_org_starts_idx ON public\.stays\(organization_id, starts_on\)/,
+    );
     // US spelling (#469).
     expect(sql).not.toMatch(/cancelled/i);
   });
@@ -195,7 +209,9 @@ describe("the migration", () => {
     const fn = code.slice(code.indexOf("FUNCTION public.tg_stays_validate"));
     expect(fn).toMatch(/_line IS DISTINCT FROM 'pet_sitting'/);
     expect(fn).toMatch(/_svc_org IS DISTINCT FROM NEW\.organization_id/);
-    expect(fn).toMatch(/NEW\.kind := CASE WHEN _unit = 'night' THEN 'overnight' ELSE 'drop_in' END/);
+    expect(fn).toMatch(
+      /NEW\.kind := CASE WHEN _unit = 'night' THEN 'overnight' ELSE 'drop_in' END/,
+    );
     expect(fn).toMatch(/COALESCE\(NEW\.overnight_arrival_earliest, '19:00'::time\)/);
     expect(fn).toMatch(/COALESCE\(NEW\.overnight_arrival_latest, '21:00'::time\)/);
   });
@@ -217,12 +233,18 @@ describe("the migration", () => {
     expect(code).toMatch(
       /ADD COLUMN IF NOT EXISTS stay_id uuid REFERENCES public\.stays\(id\) ON DELETE CASCADE/,
     );
-    expect(code).toMatch(/CREATE INDEX IF NOT EXISTS subscriptions_stay_idx ON public\.subscriptions\(stay_id\)/);
-    expect(code).toMatch(/WHEN \(NEW\.stay_id IS NOT NULL\)\s+EXECUTE FUNCTION public\.tg_subscriptions_stay\(\)/);
+    expect(code).toMatch(
+      /CREATE INDEX IF NOT EXISTS subscriptions_stay_idx ON public\.subscriptions\(stay_id\)/,
+    );
+    expect(code).toMatch(
+      /WHEN \(NEW\.stay_id IS NOT NULL\)\s+EXECUTE FUNCTION public\.tg_subscriptions_stay\(\)/,
+    );
   });
 
   it("splices one stay branch into the generator, before the weekday branch, with no hold or blackout skip", () => {
-    expect(code).toMatch(/pg_get_functiondef\('public\.generate_visits_core\(uuid, date, uuid\)'::regprocedure\)/);
+    expect(code).toMatch(
+      /pg_get_functiondef\('public\.generate_visits_core\(uuid, date, uuid\)'::regprocedure\)/,
+    );
     expect(code).not.toMatch(/CREATE OR REPLACE FUNCTION public\.generate_visits_core/);
     const branch = sql.slice(sql.indexOf("$branch$"), sql.lastIndexOf("$branch$"));
     expect(branch).toMatch(/IF _sub\.stay_id IS NOT NULL THEN/);
@@ -232,7 +254,10 @@ describe("the migration", () => {
     // proof still finds exactly four.
     expect(branch).toMatch(/ON CONFLICT DO NOTHING;/);
     expect(branch).not.toMatch(/ON CONFLICT \(subscription_id, scheduled_on\)/);
-    expect(code).toMatch(/_branch_at\s+CONSTANT text := '-- weekday set \(subscriptions\.weekdays, 0 = Sunday\)/);
+    // Read from the raw file: the comment-stripped text drops the literal too.
+    expect(sql).toMatch(
+      /_branch_at\s+CONSTANT text := '-- weekday set \(subscriptions\.weekdays, 0 = Sunday\)/,
+    );
     expect(code).toMatch(/the stay branch must come before the weekday branch/);
   });
 
@@ -253,8 +278,12 @@ describe("the migration", () => {
 
   it("cancels a stay's future visits and ends its plans; a new sitter takes its future visits", () => {
     const fn = code.slice(code.indexOf("FUNCTION public.tg_stays_follow"));
-    expect(fn).toMatch(/SET status = 'canceled'[\s\S]*?v\.status = 'scheduled'[\s\S]*?v\.scheduled_on >= _today/);
-    expect(fn).toMatch(/NOT EXISTS \(SELECT 1 FROM public\.invoice_line_items li WHERE li\.visit_id = v\.id\)/);
+    expect(fn).toMatch(
+      /SET status = 'canceled'[\s\S]*?v\.status = 'scheduled'[\s\S]*?v\.scheduled_on >= _today/,
+    );
+    expect(fn).toMatch(
+      /NOT EXISTS \(SELECT 1 FROM public\.invoice_line_items li WHERE li\.visit_id = v\.id\)/,
+    );
     expect(fn).toMatch(/UPDATE public\.subscriptions s\s+SET status = 'canceled'/);
     expect(fn).toMatch(/SET assigned_staff_id = NEW\.assigned_staff_id, sequence = NULL/);
   });
@@ -266,7 +295,11 @@ describe("the migration", () => {
       "tg_visits_stay_sitter",
       "tg_stays_follow",
     ]) {
-      expect(code).toMatch(new RegExp(`REVOKE ALL ON FUNCTION public\\.${name}\\(\\) FROM PUBLIC, anon, authenticated`));
+      expect(code).toMatch(
+        new RegExp(
+          `REVOKE ALL ON FUNCTION public\\.${name}\\(\\) FROM PUBLIC, anon, authenticated`,
+        ),
+      );
       const def = code.slice(code.indexOf(`FUNCTION public.${name}()`));
       expect(def.slice(0, 200), name).toMatch(/SET search_path TO 'public', 'pg_temp'/);
     }
@@ -287,7 +320,9 @@ describe("the server", () => {
 
   it("books a stay through the plan path #468's walk times use", () => {
     expect(fns).toMatch(/requirePermission\(supabase, context\.userId, "manage_pricing"\)/);
-    expect(fns).toMatch(/createSubscriptionPlans\(supabase, context\.userId, plans, "pet_sitting", stayId\)/);
+    expect(fns).toMatch(
+      /createSubscriptionPlans\(\s*supabase,\s*context\.userId,\s*plans,\s*"pet_sitting",\s*stayId,?\s*\)/,
+    );
     expect(fns).toMatch(/weekdays: \[\.\.\.EVERY_DAY\]/);
     expect(fns).toMatch(/generate_visits_for_subscription/);
     // A failed plan write takes the stay with it.
@@ -296,7 +331,9 @@ describe("the server", () => {
   });
 
   it("checks the sitter's nights before it writes, and asks the database's own office check", () => {
-    expect(fns).toMatch(/await refuseOvernightConflict\(supabase, orgId, data\.sitterId, days, null\)/);
+    expect(fns).toMatch(
+      /await refuseOvernightConflict\(supabase, orgId, data\.sitterId, days, null\)/,
+    );
     expect(fns).toMatch(/rpc\("can_write_org"/);
   });
 
@@ -326,7 +363,11 @@ describe("routing keeps a stay with its sitter", () => {
       eq: () => query,
       in: async () => ({
         data: [
-          { id: "walk-0", walk_group_id: null, subscriptions: { stay_id: "stay-1", stays: { assigned_staff_id: "sitter-a" } } },
+          {
+            id: "walk-0",
+            walk_group_id: null,
+            subscriptions: { stay_id: "stay-1", stays: { assigned_staff_id: "sitter-a" } },
+          },
           { id: "walk-1", walk_group_id: null, subscriptions: { stay_id: null, stays: null } },
         ],
         error: null,

@@ -339,7 +339,9 @@ function BookStayDrawer({
         windowsProblem ||
         (petIds.length === 0 ? "Choose at least one pet." : null) ||
         (priceCents == null || Number.isNaN(priceCents) ? "Set a price per visit." : null) ||
-        (depositCents != null && Number.isNaN(depositCents) ? "The deposit is not an amount." : null);
+        (depositCents != null && Number.isNaN(depositCents)
+          ? "The deposit is not an amount."
+          : null);
   const count = datesProblem ? 0 : stayVisitCount(kind, startsOn, endsOn, windows.length);
 
   const save = useMutation({
@@ -524,7 +526,9 @@ function BookStayDrawer({
             </Button>
           </div>
         )}
-        {submitted && windowsProblem && <p className="text-xs text-destructive">{windowsProblem}</p>}
+        {submitted && windowsProblem && (
+          <p className="text-xs text-destructive">{windowsProblem}</p>
+        )}
 
         <fieldset className="min-w-0 space-y-2">
           <legend className="text-sm font-medium">Pets on the stay</legend>
@@ -542,9 +546,7 @@ function BookStayDrawer({
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(v) =>
-                          setChosenPets(
-                            v ? [...petIds, p.id] : petIds.filter((id) => id !== p.id),
-                          )
+                          setChosenPets(v ? [...petIds, p.id] : petIds.filter((id) => id !== p.id))
                         }
                       />
                       <span className="min-w-0 truncate">
@@ -613,7 +615,9 @@ function BookStayDrawer({
         </div>
 
         <p className="text-sm font-medium" aria-live="polite">
-          {count > 0 ? visitCountSentence(count) : "Choose the dates to see how many visits this creates."}
+          {count > 0
+            ? visitCountSentence(count)
+            : "Choose the dates to see how many visits this creates."}
         </p>
         {submitted && problem && !datesProblem && !windowsProblem && (
           <p className="text-xs text-destructive">{problem}</p>
