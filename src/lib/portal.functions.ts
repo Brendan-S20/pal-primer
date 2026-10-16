@@ -1204,10 +1204,13 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
     const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: org } = await (sb.from("organizations") as any)
-      .select("timezone, work_days, portal_auto_accept_bookings, one_off_price_cents, currency")
+      .select(
+        "timezone, work_days, portal_auto_accept_bookings, one_off_price_cents, currency, workday_start, workday_end",
+      )
       .eq("id", session.organizationId)
       .maybeSingle();
     const tz = (org?.timezone as string | null) || "America/Chicago";
+    const { walkWindows } = await import("@/lib/walk-windows");
     const today = orgToday(tz);
     const { addDaysToDay } = await import("@/lib/reclean");
     const { bookableDays, ONE_OFF_MAX_DAYS_AHEAD, oneOffServiceOptions } = await import(
@@ -1282,6 +1285,9 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       services: oneOffServiceOptions((services ?? []) as any[], priceCents),
       petsByProperty,
       currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
+      // The times a walk can be asked for (#410): the working day in two-hour
+      // windows. portalRequestOneOff accepts only these, or no window.
+      walkWindows: walkWindows(org?.workday_start ?? null, org?.workday_end ?? null),
     };
   });
 
@@ -1310,6 +1316,10 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         /** The service asked for (phase 5). Omitted: the extra cleanup, as
          *  every request before the catalog. */
         serviceId: z.string().uuid().optional(),
+        /** A walk's time window (#410), "HH:MM". Both or neither, and only
+         *  one of the windows portalOneOffBookingOptions offered. */
+        earliestTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        latestTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
       })
       .parse(d),
   )
@@ -1331,6 +1341,10 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       service = svc ?? null;
     }
     const petWaste = !service || service.service_line === "pet_waste";
+    // A walk's window: one the card offered, or none. Refused before anything
+    // is saved, in plain words.
+    const { checkedWalkWindow, recordRequestedWindow } = await import("@/lib/walk-request.server");
+    const window = await checkedWalkWindow(sb, session.organizationId, service, data);
 
     const { data: rows, error } = await (sb as any).rpc("portal_request_one_off", {
       _token: data.token,
@@ -1357,7 +1371,10 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       return { ticketId, alreadyAsked: true, bookedOn: (bv?.scheduled_on as string) ?? null };
     }
 
-    const dayLabel = formatDay(data.day);
+    // The window rides on the request, so the inbox shows it and the office's
+    // Book it carries it.
+    if (window) await recordRequestedWindow(sb, session.organizationId, ticketId, window);
+    const dayLabel = window ? `${formatDay(data.day)}, ${window.label}` : formatDay(data.day);
     let bookedOn: string | null = null;
     const { data: org } = await (sb.from("organizations") as any)
       .select("portal_auto_accept_bookings, one_off_price_cents")
@@ -1381,6 +1398,8 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
           serviceId: service?.id ?? null,
           note: oneOffVisitNote(dayLabel, true, petWaste ? null : service?.name),
           asService: true,
+          earliestTime: window?.earliest ?? null,
+          latestTime: window?.latest ?? null,
         });
         const { data: linked } = await (sb.from("qc_tickets") as any)
           .update({

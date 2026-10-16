@@ -3312,6 +3312,8 @@ export type Database = {
           notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
+          notify_email_walk_not_done: boolean
+          notify_email_walk_schedule_change: boolean
           require_completion_photo: boolean
           visit_checklist: Json
           email_visit_checklist: boolean
@@ -3455,6 +3457,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_not_done?: boolean
+          notify_email_walk_schedule_change?: boolean
           require_completion_photo?: boolean
           visit_checklist?: Json
           email_visit_checklist?: boolean
@@ -3598,6 +3602,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_not_done?: boolean
+          notify_email_walk_schedule_change?: boolean
           require_completion_photo?: boolean
           visit_checklist?: Json
           email_visit_checklist?: boolean
@@ -5016,6 +5022,8 @@ export type Database = {
           organization_id: string
           property_id: string | null
           reclean_visit_id: string | null
+          requested_earliest_time: string | null
+          requested_latest_time: string | null
           requested_on: string | null
           requested_via: string | null
           resolution_note: string | null
@@ -5038,6 +5046,8 @@ export type Database = {
           organization_id: string
           property_id?: string | null
           reclean_visit_id?: string | null
+          requested_earliest_time?: string | null
+          requested_latest_time?: string | null
           requested_on?: string | null
           requested_via?: string | null
           resolution_note?: string | null
@@ -5060,6 +5070,8 @@ export type Database = {
           organization_id?: string
           property_id?: string | null
           reclean_visit_id?: string | null
+          requested_earliest_time?: string | null
+          requested_latest_time?: string | null
           requested_on?: string | null
           requested_via?: string | null
           resolution_note?: string | null

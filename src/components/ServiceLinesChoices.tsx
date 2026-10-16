@@ -73,7 +73,7 @@ export function ServiceLinesChoices({
       </ul>
       {lines.length === 1 && (
         <p className="mt-2 text-xs text-muted-foreground">
-          Choose at least one service. Lines marked Coming soon cannot be added yet.
+          You need at least one. Add or remove lines as your business changes.
         </p>
       )}
     </>

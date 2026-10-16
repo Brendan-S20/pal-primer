@@ -176,6 +176,9 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
         staffId: z.string().uuid().nullable().optional(),
         /** Why it was booked. Shows on the client's activity timeline. */
         note: z.string().max(300).optional(),
+        /** A walk request's window (#410), carried from /concerns. */
+        earliestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
+        latestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
       })
       .parse(d),
   )

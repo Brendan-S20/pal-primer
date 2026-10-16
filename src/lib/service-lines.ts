@@ -45,11 +45,12 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** A line joins this list when its path can be booked end to end.
- *  Dog walking (#410), pet sitting (#411), mobile grooming (#412) and
- *  training (#413) join with their paths. Until then the picker lists them
- *  as Coming soon. */
-export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
+/** Lines an owner can actually choose today. A line joins this list when its
+ *  path can be booked end to end: dog walking since #410 (booking, the
+ *  walker's day, portal reports and access, client emails, invoices). Pet
+ *  sitting (#411), mobile grooming (#412) and training (#413) join with their
+ *  paths; until then the picker lists them as Coming soon. */
+export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste", "dog_walking"];
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
   pet_waste: "Pet waste removal (scooping)",

@@ -210,10 +210,10 @@ export function durationRequired(line: ServiceLine): boolean {
   return line !== "pet_waste";
 }
 
-/** The lines a service can be put on: bookable lines, anything the business
- *  already runs, and the line a service being edited already has, in the
- *  order the settings screen lists them. Lines marked Coming soon stay
- *  available for existing data. */
+/** The lines a service can be put on: bookable lines (pet waste and dog
+ *  walking), anything the business already runs, and the line a service
+ *  being edited already has, in the order the settings screen lists them.
+ *  Lines marked Coming soon stay available for existing data. */
 export function serviceLineChoices(
   orgLines: readonly ServiceLine[],
   current?: ServiceLine | null,
