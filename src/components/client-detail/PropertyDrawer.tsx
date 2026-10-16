@@ -30,6 +30,7 @@ import {
   ACCESS_METHOD_LABEL,
   ALARM_NOTES_MAX,
   KEY_TAG_MAX,
+  gateCodeSave,
   isAccessMethod,
   showsWalkAccess,
   walkAccessSave,
@@ -221,7 +222,9 @@ export function PropertyDrawer({
         addressSource: form.addressSource,
         label: form.label || undefined,
         accountType: form.accountType,
-        gateCode: form.gateCode || undefined,
+        // Sent only when changed, so a drawer that could not load the codes
+        // does not wipe the gate code (gateCodeSave).
+        ...gateCodeSave(initial, form),
         hazardNotes: form.hazardNotes || undefined,
         visitContactName: form.vcName || undefined,
         visitContactPhone: form.vcPhone || undefined,
@@ -378,6 +381,11 @@ export function PropertyDrawer({
           <div>
             <Label htmlFor="pd-gate">Gate code</Label>
             <Input id="pd-gate" value={form.gateCode} onChange={(e) => set("gateCode", e.target.value)} />
+            {codesNotLoaded && !walkAccess && (
+              <p className="mt-1 text-xs text-muted-foreground" role="note">
+                {t("walk.codesNotLoaded")}
+              </p>
+            )}
           </div>
         </div>
 

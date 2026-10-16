@@ -65,7 +65,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
-         properties(id, street, city, region, postal_code, gate_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
+         properties(id, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
          subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via, stay_id, stays(kind, starts_on, ends_on)),

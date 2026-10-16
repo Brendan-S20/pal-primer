@@ -9251,6 +9251,7 @@ export type Database = {
         Args: { _property_ids: string[] }
         Returns: {
           alarm_notes: string | null
+          gate_code: string
           key_location: string
           key_tag: string
           lock_box_code: string

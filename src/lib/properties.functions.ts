@@ -36,7 +36,10 @@ const createPropSchema = z.object({
   city: z.string().min(1).max(120),
   region: z.string().max(120).optional(),
   postalCode: z.string().min(1).max(20),
-  gateCode: z.string().max(ACCESS_CODE_MAX).optional(),
+  // On update, absent leaves the stored gate code alone and null clears it.
+  // The drawer sends it only when the user changed it (gateCodeSave), so an
+  // editor who could not load the codes does not wipe it.
+  gateCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
   // Provider-resolved coordinates (skip Nominatim when present) + whether
   // the address came from the search provider or manual entry.
   latitude: z.number().min(-90).max(90).optional(),
@@ -229,11 +232,22 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { data: current, error: curErr } = await supabase
       .from("properties")
       .select(
-        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, gate_code, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
       )
       .eq("id", data.propertyId)
       .single();
     if (curErr) throw new Error(curErr.message);
+
+    // The caller cannot select gate_code. The stored value is read with the
+    // service role only to tell whether it changed, and only for a property
+    // the caller's own query just returned. It is never sent back.
+    const gateCodeSent = data.gateCode !== undefined;
+    const nextGateCode = gateCodeSent ? data.gateCode?.trim() || null : undefined;
+    let gateCodeBefore: string | null = null;
+    if (gateCodeSent) {
+      const { storedGateCode } = await import("@/lib/field-notify.server");
+      gateCodeBefore = await storedGateCode(data.propertyId, current.organization_id);
+    }
 
     // Provider-resolved coordinates win; otherwise re-geocode via OSM when
     // the address might have changed (cheap, keeps lat/lng fresh).
@@ -286,7 +300,7 @@ export const updateProperty = createServerFn({ method: "POST" })
         city: data.city,
         region: data.region || null,
         postal_code: data.postalCode,
-        gate_code: data.gateCode || null,
+        ...(gateCodeSent ? { gate_code: nextGateCode } : {}),
         address_source: data.addressSource ?? "manual",
         ...zonePatch,
         invisible_fence: !!data.invisibleFence,
@@ -313,9 +327,10 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { notifyAccessChanged } = await import("@/lib/field-notify.server");
     await notifyAccessChanged({
       propertyId: data.propertyId,
-      before: current as any,
+      // A gate code left out of the save did not change.
+      before: { ...(current as any), gate_code: gateCodeBefore },
       after: {
-        gate_code: data.gateCode || null,
+        gate_code: gateCodeSent ? nextGateCode : gateCodeBefore,
         do_not_enter_if_dog_out: !!data.doNotEnterIfDogOut,
         hazard_notes: data.hazardNotes || null,
       },
@@ -491,7 +506,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source, access_method, key_held",
+        "id, label, street, city, region, postal_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source, access_method, key_held",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

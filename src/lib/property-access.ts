@@ -1,8 +1,8 @@
-// Lock box code, key location, key tag and alarm details. Plain SELECT of
-// those columns is revoked. This asks property_access_codes, which answers
-// for the office (view_client_directory) or the tech assigned to a visit at
-// the property today. A stay visit does not count: a sitter reads a stay's
-// codes through stay_access_codes (src/lib/sit-day.server.ts). A miss,
+// Gate code, lock box code, key location, key tag and alarm details. Plain
+// SELECT of those columns is revoked. This asks property_access_codes, which
+// answers for the office (view_client_directory) or the tech assigned to a
+// visit at the property today. A stay visit does not count: a sitter reads a
+// stay's codes through stay_access_codes (src/lib/sit-day.server.ts). A miss,
 // including a failed call, is empty codes: the rest of the property still
 // loads, and the code is not shown.
 //
@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
 export type PropertyAccessCodes = {
+  gate_code: string | null;
   lock_box_code: string | null;
   key_location: string | null;
   key_tag: string | null;
@@ -22,6 +23,7 @@ export type PropertyAccessCodes = {
 };
 
 const EMPTY: PropertyAccessCodes = {
+  gate_code: null,
   lock_box_code: null,
   key_location: null,
   key_tag: null,
@@ -44,6 +46,7 @@ export async function readPropertyAccess(
   }
   for (const row of data ?? []) {
     out.set(row.property_id, {
+      gate_code: row.gate_code,
       lock_box_code: row.lock_box_code,
       key_location: row.key_location,
       key_tag: row.key_tag,
