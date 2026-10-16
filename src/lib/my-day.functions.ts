@@ -81,7 +81,7 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(name, temperament), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), walk_group_id, pee, poo, report_note, properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, access_method, key_held, key_tag, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(name, temperament), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line, default_duration_min), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -349,6 +349,10 @@ export const completeVisit = createServerFn({ method: "POST" })
         } catch (e) {
           console.warn("visit-completed photos could not be signed", data.visitId, e);
         }
+        // A dog walk's email is a walk report (#410); null for every other
+        // visit, which leaves the email and push below exactly as they were.
+        const { walkCompletionFor } = await import("@/lib/walk-report.server");
+        const walk = await walkCompletionFor(data.visitId);
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
         await enqueueAppEmail({
           organizationId: v.organization_id,
@@ -366,14 +370,19 @@ export const completeVisit = createServerFn({ method: "POST" })
             photoUrls,
             gatePhotoUrl,
             checklist,
+            ...(walk ? { walk: walk.email } : {}),
           },
         });
         // Best-effort push notification to the client (if they subscribed via portal).
         try {
           const { sendPushToClient } = await import("@/lib/push.server");
           await sendPushToClient(v.client_id, {
-            title: "Visit completed",
-            body: address ? `We just cleaned up at ${address}.` : "Your yard visit is complete.",
+            title: walk ? walk.push.title : "Visit completed",
+            body: walk
+              ? walk.push.body
+              : address
+                ? `We just cleaned up at ${address}.`
+                : "Your yard visit is complete.",
             tag: `visit-${data.visitId}`,
             url: "/portal",
           });

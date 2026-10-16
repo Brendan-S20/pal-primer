@@ -7,8 +7,8 @@
 // a character, TEXT escaping, DTSTAMP on every event, UTC or DATE and nothing
 // floating -- and the visit mapping in src/lib/calendar-feed.ts to the product
 // rules: a UID per visit that never changes, timed from the ETA or all-day on
-// the org's day, CANCELLED for a skip, and access codes only ever on a
-// technician's own feed.
+// the org's day, CANCELLED for a skip, and access codes in no feed at all
+// (a technician's own feed says the app has them).
 
 import { describe, expect, it } from "vitest";
 import {
@@ -20,6 +20,7 @@ import {
   nextDay,
 } from "@/lib/ics";
 import {
+  ACCESS_IN_APP,
   buildFeedCalendar,
   feedPath,
   tokenFromPathSegment,
@@ -234,13 +235,20 @@ describe("a visit as an event", () => {
     expect(visitToEvent(visit({ status: "completed" }), "mine").status).toBe("CONFIRMED");
   });
 
-  it("prints access codes on a technician's own feed only when the SQL sent them", () => {
+  it("never prints access codes on a technician's own feed, only that the app has them", () => {
+    // Calendar apps sync events to their own servers (#410). Even when the
+    // SQL sends the codes, the feed says where to look instead.
     const withCodes = visit({ gate_code: "4471#", lock_box_code: "0915", key_location: "Blue pot" });
-    const mine = visitToEvent(withCodes, "mine").description!;
-    expect(mine).toContain("Gate code: 4471#");
-    expect(mine).toContain("Lock box: 0915");
-    expect(mine).toContain("Key: Blue pot");
-    expect(visitToEvent(visit(), "mine").description).not.toMatch(/Gate code|Lock box|Key:/);
+    const ics = buildFeedCalendar(
+      { scope: "mine", org_name: "W&R", timezone: "America/Chicago", holder_name: "Al", events: [withCodes] },
+      NOW,
+    );
+    expect(unfold(ics)).not.toMatch(/4471|0915|Blue pot|Gate code|Lock box|Key:/);
+    expect(visitToEvent(withCodes, "mine").description).toContain(ACCESS_IN_APP);
+    for (const one of [{ gate_code: "1" }, { lock_box_code: "2" }, { key_location: "3" }]) {
+      expect(visitToEvent(visit(one), "mine").description).toContain(ACCESS_IN_APP);
+    }
+    expect(visitToEvent(visit(), "mine").description).not.toContain(ACCESS_IN_APP);
   });
 
   it("never prints access codes on the org-wide feed, even if they arrive", () => {

@@ -14,9 +14,11 @@ import { logStationService } from "@/lib/stations.functions";
 import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
 import { createExpense } from "@/lib/expenses.functions";
+import { recordWalkReport } from "@/lib/walk-report.functions";
 import type { SyncCallers } from "@/lib/offline/sync";
 
 export function useSyncCallers(): SyncCallers {
+  const walkReportFn = useServerFn(recordWalkReport);
   const startFn = useServerFn(startVisit);
   const completeFn = useServerFn(completeVisit);
   const skipFn = useServerFn(skipVisit);
@@ -37,8 +39,10 @@ export function useSyncCallers(): SyncCallers {
       clockOut: clockOutFn,
       recordFieldCollection: collectionFn,
       createExpense: expenseFn,
+      recordWalkReport: walkReportFn,
     }),
     [
+      walkReportFn,
       startFn,
       completeFn,
       skipFn,

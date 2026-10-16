@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { ACCESS_METHODS, KEY_TAG_MAX, cleanKeyTag } from "@/lib/walk-access";
 
 // yard_size is derived from the boundary by a DB trigger now; the field is
 // still accepted (older forms send it) but never written.
@@ -54,7 +55,37 @@ const createPropSchema = z.object({
   // Service boundary sketched during creation (UX round 4: no more
   // save-then-reopen to draw the yard).
   boundary: polygonSchema.optional(),
+  // How the walker gets in (#410). Sent only by a drawer that shows the
+  // walker-access fields; absent means "leave the stored value alone", so a
+  // pet-waste business's saves never touch these columns.
+  accessMethod: z.enum(ACCESS_METHODS).nullable().optional(),
+  keyHeld: z.boolean().optional(),
+  keyTag: z.string().max(KEY_TAG_MAX).nullable().optional(),
+  lockBoxCode: z.string().max(60).nullable().optional(),
+  keyLocation: z.string().max(200).nullable().optional(),
 });
+
+/** The walker-access columns to write: only the fields the form sent. */
+function walkAccessPatch(
+  data: Pick<
+    z.infer<typeof createPropSchema>,
+    "accessMethod" | "keyHeld" | "keyTag" | "lockBoxCode" | "keyLocation"
+  >,
+) {
+  const patch: {
+    access_method?: string | null;
+    key_held?: boolean;
+    key_tag?: string | null;
+    lock_box_code?: string | null;
+    key_location?: string | null;
+  } = {};
+  if (data.accessMethod !== undefined) patch.access_method = data.accessMethod;
+  if (data.keyHeld !== undefined) patch.key_held = data.keyHeld;
+  if (data.keyTag !== undefined) patch.key_tag = cleanKeyTag(data.keyTag);
+  if (data.lockBoxCode !== undefined) patch.lock_box_code = data.lockBoxCode?.trim() || null;
+  if (data.keyLocation !== undefined) patch.key_location = data.keyLocation?.trim() || null;
+  return patch;
+}
 
 export const createProperty = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -130,6 +161,7 @@ export const createProperty = createServerFn({ method: "POST" })
         longitude: geo?.longitude ?? null,
         boundary: (data.boundary as any) ?? null,
         boundary_area_sqm: data.boundary ? polygonAreaSqm(data.boundary as any) : null,
+        ...walkAccessPatch(data),
       })
       .select("id")
       .single();
@@ -258,6 +290,7 @@ export const updateProperty = createServerFn({ method: "POST" })
         visit_contact_name: data.visitContactName || null,
         visit_contact_phone: data.visitContactPhone || null,
         visit_contact_email: data.visitContactEmail || null,
+        ...walkAccessPatch(data),
         ...geoPatch,
       })
       .eq("id", data.propertyId);
@@ -447,7 +480,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source, access_method, key_held, key_tag, lock_box_code, key_location",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

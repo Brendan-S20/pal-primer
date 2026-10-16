@@ -1,0 +1,53 @@
+/** How a walker gets into a home (#410). Pure, so the office drawer, My Day
+ *  and the tests read one copy of the rules.
+ *
+ *  properties.access_method (migration 20261015210000) takes exactly these
+ *  values; properties_access_method_check is the database's copy. */
+
+import type { ServiceLine } from "@/lib/service-lines";
+
+export const ACCESS_METHODS = ["key", "lockbox", "code", "garage", "person_home"] as const;
+export type AccessMethod = (typeof ACCESS_METHODS)[number];
+
+/** Office labels. English on purpose: the property drawer is an office screen.
+ *  My Day reads the same codes through t("walk.access.<code>"). */
+export const ACCESS_METHOD_LABEL: Record<AccessMethod, string> = {
+  key: "Key",
+  lockbox: "Lock box",
+  code: "Door code",
+  garage: "Garage code",
+  person_home: "Someone is home",
+};
+
+export const KEY_TAG_MAX = 40;
+
+export function isAccessMethod(v: unknown): v is AccessMethod {
+  return typeof v === "string" && (ACCESS_METHODS as readonly string[]).includes(v);
+}
+
+export type WalkAccessFields = {
+  access_method?: string | null;
+  key_held?: boolean | null;
+  key_tag?: string | null;
+};
+
+/** Whether a property already says anything about walker access. */
+export function hasWalkAccess(p: WalkAccessFields | null | undefined): boolean {
+  return !!p && (isAccessMethod(p.access_method) || !!p.key_held || !!p.key_tag?.trim());
+}
+
+/** The office sees the walker-access fields when the business runs dog walking,
+ *  or when this property already has a value (so nothing saved is hidden). A
+ *  pet-waste-only business with nothing recorded sees the drawer as before. */
+export function showsWalkAccess(
+  lines: readonly ServiceLine[],
+  p: WalkAccessFields | null | undefined,
+): boolean {
+  return lines.includes("dog_walking") || hasWalkAccess(p);
+}
+
+/** Trimmed key tag, or null. Never longer than the column allows. */
+export function cleanKeyTag(v: string | null | undefined): string | null {
+  const t = (v ?? "").trim();
+  return t ? t.slice(0, KEY_TAG_MAX) : null;
+}

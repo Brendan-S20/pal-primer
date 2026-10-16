@@ -4688,6 +4688,7 @@ export type Database = {
       }
       properties: {
         Row: {
+          access_method: string | null
           access_notes: string | null
           account_type: Database["public"]["Enums"]["account_type"] | null
           address_source: string | null
@@ -4715,7 +4716,9 @@ export type Database = {
           hazard_notes: string | null
           id: string
           invisible_fence: boolean
+          key_held: boolean
           key_location: string | null
+          key_tag: string | null
           label: string | null
           latest_service_time: string | null
           latitude: number | null
@@ -4740,6 +4743,7 @@ export type Database = {
           zone_override_reason: string | null
         }
         Insert: {
+          access_method?: string | null
           access_notes?: string | null
           account_type?: Database["public"]["Enums"]["account_type"] | null
           address_source?: string | null
@@ -4767,7 +4771,9 @@ export type Database = {
           hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
+          key_held?: boolean
           key_location?: string | null
+          key_tag?: string | null
           label?: string | null
           latest_service_time?: string | null
           latitude?: number | null
@@ -4792,6 +4798,7 @@ export type Database = {
           zone_override_reason?: string | null
         }
         Update: {
+          access_method?: string | null
           access_notes?: string | null
           account_type?: Database["public"]["Enums"]["account_type"] | null
           address_source?: string | null
@@ -4819,7 +4826,9 @@ export type Database = {
           hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
+          key_held?: boolean
           key_location?: string | null
+          key_tag?: string | null
           label?: string | null
           latest_service_time?: string | null
           latitude?: number | null
@@ -6501,6 +6510,9 @@ export type Database = {
           tech_note: string | null
           visit_checklist: Json | null
           completion_photo_waived_reason: string | null
+          pee: boolean | null
+          poo: boolean | null
+          report_note: string | null
           travel_km: number | null
           travel_min: number | null
           updated_at: string
@@ -6547,6 +6559,9 @@ export type Database = {
           tech_note?: string | null
           visit_checklist?: Json | null
           completion_photo_waived_reason?: string | null
+          pee?: boolean | null
+          poo?: boolean | null
+          report_note?: string | null
           travel_km?: number | null
           travel_min?: number | null
           updated_at?: string
@@ -6593,6 +6608,9 @@ export type Database = {
           tech_note?: string | null
           visit_checklist?: Json | null
           completion_photo_waived_reason?: string | null
+          pee?: boolean | null
+          poo?: boolean | null
+          report_note?: string | null
           travel_km?: number | null
           travel_min?: number | null
           updated_at?: string
@@ -8083,6 +8101,15 @@ export type Database = {
       record_visit_station_service: {
         Args: { _visit_id: string }
         Returns: number
+      }
+      record_walk_report: {
+        Args: {
+          _pee: boolean | null
+          _poo: boolean | null
+          _report_note: string | null
+          _visit_id: string
+        }
+        Returns: undefined
       }
       redeem_client_unsubscribe_token: {
         Args: { _token: string }
