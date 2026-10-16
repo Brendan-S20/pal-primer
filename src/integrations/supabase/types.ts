@@ -2288,7 +2288,9 @@ export type Database = {
       }
       import_batches: {
         Row: {
+          commit_started_at: string | null;
           committed_at: string | null
+          content_hash: string | null;
           created_at: string
           created_by: string
           entity: string
@@ -2300,10 +2302,13 @@ export type Database = {
           source: Database["public"]["Enums"]["import_source"]
           stats: Json
           status: Database["public"]["Enums"]["import_status"]
+          superseded_by: string | null;
           updated_at: string
         }
         Insert: {
+          commit_started_at?: string | null;
           committed_at?: string | null
+          content_hash?: string | null;
           created_at?: string
           created_by: string
           entity?: string
@@ -2315,10 +2320,13 @@ export type Database = {
           source: Database["public"]["Enums"]["import_source"]
           stats?: Json
           status?: Database["public"]["Enums"]["import_status"]
-          updated_at?: string
-        }
+          superseded_by?: string | null;
+          updated_at?: string;
+        };
         Update: {
+          commit_started_at?: string | null;
           committed_at?: string | null
+          content_hash?: string | null;
           created_at?: string
           created_by?: string
           entity?: string
@@ -2330,9 +2338,17 @@ export type Database = {
           source?: Database["public"]["Enums"]["import_source"]
           stats?: Json
           status?: Database["public"]["Enums"]["import_status"]
+          superseded_by?: string | null;
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "import_batches_superseded_by_fkey";
+            columns: ["superseded_by"];
+            isOneToOne: false;
+            referencedRelation: "import_batches";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "import_batches_organization_id_fkey"
             columns: ["organization_id"]
