@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -62,6 +63,7 @@ export const Route = createFileRoute("/_authenticated/payments")({
 });
 
 function PaymentsSettings() {
+  const copy = useLaunchCopy();
   const qc = useQueryClient();
   const statusFn = useServerFn(getStripeConnectStatus);
   const ensureFn = useServerFn(ensureStripeConnectAccount);
@@ -158,7 +160,7 @@ function PaymentsSettings() {
           <p className="text-sm text-muted-foreground">
             {cfg?.connected
               ? "Your Stripe account. Money in, money out, and the settings behind both."
-              : "Get paid by card and bank transfer, straight to your own account."}
+              : copy("Get paid by card, straight to your own bank account.")}
           </p>
         </div>
         {cfg?.connected && (
@@ -273,8 +275,8 @@ function PaymentsSettings() {
                 <div className="rounded-lg border border-destructive/40 p-4">
                   <div className="text-sm font-medium">Disconnect this Stripe account</div>
                   <p className="mt-1 text-2xs text-muted-foreground">
-                    Stops all card and bank payments immediately: invoices, autopay, and the client
-                    portal. Saved client cards belong to this Stripe account and will not work on a
+                    Stops all card payments immediately: invoices, autopay, and the client portal.
+                    Saved client cards belong to this Stripe account and will not work on a
                     different one.
                   </p>
                   <Button
@@ -472,12 +474,6 @@ function ProcessingFeeCard() {
                 <span> and still absorb {money(ex.card.shortfallCents)}</span>
               )}
             </li>
-            <li>
-              Bank:{" "}
-              {ex.ach.suppressed
-                ? "no fee added"
-                : `client pays ${money(ex.ach.totalCents)}, you recover ${money(ex.ach.surchargeCents)}`}
-            </li>
           </ul>
           <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
             These apply to automatic payments and saved cards. When a client pays from a link or the
@@ -487,7 +483,7 @@ function ProcessingFeeCard() {
           {ex.card.shortfallCents > 0 && !ex.card.suppressed && (
             <p className="mt-2 text-xs text-muted-foreground">
               Card networks cap a surcharge at 3% and at your actual cost, so a card fee never
-              recovers the full amount on smaller jobs. Bank payments recover in full.
+              recovers the full amount on smaller jobs.
             </p>
           )}
         </div>
@@ -497,8 +493,8 @@ function ProcessingFeeCard() {
         <div className="text-sm font-medium">Card surcharging</div>
         {bannedHere ? (
           <p className="text-sm text-muted-foreground">
-            Surcharging a card is prohibited in {s.merchantRegion}. Bank (ACH) fees can still be
-            passed through.
+            Surcharging a card is prohibited in {s.merchantRegion}, so card fees stay with your
+            business.
           </p>
         ) : !s.merchantRegion ? (
           <p className="text-sm text-muted-foreground">

@@ -100,6 +100,7 @@ function ClientsList() {
   const fn = useServerFn(listClients);
   const updateFn = useServerFn(updateClient);
   const { can } = usePermissions();
+  const rowTexting = useClientTexting();
   // Archiving is a manager-class write (updateClient enforces this
   // server-side when `active` changes) — hide the bulk button for roles
   // that would only get an error.
@@ -731,14 +732,22 @@ function ClientsList() {
                               search: { edit: true },
                             }),
                         }}
-                        actions={[
-                          {
-                            // Existing messaging surface — /messages/$clientId.
-                            label: "Message",
-                            onSelect: () =>
-                              navigate({ to: "/messages/$clientId", params: { clientId: c.id } }),
-                          },
-                        ]}
+                        // Message only where this business can text; until
+                        // then the thread page is a coming-soon dead end.
+                        actions={
+                          rowTexting
+                            ? [
+                                {
+                                  label: "Message",
+                                  onSelect: () =>
+                                    navigate({
+                                      to: "/messages/$clientId",
+                                      params: { clientId: c.id },
+                                    }),
+                                },
+                              ]
+                            : []
+                        }
                       />
                     </td>
                   </tr>
