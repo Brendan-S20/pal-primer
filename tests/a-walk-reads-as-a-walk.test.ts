@@ -16,6 +16,7 @@ import { groupWalkMates, isWalkVisit, minutesOut, walkLengthMin } from "@/lib/wa
 import {
   ACCESS_METHODS,
   cleanKeyTag,
+  gateCodeSave,
   hasWalkAccess,
   isAccessMethod,
   showsWalkAccess,
@@ -267,5 +268,52 @@ describe("saving codes the editor could not see", () => {
     expect(walkAccessSave(held, { ...held, keyHeld: false }).keyTag).toBeNull();
     const notHeld = walkAccessSave(blank, { ...blank });
     expect("keyTag" in notHeld).toBe(false);
+  });
+});
+
+describe("saving a gate code the editor could not see", () => {
+  // The gate code is on every property drawer, walking or not, so it has its
+  // own helper under the same rule as walkAccessSave.
+  it("sends no gate code when it was not loaded and nobody touched it", () => {
+    const out = gateCodeSave({ gateCode: "" }, { gateCode: "" });
+    expect(out).toEqual({});
+    expect("gateCode" in out).toBe(false);
+  });
+
+  it("does not send a gate code that was typed in and then deleted again", () => {
+    expect("gateCode" in gateCodeSave({ gateCode: "" }, { gateCode: "  " })).toBe(false);
+  });
+
+  it("does not send a loaded gate code the user left alone", () => {
+    expect(gateCodeSave({ gateCode: "*8080#" }, { gateCode: " *8080# " })).toEqual({});
+  });
+
+  it("sends a gate code the user edited, trimmed", () => {
+    expect(gateCodeSave({ gateCode: "" }, { gateCode: " 4471# " })).toEqual({ gateCode: "4471#" });
+    expect(gateCodeSave({ gateCode: "1111" }, { gateCode: "2222" })).toEqual({ gateCode: "2222" });
+  });
+
+  it("sends null for a gate code the user cleared after it loaded", () => {
+    expect(gateCodeSave({ gateCode: "*8080#" }, { gateCode: "" })).toEqual({ gateCode: null });
+  });
+
+  it("is not part of walkAccessSave, so the drawer sends it once", () => {
+    const form: WalkAccessForm = {
+      accessMethod: "code",
+      keyHeld: false,
+      keyTag: "",
+      lockBoxCode: "",
+      keyLocation: "",
+    };
+    expect("gateCode" in walkAccessSave(form, { ...form })).toBe(false);
+  });
+
+  it("is what the drawer sends, and the server writes the column only when it was sent", () => {
+    const drawer = readFileSync("src/components/client-detail/PropertyDrawer.tsx", "utf8");
+    expect(drawer).toMatch(/\.\.\.gateCodeSave\(initial, form\)/);
+    expect(drawer).not.toMatch(/gateCode: form\.gateCode \|\| undefined/);
+    const fn = readFileSync("src/lib/properties.functions.ts", "utf8");
+    expect(fn).toMatch(/gateCode: z\.string\(\)\.max\(60\)\.nullable\(\)\.optional\(\)/);
+    expect(fn).toMatch(/\.\.\.\(gateCodeSent \? \{ gate_code: nextGateCode \} : \{\}\)/);
   });
 });

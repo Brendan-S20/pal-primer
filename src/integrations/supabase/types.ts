@@ -8843,6 +8843,7 @@ export type Database = {
       property_access_codes: {
         Args: { _property_ids: string[] }
         Returns: {
+          gate_code: string
           key_location: string
           key_tag: string
           lock_box_code: string

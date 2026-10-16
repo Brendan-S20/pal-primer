@@ -148,7 +148,7 @@ describe("the calendar", () => {
   });
 });
 
-const CODE_COLUMN = /\b(lock_box_code|key_location|key_tag)\b/;
+const CODE_COLUMN = /\b(gate_code|lock_box_code|key_location|key_tag)\b/;
 
 /** String arguments to `.select(`, including template literals. */
 function selectLiterals(file: string, source: string): string[] {
@@ -175,15 +175,43 @@ describe("plain selects", () => {
     "src/lib/clients.functions.ts",
   ];
 
-  it("do not name a lock box code, key location or key tag", () => {
+  // Writers. They may set gate_code, but a .select() after the write is a
+  // plain select too and must not ask for it back.
+  const writers = ["src/lib/imports.functions.ts"];
+
+  it("do not name a gate code, lock box code, key location or key tag", () => {
     const findings: string[] = [];
-    for (const rel of readers) {
+    for (const rel of [...readers, ...writers]) {
       const source = readFileSync(join(root, rel), "utf8");
       for (const literal of selectLiterals(rel, source)) {
         if (CODE_COLUMN.test(literal)) findings.push(`${rel} ${literal.slice(0, 80)}`);
       }
     }
     expect(findings).toEqual([]);
+  });
+
+  it("would catch a gate code in a select (the rule is not dead)", () => {
+    const planted = selectLiterals(
+      "x.ts",
+      'sb.from("visits").select("id, properties(street, gate_code)");',
+    );
+    expect(planted.some((l) => CODE_COLUMN.test(l))).toBe(true);
+  });
+
+  it("read the gate code from property_access_codes", () => {
+    const helper = readFileSync(join(root, "src/lib/property-access.ts"), "utf8");
+    expect(helper).toMatch(/gate_code: row\.gate_code/);
+    expect(helper).toMatch(/gate_code: null/);
+  });
+
+  it("read the stored gate code for an edit with the service role, not a plain select", () => {
+    const props = readFileSync(join(root, "src/lib/properties.functions.ts"), "utf8");
+    const start = props.indexOf("export const updateProperty");
+    const fn = props.slice(start, props.indexOf("export const backfillPropertyGeocodes", start));
+    expect(fn).toMatch(/storedGateCode\(/);
+    // Left out of the save, the column is not written.
+    expect(fn).toMatch(/\.\.\.\(gateCodeSent \? \{ gate_code: nextGateCode \} : \{\}\)/);
+    expect(fn).not.toMatch(/gate_code: data\.gateCode \|\| null/);
   });
 
   it("ask property_access_codes on the caller's client", () => {
@@ -208,9 +236,30 @@ describe("plain selects", () => {
       /REVOKE SELECT ON TABLE public\.properties FROM PUBLIC, anon, authenticated;/,
     );
     expect(sql).toMatch(/GRANT SELECT \(%s\) ON TABLE public\.properties TO authenticated/);
-    expect(sql).toMatch(/column_name NOT IN \('lock_box_code', 'key_location', 'key_tag'\)/);
+    expect(sql).toMatch(
+      /column_name NOT IN \('gate_code', 'lock_box_code', 'key_location', 'key_tag'\)/,
+    );
     expect(sql).toMatch(/view_client_directory/);
     expect(sql).toMatch(/scheduled_on = \(now\(\) AT TIME ZONE/);
+  });
+
+  it("returns the gate code from property_access_codes and revokes it from a plain select", () => {
+    const sql = readFileSync(
+      join(root, "supabase/migrations/20261015215000_a-lock-box-code-is-for-the-assigned-day.sql"),
+      "utf8",
+    );
+    expect(sql).toMatch(
+      /RETURNS TABLE \(property_id uuid, gate_code text, lock_box_code text, key_location text, key_tag text\)/,
+    );
+    expect(sql).toMatch(/SELECT p\.id, p\.gate_code, p\.lock_box_code, p\.key_location, p\.key_tag/);
+    expect(sql).toMatch(/ARRAY\['gate_code', 'lock_box_code', 'key_location', 'key_tag'\]/);
+    // The check no longer asks for gate_code to stay selectable.
+    expect(sql).not.toMatch(
+      /NOT has_column_privilege\('authenticated', 'public\.properties', 'gate_code', 'SELECT'\)/,
+    );
+    // Writes are untouched.
+    expect(sql).toMatch(/has_column_privilege\('authenticated', 'public\.properties', 'gate_code', 'UPDATE'\)/);
+    expect(sql).not.toMatch(/REVOKE (INSERT|UPDATE)/);
   });
 
   it("gives the codes only to an active tech on a visit that is still open", () => {
