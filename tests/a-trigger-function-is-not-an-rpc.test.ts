@@ -209,7 +209,9 @@ describe("no trigger function is executable by a signed-in user", () => {
     // the plan's add-ons when a groom is completed, and
     // tg_pet_groom_notes_before_write derives a note's tenant from its visit.
     // All three revoked in that file.
-    expect(triggerFunctions().size).toBe(66);
+    // 66 -> 67 (20261016230000): pet_vaccinations_review_stamp takes the
+    // reviewer who rejected a portal upload from the session. Revoked there.
+    expect(triggerFunctions().size).toBe(67);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

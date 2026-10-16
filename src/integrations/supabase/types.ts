@@ -3793,6 +3793,9 @@ export type Database = {
           source: string
           verified_by: string | null
           verified_at: string | null
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
           created_by: string | null
           created_at: string
           updated_at: string
@@ -3810,6 +3813,9 @@ export type Database = {
           source: string
           verified_by?: string | null
           verified_at?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -3827,6 +3833,9 @@ export type Database = {
           source?: string
           verified_by?: string | null
           verified_at?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -5136,14 +5145,20 @@ export type Database = {
           booked_visit_id: string | null
           client_id: string
           created_at: string
+          dog_id: string | null
+          groom_addons: Json
           id: string
           last_reply: string | null
           last_reply_at: string | null
           message: string | null
           organization_id: string
           property_id: string | null
+          quoted_cents: number | null
+          quoted_minutes: number | null
           reclean_visit_id: string | null
           requested_on: string | null
+          requested_time: string | null
+          requested_time_end: string | null
           requested_via: string | null
           resolution_note: string | null
           resolved_at: string | null
@@ -5158,14 +5173,20 @@ export type Database = {
           booked_visit_id?: string | null
           client_id: string
           created_at?: string
+          dog_id?: string | null
+          groom_addons?: Json
           id?: string
           last_reply?: string | null
           last_reply_at?: string | null
           message?: string | null
           organization_id: string
           property_id?: string | null
+          quoted_cents?: number | null
+          quoted_minutes?: number | null
           reclean_visit_id?: string | null
           requested_on?: string | null
+          requested_time?: string | null
+          requested_time_end?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5180,14 +5201,20 @@ export type Database = {
           booked_visit_id?: string | null
           client_id?: string
           created_at?: string
+          dog_id?: string | null
+          groom_addons?: Json
           id?: string
           last_reply?: string | null
           last_reply_at?: string | null
           message?: string | null
           organization_id?: string
           property_id?: string | null
+          quoted_cents?: number | null
+          quoted_minutes?: number | null
           reclean_visit_id?: string | null
           requested_on?: string | null
+          requested_time?: string | null
+          requested_time_end?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5210,6 +5237,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
             referencedColumns: ["id"]
           },
           {
@@ -8021,6 +8055,24 @@ export type Database = {
           _visit_id: string
         }
         Returns: string
+      }
+      portal_request_groom: {
+        Args: {
+          _addons: Json
+          _dog_id: string
+          _from: string | null
+          _message: string
+          _on: string
+          _quoted_cents: number | null
+          _quoted_minutes: number | null
+          _service_id: string
+          _token: string
+          _until: string | null
+        }
+        Returns: {
+          created: boolean
+          ticket_id: string
+        }[]
       }
       portal_request_one_off: {
         Args: {
