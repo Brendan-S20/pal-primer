@@ -90,6 +90,10 @@ export async function planDayRoutes(
   );
   const honourWindows = args.honourWindows ?? inp.org.route_windows !== "ignore";
 
+  // planDay solves each group walk as one stop and returns its members
+  // consecutively; apply_route_plan times them the same way (20261015200000),
+  // so the rows applyRoutePlans returns count the walk once.
+
   const plan = planDay(inp, {
     day: args.day,
     honourWindows,

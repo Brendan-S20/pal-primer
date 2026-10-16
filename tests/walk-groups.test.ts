@@ -5,7 +5,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { dogsOnWalk } from "@/lib/walk-groups";
 import { serviceProblem, type ServiceDraft } from "@/lib/services";
-import { buildDay, pinWalkGroupVisits, planDay } from "@/lib/route-inputs";
+import {
+  buildDay,
+  collapseWalkGroups,
+  GROUP_PICKUP_MIN,
+  pinWalkGroupVisits,
+  planDay,
+  type RouteDayInputs,
+} from "@/lib/route-inputs";
+import { routeClock } from "@/lib/route-solver";
 import { readWalkGroupAssignments } from "@/lib/walk-group-routing.server";
 import { walkDay } from "./support/walk-day";
 
@@ -168,7 +176,18 @@ describe("group walker routing", () => {
         return query;
       },
       not: async () => ({
-        data: [{ id: "walk-0", walk_groups: { assigned_staff_id: "walker-a" } }],
+        data: [
+          {
+            id: "walk-0",
+            walk_group_id: "group-a",
+            walk_groups: {
+              id: "group-a",
+              assigned_staff_id: "walker-a",
+              earliest_time: "09:00:00",
+              latest_time: "10:00:00",
+            },
+          },
+        ],
         error,
       }),
     };
@@ -183,7 +202,13 @@ describe("group walker routing", () => {
     expect(calls).toContainEqual(["eq", "organization_id", "org-a"]);
     expect(calls).toContainEqual(["in", "id", ["walk-0", "walk-1"]]);
     expect(pinned.visits[0].fixed).toBe(true);
+    expect(pinned.visits[0].walk_group).toEqual({
+      id: "group-a",
+      earliest: "09:00",
+      latest: "10:00",
+    });
     expect(pinned.visits[1].fixed).toBe(false);
+    expect(pinned.visits[1].walk_group).toBeUndefined();
     error = { message: "read failed" };
     await expect(readWalkGroupAssignments(client, "org-a", walkDay())).rejects.toThrow(
       "read failed",
@@ -192,6 +217,130 @@ describe("group walker routing", () => {
       /await readWalkGroupAssignments\(\s*supabase,\s*args\.orgId/,
     );
     expect(read("src/lib/auto-routing.server.ts")).toContain("planDayRoutes(");
+  });
+});
+
+/** Four dogs on one 60-minute group walk, doors about 110 m apart, with
+ *  their own plan windows in the afternoon and the group's in the morning. */
+function fourDogGroup(walkerId: string | null): RouteDayInputs {
+  const day = walkDay();
+  day.techs.push({ ...day.techs[0], id: "walker-b" });
+  day.visits = [0, 1, 2, 3].map((i) => ({
+    ...day.visits[0],
+    id: `dog-${i}`,
+    lat: 30.001 + i * 0.001,
+    lon: -97.001,
+    service_min: 60,
+    earliest: "15:00",
+    latest: "17:00",
+    client: `Client ${i}`,
+  }));
+  return pinWalkGroupVisits(
+    day,
+    day.visits.map((visit) => ({
+      id: visit.id,
+      walkerId,
+      groupId: "group-a",
+      earliest: "09:00:00",
+      latest: "10:00:00",
+    })),
+  );
+}
+
+const DAY = "2026-10-19";
+const SOLVER = { rounds: 20, seed: 7, now: () => 0 };
+
+describe("a group walk is planned as one walk", () => {
+  it("plans four dogs on a 60 minute walk at about 60 minutes plus pickups and travel", () => {
+    const inputs = fourDogGroup("walker-b");
+    const { inputs: collapsed, members } = collapseWalkGroups(inputs);
+    expect(collapsed.visits.map((visit) => visit.id)).toEqual(["dog-0"]);
+    expect(members.get("dog-0")).toEqual(["dog-0", "dog-1", "dog-2", "dog-3"]);
+    const stop = collapsed.visits[0];
+    // The walk once, a pickup at each door, and the drive between the doors
+    // out and back: each leg here is park-and-walk plus a few seconds.
+    expect(stop.service_min).toBeGreaterThan(60 + 4 * GROUP_PICKUP_MIN);
+    expect(stop.service_min).toBeLessThan(100);
+
+    const plan = planDay(inputs, { day: DAY, honourWindows: true, solver: SOLVER });
+    expect(plan.unassigned).toEqual([]);
+    const walker = plan.routes.find((route) => route.staff_id === "walker-b")!;
+    expect(walker.visit_ids).toEqual(["dog-0", "dog-1", "dog-2", "dog-3"]);
+    expect(plan.routes.find((route) => route.staff_id === "walker-a")?.visit_ids ?? []).toEqual(
+      [],
+    );
+    const day = plan.solution.costs[1];
+    expect(day.service).toBeCloseTo(stop.service_min, 5);
+    expect(day.load).toBeGreaterThan(60 + 4 * GROUP_PICKUP_MIN);
+    expect(day.load).toBeLessThan(110);
+    expect(day.load).toBeLessThan(240 / 2);
+  });
+
+  it("applies the group's window to every member, in place of their own", () => {
+    const inputs = fourDogGroup("walker-b");
+    const { inputs: collapsed } = collapseWalkGroups(inputs);
+    expect([collapsed.visits[0].earliest, collapsed.visits[0].latest]).toEqual(["09:00", "10:00"]);
+    const built = buildDay(collapsed, { day: DAY, honourWindows: true });
+    // Minutes after the 08:00 workday start.
+    expect([built.problem.stops[0].earliest, built.problem.stops[0].latest]).toEqual([60, 120]);
+    expect(routeClock(built.problem, 1, [0]).late).toEqual([]);
+
+    // A window nobody can keep names all four dogs, each under the group window.
+    const tight = fourDogGroup("walker-b");
+    for (const visit of tight.visits)
+      visit.walk_group = { id: "group-a", earliest: "08:00", latest: "08:01" };
+    const missed = planDay(tight, { day: DAY, honourWindows: true, solver: SOLVER });
+    expect(missed.routes.flatMap((route) => route.visit_ids)).toEqual([]);
+    expect(
+      missed.unassigned.map((visit) => [visit.visit_id, visit.client, visit.earliest, visit.latest]),
+    ).toEqual([
+      ["dog-0", "Client 0", "08:00", "08:01"],
+      ["dog-1", "Client 1", "08:00", "08:01"],
+      ["dog-2", "Client 2", "08:00", "08:01"],
+      ["dog-3", "Client 3", "08:00", "08:01"],
+    ]);
+  });
+
+  it("still plans one walk when the group has no walker, on whoever takes it", () => {
+    const plan = planDay(fourDogGroup(null), { day: DAY, honourWindows: true, solver: SOLVER });
+    expect(plan.unassigned).toEqual([]);
+    const taken = plan.routes.filter((route) => route.visit_ids.length > 0);
+    expect(taken).toHaveLength(1);
+    expect(taken[0].visit_ids).toEqual(["dog-0", "dog-1", "dog-2", "dog-3"]);
+  });
+
+  it("plans a group with one visit in play as a solo walk", () => {
+    const inputs = fourDogGroup("walker-b");
+    inputs.visits = inputs.visits.slice(0, 1);
+    const { inputs: collapsed, members } = collapseWalkGroups(inputs);
+    expect(members.size).toBe(0);
+    expect(collapsed.visits[0].service_min).toBe(60);
+    expect(collapsed.visits[0].earliest).toBe("15:00");
+  });
+
+  it("times the group the same way when the plan is saved", () => {
+    expect(sql).toContain(`_pickup_min CONSTANT integer := ${GROUP_PICKUP_MIN};`);
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.apply_route_plan(");
+    expect(sql).toContain("LEFT JOIN _arp_grp gm ON gm.vid = a.vid");
+    expect(sql).toContain(
+      "COALESCE(gm.svc, public.stop_service_min(sv.default_duration_min, p.service_duration_min))",
+    );
+    expect(sql).toContain("_cur_lat := _r.resume_lat; _cur_lon := _r.resume_lon;");
+    expect(sql).toContain(
+      "GRANT EXECUTE ON FUNCTION public.apply_route_plan(uuid, uuid[], date, boolean, jsonb, boolean, uuid[]) TO authenticated, service_role;",
+    );
+  });
+});
+
+describe("a member that changes leaves its group", () => {
+  it("detaches on a move or a skip, and counts only walks still to happen", () => {
+    expect(sql).toMatch(
+      /BEFORE INSERT OR UPDATE OF walk_group_id, scheduled_on, service_id, subscription_id, status, organization_id/,
+    );
+    expect(sql).toContain("_kept := NEW.walk_group_id IS NOT DISTINCT FROM OLD.walk_group_id;");
+    expect(sql).toMatch(/IF NEW.status IN \('skipped', 'canceled'\) THEN\s+NEW.walk_group_id := NULL;/);
+    expect(sql.match(/AND v.status IN \('scheduled', 'in_progress'\)/g)).toHaveLength(2);
+    expect(sql).toContain("IF NOT _kept AND _group.assigned_staff_id IS NOT NULL THEN");
   });
 });
 
