@@ -56,13 +56,15 @@ function Dashboard() {
   // ignores this entirely: the map is always rendered above `md`.
   const [mapOpen, setMapOpen] = useState(false);
 
-  const { data: orgData, isLoading: orgLoading } = useQuery({
+  const { data: orgData, isPending: orgLoading } = useQuery({
     queryKey: ["my-org"],
     queryFn: () => orgFn(),
+    throwOnError: (_error, query) => query.state.data === undefined,
   });
-  const { data: sum, isLoading: sumLoading } = useQuery({
+  const { data: sum, isPending: sumLoading } = useQuery({
     queryKey: ["dashboard-summary"],
     queryFn: () => sumFn(),
+    throwOnError: (_error, query) => query.state.data === undefined,
     refetchInterval: 60_000,
   });
   const role = orgData?.organization?.role as AppRole | undefined;
@@ -323,7 +325,7 @@ function Dashboard() {
               <KpiValueBone />
             )
           }
-          hint={total > 0 ? `${pct}% done` : "None scheduled"}
+          hint={sum ? (total > 0 ? `${pct}% done` : "None scheduled") : <Skeleton className="h-3 w-20" />}
         />
         {sum && sum.mtdRevenueCents === null && (
           <KpiCard
@@ -377,13 +379,13 @@ function Dashboard() {
           </div>
           {/* Not a placeholder for the map: the count is the one thing the map
               was being scrolled past to learn. */}
-          <p className={`text-xs text-muted-foreground md:hidden ${mapOpen ? "hidden" : ""}`}>
+          <div className={`text-xs text-muted-foreground md:hidden ${mapOpen ? "hidden" : ""}`}>
             {sumLoading
-              ? "Loading…"
+              ? <Skeleton className="h-3 w-40" />
               : groups.length === 0
                 ? "No visits scheduled today."
                 : `${groups.reduce((n, g) => n + g.visits.length, 0)} visits across ${groups.length} route${groups.length === 1 ? "" : "s"}.`}
-          </p>
+          </div>
         </div>
 
         <div className="min-w-0 space-y-4 max-md:order-1">
@@ -494,7 +496,7 @@ function KpiCard({
   icon: any;
   label: string;
   value: ReactNode;
-  hint?: string;
+  hint?: ReactNode;
   tone?: "danger";
 }) {
   return (
