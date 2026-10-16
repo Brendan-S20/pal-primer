@@ -1344,7 +1344,7 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
     // A walk's window: one the card offered, or none. Refused before anything
     // is saved, in plain words.
     const { checkedWalkWindow, recordRequestedWindow } = await import("@/lib/walk-request.server");
-    const window = await checkedWalkWindow(sb, session.organizationId, service, data);
+    const walkWindow = await checkedWalkWindow(sb, session.organizationId, service, data);
 
     const { data: rows, error } = await (sb as any).rpc("portal_request_one_off", {
       _token: data.token,
@@ -1373,8 +1373,10 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
 
     // The window rides on the request, so the inbox shows it and the office's
     // Book it carries it.
-    if (window) await recordRequestedWindow(sb, session.organizationId, ticketId, window);
-    const dayLabel = window ? `${formatDay(data.day)}, ${window.label}` : formatDay(data.day);
+    if (walkWindow) await recordRequestedWindow(sb, session.organizationId, ticketId, walkWindow);
+    const dayLabel = walkWindow
+      ? `${formatDay(data.day)}, ${walkWindow.label}`
+      : formatDay(data.day);
     let bookedOn: string | null = null;
     const { data: org } = await (sb.from("organizations") as any)
       .select("portal_auto_accept_bookings, one_off_price_cents")
@@ -1398,8 +1400,8 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
           serviceId: service?.id ?? null,
           note: oneOffVisitNote(dayLabel, true, petWaste ? null : service?.name),
           asService: true,
-          earliestTime: window?.earliest ?? null,
-          latestTime: window?.latest ?? null,
+          earliestTime: walkWindow?.earliest ?? null,
+          latestTime: walkWindow?.latest ?? null,
         });
         const { data: linked } = await (sb.from("qc_tickets") as any)
           .update({

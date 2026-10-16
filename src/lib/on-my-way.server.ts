@@ -36,7 +36,7 @@ export async function sendOnMyWay(opts: {
   const { data: v, error } = await supabase
     .from("visits")
     .select(
-      "id, organization_id, client_id, status, scheduled_on, eta_start, eta_end, on_my_way_sent_at, tracking_token, clients(display_name, primary_phone, sms_opt_out, comms_paused), properties(street, city, visit_contact_name, visit_contact_phone, visit_contact_email)",
+      "id, organization_id, client_id, status, scheduled_on, eta_start, eta_end, on_my_way_sent_at, tracking_token, clients(display_name, primary_phone, sms_opt_out, comms_paused), properties(street, city, visit_contact_name, visit_contact_phone, visit_contact_email), services(service_line)",
     )
     .eq("id", visitId)
     .single();
@@ -134,6 +134,9 @@ export async function sendOnMyWay(opts: {
         eta: eta ?? undefined,
         address,
         trackUrl: trackUrl ?? undefined,
+        // A dog walk's email says walk and walker (#410); every other visit's
+        // email is exactly what it was.
+        ...(isDogWalk((v as any).services) ? { walk: true } : {}),
       },
       manual: trigger === "button",
     });
@@ -150,6 +153,14 @@ export async function sendOnMyWay(opts: {
       .eq("id", visitId);
   }
   return result;
+}
+
+function isDogWalk(services: unknown): boolean {
+  const s = (Array.isArray(services) ? services[0] : services) as
+    | { service_line?: string | null }
+    | null
+    | undefined;
+  return s?.service_line === "dog_walking";
 }
 
 /** The visit's tracking token, minted on first use. One per visit, kept

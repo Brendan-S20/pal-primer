@@ -520,6 +520,9 @@ export const skipVisit = createServerFn({ method: "POST" })
     // or the next stop late. Never throws.
     const { notifyVisitSkipped } = await import("@/lib/field-notify.server");
     await notifyVisitSkipped({ visitId: data.visitId, actorUserId: context.userId });
+    // A dog walk's client hears it too (#410); nothing for any other visit.
+    const { notifyWalkNotDone } = await import("@/lib/walk-notify.server");
+    await notifyWalkNotDone({ visitId: data.visitId, kind: "skipped" });
     return { ok: true };
   });
 

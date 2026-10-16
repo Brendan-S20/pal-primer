@@ -527,6 +527,9 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     // The day it left and the day it went to.
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    // A dog walk's client is told the new day (#410).
+    const { watchWalkSchedule } = await import("@/lib/walk-notify.server");
+    const walks = await watchWalkSchedule([data.visitId]);
     const { error } = await supabase.rpc("reschedule_visit", {
       _visit_id: data.visitId,
       _new_date: data.newDate,
@@ -534,6 +537,7 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
+    await walks.finish(`${data.visitId}-${data.newDate}`);
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: v.organization_id,
@@ -658,6 +662,9 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities(data.visitIds);
+    // Each dog-walk client gets one email for the whole move (#410).
+    const { watchWalkSchedule, moveKey } = await import("@/lib/walk-notify.server");
+    const walks = await watchWalkSchedule(data.visitIds);
     const { data: rows, error } = await (context.supabase as any).rpc("bulk_reschedule_visits", {
       _visit_ids: data.visitIds,
       _to_date: data.toDate,
@@ -665,6 +672,7 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
+    await walks.finish(moveKey(data.visitIds, data.toDate));
     // `skipped` is not an error and must reach the caller: a weekly client
     // moved exactly a week already has a visit there, and the honest report is
     // "moved 12, left 2 alone", not silence.

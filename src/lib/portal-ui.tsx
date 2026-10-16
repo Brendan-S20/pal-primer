@@ -1119,6 +1119,12 @@ function VisitRow({
                 {orgLocalTime(v.eta_end, tz)}
               </span>
             )}
+            {/* A walk not routed yet shows its plan's window (#410). */}
+            {!v.eta_start && v.walk_window && (
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3 shrink-0" /> {v.walk_window}
+              </span>
+            )}
             {relativeFromToday(v.scheduled_on) && (
               <span>· {relativeFromToday(v.scheduled_on)}</span>
             )}

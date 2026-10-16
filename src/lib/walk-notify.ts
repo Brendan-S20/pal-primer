@@ -71,7 +71,7 @@ export type WalkSlot = {
 
 /** "Mon, Oct 19, 10 AM to 12 PM" / "Mon and Thu, any time". */
 export function walkSlotLabel(s: WalkSlot): string {
-  const when = s.day ? formatDay(s.day) : (weekdaysPhrase(s.weekdays) ?? "Days to be arranged");
+  const when = s.day ? formatDay(s.day) : (weekdaysPhrase(s.weekdays) ?? "Your usual days");
   return `${when}, ${windowLabel(s.earliest, s.latest) ?? "any time"}`;
 }
 

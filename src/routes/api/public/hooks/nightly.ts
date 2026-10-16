@@ -182,6 +182,12 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
               { _org_id: org.id },
             );
             perOrg.visits_missed = error ? `err: ${error.message}` : (n as number);
+            // A missed dog walk's client is told, once per walk (#410). Reads
+            // nothing but walks, so a pet-waste business is untouched.
+            if (!error) {
+              const { notifyMissedWalks } = await import("@/lib/walk-notify.server");
+              perOrg.missed_walks_emailed = await notifyMissedWalks(org.id, todayStr);
+            }
           }
 
           if (org.auto_invoice_enabled) {
