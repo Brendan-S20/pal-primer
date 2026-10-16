@@ -64,11 +64,8 @@ function EmailSettingsPage() {
   const [values, setValues] = useState<Settings>(data);
   useEffect(() => setValues(data), [data]);
 
-  const rows = [
-    ...ROWS,
-    ...(values.runs_dog_walking ? WALK_ROWS : []),
-    ...(values.runs_pet_sitting ? SIT_ROWS : []),
-  ];
+  const rows = values.runs_dog_walking ? [...ROWS, ...WALK_ROWS] : ROWS;
+  const shown = [...rows, ...(values.runs_pet_sitting ? SIT_ROWS : [])];
   const mut = useMutation({
     mutationFn: () => {
       // The walk and sitting switches are saved only where they were drawn.
@@ -83,12 +80,17 @@ function EmailSettingsPage() {
         notify_email_stay_ending,
         ...rest
       } = values;
+      const walk = runs_dog_walking
+        ? {
+            ...rest,
+            notify_email_walk_not_done,
+            notify_email_walk_schedule_change,
+            notify_email_walk_canceled,
+          }
+        : rest;
       return save({
         data: {
-          ...rest,
-          ...(runs_dog_walking
-            ? { notify_email_walk_not_done, notify_email_walk_schedule_change, notify_email_walk_canceled }
-            : {}),
+          ...walk,
           ...(runs_pet_sitting
             ? { notify_email_missed_meds, notify_email_stay_confirmed, notify_email_stay_ending }
             : {}),
@@ -110,7 +112,7 @@ function EmailSettingsPage() {
       <Card>
         <CardHeader><CardTitle>Notifications</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {rows.map((r) => (
+          {shown.map((r) => (
             <label key={r.key} className="flex items-start gap-3 text-sm">
               <input
                 type="checkbox"
