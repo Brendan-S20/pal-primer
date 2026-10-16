@@ -28,6 +28,7 @@ import {
   stayVisitCount,
   stayVisitPriceCents,
   stayWindowsProblem,
+  DEFAULT_DEPOSIT_REFUND_DAYS,
   DEFAULT_OVERNIGHT_ARRIVAL,
   type StayKind,
 } from "@/lib/stays";
@@ -319,9 +320,14 @@ export type StayRow = {
 export const listStaysForClient = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }): Promise<{ stays: StayRow[] }> => {
+  .handler(async ({ data, context }): Promise<{ stays: StayRow[]; depositRefundDays: number }> => {
     const supabase = context.supabase as SupabaseClient<Database>;
-    await requirePermission(supabase, context.userId, "view_client_directory");
+    const { orgId } = await requirePermission(supabase, context.userId, "view_client_directory");
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("stay_deposit_refund_days")
+      .eq("id", orgId)
+      .maybeSingle();
     const { data: rows, error } = await (supabase as any)
       .from("stays")
       .select(
@@ -331,6 +337,7 @@ export const listStaysForClient = createServerFn({ method: "GET" })
       .order("starts_on", { ascending: false });
     if (error) throw new Error(error.message);
     return {
+      depositRefundDays: org?.stay_deposit_refund_days ?? DEFAULT_DEPOSIT_REFUND_DAYS,
       stays: ((rows ?? []) as any[]).map((r) => ({
         id: r.id,
         property_id: r.property_id,
@@ -369,21 +376,29 @@ export const listStaysForClient = createServerFn({ method: "GET" })
 
 export const cancelStay = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ stayId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z.object({ stayId: z.string().uuid(), refundDeposit: z.boolean().default(false) }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as SupabaseClient<Database>;
     const orgId = await requireOffice(supabase, context.userId);
-    // tg_stays_follow cancels the future scheduled visits and ends the plans.
-    const { data: rows, error } = await (supabase as any)
+    const { data: row, error: sErr } = await (supabase as any)
       .from("stays")
-      .update({ status: "canceled" })
+      .select("id, client_id, property_id, starts_on, ends_on, invoice_id, deposit_invoice_id, status")
       .eq("id", data.stayId)
       .eq("organization_id", orgId)
-      .neq("status", "canceled")
-      .select("id, client_id, property_id, starts_on, ends_on, invoice_id, deposit_invoice_id");
+      .maybeSingle();
+    if (sErr) throw new Error(sErr.message);
+    if (!row || row.status === "canceled")
+      throw new Error("That stay was not found, or is already canceled.");
+    // cancel_stay cancels the future scheduled visits, ends the plans and
+    // applies the deposit rule (tg_stays_follow).
+    const { data: result, error } = await supabase.rpc("cancel_stay", {
+      _stay_id: data.stayId,
+      _refund_deposit: data.refundDeposit,
+    });
     if (error) throw new Error(error.message);
-    const row = rows?.[0];
-    if (!row) throw new Error("That stay was not found, or is already canceled.");
+    const r = (result ?? {}) as { deposit?: string; fee_invoice_id?: string | null };
     const { syncInvoicePaymentIntentAmount } = await import("@/lib/invoice-reconcile.server");
     for (const id of [row.invoice_id, row.deposit_invoice_id]) {
       if (id) await syncInvoicePaymentIntentAmount(id);
@@ -395,10 +410,18 @@ export const cancelStay = createServerFn({ method: "POST" })
       propertyId: row.property_id,
       actorUserId: context.userId,
       kind: "stay.canceled",
-      summary: `Canceled the stay, ${row.starts_on} to ${row.ends_on}`,
-      meta: { stay_id: row.id },
+      summary:
+        r.deposit === "kept"
+          ? `Canceled the stay, ${row.starts_on} to ${row.ends_on}. Kept the deposit as a cancellation fee.`
+          : `Canceled the stay, ${row.starts_on} to ${row.ends_on}`,
+      meta: {
+        stay_id: row.id,
+        deposit: r.deposit ?? null,
+        refund_override: data.refundDeposit,
+        fee_invoice_id: r.fee_invoice_id ?? null,
+      },
     });
-    return { ok: true };
+    return { ok: true, deposit: r.deposit ?? "none", feeInvoiceId: r.fee_invoice_id ?? null };
   });
 
 /** Moves a confirmed stay's dates or changes its pets. change_stay does the

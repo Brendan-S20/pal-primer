@@ -10,7 +10,7 @@
 // tests/a-stay-is-a-sitters-booking.test.ts holds the two together.
 
 import { arrivalWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
-import { servicePriceCents, type ServiceDraft } from "@/lib/services";
+import { formatServiceMoney, servicePriceCents, type ServiceDraft } from "@/lib/services";
 import { clockLabel, normalizeClock, windowLabel } from "@/lib/walk-windows";
 
 export type StayKind = "drop_in" | "overnight";
@@ -351,6 +351,42 @@ export function stayContactGapsSentence(gaps: readonly string[] | null | undefin
   return `Missing: ${known.join(", ")}. The sitter needs ${
     known.length === 1 ? "this" : "these"
   } if a pet is sick.`;
+}
+
+// ── The deposit when a stay is canceled ──────────────────────────────────
+//
+// tg_stays_follow (migration 20261017050000) refunds the deposit when the
+// stay starts at least organizations.stay_deposit_refund_days later, and
+// otherwise keeps it as a cancellation fee. The office can refund anyway.
+
+export const DEFAULT_DEPOSIT_REFUND_DAYS = 7;
+
+/** The same test tg_stays_follow makes: starts_on - today >= days. */
+export function depositRefundable(startsOn: string, today: string, days: number): boolean {
+  return daysBetween(today, startsOn) >= days;
+}
+
+/** What canceling today does with the deposit, for the cancel dialog, or
+ *  null when the stay has no deposit. */
+export function depositCancelSentence(args: {
+  depositCents: number | null | undefined;
+  startsOn: string;
+  today: string;
+  refundDays: number;
+}): string | null {
+  if (!args.depositCents) return null;
+  const money = formatServiceMoney(args.depositCents);
+  const days = args.refundDays === 1 ? "1 day" : `${args.refundDays} days`;
+  if (depositRefundable(args.startsOn, args.today, args.refundDays))
+    return `The ${money} deposit is refunded. Unpaid, its invoice is voided. Paid, it stays on the client's account as credit.`;
+  const left = daysBetween(args.today, args.startsOn);
+  const when =
+    left < 0
+      ? "The stay has started"
+      : left === 0
+        ? "The stay starts today"
+        : `The stay starts in less than ${days}`;
+  return `${when}, so the ${money} deposit is kept as a cancellation fee.`;
 }
 
 // ── Holiday dates ────────────────────────────────────────────────────────

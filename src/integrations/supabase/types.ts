@@ -3896,6 +3896,7 @@ export type Database = {
           sms_from_number: string | null
           std_base_price_cents: number | null
           std_per_dog_addl_cents: number | null
+          stay_deposit_refund_days: number
           stripe_connect_account_id: string | null
           stripe_connect_charges_enabled: boolean
           stripe_connect_connected_at: string | null
@@ -4046,6 +4047,7 @@ export type Database = {
           sms_from_number?: string | null
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
+          stay_deposit_refund_days?: number
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -4196,6 +4198,7 @@ export type Database = {
           sms_from_number?: string | null
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
+          stay_deposit_refund_days?: number
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -8265,6 +8268,10 @@ export type Database = {
       can_use_expense_receipt: {
         Args: { _name: string; _write: boolean }
         Returns: boolean
+      }
+      cancel_stay: {
+        Args: { _refund_deposit?: boolean; _stay_id: string }
+        Returns: Json
       }
       can_write_org: {
         Args: { _org_id: string; _user_id: string }

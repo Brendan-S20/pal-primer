@@ -45,6 +45,7 @@ import {
 import type { ServiceLine } from "@/lib/service-lines";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { HolidayDatesCard } from "@/components/settings/HolidayDatesCard";
+import { StayDepositCard } from "@/components/settings/StayDepositCard";
 import { usePermissions } from "@/hooks/useMyRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -272,6 +273,7 @@ function ServicesPage() {
       </section>
 
       {lines.includes("pet_sitting") && <HolidayDatesCard canEdit={canEdit} />}
+      {lines.includes("pet_sitting") && <StayDepositCard canEdit={canEdit} />}
 
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">

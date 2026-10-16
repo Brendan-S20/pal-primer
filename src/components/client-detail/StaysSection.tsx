@@ -8,7 +8,7 @@ import { ConfirmStayButton } from "@/components/client-detail/ConfirmStayButton"
 // window (or one for the overnight arrival window); the form says how many
 // before it saves. The rules live in src/lib/stays.ts and the database.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -37,7 +37,10 @@ import {
 import {
   arrivalWindowProblem,
   changedVisitPriceCents,
+  DEFAULT_DEPOSIT_REFUND_DAYS,
   DEFAULT_DROP_IN_WINDOW,
+  depositCancelSentence,
+  depositRefundable,
   earliestStayEnd,
   DEFAULT_OVERNIGHT_ARRIVAL,
   MAX_DROP_IN_WINDOWS,
@@ -134,6 +137,7 @@ export function StaysSection({
               clientId={clientId}
               pets={pets}
               canConfirm={canManagePricing}
+              depositRefundDays={data?.depositRefundDays ?? DEFAULT_DEPOSIT_REFUND_DAYS}
             />
           ))}
         </ul>
@@ -156,11 +160,13 @@ function StayRowView({
   clientId,
   pets,
   canConfirm,
+  depositRefundDays,
 }: {
   stay: StayRow;
   clientId: string;
   pets: any[];
   canConfirm: boolean;
+  depositRefundDays: number;
 }) {
   const qc = useQueryClient();
   const today = useOrgToday();
@@ -176,11 +182,20 @@ function StayRowView({
     enabled: changingSitter,
   });
   const invalidate = () => invalidateStay(qc, clientId);
+  // The dialog's checkbox writes here; the dialog's description is drawn once.
+  const refundAnyway = useRef(false);
   const cancel = useMutation({
-    mutationFn: () => cancelFn({ data: { stayId: stay.id } }),
-    onSuccess: () => {
-      toast.success("Stay canceled. Its upcoming visits are canceled too. Visits already done stay billed.");
+    mutationFn: () =>
+      cancelFn({ data: { stayId: stay.id, refundDeposit: refundAnyway.current } }),
+    onSuccess: (r) => {
+      toast.success(
+        r.deposit === "kept"
+          ? "Stay canceled. The deposit is kept as a cancellation fee on a new invoice."
+          : "Stay canceled. Its upcoming visits are canceled too. Visits already done stay billed.",
+      );
       invalidate();
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["client-invoices", clientId] });
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -272,10 +287,33 @@ function StayRowView({
               className="text-destructive"
               disabled={cancel.isPending}
               onClick={async () => {
+                refundAnyway.current = false;
+                const deposit = depositCancelSentence({
+                  depositCents: stay.deposit_invoice_id ? stay.deposit_cents : null,
+                  startsOn: stay.starts_on,
+                  today,
+                  refundDays: depositRefundDays,
+                });
+                const keeps =
+                  !!deposit && !depositRefundable(stay.starts_on, today, depositRefundDays);
                 const ok = await confirm({
                   title: "Cancel this stay?",
-                  description:
-                    "Its upcoming visits are canceled and its plans end. Visits already done stay on record and stay billed. Upcoming nights come off the invoice, or are credited to the client's account if it is paid.",
+                  description: (
+                    <>
+                      <p>
+                        Its upcoming visits are canceled and its plans end. Visits already done
+                        stay on record and stay billed. Upcoming nights come off the invoice, or
+                        are credited to the client's account if it is paid.
+                      </p>
+                      {deposit && <p>{deposit}</p>}
+                      {keeps && (
+                        <RefundAnywayCheckbox
+                          id={`refund-${stay.id}`}
+                          onChange={(v) => (refundAnyway.current = v)}
+                        />
+                      )}
+                    </>
+                  ),
                   confirmLabel: "Cancel stay",
                   destructive: true,
                 });
@@ -865,5 +903,27 @@ function BookStayDrawer({
         </DrawerFooter>
       </form>
     </EditDrawer>
+  );
+}
+
+/** "Refund the deposit anyway", inside the cancel dialog. It keeps its own
+ *  state because the dialog draws its description once. */
+function RefundAnywayCheckbox({ id, onChange }: { id: string; onChange: (v: boolean) => void }) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <label
+      htmlFor={id}
+      className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm text-foreground"
+    >
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={(v) => {
+          setChecked(v === true);
+          onChange(v === true);
+        }}
+      />
+      <span className="min-w-0">Refund the deposit anyway</span>
+    </label>
   );
 }
