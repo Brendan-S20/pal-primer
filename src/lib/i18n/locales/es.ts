@@ -956,6 +956,9 @@ const es: Translations = {
     dog: "Perro",
     chooseDog: "Elija un perro",
     dogRequiredHint: "Este hogar tiene más de un perro. El progreso y la tarea se guardan por perro.",
+    shareProgress: "Compartir las notas y la tarea de cada clase con los clientes",
+    shareProgressHint:
+      "Los clientes ven la nota y la tarea de cada clase en la página de entrenamiento de su portal. Las puntuaciones, las fechas y las sesiones restantes se muestran siempre.",
   },
   accessOff: {
     pageTitle: "Acceso desactivado",

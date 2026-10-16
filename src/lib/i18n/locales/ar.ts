@@ -1033,6 +1033,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     dog: "الكلب",
     chooseDog: "اختر كلبًا",
     dogRequiredHint: "لدى هذا المنزل أكثر من كلب. يُحفظ التقدم والواجب لكل كلب.",
+    shareProgress: "مشاركة ملاحظات الدروس والواجبات مع العملاء",
+    shareProgressHint:
+      "يرى العملاء ملاحظة كل درس وواجبه في صفحة التدريب في بوابتهم. تظهر الدرجات والتواريخ والجلسات المتبقية في كل الأحوال.",
   },
   accessOff: {
     pageTitle: "تم إيقاف الوصول",

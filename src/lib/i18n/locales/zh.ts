@@ -909,6 +909,9 @@ const zh: TranslationsWithPlurals<"other"> = {
     dog: "狗",
     chooseDog: "选择一只狗",
     dogRequiredHint: "这个家庭有不止一只狗。进度和作业按狗分别记录。",
+    shareProgress: "与客户分享课程笔记和作业",
+    shareProgressHint:
+      "客户可以在门户的训练页面看到每节课的笔记和作业。评分、日期和剩余课时始终显示。",
   },
   accessOff: {
     pageTitle: "访问已关闭",
