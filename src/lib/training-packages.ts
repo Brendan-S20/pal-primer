@@ -68,9 +68,39 @@ export function canBook(pkg: TrainingPackage, holdingCount: number, date: string
   return null;
 }
 
-export function holdsSession(visit: { status: string; skip_billable: boolean | null }): boolean {
+export const CHOOSE_DOG = "Choose which dog this package is for.";
+/** The booking dialog looks for this sentence to offer "book anyway". */
+export const TRAINER_BUSY = "The trainer already has a lesson at that time";
+
+type LessonUse = { status: string; skip_billable: boolean | null };
+
+/** On a package lesson skip_billable means "uses a session". The database
+ * sets it from the business's no-show and late-cancel rule, and the office
+ * can override it. Mirrors public.training_visit_uses_session. */
+export function usesSession(visit: LessonUse): boolean {
   return (
-    ["scheduled", "in_progress", "completed"].includes(visit.status) ||
-    (visit.status === "skipped" && visit.skip_billable === true)
+    visit.status === "completed" ||
+    ((visit.status === "skipped" || visit.status === "missed") && visit.skip_billable === true)
   );
+}
+
+/** Mirrors public.training_visit_holds_session. */
+export function holdsSession(visit: LessonUse): boolean {
+  return visit.status === "scheduled" || visit.status === "in_progress" || usesSession(visit);
+}
+
+/** "HH:MM" plus minutes, or null when the lesson would run past midnight. */
+export function lessonEnd(start: string, minutes: number): string | null {
+  const [h, m] = start.split(":").map(Number);
+  const total = h * 60 + m + minutes;
+  if (!Number.isFinite(total) || total > 24 * 60 - 1) return null;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/** Two half-open times on the same day overlap. "HH:MM" strings compare in order. */
+export function timesOverlap(
+  a: { start: string; end: string },
+  b: { start: string; end: string },
+): boolean {
+  return a.start < b.end && b.start < a.end;
 }

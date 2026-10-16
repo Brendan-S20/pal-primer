@@ -3469,6 +3469,8 @@ export type Database = {
           suspended_reason: string | null
           timezone: string
           traffic_profile: string
+          training_late_cancel_hours: number
+          training_missed_uses_session: boolean
           trial_ends_at: string | null
           updated_at: string
           work_days: number[]
@@ -3612,6 +3614,8 @@ export type Database = {
           suspended_reason?: string | null
           timezone?: string
           traffic_profile?: string
+          training_late_cancel_hours?: number
+          training_missed_uses_session?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           work_days?: number[]
@@ -3755,6 +3759,8 @@ export type Database = {
           suspended_reason?: string | null
           timezone?: string
           traffic_profile?: string
+          training_late_cancel_hours?: number
+          training_missed_uses_session?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           work_days?: number[]
@@ -7193,6 +7199,18 @@ export type Database = {
     }
     Functions: {
       client_package_session_number: { Args: { _visit_id: string }; Returns: number }
+      cancel_client_package: {
+        Args: { _cancel_booked: boolean; _client_package_id: string }
+        Returns: number
+      }
+      set_training_session_rules: {
+        Args: {
+          _late_cancel_hours: number
+          _missed_uses_session: boolean
+          _org_id: string
+        }
+        Returns: undefined
+      }
       accept_org_invite_for_current_user: {
         Args: { _token?: string }
         Returns: string

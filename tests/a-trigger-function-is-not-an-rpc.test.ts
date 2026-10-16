@@ -208,7 +208,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // training_subscription_package_guard, training_skill_guard and
     // training_progress_row_guard. Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
-    expect(triggerFunctions().size).toBe(68);
+    //
+    // 68 -> 69 on 2026-10-16 (20261016200000, training cancel and no-show):
+    // training_lesson_session_rule, which decides whether a missed or late
+    // canceled package lesson uses a session. REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    expect(triggerFunctions().size).toBe(69);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

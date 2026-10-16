@@ -6,7 +6,7 @@ import { orgToday, DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import { packageState, sessionsLeft } from "@/lib/training-packages";
 import {
   bookTrainingSessions,
-  holdingCount,
+  lessonCounts,
   requireTrainingOffice,
   sellTrainingPackage,
   type ClientPackage,
@@ -139,7 +139,7 @@ export const listClientPackages = createServerFn({ method: "GET" })
     const today = orgToday(org.data.timezone || DEFAULT_ORG_TIMEZONE);
     const packages: ListedClientPackage[] = await Promise.all(
       ((packs.data ?? []) as ClientPackage[]).map(async (pack) => {
-        const held = await holdingCount(db, pack.id);
+        const { held, bookedAfterToday } = await lessonCounts(db, pack.id, today);
         const invoice = pack.invoice_id
           ? await db
               .from("invoices")
@@ -151,6 +151,7 @@ export const listClientPackages = createServerFn({ method: "GET" })
         return {
           ...pack,
           held,
+          bookedAfterToday,
           left: sessionsLeft(pack),
           free: Math.max(0, pack.sessions_count - held),
           state: packageState(pack, today),
@@ -161,23 +162,21 @@ export const listClientPackages = createServerFn({ method: "GET" })
     return { packages };
   });
 
-const bookingSchema = z
-  .object({
-    clientPackageId: id,
-    propertyId: id,
-    startOn: day,
-    weekday: z.number().int().min(0).max(6),
-    earliestTime: time,
-    latestTime: time,
-    staffId: id.optional(),
-    count: z.number().int().min(1).max(100).optional(),
-  })
-  .refine(
-    (v) =>
-      (!v.earliestTime && !v.latestTime) ||
-      (!!v.earliestTime && !!v.latestTime && v.earliestTime < v.latestTime),
-    "Set an earliest arrival before the latest arrival.",
-  );
+const lessonTime = {
+  startTime: time,
+  minutes: z.number().int().min(15).max(480).optional(),
+  allowOverlap: z.boolean().optional(),
+};
+
+const bookingSchema = z.object({
+  clientPackageId: id,
+  propertyId: id,
+  startOn: day,
+  weekday: z.number().int().min(0).max(6),
+  ...lessonTime,
+  staffId: id.optional(),
+  count: z.number().int().min(1).max(100).optional(),
+});
 
 export const bookPackageSessions = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -194,18 +193,9 @@ export const bookOneSession = createServerFn({ method: "POST" })
         clientPackageId: id,
         propertyId: id,
         date: day,
-        window: z.object({ earliestTime: time, latestTime: time }).optional(),
+        ...lessonTime,
         staffId: id.optional(),
       })
-      .refine(
-        (v) =>
-          !v.window ||
-          (!v.window.earliestTime && !v.window.latestTime) ||
-          (!!v.window.earliestTime &&
-            !!v.window.latestTime &&
-            v.window.earliestTime < v.window.latestTime),
-        "Set an earliest arrival before the latest arrival.",
-      )
       .parse(d),
   )
   .handler(async ({ data, context }) =>
@@ -217,28 +207,92 @@ export const bookOneSession = createServerFn({ method: "POST" })
         propertyId: data.propertyId,
         startOn: data.date,
         weekday: new Date(`${data.date}T00:00:00Z`).getUTCDay(),
-        ...data.window,
+        startTime: data.startTime,
+        minutes: data.minutes,
+        allowOverlap: data.allowOverlap,
         staffId: data.staffId,
       },
       true,
     ),
   );
 
+/** Canceling stops new bookings. The office chooses whether lessons booked
+ * after today go with it or stay so they can still be completed. Lessons on
+ * or before today are never canceled here. One transaction in the database. */
 export const cancelClientPackage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ clientPackageId: id }).parse(d))
+  .inputValidator((d) => z.object({ clientPackageId: id, cancelBooked: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const db = context.supabase as TrainingDb;
+    await requireTrainingOffice(db, context.userId);
+    const result = await db.rpc("cancel_client_package", {
+      _client_package_id: data.clientPackageId,
+      _cancel_booked: data.cancelBooked,
+    });
+    if (result.error) throw new Error(result.error.message);
+    return { ok: true as const, canceledLessons: (result.data as number) ?? 0 };
+  });
+
+export const getTrainingSessionRules = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const db = context.supabase as TrainingDb;
+    const orgId = await requireTrainingOffice(db, context.userId);
+    const { data, error } = await db
+      .from("organizations")
+      .select("training_late_cancel_hours, training_missed_uses_session")
+      .eq("id", orgId)
+      .single();
+    if (error) throw new Error(error.message);
+    return {
+      lateCancelHours: data.training_late_cancel_hours as number,
+      missedUsesSession: data.training_missed_uses_session as boolean,
+    };
+  });
+
+export const saveTrainingSessionRules = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        lateCancelHours: z.number().int().min(0).max(168),
+        missedUsesSession: z.boolean(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const db = context.supabase as TrainingDb;
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(db, context.userId, "manage_settings");
+    const result = await db.rpc("set_training_session_rules", {
+      _org_id: orgId,
+      _late_cancel_hours: data.lateCancelHours,
+      _missed_uses_session: data.missedUsesSession,
+    });
+    if (result.error) throw new Error(result.error.message);
+    return { ok: true as const };
+  });
+
+/** The office override on a missed or skipped package lesson. The database
+ * refuses it from a trainer. */
+export const setLessonSessionUse = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: id, usesSession: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
     const db = context.supabase as TrainingDb;
     const orgId = await requireTrainingOffice(db, context.userId);
     const result = await db
-      .from("client_packages")
-      .update({ status: "canceled" })
-      .eq("id", data.clientPackageId)
+      .from("visits")
+      .update({ skip_billable: data.usesSession })
+      .eq("id", data.visitId)
       .eq("organization_id", orgId)
+      .not("client_package_id", "is", null)
+      .in("status", ["skipped", "missed"])
       .select("id")
-      .single();
+      .maybeSingle();
     if (result.error) throw new Error(result.error.message);
-    return { ok: true };
+    if (!result.data) throw new Error("Only a missed or skipped package lesson can change this.");
+    return { ok: true as const };
   });
 
 export const extendClientPackage = createServerFn({ method: "POST" })
@@ -293,7 +347,7 @@ export const listTrainingBookingOptions = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const db = context.supabase as TrainingDb;
     const orgId = await requireTrainingOffice(db, context.userId);
-    const [properties, dogs, staff, packages] = await Promise.all([
+    const [properties, dogs, staff, packages, services] = await Promise.all([
       db
         .from("properties")
         .select("id, street")
@@ -318,13 +372,26 @@ export const listTrainingBookingOptions = createServerFn({ method: "GET" })
         .eq("organization_id", orgId)
         .eq("active", true)
         .order("name"),
+      db
+        .from("services")
+        .select("id, default_duration_min")
+        .eq("organization_id", orgId)
+        .eq("service_line", "training"),
     ]);
-    for (const result of [properties, dogs, staff, packages])
+    for (const result of [properties, dogs, staff, packages, services])
       if (result.error) throw new Error(result.error.message);
     return {
       properties: (properties.data ?? []) as { id: string; street: string }[],
       dogs: (dogs.data ?? []) as { id: string; name: string; property_id: string }[],
       staff: (staff.data ?? []) as { id: string; display_name: string }[],
-      packages: (packages.data ?? []) as (ServicePackage & { services: { name: string } })[],
+      packages: (packages.data ?? []) as (ServicePackage & {
+        services: { name: string };
+      })[],
+      /** Lesson length by training service, the default when booking. */
+      lessonMinutes: Object.fromEntries(
+        ((services.data ?? []) as { id: string; default_duration_min: number | null }[]).map(
+          (s) => [s.id, s.default_duration_min ?? 60],
+        ),
+      ) as Record<string, number>,
     };
   });
