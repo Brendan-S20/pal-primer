@@ -35,7 +35,7 @@ export type CompleteExtra = {
 
 export interface OfflineVisitActions {
   start: () => Promise<{ queued: boolean }>;
-  complete: (extra?: CompleteExtra) => Promise<{ queued: boolean }>;
+  complete: (extra?: CompleteExtra) => Promise<{ queued: boolean; result?: unknown }>;
   skip: (reason: string, code: string) => Promise<{ queued: boolean }>;
   uploadPhoto: (file: File, kind: PhotoKind) => Promise<{ queued: boolean }>;
 }

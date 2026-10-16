@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useClientTexting } from "@/hooks/useClientTexting";
 import { CalendarCheck, CalendarOff, CalendarPlus, Inbox, Repeat, Sparkles } from "lucide-react";
 import { ScheduleRecleanDialog, type RecleanTicket } from "@/components/ScheduleRecleanDialog";
 import {
@@ -182,6 +183,7 @@ function ConcernsPage() {
   // The one-click frequency apply is a manage_pricing action — hide it for
   // roles (dispatcher) that can reach Concerns but would be server-rejected.
   const { can } = usePermissions();
+  const texting = useClientTexting();
   const canManagePricing = can("manage_pricing");
   const [filter, setFilter] = useState<"all" | ConcernStatus>("open");
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -374,9 +376,11 @@ function ConcernsPage() {
               you can respond before it becomes a churn risk.
             </p>
           </div>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/messages">Open client messages</Link>
-          </Button>
+          {texting && (
+            <Button asChild variant="outline" size="sm">
+              <Link to="/messages">Open client messages</Link>
+            </Button>
+          )}
         </div>
       ) : (
         <ul className="space-y-3">

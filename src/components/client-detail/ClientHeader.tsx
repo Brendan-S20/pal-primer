@@ -49,6 +49,7 @@ const VacationHoldDrawer = lazy(() =>
 import { StatusChip, MetaChip } from "@/components/client-detail/primitives";
 import { formatPhone, formatDay } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { useClientTexting } from "@/hooks/useClientTexting";
 
 /** Active / Partially paused / Paused / Inactive, derived from services.
  *
@@ -118,6 +119,7 @@ export function ClientHeader({
   const listHoldsFn = useServerFn(listClientHolds);
   const previewFn = useServerFn(previewClientPortal);
   const { can } = usePermissions();
+  const texting = useClientTexting();
   const { data: holdsData } = useQuery({
     queryKey: ["client-holds", clientId],
     queryFn: () => listHoldsFn({ data: { clientId } }),
@@ -312,11 +314,15 @@ export function ClientHeader({
               <Navigation className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Navigate
             </Button>
           )}
-          <Link to="/messages/$clientId" params={{ clientId }}>
-            <Button variant="outline" size="sm">
-              <MessageSquare className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Message
-            </Button>
-          </Link>
+          {/* Only where this business can text: until then the thread page
+              is a "coming soon" with a disabled Send, a dead end. */}
+          {texting && (
+            <Link to="/messages/$clientId" params={{ clientId }}>
+              <Button variant="outline" size="sm">
+                <MessageSquare className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Message
+              </Button>
+            </Link>
+          )}
           <Button size="sm" onClick={onEditClient}>
             <Pencil className="mr-1.5 h-3.5 w-3.5 shrink-0" /> Edit Client
           </Button>

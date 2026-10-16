@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
 import { LoadError } from "@/components/LoadError";
 import { LineBones } from "@/components/PageSkeletons";
@@ -32,6 +33,7 @@ import {
   cancelPlatformAddon,
 } from "@/lib/platform-addons.functions";
 import { isSetupAddon, setupIsFreeFor, SETUP_FREE_BECAUSE } from "@/lib/done-for-you-setup";
+import { addonCardState, HELD_ADDON_ON_PLAN } from "@/lib/addon-launch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -653,6 +655,7 @@ function OrgCardSetupInner({ onDone, onCancel }: { onDone: () => void; onCancel:
 // AI Receptionist that attach to the org's existing plan subscription as a
 // Stripe subscription item and flip the matching feature on.
 function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval | null }) {
+  const copy = useLaunchCopy();
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listPlatformAddons);
@@ -723,6 +726,7 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               : a.subscribed
                 ? (a.waivedReason ?? null)
                 : setupFree;
+            const state = addonCardState(a);
             return (
             <div
               key={a.id}
@@ -733,16 +737,22 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium">{a.name}</p>
-                  {a.subscribed ? (
+                    {/* An add-on that has not launched reads Coming soon even
+                      when it is on the plan (addonCardState, #428). */}
+                    {state === "coming_soon" ? (
+                      <Badge variant="outline">{copy("Coming soon")}</Badge>
+                    ) : state === "for_sale" ? null : (
                     <StatusChip
-                      status={a.billing_interval === "one_time" ? "paid" : "active"}
+                        status={state === "purchased" ? "paid" : "active"}
                       label={
-                        a.waivedReason ? "Included" : a.billing_interval === "one_time" ? "Purchased" : "Active"
+                          state === "included"
+                            ? "Included"
+                            : state === "purchased"
+                              ? "Purchased"
+                              : "Active"
                       }
                     />
-                  ) : a.status === "coming_soon" ? (
-                    <Badge variant="outline">Coming soon</Badge>
-                  ) : null}
+                    )}
                 </div>
                 {/* Annual orgs pay recurring add-ons yearly at 12x the monthly
                     amount (no discount), so show the amount they'll actually
@@ -776,6 +786,11 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               {description && (
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{description}</p>
               )}
+                {state === "coming_soon" && a.subscribed && (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    {copy(HELD_ADDON_ON_PLAN)}
+                  </p>
+                )}
               <div className="mt-3">
                 {a.subscribed && a.billing_interval === "one_time" ? null : a.subscribed ? (
                   <Button
@@ -795,11 +810,7 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                   >
                     {removingId === a.id ? "Removing…" : "Remove from plan"}
                   </Button>
-                ) : a.status === "coming_soon" ? (
-                  <Button size="sm" disabled title="This add-on isn't available yet">
-                    Coming soon
-                  </Button>
-                ) : a.includedReason ? (
+                  ) : state === "coming_soon" ? null : a.includedReason ? (
                   <Button size="sm" disabled title={a.includedReason}>
                     Included on your plan
                   </Button>

@@ -457,7 +457,7 @@ describe("the lead form stops calling itself broken", () => {
     // form takes quote requests either way.
     expect(page).toMatch(/Off: the form only takes quote\s+requests/);
     expect(read("src/routes/_authenticated/settings.lead-form.tsx")).toMatch(
-      /redirect\(\{ to: "\/settings\/online-signup"/,
+      /<RedirectFallback to="\/settings\/online-signup"/,
     );
   });
 });

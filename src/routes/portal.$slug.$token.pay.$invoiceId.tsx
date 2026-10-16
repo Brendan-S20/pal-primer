@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { appUrl } from "@/lib/app-origin";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -33,6 +34,7 @@ function getStripe(pk: string, stripeAccount?: string) {
 }
 
 function PayInvoice() {
+  const copy = useLaunchCopy();
   const { slug, token, invoiceId } = Route.useParams();
   const createIntent = useServerFn(portalCreateInvoicePaymentIntent);
   const navigate = useNavigate();
@@ -179,7 +181,7 @@ function PayInvoice() {
 
       <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
         <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-        Payments are processed securely. Cards and ACH accepted.
+        {copy("Payments are processed securely. Cards accepted.")}
       </p>
     </div>
   );

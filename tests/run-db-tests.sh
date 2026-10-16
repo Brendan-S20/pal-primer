@@ -18,4 +18,4 @@ export TEST_SUPABASE_SERVICE_KEY="${SERVICE_ROLE_KEY:?}"
 RUNNER=(npx vitest)
 command -v bun >/dev/null 2>&1 && RUNNER=(bun x vitest)
 
-exec "${RUNNER[@]}" run tests/integration/leaks.db.test.ts tests/integration/portal-auth.db.test.ts tests/integration/portal-email.db.test.ts "$@"
+exec "${RUNNER[@]}" run tests/integration/*.db.test.ts "$@"

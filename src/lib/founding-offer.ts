@@ -16,7 +16,8 @@
 // founding subscription was seen paid (active or past_due), written by
 // claim_founding_place from the platform Stripe webhook and from
 // refreshBillingStatus (founding-offer.server.ts: recordFoundingPayment).
-// The banner's "{X} of 20 left" and checkout's refusal both read that count,
+// The banner's "{X} of 20 left" (shown from 10 left, FOUNDING_COUNT_SHOWN_AT)
+// and checkout's refusal both read that count,
 // on the server; the browser is handed `{ left }` or "hidden".
 //
 // FOUNDING_SPOTS below is the ONE place the 20 is written. The database takes
@@ -76,11 +77,30 @@ export function subscriptionHasPaid(status: string | null | undefined): boolean 
   return status === "active" || status === "past_due";
 }
 
-/** The banner's words (NP-2), with the live count in place of {X}. */
-export function foundingBannerText(left: number): string {
-  return (
-    `Founding customers: the first ${FOUNDING_SPOTS} paying accounts get ${FOUNDING_PERCENT_OFF}% off ` +
-    `their plan price for as long as they stay subscribed. Extra people and add-ons are billed at ` +
-    `regular price. Use code ${FOUNDING_CODE} at checkout. ${left} of ${FOUNDING_SPOTS} left.`
-  );
+/** The count is shown only once this many places or fewer are left. "20 of
+ *  20 left" told every owner who opened Plan & billing that nobody had bought
+ *  yet (QA finding 30). Until half are taken the banner states the offer and
+ *  no number; the cap itself (placesLeft, checkout's refusal) is unchanged. */
+export const FOUNDING_COUNT_SHOWN_AT = FOUNDING_SPOTS / 2;
+
+/** The banner's words (NP-2), with the live count in place of {X} once few
+ *  enough places are left to be worth saying. */
+export function foundingBannerText(
+  left: number,
+  translate?: (key: string, values: Record<string, string | number>) => string,
+): string {
+  const offer = translate
+    ? translate("launch.founding", {
+        spots: FOUNDING_SPOTS,
+        percent: FOUNDING_PERCENT_OFF,
+        code: FOUNDING_CODE,
+      })
+    : `Founding pricing: the first ${FOUNDING_SPOTS} paying accounts get ${FOUNDING_PERCENT_OFF}% off ` +
+      `their plan price for as long as they stay subscribed. Extra people and add-ons are billed at ` +
+      `regular price. Use code ${FOUNDING_CODE} at checkout.`;
+  if (left > FOUNDING_COUNT_SHOWN_AT) return offer;
+  const remaining = translate
+    ? translate("launch.remaining", { left, spots: FOUNDING_SPOTS })
+    : `${left} of ${FOUNDING_SPOTS} left.`;
+  return `${offer} ${remaining}`;
 }

@@ -18,11 +18,13 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     // Financial KPIs are scoped server-side: roles without view_financials
     // (e.g. dispatcher) get null for these fields, and the queries never run.
     const canViewFinancials = hasPermission(role, "view_financials");
-    const { data: orgRow } = await supabase
+    const { data: orgRow, error: orgError } = await supabase
       .from("organizations")
-      .select("timezone")
+      .select("timezone, disputes_in_analytics")
       .eq("id", orgId)
       .maybeSingle();
+    if (orgError) throw new Error(orgError.message);
+    const timezone = orgRow?.timezone || "UTC";
     const today = orgToday((orgRow as { timezone?: string | null } | null)?.timezone || undefined);
     const emptyRes = { data: [] as any[], error: null as any };
 
@@ -49,7 +51,12 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
         // for any org west of UTC the first hours of a month landed in the
         // previous one. Now one shared cash-basis query — see revenue.server.ts.
         canViewFinancials
-          ? import("@/lib/revenue.server").then((m) => m.collectedMonthToDate(supabase, orgId))
+          ? import("@/lib/revenue.server").then((m) => m.collectedInPeriod(supabase, {
+              orgId,
+              ...m.monthToDate(timezone),
+              timezone,
+              includeOpenDisputes: !!orgRow?.disputes_in_analytics,
+            }))
           : Promise.resolve(null),
         canViewFinancials
           ? supabase
@@ -83,8 +90,9 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
           .limit(10),
       ]);
 
-    if (todayVisitsRes.error) throw new Error(todayVisitsRes.error.message);
-    if (openInvoicesRes.error) throw new Error(openInvoicesRes.error.message);
+    for (const result of [activeClientsRes, todayVisitsRes, openInvoicesRes, staffRes, openTicketsRes]) {
+      if (result.error) throw new Error(result.error.message);
+    }
 
     const visits = todayVisitsRes.data ?? [];
     const visitCounts = {
