@@ -363,9 +363,11 @@ function CommunicationCard({ client, onGoToTab }: { client: any; onGoToTab: (t: 
         <h2 className="flex items-center gap-1.5 text-sm font-medium">
           <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" /> Communication
         </h2>
-        <Button size="sm" variant="outline" onClick={() => onGoToTab("communication")}>
-          Message
-        </Button>
+        {texting && (
+          <Button size="sm" variant="outline" onClick={() => onGoToTab("communication")}>
+            Message
+          </Button>
+        )}
       </div>
       {last ? (
         <div className="mt-2 text-sm">

@@ -11,11 +11,19 @@ import {
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
+import { useClientTexting } from "@/hooks/useClientTexting";
 import { useServiceLines } from "@/components/CommercialOnly";
 
 /** `petWasteOnly`: hidden for a business that does not run pet waste, as in
  *  the sidebar (NavItem.petWasteOnly). */
-type NavEntry = { label: string; to: string; group: string; petWasteOnly?: boolean };
+type NavEntry = {
+  label: string;
+  to: string;
+  group: string;
+  petWasteOnly?: boolean;
+  /** Only once this business can text its clients (NavItem.textingOnly). */
+  textingOnly?: boolean;
+};
 
 const NAV: NavEntry[] = [
   { label: "Dashboard", to: "/dashboard", group: "Overview" },
@@ -30,7 +38,7 @@ const NAV: NavEntry[] = [
   { label: "My day", to: "/my-day", group: "Field" },
   { label: "Waste log", to: "/waste-log", group: "Field", petWasteOnly: true },
   { label: "Inbox", to: "/inbox", group: "Overview" },
-  { label: "Messages", to: "/messages", group: "Operations" },
+  { label: "Messages", to: "/messages", group: "Operations", textingOnly: true },
   // "Operations", as in the sidebar. These were a separate "Ops" group there
   // and here, the same word twice.
   { label: "Inventory", to: "/inventory", group: "Operations" },
@@ -81,6 +89,7 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const { role } = useMyRole();
   const { petWaste } = useServiceLines();
+  const texting = useClientTexting();
   // Don't surface client results to roles that can't open a client page
   // (e.g. Technician) — searching used to confirm a client exists and then
   // dead-click back to My day with no explanation (finding #50).
@@ -127,7 +136,10 @@ export function CommandPalette() {
   };
 
   const groups = NAV.filter(
-    (item) => canAccess(role, item.to) && (!item.petWasteOnly || petWaste),
+    (item) =>
+      canAccess(role, item.to) &&
+      (!item.petWasteOnly || petWaste) &&
+      (!item.textingOnly || texting),
   ).reduce<Record<string, NavEntry[]>>((acc, item) => {
     (acc[item.group] ||= []).push(item);
     return acc;

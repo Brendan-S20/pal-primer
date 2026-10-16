@@ -89,6 +89,7 @@ const navItem = (url: string) => {
 const vis = (lines: ServiceLine[], commercial = true): NavVisibility => ({
   commercialEnabled: commercial,
   franchiseParent: false,
+  texting: false,
   petWaste: runsPetWaste(lines),
 });
 
@@ -572,5 +573,15 @@ describe("every signpost to a pet-waste page carries petWasteOnly", () => {
     expect(read("src/components/CommandPalette.tsx")).toMatch(
       /\(!item\.petWasteOnly \|\| petWaste\)/,
     );
+  });
+});
+
+describe("Messages follows client texting availability", () => {
+  it("hides the entry until this business can text and restores it when ready", () => {
+    const item = navItem("/messages");
+    for (const role of ["owner", "office_manager", "dispatcher"] as const) {
+      expect(isNavItemVisible(item, role, vis(["pet_waste"]))).toBe(false);
+      expect(isNavItemVisible(item, role, { ...vis(["pet_waste"]), texting: true })).toBe(true);
+    }
   });
 });

@@ -31,12 +31,13 @@ export const recordCareEntry = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { data: id, error } = await context.supabase.rpc("record_care_entry", {
       _visit_id: data.visitId,
-      _pet_id: data.petId,
+      // The SQL function takes NULL for these: all pets, or nothing to say.
+      _pet_id: data.petId as string,
       _kind: data.kind,
-      _med_name: data.medName || null,
+      _med_name: (data.medName || null) as string,
       _status: data.status,
-      _missed_reason: data.missedReason || null,
-      _note: data.note || null,
+      _missed_reason: (data.missedReason || null) as string,
+      _note: (data.note || null) as string,
       _at: data.at ?? undefined,
       _id: data.id,
     });

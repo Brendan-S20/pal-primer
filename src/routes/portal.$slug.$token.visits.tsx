@@ -1,4 +1,5 @@
 import { PortalStayTimeline } from "@/components/portal/Stays";
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { CalendarDays } from "lucide-react";
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/portal/$slug/$token/visits")({
 });
 
 function PortalVisits() {
+  const copy = useLaunchCopy();
   const {
     clientQ,
     visitsQ,
@@ -60,7 +62,7 @@ function PortalVisits() {
           <EmptyBox
             icon={<CalendarDays className="h-6 w-6 shrink-0" />}
             title="No visits scheduled yet"
-            body="We'll text you when the next one is on the calendar."
+            body={copy("Your next visit will show here once it is scheduled.")}
           />
         ) : (
           <UpcomingVisitsList

@@ -334,7 +334,7 @@ function RefundDialog({
               to <span className="font-semibold break-words">{who}</span>?
             </p>
             <ul className="space-y-1 text-sm text-muted-foreground">
-              <li>It goes to the card or bank account they paid with.</li>
+              <li>It goes back to the payment method they used.</li>
               {surchargeShare > 0 && (
                 <li>
                   About {fmt(surchargeShare, cur)} of it is the card fee they paid, which comes off

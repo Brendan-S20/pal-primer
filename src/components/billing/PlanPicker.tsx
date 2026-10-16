@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 // In-app plan selection + inline Stripe Payment Element (no redirect to
 // checkout.stripe.com and no embedded Checkout iframe). Used by Settings →
 // Plan & billing and the signup onboarding path.
@@ -91,6 +92,7 @@ export function PlanPicker({
   switchingPlanId?: string | null;
   chooseLabel?: string;
 }) {
+  const { t } = useTranslation();
 
   // Whether a store build may purchase never changes while the app runs,
   // which is the only reason the early return that used to sit ABOVE these
@@ -176,7 +178,7 @@ export function PlanPicker({
           data-founding-offer
           className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
         >
-          {foundingBannerText(founding.left)}
+          {foundingBannerText(founding.left, (key, values) => String(t(key, values)))}
         </div>
       )}
       {anyAnnual && (
@@ -196,6 +198,10 @@ export function PlanPicker({
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {plans.map((p) => {
+          const custom =
+            p.is_enterprise ||
+            !Number.isFinite(p.price_cents) ||
+            !Number.isFinite(p.included_seats);
           // A plan without an annual price stays monthly even in annual view.
           const cardInterval: BillingInterval =
             billingInterval === "year" && p.annual_price_cents != null ? "year" : "month";
@@ -213,7 +219,7 @@ export function PlanPicker({
               ? Object.values(p.features as Record<string, string>)
               : [];
           const priceCents = isAnnualCard ? p.annual_price_cents : p.price_cents;
-          const tooSmall = isCurrent ? null : choosePlanRefusal(p, enabledUsers, plans);
+          const tooSmall = custom || isCurrent ? null : choosePlanRefusal(p, enabledUsers, plans);
           return (
             <div
               key={p.id}
@@ -230,15 +236,19 @@ export function PlanPicker({
                 {isCurrent && <Badge>Current plan</Badge>}
               </div>
               <div className="mt-2 flex flex-wrap items-baseline gap-2">
-                <span>
-                  <span className="text-3xl font-bold">{money(priceCents)}</span>
-                  <span className="text-sm text-muted-foreground">
-                    /{isAnnualCard ? "year" : "month"}
+                {custom ? (
+                  <span className="text-3xl font-bold">Custom pricing</span>
+                ) : (
+                  <span>
+                    <span className="text-3xl font-bold">{money(priceCents)}</span>
+                    <span className="text-sm text-muted-foreground">
+                      /{isAnnualCard ? "year" : "month"}
+                    </span>
                   </span>
-                </span>
-                {isAnnualCard && <MetaChip>2 months free</MetaChip>}
+                )}
+                {!custom && isAnnualCard && <MetaChip>2 months free</MetaChip>}
               </div>
-              {isAnnualCard && (
+              {!custom && isAnnualCard && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   {moneyExact(Math.round(p.annual_price_cents / 12))}/mo billed annually
                 </p>
@@ -251,17 +261,17 @@ export function PlanPicker({
                   spend on. The charge itself is still disclosed where the money
                   is decided, in the paragraph above the card field below. */}
               <p className="mt-1 text-xs text-muted-foreground">
-                {`For teams of ${teamSizeRange(p, plans)} · ${p.included_seats} active employee${p.included_seats === 1 ? "" : "s"} included`}
-                {p.price_per_seat_cents
+                {custom
+                  ? "For larger teams. We set up pricing with you."
+                  : `For teams of ${teamSizeRange(p, plans)} · ${p.included_seats} active employee${p.included_seats === 1 ? "" : "s"} included`}
+                {!custom && p.price_per_seat_cents
                   ? (isAnnualCard
                       ? ` · ${money(p.price_per_seat_cents * 10)}/yr per extra person`
                       : ` · ${money(p.price_per_seat_cents)}/mo per extra person`) +
                     (p.max_team_size != null ? ` (up to ${p.max_team_size})` : "")
                   : ""}
               </p>
-              {tooSmall && (
-                <p className="mt-2 text-xs text-amber-700">{tooSmall}</p>
-              )}
+              {tooSmall && <p className="mt-2 text-xs text-amber-700">{tooSmall}</p>}
               {/* Catalog descriptions can contain retired employee prices.
                   The structured checkout fields above own the pricing copy. */}
               {features.length > 0 && (
@@ -275,20 +285,26 @@ export function PlanPicker({
                 </ul>
               )}
               <div className="flex-1" />
-              <Button
-                className="mt-4"
-                variant={isCurrent ? "outline" : "default"}
-                disabled={isCurrent || busy || !!tooSmall}
-                onClick={() => onSelect(p.id, p.name, cardInterval)}
-              >
-                {isCurrent
-                  ? "Current plan"
-                  : isSwitching
-                    ? "Switching…"
-                    : isSamePlanOtherInterval
-                      ? `Switch to ${isAnnualCard ? "annual" : "monthly"} billing`
-                      : chooseLabel}
-              </Button>
+              {custom ? (
+                <Button className="mt-4" asChild>
+                  <a href="mailto:support@houndstack.com">Contact us</a>
+                </Button>
+              ) : (
+                <Button
+                  className="mt-4"
+                  variant={isCurrent ? "outline" : "default"}
+                  disabled={isCurrent || busy || !!tooSmall}
+                  onClick={() => onSelect(p.id, p.name, cardInterval)}
+                >
+                  {isCurrent
+                    ? "Current plan"
+                    : isSwitching
+                      ? "Switching…"
+                      : isSamePlanOtherInterval
+                        ? `Switch to ${isAnnualCard ? "annual" : "monthly"} billing`
+                        : chooseLabel}
+                </Button>
+              )}
             </div>
           );
         })}
