@@ -76,8 +76,8 @@ export const startStripeConnect = createServerFn({ method: "POST" })
     const stripe = await connectStripe();
     const link = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${data.origin}/settings/payments?stripe_refresh=1`,
-      return_url: `${data.origin}/settings/payments?connected=1`,
+      refresh_url: `${data.origin}/payments?stripe_refresh=1`,
+      return_url: `${data.origin}/payments?connected=1`,
       type: "account_onboarding",
     });
     return { url: link.url };
