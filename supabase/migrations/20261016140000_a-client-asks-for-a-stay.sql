@@ -166,7 +166,7 @@ BEGIN
   SELECT * INTO _svc FROM public.services WHERE id = _st.service_id AND active;
   IF NOT FOUND THEN RAISE EXCEPTION 'That service is no longer offered.'; END IF;
   IF _svc.organization_id <> _st.organization_id OR _svc.service_line <> 'pet_sitting'
-     OR _st.kind <> CASE WHEN _svc.price_unit = 'night' THEN 'overnight' ELSE 'drop_in' END THEN
+     OR _st.kind <> (CASE WHEN _svc.price_unit = 'night' THEN 'overnight' ELSE 'drop_in' END) THEN
     RAISE EXCEPTION 'This service has changed. Request the stay again with its current pricing.';
   END IF;
   SELECT (now() AT TIME ZONE COALESCE(o.timezone, 'America/Chicago'))::date INTO _today FROM public.organizations o WHERE o.id = _st.organization_id;
