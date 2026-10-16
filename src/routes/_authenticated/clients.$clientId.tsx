@@ -6,7 +6,12 @@ import { ClientDetailSkeleton } from "@/components/PageSkeletons";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clients.functions";
+import {
+  getClient,
+  getFieldClientInfo,
+  listClientVisitHistory,
+  listDogsForClient,
+} from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
@@ -18,6 +23,7 @@ import { usePermissions } from "@/hooks/useMyRole";
 import { ClientHeader } from "@/components/client-detail/ClientHeader";
 import { EditClientDrawer } from "@/components/client-detail/EditClientDrawer";
 import { SummaryTab } from "@/components/client-detail/SummaryTab";
+import { FieldClientView } from "@/components/client-detail/FieldClientView";
 import { Skeleton } from "@/components/ui/skeleton";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
@@ -146,10 +152,12 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
 function ClientDetail() {
   const { clientId } = Route.useParams();
   const { can, loading: roleLoading } = usePermissions();
+  const canViewDirectory = can("view_client_directory");
   const canBill = can("manage_client_billing");
   const canManagePricing = can("manage_pricing");
 
   const getClientFn = useServerFn(getClient);
+  const getFieldClientInfoFn = useServerFn(getFieldClientInfo);
   const listPropsFn = useServerFn(listPropertiesForClient);
   const listSubsFn = useServerFn(listSubscriptionsForClient);
   const listZonesFn = useServerFn(listZones);
@@ -163,6 +171,16 @@ function ClientDetail() {
   } = useQuery({
     queryKey: ["client", clientId],
     queryFn: () => getClientFn({ data: { clientId } }),
+    enabled: canViewDirectory,
+  });
+  const {
+    data: fieldData,
+    isLoading: fieldLoading,
+    error: fieldError,
+  } = useQuery({
+    queryKey: ["client-field-info", clientId],
+    queryFn: () => getFieldClientInfoFn({ data: { clientId } }),
+    enabled: !roleLoading && !canViewDirectory,
   });
   // The tab names the client, so five clients open in five tabs are five
   // different tabs. The route's head says "Client" until this loads.
@@ -172,20 +190,28 @@ function ClientDetail() {
   const { data: propsData } = useQuery({
     queryKey: ["properties", clientId],
     queryFn: () => listPropsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
   const { data: subsData } = useQuery({
     queryKey: ["subs", clientId],
     queryFn: () => listSubsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
-  const { data: zonesData } = useQuery({ queryKey: ["zones"], queryFn: () => listZonesFn() });
+  const { data: zonesData } = useQuery({
+    queryKey: ["zones"],
+    queryFn: () => listZonesFn(),
+    enabled: canViewDirectory,
+  });
   const { data: visitsData, isLoading: visitsLoading } = useQuery({
     queryKey: ["client-visit-history", clientId],
     queryFn: () => listVisitsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
   const listDogsFn = useServerFn(listDogsForClient);
   const { data: dogsData } = useQuery({
     queryKey: ["client-dogs", clientId],
     queryFn: () => listDogsFn({ data: { clientId } }),
+    enabled: canViewDirectory,
   });
   const { data: billing } = useQuery({
     queryKey: ["billing-summary", clientId],
@@ -263,7 +289,22 @@ function ClientDetail() {
     </Link>
   );
 
-  if (isLoading)
+  if (!roleLoading && !canViewDirectory) {
+    if (fieldLoading) return <ClientDetailSkeleton />;
+    if (fieldError) return <p className="text-destructive">{(fieldError as Error).message}</p>;
+    if (fieldData?.client?.display_name) {
+      return (
+        <FieldClientView
+          client={fieldData.client}
+          properties={fieldData.properties ?? []}
+          dogs={fieldData.dogs ?? []}
+        />
+      );
+    }
+    return null;
+  }
+
+  if (isLoading || roleLoading)
     return (
       <>
         {backLink}

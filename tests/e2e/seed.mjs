@@ -240,6 +240,55 @@ if (signInErr) throw new Error(`sign in as the seeded owner: ${signInErr.message
 const { data: seeded, error: seedErr } = await asOwner.rpc("seed_demo_org", { _org_id: orgId });
 if (seedErr) throw new Error(`seed_demo_org: ${seedErr.message}`);
 
+async function tidySeedRows() {
+  const { error: inviteErr } = await db
+    .from("org_invites")
+    .update({ status: "revoked" })
+    .eq("organization_id", orgId)
+    .eq("status", "pending")
+    .not("email", "ilike", "%@demo.test");
+  if (inviteErr && !/does not exist|schema cache/i.test(inviteErr.message)) {
+    throw new Error(`revoking unsafe seed invites: ${inviteErr.message}`);
+  }
+
+  const { error: clientErr } = await db
+    .from("clients")
+    .update({ display_name: "Internal test client" })
+    .eq("organization_id", orgId)
+    .ilike("display_name", "ZZ Test%");
+  if (clientErr) throw new Error(`labelling test clients: ${clientErr.message}`);
+
+  const { error: leadErr } = await db
+    .from("leads")
+    .update({ name: "Internal test lead" })
+    .eq("organization_id", orgId)
+    .ilike("name", "ZZ Test%");
+  if (leadErr && !/does not exist|schema cache/i.test(leadErr.message)) {
+    throw new Error(`labelling test leads: ${leadErr.message}`);
+  }
+
+  const { data: props, error: propErr } = await db
+    .from("properties")
+    .select("id, dogs(id), clients!inner(account_type)")
+    .eq("organization_id", orgId)
+    .eq("clients.account_type", "residential");
+  if (propErr) throw new Error(`checking residential seed dogs: ${propErr.message}`);
+  const missing = (props ?? []).filter((p) => (p.dogs ?? []).length === 0);
+  if (missing.length) {
+    const { error: dogErr } = await db.from("dogs").insert(
+      missing.map((p, i) => ({
+        organization_id: orgId,
+        property_id: p.id,
+        name: `Demo Dog ${i + 1}`,
+        temperament: "friendly",
+      })),
+    );
+    if (dogErr) throw new Error(`adding residential seed dogs: ${dogErr.message}`);
+  }
+}
+
+await tidySeedRows();
+
 // Print what was actually created rather than "done". A seeder that silently
 // produces an empty org is the same failure as a test harness that measures
 // nothing, and it would present downstream as a dozen unrelated UI failures.

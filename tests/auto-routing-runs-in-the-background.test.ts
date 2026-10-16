@@ -654,9 +654,13 @@ describe("the wiring", () => {
   const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
   it("the server function reaches the Worker's waitUntil the way monitoring does", () => {
+    // The helper moved to lib/keep-alive.server.ts when completeVisit's
+    // client notices started using it too.
     const fns = read("src/lib/routing-runs.functions.ts");
-    expect(fns).toMatch(/getRequest\(\)/);
-    expect(fns).toMatch(/waitUntil\.call\(request, job\)/);
+    const keepAlive = read("src/lib/keep-alive.server.ts");
+    expect(keepAlive).toMatch(/getRequest\(\)/);
+    expect(keepAlive).toMatch(/waitUntil\.call\(request, job\)/);
+    expect(fns).toMatch(/keepAliveForThisRequest\(\)/);
     expect(fns).toMatch(/startAndRunAutoRouting\(\{/);
     expect(fns).toMatch(/notify: notifyUsers/);
   });

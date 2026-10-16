@@ -11,6 +11,7 @@
 // own price (Settings -> Services), and the card says so to that business
 // only; a pet-waste business reads the card it always has.
 
+import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -96,8 +97,9 @@ export function PortalBookingCard() {
             </label>
             <p className="text-xs text-muted-foreground">
               Off (default): you approve each one. On: a request is booked straight away at the
-              price above, and you are told it happened. A client who books by text with the AI
-              receptionist follows the same switch.
+              price above, and you are told it happened.
+              {RECEPTIONIST_LAUNCHED &&
+                " A client who books by text with the AI receptionist follows the same switch."}
               {priceCents == null && " Needs a price first."}
             </p>
           </div>

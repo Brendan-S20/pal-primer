@@ -444,14 +444,7 @@ function CommercialAccountsCard() {
 }
 
 /**
- * What do you run? organizations.service_lines.
- *
- * Today this is mostly a statement of direction: pet waste removal is the one
- * line HoundStack can book end to end, and dog walking, pet sitting and mobile
- * grooming are listed as "coming soon" and cannot be ticked, because the data
- * model cannot yet book a 30-minute walk at 11:00 and another at 16:00 on the
- * same day (docs/other-trades-service-catalog.md). Listing them anyway tells
- * an owner who does both what is coming, and what the switch will do.
+ * Which services do you offer? organizations.service_lines.
  *
  * The rows, and the rules about which can be ticked, are ServiceLinesChoices,
  * which the first step of /setup draws too.
@@ -473,6 +466,7 @@ function ServiceLinesCard() {
       // Invalidate rather than set: the sidebar and the tab bar read the same
       // key and should redraw from the server's answer.
       qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      qc.invalidateQueries({ queryKey: ["services"] });
       // The setup checklist words its end-of-day step from the same column.
       qc.invalidateQueries({ queryKey: ["onboarding-status"] });
       toast.success("Saved. Your screens now show the tools for what you run.");
@@ -485,7 +479,7 @@ function ServiceLinesCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">What do you run?</CardTitle>
+        <CardTitle className="text-base">Which services do you offer?</CardTitle>
         <CardDescription>
           HoundStack shows the tools for the services you run. Pet waste removal turns on the waste
           log, dump sites, yard outlines, first cleanups and deep cleans. Nothing is deleted if you

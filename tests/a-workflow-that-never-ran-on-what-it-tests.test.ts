@@ -115,6 +115,19 @@ describe("the workflow runs on the files it tests", () => {
     );
   });
 
+  it("admits every integration DB test and the script that runs them", () => {
+    const paths = pullRequestPaths();
+    expect(paths).toEqual(expect.arrayContaining(["tests/integration/*.db.test.ts", "tests/run-db-tests.sh"]));
+
+    const script = read("tests/run-db-tests.sh");
+    const uncovered = readdirSync(join(root, "tests/integration"))
+      .filter((f) => f.endsWith(".db.test.ts"))
+      .map((f) => `tests/integration/${f}`)
+      .filter((f) => !script.includes(f) && !script.includes("tests/integration/*.db.test.ts"));
+
+    expect(uncovered).toEqual([]);
+  });
+
   it("lets the browser sweep reach a pull request", () => {
     const yml = workflowCode();
     const viewports = yml.slice(yml.indexOf("\n  viewports:"));

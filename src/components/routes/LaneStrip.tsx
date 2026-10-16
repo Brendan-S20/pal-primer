@@ -109,9 +109,7 @@ export function LaneStrip({
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr className="border-b">
-            <th className="sticky left-0 z-10 bg-card px-3 py-1.5 text-left font-medium">
-              Lanes
-            </th>
+            <th className="sticky left-0 z-10 bg-card px-3 py-1.5 text-left font-medium">Lanes</th>
             {days.map((d) => (
               <th key={d} className="px-1 py-1.5 text-center font-normal text-muted-foreground">
                 <div>{DOW[at(d).getDay()]}</div>
@@ -126,7 +124,10 @@ export function LaneStrip({
             const off = offOn.get(s.id);
             return (
               <tr key={s.id} className="border-b last:border-0">
-                <td className="sticky left-0 z-10 max-w-[10rem] truncate bg-card px-3 py-1">
+                <td
+                  className="sticky left-0 z-10 max-w-[10rem] truncate bg-card px-3 py-1"
+                  title={s.display_name}
+                >
                   <span className="flex items-center gap-1.5">
                     <span
                       className="inline-block h-2 w-2 shrink-0 rounded-full"
@@ -144,7 +145,7 @@ export function LaneStrip({
                         onClick={() => onPickDay(d)}
                         title={
                           away
-                            ? `${s.display_name} is away on ${d}${n ? ` — ${n} visit(s) still assigned` : ""}`
+                            ? `${s.display_name} is away on ${d}${n ? `, ${n} visit(s) still assigned` : ""}`
                             : `${n} visit${n === 1 ? "" : "s"} on ${d}`
                         }
                         className={`flex w-full items-center justify-center rounded ${cell} ${
@@ -165,7 +166,7 @@ export function LaneStrip({
                             : undefined
                         }
                       >
-                        {away ? (n > 0 ? `!${n}` : "—") : n || ""}
+                        {away ? (n > 0 ? `Off ${n}` : "Off") : n || ""}
                       </button>
                     </td>
                   );
@@ -199,8 +200,8 @@ export function LaneStrip({
         </tbody>
       </table>
       <div className="border-t px-3 py-1.5 text-2xs text-muted-foreground">
-        Tap any day to open its board. <span className="text-amber-700">Amber</span> is time
-        off. <strong>!3</strong> means three visits are still assigned to someone who is away.
+        Tap any day to open its board. <span className="text-amber-700">Amber</span> marks time off.{" "}
+        <strong>Off 3</strong> means three visits remain assigned to a technician who is away.
       </div>
     </div>
   );

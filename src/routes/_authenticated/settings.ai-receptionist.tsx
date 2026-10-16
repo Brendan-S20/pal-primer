@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -19,10 +20,14 @@ export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")
   component: Page,
 });
 
+// Shown to the owner in the persona box, so it is written for them: no tool
+// names. The server's own prompt (ai-receptionist.server) already tells the
+// model which tool quotes a price; this only sets the tone.
 const DEFAULT_PERSONA =
-  "You are a friendly, concise SMS receptionist for a pet service company. Answer in 1-2 short sentences. Never invent prices. Use the get_pricing_quote tool. Offer to have a human follow up when unsure.";
+  "You are a friendly, concise receptionist for a pet service company. Answer in one or two short sentences. Only give prices you have looked up for this business, never a guess. Offer to have someone from the office follow up when you are unsure.";
 
 function Page() {
+  const copy = useLaunchCopy();
   const qc = useQueryClient();
   const getFn = useServerFn(getAiReceptionistSettings);
   const saveFn = useServerFn(updateAiReceptionistSettings);
@@ -33,7 +38,7 @@ function Page() {
 
   const [enabled, setEnabled] = useState(false);
   const [faq, setFaq] = useState("");
-  const [persona, setPersona] = useState(DEFAULT_PERSONA);
+  const [persona, setPersona] = useState(() => copy(DEFAULT_PERSONA));
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [voiceGreeting, setVoiceGreeting] = useState("");
 
@@ -41,10 +46,10 @@ function Page() {
     if (!data) return;
     setEnabled(!!data.ai_receptionist_enabled);
     setFaq(data.ai_receptionist_faq ?? "");
-    setPersona(data.ai_receptionist_persona ?? DEFAULT_PERSONA);
+    setPersona(data.ai_receptionist_persona ?? copy(DEFAULT_PERSONA));
     setVoiceEnabled(!!(data as any).ai_voice_enabled);
     setVoiceGreeting((data as any).ai_voice_greeting ?? "");
-  }, [data]);
+  }, [data, copy]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -93,12 +98,22 @@ function Page() {
           />
           Enable AI receptionist on this org's SMS number
         </label>
+        {/* Until launch the add-on cannot be bought (addon-launch.ts), so
+            this must not send anyone to Billing to buy it. */}
         <p className="text-xs text-muted-foreground">
-          The AI Receptionist is a plan add-on. If it isn't on your plan yet, add it in{" "}
-          <Link to="/settings/billing" className="underline">
-            Settings → Plan &amp; billing
-          </Link>{" "}
-          first; you can draft the persona and FAQ below either way.
+          {RECEPTIONIST_LAUNCHED ? (
+            <>
+              The AI Receptionist is a plan add-on. If it isn't on your plan yet, add it in{" "}
+              <Link to="/settings/billing" className="underline">
+                Settings → Plan &amp; billing
+              </Link>{" "}
+              first; you can draft the persona and FAQ below either way.
+            </>
+          ) : (
+            copy(
+              "Coming soon. It can be added to your plan once it launches. You can draft the persona and FAQ below now.",
+            )
+          )}
         </p>
 
         <label className="block space-y-1 text-sm">
@@ -137,9 +152,9 @@ function Page() {
             Enable AI voice receptionist on inbound calls
           </label>
           <p className="mt-1 text-xs text-muted-foreground">
-            Uses the same persona, FAQ, and tools as SMS. Twilio's built-in speech recognition
-            captures what the caller says; the AI reply is spoken back via text-to-speech. If it
-            can't help, the caller is asked to leave a voicemail.
+            {copy(
+              "When it launches, it will use the same persona and FAQ as texts. The caller's words are transcribed and the reply is read back to them. If it can't help, the caller is asked to leave a voicemail.",
+            )}
           </p>
           <label className="mt-3 block space-y-1 text-sm">
             <span className="font-medium">Greeting (spoken first)</span>
@@ -150,13 +165,6 @@ function Page() {
               className="block w-full rounded border bg-background px-3 py-2 text-sm"
             />
           </label>
-          <p className="mt-3 text-xs text-muted-foreground">
-            In Twilio Console → your voice number → <em>A call comes in</em>, set{" "}
-            <strong>HTTP POST</strong> to:
-          </p>
-          <code className="mt-1 block break-all rounded bg-muted px-2 py-1 text-xs">
-            {typeof window !== "undefined" ? window.location.origin : ""}/api/public/hooks/twilio-voice?s=YOUR_TWILIO_INBOUND_SECRET
-          </code>
         </div>
 
         <Button onClick={() => save.mutate()} disabled={save.isPending}>
