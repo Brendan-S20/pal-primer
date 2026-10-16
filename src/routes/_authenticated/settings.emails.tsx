@@ -45,6 +45,8 @@ const WALK_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
 // Pet sitting only (#411), the same way.
 const SIT_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_missed_meds", label: "Missed medication", help: "Sent when a sitting visit ends with a medication the sitter could not give, with their reason. One email per visit. The office is told in the app either way." },
+  { key: "notify_email_stay_confirmed", label: "Stay confirmed", help: "Sent when you confirm a stay, with its dates and a link to pay the deposit when one is due." },
+  { key: "notify_email_stay_ending", label: "Stay ends tomorrow", help: "Sent the day before a confirmed stay ends, once per stay." },
 ];
 
 type Settings = Awaited<ReturnType<typeof getEmailSettings>>;
@@ -75,13 +77,17 @@ function EmailSettingsPage() {
         notify_email_walk_not_done,
         notify_email_walk_schedule_change,
         notify_email_missed_meds,
+        notify_email_stay_confirmed,
+        notify_email_stay_ending,
         ...rest
       } = values;
       return save({
         data: {
           ...rest,
           ...(runs_dog_walking ? { notify_email_walk_not_done, notify_email_walk_schedule_change } : {}),
-          ...(runs_pet_sitting ? { notify_email_missed_meds } : {}),
+          ...(runs_pet_sitting
+            ? { notify_email_missed_meds, notify_email_stay_confirmed, notify_email_stay_ending }
+            : {}),
         },
       });
     },

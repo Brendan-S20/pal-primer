@@ -3,8 +3,8 @@
 // #467 listed walking as Coming soon until its path worked end to end. The
 // path is booking (with a time window), the walker's day, the portal's walk
 // reports and access, the client's emails, the reports and the invoices, and
-// with all of it in, walking is back in BOOKABLE_SERVICE_LINES. Pet sitting
-// (#411), mobile grooming (#412) and training (#413) still wait for theirs,
+// with all of it in, walking is back in BOOKABLE_SERVICE_LINES. Sitting is bookable with #411.
+// Mobile grooming (#412) and training (#413) still wait for theirs,
 // so they are still Coming soon. And nothing in src/ may still tell an owner
 // that walking is not available.
 
@@ -32,10 +32,11 @@ function rowsOf(html: string): Map<string, string> {
 }
 
 describe("which lines can be booked", () => {
-  it("walking is bookable; sitting, grooming and training are not yet", () => {
+  it("walking and sitting are bookable; grooming and training wait", () => {
     expect(BOOKABLE_SERVICE_LINES).toContain("dog_walking");
     expect(BOOKABLE_SERVICE_LINES).toContain("pet_waste");
-    for (const line of ["pet_sitting", "mobile_grooming", "training"] as const) {
+    expect(BOOKABLE_SERVICE_LINES).toContain("pet_sitting");
+    for (const line of ["mobile_grooming", "training"] as const) {
       expect(OFFERED_SERVICE_LINES).toContain(line);
       expect(BOOKABLE_SERVICE_LINES).not.toContain(line);
     }
@@ -43,7 +44,7 @@ describe("which lines can be booked", () => {
 
   it("a scooper can put a service on the walking line without ticking anything first", () => {
     expect(serviceLineChoices(["pet_waste"])).toContain("dog_walking");
-    expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste"])).toContain("pet_sitting");
   });
 });
 
@@ -61,7 +62,7 @@ describe("the picker an owner sees", () => {
   });
 
   it("still marks the lines that are not ready", () => {
-    for (const label of ["Pet sitting", "Mobile grooming", "Dog training"]) {
+    for (const label of ["Mobile grooming", "Dog training"]) {
       const row = rows.get(label);
       expect(row, label).toBeDefined();
       expect(row, label).toContain("Coming soon");

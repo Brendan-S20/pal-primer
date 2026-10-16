@@ -55,6 +55,7 @@ export type Service = {
   extra_pet_cents: number;
   default_duration_min: number | null;
   max_dogs?: number | null;
+  holiday_surcharge_pct?: number;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -70,6 +71,7 @@ export type ServiceDraft = {
   extra_pet_cents: number;
   default_duration_min: number | null;
   max_dogs?: number | null;
+  holiday_surcharge_pct?: number;
 };
 
 export type DefaultServiceSeed = ServiceDraft & { active: boolean };
@@ -210,8 +212,7 @@ export function durationRequired(line: ServiceLine): boolean {
   return line !== "pet_waste";
 }
 
-/** The lines a service can be put on: bookable lines (pet waste and dog
- *  walking), anything the business already runs, and the line a service
+/** The lines a service can be put on: bookable lines, anything the business already runs, and the line a service
  *  being edited already has, in the order the settings screen lists them.
  *  Lines marked Coming soon stay available for existing data. */
 export function serviceLineChoices(
@@ -274,6 +275,8 @@ export function serviceProblem(d: ServiceDraft): string | null {
       d.max_dogs > 50)
   )
     return "A group walk needs a dog walking service with room for 1 to 50 dogs.";
+  if (d.holiday_surcharge_pct != null && (!Number.isInteger(d.holiday_surcharge_pct) || d.holiday_surcharge_pct < 0 || d.holiday_surcharge_pct > 500 || (d.service_line !== "pet_sitting" && d.holiday_surcharge_pct !== 0)))
+    return "A sitting holiday surcharge is a whole percentage from 0 to 500.";
   for (const [cents, what] of [
     [d.base_price_cents, "The price"],
     [d.extra_pet_cents, "The extra-pet charge"],

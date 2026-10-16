@@ -1766,6 +1766,8 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
     // Charge what's still owed, net of applied credit (B7) — never the gross total.
     // Net the client's account credit off FIRST, which is what the comment
     // above this line has always claimed and what the code did not do.
@@ -1912,7 +1914,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -1950,7 +1952,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );

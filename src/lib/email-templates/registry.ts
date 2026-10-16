@@ -1,3 +1,4 @@
+import { confirmedTemplate, endingTemplate } from "./stay-notice";
 import type { ComponentType } from "react";
 
 import { template as welcomeTemplate } from "./welcome";
@@ -29,6 +30,8 @@ export interface TemplateEntry {
 }
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
+  "stay-confirmed": confirmedTemplate,
+  "stay-ending": endingTemplate,
   welcome: welcomeTemplate,
   "invoice-sent": invoiceSentTemplate,
   "payment-received": paymentReceivedTemplate,

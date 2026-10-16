@@ -545,6 +545,8 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
     // Charge the OPEN amount: total net of applied credit (B7).
     const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
@@ -645,7 +647,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -684,7 +686,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );
@@ -1433,6 +1435,8 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!invoice) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
     // Charge the OPEN amount: total net of applied credit (B7).
     const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
@@ -1545,7 +1549,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -1584,7 +1588,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );

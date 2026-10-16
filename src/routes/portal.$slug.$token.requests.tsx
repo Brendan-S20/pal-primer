@@ -1,3 +1,4 @@
+import { PortalStayRequest } from "@/components/portal/Stays";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarPlus, MessageCircleWarning } from "lucide-react";
 import { OneOffBookingCard } from "@/components/portal/OneOffBookingCard";
@@ -14,6 +15,7 @@ function PortalRequests() {
 
   return (
     <div className="space-y-6">
+      <PortalStayRequest />
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
           <MessageCircleWarning className="h-4 w-4 shrink-0" /> Your requests
