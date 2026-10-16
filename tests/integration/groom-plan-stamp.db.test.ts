@@ -61,6 +61,7 @@ describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () 
     });
     addonId = await insert("addon_services", {
       organization_id: orgId,
+      code: "TEETH",
       name: "Teeth brushing",
       unit_price_cents: 1500,
       duration_min: 10,
