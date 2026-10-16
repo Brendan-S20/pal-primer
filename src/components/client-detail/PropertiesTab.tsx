@@ -42,6 +42,7 @@ import {
   setPropertyArchived,
   deletePropertyIfNoHistory,
 } from "@/lib/properties.functions";
+import { PetVaccines } from "@/components/client-detail/PetVaccines";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
@@ -838,6 +839,7 @@ function DogsSection({
                 Mark inactive
               </Button>
             </span>
+            <PetVaccines dogId={d.id} name={d.name} />
           </li>
         ))}
         {activeDogs.length === 0 && !adding && (

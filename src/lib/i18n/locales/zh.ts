@@ -19,6 +19,12 @@ import type { TranslationsWithPlurals } from "./en";
  * half-width where the string is a number or a code.
  */
 const zh: TranslationsWithPlurals<"other"> = {
+  vaccineStatus: {
+    ok: "有效",
+    expiring: "即将到期",
+    expired: "已过期",
+    missing: "缺失",
+  },
   common: {
     loading: "加载中…",
     save: "保存",
