@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  composeGroomNote,
   groomPetLabel,
   groomQuote,
   groomQuoteSummary,
@@ -166,38 +165,6 @@ describe("groomQuote", () => {
     const before = structuredClone(input);
     groomQuote(input);
     expect(input).toEqual(before);
-  });
-});
-
-describe("the note the groomer leaves", () => {
-  it("labels coat and behavior, keeps a free note, and stops at 1000 characters", () => {
-    expect(
-      composeGroomNote({
-        coatLabel: "Coat and skin:",
-        coat: "  matted behind the ears ",
-        behaviorLabel: "Behavior:",
-        behavior: "stood well",
-        note: "used the #4",
-      }),
-    ).toBe("Coat and skin: matted behind the ears\nBehavior: stood well\nused the #4");
-    expect(
-      composeGroomNote({
-        coatLabel: "Coat and skin:",
-        coat: "",
-        behaviorLabel: "Behavior:",
-        behavior: "  ",
-        note: "",
-      }),
-    ).toBe("");
-    const long = composeGroomNote({
-      coatLabel: "Coat and skin:",
-      coat: "x".repeat(1200),
-      behaviorLabel: "Behavior:",
-      behavior: "",
-      note: "",
-    });
-    expect(long.length).toBe(1000);
-    expect(long.startsWith("Coat and skin: ")).toBe(true);
   });
 });
 

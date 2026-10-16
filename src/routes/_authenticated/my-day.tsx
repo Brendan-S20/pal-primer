@@ -102,7 +102,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { visitServiceLabel } from "@/lib/visit-service";
-import { composeGroomNote } from "@/lib/groom";
+import { GroomPetPanel } from "@/components/my-day/GroomPetPanel";
 import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
@@ -483,7 +483,8 @@ function MyDay() {
   // offline Complete moves the count and promotes the next stop. The rules
   // (H1: skipped is not done; BUG-17: an open job outranks the next scheduled
   // one) live in lib/my-day-progress.ts, where they are tested.
-  const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
+  const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } =
+    dayAtAGlance(visits);
   const upcomingDays = useQuery({
     queryKey: ["my-upcoming-days"],
     queryFn: () => upcomingFn({ data: {} }),
@@ -857,7 +858,9 @@ function MyDay() {
           {total > 0 && (
             <p className="text-xs text-muted-foreground">
               {missedCount > 0 && (
-                <span className="me-2 font-medium">{t("myDay.missedCount", { count: missedCount })}.</span>
+                <span className="me-2 font-medium">
+                  {t("myDay.missedCount", { count: missedCount })}.
+                </span>
               )}
               {t("myDay.progressRule")}
             </p>
@@ -1615,8 +1618,6 @@ function VisitCard({
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
-  const [coatNote, setCoatNote] = useState("");
-  const [behaviorNote, setBehaviorNote] = useState("");
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
   const [noPhotoReason, setNoPhotoReason] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -1783,16 +1784,7 @@ function VisitCard({
   const complete = useMutation({
     mutationFn: () =>
       actions.complete({
-        note:
-          (isGroom
-            ? composeGroomNote({
-                coatLabel: t("visit.coatNotePrefix"),
-                coat: coatNote,
-                behaviorLabel: t("visit.behaviorNotePrefix"),
-                behavior: behaviorNote,
-                note,
-              })
-            : note.trim()) || undefined,
+        note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
         // Only ids still on the owner's list: a tick left over from an item
         // the owner has since removed means nothing to complete_visit.
@@ -1807,8 +1799,6 @@ function VisitCard({
       toast.success(completeToast(r));
       setCheckedItems([]);
       setNote("");
-      setCoatNote("");
-      setBehaviorNote("");
       setNoteOpen(false);
       setNoPhotoReason("");
       setNoPhotoOpen(false);
@@ -2171,6 +2161,13 @@ function VisitCard({
                 {t("visit.appointmentMinutes", { minutes: visit.duration_min })}
               </span>
             )}
+            {isGroom && visit.start_time && (
+              <span className="font-medium text-foreground">
+                {t("groom.startsAt", {
+                  time: formatClock(String(visit.start_time).slice(0, 5), locale),
+                })}
+              </span>
+            )}
             {service && (
               // What this stop is: the line in the tech's language, then the
               // business's own name for it, untranslated and in its own
@@ -2260,6 +2257,17 @@ function VisitCard({
 
           {!collapsed && (
             <>
+              {/* A groom leads with each pet: muzzle, bite history, vaccines on
+                  this date, and what was done last time. */}
+              {isGroom && (
+                <GroomPetPanel
+                  visitId={visit.id}
+                  dogs={p?.dogs}
+                  facts={visit.groom_pets}
+                  locale={locale}
+                  canWrite={underWay && canPerformVisit}
+                />
+              )}
               {/* The customer's answer to "on my way": ENT, the dogs are in;
                   DNE, do not enter. Above the dogs and the gate code, because
                   it is what decides whether those get used at all. */}
@@ -2298,21 +2306,27 @@ function VisitCard({
                   <bdi>{visit.groom_summary}</bdi>
                 </p>
               )}
-              {isGroom && visit.prior_groom_note && (
-                <div className="mt-2 rounded-lg border bg-muted/30 p-2.5 text-sm">
-                  <div className="text-xs font-medium text-muted-foreground">
-                    {t("visit.priorGroom")}
-                    {visit.prior_groom_on ? (
-                      <span className="ms-1 font-normal">
-                        {formatDay(visit.prior_groom_on, locale)}
-                      </span>
-                    ) : null}
+              {/* The household's last visit note, for grooms from before
+                  per-pet notes. Each pet's own history replaces it. */}
+              {isGroom &&
+                visit.prior_groom_note &&
+                !(visit.groom_pets ?? []).some(
+                  (pet: { history: unknown[] }) => pet.history.length > 0,
+                ) && (
+                  <div className="mt-2 rounded-lg border bg-muted/30 p-2.5 text-sm">
+                    <div className="text-xs font-medium text-muted-foreground">
+                      {t("visit.priorGroom")}
+                      {visit.prior_groom_on ? (
+                        <span className="ms-1 font-normal">
+                          {formatDay(visit.prior_groom_on, locale)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+                      <bdi>{visit.prior_groom_note}</bdi>
+                    </p>
                   </div>
-                  <p className="mt-1 min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
-                    <bdi>{visit.prior_groom_note}</bdi>
-                  </p>
-                </div>
-              )}
+                )}
 
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
@@ -2620,37 +2634,6 @@ function VisitCard({
               </legend>
               {checklistRows()}
             </fieldset>
-          )}
-
-          {underWay && canPerformVisit && isGroom && (
-            <div className="space-y-2">
-              <div>
-                <Label htmlFor={`coat-note-${visit.id}`} className="text-xs">
-                  {t("visit.coatNoteLabel")}
-                </Label>
-                <Textarea
-                  id={`coat-note-${visit.id}`}
-                  dir="auto"
-                  rows={2}
-                  maxLength={400}
-                  value={coatNote}
-                  onChange={(e) => setCoatNote(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor={`behavior-note-${visit.id}`} className="text-xs">
-                  {t("visit.behaviorNoteLabel")}
-                </Label>
-                <Textarea
-                  id={`behavior-note-${visit.id}`}
-                  dir="auto"
-                  rows={2}
-                  maxLength={400}
-                  value={behaviorNote}
-                  onChange={(e) => setBehaviorNote(e.target.value)}
-                />
-              </div>
-            </div>
           )}
 
           {underWay && canPerformVisit && (

@@ -25,6 +25,9 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // The stop card's dogs, yard outline, stations and money lines, and the
   // form a tech records cash or a check with.
   { file: "src/components/my-day/StopFacts.tsx" },
+  // A groom's pets at the top of the card: handling flags, vaccines on the
+  // day, each pet's last grooms and this groom's notes.
+  { file: "src/components/my-day/GroomPetPanel.tsx" },
   // The client page a tech opens from a stop's "Client info": gate and
   // lock box codes, hazards and dogs. The office's client page is a different
   // component on the same route and stays in English.

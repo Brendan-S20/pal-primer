@@ -18,6 +18,13 @@ import {
   type StopFacts,
   type StopFactsRow,
 } from "@/lib/stop-facts";
+import {
+  GROOM_HISTORY_PER_PET,
+  groomPetFacts,
+  type GroomNote,
+  type GroomPetFacts,
+} from "@/lib/groom-pets";
+import type { VaccineRecord, VaccineRule } from "@/lib/vaccines";
 
 export const getMyDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -81,7 +88,7 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, start_time, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, muzzle_required, bite_history, senior_or_medical, handling_notes), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -92,7 +99,11 @@ export const getMyDay = createServerFn({ method: "GET" })
       staff: targetStaff,
       visits: await withStopFacts(
         supabase,
-        await withPriorGroomNotes(supabase, visits ?? [], data.day),
+        await withGroomPets(
+          supabase,
+          await withPriorGroomNotes(supabase, visits ?? [], data.day),
+          data.day,
+        ),
       ),
       previewing,
       canText: await businessCanText(targetStaff.organization_id),
@@ -215,6 +226,84 @@ async function withPriorGroomNotes<
       prior_groom_on: hit?.scheduled_on ?? null,
     };
   });
+}
+
+/** Per pet on a groom: vaccines on this groom's date, this groom's note, and
+ *  the pet's last few grooms. A failure leaves `groom_pets` empty and the
+ *  card says less; the day still loads. */
+async function withGroomPets<
+  V extends {
+    id: string;
+    organization_id?: string | null;
+    services?: { service_line?: string | null } | null;
+    properties?: unknown;
+  },
+>(
+  supabase: SupabaseClient<Database>,
+  visits: V[],
+  day: string,
+): Promise<(V & { groom_pets: GroomPetFacts[] })[]> {
+  const dogIdsOf = (v: V) =>
+    ((v.properties as { dogs?: { id?: string | null }[] | null } | null)?.dogs ?? [])
+      .map((d) => d?.id)
+      .filter((id): id is string => typeof id === "string");
+  const grooming = visits.filter((v) => v.services?.service_line === "mobile_grooming");
+  const dogIds = [...new Set(grooming.flatMap(dogIdsOf))];
+  if (dogIds.length === 0) return visits.map((v) => ({ ...v, groom_pets: [] }));
+
+  let notes: GroomNote[] = [];
+  let vaccines: (VaccineRecord & { dog_id: string })[] = [];
+  let rule: VaccineRule | null = null;
+  let required: string[] = [];
+  try {
+    const orgId = grooming[0].organization_id;
+    const [noteRes, orgRes, vacRes] = await Promise.all([
+      supabase
+        .from("pet_groom_notes")
+        .select("dog_id, visit_id, groomed_on, blade, style, problems")
+        .in("dog_id", dogIds)
+        .lte("groomed_on", day)
+        .order("groomed_on", { ascending: false })
+        // Newest first across every pet on the day; a pet groomed every six
+        // weeks needs a few rows, not years of them.
+        .limit(Math.min(500, dogIds.length * (GROOM_HISTORY_PER_PET + 1) * 4)),
+      orgId
+        ? supabase
+            .from("organizations")
+            .select("vaccine_rule, required_vaccines")
+            .eq("id", orgId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      supabase
+        .from("pet_vaccinations")
+        .select("dog_id, vaccine, expires_on, source, verified_at")
+        .in("dog_id", dogIds),
+    ]);
+    if (noteRes.error) throw noteRes.error;
+    notes = (noteRes.data ?? []) as GroomNote[];
+    if (!orgRes.error && orgRes.data) {
+      rule = orgRes.data.vaccine_rule as VaccineRule;
+      required = orgRes.data.required_vaccines ?? [];
+    }
+    if (!vacRes.error) vaccines = vacRes.data ?? [];
+  } catch (e) {
+    console.warn("groom pet lookup failed", e);
+  }
+  return visits.map((v) => ({
+    ...v,
+    groom_pets:
+      v.services?.service_line === "mobile_grooming"
+        ? groomPetFacts({
+            dogIds: dogIdsOf(v),
+            visitId: v.id,
+            day,
+            notes,
+            vaccines,
+            rule,
+            required,
+          })
+        : [],
+  }));
 }
 
 async function withStopFacts<V extends { id: string; properties?: unknown }>(

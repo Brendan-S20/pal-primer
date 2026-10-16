@@ -29,6 +29,28 @@ const temperament = z.enum(["friendly", "nervous", "aggressive", "unknown"]);
 // PooPrints-style registration state for commercial units.
 const dnaStatus = z.enum(["not_registered", "pending", "registered"]);
 
+/** How a groomer has to handle the pet. Shown at the top of its My Day card. */
+const handlingFields = {
+  muzzleRequired: z.boolean().optional(),
+  biteHistory: z.boolean().optional(),
+  seniorOrMedical: z.boolean().optional(),
+  handlingNotes: z.string().max(1000).optional().nullable(),
+};
+
+function handlingPatch(data: {
+  muzzleRequired?: boolean;
+  biteHistory?: boolean;
+  seniorOrMedical?: boolean;
+  handlingNotes?: string | null;
+}): Record<string, boolean | string | null> {
+  const patch: Record<string, boolean | string | null> = {};
+  if (data.muzzleRequired !== undefined) patch.muzzle_required = data.muzzleRequired;
+  if (data.biteHistory !== undefined) patch.bite_history = data.biteHistory;
+  if (data.seniorOrMedical !== undefined) patch.senior_or_medical = data.seniorOrMedical;
+  if (data.handlingNotes !== undefined) patch.handling_notes = data.handlingNotes?.trim() || null;
+  return patch;
+}
+
 const addDogSchema = z.object({
   propertyId: z.string().uuid(),
   name: z.string().min(1).max(80),
@@ -38,6 +60,7 @@ const addDogSchema = z.object({
   weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
   temperament: temperament.optional(),
   notes: z.string().max(1000).optional().nullable(),
+  ...handlingFields,
   /** Commercial: scope the dog to a unit on the property. */
   unitId: z.string().uuid().optional().nullable(),
   dnaStatus: dnaStatus.optional(),
@@ -92,6 +115,7 @@ export const addDog = createServerFn({ method: "POST" })
         unit_id: data.unitId ?? null,
         dna_status: data.dnaStatus ?? "not_registered",
         unit_review_needed: reviewNeeded,
+        ...handlingPatch(data),
       } as any)
       .select("id")
       .single();
@@ -128,6 +152,7 @@ const editDogSchema = z.object({
   weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
   temperament: temperament.optional(),
   notes: z.string().max(1000).optional().nullable(),
+  ...handlingFields,
   active: z.boolean().optional(),
   unitId: z.string().uuid().optional().nullable(),
   dnaStatus: dnaStatus.optional(),
@@ -194,6 +219,7 @@ export const updateDog = createServerFn({ method: "POST" })
     if (data.weightLb !== undefined) patch.weight_lb = data.weightLb;
     if (data.temperament !== undefined) patch.temperament = data.temperament;
     if (data.notes !== undefined) patch.notes = data.notes || null;
+    Object.assign(patch, handlingPatch(data));
     if (data.active !== undefined) patch.active = data.active;
     if (data.unitId !== undefined) patch.unit_id = data.unitId;
     if (data.dnaStatus !== undefined) {
@@ -269,12 +295,12 @@ export const setDogDna = createServerFn({ method: "POST" })
       .from("dogs")
       .update({
         dna_registered: data.registered,
-        dna_registry_id: data.registered ? (data.registryId || null) : null,
+        dna_registry_id: data.registered ? data.registryId || null : null,
         // Keep the DNA status enum used by the Units tab in sync so both
         // surfaces read the same record (I3).
         dna_status: data.registered ? "registered" : "not_registered",
-        dna_provider: data.registered ? (data.provider || null) : null,
-        dna_kit_reference: data.registered ? (data.kitReference || null) : null,
+        dna_provider: data.registered ? data.provider || null : null,
+        dna_kit_reference: data.registered ? data.kitReference || null : null,
       } as any)
       .eq("id", data.id)
       .eq("organization_id", orgId)

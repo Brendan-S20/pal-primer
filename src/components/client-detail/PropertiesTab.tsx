@@ -4,6 +4,11 @@
 // with detected/override badges, dogs per property (deactivate, don't
 // delete), commercial-only fields, and Archive / Delete-when-allowed.
 import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
+import {
+  NO_HANDLING,
+  PetHandlingFields,
+  type PetHandling,
+} from "@/components/client-detail/PetHandlingFields";
 import { useServiceLines } from "@/components/CommercialOnly";
 import type { CoatType } from "@/lib/groom";
 import { useEffect, useMemo, useState } from "react";
@@ -373,7 +378,9 @@ function PropertyCard({
     [p, activeDogs.length, sub],
   );
   const isOverride = !!p.est_override_at;
-  const effectiveMinutes = isOverride ? p.service_duration_min : (computed ?? p.service_duration_min);
+  const effectiveMinutes = isOverride
+    ? p.service_duration_min
+    : (computed ?? p.service_duration_min);
 
   return (
     <li className="rounded-lg border bg-card shadow-sm">
@@ -537,7 +544,10 @@ function PropertyCard({
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {yardCat && (
                       <span>
-                        Yard size: <span className="font-medium text-foreground">{YARD_SIZE_LABELS[yardCat]}</span>{" "}
+                        Yard size:{" "}
+                        <span className="font-medium text-foreground">
+                          {YARD_SIZE_LABELS[yardCat]}
+                        </span>{" "}
                         (from boundary)
                       </span>
                     )}
@@ -579,7 +589,6 @@ function PropertyCard({
                   ) : (
                     <MetaChip>Detected automatically</MetaChip>
                   )}
-
                 </div>
               </div>
 
@@ -600,7 +609,6 @@ function PropertyCard({
                   ) : (
                     <MetaChip>Auto-calculated</MetaChip>
                   )}
-
                 </div>
               </div>
 
@@ -738,10 +746,14 @@ function DogsSection({
   const [size, setSize] = useState("");
   const [coatType, setCoatType] = useState<CoatType | "">("");
   const [weightLb, setWeightLb] = useState("");
-  const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("unknown");
+  const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">(
+    "unknown",
+  );
   const [notes, setNotes] = useState("");
+  const [handling, setHandling] = useState<PetHandling>(NO_HANDLING);
 
   const resetForm = () => {
+    setHandling(NO_HANDLING);
     setAdding(false);
     setEditingDogId(null);
     setName("");
@@ -766,6 +778,12 @@ function DogsSection({
     setWeightLb(d.weight_lb == null ? "" : String(d.weight_lb));
     setTemperament((d.temperament ?? "unknown") as typeof temperament);
     setNotes(d.notes ?? "");
+    setHandling({
+      muzzleRequired: d.muzzle_required === true,
+      biteHistory: d.bite_history === true,
+      seniorOrMedical: d.senior_or_medical === true,
+      handlingNotes: d.handling_notes ?? "",
+    });
   };
 
   const addMut = useMutation({
@@ -774,7 +792,13 @@ function DogsSection({
         name: name.trim(),
         breed: breed || null,
         weightClass: size || null,
-        ...(grooming ? { coatType: coatType || null, weightLb: weightLb === "" ? null : Math.round(Number(weightLb) * 10) / 10 } : {}),
+        ...(grooming
+          ? {
+              coatType: coatType || null,
+              weightLb: weightLb === "" ? null : Math.round(Number(weightLb) * 10) / 10,
+            }
+          : {}),
+        ...(grooming ? { ...handling, handlingNotes: handling.handlingNotes.trim() || null } : {}),
         temperament,
         notes: notes || null,
       };
@@ -805,8 +829,9 @@ function DogsSection({
     <div>
       {mismatched.length > 0 && (
         <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
-          Services bill for {mismatched.join(" and ")} dog{mismatched.some((n) => n !== 1) ? "s" : ""},
-          but this property has {activeDogs.length} active dog record
+          Services bill for {mismatched.join(" and ")} dog
+          {mismatched.some((n) => n !== 1) ? "s" : ""}, but this property has {activeDogs.length}{" "}
+          active dog record
           {activeDogs.length === 1 ? "" : "s"}. Add the dogs below or fix the service dog count.
         </div>
       )}
@@ -821,11 +846,16 @@ function DogsSection({
 
       <ul className="mt-1.5 space-y-1.5 text-sm">
         {activeDogs.map((d) => (
-          <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2">
+          <li
+            key={d.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2"
+          >
             <span className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{d.name}</span>
               {d.breed && <span className="text-xs text-muted-foreground">{d.breed}</span>}
-              {d.weight_class && <span className="text-xs text-muted-foreground">{d.weight_class}</span>}
+              {d.weight_class && (
+                <span className="text-xs text-muted-foreground">{d.weight_class}</span>
+              )}
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-medium ${TEMPERAMENT_TONE[d.temperament ?? "unknown"]}`}
               >
@@ -963,13 +993,10 @@ function DogsSection({
             <Label className="text-xs">Notes</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
+          {grooming && <PetHandlingFields value={handling} onChange={setHandling} />}
           <div className="flex gap-2 sm:col-span-5">
             <Button type="submit" size="sm" disabled={addMut.isPending || !name.trim()}>
-              {addMut.isPending
-                ? "Saving…"
-                : editingDogId
-                  ? "Save dog"
-                  : "Add dog"}
+              {addMut.isPending ? "Saving…" : editingDogId ? "Save dog" : "Add dog"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
               <X className="mr-1 h-3.5 w-3.5 shrink-0" /> Cancel
