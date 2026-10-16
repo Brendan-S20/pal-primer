@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import { getImportBatch, commitImport, cancelImport } from "@/lib/imports.functions";
+import { commitRefusal, refusalMessage } from "@/lib/import-commit-guard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
@@ -26,12 +27,14 @@ function BatchDetail() {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["import-batch", batchId],
+    refetchInterval: 30_000,
     queryFn: () => getFn({ data: { batchId } }),
   });
 
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
   const { batch, rows } = data;
+  const blocked = data.commitBlock?.reason ?? commitRefusal(batch);
   const stats = (batch.stats ?? {}) as Record<string, number>;
   const planOrBalance = batch.entity === "services" || batch.entity === "balances";
   const shown = filter === "all" ? rows : rows.filter((r: any) => r.action === filter);
@@ -52,10 +55,13 @@ function BatchDetail() {
     setBusy(true);
     try {
       const s = await commitFn({ data: { batchId } });
-      toast.success(`Committed. ${s.created} created, ${s.updated} updated, ${s.failed} failed.`);
+      toast.success(
+        `Committed. ${s.created} created, ${s.updated} updated, ${s.skipped} skipped, ${s.failed} failed.`,
+      );
       refetch();
     } catch (e: any) {
       toast.error(e?.message ?? "Commit failed");
+      refetch();
     } finally {
       setBusy(false);
     }
@@ -76,19 +82,19 @@ function BatchDetail() {
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <Link to="/imports" className="text-sm text-muted-foreground hover:underline">
             ← All imports
           </Link>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="break-words text-2xl font-semibold">
             {batch.source} · {batch.filename ?? "import"}
           </h1>
           <p className="text-sm text-muted-foreground">
             Created {formatDateTime(batch.created_at)}
           </p>
         </div>
-        <ImportStatusBadge status={batch.status} />
+        <ImportStatusBadge status={blocked ?? batch.status} />
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
@@ -99,7 +105,18 @@ function BatchDetail() {
         <StatCard label="Errors" value={stats.errors ?? 0} tone="red" />
       </div>
 
-      {batch.status === "previewing" && (
+      {blocked && blocked !== "committed" && (
+        <div role="status" className="space-y-3 rounded border bg-muted/40 p-4 text-sm">
+          <p>{refusalMessage(blocked)}</p>
+          {blocked !== "committing" && (
+            <Button asChild>
+              <Link to="/imports">Start a fresh import</Link>
+            </Button>
+          )}
+        </div>
+      )}
+
+      {batch.status === "previewing" && !blocked && (
         <div className="flex gap-2">
           <Button onClick={doCommit} disabled={busy}>
             {busy ? "Committing…" : `Commit import (${(stats.create ?? 0) + (stats.update ?? 0)} rows)`}
@@ -112,10 +129,10 @@ function BatchDetail() {
 
       {batch.status === "committed" && stats.created !== undefined && (
         <div className="rounded border bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-300">
-          Import committed: {stats.created} created, {stats.updated} updated, {stats.failed} failed.
-          Imported clients won't receive automated messages until you resume communications or
-          reach out. Lift the hold from each client's page, or select clients on the Clients list
-          and use "Resume communications".
+          Import committed: {stats.created} created, {stats.updated} updated, {stats.skipped ?? 0}{" "}
+          skipped, {stats.failed} failed. Imported clients won't receive automated messages until
+          you resume communications or reach out. Lift the hold from each client's page, or select
+          clients on the Clients list and use "Resume communications".
         </div>
       )}
 

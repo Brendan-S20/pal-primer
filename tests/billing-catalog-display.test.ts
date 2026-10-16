@@ -64,6 +64,7 @@ type Subscription = {
   currentPeriodEnd: string | null;
   planInterval?: "month" | "year";
   cancelAtPeriodEnd?: boolean;
+  items?: unknown[];
 };
 
 function renderBilling({
@@ -181,6 +182,71 @@ describe("renewal dates require a future Stripe subscription period", () => {
     });
     expect(text).toMatch(/Cancels .*Nov 16/);
     expect(text).not.toContain("Renews ");
+  });
+});
+
+describe("next invoice with a metered line", () => {
+  const item = (
+    id: string,
+    kind: "base" | "addon",
+    name: string,
+    unitAmountCents: number | null,
+    interval: "month" | "year",
+  ) => ({
+    id,
+    kind,
+    name,
+    description: null,
+    quantity: 1,
+    unitAmountCents,
+    currency: "usd",
+    interval,
+    intervalCount: 1,
+  });
+  // From the card's heading to the end of its total row.
+  const nextInvoice = (text: string) => {
+    const m = text.match(
+      /Your next invoice.*?(Monthly|Yearly) total (Usage only|\S+ \+ usage|\S+)/,
+    );
+    expect(m).not.toBeNull();
+    return m![0];
+  };
+
+  it.each([
+    ["month", "$199.00/mo + usage", 19900],
+    // Under $1,000 so the thousands separator of the test machine's locale
+    // does not enter into it.
+    ["year", "$999.00/yr + usage", 99900],
+  ] as const)("adds + usage after the priced lines on a %s plan", (planInterval, total, cents) => {
+    const text = renderBilling({
+      subscription: {
+        subscriptionId: "sub_1",
+        currentPeriodEnd: FUTURE,
+        planInterval,
+        items: [
+          item("si_plan", "base", "Growth", cents, planInterval),
+          item("si_meter", "addon", "Texting usage", null, planInterval),
+        ],
+      },
+    });
+    const section = nextInvoice(text);
+    expect(section).toContain(`total ${total}`);
+    expect(section).toMatch(/Texting usage Add-on Usage/);
+    expect(section).not.toContain("$0.00");
+  });
+
+  it("says Usage only when no line has a price", () => {
+    const text = renderBilling({
+      subscription: {
+        subscriptionId: "sub_1",
+        currentPeriodEnd: FUTURE,
+        planInterval: "month",
+        items: [item("si_meter", "addon", "Texting usage", null, "month")],
+      },
+    });
+    const section = nextInvoice(text);
+    expect(section).toContain("Monthly total Usage only");
+    expect(section).not.toContain("$0.00");
   });
 });
 
