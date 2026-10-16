@@ -72,6 +72,7 @@ export function PropertyDrawer({
         | "residential"
         | "commercial",
       gateCode: property?.gate_code ?? "",
+      parkingNotes: property?.parking_notes ?? "",
       hazardNotes: property?.hazard_notes ?? "",
       vcName: property?.visit_contact_name ?? "",
       vcPhone: property?.visit_contact_phone ?? "",
@@ -192,6 +193,7 @@ export function PropertyDrawer({
         label: form.label || undefined,
         accountType: form.accountType,
         gateCode: form.gateCode || undefined,
+        parkingNotes: form.parkingNotes || undefined,
         hazardNotes: form.hazardNotes || undefined,
         visitContactName: form.vcName || undefined,
         visitContactPhone: form.vcPhone || undefined,
@@ -346,6 +348,18 @@ export function PropertyDrawer({
           <div>
             <Label htmlFor="pd-gate">Gate code</Label>
             <Input id="pd-gate" value={form.gateCode} onChange={(e) => set("gateCode", e.target.value)} />
+          </div>
+          <div className="sm:col-span-3">
+            <Label htmlFor="pd-parking">Parking notes</Label>
+            <textarea
+              id="pd-parking"
+              rows={2}
+              maxLength={1000}
+              placeholder="Where the van should park"
+              value={form.parkingNotes}
+              onChange={(e) => set("parkingNotes", e.target.value)}
+              className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
           </div>
         </div>
 

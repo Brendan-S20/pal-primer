@@ -2,7 +2,11 @@ import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { BOOKABLE_SERVICE_LINES, serviceLinesOrDefault } from "@/lib/service-lines";
+import {
+  BOOKABLE_SERVICE_LINES,
+  customerMayBook,
+  serviceLinesOrDefault,
+} from "@/lib/service-lines";
 
 vi.mock("@/lib/groom.functions", () => ({
   listServiceSizeRules: vi.fn(),
@@ -60,7 +64,8 @@ describe("grooming owner fields", () => {
         createElement(ServiceSizeRulesEditor, { serviceId: "unused", serviceLine: "pet_waste" }),
       ),
     ).toBe("");
-    expect(BOOKABLE_SERVICE_LINES).not.toContain("mobile_grooming");
+    expect(BOOKABLE_SERVICE_LINES).toContain("mobile_grooming");
+    expect(customerMayBook("mobile_grooming")).toBe(false);
   });
   it("shows coat and weight for grooming and labels the add-on fields", () => {
     expect(petFields(true)).toMatch(/Coat type/);

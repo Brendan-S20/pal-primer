@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  composeGroomNote,
   groomPetLabel,
   groomQuote,
   groomQuoteSummary,
@@ -168,6 +169,38 @@ describe("groomQuote", () => {
   });
 });
 
+describe("the note the groomer leaves", () => {
+  it("labels coat and behavior, keeps a free note, and stops at 1000 characters", () => {
+    expect(
+      composeGroomNote({
+        coatLabel: "Coat and skin:",
+        coat: "  matted behind the ears ",
+        behaviorLabel: "Behavior:",
+        behavior: "stood well",
+        note: "used the #4",
+      }),
+    ).toBe("Coat and skin: matted behind the ears\nBehavior: stood well\nused the #4");
+    expect(
+      composeGroomNote({
+        coatLabel: "Coat and skin:",
+        coat: "",
+        behaviorLabel: "Behavior:",
+        behavior: "  ",
+        note: "",
+      }),
+    ).toBe("");
+    const long = composeGroomNote({
+      coatLabel: "Coat and skin:",
+      coat: "x".repeat(1200),
+      behaviorLabel: "Behavior:",
+      behavior: "",
+      note: "",
+    });
+    expect(long.length).toBe(1000);
+    expect(long.startsWith("Coat and skin: ")).toBe(true);
+  });
+});
+
 describe("invoice descriptions", () => {
   it("uses plain size labels and handles missing size and an empty pet list", () => {
     expect(groomPetLabel(bella)).toBe("Bella (small)");
@@ -182,7 +215,12 @@ describe("invoice descriptions", () => {
 describe("groomQuote on an hourly service", () => {
   it("charges the hourly rate for a pet with no size rule", () => {
     const q = groomQuote({
-      service: { price_unit: "hour", base_price_cents: 6000, extra_pet_cents: 0, default_duration_min: 90 },
+      service: {
+        price_unit: "hour",
+        base_price_cents: 6000,
+        extra_pet_cents: 0,
+        default_duration_min: 90,
+      },
       rules: [],
       pets: [{ id: "p1", name: "Bella", size: "small", coat_type: null }],
       addons: [],

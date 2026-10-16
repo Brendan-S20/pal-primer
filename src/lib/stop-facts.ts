@@ -10,7 +10,16 @@
 // the normal case and meant nothing.
 
 /** A dog as the card reads it. */
-export type StopDog = { name?: string | null; temperament?: string | null; id?: string | null };
+export type StopDog = {
+  name?: string | null;
+  temperament?: string | null;
+  id?: string | null;
+  breed?: string | null;
+  weight_class?: string | null;
+  coat_type?: string | null;
+  weight_lb?: number | string | null;
+  notes?: string | null;
+};
 
 /** What my_day_stop_facts answers for one visit, camel-cased. Absent when the
  *  function could not be asked (an older cached day, or a database the

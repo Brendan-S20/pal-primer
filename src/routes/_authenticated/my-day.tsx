@@ -102,6 +102,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { visitServiceLabel } from "@/lib/visit-service";
+import { composeGroomNote } from "@/lib/groom";
 import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
@@ -1552,6 +1553,7 @@ function VisitCard({
   // is silently rejected server-side, which made those buttons look broken.
   // Preview mode (office role viewing another tech's day) also disables actions.
   const canPerformVisit = !preview && role !== "dispatcher";
+  const isGroom = visit.services?.service_line === "mobile_grooming";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
   // Billing an add-on is the one action on this card that is NOT queued when
@@ -1613,6 +1615,8 @@ function VisitCard({
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
+  const [coatNote, setCoatNote] = useState("");
+  const [behaviorNote, setBehaviorNote] = useState("");
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
   const [noPhotoReason, setNoPhotoReason] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -1753,8 +1757,7 @@ function VisitCard({
   const completeToast = (r: { queued: boolean; result?: unknown }) => {
     if (r.queued) return t("visit.completeQueued");
     const summary = (r.result as any)?.notificationSummary as
-      | { sent?: string[]; pending?: boolean }
-      | undefined;
+      { sent?: string[]; pending?: boolean } | undefined;
     const sent = summary?.sent ?? [];
     const labels = sent
       .map((name) =>
@@ -1780,7 +1783,16 @@ function VisitCard({
   const complete = useMutation({
     mutationFn: () =>
       actions.complete({
-        note: note.trim() || undefined,
+        note:
+          (isGroom
+            ? composeGroomNote({
+                coatLabel: t("visit.coatNotePrefix"),
+                coat: coatNote,
+                behaviorLabel: t("visit.behaviorNotePrefix"),
+                behavior: behaviorNote,
+                note,
+              })
+            : note.trim()) || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
         // Only ids still on the owner's list: a tick left over from an item
         // the owner has since removed means nothing to complete_visit.
@@ -1795,6 +1807,8 @@ function VisitCard({
       toast.success(completeToast(r));
       setCheckedItems([]);
       setNote("");
+      setCoatNote("");
+      setBehaviorNote("");
       setNoteOpen(false);
       setNoPhotoReason("");
       setNoPhotoOpen(false);
@@ -2152,6 +2166,11 @@ function VisitCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="sr-only">{t("visit.stop", { number: visit.sequence ?? index })}</span>
             {statusBadge(visit.status, visit.queuedSync, t)}
+            {isGroom && Number(visit.duration_min) > 0 && (
+              <span dir="ltr" className="font-medium text-foreground">
+                {t("visit.appointmentMinutes", { minutes: visit.duration_min })}
+              </span>
+            )}
             {service && (
               // What this stop is: the line in the tech's language, then the
               // business's own name for it, untranslated and in its own
@@ -2274,6 +2293,26 @@ function VisitCard({
                   there are no dog records, "No dogs on file" when there is
                   neither -- see DogsLine. */}
               <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
+              {isGroom && visit.groom_summary && (
+                <p className="mt-1 min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                  <bdi>{visit.groom_summary}</bdi>
+                </p>
+              )}
+              {isGroom && visit.prior_groom_note && (
+                <div className="mt-2 rounded-lg border bg-muted/30 p-2.5 text-sm">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {t("visit.priorGroom")}
+                    {visit.prior_groom_on ? (
+                      <span className="ms-1 font-normal">
+                        {formatDay(visit.prior_groom_on, locale)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+                    <bdi>{visit.prior_groom_note}</bdi>
+                  </p>
+                </div>
+              )}
 
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
@@ -2581,6 +2620,37 @@ function VisitCard({
               </legend>
               {checklistRows()}
             </fieldset>
+          )}
+
+          {underWay && canPerformVisit && isGroom && (
+            <div className="space-y-2">
+              <div>
+                <Label htmlFor={`coat-note-${visit.id}`} className="text-xs">
+                  {t("visit.coatNoteLabel")}
+                </Label>
+                <Textarea
+                  id={`coat-note-${visit.id}`}
+                  dir="auto"
+                  rows={2}
+                  maxLength={400}
+                  value={coatNote}
+                  onChange={(e) => setCoatNote(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor={`behavior-note-${visit.id}`} className="text-xs">
+                  {t("visit.behaviorNoteLabel")}
+                </Label>
+                <Textarea
+                  id={`behavior-note-${visit.id}`}
+                  dir="auto"
+                  rows={2}
+                  maxLength={400}
+                  value={behaviorNote}
+                  onChange={(e) => setBehaviorNote(e.target.value)}
+                />
+              </div>
+            </div>
           )}
 
           {underWay && canPerformVisit && (

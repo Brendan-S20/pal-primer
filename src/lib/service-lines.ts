@@ -45,14 +45,32 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** Lines an owner can actually choose today. A line joins this list when its
- *  path can be booked end to end: walking and sitting run on the service
- *  catalog; mobile grooming (#412) and training (#413) join with their paths. */
+/** Lines an owner can choose today. Mobile grooming joins because the office
+ *  can set it up, book a pet, put a groomer on the route, run the appointment
+ *  and invoice it. Training (#413) joins when its path can be booked end to
+ *  end. Customers still cannot book a groom: see CUSTOMER_BOOKABLE_SERVICE_LINES. */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
   "pet_waste",
   "dog_walking",
   "pet_sitting",
+  "mobile_grooming",
 ];
+
+/** Lines a customer may ask for (public signup, the portal, the receptionist).
+ *  Mobile grooming stays with the office until a customer can pick pets,
+ *  add-ons and a price the same way the office books one. */
+export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
+  "pet_waste",
+  "dog_walking",
+  "pet_sitting",
+];
+
+export function customerMayBook(line: string | null | undefined): boolean {
+  return (
+    typeof line === "string" &&
+    (CUSTOMER_BOOKABLE_SERVICE_LINES as readonly string[]).includes(line)
+  );
+}
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
   pet_waste: "Pet waste removal (scooping)",

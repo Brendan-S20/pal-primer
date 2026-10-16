@@ -359,7 +359,7 @@ export async function runAutoRouting(
         supabase
           .from("visits")
           .select(
-            "assigned_staff_id, scheduled_on, eta_end, travel_min, properties(latitude, longitude, service_duration_min), services(default_duration_min)",
+            "assigned_staff_id, scheduled_on, eta_end, travel_min, duration_min, properties(latitude, longitude, service_duration_min), services(default_duration_min)",
           )
           .eq("organization_id", orgId)
           .eq("status", "scheduled")
@@ -374,11 +374,12 @@ export async function runAutoRouting(
         day: v.scheduled_on,
         etaEnd: v.eta_end,
         travelMin: v.travel_min == null ? null : Number(v.travel_min),
-        // The planner's own rule (stop_service_min): the service's minutes,
-        // else the yard's. A walk is as long as the walk.
+        // The planner's own rule (stop_service_min): the visit's stored
+        // length, else the service's minutes, else the yard's.
         serviceMin: visitServiceMinutes(
           v.services?.default_duration_min,
           v.properties?.service_duration_min,
+          v.duration_min,
         ),
         latitude: v.properties?.latitude ?? null,
         longitude: v.properties?.longitude ?? null,

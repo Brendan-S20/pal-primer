@@ -268,7 +268,10 @@ function NewClientFromQuote({
   // became a client (or was marked converted by hand) would stop the wizard
   // with the lead's refusal, and the quote is reason enough to go on.
   const convertibleLead =
-    leadId && lead && lead.lead.id === leadId && leadConversionState(lead.lead).kind === "convertible"
+    leadId &&
+    lead &&
+    lead.lead.id === leadId &&
+    leadConversionState(lead.lead).kind === "convertible"
       ? lead
       : null;
   const conversion = quoteConversion(lines);
@@ -348,9 +351,7 @@ function weekdayOf(day: string): number {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function money(cents: number, currency = "USD") {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
-    (cents ?? 0) / 100,
-  );
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format((cents ?? 0) / 100);
 }
 
 function polyAreaSqm(g: PolygonGeoJSON): number {
@@ -371,8 +372,6 @@ function polyAreaSqm(g: PolygonGeoJSON): number {
   }
   return Math.abs(a / 2);
 }
-
-
 
 function NewClientWizard({
   prefill,
@@ -429,6 +428,7 @@ function NewClientWizard({
   const [region, setRegion] = useState(prefill.region);
   const [postalCode, setPostalCode] = useState(prefill.postalCode);
   const [gateCode, setGateCode] = useState("");
+  const [parkingNotes, setParkingNotes] = useState("");
   const [hazardNotes, setHazardNotes] = useState("");
   // P3.5 optional on-site visit contact (tenant/property manager)
   const [vcName, setVcName] = useState("");
@@ -450,7 +450,9 @@ function NewClientWizard({
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
   // Geocode outcome for the Outline step, so a failure surfaces a clear message
   // instead of silently rendering a zoomed-out world map (finding #13).
-  const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "notfound" | "error">("idle");
+  const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "notfound" | "error">(
+    "idle",
+  );
   const boundaryAreaSqm = useMemo(() => (boundary ? polyAreaSqm(boundary) : null), [boundary]);
 
   // Address entry, same contract as PropertyDrawer: a matched address fills
@@ -677,6 +679,7 @@ function NewClientWizard({
           latitude: geo?.lat,
           longitude: geo?.lng,
           gateCode: gateCode || undefined,
+          parkingNotes: parkingNotes || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
           visitContactPhone: vcPhone || undefined,
@@ -689,7 +692,12 @@ function NewClientWizard({
                 name: d.name.trim(),
                 breed: d.breed || undefined,
                 weightClass: d.weightClass || undefined,
-                ...(grooming ? { coatType: d.coatType || null, weightLb: d.weightLb ? Math.round(Number(d.weightLb) * 10) / 10 : null } : {}),
+                ...(grooming
+                  ? {
+                      coatType: d.coatType || null,
+                      weightLb: d.weightLb ? Math.round(Number(d.weightLb) * 10) / 10 : null,
+                    }
+                  : {}),
                 temperament: d.temperament,
                 notes: d.notes || undefined,
               }))
@@ -709,7 +717,9 @@ function NewClientWizard({
                 serviceId: chosenService?.id,
                 dogCount: accountType === "residential" ? dogCount : undefined,
                 unitCount:
-                  accountType === "commercial" ? Math.max(1, parseInt(unitCount, 10) || 1) : undefined,
+                  accountType === "commercial"
+                    ? Math.max(1, parseInt(unitCount, 10) || 1)
+                    : undefined,
                 zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
                 billingCadence,
               },
@@ -734,9 +744,12 @@ function NewClientWizard({
       if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
       if (welcomeEmailed && primaryEmail) parts.push(`Welcome email sent to ${primaryEmail}.`);
       toast.success(parts.join(" "), { duration: 8000 });
-      if (!officeNoteSaved) toast.error("The office note did not save. Add it from the client's Notes.");
+      if (!officeNoteSaved)
+        toast.error("The office note did not save. Add it from the client's Notes.");
       if (firstCleanupInvoiced === false)
-        toast.error("The first-cleanup invoice was not created. Create it from Invoices, New invoice.");
+        toast.error(
+          "The first-cleanup invoice was not created. Create it from Invoices, New invoice.",
+        );
       if (leadLinked === false)
         toast.error("The lead could not be marked converted. Mark it from the Leads page.");
       qc.invalidateQueries({ queryKey: ["clients"] });
@@ -746,7 +759,9 @@ function NewClientWizard({
         // Best effort: the client exists either way.
         convertedFn({ data: { id: fromQuote.id, clientId: id } })
           .catch(() =>
-            toast.error(`The client was created, but ${fromQuote.label} could not be marked as converted.`),
+            toast.error(
+              `The client was created, but ${fromQuote.label} could not be marked as converted.`,
+            ),
           )
           .finally(() => qc.invalidateQueries({ queryKey: ["quotes"] }));
       }
@@ -824,10 +839,7 @@ function NewClientWizard({
                   Link lead to this client
                 </Button>
                 <Button asChild size="sm" variant="outline">
-                  <Link
-                    to="/clients/$clientId"
-                    params={{ clientId: fromLead.existingClient.id }}
-                  >
+                  <Link to="/clients/$clientId" params={{ clientId: fromLead.existingClient.id }}>
                     Open client
                   </Link>
                 </Button>
@@ -940,11 +952,21 @@ function NewClientWizard({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="em">Email</Label>
-                <Input id="em" type="email" value={primaryEmail} onChange={(e) => setPrimaryEmail(e.target.value)} />
+                <Input
+                  id="em"
+                  type="email"
+                  value={primaryEmail}
+                  onChange={(e) => setPrimaryEmail(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ph">Phone</Label>
-                <Input id="ph" value={primaryPhone} onChange={(e) => setPrimaryPhone(e.target.value)} placeholder="(555) 123-4567" />
+                <Input
+                  id="ph"
+                  value={primaryPhone}
+                  onChange={(e) => setPrimaryPhone(e.target.value)}
+                  placeholder="(555) 123-4567"
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -969,7 +991,10 @@ function NewClientWizard({
         {current === "Property" && (
           <div className="space-y-5">
             {attempted && !(street && city && region && postalCode) && (
-              <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
                 Please fill in Street, City, State, and ZIP to continue.
               </div>
             )}
@@ -988,9 +1013,15 @@ function NewClientWizard({
                   onChangeText={(t) => setAddressField(setStreet, t)}
                   onResolved={applyResolvedAddress}
                   ariaInvalid={attempted && !street ? true : undefined}
-                  className={attempted && !street ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  className={
+                    attempted && !street
+                      ? "border-destructive focus-visible:ring-destructive"
+                      : undefined
+                  }
                 />
-                {attempted && !street && <p className="text-xs text-destructive">Street address is required.</p>}
+                {attempted && !street && (
+                  <p className="text-xs text-destructive">Street address is required.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ci">City</Label>
@@ -1000,9 +1031,15 @@ function NewClientWizard({
                   value={city}
                   onChange={(e) => setAddressField(setCity, e.target.value)}
                   aria-invalid={attempted && !city ? true : undefined}
-                  className={attempted && !city ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  className={
+                    attempted && !city
+                      ? "border-destructive focus-visible:ring-destructive"
+                      : undefined
+                  }
                 />
-                {attempted && !city && <p className="text-xs text-destructive">City is required.</p>}
+                {attempted && !city && (
+                  <p className="text-xs text-destructive">City is required.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -1013,7 +1050,11 @@ function NewClientWizard({
                     value={region}
                     onChange={(e) => setAddressField(setRegion, e.target.value)}
                     aria-invalid={attempted && !region ? true : undefined}
-                    className={attempted && !region ? "border-destructive focus-visible:ring-destructive" : undefined}
+                    className={
+                      attempted && !region
+                        ? "border-destructive focus-visible:ring-destructive"
+                        : undefined
+                    }
                   />
                   {attempted && !region && <p className="text-xs text-destructive">Required.</p>}
                 </div>
@@ -1025,14 +1066,32 @@ function NewClientWizard({
                     value={postalCode}
                     onChange={(e) => setAddressField(setPostalCode, e.target.value)}
                     aria-invalid={attempted && !postalCode ? true : undefined}
-                    className={attempted && !postalCode ? "border-destructive focus-visible:ring-destructive" : undefined}
+                    className={
+                      attempted && !postalCode
+                        ? "border-destructive focus-visible:ring-destructive"
+                        : undefined
+                    }
                   />
-                  {attempted && !postalCode && <p className="text-xs text-destructive">Required.</p>}
+                  {attempted && !postalCode && (
+                    <p className="text-xs text-destructive">Required.</p>
+                  )}
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gc">Gate code (optional)</Label>
                 <Input id="gc" value={gateCode} onChange={(e) => setGateCode(e.target.value)} />
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="park">Parking notes (optional)</Label>
+                <textarea
+                  id="park"
+                  rows={2}
+                  maxLength={1000}
+                  value={parkingNotes}
+                  onChange={(e) => setParkingNotes(e.target.value)}
+                  placeholder="Where to park"
+                  className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                />
               </div>
               {/* No yard-size picker. It is derived from the property
                   boundary by a database trigger, and properties.functions.ts
@@ -1050,21 +1109,42 @@ function NewClientWizard({
                 On-site visit contact <span className="normal-case font-normal">(optional)</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                For rentals/managed properties: this person gets visit texts and emails.
-                Invoices still go to the account contact from the previous step.
+                For rentals/managed properties: this person gets visit texts and emails. Invoices
+                still go to the account contact from the previous step.
               </p>
               <div className="mt-2 grid gap-3 sm:grid-cols-3">
                 <div>
-                  <Label htmlFor="vc-name" className="text-xs">Name</Label>
-                  <Input id="vc-name" value={vcName} onChange={(e) => setVcName(e.target.value)} placeholder="Tenant / manager" />
+                  <Label htmlFor="vc-name" className="text-xs">
+                    Name
+                  </Label>
+                  <Input
+                    id="vc-name"
+                    value={vcName}
+                    onChange={(e) => setVcName(e.target.value)}
+                    placeholder="Tenant / manager"
+                  />
                 </div>
                 <div>
-                  <Label htmlFor="vc-phone" className="text-xs">Phone</Label>
-                  <Input id="vc-phone" type="tel" value={vcPhone} onChange={(e) => setVcPhone(e.target.value)} />
+                  <Label htmlFor="vc-phone" className="text-xs">
+                    Phone
+                  </Label>
+                  <Input
+                    id="vc-phone"
+                    type="tel"
+                    value={vcPhone}
+                    onChange={(e) => setVcPhone(e.target.value)}
+                  />
                 </div>
                 <div>
-                  <Label htmlFor="vc-email" className="text-xs">Email</Label>
-                  <Input id="vc-email" type="email" value={vcEmail} onChange={(e) => setVcEmail(e.target.value)} />
+                  <Label htmlFor="vc-email" className="text-xs">
+                    Email
+                  </Label>
+                  <Input
+                    id="vc-email"
+                    type="email"
+                    value={vcEmail}
+                    onChange={(e) => setVcEmail(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
@@ -1097,7 +1177,9 @@ function NewClientWizard({
                 ))}
               </div>
               <div className="mt-2 space-y-1">
-                <Label htmlFor="hn" className="text-xs">Notes for the tech</Label>
+                <Label htmlFor="hn" className="text-xs">
+                  Notes for the tech
+                </Label>
                 <Input
                   id="hn"
                   value={hazardNotes}
@@ -1115,7 +1197,8 @@ function NewClientWizard({
             <div>
               <h2 className="text-base font-medium">Sketch the property outline (optional)</h2>
               <p className="text-sm text-muted-foreground">
-                Draw the service area on the satellite map so the tech and pricing know the exact footprint. Skip to price a flat visit instead.
+                Draw the service area on the satellite map so the tech and pricing know the exact
+                footprint. Skip to price a flat visit instead.
               </p>
             </div>
             {(geoStatus === "notfound" || geoStatus === "error") && (
@@ -1136,7 +1219,8 @@ function NewClientWizard({
             />
             {boundaryAreaSqm != null && (
               <p className="text-xs text-muted-foreground">
-                Saved area: <strong>{formatArea(boundaryAreaSqm)}</strong>. If your zone uses per-sqft or per-acre pricing, the plan step will price from this area.
+                Saved area: <strong>{formatArea(boundaryAreaSqm)}</strong>. If your zone uses
+                per-sqft or per-acre pricing, the plan step will price from this area.
               </p>
             )}
           </div>
@@ -1185,13 +1269,30 @@ function NewClientWizard({
                       placeholder="Lab mix"
                     />
                   </div>
-                  <PetSizeFields size={d.weightClass} coatType={d.coatType ?? ""} weightLb={d.weightLb ?? ""} grooming={grooming}
-                    onChange={(patch) => setDogs(dogs.map((dog, index) => index === i ? {
-                      ...dog,
-                      ...(patch.size !== undefined ? { weightClass: patch.size } : {}),
-                      ...(patch.coatType !== undefined ? { coatType: patch.coatType } : {}),
-                      ...(patch.weightLb !== undefined ? { weightLb: patch.weightLb } : {}),
-                    } : dog))} />
+                  <PetSizeFields
+                    size={d.weightClass}
+                    coatType={d.coatType ?? ""}
+                    weightLb={d.weightLb ?? ""}
+                    grooming={grooming}
+                    onChange={(patch) =>
+                      setDogs(
+                        dogs.map((dog, index) =>
+                          index === i
+                            ? {
+                                ...dog,
+                                ...(patch.size !== undefined ? { weightClass: patch.size } : {}),
+                                ...(patch.coatType !== undefined
+                                  ? { coatType: patch.coatType }
+                                  : {}),
+                                ...(patch.weightLb !== undefined
+                                  ? { weightLb: patch.weightLb }
+                                  : {}),
+                              }
+                            : dog,
+                        ),
+                      )
+                    }
+                  />
                   <div className="space-y-1">
                     <Label className="text-xs">Temperament</Label>
                     <select
@@ -1401,7 +1502,9 @@ function NewClientWizard({
                       {setDays
                         ? `${weekdays.length} day${weekdays.length === 1 ? "" : "s"} a week`
                         : FREQS.find((f) => f.value === frequency)?.label}
-                      {walkLike && chosenService!.price_unit === "hour" && chosenService!.default_duration_min != null
+                      {walkLike &&
+                      chosenService!.price_unit === "hour" &&
+                      chosenService!.default_duration_min != null
                         ? ` · ${chosenService!.default_duration_min} min at $${((chosenService!.base_price_cents ?? 0) / 100).toFixed(2)} per hour`
                         : ""}
                     </p>

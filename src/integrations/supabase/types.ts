@@ -6534,7 +6534,9 @@ export type Database = {
           completion_source: string | null
           created_at: string
           deepclean_charge_cents: number
+          duration_min: number | null
           eta_end: string | null
+          groom_summary: string | null
           eta_start: string | null
           id: string
           is_deepclean: boolean
@@ -6579,7 +6581,9 @@ export type Database = {
           completion_source?: string | null
           created_at?: string
           deepclean_charge_cents?: number
+          duration_min?: number | null
           eta_end?: string | null
+          groom_summary?: string | null
           eta_start?: string | null
           id?: string
           is_deepclean?: boolean
@@ -6624,7 +6628,9 @@ export type Database = {
           completion_source?: string | null
           created_at?: string
           deepclean_charge_cents?: number
+          duration_min?: number | null
           eta_end?: string | null
+          groom_summary?: string | null
           eta_start?: string | null
           id?: string
           is_deepclean?: boolean

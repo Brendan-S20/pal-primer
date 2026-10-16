@@ -148,7 +148,7 @@ async function resolveService(
 ): Promise<Resolved> {
   if (!serviceId) return { ok: true, service: null };
   const hit = (await store.services(orgId)).find((s) => s.id === serviceId);
-  if (!hit || !hit.active) return { ok: false };
+  if (!hit || !hit.active || hit.service_line === "mobile_grooming") return { ok: false };
   return { ok: true, service: hit };
 }
 
@@ -214,7 +214,7 @@ export async function listServices(store: ReceptionistStore, c: Caller) {
   // servicePickerOptions: the active ones, by line (pet waste first) and name,
   // as the plan form and the portal list them.
   const rows = servicePickerOptions(await store.services(c.orgId)).filter(
-    (s) => isZonePriced(s) || s.base_price_cents != null,
+    (s) => s.service_line !== "mobile_grooming" && (isZonePriced(s) || s.base_price_cents != null),
   );
   return {
     services: rows.map((s) => ({

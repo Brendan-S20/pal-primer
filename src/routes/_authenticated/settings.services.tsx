@@ -272,7 +272,7 @@ function ServicesPage() {
       {lines.includes("mobile_grooming") && <VaccineSettings />}
 
       <Dialog open={sizeService !== null} onOpenChange={(open) => !open && setSizeService(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Prices by size</DialogTitle>
             <DialogDescription>{sizeService?.name}</DialogDescription>

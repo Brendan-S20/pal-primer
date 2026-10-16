@@ -81,7 +81,7 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(name, temperament), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -90,7 +90,10 @@ export const getMyDay = createServerFn({ method: "GET" })
 
     return {
       staff: targetStaff,
-      visits: await withStopFacts(supabase, visits ?? []),
+      visits: await withStopFacts(
+        supabase,
+        await withPriorGroomNotes(supabase, visits ?? [], data.day),
+      ),
       previewing,
       canText: await businessCanText(targetStaff.organization_id),
     };
@@ -157,6 +160,63 @@ async function withNoticeDeadline<T>(
  * null and the stations without a date, and the card says less rather than
  * the page saying nothing.
  */
+/** The last completed groom note for this client, preferring the same address.
+ *  A failure leaves the card without it. The day still loads. */
+async function withPriorGroomNotes<
+  V extends {
+    id: string;
+    client_id?: string | null;
+    property_id?: string | null;
+    services?: { service_line?: string | null } | null;
+  },
+>(
+  supabase: SupabaseClient<Database>,
+  visits: V[],
+  day: string,
+): Promise<(V & { prior_groom_note: string | null; prior_groom_on: string | null })[]> {
+  const blank = (v: V) => ({ ...v, prior_groom_note: null, prior_groom_on: null });
+  const grooming = visits.filter(
+    (v) => v.services?.service_line === "mobile_grooming" && v.client_id,
+  );
+  if (grooming.length === 0) return visits.map(blank);
+  type Prior = {
+    id: string;
+    client_id: string;
+    property_id: string | null;
+    scheduled_on: string;
+    tech_note: string | null;
+  };
+  let rows: Prior[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("visits")
+      .select("id, client_id, property_id, scheduled_on, tech_note, services!inner(service_line)")
+      .in("client_id", [...new Set(grooming.map((v) => v.client_id as string))])
+      .eq("status", "completed")
+      .not("tech_note", "is", null)
+      .lt("scheduled_on", day)
+      .eq("services.service_line", "mobile_grooming")
+      .order("scheduled_on", { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    rows = (data ?? []) as Prior[];
+  } catch (e) {
+    console.warn("prior groom note lookup failed", e);
+  }
+  return visits.map((v) => {
+    if (v.services?.service_line !== "mobile_grooming") return blank(v);
+    const hit =
+      rows.find(
+        (r) => r.client_id === v.client_id && r.property_id === v.property_id && r.id !== v.id,
+      ) ?? rows.find((r) => r.client_id === v.client_id && r.id !== v.id);
+    return {
+      ...v,
+      prior_groom_note: hit?.tech_note ?? null,
+      prior_groom_on: hit?.scheduled_on ?? null,
+    };
+  });
+}
+
 async function withStopFacts<V extends { id: string; properties?: unknown }>(
   supabase: SupabaseClient<Database>,
   visits: V[],

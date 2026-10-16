@@ -1280,7 +1280,10 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       // The pet-waste service at the one-off price, and every other active,
       // priced service at its own (one pet). Empty for a business with no
       // active service, when the card offers the extra cleanup as before.
-      services: oneOffServiceOptions((services ?? []) as any[], priceCents),
+      services: oneOffServiceOptions(
+        ((services ?? []) as any[]).filter((s) => s.service_line !== "mobile_grooming"),
+        priceCents,
+      ),
       petsByProperty,
       currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
     };
@@ -1330,6 +1333,9 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         .eq("organization_id", session.organizationId)
         .maybeSingle();
       service = svc ?? null;
+    }
+    if (service?.service_line === "mobile_grooming") {
+      throw new Error("Mobile grooming is booked by the office.");
     }
     const petWaste = !service || service.service_line === "pet_waste";
 

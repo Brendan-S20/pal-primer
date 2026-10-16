@@ -136,3 +136,21 @@ export function groomQuoteSummary(
 ): string {
   return pets.length ? `${serviceName}: ${pets.map(groomPetLabel).join(", ")}` : serviceName;
 }
+
+/** The note stored on the visit. Labels come from the tech's language. */
+export function composeGroomNote(parts: {
+  coatLabel: string;
+  coat: string;
+  behaviorLabel: string;
+  behavior: string;
+  note: string;
+}): string {
+  const lines: string[] = [];
+  const coat = parts.coat.trim();
+  const behavior = parts.behavior.trim();
+  const note = parts.note.trim();
+  if (coat) lines.push(`${parts.coatLabel} ${coat}`);
+  if (behavior) lines.push(`${parts.behaviorLabel} ${behavior}`);
+  if (note) lines.push(note);
+  return lines.join("\n").slice(0, 1000);
+}
