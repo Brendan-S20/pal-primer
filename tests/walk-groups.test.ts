@@ -163,14 +163,17 @@ describe("group walker routing", () => {
         calls.push(["eq", column, value]);
         return query;
       },
-      in: (column: string, values: string[]) => {
+      // One read for groups and stays (#411): the day's visits, both embeds.
+      in: async (column: string, values: string[]) => {
         calls.push(["in", column, values]);
-        return query;
+        return {
+          data: [
+            { id: "walk-0", walk_group_id: "group-a", walk_groups: { assigned_staff_id: "walker-a" } },
+            { id: "walk-1", walk_group_id: null, walk_groups: null, subscriptions: null },
+          ],
+          error,
+        };
       },
-      not: async () => ({
-        data: [{ id: "walk-0", walk_groups: { assigned_staff_id: "walker-a" } }],
-        error,
-      }),
     };
     const client = {
       from: (table: string) => {

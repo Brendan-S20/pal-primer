@@ -13,6 +13,7 @@ import { useClientTexting } from "@/hooks/useClientTexting";
 import { listClientMessages } from "@/lib/messages.functions";
 import { NotesPanel } from "@/components/client-detail/NotesPanel";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
+import { activeDogCount } from "@/lib/pets";
 
 
 export function SummaryTab({
@@ -47,8 +48,9 @@ export function SummaryTab({
   const today = useOrgToday();
   const texting = useClientTexting();
   const activeProps = properties.filter((p: any) => !p.archived_at);
+  // A stay's plans (#411) belong to the stay, which the Services tab lists.
   const activeSubs = subscriptions.filter(
-    (s: any) => s.status === "active" && !isServiceEnded(s, today),
+    (s: any) => s.status === "active" && !isServiceEnded(s, today) && !s.stay_id,
   );
   const upcoming = [...visits]
     .filter((v: any) => v.status === "scheduled" && v.scheduled_on >= today)
@@ -143,7 +145,7 @@ export function SummaryTab({
     }
   }
 
-  const activeDogTotal = dogs.filter((d: any) => d.active !== false).length;
+  const activeDogTotal = activeDogCount(dogs);
   const billedDogs = activeSubs.some(
     (s: any) => s.account_type === "residential" && (s.dog_count ?? 0) > 0,
   );

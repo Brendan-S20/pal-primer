@@ -68,6 +68,9 @@ export async function recomputePropertyEstimate(
       .eq("property_id", propertyId)
       .eq("status", "active")
       .neq("frequency", "one_time")
+      // A stay's plans (#411) run every day for a week or two; they are not
+      // the property's routine.
+      .is("stay_id", null)
       .or(liveServiceOrFilter(orgToday(org?.timezone || undefined)))
       .order("created_at", { ascending: false })
       .limit(1),
