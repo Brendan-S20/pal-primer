@@ -165,6 +165,10 @@ BEGIN
   END IF;
   SELECT * INTO _svc FROM public.services WHERE id = _st.service_id AND active;
   IF NOT FOUND THEN RAISE EXCEPTION 'That service is no longer offered.'; END IF;
+  IF _svc.organization_id <> _st.organization_id OR _svc.service_line <> 'pet_sitting'
+     OR _st.kind <> CASE WHEN _svc.price_unit = 'night' THEN 'overnight' ELSE 'drop_in' END THEN
+    RAISE EXCEPTION 'This service has changed. Request the stay again with its current pricing.';
+  END IF;
   SELECT (now() AT TIME ZONE COALESCE(o.timezone, 'America/Chicago'))::date INTO _today FROM public.organizations o WHERE o.id = _st.organization_id;
   IF _st.starts_on < _today OR _st.ends_on - _st.starts_on > 90 OR cardinality(_st.pet_ids) < 1 THEN
     RAISE EXCEPTION 'Choose future dates, up to 90 days apart, and at least one pet.';

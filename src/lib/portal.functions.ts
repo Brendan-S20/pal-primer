@@ -938,6 +938,8 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
       taxCents: taxShareCents(dueCents, invoice.tax_cents, invoice.total_cents),
       config: await orgFeeConfig(supabaseAdmin, invoice.organization_id),
     });
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const stayRails = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, []);
     try {
       const pi = await stripe.paymentIntents.create(
         {
@@ -946,6 +948,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           currency: invoice.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
+          ...(stayRails.length ? { payment_method_types: stayRails } : {}),
           off_session: true,
           confirm: true,
           metadata: {

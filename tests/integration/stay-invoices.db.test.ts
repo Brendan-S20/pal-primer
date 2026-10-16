@@ -93,7 +93,7 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     // its per-client generator both leave the stay visits already billed.
     const done = await org.admin.from("visits").update({ status: "completed", started_at: new Date().toISOString(), completed_at: new Date().toISOString() }).in("id", vs.map((v) => v.id));
     expect(done.error).toBeNull();
-    const cycle = await org.admin.rpc("run_billing_cycles");
+    const cycle = await org.admin.rpc("run_billing_cycles", { _org_id: org.orgId });
     expect(cycle.error).toBeNull();
     const bill = await org.admin.rpc("admin_generate_invoice_for_client", { _client_id: h.clientId, _through: day(10) });
     expect(bill.error).toBeNull();

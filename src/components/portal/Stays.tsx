@@ -10,10 +10,9 @@ import { DateField, TimeField } from "@/components/fields";
 import { PetCareFields } from "@/components/PetCareFields";
 import { PortalVisitReport } from "@/components/portal/VisitReport";
 import { portalListStays, portalRequestStay } from "@/lib/portal-stays.functions";
-import { usePortalCtx } from "@/lib/portal-ui";
+import { money, usePortalCtx } from "@/lib/portal-ui";
 import { DEFAULT_DROP_IN_WINDOW, DEFAULT_OVERNIGHT_ARRIVAL, stayDatesLabel, stayDatesProblem, stayKindFor, stayVisitCount, stayWindowsProblem, arrivalWindowProblem, STAY_STATUS_LABEL } from "@/lib/stays";
 import { cleanMeds, medsProblem, speciesLabel, type PetCare } from "@/lib/pets";
-import { formatServiceMoney } from "@/lib/services";
 
 const selectClass = "min-h-11 w-full min-w-0 rounded-md border bg-background px-3 text-sm";
 
@@ -119,7 +118,7 @@ export function PortalStayTimeline() {
         <div className="min-w-0 break-words"><h3 className="font-medium">{s.serviceName}</h3><p className="text-sm">{stayDatesLabel(s.kind, s.startsOn, s.endsOn)}</p></div>
         <span className="text-sm text-muted-foreground">{STAY_STATUS_LABEL[s.status]}</span>
       </div>
-      {s.depositDue && s.depositInvoiceId && <Button asChild><Link to="/portal/$slug/$token/pay/$invoiceId" params={{ slug, token, invoiceId: s.depositInvoiceId }}>Pay deposit {formatServiceMoney(s.depositCents, q.data.currency)}</Link></Button>}
+      {s.depositDue && s.depositInvoiceId && <Button asChild><Link to="/portal/$slug/$token/pay/$invoiceId" params={{ slug, token, invoiceId: s.depositInvoiceId }}>Pay deposit {money(s.depositCents, q.data.currency)}</Link></Button>}
       {s.status === "requested" && <p className="text-sm text-muted-foreground">Waiting for the office to confirm.</p>}
       <ol className="space-y-2">{s.visits.map((v) => <li key={v.id} className="space-y-2 rounded border p-3">
         <p className="text-xs text-muted-foreground">{VISIT_STATUS[v.status] ?? v.status}{v.window ? ` · ${v.window}` : ""}</p>

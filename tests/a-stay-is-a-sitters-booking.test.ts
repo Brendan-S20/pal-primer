@@ -232,7 +232,7 @@ describe("the migration", () => {
     // proof still finds exactly four.
     expect(branch).toMatch(/ON CONFLICT DO NOTHING;/);
     expect(branch).not.toMatch(/ON CONFLICT \(subscription_id, scheduled_on\)/);
-    expect(code).toMatch(/_branch_at\s+CONSTANT text := '-- weekday set \(subscriptions\.weekdays, 0 = Sunday\)/);
+    expect(sql).toMatch(/_branch_at\s+CONSTANT text := '-- weekday set \(subscriptions\.weekdays, 0 = Sunday\)/);
     expect(code).toMatch(/the stay branch must come before the weekday branch/);
   });
 
@@ -285,12 +285,13 @@ describe("the migration", () => {
 describe("the server", () => {
   const fns = read("src/lib/stays.functions.ts");
 
-  it("books a stay through the plan path #468's walk times use", () => {
+  it("books a stay through transactional confirmation and the shared generator", () => {
     expect(fns).toMatch(/requirePermission\(supabase, context\.userId, "manage_pricing"\)/);
-    expect(fns).toMatch(/createSubscriptionPlans\(supabase, context\.userId, plans, "pet_sitting", stayId\)/);
-    expect(fns).toMatch(/weekdays: \[\.\.\.EVERY_DAY\]/);
-    expect(fns).toMatch(/generate_visits_for_subscription/);
-    // A failed plan write takes the stay with it.
+    expect(fns).toMatch(/rpc\("confirm_stay"/);
+    const booking = read("supabase/migrations/20261016140000_a-client-asks-for-a-stay.sql");
+    expect(booking).toContain("ARRAY[0,1,2,3,4,5,6]");
+    expect(booking).toContain("public.generate_visits_core(_st.organization_id, _last, _sub)");
+    // A failed confirmation takes the office's requested stay with it.
     expect(fns).toMatch(/from\("stays"\)\.delete\(\)\.eq\("id", stayId\)/);
     expect(fns).toMatch(/care_snapshot: await careSnapshot\(supabase, petIds\)/);
   });
