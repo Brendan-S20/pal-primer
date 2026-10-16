@@ -314,6 +314,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     no: "否",
     noteForClient: "给客户的备注",
     noteForClientPlaceholder: "遛得很开心，每棵树都闻了闻",
+    codesNotLoaded: "已保存的代码被隐藏或无法加载。除非你输入新的代码，否则它们保持不变。",
   },
   visit: {
     stop: "第 {{number}} 站。",

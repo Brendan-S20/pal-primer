@@ -357,6 +357,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     no: "لا",
     noteForClient: "ملاحظة للعميل",
     noteForClientPlaceholder: "نزهة سعيدة، شمّ كل شجرة",
+    codesNotLoaded:
+      "الرموز المحفوظة مخفية أو تعذّر تحميلها. ستبقى كما هي ما لم تكتب رموزًا جديدة.",
   },
   visit: {
     stop: "الزيارة {{number}}.",

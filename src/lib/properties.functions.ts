@@ -57,7 +57,9 @@ const createPropSchema = z.object({
   boundary: polygonSchema.optional(),
   // How the walker gets in (#410). Sent only by a drawer that shows the
   // walker-access fields; absent means "leave the stored value alone", so a
-  // pet-waste business's saves never touch these columns.
+  // pet-waste business's saves never touch these columns. The drawer also
+  // leaves out a code the user did not change, so an editor who could not
+  // load the codes does not wipe them. Null still clears.
   accessMethod: z.enum(ACCESS_METHODS).nullable().optional(),
   keyHeld: z.boolean().optional(),
   keyTag: z.string().max(KEY_TAG_MAX).nullable().optional(),
@@ -485,13 +487,18 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
-    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const { accessFor, accessLoaded, readPropertyAccess } = await import("@/lib/property-access");
     const access = await readPropertyAccess(
       supabase,
       (rows ?? []).map((r) => r.id),
     );
     return {
-      properties: (rows ?? []).map((r) => ({ ...r, ...accessFor(access, r.id) })),
+      properties: (rows ?? []).map((r) => ({
+        ...r,
+        ...accessFor(access, r.id),
+        // The drawer sends the codes only when they were loaded or typed.
+        access_codes_loaded: accessLoaded(access, r.id),
+      })),
     };
   });
 
