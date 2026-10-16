@@ -107,11 +107,11 @@ async function expectServiceLineChoices(page: Page) {
   });
   await expect(petWaste).not.toBeChecked();
   await expect(petWaste).toBeEnabled();
-  // Pet sitting joins when its path works end to end: shown, marked, disabled.
+  // Pet sitting has a complete booking path (#411).
   const sitting = page.getByRole("checkbox", { name: /^Pet sitting/ });
   await expect(sitting).not.toBeChecked();
-  await expect(sitting).toBeDisabled();
-  await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toBeVisible();
+  await expect(sitting).toBeEnabled();
+  await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toHaveCount(0);
   // Not bookable yet: shown, marked, and not selectable.
   const grooming = page.getByRole("checkbox", { name: /^Mobile grooming/ });
   await expect(grooming).toBeDisabled();

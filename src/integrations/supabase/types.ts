@@ -3318,6 +3318,8 @@ export type Database = {
           notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
+          notify_email_stay_confirmed: boolean
+          notify_email_stay_ending: boolean
           notify_email_walk_not_done: boolean
           notify_email_walk_schedule_change: boolean
           require_completion_photo: boolean
@@ -3463,6 +3465,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_stay_confirmed?: boolean
+          notify_email_stay_ending?: boolean
           notify_email_walk_not_done?: boolean
           notify_email_walk_schedule_change?: boolean
           require_completion_photo?: boolean
@@ -3608,6 +3612,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_stay_confirmed?: boolean
+          notify_email_stay_ending?: boolean
           notify_email_walk_not_done?: boolean
           notify_email_walk_schedule_change?: boolean
           require_completion_photo?: boolean
@@ -5525,6 +5531,7 @@ export type Database = {
           base_price_cents: number | null
           created_at: string
           default_duration_min: number | null
+          holiday_surcharge_pct: number
           extra_pet_cents: number
           id: string
           name: string
@@ -5539,6 +5546,7 @@ export type Database = {
           base_price_cents?: number | null
           created_at?: string
           default_duration_min?: number | null
+          holiday_surcharge_pct?: number
           extra_pet_cents?: number
           id?: string
           name: string
@@ -5553,6 +5561,7 @@ export type Database = {
           base_price_cents?: number | null
           created_at?: string
           default_duration_min?: number | null
+          holiday_surcharge_pct?: number
           extra_pet_cents?: number
           id?: string
           name?: string
@@ -5996,6 +6005,9 @@ export type Database = {
           starts_on: string
           status: string
           updated_at: string
+          invoice_id: string | null
+          deposit_invoice_id: string | null
+          portal_request_key: string | null
         }
         Insert: {
           assigned_staff_id?: string | null
@@ -6018,6 +6030,9 @@ export type Database = {
           starts_on: string
           status?: string
           updated_at?: string
+          invoice_id?: string | null
+          deposit_invoice_id?: string | null
+          portal_request_key?: string | null
         }
         Update: {
           assigned_staff_id?: string | null
@@ -6040,6 +6055,9 @@ export type Database = {
           starts_on?: string
           status?: string
           updated_at?: string
+          invoice_id?: string | null
+          deposit_invoice_id?: string | null
+          portal_request_key?: string | null
         }
         Relationships: [
           {
@@ -7199,6 +7217,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      confirm_stay: {
+        Args: { _stay_id: string; _price_cents?: number; _deposit_cents?: number }
+        Returns: string
+      }
+      invoice_stay: {
+        Args: { _stay_id: string }
+        Returns: string
+      }
+      portal_request_stay: {
+        Args: { _org_id: string; _client_id: string; _request_key: string; _input: Json }
+        Returns: string
+      }
+
       walk_dogs_on_visit: {
         Args: { _visit_id: string }
         Returns: number
