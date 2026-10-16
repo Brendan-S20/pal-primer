@@ -204,7 +204,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 61 -> 63: tg_service_size_rules_service derives the tenant from the
     // groom, and pet_vaccinations_before_write derives the tenant, validates
     // the document path and caps portal records. Both revoked in their files.
-    expect(triggerFunctions().size).toBe(63);
+    // 63 -> 66 (20261016220000): tg_visits_groom_plan_stamp copies a groom
+    // plan onto every visit it generates, tg_visits_groom_plan_addons charges
+    // the plan's add-ons when a groom is completed, and
+    // tg_pet_groom_notes_before_write derives a note's tenant from its visit.
+    // All three revoked in that file.
+    expect(triggerFunctions().size).toBe(66);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
