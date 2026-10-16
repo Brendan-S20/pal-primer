@@ -3,7 +3,8 @@
  *    notifyWalkNotDone       a walker skipped it (skipVisit), or the nightly
  *                            job marked it missed (notifyMissedWalks)
  *    watchWalkSchedule       the office moved one or more visits
- *                            (rescheduleVisitFromOffice, bulkRescheduleVisits)
+ *                            (rescheduleVisitFromOffice, bulkRescheduleVisits),
+ *                            or moved them for weather (rescheduleVisits)
  *    notifyWalkPlanChanged   the office changed a walk plan's days or window
  *                            (updateSubscription)
  *
@@ -148,10 +149,12 @@ export async function notifyMissedWalks(orgId: string, today: string): Promise<n
 
 /** Read the walks among `visitIds` before a move; `finish` reads them after
  *  and emails each client once with what changed. Not a dog walk, or nothing
- *  a client reads changed: nothing is sent. */
-export async function watchWalkSchedule(
-  visitIds: readonly string[],
-): Promise<{ finish: (actionKey: string) => Promise<void> }> {
+ *  a client reads changed: nothing is sent. `walkIds` is the walks it read,
+ *  so a caller with its own email (the weather move) can leave them out. */
+export async function watchWalkSchedule(visitIds: readonly string[]): Promise<{
+  walkIds: ReadonlySet<string>;
+  finish: (actionKey: string) => Promise<void>;
+}> {
   let before = new Map<string, VisitRow>();
   try {
     if (visitIds.length > 0) {
@@ -163,6 +166,7 @@ export async function watchWalkSchedule(
     console.warn("walk schedule could not be read before the move", e);
   }
   return {
+    walkIds: new Set(before.keys()),
     finish: async (actionKey: string) => {
       if (before.size === 0) return;
       try {

@@ -2,6 +2,11 @@
 -- can record that the key or code failed, that nobody was home, or that the
 -- dog was not well enough to walk.
 --
+-- key_failed and no_one_home bill 50 by default. The walker made the trip
+-- but no walk happened, and a key or code that does not work can be either
+-- side's fault. dog_unwell bills nothing. An owner can change any of these
+-- in skip rules.
+--
 -- New enum values are not used as enum literals in this file. Postgres will
 -- not accept a new label in the same transaction that adds it, and a CASE
 -- on the enum type is such a use. default_skip_billable_pct compares the
@@ -22,8 +27,8 @@ AS $$
     WHEN 'gate_locked'           THEN 100
     WHEN 'dog_outside'           THEN 100
     WHEN 'access_blocked'        THEN 100
-    WHEN 'key_failed'            THEN 100
-    WHEN 'no_one_home'           THEN 100
+    WHEN 'key_failed'            THEN 50
+    WHEN 'no_one_home'           THEN 50
     WHEN 'unsafe_conditions'     THEN 50
     WHEN 'weather'               THEN 0
     WHEN 'our_fault'             THEN 0
@@ -35,7 +40,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.default_skip_billable_pct(public.skip_reason_code) IS
-  'Default percent of the visit price still billed when a visit is skipped for this reason. key_failed and no_one_home bill like the other access reasons. dog_unwell does not.';
+  'Default percent of the visit price still billed when a visit is skipped for this reason. key_failed and no_one_home bill 50: the walker made the trip but no walk happened, and a key that does not work can be either side''s fault. dog_unwell bills nothing. Owners can change any of these in skip rules.';
 
 REVOKE ALL ON FUNCTION public.default_skip_billable_pct(public.skip_reason_code) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.default_skip_billable_pct(public.skip_reason_code) TO authenticated, service_role;
@@ -63,6 +68,16 @@ BEGIN
           WHERE oid = 'public.default_skip_billable_pct(skip_reason_code)'::regprocedure)
         NOT LIKE '%dog_unwell%' THEN
     RAISE EXCEPTION 'default_skip_billable_pct does not know the walker reasons';
+  END IF;
+  -- Read from the body: the new labels cannot be passed to the function in
+  -- the transaction that added them.
+  IF (SELECT prosrc FROM pg_proc
+       WHERE oid = 'public.default_skip_billable_pct(skip_reason_code)'::regprocedure)
+     !~ $re$'key_failed'\s+THEN 50\M$re$
+     OR (SELECT prosrc FROM pg_proc
+          WHERE oid = 'public.default_skip_billable_pct(skip_reason_code)'::regprocedure)
+        !~ $re$'no_one_home'\s+THEN 50\M$re$ THEN
+    RAISE EXCEPTION 'default_skip_billable_pct should bill key_failed and no_one_home at 50';
   END IF;
 END;
 $check$;

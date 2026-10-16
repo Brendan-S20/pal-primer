@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { ACCESS_METHODS } from "@/lib/walk-access";
+import { ACCESS_CODE_MAX, ACCESS_METHODS } from "@/lib/walk-access";
 
 // "How we get in", from the client's side (#410). A dog walker goes inside,
 // so a client with a walk plan can tell the business how: the way in, the
@@ -27,7 +27,6 @@ async function admin() {
   return supabaseAdmin as any;
 }
 
-export const PORTAL_CODE_MAX = 40;
 export const KEY_LOCATION_MAX = 300;
 
 /** What the portal is told about one property's access. No code, ever. */
@@ -105,7 +104,7 @@ const codeField = z
   .string()
   .trim()
   .min(1, "Type the code, or remove it.")
-  .max(PORTAL_CODE_MAX, `A code can be up to ${PORTAL_CODE_MAX} characters.`)
+  .max(ACCESS_CODE_MAX, `A code can be up to ${ACCESS_CODE_MAX} characters.`)
   .nullable()
   .optional();
 

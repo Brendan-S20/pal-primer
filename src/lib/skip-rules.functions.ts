@@ -85,10 +85,12 @@ const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
   access_blocked: 100,
   unsafe_conditions: 50,
   other: 0,
-  // Same numbers as default_skip_billable_pct: a key or an empty house bills
-  // like the other access reasons, and a dog that cannot walk does not.
-  key_failed: 100,
-  no_one_home: 100,
+  // Same numbers as default_skip_billable_pct. A key that did not work or an
+  // empty house bills half: the walker made the trip but no walk happened,
+  // and a failed key can be either side's fault. A dog that cannot walk bills
+  // nothing. Owners change these in skip rules.
+  key_failed: 50,
+  no_one_home: 50,
   dog_unwell: 0,
 };
 

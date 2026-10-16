@@ -82,6 +82,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
 
 const { portalGetAccess, portalUpdateAccess, portalAccessOf, accessPatch, portalUpdateAccessSchema } =
   await import("@/lib/portal-access.functions");
+const { ACCESS_CODE_MAX } = await import("@/lib/walk-access");
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -218,8 +219,22 @@ describe("a client updates how we get in", () => {
   it("refuses an empty code, a long one, and a way in the database does not know", () => {
     const base = { token: TOKEN, propertyId: P_OWN };
     expect(() => portalUpdateAccessSchema.parse({ ...base, lockBoxCode: "  " })).toThrow();
-    expect(() => portalUpdateAccessSchema.parse({ ...base, lockBoxCode: "x".repeat(41) })).toThrow();
+    expect(() => portalUpdateAccessSchema.parse({ ...base, lockBoxCode: "x".repeat(61) })).toThrow();
+    expect(() => portalUpdateAccessSchema.parse({ ...base, doorCode: "x".repeat(61) })).toThrow();
     expect(() => portalUpdateAccessSchema.parse({ ...base, accessMethod: "window" })).toThrow();
+  });
+
+  it("takes a code as long as the office drawer does, from one shared number", () => {
+    expect(ACCESS_CODE_MAX).toBe(60);
+    const base = { token: TOKEN, propertyId: P_OWN };
+    expect(() => portalUpdateAccessSchema.parse({ ...base, lockBoxCode: "x".repeat(60) })).not.toThrow();
+    expect(() => portalUpdateAccessSchema.parse({ ...base, doorCode: "x".repeat(60) })).not.toThrow();
+    expect(read("src/lib/portal-access.functions.ts")).not.toMatch(/PORTAL_CODE_MAX/);
+    expect(read("src/components/portal/WalkAccessCard.tsx")).toMatch(/maxLength=\{ACCESS_CODE_MAX\}/);
+    expect(read("src/components/client-detail/PropertyDrawer.tsx")).toMatch(/maxLength=\{ACCESS_CODE_MAX\}/);
+    expect(read("src/lib/properties.functions.ts")).toMatch(
+      /lockBoxCode: z\.string\(\)\.max\(ACCESS_CODE_MAX\)/,
+    );
   });
 
   it("only writes what was sent", () => {

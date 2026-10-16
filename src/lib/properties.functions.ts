@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { ACCESS_METHODS, KEY_TAG_MAX, cleanKeyTag } from "@/lib/walk-access";
+import { ACCESS_CODE_MAX, ACCESS_METHODS, KEY_TAG_MAX, cleanKeyTag } from "@/lib/walk-access";
 
 // yard_size is derived from the boundary by a DB trigger now; the field is
 // still accepted (older forms send it) but never written.
@@ -30,7 +30,7 @@ const createPropSchema = z.object({
   city: z.string().min(1).max(120),
   region: z.string().max(120).optional(),
   postalCode: z.string().min(1).max(20),
-  gateCode: z.string().max(60).optional(),
+  gateCode: z.string().max(ACCESS_CODE_MAX).optional(),
   // Provider-resolved coordinates (skip Nominatim when present) + whether
   // the address came from the search provider or manual entry.
   latitude: z.number().min(-90).max(90).optional(),
@@ -63,7 +63,7 @@ const createPropSchema = z.object({
   accessMethod: z.enum(ACCESS_METHODS).nullable().optional(),
   keyHeld: z.boolean().optional(),
   keyTag: z.string().max(KEY_TAG_MAX).nullable().optional(),
-  lockBoxCode: z.string().max(60).nullable().optional(),
+  lockBoxCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
   keyLocation: z.string().max(200).nullable().optional(),
 });
 
