@@ -80,7 +80,8 @@ export const getQuotePricing = createServerFn({ method: "GET" })
             .from("dogs")
             .select("id", { count: "exact", head: true })
             .eq("property_id", p.id)
-            .eq("active", true);
+            .eq("active", true)
+            .eq("species", "dog");
           dogCount = count ?? null;
         }
         // A client already on a plan is most often quoted for a change to it,

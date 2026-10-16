@@ -130,7 +130,7 @@ difference.
 |---|---|---|---|
 | Pet waste | "Pet waste removal" (today's zone pricing) | today's four (`SUGGESTED_CHECKLIST`) | weekly |
 | Dog walking | "30-minute walk", "60-minute walk", "Drop-in visit (20 min)" | collected and returned; locked and latched; water; note left | weekdays Mon–Fri, one slot |
-| Pet sitting | "Drop-in (30 min)", "Overnight stay" | fed and watered; medication; litter/yard; locked, lights | one-time date range |
+| Pet sitting | "Drop-in (30 min)", "Overnight stay", "House sit" | fed and watered; medication; litter/yard; locked, lights | one-time date range |
 | Mobile grooming | "Bath and brush (60 min)", "Full groom (90 min)", "Nail trim (15 min)" | coat checked; nails; ears; returned dry | every 4–6 weeks |
 
 Prices are left blank on purpose, as the first-cleanup tiers are: a suggested

@@ -18,7 +18,10 @@ export const Route = createFileRoute("/_authenticated/settings/emails")({
 });
 
 // The switches. quote_followup_days is a number and gets its own control.
-type SwitchKey = Exclude<keyof Settings, "quote_followup_days" | "runs_dog_walking">;
+type SwitchKey = Exclude<
+  keyof Settings,
+  "quote_followup_days" | "runs_dog_walking" | "runs_pet_sitting"
+>;
 
 const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
@@ -40,6 +43,13 @@ const WALK_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_walk_canceled", label: "Walk canceled by the office", help: "Sent when you cancel a walk for today or later, with the day and time window. Your typed reason stays with you. Canceling several at once sends one email per client." },
 ];
 
+// Pet sitting only (#411), the same way.
+const SIT_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
+  { key: "notify_email_missed_meds", label: "Missed medication", help: "Sent when a sitting visit ends with a medication the sitter could not give, with their reason. One email per visit. The office is told in the app either way." },
+  { key: "notify_email_stay_confirmed", label: "Stay confirmed", help: "Sent when you confirm a stay, with its dates and a link to pay the deposit when one is due." },
+  { key: "notify_email_stay_ending", label: "Stay ends tomorrow", help: "Sent the day before a confirmed stay ends, once per stay." },
+];
+
 type Settings = Awaited<ReturnType<typeof getEmailSettings>>;
 
 function EmailSettingsPage() {
@@ -54,26 +64,35 @@ function EmailSettingsPage() {
   const [values, setValues] = useState<Settings>(data);
   useEffect(() => setValues(data), [data]);
 
-  const rows = values.runs_dog_walking ? [...ROWS, ...WALK_ROWS] : ROWS;
+  const rows = [
+    ...ROWS,
+    ...(values.runs_dog_walking ? WALK_ROWS : []),
+    ...(values.runs_pet_sitting ? SIT_ROWS : []),
+  ];
   const mut = useMutation({
     mutationFn: () => {
-      // The walk switches are saved only where they were drawn.
+      // The walk and sitting switches are saved only where they were drawn.
       const {
         runs_dog_walking,
+        runs_pet_sitting,
         notify_email_walk_not_done,
         notify_email_walk_schedule_change,
         notify_email_walk_canceled,
+        notify_email_missed_meds,
+        notify_email_stay_confirmed,
+        notify_email_stay_ending,
         ...rest
       } = values;
       return save({
-        data: runs_dog_walking
-          ? {
-              ...rest,
-              notify_email_walk_not_done,
-              notify_email_walk_schedule_change,
-              notify_email_walk_canceled,
-            }
-          : rest,
+        data: {
+          ...rest,
+          ...(runs_dog_walking
+            ? { notify_email_walk_not_done, notify_email_walk_schedule_change, notify_email_walk_canceled }
+            : {}),
+          ...(runs_pet_sitting
+            ? { notify_email_missed_meds, notify_email_stay_confirmed, notify_email_stay_ending }
+            : {}),
+        },
       });
     },
     onSuccess: () => { toast.success("Email preferences saved"); refetch(); },

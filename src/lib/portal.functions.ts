@@ -946,6 +946,8 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
       taxCents: taxShareCents(dueCents, invoice.tax_cents, invoice.total_cents),
       config: await orgFeeConfig(supabaseAdmin, invoice.organization_id),
     });
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const stayRails = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, []);
     try {
       const pi = await stripe.paymentIntents.create(
         {
@@ -954,6 +956,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           currency: invoice.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
+          ...(stayRails.length ? { payment_method_types: stayRails } : {}),
           off_session: true,
           confirm: true,
           metadata: {
@@ -1348,7 +1351,8 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       const { data: dogs } = await (sb.from("dogs") as any)
         .select("property_id")
         .in("property_id", propertyIds)
-        .not("active", "is", false);
+        .not("active", "is", false)
+        .eq("species", "dog");
       for (const d of (dogs ?? []) as Array<{ property_id: string }>) {
         if (d.property_id in petsByProperty) petsByProperty[d.property_id] += 1;
       }
@@ -1865,6 +1869,8 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
     // Charge what's still owed, net of applied credit (B7) — never the gross total.
     // Net the client's account credit off FIRST, which is what the comment
     // above this line has always claimed and what the code did not do.
@@ -2011,7 +2017,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -2049,7 +2055,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );

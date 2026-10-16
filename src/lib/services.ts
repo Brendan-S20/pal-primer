@@ -55,6 +55,7 @@ export type Service = {
   extra_pet_cents: number;
   default_duration_min: number | null;
   max_dogs?: number | null;
+  holiday_surcharge_pct?: number;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -70,6 +71,7 @@ export type ServiceDraft = {
   extra_pet_cents: number;
   default_duration_min: number | null;
   max_dogs?: number | null;
+  holiday_surcharge_pct?: number;
 };
 
 export type DefaultServiceSeed = ServiceDraft & { active: boolean };
@@ -129,6 +131,15 @@ export const DEFAULT_SERVICE_SEEDS: Readonly<Record<ServiceLine, readonly Defaul
     },
     {
       name: "Overnight stay",
+      service_line: "pet_sitting",
+      price_unit: "night",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: null,
+      active: true,
+    },
+    {
+      name: "House sit",
       service_line: "pet_sitting",
       price_unit: "night",
       base_price_cents: null,
@@ -274,6 +285,14 @@ export function serviceProblem(d: ServiceDraft): string | null {
       d.max_dogs > 50)
   )
     return "A group walk needs a dog walking service with room for 1 to 50 dogs.";
+  if (
+    d.holiday_surcharge_pct != null &&
+    (!Number.isInteger(d.holiday_surcharge_pct) ||
+      d.holiday_surcharge_pct < 0 ||
+      d.holiday_surcharge_pct > 500 ||
+      (d.service_line !== "pet_sitting" && d.holiday_surcharge_pct !== 0))
+  )
+    return "A sitting holiday surcharge is a whole percentage from 0 to 500.";
   for (const [cents, what] of [
     [d.base_price_cents, "The price"],
     [d.extra_pet_cents, "The extra-pet charge"],
@@ -285,7 +304,9 @@ export function serviceProblem(d: ServiceDraft): string | null {
   }
   const min = d.default_duration_min;
   if (min === null) {
-    if (durationRequired(d.service_line)) return "Say how long the service usually takes.";
+    // A night is the length. An overnight or a house sit has no minute count.
+    if (d.price_unit !== "night" && durationRequired(d.service_line))
+      return "Say how long the service usually takes.";
   } else if (!Number.isInteger(min) || min < SERVICE_DURATION_MIN || min > SERVICE_DURATION_MAX) {
     return `A duration is between ${SERVICE_DURATION_MIN} and ${SERVICE_DURATION_MAX} minutes.`;
   }

@@ -8,9 +8,14 @@ import { formatWeekdaySet } from "@/lib/weekday-set";
 
 export type WalkWindow = { earliestTime: string; latestTime: string };
 
-/** Each extra walk time becomes a separate plan with its own arrival window. */
-export function walkWindowsProblem(windows: readonly WalkWindow[]): string | null {
-  if (windows.length < 1 || windows.length > 6) return "Choose between 1 and 6 walk times.";
+/** Sibling plans, one per arrival window: walk times (#410) and a sitter's
+ *  drop-in times (#411). `noun` names the visit in the message. */
+export function arrivalWindowsProblem(
+  windows: readonly WalkWindow[],
+  max: number,
+  noun: string,
+): string | null {
+  if (windows.length < 1 || windows.length > max) return `Choose between 1 and ${max} ${noun} times.`;
   const seen = new Set<string>();
   for (const window of windows) {
     if (
@@ -18,14 +23,19 @@ export function walkWindowsProblem(windows: readonly WalkWindow[]): string | nul
         /^([01]\d|2[0-3]):[0-5]\d$/.test(time),
       )
     )
-      return "Set an earliest and latest arrival for each walk time.";
+      return `Set an earliest and latest arrival for each ${noun} time.`;
     if (window.earliestTime >= window.latestTime)
-      return "Each walk's earliest arrival must be before its latest arrival.";
+      return `Each ${noun}'s earliest arrival must be before its latest arrival.`;
     const key = `${window.earliestTime}/${window.latestTime}`;
-    if (seen.has(key)) return "Each walk time must have a different arrival window.";
+    if (seen.has(key)) return `Each ${noun} time must have a different arrival window.`;
     seen.add(key);
   }
   return null;
+}
+
+/** Each extra walk time becomes a separate plan with its own arrival window. */
+export function walkWindowsProblem(windows: readonly WalkWindow[]): string | null {
+  return arrivalWindowsProblem(windows, 6, "walk");
 }
 
 export type SubscriptionRecord = {

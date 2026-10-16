@@ -33,10 +33,13 @@ export function yesNoLine(label: "Pee" | "Poo", value: boolean | null | undefine
 }
 
 /** "Bella", "Bella and Max", "Bella, Max and Rex", or "your dog" when the
- *  visit has no dog names on file. */
-export function dogNamesPhrase(names: readonly (string | null | undefined)[]): string {
+ *  visit has no dog names on file. A sitting visit passes "your pets". */
+export function dogNamesPhrase(
+  names: readonly (string | null | undefined)[],
+  fallback = "your dog",
+): string {
   const clean = names.map((n) => (n ?? "").trim()).filter(Boolean);
-  if (clean.length === 0) return "your dog";
+  if (clean.length === 0) return fallback;
   if (clean.length === 1) return clean[0];
   return `${clean.slice(0, -1).join(", ")} and ${clean[clean.length - 1]}`;
 }

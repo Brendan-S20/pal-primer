@@ -15,10 +15,13 @@ import { clockIn, clockOut } from "@/lib/time-clock.functions";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
 import { createExpense } from "@/lib/expenses.functions";
 import { recordWalkReport } from "@/lib/walk-report.functions";
+import { deleteCareEntry, recordCareEntry } from "@/lib/care-log.functions";
 import type { SyncCallers } from "@/lib/offline/sync";
 
 export function useSyncCallers(): SyncCallers {
   const walkReportFn = useServerFn(recordWalkReport);
+  const careEntryFn = useServerFn(recordCareEntry);
+  const careUndoFn = useServerFn(deleteCareEntry);
   const startFn = useServerFn(startVisit);
   const completeFn = useServerFn(completeVisit);
   const skipFn = useServerFn(skipVisit);
@@ -40,9 +43,13 @@ export function useSyncCallers(): SyncCallers {
       recordFieldCollection: collectionFn,
       createExpense: expenseFn,
       recordWalkReport: walkReportFn,
+      recordCareEntry: careEntryFn,
+      deleteCareEntry: careUndoFn,
     }),
     [
       walkReportFn,
+      careEntryFn,
+      careUndoFn,
       startFn,
       completeFn,
       skipFn,

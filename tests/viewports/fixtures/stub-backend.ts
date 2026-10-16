@@ -143,8 +143,14 @@ export const BASE_STUBS: Record<string, Stub> = {
   },
   getLeadForConversion: (args: Record<string, any>) => {
     const lead = fx.LEADS.find((l) => l.id === args.id) ?? fx.LEADS[0];
-    const { organization_id: _org, created_at: _c, updated_at: _u, contacted_at: _t, converted_at: _v, ...rest } =
-      lead;
+    const {
+      organization_id: _org,
+      created_at: _c,
+      updated_at: _u,
+      contacted_at: _t,
+      converted_at: _v,
+      ...rest
+    } = lead;
     return {
       lead: rest,
       existingClient: { id: fx.CLIENT_ID, displayName: fx.CLIENTS[0].display_name },
@@ -686,8 +692,15 @@ export const BASE_STUBS: Record<string, Stub> = {
     {
       id: "0e000000-0000-4000-8000-000000000001",
       url: "https://hooks.zapier.com/hooks/catch/18273645/3kq9zx7/?source=houndstack-production-account-2026",
-      description: "Zapier: new clients to Mailchimp, completed visits to the Google review request sheet",
-      events: ["client.created", "visit.completed", "visit.skipped", "invoice.paid", "payment.received"],
+      description:
+        "Zapier: new clients to Mailchimp, completed visits to the Google review request sheet",
+      events: [
+        "client.created",
+        "visit.completed",
+        "visit.skipped",
+        "invoice.paid",
+        "payment.received",
+      ],
       enabled: true,
       // The Mailchimp Zap needs the address, so this one sends it.
       include_contact: true,
@@ -1104,7 +1117,11 @@ export const BASE_STUBS: Record<string, Stub> = {
   // days they work" is only a real answer if days off are absent rather than
   // shown as zero.
   getMyUpcomingDays: {
-    staff: { id: fx.STAFF[0].id, organization_id: fx.ORG_ID, display_name: "Dana Whitfield-Ramirez" },
+    staff: {
+      id: fx.STAFF[0].id,
+      organization_id: fx.ORG_ID,
+      display_name: "Dana Whitfield-Ramirez",
+    },
     days: [
       {
         date: fx.TODAY,
@@ -1260,47 +1277,46 @@ export const BASE_STUBS: Record<string, Stub> = {
             },
           ]
         : []),
-    ]
-      .map((v, i) => ({
-        ...v,
-        organization_id: fx.ORG_ID,
-        // How this customer pays and what they owe, as my_day_stop_facts
-        // would answer -- one stop per shape, see MY_DAY_STOP_EXTRAS.
-        stop_facts: fx.MY_DAY_STOP_EXTRAS[i % fx.MY_DAY_STOP_EXTRAS.length].stop_facts,
-        started_at: v.status === "in_progress" ? startedAt : null,
-        completed_at: null,
-        skip_reason: null,
-        skip_reason_code: null,
-        clients: {
-          display_name: (v.clients as any).display_name,
-          primary_phone: "+1 (312) 555-0142",
-          dna_compliance_enabled: false,
-        },
-        properties: {
-          ...(v.properties as any),
-          account_type: "residential",
-          has_units: false,
-          gate_code: "5521#",
-          lock_box_code: null,
-          key_location: "Under the planter beside the side gate",
-          parking_notes: "Alley access only — do not block the neighbour's pad",
-          access_notes: "Latch sticks; lift while pulling",
-          yard_size: "medium",
-          invisible_fence: false,
-          escape_risk: true,
-          dog_in_yard_during_service: true,
-          aggressive_dog: false,
-          bees_wasps: false,
-          sharp_objects: false,
-          slippery_surfaces: false,
-          do_not_enter_if_dog_out: false,
-          hazard_notes: "Loose paving slab by the back step",
-          // Six named dogs and an outline, nine stations, or nothing on file.
-          ...fx.MY_DAY_STOP_EXTRAS[i % fx.MY_DAY_STOP_EXTRAS.length].property,
-        },
-        zones: { name: "Ravenswood Manor / Lincoln Square North" },
-        visit_photos: [],
-      }));
+    ].map((v, i) => ({
+      ...v,
+      organization_id: fx.ORG_ID,
+      // How this customer pays and what they owe, as my_day_stop_facts
+      // would answer -- one stop per shape, see MY_DAY_STOP_EXTRAS.
+      stop_facts: fx.MY_DAY_STOP_EXTRAS[i % fx.MY_DAY_STOP_EXTRAS.length].stop_facts,
+      started_at: v.status === "in_progress" ? startedAt : null,
+      completed_at: null,
+      skip_reason: null,
+      skip_reason_code: null,
+      clients: {
+        display_name: (v.clients as any).display_name,
+        primary_phone: "+1 (312) 555-0142",
+        dna_compliance_enabled: false,
+      },
+      properties: {
+        ...(v.properties as any),
+        account_type: "residential",
+        has_units: false,
+        gate_code: "5521#",
+        lock_box_code: null,
+        key_location: "Under the planter beside the side gate",
+        parking_notes: "Alley access only — do not block the neighbour's pad",
+        access_notes: "Latch sticks; lift while pulling",
+        yard_size: "medium",
+        invisible_fence: false,
+        escape_risk: true,
+        dog_in_yard_during_service: true,
+        aggressive_dog: false,
+        bees_wasps: false,
+        sharp_objects: false,
+        slippery_surfaces: false,
+        do_not_enter_if_dog_out: false,
+        hazard_notes: "Loose paving slab by the back step",
+        // Six named dogs and an outline, nine stations, or nothing on file.
+        ...fx.MY_DAY_STOP_EXTRAS[i % fx.MY_DAY_STOP_EXTRAS.length].property,
+      },
+      zones: { name: "Ravenswood Manor / Lincoln Square North" },
+      visit_photos: [],
+    }));
     return { staff: { ...fx.STAFF[0], organization_id: fx.ORG_ID }, visits, previewing: false };
   },
   listVisitsAwaitingCloseOut: { visits: [] },
@@ -1438,7 +1454,11 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // at all (it waits for its options), and the page measured is the page
   // without the one control this was added for.
   portalOneOffBookingOptions: pfx.PORTAL_ONE_OFF_OPTIONS,
-  portalRequestOneOff: { ticketId: "22222222-0000-4000-8000-000000002005", alreadyAsked: false, bookedOn: null },
+  portalRequestOneOff: {
+    ticketId: "22222222-0000-4000-8000-000000002005",
+    alreadyAsked: false,
+    bookedOn: null,
+  },
   // `{ urls: Record<path, url> }`, not a list. A list crashed the Visits page
   // outright -- "Cannot read properties of undefined" on the first path -- and
   // the sweep would have measured the error boundary. The fence answers images
@@ -1529,6 +1549,176 @@ export async function installStubBackend(
         st.id === "dump_site" && !lines.includes("pet_waste") ? { ...st, ...DAY_END_WORDING } : st,
       ),
     };
+    // Pet sitting screenshots and a sitting sweep. The default fixture stays a
+    // pet-waste business; these answers exist only when the run asks for the line.
+    if (lines.includes("pet_sitting")) {
+      const petDog = "aaaaaaaa-0000-4000-8000-00000000d011";
+      const petCat = "aaaaaaaa-0000-4000-8000-00000000d012";
+      const dropIn = {
+        id: "aaaaaaaa-0000-4000-8000-00000000c505",
+        organization_id: fx.ORG_ID,
+        name: "Drop-in (30 min)",
+        service_line: "pet_sitting",
+        price_unit: "visit",
+        base_price_cents: 2800,
+        extra_pet_cents: 800,
+        default_duration_min: 30,
+        holiday_surcharge_pct: 0,
+        active: true,
+        created_at: "2026-10-09T12:00:00Z",
+        updated_at: "2026-10-09T12:00:00Z",
+      };
+      const houseSit = {
+        id: "aaaaaaaa-0000-4000-8000-00000000c506",
+        organization_id: fx.ORG_ID,
+        name: "House sit",
+        service_line: "pet_sitting",
+        price_unit: "night",
+        base_price_cents: 9500,
+        extra_pet_cents: 1500,
+        default_duration_min: null,
+        holiday_surcharge_pct: 25,
+        active: true,
+        created_at: "2026-10-09T12:00:00Z",
+        updated_at: "2026-10-09T12:00:00Z",
+      };
+      const listed = ((BASE_STUBS.listServices as { services: any[] }).services ?? []).map((s) =>
+        s.service_line === "pet_sitting"
+          ? { ...s, holiday_surcharge_pct: 0, default_duration_min: null }
+          : s,
+      );
+      STUBS.listServices = { services: [...listed, dropIn, houseSit] };
+      STUBS.listDogsForClient = {
+        dogs: [
+          {
+            id: petDog,
+            property_id: fx.PROPERTY_ID,
+            name: "Bartholomew",
+            breed: "Bernese Mountain Dog",
+            species: "dog",
+            species_note: null,
+            weight_class: "large",
+            temperament: "friendly",
+            notes: null,
+            active: true,
+            property_street: fx.PROPERTIES[0].street,
+          },
+          {
+            id: petCat,
+            property_id: fx.PROPERTY_ID,
+            name: "Miso",
+            breed: null,
+            species: "cat",
+            species_note: null,
+            weight_class: null,
+            temperament: "shy",
+            notes: "Hides under the bed until the sitter sits down.",
+            active: true,
+            property_street: fx.PROPERTIES[0].street,
+          },
+        ],
+      };
+      STUBS.listStaysForClient = {
+        stays: [
+          {
+            id: "aaaaaaaa-0000-4000-8000-00000000e001",
+            property_id: fx.PROPERTY_ID,
+            service_id: dropIn.id,
+            starts_on: fx.TODAY,
+            ends_on: fx.day(4),
+            kind: "drop_in",
+            status: "confirmed",
+            drop_in_windows: [
+              { earliest: "08:00", latest: "10:00" },
+              { earliest: "17:00", latest: "19:00" },
+            ],
+            overnight_arrival_earliest: null,
+            overnight_arrival_latest: null,
+            pet_ids: [petDog, petCat],
+            assigned_staff_id: fx.STAFF[0].id,
+            deposit_cents: 5000,
+            invoice_id: "aaaaaaaa-0000-4000-8000-00000000f001",
+            deposit_invoice_id: "aaaaaaaa-0000-4000-8000-00000000f002",
+            notes: "Key is in the lockbox. Water the fern by the kitchen window.",
+            service_name: "Drop-in (30 min)",
+            sitter_name: fx.STAFF[0].display_name,
+            visit_count: 10,
+          },
+        ],
+      };
+      const baseDay = BASE_STUBS.getMyDay as () => { visits?: any[] };
+      STUBS.getMyDay = () => {
+        const day = baseDay();
+        const visits = day.visits ?? [];
+        if (!visits.length) return day;
+        const v = visits[0];
+        const sit = {
+          ...v,
+          status: "in_progress",
+          started_at: new Date(Date.now() - 22 * 60_000).toISOString(),
+          services: {
+            name: "Drop-in (30 min)",
+            service_line: "pet_sitting",
+            default_duration_min: 30,
+          },
+          sit_facts: {
+            visit_id: v.id,
+            stay_id: "aaaaaaaa-0000-4000-8000-00000000e001",
+            kind: "drop_in",
+            starts_on: fx.TODAY,
+            ends_on: fx.day(4),
+            pet_ids: [petDog, petCat],
+            visit_number: 3,
+            visit_total: 10,
+            window_earliest: "08:00",
+            window_latest: "10:00",
+          },
+          care_entries: [
+            {
+              id: "aaaaaaaa-0000-4000-8000-00000000e101",
+              pet_id: petDog,
+              kind: "feed",
+              med_name: null,
+              status: "done",
+              missed_reason: null,
+              note: "Ate the full cup.",
+              at: new Date(Date.now() - 10 * 60_000).toISOString(),
+              given_by_name: fx.STAFF[0].display_name,
+            },
+          ],
+          properties: {
+            ...(v.properties as object),
+            dogs: [
+              {
+                id: petDog,
+                name: "Bartholomew",
+                species: "dog",
+                species_note: null,
+                active: true,
+                pet_care_instructions: {
+                  feeding: "1 cup of kibble, morning and evening",
+                  meds: [{ name: "Apoquel", dose: "16 mg", times: ["08:00"], notes: "With food" }],
+                  other_care: "Back door sticks. Lift the handle, then pull.",
+                },
+              },
+              {
+                id: petCat,
+                name: "Miso",
+                species: "cat",
+                species_note: null,
+                active: true,
+                pet_care_instructions: {
+                  feeding: "Half a can of wet food",
+                  meds: [],
+                  other_care: "Litter box is in the laundry room.",
+                },
+              },
+            ],
+          },
+        };
+        return { ...day, visits: [sit, ...visits.slice(1)] };
+      };
+    }
   }
 
   // ── THE FENCE ─────────────────────────────────────────────────────────

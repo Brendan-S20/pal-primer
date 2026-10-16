@@ -179,21 +179,40 @@ describe("group walker routing", () => {
         calls.push(["in", column, values]);
         return query;
       },
-      not: async () => ({
-        data: [
-          {
-            id: "walk-0",
-            walk_group_id: "group-a",
-            walk_groups: {
-              id: "group-a",
-              assigned_staff_id: "walker-a",
-              earliest_time: "09:00:00",
-              latest_time: "10:00:00",
+      // One read for groups and stays (#411): the day's visits, both embeds.
+      // walk-0 is in a group, walk-1 is part of a stay, walk-2 is a plan
+      // visit with no stay.
+      or: async (filters: string) => {
+        calls.push(["or", filters]);
+        return {
+          data: [
+            {
+              id: "walk-0",
+              walk_group_id: "group-a",
+              walk_groups: {
+                id: "group-a",
+                assigned_staff_id: "walker-a",
+                earliest_time: "09:00:00",
+                latest_time: "10:00:00",
+              },
+              subscriptions: null,
             },
-          },
-        ],
-        error,
-      }),
+            {
+              id: "walk-1",
+              walk_group_id: null,
+              walk_groups: null,
+              subscriptions: { stay_id: "stay-a", stays: { assigned_staff_id: "sitter-b" } },
+            },
+            {
+              id: "walk-2",
+              walk_group_id: null,
+              walk_groups: null,
+              subscriptions: { stay_id: null, stays: null },
+            },
+          ],
+          error,
+        };
+      },
     };
     const client = {
       from: (table: string) => {
@@ -201,24 +220,38 @@ describe("group walker routing", () => {
         return query;
       },
     } as unknown as SupabaseClient<Database>;
-    const pinned = await readWalkGroupAssignments(client, "org-a", walkDay());
+    const day = () => {
+      const inputs = walkDay();
+      inputs.visits.push({ ...inputs.visits[1], id: "walk-2" });
+      return inputs;
+    };
+    const pinned = await readWalkGroupAssignments(client, "org-a", day());
     expect(calls.filter((call) => call[0] === "from")).toHaveLength(1);
     expect(calls).toContainEqual(["eq", "organization_id", "org-a"]);
-    expect(calls).toContainEqual(["in", "id", ["walk-0", "walk-1"]]);
+    expect(calls).toContainEqual(["in", "id", ["walk-0", "walk-1", "walk-2"]]);
     expect(calls).toContainEqual([
       "select",
-      "id, walk_group_id, walk_groups(id, assigned_staff_id, earliest_time, latest_time)",
+      "id, walk_group_id, walk_groups(id, assigned_staff_id, earliest_time, latest_time), subscriptions(stay_id, stays(assigned_staff_id))",
     ]);
+    expect(calls).toContainEqual(["or", "walk_group_id.not.is.null,subscription_id.not.is.null"]);
+    // The group member keeps its group walker and the group's window.
     expect(pinned.visits[0].fixed).toBe(true);
+    expect(pinned.visits[0].assigned_staff_id).toBe("walker-a");
     expect(pinned.visits[0].walk_group).toEqual({
       id: "group-a",
       earliest: "09:00",
       latest: "10:00",
     });
-    expect(pinned.visits[1].fixed).toBe(false);
+    // The stay visit gets the stay's sitter and no group.
+    expect(pinned.visits[1].fixed).toBe(true);
+    expect(pinned.visits[1].assigned_staff_id).toBe("sitter-b");
     expect(pinned.visits[1].walk_group).toBeUndefined();
+    // A plan visit with no stay is left as it was.
+    expect(pinned.visits[2].fixed).toBe(false);
+    expect(pinned.visits[2].assigned_staff_id).toBeNull();
+    expect(pinned.visits[2].walk_group).toBeUndefined();
     error = { message: "read failed" };
-    await expect(readWalkGroupAssignments(client, "org-a", walkDay())).rejects.toThrow(
+    await expect(readWalkGroupAssignments(client, "org-a", day())).rejects.toThrow(
       "read failed",
     );
     expect(read("src/lib/route-plan.server.ts")).toMatch(

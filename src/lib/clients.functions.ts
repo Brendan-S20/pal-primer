@@ -263,7 +263,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: dogs, error: dogErr } = propertyIds.length
       ? await supabaseAdmin
           .from("dogs")
-          .select("id, property_id, name, breed, weight_class, temperament, notes, active")
+          .select("id, property_id, name, breed, weight_class, temperament, notes, active, species, species_note")
           .in("property_id", propertyIds)
           .order("name")
       : { data: [], error: null };
@@ -477,7 +477,7 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     const { data: dogs, error } = await supabase
       .from("dogs")
       .select(
-        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status",
+        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status, species, species_note",
       )
       .in("property_id", ids)
       .order("name");

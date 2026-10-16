@@ -41,14 +41,15 @@ export function hasWalkAccess(p: WalkAccessFields | null | undefined): boolean {
   return !!p && (isAccessMethod(p.access_method) || !!p.key_held || !!p.key_tag?.trim());
 }
 
-/** The office sees the walker-access fields when the business runs dog walking,
- *  or when this property already has a value (so nothing saved is hidden). A
- *  pet-waste-only business with nothing recorded sees the drawer as before. */
+/** The office sees the walker-access fields when the business runs dog walking
+ *  or pet sitting (a sitter goes inside too, #411), or when this property
+ *  already has a value (so nothing saved is hidden). A pet-waste-only business
+ *  with nothing recorded sees the drawer as before. */
 export function showsWalkAccess(
   lines: readonly ServiceLine[],
   p: WalkAccessFields | null | undefined,
 ): boolean {
-  return lines.includes("dog_walking") || hasWalkAccess(p);
+  return lines.includes("dog_walking") || lines.includes("pet_sitting") || hasWalkAccess(p);
 }
 
 export type WalkAccessForm = {

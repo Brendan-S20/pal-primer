@@ -19,6 +19,7 @@ import { ChevronRight, CloudRain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { visitStayDates } from "@/lib/stays";
 
 type Visit = any;
 type Staff = any;
@@ -172,6 +173,17 @@ export function MobileDayList({
                             title={v.services.name}
                           >
                             <bdi className="truncate">{v.services.name}</bdi>
+                          </Badge>
+                        )}
+                        {visitStayDates(v.subscriptions?.stays) && (
+                          // Part of a sitter's stay (#411), with its dates.
+                          <Badge
+                            variant="outline"
+                            className="h-4 min-w-0 max-w-full px-1 text-3xs"
+                          >
+                            <span className="truncate">
+                              Stay, {visitStayDates(v.subscriptions?.stays)}
+                            </span>
                           </Badge>
                         )}
                         {v.zones?.name && (

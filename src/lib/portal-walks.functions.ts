@@ -99,30 +99,8 @@ export const portalListWalks = createServerFn({ method: "GET" })
       ((staff ?? []) as Array<{ id: string; display_name: string | null }>).map((s) => [s.id, s.display_name]),
     );
 
-    // Photos of these walks only, signed for ten minutes like the portal's
-    // other photos (portalSignPhotoUrls).
-    const ids = rows.map((r) => r.id as string);
-    const { data: photos } = await sb
-      .from("visit_photos")
-      .select("visit_id, storage_path, kind")
-      .in("visit_id", ids)
-      .order("created_at");
-    const paths = ((photos ?? []) as Array<{ storage_path: string }>).map((p) => p.storage_path);
-    const signedUrl = new Map<string, string>();
-    if (paths.length) {
-      const { data: signed } = await sb.storage.from("visit-photos").createSignedUrls(paths, 600);
-      for (const s of (signed ?? []) as Array<{ path: string | null; signedUrl: string }>) {
-        if (s.path && s.signedUrl) signedUrl.set(s.path, s.signedUrl);
-      }
-    }
-    const photosByVisit = new Map<string, Array<{ url: string; kind: string }>>();
-    for (const p of (photos ?? []) as Array<{ visit_id: string; storage_path: string; kind: string }>) {
-      const url = signedUrl.get(p.storage_path);
-      if (!url) continue;
-      const list = photosByVisit.get(p.visit_id) ?? [];
-      list.push({ url, kind: p.kind });
-      photosByVisit.set(p.visit_id, list);
-    }
+    const { portalVisitPhotos } = await import("@/lib/portal-visit-photos.server");
+    const photosByVisit = await portalVisitPhotos(sb, rows.map((r) => r.id));
 
     const { walkReportEmail } = await import("@/lib/walk-report");
     const tz = (org?.timezone as string | null) || "America/Chicago";

@@ -401,9 +401,8 @@ describe("the call sites", () => {
     expect(enqueue).toMatch(/"notify_email_walk_not_done"/);
     expect(enqueue).toMatch(/"notify_email_walk_schedule_change"/);
     const page = read("src/routes/_authenticated/settings.emails.tsx");
-    expect(page).toMatch(
-      /const rows = values\.runs_dog_walking \? \[\.\.\.ROWS, \.\.\.WALK_ROWS\] : ROWS;/,
-    );
+    // The pet sitting switch (#411) joined the same list, the same way.
+    expect(page).toMatch(/\.\.\.\(values\.runs_dog_walking \? WALK_ROWS : \[\]\)/);
     const sql = read("supabase/migrations/20261015220000_a-client-hears-when-a-walk-changes.sql");
     expect(sql).toMatch(/notify_email_walk_not_done boolean NOT NULL DEFAULT true/);
     expect(sql).toMatch(/notify_email_walk_schedule_change boolean NOT NULL DEFAULT true/);

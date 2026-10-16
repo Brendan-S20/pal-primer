@@ -60,6 +60,7 @@ import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { servicesVary, type VisitServiceRef } from "@/lib/visit-service";
 import { formatWeekdaySet } from "@/lib/weekday-set";
 import { useIntlLocale } from "@/lib/i18n";
+import { visitStayDates, type VisitStayRef } from "@/lib/stays";
 
 export type CalendarVisit = {
   id: string;
@@ -84,6 +85,9 @@ export type CalendarVisit = {
     frequency?: string | null;
     /** A set-days plan's days (0 = Sunday), migration 20261010010000. */
     weekdays?: number[] | null;
+    /** A sitter's stay this visit belongs to (#411). */
+    stay_id?: string | null;
+    stays?: VisitStayRef;
   } | null;
   /** What the visit is (services, phase 2). */
   service_id?: string | null;
@@ -263,10 +267,13 @@ function VisitChip({
   // repeat what the client list already says. The service name likewise, only
   // when it varies.
   const oneTime = visit.subscriptions?.frequency === "one_time" ? "One-time" : null;
+  // A stay visit runs every day of the stay, so its plan's cadence ("Every
+  // day") says nothing; the stay's dates do (#411).
+  const stayDates = visitStayDates(visit.subscriptions?.stays);
   const second = [
     mins == null ? null : clock(mins),
     showService ? serviceName : null,
-    oneTime,
+    stayDates ? "Stay" : oneTime,
     street,
   ]
     .filter(Boolean)
@@ -334,8 +341,16 @@ function VisitChip({
               <dt className="text-muted-foreground">Service</dt>
               <dd>
                 {serviceName && <bdi>{serviceName}</bdi>}
-                {serviceName && cadence ? " · " : null}
-                {cadence}
+                {stayDates ? (
+                  <>
+                    {serviceName ? " · " : null}Stay, {stayDates}
+                  </>
+                ) : (
+                  <>
+                    {serviceName && cadence ? " · " : null}
+                    {cadence}
+                  </>
+                )}
               </dd>
             </>
           )}
