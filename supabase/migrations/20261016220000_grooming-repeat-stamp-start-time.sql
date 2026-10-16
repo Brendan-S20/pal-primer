@@ -17,7 +17,8 @@ ALTER TABLE public.subscriptions
   ADD COLUMN IF NOT EXISTS groom_start_time time,
   ADD COLUMN IF NOT EXISTS groom_duration_min integer,
   ADD COLUMN IF NOT EXISTS groom_summary text,
-  ADD COLUMN IF NOT EXISTS groom_addons jsonb NOT NULL DEFAULT '[]'::jsonb;
+  ADD COLUMN IF NOT EXISTS groom_addons jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS groom_dog_ids uuid[];
 
 ALTER TABLE public.subscriptions DROP CONSTRAINT IF EXISTS subscriptions_groom_duration_min_check;
 ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_groom_duration_min_check
@@ -36,7 +37,13 @@ COMMENT ON COLUMN public.subscriptions.groom_start_time IS
 COMMENT ON COLUMN public.subscriptions.groom_addons IS
   'Add-ons booked with the groom: [{"addon_service_id", "quantity", "unit_price_cents", "name"}]. Charged on each visit when it is completed.';
 
+COMMENT ON COLUMN public.subscriptions.groom_dog_ids IS
+  'The pets booked on the groom. Copied to visits.groom_dog_ids. Null on plans booked before this column, where every pet at the property counts.';
+
 ALTER TABLE public.visits ADD COLUMN IF NOT EXISTS start_time time;
+ALTER TABLE public.visits ADD COLUMN IF NOT EXISTS groom_dog_ids uuid[];
+COMMENT ON COLUMN public.visits.groom_dog_ids IS
+  'The pets on this groom, so My Day shows flags, vaccines and notes for them and not for every pet at the address.';
 COMMENT ON COLUMN public.visits.start_time IS
   'A fixed appointment''s start on the business''s clock (grooms). Null for a route stop, which the planner times.';
 
@@ -62,7 +69,7 @@ BEGIN
   IF NEW.subscription_id IS NULL THEN
     RETURN NEW;
   END IF;
-  SELECT s.groom_duration_min, s.groom_summary, s.groom_start_time, s.price_cents
+  SELECT s.groom_duration_min, s.groom_summary, s.groom_start_time, s.price_cents, s.groom_dog_ids
     INTO _plan
     FROM public.subscriptions s
    WHERE s.id = NEW.subscription_id
@@ -74,6 +81,7 @@ BEGIN
   NEW.duration_min := COALESCE(NEW.duration_min, _plan.groom_duration_min);
   NEW.groom_summary := COALESCE(NEW.groom_summary, _plan.groom_summary);
   NEW.start_time := COALESCE(NEW.start_time, _plan.groom_start_time);
+  NEW.groom_dog_ids := COALESCE(NEW.groom_dog_ids, _plan.groom_dog_ids);
   NEW.price_cents := COALESCE(NEW.price_cents, _plan.price_cents);
   RETURN NEW;
 END;

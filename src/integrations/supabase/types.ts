@@ -6129,6 +6129,7 @@ export type Database = {
           created_at: string
           dog_count: number | null
           earliest_time: string | null
+          groom_dog_ids: string[] | null
           groom_start_time: string | null
           groom_duration_min: number | null
           groom_summary: string | null
@@ -6166,6 +6167,7 @@ export type Database = {
           created_at?: string
           dog_count?: number | null
           earliest_time?: string | null
+          groom_dog_ids?: string[] | null
           groom_start_time?: string | null
           groom_duration_min?: number | null
           groom_summary?: string | null
@@ -6203,6 +6205,7 @@ export type Database = {
           created_at?: string
           dog_count?: number | null
           earliest_time?: string | null
+          groom_dog_ids?: string[] | null
           groom_start_time?: string | null
           groom_duration_min?: number | null
           groom_summary?: string | null
@@ -6643,6 +6646,7 @@ export type Database = {
           deepclean_charge_cents: number
           duration_min: number | null
           eta_end: string | null
+          groom_dog_ids: string[] | null
           groom_summary: string | null
           start_time: string | null
           eta_start: string | null
@@ -6691,6 +6695,7 @@ export type Database = {
           deepclean_charge_cents?: number
           duration_min?: number | null
           eta_end?: string | null
+          groom_dog_ids?: string[] | null
           groom_summary?: string | null
           start_time?: string | null
           eta_start?: string | null
@@ -6739,6 +6744,7 @@ export type Database = {
           deepclean_charge_cents?: number
           duration_min?: number | null
           eta_end?: string | null
+          groom_dog_ids?: string[] | null
           groom_summary?: string | null
           start_time?: string | null
           eta_start?: string | null

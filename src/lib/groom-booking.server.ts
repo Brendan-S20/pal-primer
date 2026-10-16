@@ -345,6 +345,7 @@ export async function bookGroomAppointment(
       groom_duration_min: holdMinutes,
       groom_summary: summary,
       groom_addons: groomAddons,
+      groom_dog_ids: pets.map((pet) => pet.id),
     })
     .select("id")
     .single();

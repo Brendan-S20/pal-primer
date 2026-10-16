@@ -45,16 +45,22 @@ export function GroomPetPanel({
   visitId,
   dogs,
   facts,
+  bookedDogIds,
   locale,
   canWrite,
 }: {
   visitId: string;
   dogs: unknown;
   facts: GroomPetFacts[] | null | undefined;
+  /** The pets booked on this groom. Empty or null (an older plan) shows every pet at the address. */
+  bookedDogIds?: readonly string[] | null;
   locale: string | undefined;
   canWrite: boolean;
 }) {
-  const list = (Array.isArray(dogs) ? (dogs as GroomPetDog[]) : []).filter((d) => d?.id);
+  const booked = bookedDogIds && bookedDogIds.length > 0 ? bookedDogIds : null;
+  const list = (Array.isArray(dogs) ? (dogs as GroomPetDog[]) : []).filter(
+    (d) => d?.id && (!booked || booked.includes(d.id)),
+  );
   if (list.length === 0) return null;
   return (
     <div className="mt-2.5 space-y-2">

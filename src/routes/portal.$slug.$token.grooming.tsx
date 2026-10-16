@@ -100,7 +100,14 @@ function RequestGroomCard({ page }: { page: Grooming }) {
   const [dogId, setDogId] = useState(page.pets.length === 1 ? page.pets[0].id : "");
   const [serviceId, setServiceId] = useState(page.services.length === 1 ? page.services[0].id : "");
   const [picked, setPicked] = useState<string[]>([]);
-  const [day, setDay] = useState(tomorrow);
+  const firstOpenDay = (() => {
+    for (let i = 0; i < 7; i++) {
+      const d = addDaysToDay(tomorrow, i);
+      if (page.workDays.includes(new Date(`${d}T12:00:00Z`).getUTCDay())) return d;
+    }
+    return tomorrow;
+  })();
+  const [day, setDay] = useState(firstOpenDay);
   const [timeOfDay, setTimeOfDay] = useState<GroomWindow>("any");
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState<string | null>(null);

@@ -29,6 +29,9 @@ function addDays(iso: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
+// The plan's pet; the column holds ids without a foreign key.
+const BISCUIT = "7d1f3c2a-5b6e-4c8d-9a0b-1c2d3e4f5a6b";
+
 describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () => {
   const first = addDays(new Date().toISOString().slice(0, 10), 7);
 
@@ -81,6 +84,7 @@ describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () 
       groom_start_time: "09:00",
       groom_duration_min: 145,
       groom_summary: "Full groom: Biscuit (large) + Teeth brushing",
+      groom_dog_ids: [BISCUIT],
       groom_addons: [
         { addon_service_id: addonId, quantity: 1, unit_price_cents: 1500, name: "Teeth brushing" },
       ],
@@ -98,7 +102,7 @@ describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () 
           property_id: propertyId,
           scheduled_on: addDays(first, offset),
         })
-        .select("duration_min, price_cents, groom_summary, start_time")
+        .select("duration_min, price_cents, groom_summary, start_time, groom_dog_ids")
         .single();
       expect(error).toBeNull();
       expect(data).toEqual({
@@ -106,6 +110,7 @@ describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () 
         price_cents: 11000,
         groom_summary: "Full groom: Biscuit (large) + Teeth brushing",
         start_time: "09:00:00",
+        groom_dog_ids: [BISCUIT],
       });
     }
   });

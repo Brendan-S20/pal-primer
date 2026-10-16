@@ -2264,6 +2264,7 @@ function VisitCard({
                   visitId={visit.id}
                   dogs={p?.dogs}
                   facts={visit.groom_pets}
+                  bookedDogIds={visit.groom_dog_ids}
                   locale={locale}
                   canWrite={underWay && canPerformVisit}
                 />

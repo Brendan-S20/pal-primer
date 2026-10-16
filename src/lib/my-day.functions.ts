@@ -88,7 +88,7 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, start_time, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, muzzle_required, bite_history, senior_or_medical, handling_notes), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, groom_dog_ids, start_time, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, muzzle_required, bite_history, senior_or_medical, handling_notes), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -237,16 +237,26 @@ async function withGroomPets<
     organization_id?: string | null;
     services?: { service_line?: string | null } | null;
     properties?: unknown;
+    groom_dog_ids?: string[] | null;
   },
 >(
   supabase: SupabaseClient<Database>,
   visits: V[],
   day: string,
 ): Promise<(V & { groom_pets: GroomPetFacts[] })[]> {
-  const dogIdsOf = (v: V) =>
-    ((v.properties as { dogs?: { id?: string | null }[] | null } | null)?.dogs ?? [])
+  // The pets booked on this groom; a plan from before groom_dog_ids counts
+  // every pet at the address.
+  const dogIdsOf = (v: V) => {
+    const atProperty = (
+      (v.properties as { dogs?: { id?: string | null }[] | null } | null)?.dogs ?? []
+    )
       .map((d) => d?.id)
       .filter((id): id is string => typeof id === "string");
+    const booked = v.groom_dog_ids;
+    return booked && booked.length > 0
+      ? atProperty.filter((id) => booked.includes(id))
+      : atProperty;
+  };
   const grooming = visits.filter((v) => v.services?.service_line === "mobile_grooming");
   const dogIds = [...new Set(grooming.flatMap(dogIdsOf))];
   if (dogIds.length === 0) return visits.map((v) => ({ ...v, groom_pets: [] }));
