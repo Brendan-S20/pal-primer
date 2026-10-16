@@ -928,6 +928,9 @@ const en = {
     dog: "Dog",
     chooseDog: "Choose a dog",
     dogRequiredHint: "This household has more than one dog. Progress and homework are kept per dog.",
+    shareProgress: "Share lesson notes and homework with clients",
+    shareProgressHint:
+      "Clients see each lesson's note and homework on the Training page of their portal. Scores, dates and sessions left show either way.",
   },
   // The screen the shell sends a person to once the owner has turned their
   // access off (src/routes/access-off.tsx). The business name goes in as

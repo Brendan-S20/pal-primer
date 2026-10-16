@@ -145,6 +145,7 @@ import { Route as AuthenticatedCampaignsNewRouteImport } from './routes/_authent
 import { Route as AuthenticatedCampaignsCampaignIdRouteImport } from './routes/_authenticated/campaigns.$campaignId'
 import { Route as PortalSlugTokenIndexRouteImport } from './routes/portal.$slug.$token.index'
 import { Route as PortalSlugTokenVisitsRouteImport } from './routes/portal.$slug.$token.visits'
+import { Route as PortalSlugTokenTrainingRouteImport } from './routes/portal.$slug.$token.training'
 import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$slug.$token.requests'
 import { Route as PortalSlugTokenPropertyRouteImport } from './routes/portal.$slug.$token.property'
 import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
@@ -888,6 +889,11 @@ const PortalSlugTokenVisitsRoute = PortalSlugTokenVisitsRouteImport.update({
   path: '/visits',
   getParentRoute: () => PortalSlugTokenRoute,
 } as any)
+const PortalSlugTokenTrainingRoute = PortalSlugTokenTrainingRouteImport.update({
+  id: '/training',
+  path: '/training',
+  getParentRoute: () => PortalSlugTokenRoute,
+} as any)
 const PortalSlugTokenRequestsRoute = PortalSlugTokenRequestsRouteImport.update({
   id: '/requests',
   path: '/requests',
@@ -1139,6 +1145,7 @@ export interface FileRoutesByFullPath {
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
   '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
+  '/portal/$slug/$token/training': typeof PortalSlugTokenTrainingRoute
   '/portal/$slug/$token/visits': typeof PortalSlugTokenVisitsRoute
   '/portal/$slug/$token/': typeof PortalSlugTokenIndexRoute
   '/portal/$slug/$token/pay/$invoiceId': typeof PortalSlugTokenPayInvoiceIdRoute
@@ -1285,6 +1292,7 @@ export interface FileRoutesByTo {
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
   '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
+  '/portal/$slug/$token/training': typeof PortalSlugTokenTrainingRoute
   '/portal/$slug/$token/visits': typeof PortalSlugTokenVisitsRoute
   '/portal/$slug/$token': typeof PortalSlugTokenIndexRoute
   '/portal/$slug/$token/pay/$invoiceId': typeof PortalSlugTokenPayInvoiceIdRoute
@@ -1442,6 +1450,7 @@ export interface FileRoutesById {
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
   '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
+  '/portal/$slug/$token/training': typeof PortalSlugTokenTrainingRoute
   '/portal/$slug/$token/visits': typeof PortalSlugTokenVisitsRoute
   '/portal/$slug/$token/': typeof PortalSlugTokenIndexRoute
   '/portal/$slug/$token/pay/$invoiceId': typeof PortalSlugTokenPayInvoiceIdRoute
@@ -1599,6 +1608,7 @@ export interface FileRouteTypes {
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
     | '/portal/$slug/$token/requests'
+    | '/portal/$slug/$token/training'
     | '/portal/$slug/$token/visits'
     | '/portal/$slug/$token/'
     | '/portal/$slug/$token/pay/$invoiceId'
@@ -1745,6 +1755,7 @@ export interface FileRouteTypes {
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
     | '/portal/$slug/$token/requests'
+    | '/portal/$slug/$token/training'
     | '/portal/$slug/$token/visits'
     | '/portal/$slug/$token'
     | '/portal/$slug/$token/pay/$invoiceId'
@@ -1901,6 +1912,7 @@ export interface FileRouteTypes {
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
     | '/portal/$slug/$token/requests'
+    | '/portal/$slug/$token/training'
     | '/portal/$slug/$token/visits'
     | '/portal/$slug/$token/'
     | '/portal/$slug/$token/pay/$invoiceId'
@@ -2913,6 +2925,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalSlugTokenVisitsRouteImport
       parentRoute: typeof PortalSlugTokenRoute
     }
+    '/portal/$slug/$token/training': {
+      id: '/portal/$slug/$token/training'
+      path: '/training'
+      fullPath: '/portal/$slug/$token/training'
+      preLoaderRoute: typeof PortalSlugTokenTrainingRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
+    }
     '/portal/$slug/$token/requests': {
       id: '/portal/$slug/$token/requests'
       path: '/requests'
@@ -3324,6 +3343,7 @@ interface PortalSlugTokenRouteChildren {
   PortalSlugTokenBillingRoute: typeof PortalSlugTokenBillingRoute
   PortalSlugTokenPropertyRoute: typeof PortalSlugTokenPropertyRoute
   PortalSlugTokenRequestsRoute: typeof PortalSlugTokenRequestsRoute
+  PortalSlugTokenTrainingRoute: typeof PortalSlugTokenTrainingRoute
   PortalSlugTokenVisitsRoute: typeof PortalSlugTokenVisitsRoute
   PortalSlugTokenIndexRoute: typeof PortalSlugTokenIndexRoute
   PortalSlugTokenPayInvoiceIdRoute: typeof PortalSlugTokenPayInvoiceIdRoute
@@ -3334,6 +3354,7 @@ const PortalSlugTokenRouteChildren: PortalSlugTokenRouteChildren = {
   PortalSlugTokenBillingRoute: PortalSlugTokenBillingRoute,
   PortalSlugTokenPropertyRoute: PortalSlugTokenPropertyRoute,
   PortalSlugTokenRequestsRoute: PortalSlugTokenRequestsRoute,
+  PortalSlugTokenTrainingRoute: PortalSlugTokenTrainingRoute,
   PortalSlugTokenVisitsRoute: PortalSlugTokenVisitsRoute,
   PortalSlugTokenIndexRoute: PortalSlugTokenIndexRoute,
   PortalSlugTokenPayInvoiceIdRoute: PortalSlugTokenPayInvoiceIdRoute,

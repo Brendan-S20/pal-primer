@@ -20,13 +20,18 @@ export function TrainingSessionRulesCard({ canEdit }: { canEdit: boolean }) {
   const q = useQuery({ queryKey: ["training-session-rules"], queryFn: () => get() });
   const [hours, setHours] = useState("24");
   const [uses, setUses] = useState(true);
+  const [share, setShare] = useState(true);
   useEffect(() => {
     if (!q.data) return;
     setHours(String(q.data.lateCancelHours));
     setUses(q.data.missedUsesSession);
+    setShare(q.data.shareProgress);
   }, [q.data]);
   const save = useMutation({
-    mutationFn: () => saveFn({ data: { lateCancelHours: Number(hours), missedUsesSession: uses } }),
+    mutationFn: () =>
+      saveFn({
+        data: { lateCancelHours: Number(hours), missedUsesSession: uses, shareProgress: share },
+      }),
     onSuccess: () => {
       toast.success(t("training.rulesSaved"));
       void qc.invalidateQueries({ queryKey: ["training-session-rules"] });
@@ -78,6 +83,19 @@ export function TrainingSessionRulesCard({ canEdit }: { canEdit: boolean }) {
             disabled={!canEdit || !q.data || !uses}
             onChange={(e) => setHours(e.target.value)}
           />
+        </div>
+        <div className="space-y-1 border-t pt-4">
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 shrink-0"
+              checked={share}
+              disabled={!canEdit || !q.data}
+              onChange={(e) => setShare(e.target.checked)}
+            />
+            <span className="min-w-0">{t("training.shareProgress")}</span>
+          </label>
+          <p className="text-sm text-muted-foreground">{t("training.shareProgressHint")}</p>
         </div>
         {canEdit && (
           <Button type="submit" className="shrink-0" disabled={!q.data || !valid || save.isPending}>

@@ -19,6 +19,7 @@ import { parseHoldRequest } from "@/lib/hold-request";
 import { humanizeEnum } from "@/lib/humanize";
 import { parseFrequencyRequest, frequencyLabel } from "@/lib/frequency-request";
 import { applyFrequencyChangeRequest } from "@/lib/subscriptions.functions";
+import { bookLessonRequest } from "@/lib/training-packages.functions";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
@@ -178,6 +179,73 @@ function OneOffRow({
   );
 }
 
+const LESSON_DECLINE_NOTE = "We couldn't book that time. We'll be in touch to find another.";
+
+/** A client asked for the next lesson from a training package in the portal.
+ *  Booking takes the day, time, address and package they asked for; the
+ *  trainer is assigned on the schedule afterwards. */
+function LessonRequestRow({
+  concern,
+  status,
+  canBook,
+  booking,
+  onBook,
+  onDecline,
+  declining,
+}: {
+  concern: any;
+  status: ConcernStatus;
+  canBook: boolean;
+  booking: boolean;
+  onBook: () => void;
+  onDecline: () => void;
+  declining: boolean;
+}) {
+  const booked = oneOf<{ scheduled_on: string }>(concern.booked_visit);
+  const pack = oneOf<{ name: string; sessions_count: number; sessions_used: number }>(
+    concern.client_package,
+  );
+  const property = oneOf<{ street: string; city: string | null }>(concern.property);
+  const where = property ? [property.street, property.city].filter(Boolean).join(", ") : null;
+  const at = concern.requested_time ? ` at ${String(concern.requested_time).slice(0, 5)}` : "";
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm">
+      {booked ? (
+        <CalendarCheck className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-400" />
+      ) : (
+        <CalendarPlus className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-400" />
+      )}
+      <span className="min-w-0 flex-1 basis-48 break-words text-violet-900 dark:text-violet-200">
+        {booked
+          ? `Lesson booked for ${formatDay(booked.scheduled_on)}${at}. Assign the trainer on the schedule.`
+          : status === "resolved"
+            ? `Asked for a lesson on ${formatDay(concern.requested_on)}${at}. Not booked.`
+            : `Asked for a lesson on ${formatDay(concern.requested_on)}${at}${
+                where ? ` at ${where}` : ""
+              }${pack ? `, from ${pack.name} (${pack.sessions_count - pack.sessions_used} of ${pack.sessions_count} left)` : ""}.`}
+      </span>
+      {!booked && status !== "resolved" && canBook && concern.client_package_id && (
+        <div className="ml-auto flex flex-wrap gap-2">
+          <ConfirmButton
+            title="Decline this request?"
+            description={`The client sees it as not booked, with this reply: "${LESSON_DECLINE_NOTE}" Write your own in the resolution note first if you'd rather.`}
+            confirmLabel="Decline"
+            onConfirm={onDecline}
+            trigger={
+              <Button size="sm" variant="outline" disabled={declining}>
+                Decline
+              </Button>
+            }
+          />
+          <Button size="sm" onClick={onBook} disabled={booking}>
+            {booking ? "Booking…" : "Book this lesson"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConcernsPage() {
   // The one-click frequency apply is a manage_pricing action — hide it for
   // roles (dispatcher) that can reach Concerns but would be server-rejected.
@@ -222,6 +290,15 @@ function ConcernsPage() {
   const updateFn = useServerFn(updateConcernStatus);
   const replyFn = useServerFn(replyToConcern);
   const applyFreqFn = useServerFn(applyFrequencyChangeRequest);
+  const bookLessonFn = useServerFn(bookLessonRequest);
+  const bookLessonMut = useMutation({
+    mutationFn: (ticketId: string) => bookLessonFn({ data: { ticketId } }),
+    onSuccess: (r) => {
+      toast.success(`Lesson booked for ${formatDay(r.scheduledOn)}`);
+      qc.invalidateQueries({ queryKey: ["concerns"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
   const replyMut = useMutation({
     mutationFn: (v: { ticketId: string; message: string }) => replyFn({ data: v }),
     onSuccess: (r: any, v) => {
@@ -528,6 +605,24 @@ function ConcernsPage() {
                         service: oneOf<OneOffRequestTicket["service"]>(c.service) ?? null,
                       });
                     }}
+                  />
+                )}
+
+                {c.category === "training_lesson_request" && (
+                  <LessonRequestRow
+                    concern={c}
+                    status={status}
+                    canBook={canManagePricing}
+                    booking={bookLessonMut.isPending && bookLessonMut.variables === c.id}
+                    onBook={() => bookLessonMut.mutate(c.id)}
+                    declining={mut.isPending}
+                    onDecline={() =>
+                      mut.mutate({
+                        ticketId: c.id,
+                        status: "resolved",
+                        resolutionNote: (notes[c.id] ?? "").trim() || LESSON_DECLINE_NOTE,
+                      })
+                    }
                   />
                 )}
 
