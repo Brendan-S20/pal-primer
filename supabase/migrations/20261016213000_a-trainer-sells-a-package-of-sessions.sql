@@ -166,7 +166,9 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = 'insufficient_privilege', MESSAGE = 'Not authorized to change this visit package.';
   END IF;
   IF NEW.client_package_id IS NULL AND NEW.subscription_id IS NOT NULL THEN
-    SELECT client_package_id INTO NEW.client_package_id FROM public.subscriptions WHERE id = NEW.subscription_id;
+    -- A deleted package must stay unlinked during ON DELETE SET NULL.
+    SELECT s.client_package_id INTO NEW.client_package_id FROM public.subscriptions s
+      JOIN public.client_packages p ON p.id = s.client_package_id WHERE s.id = NEW.subscription_id;
     _derived := NEW.client_package_id IS NOT NULL AND TG_OP = 'INSERT';
   END IF;
   IF NEW.client_package_id IS NULL THEN RETURN NEW; END IF;
