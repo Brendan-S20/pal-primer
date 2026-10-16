@@ -160,6 +160,175 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
     ).toBeNull();
   });
 
+  describe("when the deposit's credit was already spent", () => {
+    /** What the client still has to pay: open and draft invoices, less the
+     *  credit already applied to them. */
+    async function owed(clientId: string) {
+      const r = await org.admin
+        .from("invoices")
+        .select("total_cents, credit_applied_cents")
+        .eq("client_id", clientId)
+        .in("status", ["open", "draft"]);
+      if (r.error) throw new Error(r.error.message);
+      return r.data.reduce((n, i) => n + i.total_cents - i.credit_applied_cents, 0);
+    }
+
+    /** An invoice for other work, $100 unless said, open on the same client. */
+    async function otherInvoice(clientId: string, cents = 10000) {
+      return insertRow(org.admin, "invoices", {
+        organization_id: org.orgId,
+        client_id: clientId,
+        status: "open",
+        kind: "postpaid",
+        period_start: day(-30),
+        period_end: day(-1),
+        subtotal_cents: cents,
+        total_cents: cents,
+        notes: "Walks",
+      });
+    }
+
+    async function applyCredit(invoiceId: string, cents: number) {
+      const r = await org.admin.rpc("apply_credit_to_invoice", { _invoice_id: invoiceId });
+      expect(r.error).toBeNull();
+      expect((r.data as any).applied_cents).toBe(cents);
+    }
+
+    async function cancel(stayId: string, refund?: boolean) {
+      const r = await org.owner.client.rpc(
+        "cancel_stay",
+        refund === undefined ? { _stay_id: stayId } : { _stay_id: stayId, _refund_deposit: refund },
+      );
+      expect(r.error).toBeNull();
+      return r.data as { deposit: string; fee_invoice_id: string | null };
+    }
+
+    // Two $60 nights at 8.25%: the stay invoice is $129.90.
+    const STAY_TOTAL = 12990;
+
+    it("spent on another invoice, a late cancel keeps the deposit once: the other invoice was paid with it", async () => {
+      const s = await booked(3);
+      await payDeposit(s.depositId);
+      const other = await otherInvoice(s.clientId);
+      await applyCredit(other, 10000);
+      expect(await credit(s.clientId)).toBe(0);
+
+      const r = await cancel(s.stayId);
+      expect(r.deposit).toBe("kept");
+      expect((await invoice(s.invoiceId)).status).toBe("void");
+      expect((await invoice(other)).status).toBe("paid");
+      // The client paid $100 once. It bought the $100 walks invoice, and the
+      // business keeps $100 for the late cancel, so $100 is owed and no more.
+      // The fee is that $100; the deposit itself is not billed again.
+      const fee = await invoice(r.fee_invoice_id!);
+      expect(fee).toMatchObject({ status: "open", total_cents: 10000, credit_applied_cents: 0 });
+      expect(await owed(s.clientId)).toBe(10000);
+      expect(await credit(s.clientId)).toBe(0);
+      const notes = await org.admin.from("invoices").select("notes").eq("id", r.fee_invoice_id!).single();
+      expect(notes.data?.notes).toMatch(/already applied/);
+    });
+
+    it("spent on another invoice, an early cancel gives nothing back a second time", async () => {
+      const s = await booked(10);
+      await payDeposit(s.depositId);
+      const other = await otherInvoice(s.clientId);
+      await applyCredit(other, 10000);
+
+      const r = await cancel(s.stayId);
+      expect(r).toEqual({ deposit: "refunded", fee_invoice_id: null });
+      expect((await invoice(s.invoiceId)).status).toBe("void");
+      expect((await invoice(other)).status).toBe("paid");
+      // The refund already happened: it paid the walks invoice.
+      expect(await credit(s.clientId)).toBe(0);
+      expect(await owed(s.clientId)).toBe(0);
+    });
+
+    it("spent on another invoice, the office refunding anyway does not mint credit", async () => {
+      const s = await booked(3);
+      await payDeposit(s.depositId);
+      await applyCredit(await otherInvoice(s.clientId), 10000);
+      expect(await cancel(s.stayId, true)).toEqual({ deposit: "refunded", fee_invoice_id: null });
+      expect(await credit(s.clientId)).toBe(0);
+      expect(await owed(s.clientId)).toBe(0);
+    });
+
+    it("partly spent on another invoice, a late cancel bills only the part that is gone", async () => {
+      const s = await booked(3);
+      await payDeposit(s.depositId);
+      const other = await otherInvoice(s.clientId, 4000);
+      await applyCredit(other, 4000);
+
+      const r = await cancel(s.stayId);
+      expect(await invoice(r.fee_invoice_id!)).toMatchObject({
+        status: "open",
+        total_cents: 10000,
+        credit_applied_cents: 6000,
+      });
+      expect(await owed(s.clientId)).toBe(4000);
+      expect(await credit(s.clientId)).toBe(0);
+    });
+
+    it("applied to the stay invoice, a late cancel keeps the deposit and bills nothing", async () => {
+      const s = await booked(3);
+      await payDeposit(s.depositId);
+      await applyCredit(s.invoiceId, 10000);
+      expect(await owed(s.clientId)).toBe(STAY_TOTAL - 10000);
+
+      const r = await cancel(s.stayId);
+      expect(r.deposit).toBe("kept");
+      expect(await invoice(s.invoiceId)).toMatchObject({ status: "void", credit_applied_cents: 0 });
+      expect(await invoice(r.fee_invoice_id!)).toMatchObject({ status: "paid", credit_applied_cents: 10000 });
+      const notes = await org.admin.from("invoices").select("notes").eq("id", r.fee_invoice_id!).single();
+      expect(notes.data?.notes).not.toMatch(/already applied/);
+      expect(await owed(s.clientId)).toBe(0);
+      expect(await credit(s.clientId)).toBe(0);
+    });
+
+    it("applied to the stay invoice, an early cancel returns the deposit as credit once", async () => {
+      const s = await booked(10);
+      await payDeposit(s.depositId);
+      await applyCredit(s.invoiceId, 10000);
+
+      expect(await cancel(s.stayId)).toEqual({ deposit: "refunded", fee_invoice_id: null });
+      expect(await invoice(s.invoiceId)).toMatchObject({ status: "void", credit_applied_cents: 0 });
+      expect(await owed(s.clientId)).toBe(0);
+      expect(await credit(s.clientId)).toBe(10000);
+      const back = await org.admin
+        .from("credit_ledger")
+        .select("delta_cents")
+        .eq("client_id", s.clientId)
+        .gt("delta_cents", 0);
+      // The deposit payment, and the one return from the voided stay invoice.
+      expect(back.data?.map((e) => e.delta_cents).sort()).toEqual([10000, 10000]);
+    });
+
+    it("applied to a stay invoice paid in full, a late cancel credits the stay less the kept deposit", async () => {
+      const s = await booked(3);
+      await payDeposit(s.depositId);
+      await applyCredit(s.invoiceId, 10000);
+      await payDeposit(s.invoiceId); // the rest, in cash
+
+      const r = await cancel(s.stayId);
+      expect(r.deposit).toBe("kept");
+      expect((await invoice(s.invoiceId)).status).toBe("paid");
+      expect((await invoice(r.fee_invoice_id!)).status).toBe("paid");
+      // Paid $129.90 in all, $100 kept.
+      expect(await credit(s.clientId)).toBe(STAY_TOTAL - 10000);
+      expect(await owed(s.clientId)).toBe(0);
+    });
+
+    it("applied to a stay invoice paid in full, an early cancel credits the stay once", async () => {
+      const s = await booked(10);
+      await payDeposit(s.depositId);
+      await applyCredit(s.invoiceId, 10000);
+      await payDeposit(s.invoiceId);
+
+      expect(await cancel(s.stayId)).toEqual({ deposit: "refunded", fee_invoice_id: null });
+      expect(await credit(s.clientId)).toBe(STAY_TOTAL);
+      expect(await owed(s.clientId)).toBe(0);
+    });
+  });
+
   it("only the office cancels, and only once", async () => {
     const s = await booked(10);
     expect((await org.walker.client.rpc("cancel_stay", { _stay_id: s.stayId })).error).not.toBeNull();
