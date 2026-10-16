@@ -133,17 +133,27 @@ export async function trainerConflicts(
   return out.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 }
 
-export async function sellTrainingPackage(
-  db: TrainingDb,
-  userId: string,
-  input: {
-    clientId: string;
-    servicePackageId: string;
-    dogId?: string;
-    requestId: string;
-  },
-) {
+export type PackageSale = {
+  clientId: string;
+  servicePackageId: string;
+  dogId?: string;
+  requestId: string;
+};
+
+export async function sellTrainingPackage(db: TrainingDb, userId: string, input: PackageSale) {
   const { orgId } = await requirePermission(db, userId, "manage_client_billing");
+  return createPackageSale(db, { ...input, orgId, userId });
+}
+
+/** The sale itself: the package, its invoice, and the cleanup if the
+ * package insert fails. The office calls it after the billing permission;
+ * the portal calls it as the service role after the client's session check,
+ * with no user. Both go through the same checks and the same invoice path. */
+export async function createPackageSale(
+  db: TrainingDb,
+  input: PackageSale & { orgId: string; userId: string | null },
+) {
+  const { orgId, userId } = input;
   const { data: client, error: clientError } = await db
     .from("clients")
     .select("id")

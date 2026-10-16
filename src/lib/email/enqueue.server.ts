@@ -24,7 +24,8 @@ type NotifyKey =
   | "notify_email_review_request"
   | "notify_email_visit_reminder"
   | "notify_email_on_my_way"
-  | "notify_email_quote_sent";
+  | "notify_email_quote_sent"
+  | "notify_email_training_package";
 
 interface EnqueueParams {
   organizationId: string;
