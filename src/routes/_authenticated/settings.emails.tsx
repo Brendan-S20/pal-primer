@@ -18,7 +18,10 @@ export const Route = createFileRoute("/_authenticated/settings/emails")({
 });
 
 // The switches. quote_followup_days is a number and gets its own control.
-type SwitchKey = Exclude<keyof Settings, "quote_followup_days" | "runs_dog_walking">;
+type SwitchKey = Exclude<
+  keyof Settings,
+  "quote_followup_days" | "runs_dog_walking" | "runs_pet_sitting"
+>;
 
 const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
@@ -39,6 +42,11 @@ const WALK_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_walk_schedule_change", label: "Walk schedule changed", help: "Sent when you move a walk to another day, or change the days or time window of a walk plan. One email per client each time, with the old and new times." },
 ];
 
+// Pet sitting only (#411), the same way.
+const SIT_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
+  { key: "notify_email_missed_meds", label: "Missed medication", help: "Sent when a sitting visit ends with a medication the sitter could not give, with their reason. One email per visit. The office is told in the app either way." },
+];
+
 type Settings = Awaited<ReturnType<typeof getEmailSettings>>;
 
 function EmailSettingsPage() {
@@ -53,16 +61,28 @@ function EmailSettingsPage() {
   const [values, setValues] = useState<Settings>(data);
   useEffect(() => setValues(data), [data]);
 
-  const rows = values.runs_dog_walking ? [...ROWS, ...WALK_ROWS] : ROWS;
+  const rows = [
+    ...ROWS,
+    ...(values.runs_dog_walking ? WALK_ROWS : []),
+    ...(values.runs_pet_sitting ? SIT_ROWS : []),
+  ];
   const mut = useMutation({
     mutationFn: () => {
-      // The walk switches are saved only where they were drawn.
-      const { runs_dog_walking, notify_email_walk_not_done, notify_email_walk_schedule_change, ...rest } =
-        values;
+      // The walk and sitting switches are saved only where they were drawn.
+      const {
+        runs_dog_walking,
+        runs_pet_sitting,
+        notify_email_walk_not_done,
+        notify_email_walk_schedule_change,
+        notify_email_missed_meds,
+        ...rest
+      } = values;
       return save({
-        data: runs_dog_walking
-          ? { ...rest, notify_email_walk_not_done, notify_email_walk_schedule_change }
-          : rest,
+        data: {
+          ...rest,
+          ...(runs_dog_walking ? { notify_email_walk_not_done, notify_email_walk_schedule_change } : {}),
+          ...(runs_pet_sitting ? { notify_email_missed_meds } : {}),
+        },
       });
     },
     onSuccess: () => { toast.success("Email preferences saved"); refetch(); },

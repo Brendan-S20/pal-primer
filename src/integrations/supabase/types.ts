@@ -909,6 +909,83 @@ export type Database = {
           },
         ]
       }
+      care_log: {
+        Row: {
+          at: string
+          created_at: string
+          created_by: string | null
+          given_by: string | null
+          id: string
+          kind: string
+          med_name: string | null
+          missed_reason: string | null
+          note: string | null
+          organization_id: string
+          pet_id: string | null
+          status: string
+          visit_id: string
+        }
+        Insert: {
+          at?: string
+          created_at?: string
+          created_by?: string | null
+          given_by?: string | null
+          id?: string
+          kind: string
+          med_name?: string | null
+          missed_reason?: string | null
+          note?: string | null
+          organization_id: string
+          pet_id?: string | null
+          status?: string
+          visit_id: string
+        }
+        Update: {
+          at?: string
+          created_at?: string
+          created_by?: string | null
+          given_by?: string | null
+          id?: string
+          kind?: string
+          med_name?: string | null
+          missed_reason?: string | null
+          note?: string | null
+          organization_id?: string
+          pet_id?: string | null
+          status?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_log_given_by_fkey"
+            columns: ["given_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_log_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "care_log_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_holds: {
         Row: {
           client_id: string
@@ -3312,6 +3389,7 @@ export type Database = {
           next_invoice_number: number
           next_quote_number: number
           notify_email_invoice_sent: boolean
+          notify_email_missed_meds: boolean
           notify_email_overdue: boolean
           notify_email_payment_received: boolean
           notify_email_quote_sent: boolean
@@ -3457,6 +3535,7 @@ export type Database = {
           next_invoice_number?: number
           next_quote_number?: number
           notify_email_invoice_sent?: boolean
+          notify_email_missed_meds?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean
           notify_email_quote_sent?: boolean
@@ -3602,6 +3681,7 @@ export type Database = {
           next_invoice_number?: number
           next_quote_number?: number
           notify_email_invoice_sent?: boolean
+          notify_email_missed_meds?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean
           notify_email_quote_sent?: boolean
@@ -7453,6 +7533,7 @@ export type Database = {
         Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }
         Returns: number
       }
+      delete_care_entry: { Args: { _id: string }; Returns: undefined }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -8276,6 +8357,20 @@ export type Database = {
         }
         Returns: string
       }
+      record_care_entry: {
+        Args: {
+          _at?: string
+          _id?: string
+          _kind: string
+          _med_name: string | null
+          _missed_reason: string | null
+          _note: string | null
+          _pet_id: string | null
+          _status: string
+          _visit_id: string
+        }
+        Returns: string
+      }
       record_visit_station_service: {
         Args: { _visit_id: string }
         Returns: number
@@ -8442,6 +8537,21 @@ export type Database = {
         Returns: undefined
       }
       settle_email_campaigns: { Args: never; Returns: number }
+      sit_visit_facts: {
+        Args: { _visit_ids: string[] }
+        Returns: {
+          ends_on: string
+          kind: string
+          pet_ids: string[]
+          starts_on: string
+          stay_id: string
+          visit_id: string
+          visit_number: number
+          visit_total: number
+          window_earliest: string
+          window_latest: string
+        }[]
+      }
       skip_visit: {
         Args: {
           _code?: Database["public"]["Enums"]["skip_reason_code"]

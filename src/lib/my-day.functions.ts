@@ -81,16 +81,18 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), walk_group_id, pee, poo, report_note, properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, access_method, key_held, key_tag, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(name, temperament), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line, default_duration_min), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), walk_group_id, pee, poo, report_note, properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, access_method, key_held, key_tag, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, temperament, species, species_note, active, pet_care_instructions(feeding, meds, other_care)), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line, default_duration_min), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
       .order("sequence", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);
 
+    // A pet sitting stop's stay and care log (#411); nothing asked otherwise.
+    const { withSitDay } = await import("@/lib/sit-day.server");
     return {
       staff: targetStaff,
-      visits: await withStopFacts(supabase, visits ?? []),
+      visits: await withSitDay(supabase, await withStopFacts(supabase, visits ?? [])),
       previewing,
       canText: await businessCanText(targetStaff.organization_id),
     };
@@ -296,7 +298,7 @@ export const completeVisit = createServerFn({ method: "POST" })
       const { data: v } = await context.supabase
         .from("visits")
         .select(
-          "organization_id, client_id, scheduled_on, visit_checklist, properties(street, city, visit_contact_email), organizations(email_visit_checklist)",
+          "organization_id, client_id, scheduled_on, visit_checklist, properties(street, city, visit_contact_email), organizations(email_visit_checklist), services(service_line)",
         )
         .eq("id", data.visitId)
         .single();
@@ -353,6 +355,14 @@ export const completeVisit = createServerFn({ method: "POST" })
         // visit, which leaves the email and push below exactly as they were.
         const { walkCompletionFor } = await import("@/lib/walk-report.server");
         const walk = await walkCompletionFor(data.visitId);
+        // A pet sitting visit's email is a visit report (#411), read only for
+        // a sitting visit, so every other completion costs what it did.
+        const svc: any = Array.isArray((v as any).services)
+          ? (v as any).services[0]
+          : (v as any).services;
+        const sitting = svc?.service_line === "pet_sitting";
+        const sitReport = sitting ? await import("@/lib/sit-report.server") : null;
+        const sit = sitReport ? await sitReport.sitCompletionFor(data.visitId) : null;
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
         await enqueueAppEmail({
           organizationId: v.organization_id,
@@ -371,16 +381,22 @@ export const completeVisit = createServerFn({ method: "POST" })
             gatePhotoUrl,
             checklist,
             ...(walk ? { walk: walk.email } : {}),
+            ...(sit ? { sit: sit.email } : {}),
           },
         });
+        // The missed medication email and, after a stay's last visit, the
+        // stay summary. Never throws.
+        if (sitReport) await sitReport.afterSitCompleted(data.visitId);
         // Best-effort push notification to the client (if they subscribed via portal).
         try {
           const { sendPushToClient } = await import("@/lib/push.server");
           await sendPushToClient(v.client_id, {
-            title: walk ? walk.push.title : "Visit completed",
+            title: walk ? walk.push.title : sit ? sit.push.title : "Visit completed",
             body: walk
               ? walk.push.body
-              : address
+              : sit
+                ? sit.push.body
+                : address
                 ? `We just cleaned up at ${address}.`
                 : "Your yard visit is complete.",
             tag: `visit-${data.visitId}`,

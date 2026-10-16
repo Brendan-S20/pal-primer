@@ -26,7 +26,8 @@ type NotifyKey =
   | "notify_email_on_my_way"
   | "notify_email_quote_sent"
   | "notify_email_walk_not_done"
-  | "notify_email_walk_schedule_change";
+  | "notify_email_walk_schedule_change"
+  | "notify_email_missed_meds";
 
 interface EnqueueParams {
   organizationId: string;
