@@ -24,20 +24,29 @@ import {
 const read = (p: string) => readFileSync(p, "utf8");
 const MIG = "supabase/migrations/20261016130000_a-sitter-logs-what-each-pet-got.sql";
 const sql = stripLineComments(read(MIG));
-const between = (from: string, to: string) => sql.slice(sql.indexOf(from), sql.indexOf(to, sql.indexOf(from)));
+const between = (from: string, to: string) =>
+  sql.slice(sql.indexOf(from), sql.indexOf(to, sql.indexOf(from)));
 const SIG = "uuid, uuid, text, text, text, text, text, timestamptz, uuid";
-const recordBody = between("CREATE FUNCTION public.record_care_entry(", "REVOKE ALL ON FUNCTION public.record_care_entry");
+const recordBody = between(
+  "CREATE FUNCTION public.record_care_entry(",
+  "REVOKE ALL ON FUNCTION public.record_care_entry",
+);
 const deleteBody = between(
   "CREATE OR REPLACE FUNCTION public.delete_care_entry",
   "REVOKE ALL ON FUNCTION public.delete_care_entry",
 );
-const factsBody = between("CREATE FUNCTION public.sit_visit_facts", "REVOKE ALL ON FUNCTION public.sit_visit_facts");
+const factsBody = between(
+  "CREATE FUNCTION public.sit_visit_facts",
+  "REVOKE ALL ON FUNCTION public.sit_visit_facts",
+);
 const check = sql.slice(sql.lastIndexOf("DO $check$"));
 
 describe("the care log table", () => {
   it("has the columns the design names, with their foreign keys", () => {
     const table = between("CREATE TABLE IF NOT EXISTS public.care_log", ");\n");
-    expect(table).toMatch(/visit_id uuid NOT NULL REFERENCES public\.visits\(id\) ON DELETE CASCADE/);
+    expect(table).toMatch(
+      /visit_id uuid NOT NULL REFERENCES public\.visits\(id\) ON DELETE CASCADE/,
+    );
     expect(table).toMatch(/pet_id uuid REFERENCES public\.dogs\(id\) ON DELETE SET NULL/);
     expect(table).toMatch(/organization_id uuid NOT NULL REFERENCES public\.organizations\(id\)/);
     expect(table).toMatch(/given_by uuid REFERENCES public\.staff\(id\)/);
@@ -53,7 +62,9 @@ describe("the care log table", () => {
     expect(sql).toMatch(/kind = 'meds' AND med_name IS NOT NULL AND btrim\(med_name\) <> ''/);
     expect(sql).toMatch(/OR \(kind <> 'meds' AND med_name IS NULL\)/);
     // Missed has a reason up to 300; done has none.
-    expect(sql).toMatch(/status = 'missed' AND missed_reason IS NOT NULL AND btrim\(missed_reason\) <> ''/);
+    expect(sql).toMatch(
+      /status = 'missed' AND missed_reason IS NOT NULL AND btrim\(missed_reason\) <> ''/,
+    );
     expect(sql).toMatch(/char_length\(missed_reason\) <= 300/);
     expect(sql).toMatch(/OR \(status = 'done' AND missed_reason IS NULL\)/);
     expect(sql).toMatch(/note IS NULL OR char_length\(note\) <= 300/);
@@ -66,8 +77,12 @@ describe("the care log table", () => {
   it("has row level security, the two-step policy, and is read only to signed-in users", () => {
     const rls = sql.indexOf("ALTER TABLE public.care_log ENABLE ROW LEVEL SECURITY;");
     expect(rls).toBeGreaterThan(-1);
-    expect(sql.indexOf("SELECT public.require_mfa_policy('public.care_log');")).toBeGreaterThan(rls);
-    expect(sql).toMatch(/CREATE POLICY "Members read care log" ON public\.care_log\s+FOR SELECT TO authenticated/);
+    expect(sql.indexOf("SELECT public.require_mfa_policy('public.care_log');")).toBeGreaterThan(
+      rls,
+    );
+    expect(sql).toMatch(
+      /CREATE POLICY "Members read care log" ON public\.care_log\s+FOR SELECT TO authenticated/,
+    );
     expect(sql).toMatch(/public\.is_org_member\(\(SELECT auth\.uid\(\)\), organization_id\)/);
     expect(sql).toMatch(/REVOKE ALL ON TABLE public\.care_log FROM PUBLIC, anon, authenticated;/);
     expect(sql).toMatch(/GRANT SELECT ON TABLE public\.care_log TO authenticated;/);
@@ -104,7 +119,9 @@ describe("record_care_entry", () => {
       /IF NOT \(public\.is_visit_tech\(auth\.uid\(\), _visit_id\)\s+OR public\.can_write_org\(auth\.uid\(\), _org\)\) THEN\s+RAISE EXCEPTION 'Not authorized for this visit' USING ERRCODE = 'insufficient_privilege'/,
     );
     // Asked before anything is read about the entry, the pet or the clock.
-    expect(recordBody.indexOf("is_visit_tech")).toBeLessThan(recordBody.indexOf("FROM public.care_log c"));
+    expect(recordBody.indexOf("is_visit_tech")).toBeLessThan(
+      recordBody.indexOf("FROM public.care_log c"),
+    );
   });
 
   it("is for a pet sitting visit under way, or completed today on the business's clock", () => {
@@ -123,7 +140,9 @@ describe("record_care_entry", () => {
 
   it("requires a med name for meds and a reason for missed, and bounds both", () => {
     expect(recordBody).toMatch(/IF _med IS NULL THEN\s+RAISE EXCEPTION 'Name the medication\.'/);
-    expect(recordBody).toMatch(/IF _reason IS NULL THEN\s+RAISE EXCEPTION 'Say why it was missed\.'/);
+    expect(recordBody).toMatch(
+      /IF _reason IS NULL THEN\s+RAISE EXCEPTION 'Say why it was missed\.'/,
+    );
     expect(recordBody).toMatch(/char_length\(_reason\) > 300/);
     expect(recordBody).toMatch(/char_length\(_med\) > 80/);
     expect(recordBody).toMatch(/char_length\(_note_v\) > 300/);
@@ -145,8 +164,12 @@ describe("record_care_entry", () => {
   });
 
   it("is executable by signed-in users and the service role, never anon", () => {
-    expect(sql).toContain(`REVOKE ALL ON FUNCTION public.record_care_entry(${SIG})\n  FROM PUBLIC, anon;`);
-    expect(sql).toContain(`GRANT EXECUTE ON FUNCTION public.record_care_entry(${SIG})\n  TO authenticated, service_role;`);
+    expect(sql).toContain(
+      `REVOKE ALL ON FUNCTION public.record_care_entry(${SIG})\n  FROM PUBLIC, anon;`,
+    );
+    expect(sql).toContain(
+      `GRANT EXECUTE ON FUNCTION public.record_care_entry(${SIG})\n  TO authenticated, service_role;`,
+    );
   });
 });
 
@@ -162,7 +185,9 @@ describe("delete_care_entry", () => {
       /IF NOT \(public\.is_visit_tech\(auth\.uid\(\), _visit\)\s+OR public\.can_write_org\(auth\.uid\(\), _org\)\) THEN/,
     );
     expect(deleteBody).toMatch(/IF _created < now\(\) - interval '12 hours' THEN/);
-    expect(deleteBody.indexOf("interval '12 hours'")).toBeLessThan(deleteBody.indexOf("DELETE FROM public.care_log"));
+    expect(deleteBody.indexOf("interval '12 hours'")).toBeLessThan(
+      deleteBody.indexOf("DELETE FROM public.care_log"),
+    );
   });
 
   it("treats an entry already gone as undone", () => {
@@ -170,8 +195,12 @@ describe("delete_care_entry", () => {
   });
 
   it("is never anon's", () => {
-    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.delete_care_entry\(uuid\) FROM PUBLIC, anon;/);
-    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.delete_care_entry\(uuid\) TO authenticated, service_role;/);
+    expect(sql).toMatch(
+      /REVOKE ALL ON FUNCTION public\.delete_care_entry\(uuid\) FROM PUBLIC, anon;/,
+    );
+    expect(sql).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.delete_care_entry\(uuid\) TO authenticated, service_role;/,
+    );
   });
 });
 
@@ -186,7 +215,9 @@ describe("sit_visit_facts", () => {
     expect(factsBody).toMatch(/unnest\(_visit_ids\[1:200\]\)/);
     // Canceled visits are not counted in "Night 2 of 5".
     expect(factsBody).toMatch(/v\.status <> 'canceled'/);
-    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.sit_visit_facts\(uuid\[\]\) FROM PUBLIC, anon;/);
+    expect(sql).toMatch(
+      /REVOKE ALL ON FUNCTION public\.sit_visit_facts\(uuid\[\]\) FROM PUBLIC, anon;/,
+    );
   });
 });
 
@@ -223,7 +254,9 @@ describe("what the migration establishes", () => {
     expect(check).toMatch(/permissive = 'RESTRICTIVE'/);
     // Counts permissive policies only: the two-step policy is restrictive.
     expect(check).toMatch(/permissive = 'PERMISSIVE'\) <> 1/);
-    expect(check).toMatch(/has_table_privilege\('authenticated', 'public\.care_log', 'INSERT, UPDATE, DELETE, TRUNCATE'\)/);
+    expect(check).toMatch(
+      /has_table_privilege\('authenticated', 'public\.care_log', 'INSERT, UPDATE, DELETE, TRUNCATE'\)/,
+    );
     expect(check).toMatch(/has_function_privilege\('anon', 'public\.record_care_entry/);
     expect(check).toMatch(/has_function_privilege\('anon', 'public\.delete_care_entry\(uuid\)'/);
     expect(check).toMatch(/NOT p\.prosecdef/);
@@ -234,7 +267,9 @@ describe("what the migration establishes", () => {
 
   it("reads function bodies by name, never pg_get_functiondef", () => {
     expect(sql).not.toMatch(/pg_get_functiondef/);
-    expect(check).toMatch(/'public\.record_care_entry\(uuid, uuid, text, text, text, text, text, timestamptz, uuid\)'::regprocedure/);
+    expect(check).toMatch(
+      /'public\.record_care_entry\(uuid, uuid, text, text, text, text, text, timestamptz, uuid\)'::regprocedure/,
+    );
   });
 
   it("adds no trigger function", () => {
@@ -268,13 +303,17 @@ describe("the server functions and the generated types", () => {
   it("make missed medication a notification type the office can mute", () => {
     const center = read("src/lib/notifications-center.functions.ts");
     expect(center).toMatch(/\{ type: "missed_meds", label: "A sitter missed a medication" \}/);
-    expect(read("src/lib/sit-notify.server.ts")).toMatch(/export const MISSED_MED_TYPE = "missed_meds";/);
+    expect(read("src/lib/sit-notify.server.ts")).toMatch(
+      /export const MISSED_MED_TYPE = "missed_meds";/,
+    );
   });
 
   it("ask nothing more of a day with no pet sitting stop", () => {
     const server = read("src/lib/sit-day.server.ts");
     expect(server).toMatch(/if \(ids\.length === 0\) return visits;/);
-    expect(server.indexOf("if (ids.length === 0) return visits;")).toBeLessThan(server.indexOf(".rpc("));
+    expect(server.indexOf("if (ids.length === 0) return visits;")).toBeLessThan(
+      server.indexOf(".rpc("),
+    );
   });
 });
 
@@ -414,7 +453,10 @@ describe("the warning before the visit ends", () => {
 
   it("is a warning on the card, never a block on ending the visit", () => {
     const page = read("src/routes/_authenticated/my-day.tsx");
-    const complete = page.slice(page.indexOf("const complete = useMutation"), page.indexOf("onSuccess:", page.indexOf("const complete = useMutation")));
+    const complete = page.slice(
+      page.indexOf("const complete = useMutation"),
+      page.indexOf("onSuccess:", page.indexOf("const complete = useMutation")),
+    );
     expect(complete).not.toMatch(/unloggedDueMeds|medNotLogged/);
   });
 });
@@ -422,11 +464,18 @@ describe("the warning before the visit ends", () => {
 describe("the log's small rules", () => {
   it("lists entries oldest first", () => {
     const e = (id: string, at: string) =>
-      ({ id, at, pet_id: null, kind: "feed", med_name: null, status: "done", missed_reason: null }) as CareEntry;
-    expect(byTime([e("b", "2026-10-19T10:00:00Z"), e("a", "2026-10-19T09:00:00Z")]).map((x) => x.id)).toEqual([
-      "a",
-      "b",
-    ]);
+      ({
+        id,
+        at,
+        pet_id: null,
+        kind: "feed",
+        med_name: null,
+        status: "done",
+        missed_reason: null,
+      }) as CareEntry;
+    expect(
+      byTime([e("b", "2026-10-19T10:00:00Z"), e("a", "2026-10-19T09:00:00Z")]).map((x) => x.id),
+    ).toEqual(["a", "b"]);
   });
 
   it("trims a missed reason, and an empty one is none", () => {

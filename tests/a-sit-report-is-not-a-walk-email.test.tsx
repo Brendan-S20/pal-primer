@@ -105,10 +105,17 @@ describe("what each pet got", () => {
     expect(n(careLine(row({ kind: "feed" }), TZ))).toBe("Fed at 8:05 AM");
     expect(n(careLine(row({ kind: "water" }), TZ))).toBe("Fresh water at 8:05 AM");
     expect(n(careLine(row({ kind: "litter" }), TZ))).toBe("Litter or yard cleaned at 8:05 AM");
-    expect(n(careLine(row({ kind: "meds", med_name: "Insulin" }), TZ))).toBe("Insulin given at 8:05 AM");
+    expect(n(careLine(row({ kind: "meds", med_name: "Insulin" }), TZ))).toBe(
+      "Insulin given at 8:05 AM",
+    );
     expect(
       careLine(
-        row({ kind: "meds", med_name: "Insulin", status: "missed", missed_reason: "Hid under the bed" }),
+        row({
+          kind: "meds",
+          med_name: "Insulin",
+          status: "missed",
+          missed_reason: "Hid under the bed",
+        }),
         TZ,
       ),
     ).toBe("Insulin missed: Hid under the bed");
@@ -125,7 +132,12 @@ describe("what each pet got", () => {
     expect(missedMeds(ROWS, PETS)).toEqual([
       { pet: "Max", med: "Apoquel", reason: "He spat it out twice" },
     ]);
-    expect(missedMeds(ROWS.filter((r) => r.status === "done"), PETS)).toEqual([]);
+    expect(
+      missedMeds(
+        ROWS.filter((r) => r.status === "done"),
+        PETS,
+      ),
+    ).toEqual([]);
   });
 
   it("names the pets, or says your pets", () => {
@@ -140,7 +152,9 @@ describe("a pet sitting visit's completion email", () => {
     const props = sitProps();
     expect(visitCompleted.subject(props)).toBe("Happy Paws checked on Luna and Max today");
     const text = textOf(await render(React.createElement(visitCompleted.component, props)));
-    expect(text).toContain("Hi Jane, Taylor from Happy Paws checked on Luna and Max on Mon, Oct 19.");
+    expect(text).toContain(
+      "Hi Jane, Taylor from Happy Paws checked on Luna and Max on Mon, Oct 19.",
+    );
     expect(text).toContain("In at 8:02 AM, out at 8:31 AM.");
     expect(text).toContain("Fed at 8:05 AM");
     expect(text).toContain("Insulin given at 8:10 AM");
@@ -211,7 +225,9 @@ describe("a walk's and a cleanup's email did not move", () => {
   it("the server reads the sit report only for a pet sitting visit", () => {
     const fn = readFileSync("src/lib/my-day.functions.ts", "utf8");
     expect(fn).toMatch(/const sitting = svc\?\.service_line === "pet_sitting";/);
-    expect(fn).toMatch(/const sitReport = sitting \? await import\("@\/lib\/sit-report\.server"\) : null;/);
+    expect(fn).toMatch(
+      /const sitReport = sitting \? await import\("@\/lib\/sit-report\.server"\) : null;/,
+    );
     expect(fn).toMatch(/\.\.\.\(sit \? \{ sit: sit\.email \} : \{\}\)/);
     expect(fn).toMatch(/if \(sitReport\) await sitReport\.afterSitCompleted\(data\.visitId\);/);
     const server = readFileSync("src/lib/sit-report.server.ts", "utf8");
@@ -231,25 +247,35 @@ describe("the missed medication email", () => {
   it("names the pet, the medication and the reason", async () => {
     expect(missedTemplate.subject(props)).toBe("A medication was missed for Max");
     const text = textOf(await render(React.createElement(missedTemplate.component, props)));
-    expect(text).toContain("at the visit on Mon, Oct 19 the sitter could not give this medication:");
+    expect(text).toContain(
+      "at the visit on Mon, Oct 19 the sitter could not give this medication:",
+    );
     expect(text).toContain("Max: Apoquel. He spat it out twice.");
     expect(text).toContain("Happy Paws has been told.");
   });
 
   it("is sent once per visit, under its own switch", () => {
     const server = readFileSync("src/lib/sit-report.server.ts", "utf8");
-    expect(server).toMatch(/templateName: "sit-missed-meds",\s*notifyKey: "notify_email_missed_meds",/);
+    expect(server).toMatch(
+      /templateName: "sit-missed-meds",\s*notifyKey: "notify_email_missed_meds",/,
+    );
     expect(server).toMatch(/idempotencyKey: `missed-meds-\$\{v\.id\}`,\s*oncePerKey: true,/);
     expect(server).toMatch(/if \(missed\.length === 0\) return;/);
   });
 
   it("tells the office in plain words", () => {
     expect(
-      missedMedNotice({ sitter: "Taylor", pet: "Luna", med: "Insulin", reason: "Hid", client: "Jane Doe" }),
+      missedMedNotice({
+        sitter: "Taylor",
+        pet: "Luna",
+        med: "Insulin",
+        reason: "Hid",
+        client: "Jane Doe",
+      }),
     ).toEqual({ title: "Taylor missed Luna's Insulin", body: "Hid. Jane Doe" });
-    expect(missedMedNotice({ sitter: null, pet: null, med: "Insulin", reason: "", client: null })).toEqual(
-      { title: "A sitter missed Insulin", body: "" },
-    );
+    expect(
+      missedMedNotice({ sitter: null, pet: null, med: "Insulin", reason: "", client: null }),
+    ).toEqual({ title: "A sitter missed Insulin", body: "" });
   });
 });
 
@@ -284,8 +310,12 @@ describe("the stay summary", () => {
   });
 
   it("counts nights or visits", () => {
-    expect(staySummaryCount({ visitsDone: 9, visitsTotal: 10, overnight: false })).toBe("9 of 10 visits");
-    expect(staySummaryCount({ visitsDone: 1, visitsTotal: 1, overnight: true })).toBe("1 of 1 night");
+    expect(staySummaryCount({ visitsDone: 9, visitsTotal: 10, overnight: false })).toBe(
+      "9 of 10 visits",
+    );
+    expect(staySummaryCount({ visitsDone: 1, visitsTotal: 1, overnight: true })).toBe(
+      "1 of 1 night",
+    );
     expect(staySummaryDates("drop_in", "2026-10-19", "2026-10-23")).toBe("Oct 19 to Oct 23");
   });
 

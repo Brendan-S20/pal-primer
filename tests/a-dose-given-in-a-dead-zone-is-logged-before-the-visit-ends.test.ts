@@ -194,6 +194,8 @@ describe("the card queues the completion behind a queued entry", () => {
   it("reads the queue only for a sitting stop", () => {
     expect(page).toMatch(/const sitCare = useSitCare\(visit, sit\)/);
     expect(parts).toMatch(/useEffect\(\(\) => \{\s*if \(!enabled\) return;/);
-    expect(parts).toMatch(/const hasQueued = useCallback\(async \(\) => \{\s*if \(!enabled\) return false;/);
+    expect(parts).toMatch(
+      /const hasQueued = useCallback\(async \(\) => \{\s*if \(!enabled\) return false;/,
+    );
   });
 });

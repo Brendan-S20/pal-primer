@@ -74,7 +74,11 @@ export function useSitPets(visit: SitVisit): SitPet[] {
 
 /** "Start visit" / "End visit" for a drop-in, "Check in" / "Check out" for an
  *  overnight. */
-export function sitStepLabel(t: TFunction, facts: SitFacts | null | undefined, step: "start" | "end") {
+export function sitStepLabel(
+  t: TFunction,
+  facts: SitFacts | null | undefined,
+  step: "start" | "end",
+) {
   if (isOvernight(facts)) return step === "start" ? t("sit.checkIn") : t("sit.checkOut");
   return step === "start" ? t("sit.startVisit") : t("sit.endVisit");
 }
@@ -185,7 +189,9 @@ export function SitPetsCare({ pets, locale }: { pets: SitPet[]; locale?: string 
               ) : null}
               {" · "}
               {med.times.length > 0
-                ? t("sit.medTimes", { times: med.times.map((x) => clockLabel(x, locale)).join(", ") })
+                ? t("sit.medTimes", {
+                    times: med.times.map((x) => clockLabel(x, locale)).join(", "),
+                  })
                 : t("sit.asNeeded")}
               {med.notes ? (
                 <span className="block text-muted-foreground">
@@ -697,7 +703,9 @@ export function SitCareLog({
                       <bdi>{nameOf(e.pet_id)}</bdi>
                     </span>
                     {": "}
-                    <span className={e.status === "missed" ? "text-amber-800 dark:text-amber-300" : ""}>
+                    <span
+                      className={e.status === "missed" ? "text-amber-800 dark:text-amber-300" : ""}
+                    >
                       <bdi>{what}</bdi>
                     </span>
                     <span className="block text-xs text-muted-foreground">

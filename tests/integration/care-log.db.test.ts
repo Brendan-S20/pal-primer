@@ -115,7 +115,12 @@ describe.skipIf(!dbEnabled)("the care log", () => {
     expect(typeof data).toBe("string");
     const rows = await rowsFor();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: data, kind: "feed", status: "done", given_by: org.walker.staffId });
+    expect(rows[0]).toMatchObject({
+      id: data,
+      kind: "feed",
+      status: "done",
+      given_by: org.walker.staffId,
+    });
   });
 
   it("another sitter cannot, and nobody signed out can", async () => {
@@ -237,7 +242,9 @@ describe.skipIf(!dbEnabled)("the care log", () => {
     const { data: id } = await log(org.walker.client, { _kind: "walk" });
     expect(typeof id).toBe("string");
 
-    expect((await org.otherWalker.client.rpc("delete_care_entry", { _id: id })).error).not.toBeNull();
+    expect(
+      (await org.otherWalker.client.rpc("delete_care_entry", { _id: id })).error,
+    ).not.toBeNull();
     expect((await rowsFor()).some((r) => r.id === id)).toBe(true);
 
     expect((await org.walker.client.rpc("delete_care_entry", { _id: id })).error).toBeNull();

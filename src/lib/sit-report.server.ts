@@ -30,7 +30,7 @@ export type SitCompletion = {
   push: { title: string; body: string };
 };
 
-const one = <T,>(v: T | T[] | null | undefined): T | null =>
+const one = <T>(v: T | T[] | null | undefined): T | null =>
   Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 
 async function admin(): Promise<any> {
@@ -59,9 +59,7 @@ type Row = {
   services: { service_line: string | null } | { service_line: string | null }[] | null;
   organizations: { timezone: string | null } | { timezone: string | null }[] | null;
   subscriptions:
-    | { stays: StayRef | StayRef[] | null }
-    | { stays: StayRef | StayRef[] | null }[]
-    | null;
+    { stays: StayRef | StayRef[] | null } | { stays: StayRef | StayRef[] | null }[] | null;
   properties:
     | { visit_contact_email: string | null; dogs: Pet[] | null }
     | { visit_contact_email: string | null; dogs: Pet[] | null }[]
@@ -86,7 +84,9 @@ const stayOf = (v: Row): StayRef | null => one(one(v.subscriptions)?.stays ?? nu
 function petsOf(v: Row): Pet[] {
   const all = one(v.properties)?.dogs ?? [];
   const named = new Set(stayOf(v)?.pet_ids ?? []);
-  return named.size > 0 ? all.filter((p) => named.has(p.id)) : all.filter((p) => p.active !== false);
+  return named.size > 0
+    ? all.filter((p) => named.has(p.id))
+    : all.filter((p) => p.active !== false);
 }
 
 export async function sitCompletionFor(visitId: string): Promise<SitCompletion | null> {
@@ -190,7 +190,10 @@ async function sendStaySummaryIfLast(sb: any, v: Row): Promise<void> {
       .neq("status", "canceled");
     const list = (visits ?? []) as { id: string; status: string; scheduled_on: string }[];
     // Last means nothing left to do: every visit is done, skipped or missed.
-    if (list.length === 0 || list.some((x) => x.status === "scheduled" || x.status === "in_progress"))
+    if (
+      list.length === 0 ||
+      list.some((x) => x.status === "scheduled" || x.status === "in_progress")
+    )
       return;
     const dayOf = new Map(list.map((x) => [x.id, x.scheduled_on]));
     const { data: rows } = await sb

@@ -27,11 +27,13 @@ export function isCareKind(v: unknown): v is CareKind {
 }
 
 type ServiceRef = { service_line?: string | null } | null;
-const one = <T,>(v: T | T[] | null | undefined): T | null =>
+const one = <T>(v: T | T[] | null | undefined): T | null =>
   Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 
 /** A stop whose service is pet sitting. Every other stop keeps its card. */
-export function isSitVisit(v: { services?: ServiceRef | ServiceRef[] } | null | undefined): boolean {
+export function isSitVisit(
+  v: { services?: ServiceRef | ServiceRef[] } | null | undefined,
+): boolean {
   return one(v?.services ?? null)?.service_line === "pet_sitting";
 }
 
@@ -60,7 +62,11 @@ export function stayProgress(
 ): { unit: "night" | "visit"; n: number; total: number } | null {
   if (!facts || facts.visit_number == null || facts.visit_total == null) return null;
   if (facts.visit_number < 1 || facts.visit_total < facts.visit_number) return null;
-  return { unit: isOvernight(facts) ? "night" : "visit", n: facts.visit_number, total: facts.visit_total };
+  return {
+    unit: isOvernight(facts) ? "night" : "visit",
+    n: facts.visit_number,
+    total: facts.visit_total,
+  };
 }
 
 /** Minutes after midnight for "HH:MM" or "HH:MM:SS"; null for anything else. */
@@ -76,7 +82,11 @@ export type VisitWindow = { earliest: string | null; latest: string | null } | n
  *  before the arrival window through the next morning. A med with no times
  *  (as needed) is never due, and with no window nothing is: a warning the
  *  card cannot back up is noise. */
-export function medDueAtVisit(times: readonly string[], window: VisitWindow, overnight: boolean): boolean {
+export function medDueAtVisit(
+  times: readonly string[],
+  window: VisitWindow,
+  overnight: boolean,
+): boolean {
   const start = clockMinutes(window?.earliest);
   const end = clockMinutes(window?.latest);
   if (start == null) return false;
@@ -111,7 +121,10 @@ type PetRow = {
 
 /** The pets this visit is for: the stay's pets when it names them, otherwise
  *  every active pet at the home. Each with its care instructions. */
-export function sitPets(rows: readonly PetRow[] | null | undefined, facts: SitFacts | null | undefined): SitPet[] {
+export function sitPets(
+  rows: readonly PetRow[] | null | undefined,
+  facts: SitFacts | null | undefined,
+): SitPet[] {
   const onStay = new Set(facts?.pet_ids ?? []);
   return (rows ?? [])
     .filter((r): r is PetRow & { id: string } => !!r?.id)
@@ -158,7 +171,9 @@ export function medEntry(
   petId: string,
   medName: string,
 ): CareEntry | undefined {
-  return entries.find((e) => e.kind === "meds" && e.pet_id === petId && sameMed(e.med_name, medName));
+  return entries.find(
+    (e) => e.kind === "meds" && e.pet_id === petId && sameMed(e.med_name, medName),
+  );
 }
 
 export type DueMed = { petId: string; petName: string; medName: string };

@@ -5,12 +5,7 @@
  *  English on purpose: anything sent to a customer speaks the business's
  *  language, never the sitter's (CLAUDE.md, "What stays English"). */
 
-import {
-  REPORT_NOTE_MAX,
-  dogNamesPhrase,
-  walkClock,
-  walkerFirstName,
-} from "@/lib/walk-report";
+import { REPORT_NOTE_MAX, dogNamesPhrase, walkClock, walkerFirstName } from "@/lib/walk-report";
 import { stayDatesLabel, type StayKind } from "@/lib/stays";
 import type { CareKind, CareStatus } from "@/lib/sit-day";
 
@@ -88,7 +83,11 @@ const nameOf = (pets: readonly PetName[], id: string | null) =>
 
 /** What each pet got, oldest first, one group per pet in the order they
  *  first appear, with "All pets" for an entry that names none. */
-export function careByPet(rows: readonly CareRow[], pets: readonly PetName[], timezone: string): PetCareLines[] {
+export function careByPet(
+  rows: readonly CareRow[],
+  pets: readonly PetName[],
+  timezone: string,
+): PetCareLines[] {
   const groups = new Map<string, PetCareLines>();
   for (const row of [...rows].sort((a, b) => a.at.localeCompare(b.at))) {
     const pet = nameOf(pets, row.pet_id);
@@ -152,7 +151,9 @@ export function sitReportEmail(input: SitReportInput): SitReportEmail {
 }
 
 /** "In at 8:02 AM, out at 8:31 AM." An overnight says checked in and out. */
-export function sitTimesSentence(r: Pick<SitReportEmail, "overnight" | "timeIn" | "timeOut">): string {
+export function sitTimesSentence(
+  r: Pick<SitReportEmail, "overnight" | "timeIn" | "timeOut">,
+): string {
   const [inWord, outWord] = r.overnight ? ["Checked in", "checked out"] : ["In", "out"];
   if (r.timeIn && r.timeOut) return `${inWord} at ${r.timeIn}, ${outWord} at ${r.timeOut}.`;
   if (r.timeOut) return `${capitalize(outWord)} at ${r.timeOut}.`;
@@ -199,7 +200,9 @@ export function staySummarySubject(pets: string): string {
 }
 
 /** "5 of 5 nights" / "9 of 10 visits". */
-export function staySummaryCount(s: Pick<StaySummaryEmail, "visitsDone" | "visitsTotal" | "overnight">): string {
+export function staySummaryCount(
+  s: Pick<StaySummaryEmail, "visitsDone" | "visitsTotal" | "overnight">,
+): string {
   const noun = s.overnight
     ? s.visitsTotal === 1
       ? "night"

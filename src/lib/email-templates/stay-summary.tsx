@@ -1,5 +1,14 @@
 import * as React from "react";
-import { Body, Button, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
+import {
+  Body,
+  Button,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Preview,
+  Text,
+} from "@react-email/components";
 import { styles, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { staySummaryCount, staySummarySubject, type StaySummaryEmail } from "@/lib/sit-report";

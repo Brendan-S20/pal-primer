@@ -15,7 +15,7 @@ const OFFICE = ["owner", "office_manager", "dispatcher"] as const;
 /** The notification type, mutable in Notifications settings. */
 export const MISSED_MED_TYPE = "missed_meds";
 
-const one = <T,>(v: T | T[] | null | undefined): T | null =>
+const one = <T>(v: T | T[] | null | undefined): T | null =>
   Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 
 type EntryRow = {
@@ -27,14 +27,12 @@ type EntryRow = {
   missed_reason: string | null;
   dogs: { name: string | null } | { name: string | null }[] | null;
   staff: { display_name: string | null } | { display_name: string | null }[] | null;
-  visits:
-    | {
-        id: string;
-        scheduled_on: string;
-        assigned_staff_id: string | null;
-        clients: { display_name: string | null } | { display_name: string | null }[] | null;
-      }
-    | null;
+  visits: {
+    id: string;
+    scheduled_on: string;
+    assigned_staff_id: string | null;
+    clients: { display_name: string | null } | { display_name: string | null }[] | null;
+  } | null;
 };
 
 export async function notifyMissedMed(input: {

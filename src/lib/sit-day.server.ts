@@ -23,7 +23,7 @@ type CareRow = {
   staff: { display_name: string | null } | { display_name: string | null }[] | null;
 };
 
-const one = <T,>(v: T | T[] | null | undefined): T | null =>
+const one = <T>(v: T | T[] | null | undefined): T | null =>
   Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 
 export async function withSitDay<V extends { id: string; services?: unknown }>(
@@ -40,7 +40,9 @@ export async function withSitDay<V extends { id: string; services?: unknown }>(
     supabase.rpc("sit_visit_facts", { _visit_ids: ids }),
     (supabase as any)
       .from("care_log")
-      .select("id, visit_id, pet_id, kind, med_name, status, missed_reason, note, at, staff(display_name)")
+      .select(
+        "id, visit_id, pet_id, kind, med_name, status, missed_reason, note, at, staff(display_name)",
+      )
       .in("visit_id", ids)
       .order("at"),
   ]);
