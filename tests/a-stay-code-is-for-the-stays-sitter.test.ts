@@ -2,7 +2,7 @@
 // blocker 2). The window the sit card uses, and the shape of the reads: the
 // database half is tests/integration/stay-access.db.test.ts.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -69,6 +69,33 @@ describe("the database reads", () => {
     expect(body("property_access_codes")).toMatch(/sub\.stay_id IS NOT NULL/);
   });
 
+  // 20261015215000 moved the gate code behind property_access_codes. This file
+  // drops and remakes that function, so the last definition decides whether
+  // anyone signed in can read the gate code at all.
+  it("the last property_access_codes still returns the gate code", () => {
+    const dir = join(ROOT, "supabase/migrations");
+    const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+    const defining = files.filter((f) =>
+      /CREATE (OR REPLACE )?FUNCTION public\.property_access_codes\(/.test(readFileSync(join(dir, f), "utf8")),
+    );
+    const last = readFileSync(join(dir, defining[defining.length - 1]), "utf8");
+    const at = last.indexOf("FUNCTION public.property_access_codes(");
+    const fn = last.slice(at, last.indexOf("$function$;", at));
+    expect(fn).toMatch(/RETURNS TABLE \(property_id uuid, gate_code text,/);
+    expect(fn).toMatch(/SELECT p\.id, p\.gate_code,/);
+  });
+
+  it("no migration after the revoke grants SELECT on the whole properties table again", () => {
+    const dir = join(ROOT, "supabase/migrations");
+    const later = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql") && f > "20261015215000_a-lock-box-code-is-for-the-assigned-day.sql")
+      .sort();
+    for (const f of later)
+      expect(readFileSync(join(dir, f), "utf8"), f).not.toMatch(
+        /GRANT\s+(SELECT|ALL)[^;(]*\bON\s+(TABLE\s+)?(public\.)?properties\b[^;]*\b(authenticated|anon|PUBLIC)\b/i,
+      );
+  });
+
   it("keeps both reads off anon and leaves alarm_notes ungranted", () => {
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.stay_access_codes\(uuid\[\]\) FROM PUBLIC, anon;/);
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.property_access_codes\(uuid\[\]\) FROM PUBLIC, anon;/);
@@ -84,8 +111,9 @@ describe("the sit card", () => {
       expect(server).toMatch(new RegExp(`${col}: c\\?\\.${col} \\?\\? null`));
   });
 
-  it("the day's query never selects alarm_notes", () => {
+  it("the day's query never selects alarm_notes or the gate code", () => {
     for (const rel of ["src/lib/my-day.functions.ts", "src/lib/properties.functions.ts", "src/lib/clients.functions.ts"])
       expect(read(rel)).not.toMatch(/select\([^)]*alarm_notes/);
+    expect(read("src/lib/my-day.functions.ts")).not.toMatch(/\bgate_code\b/);
   });
 });

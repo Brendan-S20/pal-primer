@@ -1,8 +1,8 @@
 -- A stay's codes are for the stay's sitter, during the stay (#411 review,
 -- blocker 2).
 --
--- Walking already limits the lock box code, key location and key tag
--- (20261015215000): plain SELECT of those columns is revoked, and
+-- Walking already limits the gate code, lock box code, key location and key
+-- tag (20261015215000): plain SELECT of those columns is revoked, and
 -- property_access_codes returns them to the office or to a tech assigned to
 -- a visit there today. A stay is a home left empty for a week, so it gets
 -- the same shape with its own window:
@@ -29,9 +29,10 @@
 --
 -- properties.alarm_notes is new, and like the lock box code it is not
 -- granted to authenticated: 20261015215000 replaced the table grant with a
--- column list, and this column is left out of it on purpose. The gate code is
--- still a normal column; scooping reads it on every card. My Day reads a stay
--- visit's gate code from stay_access_codes and drops the plain one.
+-- column list, and this column is left out of it on purpose. The gate code
+-- keeps its place in property_access_codes: dropping the function must not
+-- drop it from the return, or nobody signed in could read it. My Day reads a
+-- stay visit's gate code from stay_access_codes, like its other codes.
 --
 -- Replays into an empty database: one column and two functions. No row is
 -- needed and no number is asserted.
@@ -55,13 +56,13 @@ COMMENT ON COLUMN public.properties.alarm_notes IS
 DROP FUNCTION IF EXISTS public.property_access_codes(uuid[]);
 
 CREATE FUNCTION public.property_access_codes(_property_ids uuid[])
-RETURNS TABLE (property_id uuid, lock_box_code text, key_location text, key_tag text, alarm_notes text)
+RETURNS TABLE (property_id uuid, gate_code text, lock_box_code text, key_location text, key_tag text, alarm_notes text)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
-  SELECT p.id, p.lock_box_code, p.key_location, p.key_tag, p.alarm_notes
+  SELECT p.id, p.gate_code, p.lock_box_code, p.key_location, p.key_tag, p.alarm_notes
     FROM public.properties p
     JOIN public.organizations o ON o.id = p.organization_id
    WHERE p.id = ANY (COALESCE(_property_ids, '{}'::uuid[]))
@@ -89,7 +90,7 @@ REVOKE ALL ON FUNCTION public.property_access_codes(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.property_access_codes(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.property_access_codes(uuid[]) IS
-  'Lock box code, key location, key tag and alarm details. Office (view_client_directory), or an active tech assigned to a scheduled or in-progress visit at the property today that is not a stay visit. Plain SELECT of these columns is revoked from authenticated. Migrations 20261015215000, 20261017010000.';
+  'Gate code, lock box code, key location, key tag and alarm details. Office (view_client_directory), or an active tech assigned to a scheduled or in-progress visit at the property today that is not a stay visit. Plain SELECT of these columns is revoked from authenticated. Migrations 20261015215000, 20261017010000.';
 
 CREATE OR REPLACE FUNCTION public.stay_access_codes(_stay_ids uuid[])
 RETURNS TABLE (
@@ -181,6 +182,14 @@ BEGIN
   END IF;
   IF has_column_privilege('authenticated', 'public.properties', 'lock_box_code', 'SELECT') THEN
     RAISE EXCEPTION 'authenticated can select properties.lock_box_code again';
+  END IF;
+  IF has_column_privilege('authenticated', 'public.properties', 'gate_code', 'SELECT')
+     OR has_column_privilege('anon', 'public.properties', 'gate_code', 'SELECT') THEN
+    RAISE EXCEPTION 'authenticated or anon can select properties.gate_code again';
+  END IF;
+  IF (SELECT prosrc FROM pg_proc WHERE oid = 'public.property_access_codes(uuid[])'::regprocedure)
+       !~ '\mp\.gate_code\M' THEN
+    RAISE EXCEPTION 'property_access_codes does not return the gate code';
   END IF;
   FOREACH _fn IN ARRAY ARRAY['public.property_access_codes(uuid[])', 'public.stay_access_codes(uuid[])'] LOOP
     IF to_regprocedure(_fn) IS NULL
