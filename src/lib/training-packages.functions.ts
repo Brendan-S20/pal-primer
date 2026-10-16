@@ -288,7 +288,7 @@ export const listTrainingBookingOptions = createServerFn({ method: "GET" })
         .select("id, street")
         .eq("client_id", data.clientId)
         .eq("organization_id", orgId)
-        .eq("active", true),
+        .is("archived_at", null),
       db
         .from("dogs")
         .select("id, name, property_id, properties!inner(client_id)")
