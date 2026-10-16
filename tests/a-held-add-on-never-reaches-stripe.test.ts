@@ -333,6 +333,22 @@ describe("a grandfathered add-on keeps its price across a yearly-to-monthly swit
     expect(added[0].price_data).toMatchObject({ unit_amount: 2900, recurring: { interval: "month" } });
   });
 
+  it.each(HELD_ADDON_SLUGS)(
+    "%s cannot get a replacement item through an interval change",
+    async (slug) => {
+      const updates = annualOrgWithOldPriority(9900);
+      tables.platform_addons[0].slug = slug;
+      const { createPlanSubscription } = await import("@/lib/billing.functions");
+      await expect(
+        createPlanSubscription({ data: { planId: LAUNCH, interval: "month" } }),
+      ).rejects.toThrow("This add-on isn't available yet.");
+      expect(updates).toEqual([]);
+      expect(writes).toEqual([]);
+      expect(stripeTouches).not.toContain("subscriptions.update");
+      expect(stripeTouches).not.toContain("subscriptionItems.create");
+    },
+  );
+
   it("reuses the catalog price when it is the same amount", async () => {
     const updates = annualOrgWithOldPriority(2900);
     const { createPlanSubscription } = await import("@/lib/billing.functions");

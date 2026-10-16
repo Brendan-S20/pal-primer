@@ -1,3 +1,4 @@
+import { addonPurchasable, ADDON_NOT_AVAILABLE } from "@/lib/addon-launch";
 import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -325,6 +326,22 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         const currentInterval: "month" | "year" =
           currentPlanItem?.price?.recurring?.interval === "year" ? "year" : "month";
         const intervalChanged = currentInterval !== targetInterval;
+        // An interval change replaces add-on items. Refuse before the update
+        // if that would attach a new Stripe item for a held feature.
+        if (intervalChanged) {
+          const heldProducts = new Set<string>();
+          for (const addon of addonRows ?? []) {
+            if (addon.stripe_product_id && !addonPurchasable(addon.slug)) {
+              heldProducts.add(addon.stripe_product_id);
+            }
+          }
+          const replacesHeldAddon = existingItems.some((item) => {
+            const product = item.price?.product;
+            const productId = typeof product === "string" ? product : product?.id;
+            return !!productId && heldProducts.has(productId);
+          });
+          if (replacesHeldAddon) throw new Error(ADDON_NOT_AVAILABLE);
+        }
 
         const itemUpdates: import("stripe").Stripe.SubscriptionUpdateParams.Item[] = [];
         let keptTargetPlanItem = false;

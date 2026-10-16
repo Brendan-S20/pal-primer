@@ -1,5 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
+import i18n from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
 import { reportBoundaryError } from "@/lib/monitoring/client";
@@ -9,7 +10,7 @@ import { reportBoundaryError } from "@/lib/monitoring/client";
  * its own errorComponent. Reports to Lovable and to error monitoring, and
  * offers retry.
  */
-export function RouteError({ error, reset }: { error: Error; reset: () => void }) {
+export function RouteError({ error, reset }: { error: unknown; reset: () => void }) {
   const router = useRouter();
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export function RouteError({ error, reset }: { error: Error; reset: () => void }
     >
       <h1 className="text-lg font-semibold">Something went wrong</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        {error.message || "This page hit an unexpected error."}
+        {(error instanceof Error && error.message) || "This page hit an unexpected error."}
       </p>
       <div className="mt-5 flex gap-2">
         <Button
@@ -36,9 +37,12 @@ export function RouteError({ error, reset }: { error: Error; reset: () => void }
         >
           Try again
         </Button>
-        <Button variant="outline" onClick={() => router.history.back()}>
-          Go back
-        </Button>
+        <a
+          href="/dashboard"
+          className="inline-flex min-h-11 items-center justify-center rounded-md border px-4 py-2 text-sm font-medium"
+        >
+          {i18n.t("recovery.dashboard")}
+        </a>
       </div>
     </div>
   );

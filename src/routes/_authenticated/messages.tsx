@@ -30,11 +30,12 @@ function NewMessagePicker({ onClose }: { onClose: () => void }) {
   });
   const needle = q.trim().toLowerCase();
   const matches = (((data as any)?.clients as any[]) ?? [])
-    .filter((c: any) =>
-      !needle ||
-      c.display_name?.toLowerCase().includes(needle) ||
-      c.primary_phone?.toLowerCase().includes(needle) ||
-      c.primary_email?.toLowerCase().includes(needle),
+    .filter(
+      (c: any) =>
+        !needle ||
+        c.display_name?.toLowerCase().includes(needle) ||
+        c.primary_phone?.toLowerCase().includes(needle) ||
+        c.primary_email?.toLowerCase().includes(needle),
     )
     .slice(0, 8);
 
@@ -120,18 +121,20 @@ function MessagesLayout() {
               tooltip, so on a phone the way to start a conversation was an
               unnamed glyph, and the empty state told people to press a
               "+ button" that is drawn as a speech bubble. */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="touch:min-h-11"
-            aria-expanded={composing}
-            disabled={!texting}
-            title={texting ? undefined : "Texting your clients is coming soon"}
-            onClick={() => setComposing((v) => !v)}
-          >
-            <MessageSquarePlus className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            New message
-          </Button>
+          {texting && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="touch:min-h-11"
+              aria-expanded={composing}
+              disabled={!texting}
+              title={texting ? undefined : "Texting your clients is coming soon"}
+              onClick={() => setComposing((v) => !v)}
+            >
+              <MessageSquarePlus className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              New message
+            </Button>
+          )}
         </div>
         {composing && texting && <NewMessagePicker onClose={() => setComposing(false)} />}
         <div className="max-h-[70vh] overflow-y-auto">

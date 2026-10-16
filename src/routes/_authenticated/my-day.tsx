@@ -32,7 +32,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { getMyDay, listMyDayFieldStaff } from "@/lib/my-day.functions";
+import { getMyDay, getMyUpcomingDays, listMyDayFieldStaff } from "@/lib/my-day.functions";
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
@@ -260,6 +260,7 @@ function MyDay() {
   );
 
   const fn = useServerFn(getMyDay);
+  const upcomingFn = useServerFn(getMyUpcomingDays);
   const qc = useQueryClient();
   const online = useOnline();
   // "Saved 4 hr ago" has to keep counting while a tech sits in a dead zone —
@@ -482,6 +483,15 @@ function MyDay() {
   // (H1: skipped is not done; BUG-17: an open job outranks the next scheduled
   // one) live in lib/my-day-progress.ts, where they are tested.
   const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
+  const upcomingDays = useQuery({
+    queryKey: ["my-upcoming-days"],
+    queryFn: () => upcomingFn({ data: {} }),
+    enabled: !!staff && !previewing && visits.length === 0,
+    staleTime: 60_000,
+  });
+  const nextWorkday = ((upcomingDays.data?.days ?? []) as { date: string }[]).find(
+    (d) => d.date > day,
+  );
 
   // The route on the iPhone lock screen is not driven from here any more: the
   // signed-in layout runs it (RouteLockScreenHost, my-day/RouteLockScreen
@@ -811,7 +821,11 @@ function MyDay() {
                   list and a folded map, which are not far apart at 16px. Still
                   44px tall -- the height is now the padding plus the label
                   rather than a fixed square, so min-h-11 states it outright. */}
-              <div className="flex shrink-0 rounded-lg border p-0.5" role="group" aria-label={t("myDay.view")}>
+              <div
+                className="flex shrink-0 rounded-lg border p-0.5"
+                role="group"
+                aria-label={t("myDay.view")}
+              >
                 {(["list", "map"] as const).map((v) => (
                   <button
                     key={v}
@@ -898,9 +912,7 @@ function MyDay() {
             place: work today and nobody on the clock. "You're off the clock"
             and Clock in, one tap, queued with no signal. On the clock, or on
             any other day, it is not drawn and the list starts right here. */}
-        {staff && !previewing && day === orgTodayIso && (
-          <OffTheClockBanner visitsToday={total} />
-        )}
+        {staff && !previewing && day === orgTodayIso && <OffTheClockBanner visitsToday={total} />}
         {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}
@@ -923,6 +935,11 @@ function MyDay() {
                   })
                 : t("myDay.nothingScheduled")}
             </p>
+            {!previewing && nextWorkday && (
+              <p className="mt-2 text-xs">
+                {t("myDay.nextWorkdayHint", { day: formatDay(nextWorkday.date, locale) })}
+              </p>
+            )}
             <Button asChild variant="outline" size="sm" className="mt-4">
               {/* /routes is OFFICE-ONLY. ROUTE_ROLES does not grant it to a
                   tech, so RoleGuard bounced them straight back here with a red
@@ -1733,6 +1750,33 @@ function VisitCard({
       toast.error(e.message);
     },
   });
+  const completeToast = (r: { queued: boolean; result?: unknown }) => {
+    if (r.queued) return t("visit.completeQueued");
+    const summary = (r.result as any)?.notificationSummary as
+      | { sent?: string[]; pending?: boolean }
+      | undefined;
+    const sent = summary?.sent ?? [];
+    const labels = sent
+      .map((name) =>
+        name === "completion_email"
+          ? t("visit.noticeCompletionEmail")
+          : name === "push"
+            ? t("visit.noticePush")
+            : name === "review_sms"
+              ? t("visit.noticeReviewSms")
+              : name === "review_email"
+                ? t("visit.noticeReviewEmail")
+                : name,
+      )
+      .join(", ");
+    if (summary?.pending) {
+      return sent.length > 0
+        ? t("visit.completedWithNoticesPending", { notices: labels })
+        : t("visit.completedNoticePending");
+    }
+    if (sent.length === 0) return t("visit.completedNoNotices");
+    return t("visit.completedWithNotices", { notices: labels });
+  };
   const complete = useMutation({
     mutationFn: () =>
       actions.complete({
@@ -1748,7 +1792,7 @@ function VisitCard({
     onSuccess: (r) => {
       haptic("success");
       showCompletionCheck();
-      toast.success(r.queued ? t("visit.completeQueued") : t("visit.completed"));
+      toast.success(completeToast(r));
       setCheckedItems([]);
       setNote("");
       setNoteOpen(false);
@@ -2372,6 +2416,19 @@ function VisitCard({
         </div>
       )}
 
+      {/* On a stop not yet started it waits under More options with the
+          other occasional actions; once the visit is under way or done, it
+          is here on the card. */}
+      {!collapsed && !scheduled && visit.client_id && (
+        <Link
+          to="/clients/$clientId"
+          params={{ clientId: visit.client_id }}
+          className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-semibold transition-colors hover:bg-accent active:bg-accent"
+        >
+          <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("visit.clientInfo")}
+        </Link>
+      )}
+
       {!collapsed && photos.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {photos.map((ph: any, i: number) => (
@@ -2517,10 +2574,10 @@ function VisitCard({
               above. */}
           {underWay && photoCapture()}
 
-          {/* The owner's checklist, once the visit is under way. Complete
-              waits for its required items. Absent entirely for an org with
-              no checklist. */}
-          {underWay && canPerformVisit && checklist.length > 0 && (
+          {/* The owner's checklist is visible on the open stop before Complete
+              can be pressed. Complete waits for its required items. Absent
+              entirely for an org with no checklist. */}
+          {canPerformVisit && checklist.length > 0 && (
             <fieldset className="space-y-0.5 rounded-lg border p-1.5">
               <legend className="px-1.5 text-xs font-semibold uppercase text-muted-foreground">
                 {t("visit.checklist")}
@@ -2652,6 +2709,16 @@ function VisitCard({
                   >
                     {t("visit.dnaSample")}
                   </Button>
+                )}
+                {scheduled && visit.client_id && (
+                  <Link
+                    to="/clients/$clientId"
+                    params={{ clientId: visit.client_id }}
+                    className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent sm:h-8 sm:px-3"
+                  >
+                    <ListIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    {t("visit.clientInfo")}
+                  </Link>
                 )}
                 {canText && visit.clients?.primary_phone && (
                   <Button

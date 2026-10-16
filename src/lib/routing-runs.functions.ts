@@ -27,35 +27,6 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
 }
 
-/**
- * The Worker's waitUntil, if this request has one.
- *
- * On Cloudflare, Nitro puts the ExecutionContext's waitUntil on the incoming
- * Request (nitro's cloudflare `augmentReq`); monitoring/report.server.ts
- * relies on the same thing. Without it (Node in dev, vitest) the run is just
- * awaited, which in Node keeps going after a disconnect anyway.
- */
-async function keepAliveForThisRequest(): Promise<(job: Promise<unknown>) => void> {
-  try {
-    const { getRequest } = await import("@tanstack/react-start/server");
-    const request = getRequest() as
-      (Request & { waitUntil?: (p: Promise<unknown>) => void }) | null;
-    const waitUntil = request?.waitUntil;
-    if (typeof waitUntil === "function") {
-      return (job) => {
-        try {
-          waitUntil.call(request, job);
-        } catch {
-          /* awaited by the caller regardless */
-        }
-      };
-    }
-  } catch {
-    /* not inside a request: nothing to extend */
-  }
-  return () => {};
-}
-
 export const startRoutingRun = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -98,10 +69,12 @@ export const startRoutingRun = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
+    // The Worker's waitUntil (lib/keep-alive.server.ts). Without one (Node in
+    // dev, vitest) the run is just awaited.
     const [{ startAndRunAutoRouting }, { notifyUsers }, keepAlive] = await Promise.all([
       import("@/lib/auto-routing.server"),
       import("@/lib/notify-center.server"),
-      keepAliveForThisRequest(),
+      import("@/lib/keep-alive.server").then((m) => m.keepAliveForThisRequest()),
     ]);
     const { runId, ...input } = data;
     return startAndRunAutoRouting({

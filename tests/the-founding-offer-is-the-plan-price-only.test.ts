@@ -52,10 +52,15 @@ describe("the count and the banner", () => {
     expect(placesLeft(3, { times_redeemed: 30, max_redemptions: 30 })).toBe(0);
   });
 
-  it("says the spec's sentence, with the count in place of {X}", () => {
+  it("hides the remaining count until half the places are claimed", () => {
     expect(foundingBannerText(13)).toBe(
-      "Founding customers: the first 20 paying accounts get 30% off their plan price for as long as they stay subscribed. Extra people and add-ons are billed at regular price. Use code LAUNCH20 at checkout. 13 of 20 left.",
+      "Founding pricing: the first 20 paying accounts get 30% off their plan price for as long as they stay subscribed. Extra people and add-ons are billed at regular price. Use code LAUNCH20 at checkout.",
     );
+  });
+
+  it("shows the real count when few places remain", () => {
+    expect(foundingBannerText(10)).toContain("10 of 20 left.");
+    expect(foundingBannerText(20)).not.toContain("20 of 20 left");
   });
 
   it("matches the code however it is typed", () => {
@@ -66,7 +71,7 @@ describe("the count and the banner", () => {
 
   it("is never computed in the browser", () => {
     const ui = readFileSync(join(import.meta.dirname, "..", "src/components/billing/PlanPicker.tsx"), "utf8");
-    expect(ui).toMatch(/foundingBannerText\(founding\.left\)/);
+    expect(ui).toMatch(/foundingBannerText\(founding\.left,/);
     expect(ui).not.toMatch(/FOUNDING_SPOTS|times_redeemed|20\s*-\s*/);
   });
 

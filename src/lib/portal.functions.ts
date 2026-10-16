@@ -1,3 +1,4 @@
+import { addonPurchasable } from "@/lib/addon-launch";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { PortalSession } from "@/lib/portal-auth.server";
@@ -107,10 +108,18 @@ export const portalContext = createServerFn({ method: "GET" })
     const client = rows?.[0];
     if (!client)
       return { verified: false as const, valid: false as const, channels: [], branding: null };
+    // Can this business text its clients yet? The same answer the sign-in
+    // form uses. The account page's text opt-in says "coming soon" until it
+    // can, rather than offering texts that are never sent.
+    const { smsOtpDeliverable } = await portalAuth();
+    const textsLive =
+      addonPurchasable("managed-sms") &&
+      (await smsOtpDeliverable(contact.organizationId).catch(() => false));
     return {
       verified: true as const,
       valid: true as const,
       client,
+      textsLive,
       branding: contact.branding,
       // A staff preview: the portal shows a banner and the server refuses
       // every action (requirePortalSession).
