@@ -31,12 +31,17 @@ const dnaStatus = z.enum(["not_registered", "pending", "registered"]);
 // A pet that is not a dog (#411). Omitted, a new row is a dog.
 const species = z.enum(PET_SPECIES);
 const speciesNote = z.string().max(SPECIES_NOTE_MAX).optional().nullable();
+// The pet's vet, for the sitter (#411). Omitted leaves the stored value.
+const vetClinicName = z.string().max(200).optional().nullable();
+const vetClinicPhone = z.string().max(40).optional().nullable();
 
 const addDogSchema = z.object({
   propertyId: z.string().uuid(),
   name: z.string().min(1).max(80),
   species: species.optional(),
   speciesNote,
+  vetClinicName,
+  vetClinicPhone,
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
   temperament: temperament.optional(),
@@ -88,6 +93,8 @@ export const addDog = createServerFn({ method: "POST" })
         name: dogName,
         species: data.species ?? "dog",
         species_note: cleanSpeciesNote(data.species ?? "dog", data.speciesNote),
+        vet_clinic_name: data.vetClinicName?.trim() || null,
+        vet_clinic_phone: data.vetClinicPhone?.trim() || null,
         breed: data.breed || null,
         weight_class: data.weightClass || null,
         temperament: data.temperament ?? "unknown",
@@ -127,6 +134,8 @@ const editDogSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   species: species.optional(),
   speciesNote,
+  vetClinicName,
+  vetClinicPhone,
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
   temperament: temperament.optional(),
@@ -195,6 +204,9 @@ export const updateDog = createServerFn({ method: "POST" })
       patch.species = data.species;
       patch.species_note = cleanSpeciesNote(data.species, data.speciesNote);
     }
+    if (data.vetClinicName !== undefined) patch.vet_clinic_name = data.vetClinicName?.trim() || null;
+    if (data.vetClinicPhone !== undefined)
+      patch.vet_clinic_phone = data.vetClinicPhone?.trim() || null;
     if (data.breed !== undefined) patch.breed = data.breed || null;
     if (data.weightClass !== undefined) patch.weight_class = data.weightClass || null;
     if (data.temperament !== undefined) patch.temperament = data.temperament;

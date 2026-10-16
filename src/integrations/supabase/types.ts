@@ -1163,6 +1163,9 @@ export type Database = {
           display_name: string
           dna_compliance_enabled: boolean
           email_opt_out: boolean
+          emergency_contact_may_approve_vet: boolean
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
           first_name: string | null
           id: string
           import_batch_id: string | null
@@ -1190,6 +1193,7 @@ export type Database = {
           stripe_customer_id: string | null
           tags: string[]
           updated_at: string
+          vet_treatment_limit_cents: number | null
         }
         Insert: {
           tax_exempt?: boolean
@@ -1216,6 +1220,9 @@ export type Database = {
           display_name: string
           dna_compliance_enabled?: boolean
           email_opt_out?: boolean
+          emergency_contact_may_approve_vet?: boolean
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           first_name?: string | null
           id?: string
           import_batch_id?: string | null
@@ -1243,6 +1250,7 @@ export type Database = {
           stripe_customer_id?: string | null
           tags?: string[]
           updated_at?: string
+          vet_treatment_limit_cents?: number | null
         }
         Update: {
           tax_exempt?: boolean
@@ -1269,6 +1277,9 @@ export type Database = {
           display_name?: string
           dna_compliance_enabled?: boolean
           email_opt_out?: boolean
+          emergency_contact_may_approve_vet?: boolean
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
           first_name?: string | null
           id?: string
           import_batch_id?: string | null
@@ -1296,6 +1307,7 @@ export type Database = {
           stripe_customer_id?: string | null
           tags?: string[]
           updated_at?: string
+          vet_treatment_limit_cents?: number | null
         }
         Relationships: [
           {
@@ -1534,6 +1546,8 @@ export type Database = {
           temperament: Database["public"]["Enums"]["dog_temperament"]
           unit_id: string | null
           unit_review_needed: boolean
+          vet_clinic_name: string | null
+          vet_clinic_phone: string | null
           weight_class: string | null
         }
         Insert: {
@@ -1555,6 +1569,8 @@ export type Database = {
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
           unit_review_needed?: boolean
+          vet_clinic_name?: string | null
+          vet_clinic_phone?: string | null
           weight_class?: string | null
         }
         Update: {
@@ -1576,6 +1592,8 @@ export type Database = {
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
           unit_review_needed?: boolean
+          vet_clinic_name?: string | null
+          vet_clinic_phone?: string | null
           weight_class?: string | null
         }
         Relationships: [
@@ -8700,6 +8718,10 @@ export type Database = {
           property_id: string
           stay_id: string
         }[]
+      }
+      stay_contact_gaps: {
+        Args: { _stay_id: string }
+        Returns: string[]
       }
       service_line_item_name: {
         Args: { _fallback?: string; _service_name: string }
