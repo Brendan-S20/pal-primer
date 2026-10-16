@@ -4,34 +4,9 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// QA-P2. `/settings/payments` blank-rendered on roughly one cold load in four:
-// the URL rewrote to /payments, the main area held zero characters, and the
-// console carried an unhandled `undefined` beside React's "An error occurred
-// in the <MatchInnerImpl> component".
-//
-// That route is a pure alias — `beforeLoad` throws a redirect and there is
-// nothing else to it — so it was written with NO component. Five of them were.
-// A route with no component gets the router's default, which renders an
-// `<Outlet />`; on a LEAF route that Outlet has nothing beneath it, so the
-// page is empty by construction the moment anything renders the match instead
-// of redirecting.
-//
-// ── WHAT THIS FILE IS FOR ─────────────────────────────────────────────────
-//
-// Not for proving the race. That was intermittent, seen on a dev server, and
-// is a timing interaction this environment has no browser to reproduce —
-// guessing at it and shipping a change that "should" help is how a plausible
-// edit gets mistaken for a fix.
-//
-// It is for the invariant underneath it, which IS checkable and was violated
-// in five places: a route that can render must have something to render. The
-// next alias someone adds will be written the same way the last five were.
-//
-// The stakes are why it is worth a test rather than a comment: this particular
-// stub exists to catch Stripe Connect onboarding return URLs, so the one in
-// four lands on someone coming back from Stripe mid-onboarding — at the moment
-// they are deciding whether to trust us with their payouts — as a white screen
-// with no message and no way forward.
+// Server-rendered redirects still need a visible fallback for client navigation.
+// Client-only aliases use that component as their primary navigation path.
+// The hydration race itself is covered by settings-survives-a-cold-load.spec.ts.
 
 const ROUTES = fileURLToPath(new URL("../src/routes", import.meta.url));
 

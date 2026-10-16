@@ -62,6 +62,7 @@ import { Logo } from "@/components/Logo";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useCommercialAccounts, useServiceLines } from "@/components/CommercialOnly";
+import { useClientTexting } from "@/hooks/useClientTexting";
 
 export type NavItem = {
   title: string;
@@ -81,6 +82,11 @@ export type NavItem = {
    *  is a page about locations they do not have. Unlike `commercialOnly` this
    *  fails CLOSED while the answer is unknown: see `useNavVisibility`. */
   franchiseParentOnly?: boolean;
+  /** Only shown once this business can text its own clients
+   *  (useClientTexting, lib/client-texting). Until then the page behind it is
+   *  a "coming soon" with nothing to do on it. Fails CLOSED while loading,
+   *  like the texting controls themselves. */
+  textingOnly?: boolean;
   /** Other pages this entry stands for, so it stays highlighted there. Reports
    *  is one entry for three pages (see components/ReportsNav). */
   alsoActiveOn?: readonly string[];
@@ -133,7 +139,7 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // customers, and neither is open to a technician (ROUTE_ROLES gives
       // both to owner, office manager and dispatcher only), so for the one
       // role Field exists for they were never in it at all.
-      { title: "Messages", url: "/messages", icon: MessageSquare },
+      { title: "Messages", url: "/messages", icon: MessageSquare, textingOnly: true },
       { title: "Leads", url: "/leads", icon: UserPlus },
       { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
       { title: "Campaigns", url: "/campaigns", icon: Megaphone },
@@ -267,6 +273,8 @@ export type NavVisibility = {
   franchiseParent: boolean;
   /** organizations.service_lines includes pet_waste. */
   petWaste: boolean;
+  /** This business can text its own clients (useClientTexting). */
+  texting: boolean;
 };
 
 /** A nav entry's name in the interface language: `nav.item.<url without the
@@ -299,7 +307,8 @@ export function useNavVisibility(): NavVisibility {
   // that opted out of clutter. Here, falling open would put a Royalties entry
   // in front of every single-location business on a slow request — which is
   // precisely what hiding it was meant to prevent.
-  return { commercialEnabled, franchiseParent: ctx.data?.isParent === true, petWaste };
+  const texting = useClientTexting();
+  return { commercialEnabled, franchiseParent: ctx.data?.isParent === true, petWaste, texting };
 }
 
 export function isNavItemVisible(
@@ -312,7 +321,8 @@ export function isNavItemVisible(
     (!it.commercialOnly || v.commercialEnabled) &&
     (!it.petWasteOnly || v.petWaste) &&
     (!it.franchiseParentOnly || v.franchiseParent) &&
-    (!it.officeOnly || role !== "tech")
+    (!it.officeOnly || role !== "tech") &&
+    (!it.textingOnly || v.texting)
   );
 }
 

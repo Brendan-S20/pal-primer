@@ -209,6 +209,16 @@ function SignedInApp() {
 }
 
 function AppShell() {
+  const redirecting = useMatches({
+    select: (matches) => matches.some((match) => match.staticData.clientRedirect),
+  });
+  // An alias has no page to preload links for. Mount the shell at the target,
+  // so its render-time preloads cannot race the alias replacing their matches.
+  if (redirecting) return <Outlet />;
+  return <WorkspaceShell />;
+}
+
+function WorkspaceShell() {
   const router = useRouter();
   const { signOut, dialog: signOutDialog } = useOfflineSignOut();
   // Which optional header controls this person keeps. Answered from the

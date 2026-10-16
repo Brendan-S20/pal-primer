@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarDays, Sparkles, ArrowRight, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/portal/$slug/$token/")({
 });
 
 function PortalHome() {
+  const copy = useLaunchCopy();
   const { token, slug, visitsQ, historyQ, invoicesQ, clientQ } = usePortalCtx();
   // ETAs are instants and print on the ORG's clock, not the reader's device.
   const tz = usePortalTimezone();
@@ -80,7 +82,7 @@ function PortalHome() {
           <EmptyBox
             icon={<CalendarDays className="h-6 w-6 shrink-0" />}
             title="No visits scheduled"
-            body="Text us to get on the route."
+            body={copy("Call or email us to schedule a visit.")}
           />
         )}
       </section>

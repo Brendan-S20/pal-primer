@@ -1,3 +1,4 @@
+import { launchCopy, useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ export const Route = createFileRoute("/_authenticated/help")({
 // Inline renderer for article text: [label](article:slug) links to another
 // article, [label](/path) links into the app, **bold** is bold.
 function renderInline(text: string): ReactNode[] {
+  text = launchCopy(text);
   const parts: ReactNode[] = [];
   const regex = /(\[[^\]]+\]\((?:article:[\w-]+|\/[^)]*)\)|\*\*[^*]+\*\*)/g;
   let lastIndex = 0;
@@ -69,6 +71,7 @@ function renderInline(text: string): ReactNode[] {
 }
 
 function HelpPage() {
+  const copy = useLaunchCopy();
   const { article: activeSlug } = Route.useSearch();
   const [q, setQ] = useState("");
   const active = getArticle(activeSlug);
@@ -139,7 +142,7 @@ function HelpPage() {
                               : "text-muted-foreground hover:bg-muted hover:text-foreground"
                           }`}
                         >
-                          {a.title}
+                          {copy(a.title)}
                         </Link>
                       </li>
                     ))}
@@ -167,7 +170,7 @@ function HelpPage() {
                   <Badge variant="secondary">{active.section}</Badge>
                   {active.audience && <Badge variant="outline">{active.audience}</Badge>}
                 </div>
-                <h2 className="text-xl font-semibold">{active.title}</h2>
+                <h2 className="text-xl font-semibold">{copy(active.title)}</h2>
                 <div className="mt-3 space-y-3 text-sm leading-relaxed">
                   {active.body.map((p, i) => (
                     <p key={i}>{renderInline(p)}</p>
@@ -245,7 +248,7 @@ function HelpPage() {
                             search={{ article: slug }}
                             className="rounded-lg border p-3 text-sm transition-colors hover:border-primary hover:bg-muted/50"
                           >
-                            <span className="font-medium">{a.title}</span>
+                            <span className="font-medium">{copy(a.title)}</span>
                             <span className="mt-0.5 block text-xs text-muted-foreground">
                               {a.section}
                               {a.steps ? ` · ${a.steps.length} steps` : ""}

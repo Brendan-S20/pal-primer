@@ -147,6 +147,12 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
 
 export function canAccess(role: AppRole | null, path: string): boolean {
   if (!role) return false;
+  if (
+    role === "tech" &&
+    /^\/clients\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(path)
+  ) {
+    return true;
+  }
   const key = Object.keys(ROUTE_ROLES).find((k) => path === k || path.startsWith(k + "/"));
   if (!key) return true;
   return ROUTE_ROLES[key].includes(role);
