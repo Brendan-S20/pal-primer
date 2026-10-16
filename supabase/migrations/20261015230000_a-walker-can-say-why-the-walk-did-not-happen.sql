@@ -37,6 +37,9 @@ $$;
 COMMENT ON FUNCTION public.default_skip_billable_pct(public.skip_reason_code) IS
   'Default percent of the visit price still billed when a visit is skipped for this reason. key_failed and no_one_home bill like the other access reasons. dog_unwell does not.';
 
+REVOKE ALL ON FUNCTION public.default_skip_billable_pct(public.skip_reason_code) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.default_skip_billable_pct(public.skip_reason_code) TO authenticated, service_role;
+
 DO $check$
 DECLARE
   _label text;
