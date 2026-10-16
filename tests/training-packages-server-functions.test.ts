@@ -31,6 +31,7 @@ vi.mock("@/lib/authz.server", () => ({
 }));
 vi.mock("@/lib/manual-invoice.server", () => ({ insertManualInvoice: mocks.invoice }));
 vi.mock("@/lib/estimate.server", () => ({ recomputePropertyEstimate: mocks.estimate }));
+vi.mock("@/lib/training-portal.server", () => ({ afterLessonSessionChange: async () => {} }));
 
 import {
   bookOneSession,
@@ -619,9 +620,13 @@ describe("no-show and late-cancel rules", () => {
     expect(await getTrainingSessionRules()).toEqual({
       lateCancelHours: 24,
       missedUsesSession: true,
+      // The portal sharing setting is on unless the business turned it off.
+      shareProgress: true,
     });
     db = fake();
     await saveTrainingSessionRules({ data: { lateCancelHours: 12, missedUsesSession: false } });
+    // Left out, the sharing setting is not touched.
+    expect(db.calls.some((c) => c.table === "set_training_share_progress")).toBe(false);
     expect(mocks.permission).toHaveBeenCalledWith(db.client, "owner-user", "manage_settings");
     expect(db.calls).toContainEqual({
       table: "set_training_session_rules",
@@ -633,6 +638,15 @@ describe("no-show and late-cancel rules", () => {
       { lateCancelHours: 169, missedUsesSession: true },
     ])
       await expect(saveTrainingSessionRules({ data: bad })).rejects.toThrow();
+    db = fake();
+    await saveTrainingSessionRules({
+      data: { lateCancelHours: 24, missedUsesSession: true, shareProgress: false },
+    });
+    expect(db.calls).toContainEqual({
+      table: "set_training_share_progress",
+      op: "rpc",
+      args: [{ _org_id: "org-a", _share: false }],
+    });
   });
   it("lets the office override a missed or skipped package lesson, and nothing else", async () => {
     let db = fake();

@@ -240,13 +240,15 @@ export const getTrainingSessionRules = createServerFn({ method: "GET" })
     const { orgId } = await resolveCaller(db, context.userId);
     const { data, error } = await db
       .from("organizations")
-      .select("training_late_cancel_hours, training_missed_uses_session")
+      .select("training_late_cancel_hours, training_missed_uses_session, training_share_progress")
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
     return {
       lateCancelHours: data.training_late_cancel_hours as number,
       missedUsesSession: data.training_missed_uses_session as boolean,
+      /** Whether the client portal shows lesson notes and homework. */
+      shareProgress: data.training_share_progress !== false,
     };
   });
 
@@ -257,6 +259,7 @@ export const saveTrainingSessionRules = createServerFn({ method: "POST" })
       .object({
         lateCancelHours: z.number().int().min(0).max(168),
         missedUsesSession: z.boolean(),
+        shareProgress: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -270,7 +273,84 @@ export const saveTrainingSessionRules = createServerFn({ method: "POST" })
       _missed_uses_session: data.missedUsesSession,
     });
     if (result.error) throw new Error(result.error.message);
+    if (data.shareProgress !== undefined) {
+      const shared = await db.rpc("set_training_share_progress", {
+        _org_id: orgId,
+        _share: data.shareProgress,
+      });
+      if (shared.error) throw new Error(shared.error.message);
+    }
     return { ok: true as const };
+  });
+
+/**
+ * Book the lesson a client asked for in the portal, on the day and at the
+ * time they asked, from the package they asked from, and resolve the request
+ * so the portal shows it booked. The booking is bookOneSession's
+ * (bookTrainingSessions), so every package rule applies; no trainer is
+ * assigned here, and the office assigns one on the schedule.
+ */
+export const bookLessonRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ ticketId: id }).parse(d))
+  .handler(async ({ data, context }) => {
+    const db = context.supabase as TrainingDb;
+    const orgId = await requireTrainingOffice(db, context.userId);
+    const { data: ticket, error } = await db
+      .from("qc_tickets")
+      .select(
+        "id, category, client_package_id, property_id, requested_on, requested_time, booked_visit_id, status",
+      )
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!ticket || ticket.category !== "training_lesson_request")
+      throw new Error("That lesson request isn't in your organization.");
+    if (ticket.booked_visit_id) throw new Error("This request already has a lesson booked for it.");
+    if (ticket.status === "resolved") throw new Error("This request was already answered.");
+    if (!ticket.client_package_id || !ticket.property_id || !ticket.requested_on)
+      throw new Error("This request no longer names a package and an address. Book it by hand.");
+    const startTime = ticket.requested_time?.slice(0, 5) ?? null;
+    const booked = await bookTrainingSessions(
+      db,
+      context.userId,
+      {
+        clientPackageId: ticket.client_package_id,
+        propertyId: ticket.property_id,
+        startOn: ticket.requested_on,
+        weekday: new Date(`${ticket.requested_on}T00:00:00Z`).getUTCDay(),
+        startTime,
+      },
+      true,
+    );
+    const { data: visit, error: visitError } = await db
+      .from("visits")
+      .select("id")
+      .eq("subscription_id", booked.subscriptionId)
+      .eq("organization_id", orgId)
+      .limit(1)
+      .maybeSingle();
+    if (visitError) throw new Error(visitError.message);
+    if (!visit) throw new Error("The lesson was not added to the schedule. Check the package.");
+    const { formatDay } = await import("@/lib/format");
+    const when = `${formatDay(ticket.requested_on)}${startTime ? ` at ${startTime}` : ""}`;
+    const { data: linked, error: linkError } = await db
+      .from("qc_tickets")
+      .update({
+        booked_visit_id: visit.id,
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        resolved_by: context.userId,
+        resolution_note: `Booked for ${when}.`,
+      })
+      .eq("id", ticket.id)
+      .eq("organization_id", orgId)
+      .select("id");
+    if (linkError) throw new Error(linkError.message);
+    if (!linked || linked.length === 0)
+      throw new Error("The lesson was booked, but it couldn't be linked to the request.");
+    return { ok: true as const, visitId: visit.id as string, scheduledOn: ticket.requested_on };
   });
 
 /** The office override on a missed or skipped package lesson. The database
@@ -292,6 +372,8 @@ export const setLessonSessionUse = createServerFn({ method: "POST" })
       .maybeSingle();
     if (result.error) throw new Error(result.error.message);
     if (!result.data) throw new Error("Only a missed or skipped package lesson can change this.");
+    const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
+    await afterLessonSessionChange(data.visitId);
     return { ok: true as const };
   });
 
