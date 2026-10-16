@@ -1,21 +1,32 @@
 // Book a groom for pets the office already has on file.
 //
 // One path for a single appointment and for every N weeks. The price and the
-// length are the quote for these pets and these add-ons (groomQuote), stored
-// on the visit so the route planner and the invoice read the same numbers.
+// length are the quote for these pets and these add-ons (groomQuote) plus the
+// business's setup and cleanup minutes. They are stored on the plan, and the
+// database copies them onto every visit the plan generates, so the route
+// planner and the invoice read the same numbers on the tenth groom as on the
+// first.
 // A customer cannot reach this: the portal, public signup and the receptionist
 // leave mobile grooming out.
 
 import {
+  clockMinutes,
   COAT_TYPES,
+  groomClashes,
+  groomHoldMinutes,
+  groomPlanSummary,
   groomQuote,
-  groomQuoteSummary,
+  groomRepeatDates,
+  openGroomStarts,
   petSize,
   type CoatType,
   type PetSize,
 } from "@/lib/groom";
-import { groomVaccineDecision, vaccineStatus, type VaccineRule } from "@/lib/vaccines";
+import { groomVaccineCheck, type VaccineRule } from "@/lib/vaccines";
 import { loadVaccineSettings } from "@/lib/vaccines.server";
+
+/** How far ahead a booking checks vaccines and the groomer's other grooms. */
+export const PLAN_CHECK_DAYS = 365;
 
 export type BookGroomInput = {
   orgId: string;
@@ -26,6 +37,8 @@ export type BookGroomInput = {
   petIds: string[];
   addons: { addonServiceId: string; quantity: number }[];
   scheduledOn: string;
+  /** "HH:MM" on the business's clock. */
+  startTime: string;
   /** Null is one appointment. 6 is every 42 days. */
   everyWeeks: number | null;
   staffId: string | null;
@@ -37,6 +50,8 @@ export type BookGroomResult = {
   visitId: string;
   subscriptionId: string;
   scheduledOn: string;
+  startTime: string;
+  /** The full hold: pets, add-ons, setup and cleanup. */
   minutes: number;
   cents: number;
   summary: string;
@@ -71,6 +86,7 @@ export async function bookGroomAppointment(
 ): Promise<BookGroomResult> {
   const petIds = [...new Set(input.petIds)];
   if (petIds.length === 0) throw new Error("Choose at least one pet at this address.");
+  if (clockMinutes(input.startTime) == null) throw new Error("Pick a start time for this groom.");
 
   const { data: client, error: cErr } = await db
     .from("clients")
@@ -182,6 +198,10 @@ export async function bookGroomAppointment(
   const petCents = quote.pets.reduce((sum, pet) => sum + (pet.cents ?? 0), 0);
 
   const settings = await loadVaccineSettings(db, input.orgId);
+  const holdMinutes = groomHoldMinutes(quote.minutes, settings.bufferMin);
+  // Each groom the plan will land on in the next year, checked on its own date.
+  const dates = groomRepeatDates(input.scheduledOn, input.everyWeeks, PLAN_CHECK_DAYS);
+
   if (settings.enabled && settings.rule !== "off") {
     const { data: records, error: vErr } = await db
       .from("pet_vaccinations")
@@ -195,18 +215,70 @@ export async function bookGroomAppointment(
       list.push(row);
       byDog.set(row.dog_id, list);
     }
-    let warn = false;
+    let warnOn: string | null = null;
     for (const id of petIds) {
-      const status = vaccineStatus(byDog.get(id) ?? [], settings.required, input.scheduledOn);
-      const decision = groomVaccineDecision(settings.rule as VaccineRule, status);
-      if (decision === "block")
+      const check = groomVaccineCheck(
+        byDog.get(id) ?? [],
+        settings.required,
+        settings.rule as VaccineRule,
+        dates,
+      );
+      if (check.decision === "block")
         throw new Error(
           "A required vaccine is expired or missing, and this business blocks the booking until it is current.",
         );
-      if (decision === "warn") warn = true;
+      if (
+        check.decision === "warn" &&
+        check.firstFlaggedOn &&
+        (!warnOn || check.firstFlaggedOn < warnOn)
+      )
+        warnOn = check.firstFlaggedOn;
     }
-    if (warn && !input.acknowledgeWarning)
-      throw new Error("Confirm the vaccine warning to book this groom.");
+    if (warnOn && !input.acknowledgeWarning)
+      throw new Error(
+        `A required vaccine is expired, missing or not yet verified for the groom on ${warnOn}. Confirm the vaccine warning to book this groom.`,
+      );
+  }
+
+  // One van is one groomer: two grooms for the same groomer cannot share a
+  // minute. The first date refuses; a later repeat that collides is reported.
+  const clashOn: string[] = [];
+  {
+    let q = db
+      .from("visits")
+      .select("id, scheduled_on, start_time, duration_min, groom_summary")
+      .eq("organization_id", input.orgId)
+      .in("scheduled_on", dates)
+      .in("status", ["scheduled", "in_progress", "completed"])
+      .not("start_time", "is", null);
+    q = input.staffId ? q.eq("assigned_staff_id", input.staffId) : q.is("assigned_staff_id", null);
+    const { data: busyRows, error: busyErr } = await q;
+    if (busyErr) throw new Error(busyErr.message);
+    const busy = (busyRows ?? []) as Array<{
+      scheduled_on: string;
+      start_time: string;
+      duration_min: number | null;
+      groom_summary: string | null;
+    }>;
+    for (const date of dates) {
+      const booked = busy
+        .filter((b) => b.scheduled_on === date)
+        .map((b) => ({
+          start: b.start_time,
+          minutes: b.duration_min ?? 0,
+          summary: b.groom_summary,
+        }));
+      if (groomClashes(input.startTime, holdMinutes, booked).length === 0) continue;
+      if (date === input.scheduledOn) {
+        const open = openGroomStarts(holdMinutes, booked);
+        throw new Error(
+          open.length
+            ? `This groomer already has a groom at that time on ${date}. Open start times that day: ${open.join(", ")}.`
+            : `This groomer already has a groom at that time on ${date}, and no ${holdMinutes}-minute opening is left that day.`,
+        );
+      }
+      clashOn.push(date);
+    }
   }
 
   if (input.parkingNotes != null) {
@@ -237,7 +309,19 @@ export async function bookGroomAppointment(
 
   const accountType = client.account_type === "commercial" ? "commercial" : "residential";
   const once = input.everyWeeks == null;
-  const summary = groomQuoteSummary(svc.name, pets).slice(0, 240);
+  const summary = groomPlanSummary(svc.name, pets, quote.addons);
+  // The plan carries what every visit needs. visits_groom_plan_stamp copies
+  // it onto each visit at insert, whichever generator inserts it and however
+  // far out, and visits_groom_plan_addons charges the add-ons when each groom
+  // is completed (20261016220000).
+  const groomAddons = quote.addons
+    .filter((a) => a.quantity > 0)
+    .map((a) => ({
+      addon_service_id: a.id,
+      quantity: a.quantity,
+      unit_price_cents: a.quantity > 0 ? Math.round(a.cents / a.quantity) : 0,
+      name: a.name,
+    }));
   const { data: sub, error: subErr } = await db
     .from("subscriptions")
     .insert({
@@ -257,6 +341,10 @@ export async function bookGroomAppointment(
       priced_at: new Date().toISOString(),
       started_on: input.scheduledOn,
       ends_on: once ? input.scheduledOn : null,
+      groom_start_time: input.startTime,
+      groom_duration_min: holdMinutes,
+      groom_summary: summary,
+      groom_addons: groomAddons,
     })
     .select("id")
     .single();
@@ -289,42 +377,9 @@ export async function bookGroomAppointment(
     );
   }
 
-  // The visit is already on the schedule. Throwing here would invite a second
-  // booking of the same pets on the same day.
-  let stampWarning: string | null = null;
-  const { error: stampErr } = await db
-    .from("visits")
-    .update({
-      duration_min: quote.minutes,
-      price_cents: petCents,
-      groom_summary: summary,
-    })
-    .eq("subscription_id", sub.id)
-    .eq("organization_id", input.orgId);
-  if (stampErr) stampWarning = stampErr.message;
-
-  // A charge that fails must not look like the booking failed. The visit is
-  // already on the schedule, and booking again would invoice it twice.
-  let chargeWarning: string | null = null;
-  for (const visit of visits) {
-    if (chargeWarning) break;
-    for (const addon of quote.addons) {
-      if (addon.quantity < 1 || addon.cents == null) continue;
-      const { error } = await db.rpc("create_addon_charge", {
-        _client_id: input.clientId,
-        _addon_service_id: addon.id,
-        _quantity: addon.quantity,
-        _visit_id: visit.id,
-        _source: "office",
-        _description: addon.name,
-        _note: "Booked with the groom",
-      });
-      if (error) {
-        chargeWarning = error.message;
-        break;
-      }
-    }
-  }
+  const clashWarning = clashOn.length
+    ? `This groomer already has a groom at that time on ${clashOn.join(", ")}. Move those repeats or the other grooms.`
+    : null;
 
   let assigned = false;
   let assignWarning: string | null = null;
@@ -352,9 +407,10 @@ export async function bookGroomAppointment(
       subscriptionId: sub.id,
       actorUserId: input.actorUserId,
       kind: "visit.created",
-      summary: `Booked ${summary} on ${input.scheduledOn} (${quote.minutes} min, $${(quote.cents / 100).toFixed(2)})`,
+      summary: `Booked ${summary} on ${input.scheduledOn} at ${input.startTime} (${holdMinutes} min, $${(quote.cents / 100).toFixed(2)})`,
       meta: {
-        minutes: quote.minutes,
+        minutes: holdMinutes,
+        start_time: input.startTime,
         total_cents: quote.cents,
         every_weeks: input.everyWeeks,
       },
@@ -367,11 +423,12 @@ export async function bookGroomAppointment(
     visitId: first.id,
     subscriptionId: sub.id as string,
     scheduledOn: first.scheduled_on,
-    minutes: quote.minutes,
+    startTime: input.startTime,
+    minutes: holdMinutes,
     cents: quote.cents,
     summary,
     visitCount: visits.length,
     assigned,
-    assignWarning: [assignWarning, chargeWarning, stampWarning].filter(Boolean).join(" ") || null,
+    assignWarning: [assignWarning, clashWarning].filter(Boolean).join(" ") || null,
   };
 }

@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -21,10 +22,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { bookGroom, groomBookingOptions } from "@/lib/groom-booking.functions";
+import { bookGroom, groomBookingOptions, groomDayBookings } from "@/lib/groom-booking.functions";
 import {
   COAT_LABEL,
+  groomClashes,
+  groomHoldMinutes,
   groomQuote,
+  groomRepeatDates,
+  GROOM_SLOT_STEP_MIN,
+  openGroomStarts,
   PET_SIZE_LABEL,
   type CoatType,
   type GroomAddon,
@@ -32,7 +38,12 @@ import {
   type GroomRule,
   type PetSize,
 } from "@/lib/groom";
-import { VACCINE_STATUS_LABELS, type VaccineState } from "@/lib/vaccines";
+import {
+  groomVaccineCheck,
+  VACCINE_STATUS_LABELS,
+  type VaccineRule,
+  type VaccineState,
+} from "@/lib/vaccines";
 
 function todayISO(): string {
   const d = new Date();
@@ -57,14 +68,17 @@ export function BookGroomDialog({
   onCreated?: (visitId: string) => void;
 }) {
   const qc = useQueryClient();
+  const { t } = useTranslation();
   const optionsFn = useServerFn(groomBookingOptions);
   const bookFn = useServerFn(bookGroom);
+  const dayFn = useServerFn(groomDayBookings);
 
   const [propertyId, setPropertyId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [petIds, setPetIds] = useState<string[]>([]);
   const [addonQty, setAddonQty] = useState<Record<string, string>>({});
   const [scheduledOn, setScheduledOn] = useState(todayISO());
+  const [startTime, setStartTime] = useState("");
   const [everyWeeks, setEveryWeeks] = useState<"" | "4" | "6" | "8">("");
   const [staffId, setStaffId] = useState("");
   const [parkingNotes, setParkingNotes] = useState("");
@@ -77,6 +91,7 @@ export function BookGroomDialog({
     setPetIds([]);
     setAddonQty({});
     setScheduledOn(todayISO());
+    setStartTime("");
     setEveryWeeks("");
     setStaffId("");
     setParkingNotes("");
@@ -143,15 +158,39 @@ export function BookGroomDialog({
         })
       : null;
 
-  const vaccineRule = options?.vaccineRule ?? "off";
-  const selectedRecords = petsHere.filter((p) => petIds.includes(p.id));
-  const blocked =
-    vaccineRule === "block" &&
-    selectedRecords.some((p) => p.vaccine === "expired" || p.vaccine === "missing");
-  const warned =
-    !blocked &&
-    vaccineRule === "warn" &&
-    selectedRecords.some((p) => p.vaccine === "expired" || p.vaccine === "missing");
+  const holdMinutes = quote ? groomHoldMinutes(quote.minutes, options?.bufferMin) : 0;
+  const bufferMin = holdMinutes - (quote?.minutes ?? 0);
+
+  const dayQuery = useQuery({
+    enabled: open && /^\d{4}-\d{2}-\d{2}$/.test(scheduledOn),
+    queryKey: ["groom-day-bookings", scheduledOn, staffId || null],
+    queryFn: () => dayFn({ data: { date: scheduledOn, staffId: staffId || null } }),
+  });
+  const booked = dayQuery.data ?? [];
+  const openStarts = holdMinutes > 0 ? openGroomStarts(holdMinutes, booked) : [];
+  const clashes = startTime && holdMinutes > 0 ? groomClashes(startTime, holdMinutes, booked) : [];
+
+  // The same check the server makes: every date the plan lands on in a year,
+  // each on its own date. Only the first groom can block.
+  const vaccineRule = (options?.vaccineRule ?? "off") as VaccineRule;
+  const planDates = groomRepeatDates(
+    scheduledOn,
+    everyWeeks === "" ? null : Number(everyWeeks),
+    365,
+  );
+  const checks = petsHere
+    .filter((p) => petIds.includes(p.id))
+    .map((p) =>
+      groomVaccineCheck(p.vaccineRecords, options?.requiredVaccines ?? [], vaccineRule, planDates),
+    );
+  const blocked = checks.some((c) => c.decision === "block");
+  const warnOn = blocked
+    ? null
+    : (checks
+        .filter((c) => c.decision === "warn" && c.firstFlaggedOn)
+        .map((c) => c.firstFlaggedOn as string)
+        .sort()[0] ?? null);
+  const warned = warnOn != null;
 
   const bookMut = useMutation({
     mutationFn: () =>
@@ -163,6 +202,7 @@ export function BookGroomDialog({
           petIds,
           addons: addons.map((a) => ({ addonServiceId: a.id, quantity: a.quantity })),
           scheduledOn,
+          startTime,
           everyWeeks: everyWeeks === "" ? null : Number(everyWeeks),
           staffId: staffId || null,
           parkingNotes,
@@ -174,11 +214,14 @@ export function BookGroomDialog({
       const repeat = r.visitCount > 1 ? ` ${r.visitCount} visits were put on the schedule.` : "";
       if (r.assignWarning) {
         toast.warning(
-          `Groom booked for ${r.scheduledOn} (${r.minutes} min, ${price}).${repeat} ${r.assignWarning}`,
+          `Groom booked for ${r.scheduledOn} at ${r.startTime} (${r.minutes} min, ${price}).${repeat} ${r.assignWarning}`,
         );
       } else {
-        toast.success(`Groom booked for ${r.scheduledOn} (${r.minutes} min, ${price}).${repeat}`);
+        toast.success(
+          `Groom booked for ${r.scheduledOn} at ${r.startTime} (${r.minutes} min, ${price}).${repeat}`,
+        );
       }
+      qc.invalidateQueries({ queryKey: ["groom-day-bookings"] });
       qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
       qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
       qc.invalidateQueries({ queryKey: ["subs", clientId] });
@@ -196,6 +239,8 @@ export function BookGroomDialog({
     !!serviceId &&
     petIds.length > 0 &&
     !!scheduledOn &&
+    !!startTime &&
+    clashes.length === 0 &&
     quote != null &&
     quote.cents != null &&
     quote.minutes >= 1 &&
@@ -375,6 +420,54 @@ export function BookGroomDialog({
             </div>
 
             <div className="space-y-1">
+              <Label htmlFor="groom-start" className="text-xs">
+                {t("groom.startTime")}
+              </Label>
+              <Input
+                id="groom-start"
+                type="time"
+                step={GROOM_SLOT_STEP_MIN * 60}
+                className="h-11 w-36"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+              {clashes.length > 0 && (
+                <p role="alert" className="text-sm text-destructive">
+                  {t("groom.clash")}
+                </p>
+              )}
+            </div>
+
+            {holdMinutes > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium">{t("groom.openTimes")}</p>
+                {dayQuery.isLoading ? (
+                  <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+                ) : openStarts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t("groom.noOpenTimes", { minutes: holdMinutes })}
+                  </p>
+                ) : (
+                  <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+                    {openStarts.map((slot) => (
+                      <Button
+                        key={slot}
+                        type="button"
+                        size="sm"
+                        variant={slot === startTime ? "default" : "outline"}
+                        className="min-h-11 min-w-16 shrink-0"
+                        aria-pressed={slot === startTime}
+                        onClick={() => setStartTime(slot)}
+                      >
+                        <span dir="ltr">{slot}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1">
               <Label htmlFor="groom-staff" className="text-xs">
                 Groomer
               </Label>
@@ -409,7 +502,7 @@ export function BookGroomDialog({
 
             {quote && (
               <p className="text-sm font-medium">
-                {quote.minutes} min
+                {t("groom.hold", { minutes: holdMinutes, buffer: bufferMin })}
                 {quote.cents == null ? ". Set a price before booking." : ` · ${money(quote.cents)}`}
               </p>
             )}
@@ -427,9 +520,7 @@ export function BookGroomDialog({
                   checked={acknowledgeWarning}
                   onCheckedChange={(c) => setAcknowledgeWarning(c === true)}
                 />
-                <span className="min-w-0">
-                  A required vaccine is expired or missing. Book this groom anyway.
-                </span>
+                <span className="min-w-0">{t("groom.vaccineWarn", { date: warnOn })}</span>
               </label>
             )}
           </div>

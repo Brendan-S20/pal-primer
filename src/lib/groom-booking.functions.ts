@@ -21,6 +21,7 @@ const bookSchema = z.object({
     )
     .max(20),
   scheduledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   everyWeeks: z.number().int().min(1).max(26).nullable(),
   staffId: z.string().uuid().nullable(),
   parkingNotes: z.string().max(1000).nullable(),
@@ -37,6 +38,38 @@ export const bookGroom = createServerFn({ method: "POST" })
       orgId,
       actorUserId: context.userId,
     });
+  });
+
+/** The grooms already holding a groomer's day, so the dialog can show what is open. */
+export const groomDayBookings = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        staffId: z.string().uuid().nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+    let q = supabase
+      .from("visits")
+      .select("start_time, duration_min, groom_summary")
+      .eq("organization_id", orgId)
+      .eq("scheduled_on", data.date)
+      .in("status", ["scheduled", "in_progress", "completed"])
+      .not("start_time", "is", null)
+      .order("start_time");
+    q = data.staffId ? q.eq("assigned_staff_id", data.staffId) : q.is("assigned_staff_id", null);
+    const { data: rows, error } = await q;
+    if (error) throw new Error(error.message);
+    return (rows ?? []).map((r) => ({
+      start: (r.start_time as string).slice(0, 5),
+      minutes: r.duration_min ?? 0,
+      summary: r.groom_summary,
+    }));
   });
 
 function coatOf(value: unknown): CoatType | null {
@@ -129,6 +162,8 @@ export const groomBookingOptions = createServerFn({ method: "GET" })
 
     return {
       today: settings.today,
+      bufferMin: settings.bufferMin,
+      requiredVaccines: settings.required,
       vaccineRule: settings.enabled ? settings.rule : ("off" as const),
       properties: props.data ?? [],
       services: services.data ?? [],
@@ -153,6 +188,13 @@ export const groomBookingOptions = createServerFn({ method: "GET" })
           size: petSize(d.weight_class, d.weight_lb == null ? null : Number(d.weight_lb)),
           coat_type: coatOf(d.coat_type),
           vaccine: status,
+          // The dialog checks every date the plan lands on with the same rule.
+          vaccineRecords: records.map(({ vaccine, expires_on, source, verified_at }) => ({
+            vaccine,
+            expires_on,
+            source,
+            verified_at,
+          })),
         };
       }),
       addons: (addons.data ?? []).filter(
