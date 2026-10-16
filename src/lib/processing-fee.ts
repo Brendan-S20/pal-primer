@@ -139,9 +139,15 @@ export function describeStripeAchRate(): string {
   return `${STRIPE_ACH_BPS / 100}% (capped at $${STRIPE_ACH_CAP_CENTS / 100})`;
 }
 
-/** "2.9% + 30¢ on cards and 0.8% (capped at $5) on bank payments". */
+/**
+ * "2.9% + 30¢ per card payment". The sentence every screen shows.
+ *
+ * Card only, by decision: clients pay by card at launch and bank payments are
+ * post-launch (#461). The ACH rate above stays for the fee math on any ACH
+ * payment that does arrive, but it is not quoted to anyone as a way to pay.
+ */
 export function describeStripeRates(): string {
-  return `${describeStripeCardRate()} on cards and ${describeStripeAchRate()} on bank payments`;
+  return `${describeStripeCardRate()} per card payment`;
 }
 
 /**
@@ -328,7 +334,7 @@ export function railOfPaymentMethod(
 export function suppressionExplanation(reason: SuppressionReason): string {
   switch (reason) {
     case "absorbed":
-      return "Your business is absorbing card and bank fees on this payment.";
+      return "Your business is absorbing the card fee on this payment.";
     case "debit":
       return "Debit cards cannot be surcharged, so no processing fee was added.";
     case "prepaid":

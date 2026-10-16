@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AI_FEATURES } from "@/lib/ai-usage";
+import { ANY_AI_FEATURE_LIVE } from "@/lib/ai-launch";
 import { titleHead } from "@/lib/page-title";
 
 // IMP-9: this page used to ask the customer for an Anthropic or OpenAI API key
@@ -34,10 +36,15 @@ export const Route = createFileRoute("/_authenticated/settings/ai")({
 });
 
 function AiSettings() {
+  const copy = useLaunchCopy();
   const getFn = useServerFn(getOrgAiSettings);
   const testFn = useServerFn(testOrgAiKey);
 
-  const q = useQuery({ queryKey: ["org-ai-settings"], queryFn: () => getFn() });
+  const q = useQuery({
+    queryKey: ["org-ai-settings"],
+    queryFn: () => getFn(),
+    enabled: ANY_AI_FEATURE_LIVE,
+  });
 
   const testMut = useMutation({
     mutationFn: () => testFn(),
@@ -58,13 +65,25 @@ function AiSettings() {
             settings page that still calls them AI is the kind of claim this
             repo keeps finding outliving the code. */}
         <p className="text-sm text-muted-foreground">
-          The AI receptionist will use HoundStack&apos;s models, with no provider key or separate
-          provider bill. Marketing posts are coming soon. Churn scores, price suggestions, review
-          replies and digests use your data without AI.
+          {ANY_AI_FEATURE_LIVE
+            ? "The AI receptionist uses HoundStack's models, with no provider key or separate provider bill. Marketing posts are coming soon."
+            : copy(
+                "The AI receptionist and marketing posts are coming soon. They will run on HoundStack's own models, so there will be no key to set up and no separate provider bill.",
+              )}{" "}
+          Churn scores, price suggestions, review replies and digests use your data without AI.
         </p>
       </div>
 
-      {q.isLoading ? (
+      {!ANY_AI_FEATURE_LIVE ? (
+        // Nothing here runs on a model yet, so there is nothing to be
+        // unavailable and nothing to meter (#428).
+        <div className="rounded-lg border bg-card p-4 text-sm">
+          <div className="font-medium">{copy("AI features are coming soon")}</div>
+          <div className="text-xs text-muted-foreground">
+            {copy("Usage and limits will show here once the first one launches.")}
+          </div>
+        </div>
+      ) : q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <>

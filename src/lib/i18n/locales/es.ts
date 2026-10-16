@@ -10,6 +10,48 @@ import type { Translations } from "./en";
  * English or shorter; the long ones are sentences in blocks that wrap.
  */
 const es: Translations = {
+  launch: {
+    visits: "Tu próxima visita aparecerá aquí cuando esté programada.",
+    cards:
+      "Aceptamos tarjetas de crédito y débito. Los datos de tu tarjeta nunca pasan por nuestros servidores.",
+    pay: "Los pagos se procesan de forma segura. Se aceptan tarjetas.",
+    texts:
+      "Los mensajes de texto estarán disponibles próximamente. Hasta entonces, recibirás estas novedades por correo electrónico.",
+    cardPayments: "Recibe pagos con tarjeta directamente en tu cuenta bancaria.",
+    held: "Está en tu plan, pero aún no se ha lanzado y no tiene efecto en tu cuenta. Puedes quitarlo cuando quieras.",
+    soon: "Próximamente",
+    aiSoon: "Las funciones de IA estarán disponibles próximamente",
+    usageSoon: "El uso y los límites aparecerán aquí cuando se lance la primera función.",
+    aiIntro:
+      "La recepción con IA y las publicaciones de marketing estarán disponibles próximamente. Usarán los modelos de HoundStack, sin claves que configurar ni facturas de otro proveedor.",
+    receptionistBuy:
+      "Próximamente. Podrás agregarlo a tu plan cuando se lance. Ya puedes redactar la personalidad y las preguntas frecuentes abajo.",
+    persona:
+      "Eres un recepcionista amable y conciso de una empresa de servicios para mascotas. Responde en una o dos frases cortas. Solo indica precios que hayas consultado para esta empresa, sin adivinar. Si tienes dudas, ofrece que alguien de la oficina se comunique con el cliente.",
+    voiceFuture:
+      "Cuando se lance, usará la misma personalidad y preguntas frecuentes que los textos. Se transcribirá lo que diga la persona y se leerá la respuesta. Si no puede ayudar, se le pedirá que deje un mensaje de voz.",
+    founding:
+      "Clientes fundadores: las primeras {{spots}} cuentas de pago reciben un {{percent}}% de descuento en su plan mientras mantengan la suscripción. Las personas adicionales y los complementos se cobran al precio normal. Usa el código {{code}} al pagar.",
+    remaining: "Quedan {{left}} de {{spots}}.",
+    help0:
+      "Los clientes inician sesión con un código de un solo uso enviado por correo electrónico. Los códigos por texto estarán disponibles próximamente. Si un cliente no recibe su código, el personal puede leérselo por teléfono desde su página de detalle en [Clientes](/clients).",
+    help1:
+      "Próximamente: publicaciones de marketing y [recepción con IA](article:platform-addons), que responderá mensajes y llamadas de clientes. Ninguna está activada todavía.",
+    help2:
+      "Disponibles ahora: **soporte prioritario** (en Launch; Growth y Scale ya lo incluyen) y **configuración por nuestro equipo** con un pago único.",
+    help3:
+      "Próximamente: **recepción con IA**, que responderá mensajes y llamadas con tus preguntas frecuentes y precios; **mensajería gestionada**; y **marca blanca** (tu dominio en el portal y los correos). En Facturación aparecen como Próximamente y aún no se pueden comprar. Ya puedes redactar la personalidad y las preguntas frecuentes en [Recepción con IA](/settings/ai-receptionist).",
+    addonsTitle: "Complementos del plan",
+    contact: "Llámanos o escríbenos por correo electrónico para programar una visita.",
+    updateDetails:
+      "¿Necesitas actualizar tus datos? Llámanos o escríbenos por correo electrónico y nos encargaremos.",
+  },
+
+  recovery: {
+    title: "Esta página no se cargó",
+    body: "Intenta actualizar o vuelve al panel.",
+    dashboard: "Volver al panel",
+  },
   common: {
     loading: "Cargando…",
     save: "Guardar",
@@ -72,7 +114,8 @@ const es: Translations = {
     pickADay: "Elige un día",
     skippedCount: "{{count}} omitidas",
     missedCount: "{{count}} no realizadas",
-    progressRule: "Hechas son las visitas completadas del total de paradas. Las no realizadas y omitidas se cuentan por separado.",
+    progressRule:
+      "Hechas son las visitas completadas del total de paradas. Las no realizadas y omitidas se cuentan por separado.",
     view: "Vista",
     viewList: "Lista",
     viewMap: "Mapa",
@@ -153,6 +196,27 @@ const es: Translations = {
     nervous: "nervioso",
     aggressive: "agresivo",
     unknown: "carácter desconocido",
+  },
+  fieldClient: {
+    backToMyDay: "Volver a Mi día",
+    heading: "Datos del cliente para el campo",
+    pageSection: "Clientes",
+    propertyFallback: "Propiedad",
+    gate: "Portón:",
+    lockBox: "Caja de llaves:",
+    key: "Llave:",
+    parking: "Estacionamiento:",
+    access: "Acceso:",
+    hazards: "Riesgos:",
+    dogsHeading: "Perros ({{number}})",
+    noDogs: "No hay perros registrados.",
+    listSeparator: ", ",
+    dogSize: {
+      small: "pequeño",
+      medium: "mediano",
+      large: "grande",
+      giant: "gigante",
+    },
   },
   yard: {
     label: "Propiedad {{size}}",
@@ -283,10 +347,20 @@ const es: Translations = {
     expand: "Mostrar",
     collapse: "Ocultar",
     navigate: "Navegar",
+    clientInfo: "Info del cliente",
     started: "Iniciada",
     startQueued: "En cola. Se inicia cuando haya conexión",
     completed: "Completada",
+    completedWithNotices: "Completada. Avisos al cliente: {{notices}}.",
+    completedWithNoticesPending:
+      "Completada. Avisos enviados al cliente: {{notices}}. Aún se envían más avisos.",
+    completedNoNotices: "Completada. No se enviaron avisos al cliente.",
+    completedNoticePending: "Completada. Los avisos al cliente aún se están enviando.",
     completeQueued: "En cola. Se completa cuando haya conexión",
+    noticeCompletionEmail: "email de finalización",
+    noticePush: "push",
+    noticeReviewSms: "texto de reseña",
+    noticeReviewEmail: "email de reseña",
     markedSkipped: "Marcada como omitida",
     skipQueued: "En cola. Se omite cuando haya conexión",
     onMyWayEmailed: "Correo enviado: voy en camino",

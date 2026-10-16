@@ -230,7 +230,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Client-facing",
     body: [
       "Every client gets a private portal link where they can see upcoming visits, pay invoices, save a card, put service on hold, and refer neighbors.",
-      "Clients sign in with a one-time code sent by email (or text, when texting is configured). If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+      "Clients sign in with a one-time code sent by email. Codes by text are coming soon. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
       "The portal carries your branding: set your logo and brand color in [Client portal](/settings/client-portal).",
     ],
     related: ["lead-form", "getting-paid", "credit-balance", "reclean-requests"],
@@ -307,7 +307,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "The office tools sit where you use them, not on a separate page: review reply drafts on [Reviews & referrals](/settings/reviews), [churn risk](article:churn-score) on Clients, and the weekly digest on the [Dashboard](/dashboard). Each one is worked out from your own data, the same way every time.",
       "To assign the day's visits to your techs, use auto-routing on the [Schedule](/routes). It plans with real road distances.",
-      "Marketing posts are coming soon. The [AI Receptionist](article:platform-addons) is a paid add-on that answers client texts for you around the clock; [Settings → AI usage](/settings/ai) shows what it has used.",
+      "Coming soon: marketing posts, and the [AI Receptionist](article:platform-addons), which will answer client texts and calls for you. Neither is switched on for anyone yet.",
     ],
     appLink: { to: "/settings/ai", label: "Open AI usage" },
     related: ["churn-score", "platform-addons", "texting-setup"],
@@ -355,12 +355,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "platform-addons",
-    title: "Plan add-ons (like the AI Receptionist)",
+    title: "Plan add-ons",
     section: "Financial",
     body: [
       "Add-ons are optional extras for your HoundStack plan, billed on the same subscription invoice. They live at the bottom of [Billing](/settings/billing).",
-      "The **AI Receptionist** answers client texts for you day and night: FAQs, scheduling questions, and escalations to your team when a human is needed. Add it from Billing, then configure its persona and knowledge in [AI receptionist settings](/settings/ai-receptionist).",
-      "Also available: **Managed texting** (skip the Twilio setup), **white-label portal link** and **white-label emails** (your own domain on the client-facing surfaces), **priority support**, and a one-time **done-for-you setup** where we configure the whole platform with you.",
+      "Available now: **priority support** (on the Launch plan; Growth and Scale already include it), and a one-time **done-for-you setup** where we configure the whole platform with you.",
+      "Coming soon: the **AI Receptionist**, which will answer client texts and calls using your FAQ and your own prices; **managed texting**; and **white label** (your own domain on the client portal and emails). They show a Coming soon badge on Billing and cannot be bought yet. You can draft the receptionist's persona and FAQ now in [AI receptionist settings](/settings/ai-receptionist).",
       "Adding or removing a monthly add-on adjusts your next invoice automatically (prorated); one-time services land on your next invoice once. Note: these are different from your own [client-facing add-on services](article:add-ons).",
     ],
     appLink: { to: "/settings/billing", label: "Open Billing" },

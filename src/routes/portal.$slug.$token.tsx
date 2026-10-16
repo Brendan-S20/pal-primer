@@ -299,7 +299,7 @@ function PortalShell() {
                 <Phone className="h-4 w-4 shrink-0" /> {c.contact_phone}
               </a>
             )}
-            {c.contact_phone && (
+            {ctx.textsLive === true && c.contact_phone && (
               <a
                 href={`sms:${c.contact_phone}`}
                 className="inline-flex items-center gap-1.5 hover:text-foreground"

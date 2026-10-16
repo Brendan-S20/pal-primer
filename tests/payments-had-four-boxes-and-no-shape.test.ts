@@ -72,7 +72,9 @@ describe("warnings only when they are true", () => {
   });
 
   it("the onboarding paragraph only shows before an account is connected", () => {
-    expect(page).toMatch(/cfg\?\.connected\s*\?[\s\S]{0,200}Get paid by card and bank transfer/);
+    expect(page).toMatch(
+      /cfg\?\.connected\s*\?[\s\S]{0,200}Get paid by card, straight to your own bank account/,
+    );
   });
 });
 

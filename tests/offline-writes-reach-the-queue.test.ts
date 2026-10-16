@@ -84,7 +84,7 @@ describe("what still has to reach the network", () => {
     const queue = vi.fn(async () => {});
     await expect(
       runOrQueue({ online: true, label: "x", send: async () => ({ ok: true }), queue }),
-    ).resolves.toEqual({ queued: false });
+    ).resolves.toEqual({ queued: false, result: { ok: true } });
     expect(queue).not.toHaveBeenCalled();
   });
 
