@@ -1,3 +1,4 @@
+import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,7 @@ const FREQ_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 function PortalAccount() {
+  const copy = useLaunchCopy();
   const { token, clientQ, referralQ } = usePortalCtx();
   const c = clientQ.data as any;
   const isCommercial = c?.account_type === "commercial";
@@ -88,8 +90,7 @@ function PortalAccount() {
             </div>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
-            Need to update your details? Reply to any {c?.org_name ?? "our"} email or text and we'll
-            take care of it.
+            {copy("Need to update your details? Call or email us and we'll take care of it.")}
           </p>
         </div>
       </section>
@@ -215,7 +216,10 @@ function SelfServeSection({ token }: { token: string }) {
  * could ever be textable was for staff to record consent on their behalf.
  */
 function TextOptIn({ token, client }: { token: string; client: any }) {
+  const copy = useLaunchCopy();
   const qc = useQueryClient();
+  const { contextQ } = usePortalCtx();
+  const textsLive = (contextQ.data as { textsLive?: boolean } | undefined)?.textsLive === true;
   const fn = useServerFn(portalSetSmsConsent);
   const optedIn = Boolean(client?.sms_consent_at) && !client?.sms_opt_out;
 
@@ -240,6 +244,11 @@ function TextOptIn({ token, client }: { token: string; client: any }) {
           <div className="text-xs text-muted-foreground">
             Appointment reminders, visit updates and billing, to {client.primary_phone}.
           </div>
+          {!textsLive && (
+            <div className="mt-1 text-xs text-muted-foreground">
+              {copy("Texts are coming soon. Until then, these updates come by email.")}
+            </div>
+          )}
         </div>
         <Switch
           checked={optedIn}
