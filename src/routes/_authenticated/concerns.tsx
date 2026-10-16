@@ -5,16 +5,22 @@ import {
   BookOneOffRequestDialog,
   type OneOffRequestTicket,
 } from "@/components/BookOneOffRequestDialog";
+import { BookGroomDialog } from "@/components/BookGroomDialog";
+import { GroomRequestRow, GROOM_DECLINE_NOTE } from "@/components/GroomRequestRow";
+import { VaccineReviewQueue } from "@/components/VaccineReviewQueue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   listConcerns,
+  linkGroomBooking,
   updateConcernStatus,
   replyToConcern,
   CONCERN_CATEGORY_LABELS,
   type ConcernStatus,
 } from "@/lib/concerns.functions";
+import { groomPrefillFromRequest, type GroomBookingPrefill } from "@/lib/groom-request";
 import { parseHoldRequest } from "@/lib/hold-request";
 import { humanizeEnum } from "@/lib/humanize";
 import { parseFrequencyRequest, frequencyLabel } from "@/lib/frequency-request";
@@ -217,7 +223,32 @@ function ConcernsPage() {
   const [recleanFor, setRecleanFor] = useState<RecleanTicket | null>(null);
   // The extra-cleanup request being booked, if any.
   const [oneOffFor, setOneOffFor] = useState<OneOffRequestTicket | null>(null);
+  // The groom request being booked, if any, and the grooms booked here whose
+  // link to their request has not landed yet (ticket id to visit id), so a
+  // retry links instead of booking a second groom.
+  const [groomFor, setGroomFor] = useState<{
+    ticketId: string;
+    clientId: string;
+    prefill: GroomBookingPrefill;
+  } | null>(null);
+  const [groomUnlinked, setGroomUnlinked] = useState<Record<string, string>>({});
+  const { t } = useTranslation();
   const qc = useQueryClient();
+  const linkGroomFn = useServerFn(linkGroomBooking);
+  const linkGroomMut = useMutation({
+    mutationFn: (v: { ticketId: string; visitId: string }) => linkGroomFn({ data: v }),
+    onSuccess: (_r, v) => {
+      setGroomUnlinked((s) => {
+        const next = { ...s };
+        delete next[v.ticketId];
+        return next;
+      });
+      toast.success(t("groomRequest.linked"));
+      qc.invalidateQueries({ queryKey: ["concerns"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
   const listFn = useServerFn(listConcerns);
   const updateFn = useServerFn(updateConcernStatus);
   const replyFn = useServerFn(replyToConcern);
@@ -269,6 +300,7 @@ function ConcernsPage() {
   });
 
   const concerns: any[] = (q.data as any)?.concerns ?? [];
+  const addonNames = q.data?.addonNames ?? {};
 
   // Multi-select for bulk resolve (Invoices-page pattern). Only unresolved
   // concerns are selectable; the clearKey drops the selection on filter
@@ -355,6 +387,8 @@ function ConcernsPage() {
           </div>
         </div>
       )}
+
+      <VaccineReviewQueue canReview={can("view_client_directory")} />
 
       {q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -531,6 +565,31 @@ function ConcernsPage() {
                   />
                 )}
 
+                {c.category === "groom_request" && (
+                  <GroomRequestRow
+                    concern={c}
+                    resolved={status === "resolved"}
+                    canBook={canManagePricing}
+                    awaitingLink={!!groomUnlinked[c.id]}
+                    addonNames={addonNames}
+                    busy={mut.isPending || linkGroomMut.isPending}
+                    onDecline={() =>
+                      mut.mutate({
+                        ticketId: c.id,
+                        status: "resolved",
+                        resolutionNote: (notes[c.id] ?? "").trim() || GROOM_DECLINE_NOTE,
+                      })
+                    }
+                    onLink={() =>
+                      linkGroomMut.mutate({ ticketId: c.id, visitId: groomUnlinked[c.id] })
+                    }
+                    onBook={() => {
+                      const prefill = groomPrefillFromRequest(c);
+                      if (prefill) setGroomFor({ ticketId: c.id, clientId: c.client_id, prefill });
+                    }}
+                  />
+                )}
+
                 {c.last_reply_at && (
                   <p className="mt-2 rounded bg-muted/50 p-2 text-xs text-muted-foreground">
                     You replied {fmt(c.last_reply_at)}: <span className="italic">{c.last_reply}</span>
@@ -652,6 +711,24 @@ function ConcernsPage() {
           if (!o) setOneOffFor(null);
         }}
       />
+
+      {groomFor && (
+        <BookGroomDialog
+          open={!!groomFor}
+          onOpenChange={(o) => {
+            if (!o) setGroomFor(null);
+          }}
+          clientId={groomFor.clientId}
+          prefill={groomFor.prefill}
+          onCreated={(visitId) => {
+            const ticketId = groomFor.ticketId;
+            // Remembered first: if the link fails the row offers a retry of
+            // the link, never a second booking.
+            setGroomUnlinked((s) => ({ ...s, [ticketId]: visitId }));
+            linkGroomMut.mutate({ ticketId, visitId });
+          }}
+        />
+      )}
 
       {holdFor && (
         <VacationHoldDrawer

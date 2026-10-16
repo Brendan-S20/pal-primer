@@ -1,10 +1,12 @@
 // Mobile grooming is a service the office can book. A customer still cannot:
-// the portal, the public quote and the receptionist leave it out.
+// the portal's booking, the public quote and the receptionist leave it out.
+// A portal client of a grooming business can ASK for a groom (20261016230000),
+// and that request goes to the office's queue; only the office books it.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { oneOffServiceOptions } from "@/lib/one-off-booking";
-import { customerMayBook } from "@/lib/service-lines";
+import { CUSTOMER_BOOKABLE_SERVICE_LINES, customerMayBook } from "@/lib/service-lines";
 import { listServices } from "@/lib/receptionist-booking";
 import type { Caller, ReceptionistStore, ServiceFacts } from "@/lib/receptionist-booking";
 
@@ -65,6 +67,46 @@ describe("customers cannot book a groom", () => {
     expect(sql).toContain("AND s.service_line <> 'mobile_grooming'");
     expect(sql).toContain("service_line = ''mobile_grooming''");
     expect(sql).toContain("RETURN;");
+  });
+});
+
+describe("a portal groom request is a request, not a booking", () => {
+  it("leaves the customer-bookable lines as they were", () => {
+    expect(CUSTOMER_BOOKABLE_SERVICE_LINES).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+    expect(customerMayBook("mobile_grooming")).toBe(false);
+  });
+
+  it("asks portal_request_groom and nothing that books", () => {
+    const server = read("src/lib/portal-groom.server.ts");
+    expect(server).toContain('db.rpc("portal_request_groom"');
+    for (const booking of [
+      "bookGroomAppointment",
+      "groom-booking.server",
+      "bookOneOffVisit",
+      "one-off-visit.server",
+      'from("visits")',
+      'from("subscriptions")',
+      ".insert(",
+    ])
+      expect(server).not.toContain(booking);
+  });
+
+  it("is booked by the office through bookGroom, behind manage_pricing", () => {
+    const concerns = read("src/lib/concerns.functions.ts");
+    const link = concerns.slice(concerns.indexOf("export const linkGroomBooking"));
+    expect(link).toContain('"manage_pricing"');
+    expect(link).toContain('ticket.category !== "groom_request"');
+    const page = read("src/routes/_authenticated/concerns.tsx");
+    expect(page).toContain("<BookGroomDialog");
+    expect(page).toContain("canBook={canManagePricing}");
+  });
+
+  it("keeps grooming off public signup, the public form and the receptionist", () => {
+    const sql = read("supabase/migrations/20261016230000_grooming-portal.sql");
+    expect(sql).not.toMatch(/public_services|public_quote|receptionist/);
+    expect(read("src/lib/service-lines.ts")).toContain(
+      'export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [\n  "pet_waste",\n  "dog_walking",\n  "pet_sitting",\n];',
+    );
   });
 });
 

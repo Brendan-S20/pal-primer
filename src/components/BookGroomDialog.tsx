@@ -4,7 +4,7 @@
 // and the length are groomQuote's, the same numbers the visit stores and the
 // invoice later reads. A customer never sees this dialog.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useTranslation } from "react-i18next";
@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { bookGroom, groomBookingOptions, groomDayBookings } from "@/lib/groom-booking.functions";
+import type { GroomBookingPrefill } from "@/lib/groom-request";
 import {
   COAT_LABEL,
   groomClashes,
@@ -61,11 +62,16 @@ export function BookGroomDialog({
   onOpenChange,
   clientId,
   onCreated,
+  prefill = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientId: string;
   onCreated?: (visitId: string) => void;
+  /** A client's groom request (Concerns, "Book this groom"): the pet, groom,
+   *  add-ons, day and the start of the window they asked for. The office
+   *  still checks the time and picks the groomer. */
+  prefill?: GroomBookingPrefill | null;
 }) {
   const qc = useQueryClient();
   const { t } = useTranslation();
@@ -83,20 +89,27 @@ export function BookGroomDialog({
   const [staffId, setStaffId] = useState("");
   const [parkingNotes, setParkingNotes] = useState("");
   const [acknowledgeWarning, setAcknowledgeWarning] = useState(false);
+  // A prefilled address's parking notes are read once, after the options load.
+  const parkingFilled = useRef(false);
 
   useEffect(() => {
     if (!open) return;
-    setPropertyId("");
-    setServiceId("");
-    setPetIds([]);
-    setAddonQty({});
-    setScheduledOn(todayISO());
-    setStartTime("");
+    setPropertyId(prefill?.propertyId ?? "");
+    setServiceId(prefill?.serviceId ?? "");
+    setPetIds(prefill?.petIds ?? []);
+    setAddonQty(
+      Object.fromEntries(
+        (prefill?.addons ?? []).map((a) => [a.addonServiceId, String(a.quantity)]),
+      ),
+    );
+    setScheduledOn(prefill?.scheduledOn ?? todayISO());
+    setStartTime(prefill?.startTime ?? "");
     setEveryWeeks("");
     setStaffId("");
     setParkingNotes("");
     setAcknowledgeWarning(false);
-  }, [open, clientId]);
+    parkingFilled.current = false;
+  }, [open, clientId, prefill]);
 
   const { data, isLoading, error } = useQuery({
     enabled: open,
@@ -111,8 +124,14 @@ export function BookGroomDialog({
       setPropertyId(options.properties[0].id);
       setParkingNotes(options.properties[0].parking_notes ?? "");
     }
+    if (prefill && !parkingFilled.current && propertyId === prefill.propertyId) {
+      parkingFilled.current = true;
+      setParkingNotes(
+        options.properties.find((p) => p.id === prefill.propertyId)?.parking_notes ?? "",
+      );
+    }
     if (!serviceId && options.services.length === 1) setServiceId(options.services[0].id);
-  }, [open, options, propertyId, serviceId]);
+  }, [open, options, propertyId, serviceId, prefill]);
 
   const petsHere = useMemo(
     () => (options?.pets ?? []).filter((p) => p.property_id === propertyId),
