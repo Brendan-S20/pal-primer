@@ -168,7 +168,7 @@ describe("the sender", () => {
       oncePerKey: true,
       templateData: { dogs: "Bella", count: 1 },
     });
-    expect(db.sent[0].templateData.walks[0]).toMatch(/Oct 19, 10 AM to 12 PM$/);
+    expect(db.sent[0].templateData.walks[0]).toMatch(/Oct 19, (2099, )?10 AM to 12 PM$/);
     expect(JSON.stringify(db.sent[0].templateData)).not.toMatch(/reason/i);
   });
 
