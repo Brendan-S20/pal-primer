@@ -2,6 +2,8 @@ import { useState, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +22,7 @@ import { usePermissions } from "@/hooks/useMyRole";
 import { formatDay } from "@/lib/format";
 import { formatServiceMoney } from "@/lib/services";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
-import { weeklySessionDates } from "@/lib/training-packages";
+import { TRAINER_BUSY, weeklySessionDates } from "@/lib/training-packages";
 import type { ListedClientPackage } from "@/lib/training-packages.server";
 import {
   listClientPackages,
@@ -46,6 +48,7 @@ export function TrainingPackagesSection({ clientId }: { clientId: string }) {
 }
 
 function Packages({ clientId }: { clientId: string }) {
+  const { t } = useTranslation();
   const today = useOrgToday();
   const { can } = usePermissions();
   const canBill = can("manage_client_billing");
@@ -74,8 +77,10 @@ function Packages({ clientId }: { clientId: string }) {
   const [propertyId, setPropertyId] = useState("");
   const [date, setDate] = useState(today);
   const [weekday, setWeekday] = useState(1);
-  const [earliest, setEarliest] = useState("");
-  const [latest, setLatest] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [minutes, setMinutes] = useState("");
+  const [allowOverlap, setAllowOverlap] = useState(false);
+  const [cancelBooked, setCancelBooked] = useState<boolean | null>(null);
   const [staffId, setStaffId] = useState("");
   const [requestId, setRequestId] = useState("");
   const [error, setError] = useState("");
@@ -90,8 +95,10 @@ function Packages({ clientId }: { clientId: string }) {
     setPack(p);
     setDate(a === "extend" ? (p?.expires_on ?? "") : today);
     setPropertyId(options.data?.properties[0]?.id ?? "");
-    setEarliest("");
-    setLatest("");
+    setStartTime("");
+    setMinutes(String((p && options.data?.lessonMinutes[p.service_id]) ?? 60));
+    setAllowOverlap(false);
+    setCancelBooked(p && p.bookedAfterToday > 0 ? null : false);
     setStaffId("");
     setDogId("");
     setServicePackageId(options.data?.packages[0]?.id ?? "");
@@ -102,29 +109,27 @@ function Packages({ clientId }: { clientId: string }) {
       if (action === "sell")
         return sell({ data: { clientId, servicePackageId, dogId: dogId || undefined, requestId } });
       if (!pack) throw new Error("Choose a package.");
-      if (action === "cancel") return cancel({ data: { clientPackageId: pack.id } });
+      if (action === "cancel") {
+        if (cancelBooked === null) throw new Error(t("training.cancelChoose"));
+        return cancel({ data: { clientPackageId: pack.id, cancelBooked } });
+      }
       if (action === "extend")
         return extend({ data: { clientPackageId: pack.id, expiresOn: date || null } });
-      const base = { clientPackageId: pack.id, propertyId, staffId: staffId || undefined };
+      const base = {
+        clientPackageId: pack.id,
+        propertyId,
+        staffId: staffId || undefined,
+        startTime: startTime || null,
+        minutes: startTime && Number(minutes) ? Number(minutes) : undefined,
+        allowOverlap,
+      };
       return action === "weekly"
-        ? weekly({
-            data: {
-              ...base,
-              startOn: date,
-              weekday,
-              earliestTime: earliest || null,
-              latestTime: latest || null,
-            },
-          })
-        : one({
-            data: {
-              ...base,
-              date,
-              window: { earliestTime: earliest || null, latestTime: latest || null },
-            },
-          });
+        ? weekly({ data: { ...base, startOn: date, weekday } })
+        : one({ data: { ...base, date } });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (action === "cancel" && result && "canceledLessons" in result)
+        toast.success(t("training.canceledLessons", { n: result.canceledLessons }));
       setAction(null);
       for (const key of [
         ["client-packages", clientId],
@@ -140,6 +145,13 @@ function Packages({ clientId }: { clientId: string }) {
     onError: (e: Error) => setError(e.message),
   });
   const booking = action === "weekly" || action === "one";
+  const trainerBusy = error.startsWith(TRAINER_BUSY);
+  // A new time, length or trainer is a new question: drop the old clash.
+  const slotChanged = () => {
+    setAllowOverlap(false);
+    if (trainerBusy) setError("");
+  };
+  const dogRequired = (options.data?.dogs.length ?? 0) > 1;
   return (
     <section className="space-y-4" data-testid="client-training-packages">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -275,7 +287,7 @@ function Packages({ clientId }: { clientId: string }) {
               {action === "sell"
                 ? "The package creates one invoice. The client can pay by card through the existing invoice link."
                 : action === "cancel"
-                  ? "Canceling stops new bookings. It does not void the invoice or cancel booked lessons. Use the existing refund or void tools for the invoice, and cancel lessons on the schedule."
+                  ? t("training.cancelDescription")
                   : "Lessons use the package's sessions. They have no separate charge."}
             </DialogDescription>
           </DialogHeader>
@@ -307,20 +319,28 @@ function Packages({ clientId }: { clientId: string }) {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="sale-dog">Dog (optional)</Label>
+                  <Label htmlFor="sale-dog">
+                    {dogRequired ? t("training.dog") : "Dog (optional)"}
+                  </Label>
                   <select
                     id="sale-dog"
                     className={selectClass}
+                    required={dogRequired}
                     value={dogId}
                     onChange={(e) => setDogId(e.target.value)}
                   >
-                    <option value="">No dog selected</option>
+                    <option value="">
+                      {dogRequired ? t("training.chooseDog") : "No dog selected"}
+                    </option>
                     {options.data?.dogs.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
                       </option>
                     ))}
                   </select>
+                  {dogRequired && (
+                    <p className="text-sm text-muted-foreground">{t("training.dogRequiredHint")}</p>
+                  )}
                 </div>
                 {selected && (
                   <p className="text-sm">
@@ -361,7 +381,10 @@ function Packages({ clientId }: { clientId: string }) {
                       id="lesson-weekday"
                       className={selectClass}
                       value={weekday}
-                      onChange={(e) => setWeekday(Number(e.target.value))}
+                      onChange={(e) => {
+                        setWeekday(Number(e.target.value));
+                        slotChanged();
+                      }}
                     >
                       {DAYS.map((d, i) => (
                         <option key={d} value={i}>
@@ -375,24 +398,52 @@ function Packages({ clientId }: { clientId: string }) {
                   <DateField
                     label={action === "weekly" ? "First date" : "Date"}
                     value={date}
-                    onChange={setDate}
+                    onChange={(v) => {
+                      setDate(v);
+                      slotChanged();
+                    }}
                   />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <TimeField label="Earliest arrival" value={earliest} onChange={setEarliest} />
+                  <div className="min-w-0 space-y-1">
+                    <TimeField
+                      label={t("training.startTime")}
+                      value={startTime}
+                      onChange={(v) => {
+                        setStartTime(v);
+                        slotChanged();
+                      }}
+                    />
                   </div>
-                  <div className="space-y-1">
-                    <TimeField label="Latest arrival" value={latest} onChange={setLatest} />
+                  <div className="min-w-0 space-y-1">
+                    <Label htmlFor="lesson-minutes">{t("training.lessonMinutes")}</Label>
+                    <Input
+                      id="lesson-minutes"
+                      type="number"
+                      inputMode="numeric"
+                      min={15}
+                      max={480}
+                      step={5}
+                      disabled={!startTime}
+                      value={minutes}
+                      onChange={(e) => {
+                        setMinutes(e.target.value);
+                        slotChanged();
+                      }}
+                    />
                   </div>
                 </div>
+                <p className="text-sm text-muted-foreground">{t("training.startTimeHint")}</p>
                 <div className="space-y-1">
                   <Label htmlFor="lesson-trainer">Trainer</Label>
                   <select
                     id="lesson-trainer"
                     className={selectClass}
                     value={staffId}
-                    onChange={(e) => setStaffId(e.target.value)}
+                    onChange={(e) => {
+                      setStaffId(e.target.value);
+                      slotChanged();
+                    }}
                   >
                     <option value="">Assign later</option>
                     {options.data?.staff.map((s) => (
@@ -432,17 +483,61 @@ function Packages({ clientId }: { clientId: string }) {
                 <p className="text-sm text-muted-foreground">Leave blank for no expiry.</p>
               </div>
             )}
+            {action === "cancel" && pack && (
+              <div className="space-y-3">
+                {pack.bookedAfterToday > 0 && (
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-medium">
+                      {t("training.cancelBookedCount", { n: pack.bookedAfterToday })}
+                    </legend>
+                    {[true, false].map((choice) => (
+                      <label
+                        key={String(choice)}
+                        className="flex min-h-11 items-center gap-3 rounded-md border px-3 text-sm"
+                      >
+                        <input
+                          type="radio"
+                          name="cancel-booked"
+                          className="h-4 w-4 shrink-0"
+                          checked={cancelBooked === choice}
+                          onChange={() => setCancelBooked(choice)}
+                        />
+                        <span className="min-w-0">
+                          {choice
+                            ? t("training.cancelBookedCancel")
+                            : t("training.cancelBookedKeep")}
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+                <p className="text-sm text-muted-foreground">{t("training.cancelPastLessons")}</p>
+              </div>
+            )}
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}
               </p>
+            )}
+            {booking && trainerBusy && (
+              <label className="flex min-h-11 items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 shrink-0"
+                  checked={allowOverlap}
+                  onChange={(e) => setAllowOverlap(e.target.checked)}
+                />
+                <span className="min-w-0">{t("training.bookAnyway")}</span>
+              </label>
             )}
             <Button
               type="submit"
               disabled={
                 mutation.isPending ||
                 (action === "sell" && !selected) ||
-                (action === "weekly" && !dates.length)
+                (action === "weekly" && !dates.length) ||
+                (action === "cancel" && cancelBooked === null) ||
+                (booking && trainerBusy && !allowOverlap)
               }
             >
               {mutation.isPending

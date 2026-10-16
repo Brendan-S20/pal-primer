@@ -68,6 +68,7 @@ import { titleHead } from "@/lib/page-title";
 import { TrainingOnly } from "@/components/training/TrainingOnly";
 import { TrainingPackagesCard } from "@/components/settings/TrainingPackagesCard";
 import { TrainingSkillsCard } from "@/components/settings/TrainingSkillsCard";
+import { TrainingSessionRulesCard } from "@/components/settings/TrainingSessionRulesCard";
 import { ensureTrainingCatalog } from "@/lib/training-packages.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/services")({
@@ -277,6 +278,7 @@ function ServicesPage() {
       <TrainingOnly>
         <TrainingPackagesCard services={services} canEdit={canEdit} />
         <TrainingSkillsCard canEdit={canEdit} />
+        <TrainingSessionRulesCard canEdit={can("manage_settings")} />
       </TrainingOnly>
 
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>

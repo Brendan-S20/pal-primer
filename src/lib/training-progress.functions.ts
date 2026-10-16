@@ -9,9 +9,7 @@ const id = z.string().uuid();
 
 const progressInput = z.object({
   visitId: id,
-  scores: z
-    .array(z.object({ skillId: id, score: z.number().int().min(1).max(5) }))
-    .max(40),
+  scores: z.array(z.object({ skillId: id, score: z.number().int().min(1).max(5) })).max(40),
   note: z.string().max(2000).default(""),
   homework: z.string().max(2000).default(""),
   homeworkDue: z
@@ -96,7 +94,9 @@ async function lessonHistory(
       .eq("organization_id", lesson.orgId)
       .eq("dog_id", dogId);
     if (error) throw new Error(error.message);
-    packageIds = [...new Set([...packageIds, ...((data ?? []) as { id: string }[]).map((p) => p.id)])];
+    packageIds = [
+      ...new Set([...packageIds, ...((data ?? []) as { id: string }[]).map((p) => p.id)]),
+    ];
   }
   if (!packageIds.length) return [];
   const { data: visits, error } = await db
@@ -121,7 +121,8 @@ async function lessonHistory(
     db.from("training_session_notes").select("visit_id, note").in("visit_id", ids),
     db.from("homework").select("visit_id, body").in("visit_id", ids),
   ]);
-  for (const result of [scores, notes, homework]) if (result.error) throw new Error(result.error.message);
+  for (const result of [scores, notes, homework])
+    if (result.error) throw new Error(result.error.message);
   type ScoreRow = {
     visit_id: string;
     score: number;
@@ -181,7 +182,10 @@ export const saveTrainingSkill = createServerFn({ method: "POST" })
     const result = data.id
       ? await db
           .from("training_skills")
-          .update({ name: data.name, ...(data.active === undefined ? {} : { active: data.active }) })
+          .update({
+            name: data.name,
+            ...(data.active === undefined ? {} : { active: data.active }),
+          })
           .eq("id", data.id)
           .eq("organization_id", orgId)
           .select("id")
@@ -269,7 +273,10 @@ export const saveSessionProgress = createServerFn({ method: "POST" })
       });
       if (saved.error) throw writeError(saved.error);
     } else {
-      const removed = await db.from("training_session_notes").delete().eq("visit_id", visit.visitId);
+      const removed = await db
+        .from("training_session_notes")
+        .delete()
+        .eq("visit_id", visit.visitId);
       if (removed.error) throw writeError(removed.error);
     }
     if (homework.text) {

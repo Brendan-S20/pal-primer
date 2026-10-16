@@ -897,6 +897,37 @@ const en = {
     saving: "Saving…",
     saved: "Progress saved",
     noSkills: "No skills are set up yet.",
+    history: "Earlier lessons",
+    historyForDog: "Earlier lessons for <dog>{{dog}}</dog>",
+    historyEmpty: "No earlier lessons recorded.",
+    lessonUsesSession: "This lesson uses a session from the package.",
+    lessonGivenBack: "This lesson does not use a session.",
+    giveSessionBack: "Give the session back",
+    useSession: "Use a session",
+    rulesTitle: "Missed and late-canceled lessons",
+    rulesDescription:
+      "Whether a no-show, or a cancel inside the window, uses one of the package's sessions. A cancel for weather, safety or the business's own reason never does. The office can change it on any lesson.",
+    missedUsesSession: "A no-show or late cancel uses a session",
+    lateCancelHours: "Late-cancel window, in hours before the lesson",
+    rulesSave: "Save rules",
+    rulesSaved: "Training rules saved",
+    cancelDescription:
+      "Canceling stops new bookings. It does not void the invoice. Use the existing refund or void tools for the invoice.",
+    cancelBookedCount: "Lessons booked after today: {{n}}",
+    cancelBookedCancel: "Cancel them. Their sessions go back to the package.",
+    cancelBookedKeep: "Keep them. The trainer can still complete them.",
+    cancelChoose: "Choose what happens to the booked lessons.",
+    cancelPastLessons:
+      "Lessons on or before today stay as they are and can still be completed or skipped.",
+    canceledLessons: "Package canceled. Lessons canceled with it: {{n}}",
+    startTime: "Start time",
+    lessonMinutes: "Length in minutes",
+    startTimeHint:
+      "With a start time and a trainer, booking checks the trainer's other lessons. Leave it blank to book the day only.",
+    bookAnyway: "Book anyway, overlapping the trainer's other lesson",
+    dog: "Dog",
+    chooseDog: "Choose a dog",
+    dogRequiredHint: "This household has more than one dog. Progress and homework are kept per dog.",
   },
   // The screen the shell sends a person to once the owner has turned their
   // access off (src/routes/access-off.tsx). The business name goes in as
