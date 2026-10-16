@@ -80,7 +80,7 @@ GRANT ALL ON public.pet_vaccinations TO service_role;
 DROP POLICY IF EXISTS "Read vaccine records on properties you may see" ON public.pet_vaccinations;
 CREATE POLICY "Read vaccine records on properties you may see" ON public.pet_vaccinations
   FOR SELECT TO authenticated USING (
-    public.is_org_member(auth.uid(), organization_id) AND EXISTS (
+    public.is_org_member((SELECT auth.uid()), organization_id) AND EXISTS (
       SELECT 1 FROM public.dogs d WHERE d.id = dog_id
         AND d.organization_id = pet_vaccinations.organization_id
         AND public.may_read_property(d.property_id)
@@ -88,14 +88,14 @@ CREATE POLICY "Read vaccine records on properties you may see" ON public.pet_vac
   );
 DROP POLICY IF EXISTS "Office inserts vaccine records" ON public.pet_vaccinations;
 CREATE POLICY "Office inserts vaccine records" ON public.pet_vaccinations
-  FOR INSERT TO authenticated WITH CHECK (public.can_write_org(auth.uid(), organization_id));
+  FOR INSERT TO authenticated WITH CHECK (public.can_write_org((SELECT auth.uid()), organization_id));
 DROP POLICY IF EXISTS "Office updates vaccine records" ON public.pet_vaccinations;
 CREATE POLICY "Office updates vaccine records" ON public.pet_vaccinations
-  FOR UPDATE TO authenticated USING (public.can_write_org(auth.uid(), organization_id))
-  WITH CHECK (public.can_write_org(auth.uid(), organization_id));
+  FOR UPDATE TO authenticated USING (public.can_write_org((SELECT auth.uid()), organization_id))
+  WITH CHECK (public.can_write_org((SELECT auth.uid()), organization_id));
 DROP POLICY IF EXISTS "Office deletes vaccine records" ON public.pet_vaccinations;
 CREATE POLICY "Office deletes vaccine records" ON public.pet_vaccinations
-  FOR DELETE TO authenticated USING (public.can_write_org(auth.uid(), organization_id));
+  FOR DELETE TO authenticated USING (public.can_write_org((SELECT auth.uid()), organization_id));
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('pet-vaccine-records', 'pet-vaccine-records', false, 10485760,

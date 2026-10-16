@@ -23,7 +23,7 @@ describe("private vaccine records", () => {
     expect(helper).toContain("NOT write OR public.can_write_org(auth.uid(), _org)");
     expect(helper.indexOf("!~")).toBeLessThan(helper.indexOf("::uuid"));
     expect(helper).toContain("array_length(_parts, 1) <> 3");
-    expect(sql).toMatch(/FOR SELECT TO authenticated USING \([\s\S]*public.is_org_member\(auth.uid\(\), organization_id\)[\s\S]*public.may_read_property\(d.property_id\)/);
+    expect(sql).toMatch(/FOR SELECT TO authenticated USING \([\s\S]*public.is_org_member\(\(SELECT auth.uid\(\)\), organization_id\)[\s\S]*public.may_read_property\(d.property_id\)/);
   });
   for (const [name, cmd, write] of [["read", "SELECT", "false"], ["upload", "INSERT", "true"], ["update", "UPDATE", "true"], ["delete", "DELETE", "true"]]) {
     it(`gates storage ${cmd} through the private bucket and helper`, () => {
