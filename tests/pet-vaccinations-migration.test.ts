@@ -22,7 +22,8 @@ describe("private vaccine records", () => {
     expect(helper).toContain("public.may_read_property(d.property_id)");
     expect(helper).toContain("NOT write OR public.can_write_org(auth.uid(), _org)");
     expect(helper.indexOf("!~")).toBeLessThan(helper.indexOf("::uuid"));
-    expect(helper).toContain("array_length(_parts, 1) <> 3");
+    // A NULL or empty name has no array length; COALESCE keeps that a refusal.
+    expect(helper).toContain("COALESCE(array_length(_parts, 1), 0) <> 3");
     expect(sql).toMatch(/FOR SELECT TO authenticated USING \([\s\S]*public.is_org_member\(\(SELECT auth.uid\(\)\), organization_id\)[\s\S]*public.may_read_property\(d.property_id\)/);
   });
   for (const [name, cmd, write] of [["read", "SELECT", "false"], ["upload", "INSERT", "true"], ["update", "UPDATE", "true"], ["delete", "DELETE", "true"]]) {
@@ -49,6 +50,21 @@ describe("private vaccine records", () => {
     expect(sql).toContain("BEFORE INSERT OR UPDATE ON public.pet_vaccinations");
     expect(sql).toMatch(/ON public.pet_vaccinations \(dog_id, vaccine, expires_on DESC\)/);
     expect(sql).toContain("storage_path text UNIQUE");
+  });
+  it("takes the verifier and the creator from the session, never from the row", () => {
+    const trigger = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.pet_vaccinations_before_write"), sql.indexOf("REVOKE ALL ON FUNCTION public.pet_vaccinations_before_write"));
+    expect(trigger).toMatch(/auth\.uid\(\) IS NOT NULL AND NEW\.verified_at IS NOT NULL[\s\S]*NEW\.verified_by := auth\.uid\(\)/);
+    expect(trigger).toMatch(/TG_OP = 'INSERT' THEN\s+IF auth\.uid\(\) IS NOT NULL THEN NEW\.created_by := auth\.uid\(\)/);
+    expect(trigger).toContain("NEW.created_by := OLD.created_by");
+    // Clearing a deleted verifier runs before the stamp, so it is not undone.
+    expect(trigger.indexOf("NEW.verified_at := NULL")).toBeLessThan(trigger.indexOf("NEW.verified_by := auth.uid()"));
+  });
+  it("wraps auth.uid() in a SELECT in every table policy", () => {
+    const policies = sql.match(/CREATE POLICY[\s\S]*?;/g) ?? [];
+    expect(policies.length).toBe(8);
+    for (const p of policies.filter((p) => p.includes("ON public.pet_vaccinations"))) {
+      expect(p.replace(/\(SELECT auth\.uid\(\)\)/g, "")).not.toContain("auth.uid()");
+    }
   });
   it("constrains dates, notes, source, verification and required vaccines", () => {
     expect(sql).toContain("DEFAULT 'warn'");

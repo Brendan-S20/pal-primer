@@ -61,6 +61,19 @@ BEGIN
   IF TG_OP = 'UPDATE' AND OLD.verified_by IS NOT NULL AND NEW.verified_by IS NULL THEN
     NEW.verified_at := NULL;
   END IF;
+  -- A signed-in caller verifies as themselves and creates as themselves.
+  -- The portal writes on the service role, where auth.uid() is null.
+  IF auth.uid() IS NOT NULL AND NEW.verified_at IS NOT NULL AND (TG_OP = 'INSERT'
+    OR NEW.verified_at IS DISTINCT FROM OLD.verified_at
+    OR NEW.verified_by IS DISTINCT FROM OLD.verified_by) THEN
+    NEW.verified_by := auth.uid();
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF auth.uid() IS NOT NULL THEN NEW.created_by := auth.uid(); END IF;
+  ELSE
+    NEW.created_by := OLD.created_by;
+    NEW.created_at := OLD.created_at;
+  END IF;
   NEW.updated_at := now();
   RETURN NEW;
 END;
@@ -113,7 +126,7 @@ DECLARE
   _org uuid;
   _dog uuid;
 BEGIN
-  IF auth.uid() IS NULL OR array_length(_parts, 1) <> 3
+  IF auth.uid() IS NULL OR COALESCE(array_length(_parts, 1), 0) <> 3
     OR _parts[1] !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     OR _parts[2] !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     OR _parts[3] !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp|heic|heif|pdf)$'
