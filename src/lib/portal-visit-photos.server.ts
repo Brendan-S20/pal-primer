@@ -3,12 +3,19 @@
 export async function portalVisitPhotos(sb: any, visitIds: string[]) {
   const byVisit = new Map<string, Array<{ url: string; kind: string }>>();
   for (let i = 0; i < visitIds.length; i += 100) {
-    const { data: photos, error } = await sb.from("visit_photos")
-      .select("visit_id, storage_path, kind").in("visit_id", visitIds.slice(i, i + 100)).order("created_at");
+    const { data: photos, error } = await sb
+      .from("visit_photos")
+      .select("visit_id, storage_path, kind")
+      .in("visit_id", visitIds.slice(i, i + 100))
+      .order("created_at");
     if (error) throw new Error(error.message);
     if (!photos?.length) continue;
-    const { data: signed, error: signError } = await sb.storage.from("visit-photos")
-      .createSignedUrls(photos.map((p: { storage_path: string }) => p.storage_path), 600);
+    const { data: signed, error: signError } = await sb.storage
+      .from("visit-photos")
+      .createSignedUrls(
+        photos.map((p: { storage_path: string }) => p.storage_path),
+        600,
+      );
     if (signError) throw new Error(signError.message);
     const urls = new Map<string, string>();
     for (const s of signed ?? []) if (s.path && s.signedUrl) urls.set(s.path, s.signedUrl);

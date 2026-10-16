@@ -36,6 +36,7 @@ vi.mock("@/lib/stays.functions", () => ({
   cancelStay: vi.fn(),
   setStaySitter: vi.fn(),
 }));
+vi.mock("@/lib/stay-booking.functions", () => ({ confirmStay: vi.fn() }));
 vi.mock("@/lib/clients.functions", () => ({ listDogsForClient: vi.fn() }));
 vi.mock("@/lib/properties.functions", () => ({
   listPropertiesForClient: vi.fn(),
