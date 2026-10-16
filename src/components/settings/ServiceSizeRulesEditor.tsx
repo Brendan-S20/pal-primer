@@ -116,8 +116,9 @@ function SizeRuleRow({
   const save = useMutation({
     mutationFn: async (clear: boolean) => {
       if (clear || (!minutes.trim() && !price.trim() && fixedSize)) {
-        if (rule) await remove({ data: { serviceId, id: rule.id } });
-        return;
+        if (!rule) return false;
+        await remove({ data: { serviceId, id: rule.id } });
+        return true;
       }
       const cents = parseDollarsToCents(price);
       const length = Number(minutes);
@@ -135,9 +136,11 @@ function SizeRuleRow({
           priceCents: cents,
         },
       });
+      return true;
     },
-    onSuccess: () => {
+    onSuccess: (changed) => {
       setError(null);
+      if (!changed) return;
       toast.success("Size rule saved");
       onSaved();
     },

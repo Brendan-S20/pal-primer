@@ -30,7 +30,7 @@ export function PetSizeFields({
         >
           <option value="">Not set</option>
           {size && !PET_SIZES.includes(size as (typeof PET_SIZES)[number]) && (
-            <option value={size}>{size}</option>
+            <option value={size}>{size === "giant" ? "Giant" : size}</option>
           )}
           {PET_SIZES.map((s) => (
             <option key={s} value={s}>

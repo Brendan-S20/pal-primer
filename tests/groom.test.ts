@@ -178,3 +178,16 @@ describe("invoice descriptions", () => {
     expect(groomQuoteSummary("Full groom", [])).toBe("Full groom");
   });
 });
+
+describe("groomQuote on an hourly service", () => {
+  it("charges the hourly rate for a pet with no size rule", () => {
+    const q = groomQuote({
+      service: { price_unit: "hour", base_price_cents: 6000, extra_pet_cents: 0, default_duration_min: 90 },
+      rules: [],
+      pets: [{ id: "p1", name: "Bella", size: "small", coat_type: null }],
+      addons: [],
+    });
+    expect(q.cents).toBe(9000);
+    expect(q.minutes).toBe(90);
+  });
+});

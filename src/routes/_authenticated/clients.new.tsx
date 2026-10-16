@@ -689,7 +689,7 @@ function NewClientWizard({
                 name: d.name.trim(),
                 breed: d.breed || undefined,
                 weightClass: d.weightClass || undefined,
-                ...(grooming ? { coatType: d.coatType || null, weightLb: d.weightLb ? Number(d.weightLb) : null } : {}),
+                ...(grooming ? { coatType: d.coatType || null, weightLb: d.weightLb ? Math.round(Number(d.weightLb) * 10) / 10 : null } : {}),
                 temperament: d.temperament,
                 notes: d.notes || undefined,
               }))

@@ -773,7 +773,7 @@ function DogsSection({
         name: name.trim(),
         breed: breed || null,
         weightClass: size || null,
-        ...(grooming ? { coatType: coatType || null, weightLb: weightLb === "" ? null : Number(weightLb) } : {}),
+        ...(grooming ? { coatType: coatType || null, weightLb: weightLb === "" ? null : Math.round(Number(weightLb) * 10) / 10 } : {}),
         temperament,
         notes: notes || null,
       };

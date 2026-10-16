@@ -82,10 +82,21 @@ export function groomQuote({
     let cents: number | null;
     if (rule) cents = rule.price_cents;
     else {
-      cents =
+      const perUnit =
         fallbackPets > 0 && service.extra_pet_cents > 0
           ? service.extra_pet_cents
           : service.base_price_cents;
+      // An hourly service charges its rate for the pet's minutes; a size rule
+      // is always a price per pet.
+      const minutes = service.default_duration_min;
+      cents =
+        perUnit === null
+          ? null
+          : service.price_unit === "hour"
+            ? minutes && minutes > 0
+              ? Math.round((perUnit * minutes) / 60)
+              : null
+            : perUnit;
       fallbackPets += 1;
     }
     return {
