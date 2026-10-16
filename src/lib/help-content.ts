@@ -121,7 +121,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Plan your first routes",
     section: "Business setup",
     body: [
-      "Routes turn scheduled visits into an ordered day for each tech. Week and month show the calendar beside the map, with each technician in their own colour in both. Hover a visit for who is running it, where, and its status. Today shows a drag-and-drop board with a column per tech.",
+      "Routes turn scheduled visits into an ordered day for each tech. Week and month show the calendar beside the map, with each technician in their own color in both. Hover a visit for who is running it, where, and its status. Today shows a drag-and-drop board with a column per tech.",
       "Only people set to run routes appear here. If someone is missing, turn on \"Runs routes\" for them in [Users & roles](/settings/users).",
     ],
     steps: [
@@ -161,7 +161,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Business setup",
     body: [
       "A skip is a scheduled visit that doesn't happen: a locked gate, an aggressive dog loose in the yard, a client on vacation.",
-      "Skip rules decide what happens to billing when a visit is skipped: some reasons still charge the client (you showed up, the gate was locked), others don't (you cancelled for weather).",
+      "Skip rules decide what happens to billing when a visit is skipped: some reasons still charge the client (you showed up, the gate was locked), others don't (you canceled for weather).",
       "Set the defaults in [Skip rules](/settings/skip-rules); techs pick a reason when they skip on [My Day](article:my-day), and billing follows your rule automatically.",
     ],
     appLink: { to: "/settings/skip-rules", label: "Open Skip rules" },
@@ -337,7 +337,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Financial",
     body: [
       "**Generate from visits** bills completed, not-yet-billed visits. It's the batch button for your regular cadence. If it says it generated 0 invoices, that means there were no completed unbilled visits in the window, not that something failed.",
-      '**New invoice** is the direct route: pick a client, add line items, bill immediately. Use it for one-off jobs that never went through the schedule: "I did the work, now I bill."',
+      '**New invoice** is the direct route: pick a client, add line items, bill immediately. Use it for one-off visits that never went through the schedule: "I did the work, now I bill."',
     ],
     appLink: { to: "/invoices", label: "Open Invoices" },
     related: ["getting-paid", "skip-rules", "add-ons"],
@@ -382,7 +382,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Financial",
     body: [
       "The Royalties page applies if separate businesses pay you a percentage of their revenue (a franchise-style arrangement). It calculates and invoices those royalty fees across linked organizations.",
-      "Running a single location? You can ignore it entirely; it's intentionally not in the sidebar. Full multi-location management (shared staff, cross-location reporting) is on the roadmap.",
+      "Open Royalties from the sidebar to review linked businesses and their totals. Each business keeps its own clients and staff.",
     ],
     related: ["payments-vs-billing"],
   },

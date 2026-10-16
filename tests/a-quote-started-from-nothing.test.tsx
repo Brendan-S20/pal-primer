@@ -180,6 +180,16 @@ describe("a new quote opens priced", () => {
     expect(html).toContain("Add service from pricing");
   });
 
+  it("ends the unmeasured yard pricing note with one period", () => {
+    const html = render({
+      zones: [{ ...CENTRAL, pricing_mode: "area" }],
+      standard: STANDARD,
+      subject: { zoneId: CENTRAL.id, dogCount: 1 },
+    });
+    expect(html).toContain("without the area charge.</span>");
+    expect(html).not.toContain("area charge..");
+  });
+
   it("starts with one line and keeps the optional extras one tap away", () => {
     const html = render(null);
     expect(html.match(/id="line-\d+-desc"/g)).toHaveLength(1);

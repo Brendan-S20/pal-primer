@@ -78,7 +78,7 @@ function Page() {
         <p className="text-sm text-muted-foreground">
           {RECEPTIONIST_LAUNCHED
             ? "Answers texts and calls to your business number using your FAQ and your own prices. It can quote, take down a new client's details, and hand off to a person."
-            : "When it launches, it will answer texts and calls to your business number using your FAQ and your own prices, quote, take down a new client's details, and hand off to a person. It is not switched on for anyone yet. You can write its FAQ and persona now, ready for launch."}
+            : "When it launches, it will answer texts and calls to your business number from your FAQ and prices, quote, take a new client's details, and hand off to a person. It is not on yet; you can write its FAQ and persona now."}
         </p>
       </div>
 
@@ -137,9 +137,8 @@ function Page() {
             Enable AI voice receptionist on inbound calls
           </label>
           <p className="mt-1 text-xs text-muted-foreground">
-            Uses the same persona, FAQ, and tools as SMS. Twilio's built-in speech recognition
-            captures what the caller says; the AI reply is spoken back via text-to-speech. If it
-            can't help, the caller is asked to leave a voicemail.
+            Answers calls using your persona, FAQ and prices. If it can&apos;t help, it asks the
+            caller to leave a voicemail.
           </p>
           <label className="mt-3 block space-y-1 text-sm">
             <span className="font-medium">Greeting (spoken first)</span>

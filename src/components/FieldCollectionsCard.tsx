@@ -8,7 +8,7 @@
 // rows, activity entries and pay-page cancellations. Draws nothing when
 // nothing is waiting and nothing was decided in the last two weeks.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Banknote } from "lucide-react";
@@ -43,32 +43,75 @@ export function FieldCollectionsCard() {
   const rows = q.data?.collections ?? [];
   const waiting = rows.filter((r) => r.status === "awaiting_confirmation");
   const decided = rows.filter((r) => r.status !== "awaiting_confirmation");
+  // Keep the invoice list visible and open details when a notification links here.
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const openFromHash = () => {
+      if (window.location.hash === "#field-collections") setOpen(true);
+    };
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, []);
   if (rows.length === 0) return null;
+  const waitingCents = waiting.reduce((n, c) => n + c.amount_cents, 0);
 
   return (
     // `id`: the anchor a "collected $40" push opens (/invoices#field-collections).
     <section
       id="field-collections"
-      className="rounded-lg border bg-card p-4"
+      className="rounded-lg border bg-card px-4 py-2"
       aria-labelledby="field-collections-heading"
+      data-open={open ? "" : undefined}
     >
-      <div className="flex min-w-0 items-start gap-2">
-        <Banknote className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
-        <div className="min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <Banknote className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
           <h2 id="field-collections-heading" className="font-semibold">
             Collected in the field
-            {waiting.length > 0 && (
-              <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-800">
-                {waiting.length} waiting
-              </span>
-            )}
           </h2>
-          <p className="text-sm text-muted-foreground">
+          {waiting.length > 0 ? (
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-800">
+              {waiting.length} waiting · {money(waitingCents)}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">Nothing waiting</span>
+          )}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant={waiting.length > 0 && !open ? "default" : "outline"}
+          className="touch:min-h-11"
+          aria-expanded={open}
+          aria-controls="field-collections-body"
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Hide" : waiting.length > 0 ? "Review" : "Show recent"}
+        </Button>
+      </div>
+      {open && (
+        <div id="field-collections-body" className="pb-2">
+          <p className="mt-2 text-sm text-muted-foreground">
             Cash and checks your techs recorded at the door. Nothing is applied to an invoice until
             you confirm it here.
           </p>
+          <FieldCollectionsBody waiting={waiting} decided={decided} />
         </div>
-      </div>
+      )}
+    </section>
+  );
+}
+
+function FieldCollectionsBody({
+  waiting,
+  decided,
+}: {
+  waiting: FieldCollectionRow[];
+  decided: FieldCollectionRow[];
+}) {
+  return (
+    <>
       {waiting.length > 0 && (
         <ul className="mt-3 space-y-3">
           {waiting.map((c) => (
@@ -103,7 +146,7 @@ export function FieldCollectionsCard() {
           </ul>
         </details>
       )}
-    </section>
+    </>
   );
 }
 

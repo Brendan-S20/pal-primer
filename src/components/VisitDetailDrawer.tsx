@@ -1,3 +1,4 @@
+import i18n from "@/lib/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -44,7 +45,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
-import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 
@@ -246,7 +247,7 @@ export function VisitDetailDrawer({
             {client?.display_name ?? "Visit"}
             {v?.status && (
               <Badge variant="secondary" className="capitalize">
-                {v.status.replace("_", " ")}
+                {i18n.t(`status.${v.status}`, { defaultValue: "Visit" })}
               </Badge>
             )}
             {/* Booked by text, through the AI receptionist (subscriptions.booked_via). */}
@@ -430,7 +431,7 @@ export function VisitDetailDrawer({
                 the visit was completed. Absent when nothing asked. */}
             <VisitChecklistAnswers answers={parseAnswers(v.visit_checklist) ?? []} />
 
-            <PhotosSection visitId={visitId!} photos={v.visit_photos ?? []} />
+            <PhotosSection key={visitId!} visitId={visitId!} photos={v.visit_photos ?? []} status={v.status} />
 
             {/* Past and future apart. One "Other visits here" list, newest
                 first, put next month's scheduled visits above last week's
@@ -577,7 +578,7 @@ function OtherVisits({
         {visits.map((h) => (
           <li key={h.id} className="flex justify-between gap-2">
             <span>{formatDay(h.scheduled_on)}</span>
-            <span className="capitalize text-muted-foreground">{h.status.replace("_", " ")}</span>
+            <span className="capitalize text-muted-foreground">{i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}</span>
           </li>
         ))}
       </ul>
@@ -693,11 +694,22 @@ function DogsSection({
   );
 }
 
-function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) {
+function PhotosSection({
+  visitId,
+  photos,
+  status,
+}: {
+  visitId: string;
+  photos: any[];
+  status?: string | null;
+}) {
   const qc = useQueryClient();
   const actions = useOfflineVisitActions(visitId, undefined);
   const [uploading, setUploading] = useState(false);
-  const [kind, setKind] = useState<PhotoKind>("completion");
+  // A visit nobody has started yet gets a Before photo by default (#439);
+  // after that, Completion.
+  const [chosenKind, setKind] = useState<PhotoKind | null>(null);
+  const kind = chosenKind ?? defaultPhotoKind(status);
 
   const upload = async (file: File) => {
     setUploading(true);

@@ -487,7 +487,7 @@ function ProcessingFeeCard() {
           {ex.card.shortfallCents > 0 && !ex.card.suppressed && (
             <p className="mt-2 text-xs text-muted-foreground">
               Card networks cap a surcharge at 3% and at your actual cost, so a card fee never
-              recovers the full amount on smaller jobs. Bank payments recover in full.
+              recovers the full amount on smaller charges. Bank payments recover in full.
             </p>
           )}
         </div>

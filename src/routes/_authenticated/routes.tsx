@@ -985,6 +985,45 @@ function RoutesPage() {
                 />
               </PopoverContent>
             </Popover>
+            {/* Step by whatever you are LOOKING at: a day, a week or a calendar
+                month, so the control matches the view it drives. Beside the
+                date it steps rather than in the toolbar: at 1024px the toolbar
+                wrapped to three rows (QA row 43), and the heading row had the
+                room. */}
+            <div className="inline-flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => shiftDay(-1)}
+                title={`Previous ${rangeNoun}`}
+                aria-label={`Previous ${rangeNoun}`}
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => shiftDay(1)}
+                title={`Next ${rangeNoun}`}
+                aria-label={`Next ${rangeNoun}`}
+              >
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => {
+                  setLocalColumns(null);
+                  setDay(null);
+                }}
+                disabled={day === orgTodayIso}
+              >
+                Today
+              </Button>
+            </div>
           </div>
           {/* A-P2-10: completing a visit from the office is an owner or office
               manager action (office_complete_visit refuses a dispatcher), so
@@ -1006,50 +1045,6 @@ function RoutesPage() {
               One-off visit
             </Button>
           )}
-          {/* Step by whatever you are LOOKING at.
-              A date input alone made "show me next week" a date-arithmetic
-              exercise: you had to work out which Monday you wanted. The arrows
-              move by the active range — a day, a week, or a calendar month —
-              so the control matches the view it drives.
-
-              The date input that sat between them has gone to the heading,
-              which now opens the calendar. Jumping to an arbitrary date is a
-              rarer act than stepping to the next one and does not need to hold
-              150px of the toolbar to be available. */}
-          <div className="inline-flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={() => shiftDay(-1)}
-              title={`Previous ${rangeNoun}`}
-              aria-label={`Previous ${rangeNoun}`}
-            >
-              <ChevronLeft className="h-4 w-4 shrink-0" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={() => shiftDay(1)}
-              title={`Next ${rangeNoun}`}
-              aria-label={`Next ${rangeNoun}`}
-            >
-              <ChevronRight className="h-4 w-4 shrink-0" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9"
-              onClick={() => {
-                setLocalColumns(null);
-                setDay(null);
-              }}
-              disabled={day === orgTodayIso}
-            >
-              Today
-            </Button>
-          </div>
           {/* Two clean axes instead of five mixed buttons: WHAT you look at
               (Map = map + load + board, Board = board only) and WHEN
               (Today / Week / Month). */}
@@ -1079,13 +1074,25 @@ function RoutesPage() {
               </button>
             ))}
           </div>
+          {/* The controls used now and then (display options, and who runs
+              routes) share one "More" menu, so the toolbar stays one row at
+              1024px. They were two more buttons on it. */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" title="Display options">
+              <Button
+                variant="outline"
+                size="sm"
+                title="Display options and crew"
+                data-testid="schedule-more"
+              >
                 <Settings2 className="h-4 w-4 shrink-0" />
+                <span className="ml-1.5">More</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 space-y-4">
+            <PopoverContent
+              align="end"
+              className="max-h-[min(36rem,calc(100vh-6rem))] w-80 max-w-[calc(100vw-1rem)] space-y-4 overflow-y-auto"
+            >
               <div className="text-xs font-semibold uppercase text-muted-foreground">Display</div>
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1149,22 +1156,13 @@ function RoutesPage() {
                   </button>
                 </div>
               </div>
-            </PopoverContent>
-          </Popover>
-          {canManageCrew && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" title="Who runs routes">
-                  <Users className="h-4 w-4 shrink-0" />
-                  <span className="ml-1.5 max-sm:hidden">Crew</span>
-                </Button>
-              </PopoverTrigger>
-              {/* 320px of popover does not fit a 320px phone. The cap matches
-                  WeatherPopover's, which is the pattern the other popovers on
-                  this board already use. */}
-              <PopoverContent align="end" className="w-80 max-w-[calc(100vw-1rem)] p-0">
+            {canManageCrew && (
+              <div className="-mx-4 -mb-4 border-t" data-testid="schedule-crew">
                 <div className="border-b px-3 py-2">
-                  <div className="text-sm font-medium">Who runs routes</div>
+                  <div className="flex items-center gap-1.5 text-sm font-medium">
+                    <Users className="h-4 w-4 shrink-0" />
+                    Who runs routes
+                  </div>
                   <div className="text-2xs text-muted-foreground">
                     Everyone switched on here gets a lane on the board and can be assigned work.
                     Everyone else stays in the office.
@@ -1228,9 +1226,10 @@ function RoutesPage() {
                   Switching somebody off doesn&apos;t move their visits, so use{" "}
                   <strong>Cover</strong> on their lane for that.
                 </div>
-              </PopoverContent>
-            </Popover>
-          )}
+              </div>
+            )}
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
             {toolsOpen ? "Hide auto-routing" : "Auto-routing"}
           </Button>
@@ -1368,6 +1367,14 @@ function RoutesPage() {
               setLocalColumns(null);
               setDay(d);
               setRangePersist("today");
+            }}
+            // That day's board, whose first column is Unassigned. The day board
+            // is where a visit gets assigned, by dragging it out of that column.
+            onPickUnassigned={(d) => {
+              setLocalColumns(null);
+              setDay(d);
+              setRangePersist("today");
+              setViewModePersist("board");
             }}
             onOpenVisit={setDetailVisitId}
           />

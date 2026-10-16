@@ -17,6 +17,7 @@ import { qboCallbackErrorMessage } from "@/lib/qbo-redirect";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { usePermissions } from "@/hooks/useMyRole";
 import { formatDateTime } from "@/lib/format";
+import { qboConnectionParts } from "@/lib/qbo-connection-label";
 import { pageTitle } from "@/lib/page-title";
 
 // QuickBooks Online sync (Xero was dropped on 2026-10-09).
@@ -57,6 +58,7 @@ function AccountingSettings() {
   const status = useQuery({ queryKey: ["qbo-status"], queryFn: () => statusFn(), enabled: canManage });
   const conn = status.data?.connection ?? null;
   const connected = conn?.status === "connected";
+  const connParts = qboConnectionParts(conn?.connected_at, conn?.last_sync_at, formatDateTime);
   const choices = useQuery({
     queryKey: ["qbo-choices", conn?.realm_id],
     queryFn: () => choicesFn(),
@@ -265,8 +267,8 @@ function AccountingSettings() {
               </div>
               <div className="text-xs text-muted-foreground">
                 Company ID <span dir="ltr">{conn?.realm_id}</span>
-                {conn?.connected_at && ` · since ${formatDateTime(conn.connected_at)}`}
-                {conn?.last_sync_at && ` · last sync ${formatDateTime(conn.last_sync_at)}`}
+                {connParts.connected && ` · ${connParts.connected}`}
+                {connParts.sync && ` · ${connParts.sync}`}
               </div>
             </div>
             <button type="button" onClick={onDisconnect} disabled={busy} className="rounded border px-3 py-2 text-sm disabled:opacity-60 touch:min-h-11 shrink-0 text-red-600">
@@ -392,11 +394,7 @@ function AccountingSettings() {
       <div className="rounded border bg-card p-4 text-sm">
         <h2 className="mb-1 font-medium">Help</h2>
         <p className="text-muted-foreground">
-          Questions about QuickBooks sync? See the{" "}
-          <Link to="/help" search={{ article: undefined }} className="font-medium text-primary underline">
-            Knowledge Center
-          </Link>{" "}
-          or email{" "}
+          Questions about QuickBooks sync? Email{" "}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-primary underline">
             {SUPPORT_EMAIL}
           </a>

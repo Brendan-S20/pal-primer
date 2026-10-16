@@ -58,10 +58,9 @@ function AiSettings() {
             settings page that still calls them AI is the kind of claim this
             repo keeps finding outliving the code. */}
         <p className="text-sm text-muted-foreground">
-          The AI receptionist runs on HoundStack&apos;s own models, so there is no key to set up
-          and no separate provider bill. Marketing posts are coming soon. Churn scores, zone price
-          suggestions, review reply drafts and the digests are worked out from your own data and
-          do not use AI.
+          The AI receptionist will use HoundStack&apos;s models, with no provider key or separate
+          provider bill. Marketing posts are coming soon. Churn scores, price suggestions, review
+          replies and digests use your data without AI.
         </p>
       </div>
 
@@ -149,13 +148,13 @@ function AiSettings() {
  *  that is still spending allowance. */
 const FEATURE_LABELS: Record<(typeof AI_FEATURES)[number], string> = {
   marketing_content: "Marketing posts",
-  review_reply: "Review replies (before templates)",
-  churn_scoring: "Churn scoring (before it was rules)",
-  weekly_digest: "Weekly digest, dashboard (before it was rules)",
-  weekly_digest_email: "Weekly digest email (before it was rules)",
-  business_advisor: "Business advisor (before it was rules)",
-  dispatch_suggestion: "Dispatch suggestions (retired)",
-  zone_pricing: "Zone pricing (before it was rules)",
+  review_reply: "Review replies",
+  churn_scoring: "Churn scoring",
+  weekly_digest: "Dashboard digest",
+  weekly_digest_email: "Email digest",
+  business_advisor: "Business advisor",
+  dispatch_suggestion: "Past dispatch usage",
+  zone_pricing: "Zone pricing",
   ai_receptionist: "AI receptionist",
   connection_test: "Connection tests (not charged)",
 };
@@ -292,9 +291,8 @@ function AiUsageMeter() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            A safety stop, not a budget. Below the ceiling nothing is blocked, and usage past your
-            allowance is simply billed. Cannot be set below 1×, which would pause AI you have
-            already paid for.
+            AI pauses at this ceiling. Usage above your allowance is billed until then. The minimum
+            is 1× your allowance.
           </p>
         </div>
       )}

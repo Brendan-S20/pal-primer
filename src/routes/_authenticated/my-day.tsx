@@ -125,7 +125,7 @@ import {
   takeCompletionPhoto,
   visitStep,
 } from "@/lib/visit-step";
-import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
@@ -1623,6 +1623,13 @@ function VisitCard({
   const [startedHere, setStartedHere] = useState(false);
   const [completionPhotoHere, setCompletionPhotoHere] = useState(false);
   const [photoKind, setPhotoKind] = useState<PhotoKind>("completion");
+  // Before a visit is started, a photo is the yard as found, so the picker
+  // shows Before until the tech picks something else (#439: it opened on
+  // Completion, and a "before" shot got filed as the finished yard). Once the
+  // visit is under way it is `photoKind` again, which opens on Completion.
+  const [photoKindChosen, setPhotoKindChosen] = useState(false);
+  const shownPhotoKind: PhotoKind =
+    !photoKindChosen ? defaultPhotoKind(visit.status, startedHere) : photoKind;
   // Which photo the in-app viewer is showing, and the signed URLs the
   // thumbnails have already fetched. Keyed by photo id rather than index so a
   // photo arriving mid-render cannot shift somebody else's URL onto it.
@@ -1834,7 +1841,7 @@ function VisitCard({
   });
 
   const uploadPhoto = async (file: File, kindOverride?: PhotoKind): Promise<boolean> => {
-    const photoKind_ = kindOverride ?? photoKind;
+    const photoKind_ = kindOverride ?? shownPhotoKind;
     setUploading(true);
     try {
       const r = await actions.uploadPhoto(file, photoKind_);
@@ -1857,6 +1864,7 @@ function VisitCard({
       // kept asking for a completion photo, and the only clue that anything
       // was wrong was the word "Before" in a toast that had already gone.
       setPhotoKind("completion");
+      setPhotoKindChosen(false);
       return true;
     } catch (e: any) {
       haptic("error");
@@ -2042,8 +2050,11 @@ function VisitCard({
   const photoCapture = () => (
     <div className="flex flex-wrap items-center gap-2">
       <select
-        value={photoKind}
-        onChange={(e) => setPhotoKind(e.target.value as PhotoKind)}
+        value={shownPhotoKind}
+        onChange={(e) => {
+          setPhotoKind(e.target.value as PhotoKind);
+          setPhotoKindChosen(true);
+        }}
         // MEASURED 2026-08-19: 40px, four short of the floor, on the
         // screen a technician uses outdoors with gloves on.
         className="h-11 rounded-md border bg-background px-3 text-sm"

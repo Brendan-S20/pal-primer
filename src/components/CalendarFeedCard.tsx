@@ -173,12 +173,8 @@ function FeedRow({
 function AccessCodesNote() {
   return (
     <p className="text-xs text-muted-foreground">
-      A subscribed calendar is copied onto Google&apos;s, Apple&apos;s or Microsoft&apos;s
-      servers, and from there to lock screens, watches and anyone the calendar is shared with.
-      Getting a new link stops future updates but cannot pull back what a calendar already
-      stored. So gate codes, lock-box codes and key locations stay out of calendars unless you
-      turn this on, and they never go in the all-visits feed. Technicians still see them in the
-      app at the gate.
+      Adds access codes to technicians&apos; own calendars. Calendar providers keep copies that
+      cannot be pulled back. Codes stay out of the all-visits feed and remain available in the app.
     </p>
   );
 }
@@ -211,7 +207,7 @@ export function CalendarFeedCard({ showOrgSetting = false }: { showOrgSetting?: 
         <CardTitle className="text-base">Calendar feed</CardTitle>
         <CardDescription>
           See your visits in Google Calendar, Apple Calendar or Outlook. The calendar checks for
-          changes on its own, usually every few hours; skipped visits show as cancelled.
+          changes on its own, usually every few hours; skipped visits show as canceled.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -500,7 +500,7 @@ function PlansPage() {
           <p className="text-sm text-muted-foreground">
             Per-employee SaaS pricing, matching houndstack.com. Each tier includes a set number of
             employees; additional active employees are billed at the per-employee overage rate.
-            <strong> Customers, dogs, jobs, routes, and zones are unlimited on every plan.</strong>{" "}
+            <strong> Customers, dogs, visits, routes, and zones are unlimited on every plan.</strong>{" "}
             New signups start on a 14-day free trial.
           </p>
           {/* The sentence this replaces said "Stripe products/prices are
