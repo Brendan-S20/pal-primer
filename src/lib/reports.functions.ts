@@ -56,6 +56,7 @@ type ReportInvoice = Pick<
   // revenue by billedInPeriod.
   | "tax_cents"
   | "credit_applied_cents"
+  | "amount_paid_cents"
   | "due_on"
   | "issued_at"
   | "paid_at"
@@ -176,7 +177,7 @@ export const getReports = createServerFn({ method: "POST" })
       supabase
         .from("invoices")
         .select(
-          "id, client_id, status, total_cents, tax_cents, credit_applied_cents, due_on, issued_at, paid_at, voided_at, updated_at, kind",
+          "id, client_id, status, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, due_on, issued_at, paid_at, voided_at, updated_at, kind",
         )
         .eq("organization_id", orgId)
         .order("id")
@@ -226,7 +227,13 @@ export const getReports = createServerFn({ method: "POST" })
     // question nobody asked — it is neither the period's closing balance nor
     // anything an accountant can tie to — and it is why July read $2,655.00
     // here and $2,550.00 in the pack.
-    const ar = arPositionAsOf(invoices ?? [], to, timezone);
+    // Dated partial payments, so a part paid after `to` does not shrink it.
+    const { attachDatedPartialPayments } = await import("@/lib/partial-payments.server");
+    const ar = arPositionAsOf(
+      await attachDatedPartialPayments(supabase, orgId, invoices ?? []),
+      to,
+      timezone,
+    );
 
     // ── Top clients, on the CASH basis ──────────────────────────────────────
     //
