@@ -32,6 +32,7 @@ function chain(table: string) {
 const db = { from: chain };
 
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     const b: any = {
       middleware: () => b,

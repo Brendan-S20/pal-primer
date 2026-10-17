@@ -36,7 +36,7 @@ export function AccountDeletionCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Locked and cancelled accounts are deleted 30 days after the lock, or 30 days after the
+          Locked and canceled accounts are deleted 30 days after the lock, or 30 days after the
           deploy for accounts locked before it. The job is{" "}
           {r ? (r.enabled ? "ON" : "OFF") : "off until switched on in code"}; this only counts.
         </p>

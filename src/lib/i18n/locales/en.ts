@@ -348,6 +348,36 @@ const en = {
     lockBox: "Lock box",
     key: "Key",
   },
+  /** A dog walk's card (#410): components/my-day/WalkParts.tsx. */
+  walk: {
+    start: "Start walk",
+    end: "End walk",
+    length: "{{minutes}} min walk",
+    minutesOut: "Out {{minutes}} min",
+    groupWalk: "Group walk",
+    pickupOrder: "Pickup order",
+    thisStop: "This stop",
+    wayIn: "How you get in",
+    access: {
+      key: "Key",
+      lockbox: "Lock box",
+      code: "Door code",
+      garage: "Garage code",
+      personHome: "Someone is home",
+    },
+    officeHoldsKey: "Office holds the key",
+    officeHoldsKeyTag: "Office holds the key, tag {{tag}}",
+    reportHeading: "Walk report",
+    pee: "Pee",
+    poo: "Poo",
+    yes: "Yes",
+    no: "No",
+    noteForClient: "Note for the client",
+    noteForClientPlaceholder: "Happy walk, sniffed every tree",
+    /** Property drawer, when property_access_codes did not return the row. */
+    codesNotLoaded:
+      "The saved codes are hidden or could not be loaded. They stay as they are unless you type new ones.",
+  },
   visit: {
     stop: "Stop {{number}}.",
     queuedCount: "{{count}} queued",
@@ -416,7 +446,7 @@ const en = {
   },
   skipReason: {
     customer_requested: "Client skipped via portal",
-    client_cancelled_late: "Client cancelled late",
+    client_cancelled_late: "Client canceled late",
     gate_locked: "Gate locked / no access",
     dog_outside: "Dog was outside",
     weather: "Weather",
@@ -555,7 +585,7 @@ const en = {
   },
   nativePush: {
     title: "Notifications on this phone",
-    description: "Route changes, new jobs and messages, even when the app is closed.",
+    description: "Route changes, new visits and messages, even when the app is closed.",
     promptBody: "This phone has not been asked yet. Tap the button, then choose Allow.",
     turnOn: "Turn on notifications",
     turnedOn: "Notifications are on",

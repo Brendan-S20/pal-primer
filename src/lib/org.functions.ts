@@ -1,6 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { accessTurnedOff, requirePermission } from "@/lib/authz.server";
 import { assertValidOrgName } from "@/lib/dna-linkage";
 
@@ -161,7 +162,11 @@ export const recordSmsConsent = createServerFn({ method: "POST" })
 
 export const getMyOrg = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }) => loadMyOrg(context));
+
+/** getMyOrg's answer, also asked by getShellContext. */
+export const loadMyOrg = createServerOnlyFn(
+  async (context: AuthedContext) => {
     const { supabase, userId } = context;
 
     // Both at once. access_turned_off is the one question a person who has
@@ -199,7 +204,8 @@ export const getMyOrg = createServerFn({ method: "GET" })
     if (orgErr) throw new Error(orgErr.message);
 
     return { organization: { ...org, role: role.role as string }, accessTurnedOff: null as null };
-  });
+  },
+);
 
 const slugSchema = z.object({ slug: z.string().trim().min(3).max(63) });
 

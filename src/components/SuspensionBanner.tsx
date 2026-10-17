@@ -86,7 +86,7 @@ export function SuspensionBanner() {
         <span className="min-w-0 flex-1">
           <strong>Subscription canceled.</strong>{" "}
           {isOwner
-            ? "Reactivate to keep using HoundStack. You can export your data for 30 days after cancelling."
+            ? "Reactivate to keep using HoundStack. You can export your data for 30 days after canceling."
             : "Ask an owner to reactivate the subscription. Some actions may be blocked until it's resolved."}
         </span>
         {isOwner && (

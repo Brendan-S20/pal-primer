@@ -36,8 +36,8 @@ export function FranchiseAdjustmentTrail({
         </CardTitle>
         <p className="text-sm text-muted-foreground">
           {forLocation
-            ? "Every refund and chargeback your franchise has settled with you, and (when a dispute was won) the repayment that cancelled it."
-            : "Every refund and chargeback carried onto a location's settlement, and the repayment that cancelled it when a dispute was won."}
+            ? "Every refund and chargeback your franchise has settled with you, and (when a dispute was won) the repayment that canceled it."
+            : "Every refund and chargeback carried onto a location's settlement, and the repayment that canceled it when a dispute was won."}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

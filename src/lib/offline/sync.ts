@@ -56,6 +56,11 @@ export interface SyncCallers {
       collectedAt?: string;
     };
   }) => Promise<unknown>;
+  /** A walk's pee / poo / note for the client. Optional so the callers built
+   *  before walks existed still type-check; useSyncCallers always sets it. */
+  recordWalkReport?: (args: {
+    data: { visitId: string; pee: boolean | null; poo: boolean | null; reportNote: string | null };
+  }) => Promise<unknown>;
   /** The time clock. `at` is the tap time; the SQL decides whether to believe
    *  it, as complete_visit does with `completedAt`. */
   clockIn: (args: { data: { at?: string } }) => Promise<unknown>;
@@ -112,6 +117,18 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
           reason: action.reason,
           code: action.code,
           skippedAt: new Date(action.ts).toISOString(),
+        },
+      });
+      return;
+    case "walk_report":
+      // No timestamp: the report says what happened on the walk, not when.
+      if (!callers.recordWalkReport) throw new Error("This device cannot send a walk report yet");
+      await callers.recordWalkReport({
+        data: {
+          visitId: action.visitId,
+          pee: action.pee,
+          poo: action.poo,
+          reportNote: action.reportNote,
         },
       });
       return;

@@ -50,6 +50,7 @@ vi.mock("@/lib/native", async (importOriginal) => {
 
 // ── The route's surroundings, as my-day-in-arabic-reads-right-to-left ────
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   useServerFn: (f: unknown) => f,
   createServerFn: () => {
     const chain: any = () => chain;

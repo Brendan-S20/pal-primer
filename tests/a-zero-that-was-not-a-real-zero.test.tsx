@@ -30,6 +30,7 @@ vi.mock("@tanstack/react-router", () => ({
   useRouter: () => ({ navigate: vi.fn() }),
 }));
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: any) => fn,
   useServerFn: (f: any) => f,
   createServerFn: () => {
     const b: any = {

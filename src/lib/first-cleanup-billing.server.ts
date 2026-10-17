@@ -19,6 +19,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { firstCleanupDescription } from "@/lib/first-cleanup";
+import { newInvoice } from "@/lib/db-insert";
 
 export type SignupFirstCleanup = {
   orgId: string;
@@ -58,22 +59,24 @@ export async function billSignupFirstCleanup(
 
   const { data: inv, error: iErr } = await db
     .from("invoices")
-    .insert({
-      organization_id: p.orgId,
-      client_id: p.clientId,
-      kind: "postpaid",
-      status: "paid",
-      subtotal_cents: p.amountCents,
-      total_cents: p.amountCents,
-      currency: p.currency,
-      period_start: today,
-      period_end: today,
-      issued_at: nowIso,
-      paid_at: nowIso,
-      due_on: today,
-      stripe_payment_intent_id: p.paymentIntentId,
-      notes: "First cleanup, paid at online signup",
-    })
+    .insert(
+      newInvoice({
+        organization_id: p.orgId,
+        client_id: p.clientId,
+        kind: "postpaid",
+        status: "paid",
+        subtotal_cents: p.amountCents,
+        total_cents: p.amountCents,
+        currency: p.currency,
+        period_start: today,
+        period_end: today,
+        issued_at: nowIso,
+        paid_at: nowIso,
+        due_on: today,
+        stripe_payment_intent_id: p.paymentIntentId,
+        notes: "First cleanup, paid at online signup",
+      }),
+    )
     .select("id")
     .single();
   if (iErr || !inv) throw new Error(iErr?.message || "first-cleanup invoice insert failed");

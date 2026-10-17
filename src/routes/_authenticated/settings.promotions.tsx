@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { promoDescription } from "@/lib/promo-copy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -330,9 +331,9 @@ function PromoSection() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <code className="rounded bg-muted px-1.5 py-0.5 text-sm">{p.code}</code>
-                    {!p.active && <Badge variant="outline">inactive</Badge>}
+                    {!p.active && <Badge variant="outline">Inactive</Badge>}
                     {p.expires_at && new Date(p.expires_at) < new Date() && (
-                      <Badge variant="destructive">expired</Badge>
+                      <Badge variant="destructive">Expired</Badge>
                     )}
                     {/* Legacy rows only — the form has not offered "recurring"
                         since it was found to pay out once. Flagged here rather
@@ -346,7 +347,7 @@ function PromoSection() {
                       ? `${Number(p.discount_percent)}% off one visit`
                       : fmtMoney(p.discount_value_cents ?? 0) + " credit"}
                     {" · "}
-                    {p.applies_to === "recurring" ? "recurring" : p.applies_to.replace("_", " ")}
+                    {p.applies_to === "recurring" ? "Recurring" : p.applies_to === "first_visit" ? "First visit" : "One-time"}
                     {" · "}
                     used {p.redemption_count}
                     {p.max_redemptions ? ` / ${p.max_redemptions}` : ""}
@@ -357,8 +358,8 @@ function PromoSection() {
                       which is not a discount repeated every cycle. Replace it with a one-off code.
                     </p>
                   )}
-                  {p.description && (
-                    <p className="mt-1 text-xs text-muted-foreground">{p.description}</p>
+                  {promoDescription(p) && (
+                    <p className="mt-1 text-xs text-muted-foreground">{promoDescription(p)}</p>
                   )}
                 </div>
                 <Button

@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import i18n from "@/lib/i18n";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
@@ -19,7 +20,7 @@ export const SKIP_REASON_CODES = [
 
 export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
   customer_requested: "Customer skipped via portal",
-  client_cancelled_late: "Client cancelled late",
+  client_cancelled_late: "Client canceled late",
   gate_locked: "Gate locked / no access",
   dog_outside: "Dog was outside",
   weather: "Weather",
@@ -44,7 +45,7 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
  */
 export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
   customer_requested: "You asked us to skip this one",
-  client_cancelled_late: "Cancelled after our cut-off",
+  client_cancelled_late: "Canceled after our cut-off",
   gate_locked: "The gate was locked, so we could not get in",
   dog_outside: "Your dog was out in the yard",
   weather: "Called off for weather",
@@ -54,9 +55,18 @@ export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[numb
   other: "Skipped",
 };
 
-/** The customer-facing sentence for a code, or a plain fallback for a code
- *  this build does not know — a value added to the enum in the database and
- *  not yet here must not render as a raw identifier on a customer's screen. */
+/** Translate known office reasons and format older, unknown codes as words. */
+export function officeSkipReason(code: string | null | undefined): string {
+  if (!code) return "";
+  const label = SKIP_REASON_LABELS[code as (typeof SKIP_REASON_CODES)[number]];
+  if (label) return i18n.t(`skipReason.${code}`, { defaultValue: label });
+  // A code this build does not know, or a free-text reason from before codes
+  // existed: readable, never a raw snake_case identifier.
+  const spaced = code.replace(/_/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** The customer-facing sentence for a code, with a fallback for unknown codes. */
 export function customerSkipReason(code: string | null | undefined): string {
   if (!code) return "Skipped";
   return CUSTOMER_SKIP_REASON_LABELS[code as (typeof SKIP_REASON_CODES)[number]] ?? "Skipped";
