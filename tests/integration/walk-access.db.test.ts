@@ -9,11 +9,13 @@
  *  Local stack only. CI builds the database from migrations before running
  *  this suite; skipped without TEST_SUPABASE_* env. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { orgDay } from "../support/org-day";
 import {
   dbEnabled,
   makeWalkOrg,
   makeWalkVisit,
   setStaffActive,
+  WALK_ORG_TZ,
   type WalkOrg,
 } from "../support/walk-db";
 
@@ -22,11 +24,9 @@ let propertyId: string;
 let pastPropertyId: string;
 let futurePropertyId: string;
 
-function shiftDay(days: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+// property_access_codes reads today in the org's zone, so yesterday and
+// tomorrow are counted from today in that zone.
+const shiftDay = (days: number) => orgDay(WALK_ORG_TZ, days);
 
 describe.skipIf(!dbEnabled)("who can read a lock box code", () => {
   beforeAll(async () => {
