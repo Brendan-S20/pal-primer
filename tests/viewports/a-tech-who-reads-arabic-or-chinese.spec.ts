@@ -36,6 +36,11 @@
  * shared device list so this file does not branch on the sweep's environment
  * variable — it is one configuration, always.
  *
+ * On touch a tech keeps the tab bar at every width and has no docked
+ * sidebar, iPad landscape included (useTabletTier, QA row 35). The sidebar
+ * docks for a tech only from 1024px with a mouse, so one Arabic case at
+ * 1280×800 turns touch off to prove it sits on the right there.
+ *
  * ── WHAT PROVES IT RENDERED, AND IN THE RIGHT LANGUAGE ────────────────────
  *
  * As with every signed-in surface: something only the page draws, in the
@@ -110,8 +115,9 @@ const ENGLISH_THAT_WAS_THERE = [
   "Waste log",
   "Directions",
   "Complete",
-  // The sidebar, docked from 1024px: an entry added with no key showed its
-  // English title in every language.
+  // The sidebar (docked for a tech from 1024px with a mouse, and the sheet
+  // behind More otherwise): an entry added with no key showed its English
+  // title in every language.
   "Expenses",
 ];
 
@@ -140,6 +146,37 @@ async function openMyDay(
   await expect(page.getByText("Anastasia Vandermolen-Whitaker").first()).toBeVisible();
   await page.evaluate(() => document.fonts?.ready).catch(() => {});
   await page.waitForTimeout(250);
+}
+
+/** The docked sidebar, the tab bar, and the left edge of each tab in DOM
+ *  order. The tab bar is the `<nav>` MobileTabBar marks `data-vt="tabbar"`;
+ *  NEXT UP also carries `data-bottom-chrome`, so that attribute alone cannot
+ *  tell the two apart. */
+async function readNavigation(page: Page) {
+  return page.evaluate(() => {
+    const sidebar = [...document.querySelectorAll<HTMLElement>("[data-sidebar=sidebar]")]
+      .map((el) => el.getBoundingClientRect())
+      .find((r) => r.width > 40 && r.height > 200);
+    const tabBarEl = document.querySelector<HTMLElement>('nav[data-vt="tabbar"]');
+    const tabBarRect = tabBarEl?.getBoundingClientRect();
+    const tabBar = tabBarRect && tabBarRect.width > 0 ? tabBarRect.toJSON() : null;
+    const tabs = tabBar
+      ? [...tabBarEl!.querySelectorAll(":scope > ul > li")].map(
+          (li) => li.getBoundingClientRect().left,
+        )
+      : [];
+    const nextUp = [...document.querySelectorAll<HTMLElement>("[data-bottom-chrome]")]
+      .filter((el) => el !== tabBarEl)
+      .map((el) => el.getBoundingClientRect())
+      .find((r) => r.width > 0);
+    return {
+      vw: document.documentElement.clientWidth,
+      sidebar: sidebar ? { left: sidebar.left, right: sidebar.right } : null,
+      tabBar: tabBar as { left: number; right: number } | null,
+      tabs,
+      nextUp: nextUp ? { left: nextUp.left, right: nextUp.right } : null,
+    };
+  });
 }
 
 async function measure(page: Page, where: string) {
@@ -173,36 +210,24 @@ for (const lng of ["ar", "zh"] as const) {
       const leftover = ENGLISH_THAT_WAS_THERE.filter((w) => text.includes(w));
       expect(leftover, `English still on My Day (${lng}) @${size.label}`).toEqual([]);
 
+      // A touch screen at any width: the tech keeps the phone's tab bar and
+      // gets no docked sidebar, iPad landscape included (useTabletTier, QA
+      // row 35). Two navigations, or none, is the fault this guards.
+      const nav = await readNavigation(page);
+      expect(nav.sidebar, "a technician on a touch screen has no docked sidebar").toBeNull();
+      expect(nav.tabBar, "a technician on a touch screen keeps the tab bar").not.toBeNull();
+      expect(nav.tabBar!.left, "the tab bar starts at the screen's edge").toBeLessThanOrEqual(1);
+      expect(nav.tabBar!.right, "the tab bar reaches the screen's edge").toBeGreaterThanOrEqual(
+        nav.vw - 1,
+      );
+
       if (lng === "ar") {
-        // Mirrored, not merely translated: a card's heading text starts at
-        // the right of its card, and a docked sidebar sits on the right of
-        // the screen with the NEXT UP bar clear of it.
-        const geometry = await page.evaluate(() => {
-          const sidebar = [...document.querySelectorAll<HTMLElement>("[data-sidebar=sidebar]")]
-            .map((el) => el.getBoundingClientRect())
-            .find((r) => r.width > 40 && r.height > 200);
-          const bar = document.querySelector<HTMLElement>("[data-bottom-chrome]");
-          return {
-            vw: document.documentElement.clientWidth,
-            sidebar: sidebar ? { left: sidebar.left, right: sidebar.right } : null,
-            bar: bar ? bar.getBoundingClientRect().toJSON() : null,
-          };
-        });
-        if (size.w >= 1024) {
-          expect(geometry.sidebar, "a technician's sidebar docks from 1024px").not.toBeNull();
-        }
-        if (geometry.sidebar) {
-          expect(
-            Math.round(geometry.sidebar.right),
-            "the docked sidebar is on the right in Arabic",
-          ).toBeGreaterThanOrEqual(geometry.vw - 1);
-          if (geometry.bar) {
-            expect(
-              geometry.bar.right,
-              "NEXT UP stops at the sidebar instead of running under it",
-            ).toBeLessThanOrEqual(geometry.sidebar.left + 1);
-          }
-        }
+        // Mirrored, not merely translated: the first tab (Today) leads, so in
+        // Arabic it is the right-most of the four.
+        expect(nav.tabs.length, "found the tab bar's four tabs").toBe(4);
+        expect(nav.tabs[0], "Today is the right-most tab in Arabic").toBeGreaterThan(
+          Math.max(...nav.tabs.slice(1)),
+        );
         // And within a card: the stop number leads the address, so in
         // Arabic it is to the RIGHT of it.
         const order = await page.evaluate(() => {
@@ -220,6 +245,41 @@ for (const lng of ["ar", "zh"] as const) {
           order!.address,
         );
       }
+    });
+  }
+
+  if (lng === "ar") {
+    // The one place a tech has a docked sidebar: from 1024px with a mouse,
+    // the laptop in the office. It is on the right in Arabic, and NEXT UP
+    // stops at it instead of running under it. Touch is off, so the 44px
+    // floor (a touch rule) is not asserted here.
+    test.describe("with a mouse", () => {
+      test.use({ hasTouch: false });
+      test(`My Day in ar docks the sidebar on the right at 1280×800 with a mouse`, async ({
+        page,
+        context,
+      }) => {
+        await openMyDay(page, context, lng, { w: 1280, h: 800 });
+        const where = `/my-day (ar, mouse) @1280×800`;
+        const { scrollW, innerW } = await measurePageOverflow(page);
+        expect(scrollW, `${where}: the page scrolls sideways`).toBeLessThanOrEqual(innerW + 1);
+        expect(await findControlsOffTheSide(page), `${where}: controls off the screen`).toEqual([]);
+        expect(await findSilentlyClippedText(page), `${where}: text clipped`).toEqual([]);
+
+        const nav = await readNavigation(page);
+        expect(nav.tabBar, "with a mouse from 1024px the tab bar is hidden").toBeNull();
+        expect(nav.sidebar, "with a mouse from 1024px a technician's sidebar docks").not.toBeNull();
+        expect(
+          Math.round(nav.sidebar!.right),
+          "the docked sidebar is on the right in Arabic",
+        ).toBeGreaterThanOrEqual(nav.vw - 1);
+        if (nav.nextUp) {
+          expect(
+            nav.nextUp.right,
+            "NEXT UP stops at the sidebar instead of running under it",
+          ).toBeLessThanOrEqual(nav.sidebar!.left + 1);
+        }
+      });
     });
   }
 

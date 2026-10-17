@@ -116,6 +116,7 @@ const es: Translations = {
     missedCount: "{{count}} no realizadas",
     progressRule:
       "Hechas son las visitas completadas del total de paradas. Las no realizadas y omitidas se cuentan por separado.",
+    howProgressCounts: "Cómo se cuenta el avance",
     view: "Vista",
     viewList: "Lista",
     viewMap: "Mapa",
@@ -630,6 +631,8 @@ const es: Translations = {
     staySignedIn: "Seguir conectado",
     yourAccount: "Tu cuenta",
     viewAccount: "Ver y editar tu cuenta",
+    expandMenu: "Mostrar los nombres del menú",
+    collapseMenu: "Ocultar los nombres del menú",
     group: {
       Overview: "Resumen",
       Operations: "Operaciones",
@@ -668,6 +671,7 @@ const es: Translations = {
       "pricing-drift": "Desvíos de tarifa",
       franchise: "Regalías",
       imports: "Importar",
+      "settings/users": "Equipo",
       settings: "Configuración",
       platform: "Administración",
     },

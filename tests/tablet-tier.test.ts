@@ -36,7 +36,9 @@ describe("who keeps the tab bar through 768–1024px", () => {
   it("a tech does — this is the crew tablet Q-2 is about", async () => {
     const t = await tierFor("tech");
     expect(t.barThroughTablet).toBe(true);
-    expect(t.barHiddenFrom).toBe("lg:hidden");
+    // And from lg up only with a mouse: on a touch screen of any width the
+    // tech keeps the bar (QA row 35, iPad landscape at 1180 and 1366).
+    expect(t.barHiddenFrom).toBe("lg:mouse:hidden");
   });
 
   it("an office user does not — the dispatch board is there", async () => {
@@ -56,7 +58,7 @@ describe("who keeps the tab bar through 768–1024px", () => {
     // mid-visit takes their navigation away.
     const t = await tierFor(null);
     expect(t.barThroughTablet).toBe(true);
-    expect(t.barHiddenFrom).toBe("lg:hidden");
+    expect(t.barHiddenFrom).toBe("lg:mouse:hidden");
   });
 });
 
@@ -67,10 +69,14 @@ describe("the padding clears the bar for exactly as long as the bar is there", (
     // else is content underneath a fixed bar.
     for (const role of ["tech", "owner", "office_manager", "dispatcher", null]) {
       const t = await tierFor(role);
-      const breakpoint = t.barHiddenFrom.split(":")[0];
+      // Every variant on the bar's hiding class, `lg:mouse` included: padding
+      // released at `lg` alone would leave the bar over the last row on an
+      // iPad in landscape, where the bar now stays.
+      const breakpoint = t.barHiddenFrom.replace(/:hidden$/, "");
       expect(t.mainBottomPadding, `${role}: padding must release at ${breakpoint}`).toContain(
         `${breakpoint}:pb-8`,
       );
+      expect(t.mainBottomPadding, `${role}`).not.toMatch(/(^|\s)lg:pb-8/);
       // And it must actually clear the bar's height below that point.
       expect(t.mainBottomPadding, `${role}`).toContain("4.5rem");
       expect(t.mainBottomPadding, `${role}`).toContain("safe-area-inset-bottom");

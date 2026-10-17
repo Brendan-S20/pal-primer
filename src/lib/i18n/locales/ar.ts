@@ -126,6 +126,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     missedCount: "{{count}} فائتة",
     progressRule:
       "المنجزة هي الزيارات المكتملة من إجمالي المحطات. تُحسب المحطات الفائتة والمتخطاة بشكل منفصل.",
+    howProgressCounts: "كيف يُحسب التقدم",
     view: "العرض",
     viewList: "قائمة",
     viewMap: "خريطة",
@@ -678,6 +679,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     staySignedIn: "البقاء متصلًا",
     yourAccount: "حسابك",
     viewAccount: "عرض حسابك وتعديله",
+    expandMenu: "إظهار أسماء القائمة",
+    collapseMenu: "إخفاء أسماء القائمة",
     group: {
       Overview: "نظرة عامة",
       Operations: "العمليات",
@@ -716,6 +719,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       "pricing-drift": "انحراف الأسعار",
       franchise: "الإتاوات",
       imports: "استيراد",
+      "settings/users": "الفريق",
       settings: "الإعدادات",
       platform: "إدارة المنصة",
     },

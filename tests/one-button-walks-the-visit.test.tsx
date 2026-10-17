@@ -89,7 +89,7 @@ vi.mock("@/hooks/useMyRole", () => ({
   canAccess: () => true,
 }));
 vi.mock("@/components/ui/sidebar", () => ({
-  useSidebar: () => ({ docksFrom: "lg", isMobile: true, state: "expanded" }),
+  useSidebar: () => ({ docksFrom: "lg-mouse", isMobile: true, state: "expanded" }),
 }));
 
 import i18n from "@/lib/i18n";

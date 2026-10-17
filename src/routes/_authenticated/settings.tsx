@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getDeepCleanSettings } from "@/lib/subscriptions.functions";
@@ -189,6 +189,15 @@ function SettingsLayout() {
   useEffect(() => {
     setPickerOpen(false);
   }, [pathname]);
+  // The open section in view inside the menu's own scroller: the sideways
+  // row on a tablet, the side column on a short laptop screen. "nearest"
+  // moves nothing that is already visible, the page included.
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    navRef.current
+      ?.querySelector<HTMLElement>('[data-active="true"]')
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [pathname]);
 
   return (
     <>
@@ -273,48 +282,76 @@ function SettingsLayout() {
         </Sheet>
       </div>
 
-      {/* ── TABLET AND UP: the grouped rail, unchanged in behaviour ───────── */}
-      <nav
-        aria-label="Settings sections"
-        className={oneSection ? "hidden" : "hidden space-y-2 border-b pb-3 md:block"}
+      {/* ── TABLET AND UP (QA row 36, 2026-10-15) ───────────────────────────
+          This was a cloud of about thirty wrapping chips above the content,
+          around 500px of navigation on an iPad before the first setting.
+          Now one <nav> in two shapes:
+
+            * 768 to 1023: a single row that scrolls sideways in its own
+              container, group headings dropped and groups divided by a rule.
+              One row of height, whatever the number of sections.
+            * 1024 and up: a grouped vertical menu in a side column beside
+              the content. It sticks under the header and scrolls on its own
+              when it is taller than the screen.
+
+          Below 768 the picker above is unchanged. */}
+      <div
+        className={
+          oneSection
+            ? ""
+            : "space-y-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8 lg:space-y-0"
+        }
       >
-        {groups.map((group) => (
-          <div key={group.title} className="flex flex-wrap items-baseline gap-1">
-            <span className="w-36 shrink-0 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {group.title}
-            </span>
-            {group.tabs.map((tab) => {
-              const active = pathname === tab.to || pathname.startsWith(tab.to + "/");
-              return (
-                <Link
-                  key={tab.to}
-                  to={tab.to}
-                  // MEASURED 2026-08-19: 28.0px, twenty-one of them, on EVERY settings
-                  // page — the single highest-count finding in the sweep. The fix is
-                  // height only; `inline-flex items-center` keeps the label
-                  // centred once the box is taller than the text.
-                  //
-                  // The note here used to say "the rail already scrolls sideways in
-                  // its own container". It does not, and never did — measured
-                  // 2026-08-25 it is `overflow-x: visible` with `flex-wrap: wrap`,
-                  // so it wrapped to 601px tall instead of scrolling. That claim is
-                  // why the height-only fix looked sufficient at the time. This rail
-                  // is now `md:block` only, and the phone case is the switcher above.
-                  className={`inline-flex items-center rounded-md px-3 py-1 text-sm transition-colors touch:min-h-11 ${
-                    active
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  {tab.label}
-                </Link>
-              );
-            })}
+        <nav
+          ref={navRef}
+          aria-label="Settings sections"
+          className={
+            oneSection
+              ? "hidden"
+              : "relative hidden overflow-x-auto border-b pb-2 md:block lg:sticky lg:top-[calc(var(--hs-banner-h,0px)+4.5rem)] lg:max-h-[calc(100dvh-var(--hs-banner-h,0px)-5.5rem)] lg:overflow-y-auto lg:overflow-x-hidden lg:border-b-0 lg:border-e lg:pb-0 lg:pe-3"
+          }
+        >
+          <div className="flex w-max gap-1 lg:w-auto lg:flex-col lg:gap-4">
+            {groups.map((group, i) => (
+              <div
+                key={group.title}
+                className={`flex shrink-0 items-center gap-1 lg:flex-col lg:items-stretch lg:gap-0.5 ${
+                  i > 0 ? "max-lg:border-s max-lg:ps-1" : ""
+                }`}
+              >
+                <span className="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground max-lg:hidden">
+                  {group.title}
+                </span>
+                {group.tabs.map((tab) => {
+                  const active = pathname === tab.to || pathname.startsWith(tab.to + "/");
+                  return (
+                    <Link
+                      key={tab.to}
+                      to={tab.to}
+                      data-active={active ? "true" : undefined}
+                      aria-current={active ? "page" : undefined}
+                      // MEASURED 2026-08-19: 28.0px, twenty-one of them, on
+                      // EVERY settings page. `touch:min-h-11` is the fix, and
+                      // `inline-flex items-center` keeps the label centred once
+                      // the box is taller than the text. `whitespace-nowrap` so
+                      // a label in the sideways row never wraps to two lines.
+                      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1 text-sm transition-colors touch:min-h-11 lg:whitespace-normal ${
+                        active
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {tab.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </div>
-        ))}
-      </nav>
-      <div>
-        <Outlet />
+        </nav>
+        <div className="min-w-0">
+          <Outlet />
+        </div>
       </div>
     </>
   );
