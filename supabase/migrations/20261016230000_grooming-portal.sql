@@ -28,6 +28,11 @@
 --    out day, a window that ends before it starts, and a client with ten
 --    groom requests already open. A second tap for the same pet and day hands
 --    back the first request.
+--    It also refuses every request while mobile grooming is not a line a
+--    customer may request ('groom_requests_off'). _customer_requestable
+--    mirrors customerCanRequestService('mobile_grooming') in
+--    src/lib/service-lines.ts, which is false: grooms are booked by the
+--    office. Opening customer requests is a change to both.
 --
 -- 3. A portal vaccine upload can be rejected with a reason: rejected_at,
 --    rejected_by and rejection_reason on pet_vaccinations. A rejected record
@@ -118,6 +123,7 @@ DECLARE
   _clean jsonb := '[]'::jsonb;
   _open integer;
   _id uuid;
+  _customer_requestable CONSTANT boolean := false;
 BEGIN
   SELECT c.id, c.organization_id INTO _client_id, _org_id
     FROM public.clients c WHERE c.portal_token = _token AND c.active = true;
@@ -128,6 +134,9 @@ BEGIN
     FROM public.organizations o WHERE o.id = _org_id;
   IF NOT ('mobile_grooming' = ANY (COALESCE(_lines, ARRAY[]::text[]))) THEN
     RAISE EXCEPTION 'grooming_not_offered';
+  END IF;
+  IF NOT _customer_requestable THEN
+    RAISE EXCEPTION 'groom_requests_off';
   END IF;
 
   -- Another client's pet, an inactive one and one that does not exist are
@@ -317,6 +326,10 @@ BEGIN
   END IF;
   IF NOT has_function_privilege('service_role', _fn, 'EXECUTE') THEN
     RAISE EXCEPTION '% is not callable by the portal server.', _fn;
+  END IF;
+  IF strpos((SELECT p.prosrc FROM pg_proc p WHERE p.oid = to_regprocedure(_fn)),
+       '_customer_requestable CONSTANT boolean := false') = 0 THEN
+    RAISE EXCEPTION '% takes groom requests from customers; mobile grooming is booked by the office.', _fn;
   END IF;
 
   FOREACH _col IN ARRAY ARRAY['rejected_at', 'rejected_by', 'rejection_reason'] LOOP

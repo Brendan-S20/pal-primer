@@ -45,19 +45,30 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** Lines an owner can choose today. A line joins this list when the office
- *  can book it end to end. Mobile grooming (#412) joins because the office can
- *  set it up, book a pet, put a groomer on the route, run the appointment and
- *  invoice it. Training (#413) is on the list for the office too. Customers,
- *  the public form and the receptionist still cannot request either: see
- *  CUSTOMER_BOOKABLE_SERVICE_LINES and customerCanRequestService. */
+/** Lines an owner can choose today. No feature branch adds a line here; that
+ *  is a product decision made on main. Mobile grooming (#412) and training
+ *  (#413) are offered and marked Coming soon, and an owner cannot tick them.
+ *  Their office screens still work for a business that already has the line.
+ *  setServiceLines refuses a line that is not on this list unless the
+ *  business already runs it. Customers, the public form and the receptionist
+ *  cannot request either: see CUSTOMER_BOOKABLE_SERVICE_LINES and
+ *  customerCanRequestService. */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
   "pet_waste",
   "dog_walking",
   "pet_sitting",
-  "mobile_grooming",
-  "training",
 ];
+
+/** Why a new set of lines cannot be saved, given what the business runs now:
+ *  a line that is not bookable may stay (or be removed), never be added. Null
+ *  when the change is fine. */
+export function serviceLinesAddedProblem(
+  current: readonly ServiceLine[],
+  next: readonly ServiceLine[],
+): string | null {
+  const added = next.filter((l) => !current.includes(l) && !BOOKABLE_SERVICE_LINES.includes(l));
+  return added.length > 0 ? `${SERVICE_LINE_LABEL[added[0]]} is coming soon.` : null;
+}
 
 /** Lines a customer may ask for (public signup, the portal, the receptionist).
  *  Mobile grooming stays with the office until a customer can pick pets,

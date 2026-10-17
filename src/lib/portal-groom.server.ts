@@ -21,7 +21,7 @@ import {
   type GroomRequestAddon,
   type GroomWindow,
 } from "@/lib/groom-request";
-import { serviceLinesOrDefault } from "@/lib/service-lines";
+import { customerCanRequestService, serviceLinesOrDefault } from "@/lib/service-lines";
 import { orgToday } from "@/lib/org-day";
 
 type Db = SupabaseClient<Database>;
@@ -105,6 +105,10 @@ export async function loadPortalGroom(db: Db, session: PortalSession) {
   const where = new Map(props.map((p) => [p.id, [p.street, p.city].filter(Boolean).join(", ")]));
   return {
     visible: true as const,
+    // Whether a client may ask for a groom here. Off while mobile grooming is
+    // not a line a customer can request; the page then shows past requests
+    // and vaccine records only.
+    canRequest: customerCanRequestService("mobile_grooming"),
     today: orgToday(org.timezone),
     workDays: (org.work_days as number[] | null) ?? [0, 1, 2, 3, 4, 5, 6],
     bufferMin: org.groom_buffer_min ?? DEFAULT_GROOM_BUFFER_MIN,
@@ -188,6 +192,7 @@ export async function requestGroomFromPortal(
 ): Promise<{ ticketId: string; alreadyAsked: boolean; cents: number | null; minutes: number }> {
   const page = await loadPortalGroom(db, session);
   if (!page.visible) throw new Error(groomRequestRefusal("grooming_not_offered"));
+  if (!page.canRequest) throw new Error(groomRequestRefusal("groom_requests_off"));
   const pet = page.pets.find((p) => p.id === input.dogId);
   if (!pet) throw new Error(groomRequestRefusal("pet_not_found"));
   const service = page.services.find((s) => s.id === input.serviceId);

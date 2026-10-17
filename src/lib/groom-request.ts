@@ -32,6 +32,7 @@ export const GROOM_REQUEST_MAX_DAYS_AHEAD = 90;
 export const GROOM_REQUEST_REFUSALS: Record<string, string> = {
   invalid_token: "This portal link is no longer valid. Open the link in your most recent message.",
   grooming_not_offered: "Grooming isn't offered by this business.",
+  groom_requests_off: "Grooms are booked by the office. Please contact us to book one.",
   pet_not_found: "Choose one of your pets.",
   service_not_offered: "That groom isn't offered right now. Please pick another.",
   addon_not_offered: "One of those add-ons isn't offered right now. Please check them again.",

@@ -32,7 +32,8 @@ function PortalProperty() {
     <div className="space-y-6">
       {c?.mobile_grooming && (
         <p className="rounded-lg border bg-card p-4 text-sm">
-          Vaccine records and groom requests are on the{" "}
+          {c?.groom_requests ? "Vaccine records and groom requests are" : "Vaccine records are"} on
+          the{" "}
           <Link
             to="/portal/$slug/$token/grooming"
             params={{ slug, token }}

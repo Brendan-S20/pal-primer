@@ -1,9 +1,8 @@
 // portal_request_groom and the vaccine rejection shape in a real database.
-// A request lands as a groom_request ticket; a second tap returns it; the
-// function refuses another client's pet, a service or add-on that is not
-// grooming, a day too soon and a backwards window; a business that does not
-// groom gets nothing; the anon key cannot call it. A portal upload can be
-// rejected only with a reason and never while verified.
+// While mobile grooming is not customer-requestable the function refuses
+// every request and writes nothing; a business that does not groom gets
+// nothing; the anon key cannot call it. A portal upload can be rejected only
+// with a reason and never while verified.
 // Skipped unless TEST_SUPABASE_* point at a local stack.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -115,68 +114,24 @@ describe.skipIf(!enabled)("a client asks for a groom in the database", () => {
       ...over,
     });
 
-  it("lands as a groom_request in the queue, and a second tap returns it", async () => {
-    const first = await ask();
-    expect(first.error).toBeNull();
-    expect(first.data).toEqual([{ ticket_id: expect.any(String), created: true }]);
-    const id = (first.data as Array<{ ticket_id: string }>)[0].ticket_id;
-    const { data: row } = await admin
-      .from("qc_tickets")
-      .select(
-        "category, status, client_id, property_id, dog_id, service_id, requested_on, requested_time, requested_time_end, groom_addons, quoted_cents, quoted_minutes, message, booked_visit_id, dog:dogs!qc_tickets_dog_id_fkey(name)",
-      )
-      .eq("id", id)
-      .single();
-    expect(row).toEqual({
-      category: "groom_request",
-      status: "open",
-      client_id: t.clientId,
-      property_id: t.propertyId,
-      dog_id: t.dogId,
-      service_id: t.serviceId,
-      requested_on: day,
-      requested_time: "08:00:00",
-      requested_time_end: "12:00:00",
-      groom_addons: [{ addon_service_id: t.addonId, quantity: 1 }],
-      quoted_cents: 9500,
-      quoted_minutes: 115,
-      message: "Short cut",
-      booked_visit_id: null,
-      dog: { name: "Biscuit" },
-    });
-    const again = await ask({ _message: "Again" });
-    expect(again.data).toEqual([{ ticket_id: id, created: false }]);
-    const { count } = await admin
-      .from("visits")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", t.orgId);
-    expect(count).toBe(0);
-  });
-
-  it("refuses what the office could not book", async () => {
+  // Mobile grooming is not a line a customer may request, so the function
+  // refuses every request from a business that runs it, before it reads a pet
+  // or writes a row. The shape checks behind that refusal come back into
+  // reach when customer requests open (a change to the function and to
+  // customerCanRequestService together).
+  it("refuses every request while grooming is booked by the office, and writes nothing", async () => {
     const refusal = async (over: Record<string, unknown>) => (await ask(over)).error?.message;
-    expect(await refusal({ _dog_id: other.dogId })).toContain("pet_not_found");
-    expect(await refusal({ _service_id: other.serviceId })).toContain("service_not_offered");
-    expect(
-      await refusal({ _addons: [{ addon_service_id: other.addonId, quantity: 1 }] }),
-    ).toContain("addon_not_offered");
-    expect(await refusal({ _addons: [{ addon_service_id: t.addonId, quantity: 0 }] })).toContain(
-      "addon_not_offered",
-    );
-    expect(await refusal({ _addons: [{ addon_service_id: "not-a-uuid", quantity: 1 }] })).toContain(
-      "addon_not_offered",
-    );
-    expect(await refusal({ _on: new Date().toISOString().slice(0, 10) })).toContain(
-      "date_too_soon",
-    );
-    expect(await refusal({ _on: addDays(day, 200) })).toContain("date_too_far");
-    expect(await refusal({ _on: addDays(day, 1), _from: "12:00", _until: "08:00" })).toContain(
-      "bad_window",
-    );
-    expect(await refusal({ _on: addDays(day, 1), _from: "12:00", _until: null })).toContain(
-      "bad_window",
-    );
+    expect(await refusal({})).toContain("groom_requests_off");
+    expect(await refusal({ _dog_id: other.dogId })).toContain("groom_requests_off");
+    expect(await refusal({ _on: addDays(day, 200) })).toContain("groom_requests_off");
     expect(await refusal({ _token: crypto.randomUUID() })).toContain("invalid_token");
+    for (const table of ["qc_tickets", "visits"]) {
+      const { count } = await admin
+        .from(table)
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", t.orgId);
+      expect(count, table).toBe(0);
+    }
   });
 
   it("refuses a business that does not run mobile grooming", async () => {

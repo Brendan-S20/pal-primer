@@ -8,7 +8,11 @@ import { platformFeeCents } from "@/lib/platform-fee";
 import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
-import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
+import {
+  customerCanRequestService,
+  runsPetWaste,
+  serviceLinesOrDefault,
+} from "@/lib/service-lines";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -222,6 +226,7 @@ export const portalGetClient = createServerFn({ method: "GET" })
       skip_billable_pct: rule?.billable_pct ?? 0,
       reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
       mobile_grooming: serviceLinesOrDefault(lines?.service_lines).includes("mobile_grooming"),
+      groom_requests: customerCanRequestService("mobile_grooming"),
     };
   });
 

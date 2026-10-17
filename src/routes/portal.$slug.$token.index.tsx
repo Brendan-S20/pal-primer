@@ -188,7 +188,9 @@ function PortalHome() {
               <div className="min-w-0">
                 <h2 className="font-semibold">Grooming</h2>
                 <p className="text-sm text-muted-foreground">
-                  Request a groom and keep your pet's vaccine records up to date.
+                  {c?.groom_requests
+                    ? "Request a groom and keep your pet's vaccine records up to date."
+                    : "Keep your pet's vaccine records up to date."}
                 </p>
               </div>
             </div>

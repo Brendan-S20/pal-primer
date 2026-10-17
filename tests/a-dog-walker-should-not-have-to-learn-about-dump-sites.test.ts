@@ -53,6 +53,7 @@ import {
   addOnExampleFor,
   newClientWizardSteps,
   runsPetWaste,
+  serviceLinesAddedProblem,
   serviceLinesOrDefault,
   serviceLinesProblem,
   suggestedChecklistFor,
@@ -387,7 +388,7 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
-  it("offers five lines, and every one of them is bookable by the office", () => {
+  it("offers five lines; scooping, walking and sitting are bookable", () => {
     expect([...OFFERED_SERVICE_LINES]).toEqual([
       "pet_waste",
       "dog_walking",
@@ -395,13 +396,27 @@ describe("what an owner can choose", () => {
       "mobile_grooming",
       "training",
     ]);
-    expect([...BOOKABLE_SERVICE_LINES]).toEqual([
-      "pet_waste",
-      "dog_walking",
-      "pet_sitting",
-      "mobile_grooming",
-      "training",
-    ]);
+    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+  });
+
+  it("a Coming soon line can be kept or dropped, never added", () => {
+    expect(serviceLinesAddedProblem(["pet_waste"], ["pet_waste", "mobile_grooming"])).toMatch(
+      /Mobile grooming is coming soon/,
+    );
+    expect(serviceLinesAddedProblem(["dog_walking"], ["dog_walking", "training"])).toMatch(
+      /Dog training is coming soon/,
+    );
+    // Set some other way before the hotfix: it stays, and it can go.
+    const kept = ["pet_waste", "mobile_grooming"] as const;
+    expect(serviceLinesAddedProblem(kept, [...kept, "dog_walking"])).toBeNull();
+    expect(serviceLinesAddedProblem(["pet_waste", "training"], ["pet_waste"])).toBeNull();
+    expect(serviceLinesAddedProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toBeNull();
+    const fns = read("src/lib/org-features.functions.ts");
+    const setter = fns.slice(fns.indexOf("export const setServiceLines"));
+    expect(setter).toMatch(/serviceLinesAddedProblem\([\s\S]{0,80}\);\s*if \(added\) throw/);
+    expect(setter.indexOf("serviceLinesAddedProblem")).toBeLessThan(
+      setter.indexOf("updateOwnOrg("),
+    );
   });
 
   it("refuses what the database's CHECK refuses, with a sentence", () => {

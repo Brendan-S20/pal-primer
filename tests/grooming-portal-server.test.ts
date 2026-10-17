@@ -96,6 +96,19 @@ vi.mock("@/lib/authz.server", () => ({
   requirePermission: state.permission,
   resolveCaller: state.permission,
 }));
+// The request path is closed today (customerCanRequestService refuses
+// mobile_grooming). The tests below that exercise the path open the gate
+// here, so the path is still checked for the day it opens; the gate itself
+// is tested with the real answer.
+const gate = vi.hoisted(() => ({ open: false }));
+vi.mock("@/lib/service-lines", async (orig) => {
+  const real = await orig<typeof import("@/lib/service-lines")>();
+  return {
+    ...real,
+    customerCanRequestService: (line: string) =>
+      line === "mobile_grooming" && gate.open ? true : real.customerCanRequestService(line),
+  };
+});
 
 import { portalGetGrooming, portalRequestGroom } from "@/lib/portal-groom.functions";
 import { linkGroomBooking } from "@/lib/concerns.functions";
@@ -211,6 +224,7 @@ beforeEach(() => {
   state.officeEmail.mockClear();
   state.session = { clientId: "client-1", organizationId: "org-1", preview: false };
   lines = ["pet_waste", "mobile_grooming"];
+  gate.open = true;
   state.handler = groomingOrg;
   state.rpc.mockResolvedValue({ data: [{ ticket_id: TICKET, created: true }], error: null });
 });
@@ -236,7 +250,57 @@ describe("the portal Grooming page", () => {
   });
 });
 
-describe("a client asks for a groom", () => {
+describe("groom requests are off while grooming is not customer-requestable", () => {
+  beforeEach(() => {
+    gate.open = false;
+  });
+
+  it("the page says so, for a business that runs grooming", async () => {
+    const page = await portalGetGrooming({ data: { token: TOKEN } });
+    if (!page.visible) throw new Error("expected the page");
+    expect(page.canRequest).toBe(false);
+  });
+
+  it("refuses the request before the database is asked, and tells nobody", async () => {
+    await expect(ask()).rejects.toThrow("Grooms are booked by the office.");
+    expect(state.rpc).not.toHaveBeenCalled();
+    expect(state.officeEmail).not.toHaveBeenCalled();
+    expect(state.notify).not.toHaveBeenCalled();
+  });
+
+  it("the page draws the request form only when asking is on", async () => {
+    const { readFileSync } = await import("node:fs");
+    const page = readFileSync(
+      new URL("../src/routes/portal.$slug.$token.grooming.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(page).toMatch(/\{page\.canRequest && <RequestGroomCard page=\{page\} \/>\}/);
+    expect(page.match(/<RequestGroomCard /g)).toHaveLength(1);
+    for (const file of ["index", "property"]) {
+      const src = readFileSync(
+        new URL(`../src/routes/portal.$slug.$token.${file}.tsx`, import.meta.url),
+        "utf8",
+      );
+      const offers = src.split(/groom requests|Request a groom/i).length - 1;
+      expect(offers, file).toBe(src.split("c?.groom_requests").length - 1);
+    }
+  });
+
+  it("the database refuses it too, whatever the business runs", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync(
+      new URL("../supabase/migrations/20261016230000_grooming-portal.sql", import.meta.url),
+      "utf8",
+    );
+    const fn = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.portal_request_groom"));
+    expect(fn).toContain("_customer_requestable CONSTANT boolean := false;");
+    expect(fn).toMatch(/IF NOT _customer_requestable THEN\s+RAISE EXCEPTION 'groom_requests_off';/);
+    // Before any row is read or written.
+    expect(fn.indexOf("'groom_requests_off'")).toBeLessThan(fn.indexOf("FROM public.dogs"));
+  });
+});
+
+describe("a client asks for a groom (with the gate opened)", () => {
   it("prices it with the office's rules and sends it to the office queue", async () => {
     const r = await ask();
     expect(r).toEqual({ ticketId: TICKET, alreadyAsked: false, cents: 14500, minutes: 180 });

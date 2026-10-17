@@ -29,6 +29,9 @@ import { addDaysToDay } from "@/lib/reclean";
 // costs and how long it takes by the same pricing the office books with, see
 // what became of earlier requests, and keep vaccine records current. The
 // office confirms the start time and the groomer; nothing here books a visit.
+// Asking is off while mobile grooming is not a line a customer can request
+// (customerCanRequestService); the page is then vaccine records, and earlier
+// requests if there are any.
 //
 // English, like every other portal page: the portal speaks the business's
 // language, not the reader's device (see CLAUDE.md, "What stays English").
@@ -75,8 +78,8 @@ function PortalGrooming() {
 
   return (
     <div className="space-y-6">
-      <RequestGroomCard page={page} />
-      <GroomRequests page={page} />
+      {page.canRequest && <RequestGroomCard page={page} />}
+      {(page.canRequest || page.requests.length > 0) && <GroomRequests page={page} />}
       <PortalVaccines token={token} />
       <p className="text-center text-xs text-muted-foreground">
         <Link

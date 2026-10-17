@@ -64,7 +64,7 @@ describe("grooming owner fields", () => {
         createElement(ServiceSizeRulesEditor, { serviceId: "unused", serviceLine: "pet_waste" }),
       ),
     ).toBe("");
-    expect(BOOKABLE_SERVICE_LINES).toContain("mobile_grooming");
+    expect(BOOKABLE_SERVICE_LINES).not.toContain("mobile_grooming");
     expect(customerMayBook("mobile_grooming")).toBe(false);
   });
   it("shows coat and weight for grooming and labels the add-on fields", () => {

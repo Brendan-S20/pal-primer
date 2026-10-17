@@ -11,7 +11,13 @@ import {
   parseChecklist,
   type ChecklistItem,
 } from "@/lib/visit-checklist";
-import { SERVICE_LINES, serviceLinesProblem, type ServiceLine } from "@/lib/service-lines";
+import {
+  SERVICE_LINES,
+  serviceLinesAddedProblem,
+  serviceLinesOrDefault,
+  serviceLinesProblem,
+  type ServiceLine,
+} from "@/lib/service-lines";
 import { defaultServiceSeedsFor } from "@/lib/services";
 import { seedTrainingPackage, seedTrainingSkills } from "@/lib/training-package-seed.server";
 
@@ -255,6 +261,15 @@ export const setServiceLines = createServerFn({ method: "POST" })
     if (problem) throw new Error(problem);
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    // A line that is Coming soon can be kept or dropped, never added.
+    const { data: org, error: readError } = await context.supabase
+      .from("organizations")
+      .select("service_lines")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (readError) throw new Error(readError.message);
+    const added = serviceLinesAddedProblem(serviceLinesOrDefault(org?.service_lines), data.lines);
+    if (added) throw new Error(added);
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
     await ensureDefaultServicesForLines(context.supabase, orgId, data.lines);
