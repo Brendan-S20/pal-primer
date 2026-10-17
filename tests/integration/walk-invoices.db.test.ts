@@ -176,7 +176,13 @@ describe.skipIf(!enabled)("a walk bills as a walk", () => {
       extra_pet_cents: 500,
       default_duration_min: 30,
     });
-    const price = await rulePrice({ unit: "visit", base: 2500, extraPet: 500, duration: 30, pets: 2 });
+    const price = await rulePrice({
+      unit: "visit",
+      base: 2500,
+      extraPet: 500,
+      duration: 30,
+      pets: 2,
+    });
     expect(price).toBe(3000);
     const w = await completedWalk({ serviceId, priceCents: price, dogs: 2 });
     const line = await billedLine(w.clientId, w.visitId);
@@ -214,7 +220,13 @@ describe.skipIf(!enabled)("a walk bills as a walk", () => {
       service_id: serviceId,
       scheduled_on: walkDay,
     });
-    const price = await rulePrice({ unit: "visit", base: 2000, extraPet: 0, duration: 60, pets: 1 });
+    const price = await rulePrice({
+      unit: "visit",
+      base: 2000,
+      extraPet: 0,
+      duration: 60,
+      pets: 1,
+    });
     const a = await completedWalk({ serviceId, priceCents: price, dogs: 1, walkGroupId: groupId });
     const b = await completedWalk({ serviceId, priceCents: price, dogs: 1, walkGroupId: groupId });
     for (const m of [a, b]) {
