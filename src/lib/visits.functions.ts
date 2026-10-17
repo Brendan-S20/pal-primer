@@ -217,11 +217,9 @@ export const reassignVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     // A groom refuses a groomer who already has a groom at that time, as
     // booking does. The board's drag between lanes lands here.
-    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
-    await refuseGroomMoveClash(context.supabase, {
-      visitIds: [data.visitId],
-      toStaffId: data.staffId,
-    });
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: [data.visitId], toStaffId: data.staffId };
+    await refuseGroomMoveClash(context.supabase, move);
     // The tech it comes off and the tech it goes to are told (field-notify).
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: [data.visitId] });
@@ -232,7 +230,7 @@ export const reassignVisit = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _staff_id: data.staffId as string,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
     // QA round 8: reassignment shows on the client's Activity timeline.
@@ -527,8 +525,9 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
     // A groom keeps its start time and groomer; the new day must have room.
-    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
-    await refuseGroomMoveClash(supabase, { visitIds: [data.visitId], toDate: data.newDate });
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: [data.visitId], toDate: data.newDate };
+    await refuseGroomMoveClash(supabase, move);
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({
       actorUserId: userId,
@@ -542,7 +541,7 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _new_date: data.newDate,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(supabase, error, move);
     await watch.finish();
     await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
@@ -791,11 +790,9 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     // Grooms in the batch: none may land on a groomer who is busy then, and
     // two of them may not land on one groomer at once.
-    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
-    await refuseGroomMoveClash(context.supabase, {
-      visitIds: data.visitIds,
-      toStaffId: data.staffId,
-    });
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: data.visitIds, toStaffId: data.staffId };
+    await refuseGroomMoveClash(context.supabase, move);
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
@@ -804,7 +801,7 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
       _visit_ids: data.visitIds,
       _staff_id: data.staffId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
     return { moved: (n as number) ?? 0 };
@@ -822,8 +819,9 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     // Grooms keep their start time and groomer; the new day must have room.
-    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
-    await refuseGroomMoveClash(context.supabase, { visitIds: data.visitIds, toDate: data.toDate });
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: data.visitIds, toDate: data.toDate };
+    await refuseGroomMoveClash(context.supabase, move);
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
@@ -832,7 +830,7 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       _visit_ids: data.visitIds,
       _to_date: data.toDate,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
     // `skipped` is not an error and must reach the caller: a weekly client
@@ -867,6 +865,16 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
       _staff_id: data.staffId,
     });
     if (error) throw new Error(error.message);
+    // A groom with a fixed time that no other tech has room for stays with
+    // this tech (20261017120000). Same window as the move, so what is left
+    // is exactly what the office still has to place by hand.
+    const { data: rest } = await (context.supabase as any).rpc("staff_upcoming_load", {
+      _staff_id: data.staffId,
+    });
+    const left = ((rest ?? []) as Array<{ visits: number }>).reduce(
+      (s, d) => s + Number(d.visits ?? 0),
+      0,
+    );
     await watch.finish();
     // The work went to whoever had room, which this call does not say, so
     // every live route in the business is rebuilt; an unchanged one is not
@@ -880,7 +888,7 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
       const { refreshOrgRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
       await refreshOrgRouteLiveActivities(staffRow.organization_id);
     }
-    return { moved: (n as number) ?? 0 };
+    return { moved: (n as number) ?? 0, left };
   });
 
 // ── Auto-routing moved out of this file on 2026-10-04 ─────────────────────

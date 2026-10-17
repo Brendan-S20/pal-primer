@@ -227,7 +227,9 @@ describe("no trigger function is executable by a signed-in user", () => {
     // reviewer who rejected a portal upload from the session. Revoked there.
     // 75 -> 76 (20261017110000): tg_visits_groom_plan_addons_void voids a
     // groom's add-on charges when the visit leaves completed. Revoked there.
-    expect(triggerFunctions().size).toBe(76);
+    // 76 -> 77 (20261017120000): tg_visits_groom_no_overlap refuses a groom
+    // that overlaps another for the same groomer. Revoked there.
+    expect(triggerFunctions().size).toBe(77);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

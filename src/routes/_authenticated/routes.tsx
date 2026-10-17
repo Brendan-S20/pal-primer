@@ -747,7 +747,14 @@ function RoutesPage() {
   const redistributeMut = useMutation({
     mutationFn: () => redistributeFn({ data: { staffId: coverFor!.id } }),
     onSuccess: (r: any) => {
-      toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to the rest of the crew`);
+      if (r.left > 0) {
+        toast.warning(
+          `Moved ${r.moved}. Left ${r.left} with ${coverFor!.name}, because no other groomer has room at ${r.left === 1 ? "that groom's start time" : "those grooms' start times"}.`,
+          { duration: 9000 },
+        );
+      } else {
+        toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to the rest of the crew`);
+      }
       setCoverFor(null);
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits"] });

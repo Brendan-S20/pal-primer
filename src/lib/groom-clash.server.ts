@@ -11,6 +11,11 @@
 //
 // There is no override. Booking refuses a clash for the same groomer outright,
 // and a move or a reassign does the same, with the same sentence.
+//
+// The database holds the same line (zz_visits_groom_no_overlap,
+// 20261017120000) for the writes this file never sees: two saves at once, and
+// Cover's redistribution. It raises 23P01 with the first sentence of
+// groomClashRefusal; groomWriteError turns that back into the full sentence.
 
 import { groomClashes, openGroomStarts, type BookedGroom } from "@/lib/groom";
 
@@ -30,6 +35,32 @@ export function groomClashRefusal(
   return open.length
     ? `This groomer already has a groom at that time on ${date}. Open start times that day: ${open.join(", ")}.`
     : `This groomer already has a groom at that time on ${date}, and no ${holdMinutes}-minute opening is left that day.`;
+}
+
+/** SQLSTATE of the database's refusal of an overlapping groom. */
+export const GROOM_OVERLAP_SQLSTATE = "23P01";
+
+/**
+ * The error to throw for a failed visit write. When the database refused an
+ * overlapping groom, the save lost a race to another one, so the clash is now
+ * committed and refuseGroomMoveClash, asked again with the same move, throws
+ * the sentence the server would have shown with the open start times. Any
+ * other error, or a clash the check no longer finds, keeps the database's
+ * message.
+ */
+export async function groomWriteError(
+  db: any,
+  error: { code?: string; message: string },
+  move?: { visitIds: readonly string[]; toDate?: string; toStaffId?: string | null },
+): Promise<Error> {
+  if (error.code === GROOM_OVERLAP_SQLSTATE && move) {
+    try {
+      await refuseGroomMoveClash(db, move);
+    } catch (e) {
+      return e as Error;
+    }
+  }
+  return new Error(error.message);
 }
 
 /** What a groomer (or, for null, the unassigned pool) already holds on each
