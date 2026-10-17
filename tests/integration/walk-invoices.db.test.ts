@@ -113,19 +113,30 @@ async function completedWalk(opts: {
     status: "active",
     started_on: walkDay,
   });
-  const visitId = await ins("visits", {
+  const visit = {
     organization_id: orgId,
     client_id: home.clientId,
     property_id: home.propertyId,
     subscription_id: subscriptionId,
     service_id: opts.serviceId,
     scheduled_on: walkDay,
+  };
+  const done = { status: "completed", completed_at: new Date().toISOString() };
+  if (!opts.walkGroupId) {
     // Written as done, the way tests/sql/a-walk-is-priced-as-a-walk.proof.sql
     // writes its billed visits.
-    status: "completed",
-    completed_at: new Date().toISOString(),
-    walk_group_id: opts.walkGroupId ?? null,
+    const visitId = await ins("visits", { ...visit, ...done });
+    return { ...home, subscriptionId, visitId };
+  }
+  // A completed visit cannot join a group, so join it scheduled and then
+  // complete it, as the app does.
+  const visitId = await ins("visits", {
+    ...visit,
+    status: "scheduled",
+    walk_group_id: opts.walkGroupId,
   });
+  const { error } = await admin.from("visits").update(done).eq("id", visitId);
+  if (error) throw new Error(`complete visit: ${error.message}`);
   return { ...home, subscriptionId, visitId };
 }
 
