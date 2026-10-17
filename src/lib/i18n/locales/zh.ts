@@ -424,6 +424,17 @@ const zh: TranslationsWithPlurals<"other"> = {
     access_blocked: "通道被挡（车辆、施工等）",
     unsafe_conditions: "环境不安全",
     other: "其他",
+    key_failed: "钥匙或密码不对",
+    no_one_home: "家里没人",
+    dog_unwell: "狗不舒服",
+  },
+  walkSkipReason: {
+    access_blocked: "进不去",
+    key_failed: "钥匙或密码不对",
+    no_one_home: "家里没人",
+    dog_unwell: "狗不舒服",
+    weather: "天气",
+    other: "其他",
   },
   addon: {
     billed: "附加服务已计费",

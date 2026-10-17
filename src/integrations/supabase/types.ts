@@ -3701,6 +3701,8 @@ export type Database = {
           notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
+          notify_email_walk_not_done: boolean
+          notify_email_walk_schedule_change: boolean
           notify_email_weather_reschedule: boolean
           notify_email_weekly_digest: boolean
           notify_email_welcome: boolean
@@ -3845,6 +3847,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_not_done?: boolean
+          notify_email_walk_schedule_change?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -3989,6 +3993,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_not_done?: boolean
+          notify_email_walk_schedule_change?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -5428,6 +5434,8 @@ export type Database = {
           organization_id: string
           property_id: string | null
           reclean_visit_id: string | null
+          requested_earliest_time: string | null
+          requested_latest_time: string | null
           requested_on: string | null
           requested_via: string | null
           resolution_note: string | null
@@ -5450,6 +5458,8 @@ export type Database = {
           organization_id: string
           property_id?: string | null
           reclean_visit_id?: string | null
+          requested_earliest_time?: string | null
+          requested_latest_time?: string | null
           requested_on?: string | null
           requested_via?: string | null
           resolution_note?: string | null
@@ -5472,6 +5482,8 @@ export type Database = {
           organization_id?: string
           property_id?: string | null
           reclean_visit_id?: string | null
+          requested_earliest_time?: string | null
+          requested_latest_time?: string | null
           requested_on?: string | null
           requested_via?: string | null
           resolution_note?: string | null
@@ -9491,6 +9503,9 @@ export type Database = {
         | "unsafe_conditions"
         | "other"
         | "customer_requested"
+        | "key_failed"
+        | "no_one_home"
+        | "dog_unwell"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
       visit_status:
@@ -9700,6 +9715,9 @@ export const Constants = {
         "unsafe_conditions",
         "other",
         "customer_requested",
+        "key_failed",
+        "no_one_home",
+        "dog_unwell",
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],

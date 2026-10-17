@@ -479,6 +479,17 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     access_blocked: "الدخول مسدود (سيارة، أعمال بناء، إلخ)",
     unsafe_conditions: "ظروف غير آمنة",
     other: "أخرى",
+    key_failed: "المفتاح أو الرمز لم يعمل",
+    no_one_home: "لم يكن أحد في المنزل",
+    dog_unwell: "الكلب غير قادر على المشي",
+  },
+  walkSkipReason: {
+    access_blocked: "تعذّر الدخول",
+    key_failed: "المفتاح أو الرمز لم يعمل",
+    no_one_home: "لم يكن أحد في المنزل",
+    dog_unwell: "الكلب غير قادر على المشي",
+    weather: "الطقس",
+    other: "أخرى",
   },
   addon: {
     billed: "تمت فوترة الخدمة الإضافية",

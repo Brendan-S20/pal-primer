@@ -313,7 +313,7 @@ describe("saving a gate code the editor could not see", () => {
     expect(drawer).toMatch(/\.\.\.gateCodeSave\(initial, form\)/);
     expect(drawer).not.toMatch(/gateCode: form\.gateCode \|\| undefined/);
     const fn = readFileSync("src/lib/properties.functions.ts", "utf8");
-    expect(fn).toMatch(/gateCode: z\.string\(\)\.max\(60\)\.nullable\(\)\.optional\(\)/);
+    expect(fn).toMatch(/gateCode: z\.string\(\)\.max\(ACCESS_CODE_MAX\)\.nullable\(\)\.optional\(\)/);
     expect(fn).toMatch(/\.\.\.\(gateCodeSent \? \{ gate_code: nextGateCode \} : \{\}\)/);
   });
 });

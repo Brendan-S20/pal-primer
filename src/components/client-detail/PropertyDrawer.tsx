@@ -25,6 +25,7 @@ import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressA
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 import { useServiceLines } from "@/components/CommercialOnly";
 import {
+  ACCESS_CODE_MAX,
   ACCESS_METHODS,
   ACCESS_METHOD_LABEL,
   KEY_TAG_MAX,
@@ -424,7 +425,7 @@ export function PropertyDrawer({
                 <Input
                   id="pd-lockbox"
                   value={form.lockBoxCode}
-                  maxLength={60}
+                  maxLength={ACCESS_CODE_MAX}
                   autoComplete="off"
                   onChange={(e) => set("lockBoxCode", e.target.value)}
                 />

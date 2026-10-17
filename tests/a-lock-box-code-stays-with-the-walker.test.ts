@@ -1,8 +1,11 @@
 // A lock box code stays with the walker (#410).
 //
 // Acceptance: "Lock box code visible to assigned tech + office only, never in
-// portal of other clients or logs." Who may READ the row is RLS
-// (may_read_property_row), proven in tests/integration/walk-access.db.test.ts.
+// portal of other clients or logs." Who may read the row is RLS
+// (may_read_property_row). Who may read a code (gate_code, lock_box_code,
+// key_location, key_tag) is property_access_codes, because plain SELECT of
+// those columns is revoked. Both are proven in
+// tests/integration/walk-access.db.test.ts.
 // This file holds the two places code could carry it further:
 //
 //   1. The client portal. No portal file selects or returns lock_box_code,
@@ -74,9 +77,14 @@ describe("the client portal", () => {
     expect(portal.length).toBeGreaterThan(5);
   });
 
+  // The one portal file that names the codes is the write-only access path:
+  // it writes them and answers "On file" or "Not set". Its replies are pinned
+  // to carry no code in tests/a-portal-shows-the-walk-and-never-the-code.test.ts.
+  const WRITE_ONLY = "src/lib/portal-access.functions.ts";
+
   it("never selects or returns a lock box code, gate code or key tag", () => {
     const findings: string[] = [];
-    for (const f of portal) {
+    for (const f of portal.filter((x) => x.rel !== WRITE_ONLY)) {
       for (const tok of tokens(f.rel, readFileSync(f.abs, "utf8"))) {
         if (SECRET_COLUMN.test(tok.text)) findings.push(`${f.rel}:${tok.line} ${tok.text}`);
       }
@@ -96,7 +104,10 @@ describe("the client portal", () => {
   });
 
   it("would catch one (the rule is not dead)", () => {
-    const planted = tokens("x.ts", 'const q = sb.from("properties").select("street, lock_box_code");');
+    const planted = tokens(
+      "x.ts",
+      'const q = sb.from("properties").select("street, lock_box_code");',
+    );
     expect(planted.some((t) => SECRET_COLUMN.test(t.text))).toBe(true);
     const commented = tokens("x.ts", "// lock_box_code is never read here\nconst a = 1;");
     expect(commented.some((t) => SECRET_COLUMN.test(t.text))).toBe(false);
