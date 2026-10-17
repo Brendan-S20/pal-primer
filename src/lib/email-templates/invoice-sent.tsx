@@ -27,6 +27,10 @@ interface Props extends OrgContact {
   taxCents?: number;
   /** "Sales tax (8.25%)". */
   taxLabel?: string;
+  /** Partly paid: what has been paid, and the balance still due. Sent only
+   *  when something was paid, so every other email is unchanged. */
+  amountPaidCents?: number;
+  balanceCents?: number;
 }
 
 const InvoiceSent = ({
@@ -39,6 +43,8 @@ const InvoiceSent = ({
   subtotalCents,
   taxCents = 0,
   taxLabel,
+  amountPaidCents = 0,
+  balanceCents,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -63,6 +69,11 @@ const InvoiceSent = ({
             {fmtMoney(taxCents)} {taxLabel || "sales tax"}
           </Text>
         ) : null}
+        {amountPaidCents > 0 && balanceCents != null ? (
+          <Text style={styles.text}>
+            {fmtMoney(amountPaidCents)} already paid. {fmtMoney(balanceCents)} is still due.
+          </Text>
+        ) : null}
         {periodLabel ? <Text style={styles.text}>{periodLabel}</Text> : null}
         {invoiceUrl ? (
           <Button style={styles.button} href={invoiceUrl}>
@@ -83,7 +94,11 @@ const InvoiceSent = ({
 export const template = {
   component: InvoiceSent,
   subject: (d: Record<string, any>) =>
-    `${d.reminder ? "Reminder: invoice" : "Invoice"} ${fmtMoney(d.amountCents ?? 0)} from ${d.orgName ?? "your service"}`,
+    `${d.reminder ? "Reminder: invoice" : "Invoice"} ${fmtMoney(
+      (d.amountPaidCents ?? 0) > 0 && d.balanceCents != null
+        ? d.balanceCents
+        : (d.amountCents ?? 0),
+    )} from ${d.orgName ?? "your service"}`,
   displayName: "Invoice sent",
   previewData: {
     orgName: "Acme Scoop Co.",
