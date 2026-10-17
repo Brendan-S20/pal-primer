@@ -535,6 +535,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     clockOut: "下班打卡",
     offTheClock: "你还没有上班打卡",
     offTheClockShort: "未打卡",
+    stillWorking_other: "你已经上班 {{count}} 小时了。还在工作吗？",
   },
   duration: {
     minutes: "{{m}} 分钟",

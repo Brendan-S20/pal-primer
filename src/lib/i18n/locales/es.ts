@@ -560,6 +560,8 @@ const es: Translations = {
     clockOut: "Salida",
     offTheClock: "No has marcado tu entrada",
     offTheClockShort: "Sin marcar",
+    stillWorking_one: "Llevas {{count}} hora en turno. ¿Sigues trabajando?",
+    stillWorking_other: "Llevas {{count}} horas en turno. ¿Sigues trabajando?",
   },
   duration: {
     minutes: "{{m}}m",

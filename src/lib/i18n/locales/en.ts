@@ -569,6 +569,9 @@ const en = {
     clockOut: "Clock out",
     offTheClock: "You're off the clock",
     offTheClockShort: "Off the clock",
+    /** My Day, once a shift has been open 12 hours or more. */
+    stillWorking_one: "You have been clocked in for {{count}} hour. Still working?",
+    stillWorking_other: "You have been clocked in for {{count}} hours. Still working?",
   },
   duration: {
     minutes: "{{m}}m",

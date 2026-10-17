@@ -598,6 +598,12 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     clockOut: "تسجيل الانصراف",
     offTheClock: "لم تسجّل حضورك",
     offTheClockShort: "لم تسجّل الحضور",
+    stillWorking_zero: "أنت في الدوام منذ أقل من ساعة. هل ما زلت تعمل؟",
+    stillWorking_one: "أنت في الدوام منذ ساعة واحدة. هل ما زلت تعمل؟",
+    stillWorking_two: "أنت في الدوام منذ ساعتين. هل ما زلت تعمل؟",
+    stillWorking_few: "أنت في الدوام منذ {{count}} ساعات. هل ما زلت تعمل؟",
+    stillWorking_many: "أنت في الدوام منذ {{count}} ساعة. هل ما زلت تعمل؟",
+    stillWorking_other: "أنت في الدوام منذ {{count}} ساعة. هل ما زلت تعمل؟",
   },
   duration: {
     minutes: "{{m}} د",
