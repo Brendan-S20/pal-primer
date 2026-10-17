@@ -302,7 +302,7 @@ describe("the switch", () => {
     const rows = page.slice(page.indexOf("const ROWS"), page.indexOf("];", page.indexOf("const ROWS")));
     expect(rows).not.toMatch(/notify_email_walk_canceled/);
     expect(page).toMatch(
-      /const rows = values\.runs_dog_walking \? \[\.\.\.ROWS, \.\.\.WALK_ROWS\] : ROWS;/,
+      /const rows = values\.runs_dog_walking \? \[\.\.\.base, \.\.\.WALK_ROWS\] : base;/,
     );
     expect(page).toMatch(/runs_dog_walking\s*\?\s*\{[\s\S]*?notify_email_walk_canceled,[\s\S]*?\}\s*:\s*rest/);
   });

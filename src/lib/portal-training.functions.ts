@@ -84,7 +84,8 @@ export const portalRequestTrainingLesson = createServerFn({ method: "POST" })
       _client_package_id: data.clientPackageId,
       _property_id: data.propertyId,
       _on: data.day,
-      _at: data.time ?? null,
+      // The SQL function takes NULL for _at: no time asked for.
+      _at: (data.time ?? null) as string,
       _message: data.message,
     });
     if (error) {
