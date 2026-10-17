@@ -1,3 +1,4 @@
+import { RequestedStays } from "@/components/RequestedStays";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { CalendarCheck, CalendarOff, CalendarPlus, Inbox, Repeat, Sparkles } from "lucide-react";
@@ -30,6 +31,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { formatDateTime, formatDay, formatPhone } from "@/lib/format";
+import { windowLabel } from "@/lib/walk-windows";
 import { toast } from "sonner";
 import { titleHead } from "@/lib/page-title";
 
@@ -142,6 +144,8 @@ function OneOffRow({
   const service = oneOf<{ name: string; service_line: string }>(concern.service);
   const what =
     service && service.service_line !== "pet_waste" ? `"${service.name}"` : "an extra visit";
+  // The time window a walk was asked for in (#410), or null.
+  const asked = windowLabel(concern.requested_earliest_time, concern.requested_latest_time);
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm">
       {booked ? (
@@ -155,8 +159,8 @@ function OneOffRow({
           : status === "resolved"
             ? `Asked for ${formatDay(concern.requested_on)}. Not booked.`
             : `Asked for ${what} on ${formatDay(concern.requested_on)}${
-                where ? ` at ${where}` : ""
-              }.`}
+                asked ? `, ${asked}` : ""
+              }${where ? ` at ${where}` : ""}.`}
       </span>
       {!booked && status !== "resolved" && canBook && concern.property_id && (
         <div className="ml-auto flex flex-wrap gap-2">
@@ -389,6 +393,8 @@ function ConcernsPage() {
         </p>
       </div>
 
+      <RequestedStays />
+
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button
@@ -607,6 +613,8 @@ function ConcernsPage() {
                         requestedOn: c.requested_on,
                         pets,
                         service: oneOf<OneOffRequestTicket["service"]>(c.service) ?? null,
+                        earliestTime: c.requested_earliest_time ?? null,
+                        latestTime: c.requested_latest_time ?? null,
                       });
                     }}
                   />

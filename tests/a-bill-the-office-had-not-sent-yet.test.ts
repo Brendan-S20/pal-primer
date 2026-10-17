@@ -40,7 +40,10 @@ describe("marking an invoice paid closes the door behind it", () => {
     // collectible through Stripe -- and only one acted on it.
     const marked = invoices.slice(invoices.indexOf("export const bulkMarkInvoicesPaid"));
     const body = marked.slice(0, marked.indexOf("export const", 10));
-    expect(body).toMatch(/syncInvoicePaymentIntentAmount\(id\)/);
+    // Every invoice the loop recorded a payment on (r.invoice_id since
+    // partial payments, when the loop went over record_invoice_payment's
+    // answers): paid in full cancels the intent, paid in part shrinks it.
+    expect(body).toMatch(/syncInvoicePaymentIntentAmount\(r\.invoice_id\)/);
   });
 
   it("does not let a Stripe outage block a cheque", () => {
@@ -48,7 +51,8 @@ describe("marking an invoice paid closes the door behind it", () => {
     // fail the operation that records it.
     const marked = invoices.slice(invoices.indexOf("export const bulkMarkInvoicesPaid"));
     const body = marked.slice(0, marked.indexOf("export const", 10));
-    const at = body.indexOf("syncInvoicePaymentIntentAmount(id)");
+    const at = body.indexOf("syncInvoicePaymentIntentAmount(r.invoice_id)");
+    expect(at).toBeGreaterThan(-1);
     expect(body.lastIndexOf("try {", at)).toBeGreaterThan(-1);
     expect(body.slice(at)).toMatch(/catch \(e\)/);
   });

@@ -202,18 +202,44 @@ describe("no trigger function is executable by a signed-in user", () => {
     // is matched): tg_staff_services_same_org, which keeps a technician's
     // service skill inside their own business. REVOKEd in the same file.
     //
-    // 61 -> 68 on 2026-10-16 (20261016180000, a trainer sells a package of
+    // 61 -> 63 on 2026-10-15 (20261015120000, a check for less than the
+    // bill): tg_payments_sync_invoice_paid, which keeps
+    // invoices.amount_paid_cents equal to the ledger, and
+    // tg_invoices_guard_amount_paid, which lets nothing else write it. Both
+    // REVOKEd in the same file.
+    //
+    // 63 -> 67 on 2026-10-15 (20261015200000, a walk can be a group walk):
+    // validate_walk_group, validate_walk_group_member, copy_walk_group_walker
+    // and guard_visit_walk_group. Each REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    //
+    // 67 -> 72 on 2026-10-16 (pet sitting, #411): tg_pet_care_instructions_pet
+    // (20261016110000) keeps a pet's care in the pet's business;
+    // tg_stays_validate, tg_stays_follow, tg_subscriptions_stay and
+    // tg_visits_stay_sitter (20261016120000) keep a stay, its plans and its
+    // sitter consistent. validate_walk_group_member is restated there, not
+    // new. Each REVOKEd from PUBLIC, anon and authenticated in the same file.
+    //
+    // 72 -> 73 on 2026-10-16 (20261016140000): tg_stays_invoice_guard
+    // keeps confirmation and invoice links on the transactional booking path.
+    // It revokes EXECUTE from PUBLIC, anon and authenticated in the same file.
+    // The 20261017 stay migrations re-create tg_stays_validate,
+    // tg_stays_follow and tg_stays_invoice_guard; none of them is new.
+    //
+    // 73 -> 80 on 2026-10-16 (20261016180000, a trainer sells a package of
     // sessions): training_service_package_guard, training_client_package_guard,
     // training_visit_package_guard, training_package_recount,
     // training_subscription_package_guard, training_skill_guard and
     // training_progress_row_guard. Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
     //
-    // 68 -> 69 on 2026-10-16 (20261016200000, training cancel and no-show):
+    // 80 -> 81 on 2026-10-16 (20261016200000, training cancel and no-show):
     // training_lesson_session_rule, which decides whether a missed or late
     // canceled package lesson uses a session. REVOKEd from PUBLIC, anon and
-    // authenticated in the same file.
-    expect(triggerFunctions().size).toBe(69);
+    // authenticated in the same file. That file also re-creates four of the
+    // package guards, and 20261016235000 re-creates
+    // training_lesson_session_rule; none of them is new.
+    expect(triggerFunctions().size).toBe(81);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

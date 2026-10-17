@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,19 @@ import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer"
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 // (Badge replaced by MetaChip per Stage 3 taxonomy.)
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
+import { useServiceLines } from "@/components/CommercialOnly";
+import {
+  ACCESS_CODE_MAX,
+  ACCESS_METHODS,
+  ACCESS_METHOD_LABEL,
+  ALARM_NOTES_MAX,
+  KEY_TAG_MAX,
+  gateCodeSave,
+  isAccessMethod,
+  showsWalkAccess,
+  walkAccessSave,
+  type AccessMethod,
+} from "@/lib/walk-access";
 
 const HAZARD_FIELDS: Array<[string, string]> = [
   ["doNotEnterIfDogOut", "Do NOT enter if dog is outside"],
@@ -88,9 +102,26 @@ export function PropertyDrawer({
       beesWasps: !!property?.bees_wasps,
       sharpObjects: !!property?.sharp_objects,
       slipperySurfaces: !!property?.slippery_surfaces,
+      accessMethod: (isAccessMethod(property?.access_method) ? property.access_method : "") as
+        | AccessMethod
+        | "",
+      keyHeld: !!property?.key_held,
+      keyTag: (property?.key_tag ?? "") as string,
+      lockBoxCode: (property?.lock_box_code ?? "") as string,
+      keyLocation: (property?.key_location ?? "") as string,
+      alarmNotes: (property?.alarm_notes ?? "") as string,
     }),
     [property, client],
   );
+  // Walker access (#410): a dog-walking business sees it, and so does any
+  // property that already has a value. A pet-waste-only business sees the
+  // drawer exactly as before, and its saves do not send these fields.
+  const { lines: serviceLines, known: linesKnown } = useServiceLines();
+  const walkAccess = linesKnown && showsWalkAccess(serviceLines, property);
+  // listPropertiesForClient says whether property_access_codes returned this
+  // row. When it did not, the code fields open blank over stored values.
+  const codesNotLoaded = !!property && property.access_codes_loaded === false;
+  const { t } = useTranslation();
   const initialBoundary = useMemo(
     () => ((property?.boundary as PolygonGeoJSON | null) ?? null),
     [property],
@@ -191,7 +222,9 @@ export function PropertyDrawer({
         addressSource: form.addressSource,
         label: form.label || undefined,
         accountType: form.accountType,
-        gateCode: form.gateCode || undefined,
+        // Sent only when changed, so a drawer that could not load the codes
+        // does not wipe the gate code (gateCodeSave).
+        ...gateCodeSave(initial, form),
         hazardNotes: form.hazardNotes || undefined,
         visitContactName: form.vcName || undefined,
         visitContactPhone: form.vcPhone || undefined,
@@ -211,6 +244,8 @@ export function PropertyDrawer({
         beesWasps: form.beesWasps,
         sharpObjects: form.sharpObjects,
         slipperySurfaces: form.slipperySurfaces,
+        // Codes go out only when the user changed them (walkAccessSave).
+        ...(walkAccess ? walkAccessSave(initial, form) : {}),
       };
       if (property) {
         await updateFn({ data: { propertyId: property.id, ...common } });
@@ -346,8 +381,107 @@ export function PropertyDrawer({
           <div>
             <Label htmlFor="pd-gate">Gate code</Label>
             <Input id="pd-gate" value={form.gateCode} onChange={(e) => set("gateCode", e.target.value)} />
+            {codesNotLoaded && !walkAccess && (
+              <p className="mt-1 text-xs text-muted-foreground" role="note">
+                {t("walk.codesNotLoaded")}
+              </p>
+            )}
           </div>
         </div>
+
+        {walkAccess && (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <SectionLabel>How the walker gets in</SectionLabel>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Only the walker on a visit here and the office can see these. They never go in a
+              calendar or the client portal.
+            </p>
+            {codesNotLoaded && (
+              <p className="mt-1 text-xs text-muted-foreground" role="note">
+                {t("walk.codesNotLoaded")}
+              </p>
+            )}
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <div className="min-w-0">
+                <Label htmlFor="pd-access-method" className="text-xs">
+                  Way in
+                </Label>
+                <select
+                  id="pd-access-method"
+                  value={form.accessMethod}
+                  onChange={(e) => set("accessMethod", e.target.value as AccessMethod | "")}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Not set</option>
+                  {ACCESS_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {ACCESS_METHOD_LABEL[m]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-0">
+                <Label htmlFor="pd-lockbox" className="text-xs">
+                  Lock box code
+                </Label>
+                <Input
+                  id="pd-lockbox"
+                  value={form.lockBoxCode}
+                  maxLength={ACCESS_CODE_MAX}
+                  autoComplete="off"
+                  onChange={(e) => set("lockBoxCode", e.target.value)}
+                />
+              </div>
+              <div className="min-w-0 sm:col-span-2">
+                <Label htmlFor="pd-key-location" className="text-xs">
+                  Where the key is
+                </Label>
+                <Input
+                  id="pd-key-location"
+                  value={form.keyLocation}
+                  maxLength={200}
+                  onChange={(e) => set("keyLocation", e.target.value)}
+                  placeholder="Under the blue pot by the back door"
+                />
+              </div>
+              <div className="min-w-0 sm:col-span-2">
+                <Label htmlFor="pd-alarm" className="text-xs">
+                  Alarm
+                </Label>
+                <Input
+                  id="pd-alarm"
+                  value={form.alarmNotes ?? ""}
+                  maxLength={ALARM_NOTES_MAX}
+                  autoComplete="off"
+                  onChange={(e) => set("alarmNotes", e.target.value)}
+                  placeholder="Panel by the garage door, code 2580"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm touch:min-h-11">
+                <input
+                  type="checkbox"
+                  checked={form.keyHeld}
+                  onChange={(e) => set("keyHeld", e.target.checked)}
+                />
+                <span>We hold a key</span>
+              </label>
+              {form.keyHeld && (
+                <div className="min-w-0">
+                  <Label htmlFor="pd-key-tag" className="text-xs">
+                    Key tag
+                  </Label>
+                  <Input
+                    id="pd-key-tag"
+                    value={form.keyTag}
+                    maxLength={KEY_TAG_MAX}
+                    onChange={(e) => set("keyTag", e.target.value)}
+                    placeholder="K-12"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {isCommercial && (
           <div className="rounded-md border bg-muted/20 p-3">

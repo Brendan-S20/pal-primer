@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { pageTitle } from "@/lib/page-title";
 import { ReportsNav } from "@/components/ReportsNav";
+import { RevenueByServiceCard } from "@/components/reports/RevenueByServiceCard";
 
 function fmtMoney(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -165,6 +166,8 @@ function ReportsPage() {
           `grid-cols-1` is `minmax(0, 1fr)`: the column is the width of the
           screen, the card is the column, and the table scrolls inside it. */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Only when the business sells more than one service (#410). */}
+        <RevenueByServiceCard from={applied.from} to={applied.to} />
         <Card>
           <CardHeader>
             <CardTitle>AR aging as at {data.arAsOf}</CardTitle>

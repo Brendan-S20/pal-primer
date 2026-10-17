@@ -50,7 +50,15 @@ function latestDefinitionOf(fnName: string): string {
   let found = "";
   for (const f of files) {
     const sql = readFileSync(join(MIGRATIONS, f), "utf8");
-    if (new RegExp(`FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i").test(sql)) found = sql;
+    const at = sql.search(new RegExp(`FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i"));
+    if (at < 0) continue;
+    // The function's own definition, not the whole file: a file that
+    // re-issues it can define other functions with status lists of their own
+    // (20261015120000's record_invoice_payment checks `status IN ('paid',
+    // 'void')`, which is about invoices, not revenue).
+    const rest = sql.slice(at);
+    const end = rest.search(/^(\$\$|\$function\$);\s*$/m);
+    found = end < 0 ? rest : rest.slice(0, end);
   }
   return found;
 }

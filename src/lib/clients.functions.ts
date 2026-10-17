@@ -54,7 +54,7 @@ export const listClients = createServerFn({ method: "GET" })
       ids.length
         ? supabase
             .from("invoices")
-            .select("client_id, total_cents, credit_applied_cents, status")
+            .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
             .in("client_id", ids)
             .eq("status", "open")
         : Promise.resolve({ data: [] as any[], error: null }),
@@ -195,7 +195,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents",
       )
       .eq("id", data.clientId)
       .single();
@@ -246,19 +246,24 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: properties, error: propErr } = await supabaseAdmin
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
+        "id, label, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
       )
       .eq("client_id", data.clientId)
       .eq("organization_id", caller.orgId)
       .is("archived_at", null)
       .order("street");
     if (propErr) throw new Error(propErr.message);
+    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const access = await readPropertyAccess(
+      supabase,
+      (properties ?? []).map((p) => p.id),
+    );
 
     const propertyIds = (properties ?? []).map((p) => p.id);
     const { data: dogs, error: dogErr } = propertyIds.length
       ? await supabaseAdmin
           .from("dogs")
-          .select("id, property_id, name, breed, weight_class, temperament, notes, active")
+          .select("id, property_id, name, breed, weight_class, temperament, notes, active, species, species_note")
           .in("property_id", propertyIds)
           .order("name")
       : { data: [], error: null };
@@ -266,7 +271,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
 
     return {
       client,
-      properties: properties ?? [],
+      properties: (properties ?? []).map((p) => ({ ...p, ...accessFor(access, p.id) })),
       dogs: (dogs ?? []).filter((d: any) => d.active !== false),
     };
   });
@@ -301,6 +306,11 @@ export const updateClient = createServerFn({ method: "POST" })
         // No sales tax on this client's invoices. A billing decision, so it
         // takes the billing permission below.
         taxExempt: z.boolean().optional(),
+        // Who the sitter calls, and what they may spend on the vet (#411).
+        emergencyContactName: z.string().max(200).nullable().optional(),
+        emergencyContactPhone: z.string().max(40).nullable().optional(),
+        emergencyContactMayApproveVet: z.boolean().optional(),
+        vetTreatmentLimitCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
       })
       .parse(d),
   )
@@ -321,7 +331,7 @@ export const updateClient = createServerFn({ method: "POST" })
     const { data: beforeRow, error: beforeErr } = await supabase
       .from("clients")
       .select(
-        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt",
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents",
       )
       .eq("id", data.clientId)
       .single();
@@ -375,6 +385,22 @@ export const updateClient = createServerFn({ method: "POST" })
     if (data.billingFrequency !== undefined) {
       patch.billing_frequency = data.billingFrequency;
       changed.push("billing cadence");
+    }
+    if (data.emergencyContactName !== undefined) {
+      patch.emergency_contact_name = data.emergencyContactName?.trim() || null;
+      changed.push("emergency contact");
+    }
+    if (data.emergencyContactPhone !== undefined) {
+      patch.emergency_contact_phone = data.emergencyContactPhone?.trim() || null;
+      if (!changed.includes("emergency contact")) changed.push("emergency contact");
+    }
+    if (data.emergencyContactMayApproveVet !== undefined) {
+      patch.emergency_contact_may_approve_vet = data.emergencyContactMayApproveVet;
+      if (!changed.includes("emergency contact")) changed.push("emergency contact");
+    }
+    if (data.vetTreatmentLimitCents !== undefined) {
+      patch.vet_treatment_limit_cents = data.vetTreatmentLimitCents;
+      changed.push("vet treatment limit");
     }
     if (data.taxExempt !== undefined) {
       patch.tax_exempt = data.taxExempt;
@@ -472,7 +498,7 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     const { data: dogs, error } = await supabase
       .from("dogs")
       .select(
-        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status",
+        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status, species, species_note, vet_clinic_name, vet_clinic_phone",
       )
       .in("property_id", ids)
       .order("name");

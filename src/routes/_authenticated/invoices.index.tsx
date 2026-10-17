@@ -1,9 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ListSkeleton } from "@/components/PageSkeletons";
+import { KpiValueBone, ListSkeleton } from "@/components/PageSkeletons";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LoadError } from "@/components/LoadError";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import {
   listInvoices,
   getCollectedThisMonth,
@@ -49,7 +51,8 @@ import { EmptyState, SectionLabel } from "@/components/client-detail/primitives"
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
 import type { RowAction } from "@/components/RowActions";
-import { invoiceOutstandingCents } from "@/lib/ar";
+import { invoiceDueCents, invoiceOutstandingCents } from "@/lib/ar";
+import { invoiceNumberLabel } from "@/lib/invoice-labels";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
 import { titleHead } from "@/lib/page-title";
@@ -333,6 +336,44 @@ function NewInvoiceDialog() {
   );
 }
 
+type InvoiceListRow = Awaited<ReturnType<typeof listInvoices>>[number];
+
+// The Invoices CSV. "Invoice number" is the INV-1042 the client was sent and
+// the deposit slip says; "Invoice ID" stays for anyone matching rows by id.
+const INVOICE_CSV_HEADERS = [
+  "Invoice number",
+  "Invoice ID",
+  "Client",
+  "Status",
+  "Period start",
+  "Period end",
+  "Total",
+  "Amount paid",
+  "Balance due",
+  "Issued",
+  "Due",
+  "Paid",
+];
+
+function invoiceCsvRow(inv: InvoiceListRow): string[] {
+  const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
+  return [
+    invoiceNumberLabel(inv),
+    inv.id,
+    client?.display_name ?? "",
+    inv.status,
+    inv.period_start ?? "",
+    inv.period_end ?? "",
+    ((inv.total_cents ?? 0) / 100).toFixed(2),
+    ((inv.amount_paid_cents ?? 0) / 100).toFixed(2),
+    // What is still open: zero for a paid, void or draft invoice.
+    (invoiceOutstandingCents(inv) / 100).toFixed(2),
+    (inv.issued_at ?? "").slice(0, 10),
+    inv.due_on ?? "",
+    (inv.paid_at ?? "").slice(0, 10),
+  ];
+}
+
 /** Clickable summary stat: clicking applies (or clears) the matching status filter. */
 function StatCard({
   label,
@@ -343,8 +384,8 @@ function StatCard({
   onClick,
 }: {
   label: string;
-  value: string;
-  sub?: string;
+  value: ReactNode;
+  sub?: ReactNode;
   active: boolean;
   destructive?: boolean;
   onClick: () => void;
@@ -379,7 +420,7 @@ function StatCard({
       {/* The explanatory line is what makes these cards tall. On a phone the
           number is the point, and "5 invoices open" under a card labelled Open
           invoices reading 5 is the least load-bearing sentence on the page. */}
-      {sub && <p className="mt-0.5 text-xs text-muted-foreground max-sm:hidden">{sub}</p>}
+      {sub && <div className="mt-0.5 text-xs text-muted-foreground max-sm:hidden">{sub}</div>}
     </button>
   );
 }
@@ -583,31 +624,8 @@ function InvoicesPage() {
   const exportSelectedCsv = () =>
     downloadCsv(
       `invoices-selected-${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        "Invoice ID",
-        "Client",
-        "Status",
-        "Period start",
-        "Period end",
-        "Total",
-        "Issued",
-        "Due",
-        "Paid",
-      ],
-      selectedRows.map((inv) => {
-        const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
-        return [
-          inv.id,
-          client?.display_name ?? "",
-          inv.status,
-          inv.period_start ?? "",
-          inv.period_end ?? "",
-          ((inv.total_cents ?? 0) / 100).toFixed(2),
-          (inv.issued_at ?? "").slice(0, 10),
-          inv.due_on ?? "",
-          (inv.paid_at ?? "").slice(0, 10),
-        ];
-      }),
+      INVOICE_CSV_HEADERS,
+      selectedRows.map(invoiceCsvRow),
     );
 
   // ── Per-row ••• actions (Salesforce-style row actions) ────────────────────
@@ -630,8 +648,10 @@ function InvoicesPage() {
       return paidBulk({ data: { ids: [id], ...how } });
     },
     onSuccess: (r) => {
-      if (r.ok) toast.success("Payment recorded. Invoice paid");
-      else toast.error("The payment could not be recorded");
+      if (!r.ok) toast.error(r.refusal ?? "The payment could not be recorded");
+      else if (r.partial?.length)
+        toast.success("Partial payment recorded. The rest stays open on the invoice");
+      else toast.success("Payment recorded. Invoice paid");
       if (r.intentStillLive?.length) {
         toast.warning(
           "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
@@ -684,8 +704,10 @@ function InvoicesPage() {
         label: "Record payment",
         disabled: busy,
         onSelect: async () => {
+          const owed = invoiceDueCents(inv);
           const how = await askPayment({
-            amountLine: `${fmtCents(invoiceOutstandingCents(inv as any), inv.currency ?? "usd")}, the open balance for ${client?.display_name ?? "this client"}. This marks the invoice paid and can't be undone here.`,
+            amountLine: `${fmtCents(owed, inv.currency ?? "usd")} is still owed by ${client?.display_name ?? "this client"}. The invoice is marked paid when the balance reaches zero. A payment can't be undone here.`,
+            balanceCents: owed,
           });
           if (how) rowPaidM.mutate({ id: inv.id, ...how });
         },
@@ -729,31 +751,8 @@ function InvoicesPage() {
             onClick={() =>
               downloadCsv(
                 `invoices-${new Date().toISOString().slice(0, 10)}.csv`,
-                [
-                  "Invoice ID",
-                  "Client",
-                  "Status",
-                  "Period start",
-                  "Period end",
-                  "Total",
-                  "Issued",
-                  "Due",
-                  "Paid",
-                ],
-                filtered.map((inv) => {
-                  const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
-                  return [
-                    inv.id,
-                    client?.display_name ?? "",
-                    inv.status,
-                    inv.period_start ?? "",
-                    inv.period_end ?? "",
-                    ((inv.total_cents ?? 0) / 100).toFixed(2),
-                    (inv.issued_at ?? "").slice(0, 10),
-                    inv.due_on ?? "",
-                    (inv.paid_at ?? "").slice(0, 10),
-                  ];
-                }),
+                INVOICE_CSV_HEADERS,
+                filtered.map(invoiceCsvRow),
               )
             }
           >
@@ -826,35 +825,63 @@ function InvoicesPage() {
           fit (a 430pt phone, every laptop); reflowed, not overflowed, where
           they do not. */}
       <div className="flex flex-wrap gap-2 sm:gap-3">
+        {/* A bone, never a figure, until the read that figure comes from has
+            answered: "Outstanding $0.00" over a skeleton list is a claim that
+            nobody owes anything (#420, F-05). A dash after a failed read, with
+            the Retry under the row. */}
         <StatCard
           label="Outstanding"
-          value={fmtCents(stats.outstandingCents)}
+          value={
+            invQ.data ? fmtCents(stats.outstandingCents) : invQ.isError ? "-" : <KpiValueBone />
+          }
           sub="Awaiting payment"
-          destructive={stats.outstandingCents > 0}
+          destructive={!!invQ.data && stats.outstandingCents > 0}
           active={status === "open"}
           onClick={() => toggleStatusFilter("open")}
         />
         <StatCard
           label="Open invoices"
-          value={String(stats.openCount)}
-          sub={stats.openCount === 1 ? "1 invoice open" : `${stats.openCount} invoices open`}
+          value={invQ.data ? String(stats.openCount) : invQ.isError ? "-" : <KpiValueBone />}
+          sub={
+            !invQ.data ? (
+              <Skeleton className="h-4 w-24" />
+            ) : stats.openCount === 1 ? (
+              "1 invoice open"
+            ) : (
+              `${stats.openCount} invoices open`
+            )
+          }
           active={status === "open"}
           onClick={() => toggleStatusFilter("open")}
         />
         <StatCard
           label="Collected this month"
-          value={fmtCents(collectedQ.data?.netCents ?? 0)}
+          value={
+            collectedQ.data ? (
+              fmtCents(collectedQ.data.netCents)
+            ) : collectedQ.isError ? (
+              "-"
+            ) : (
+              <KpiValueBone />
+            )
+          }
+          // When something came back, say so on the card. A figure that is
+          // lower than expected with no explanation is the thing an owner
+          // chases support about.
           sub={
-            // When something came back, say so on the card. A figure that is
-            // lower than expected with no explanation is the thing an owner
-            // chases support about.
-            (collectedQ.data?.reversalCount ?? 0) > 0
-              ? `${fmtCents(collectedQ.data?.grossCents ?? 0)} received, ${fmtCents(
-                  collectedQ.data?.refundsCents ?? 0,
-                )} refunded`
-              : (collectedQ.data?.paymentCount ?? 0) === 1
-                ? "1 payment received"
-                : `${collectedQ.data?.paymentCount ?? 0} payments received`
+            !collectedQ.data ? (
+              collectedQ.isError ? undefined : (
+                <Skeleton className="h-4 w-28" />
+              )
+            ) : collectedQ.data.reversalCount > 0 ? (
+              `${fmtCents(collectedQ.data.grossCents)} received, ${fmtCents(
+                collectedQ.data.refundsCents,
+              )} refunded`
+            ) : collectedQ.data.paymentCount === 1 ? (
+              "1 payment received"
+            ) : (
+              `${collectedQ.data.paymentCount} payments received`
+            )
           }
           active={status === "paid"}
           onClick={() => toggleStatusFilter("paid")}
@@ -869,6 +896,13 @@ function InvoicesPage() {
           />
         )}
       </div>
+      {collectedQ.isError && !collectedQ.data && invQ.data && (
+        <LoadError
+          what="this month's collected total"
+          onRetry={() => collectedQ.refetch()}
+          retrying={collectedQ.isFetching}
+        />
+      )}
 
       {/* ── FILTERS ────────────────────────────────────────────────────────
           Open on a laptop, folded on a phone. Measured at 430pt: a search
@@ -1034,8 +1068,16 @@ function InvoicesPage() {
         </div>
       )}
 
-      {invQ.isLoading ? (
-        <ListSkeleton breakpoint="md" columns={6} />
+      {!invQ.data ? (
+        invQ.isError ? (
+          <LoadError
+            what="your invoices"
+            onRetry={() => invQ.refetch()}
+            retrying={invQ.isFetching}
+          />
+        ) : (
+          <ListSkeleton breakpoint="md" columns={6} />
+        )
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={FileText}

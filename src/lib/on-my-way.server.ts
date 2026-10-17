@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
-import { etaPhrase, onMyWayText, shouldSendOnNavigate, techFirstName } from "@/lib/on-my-way";
+import { etaPhrase, onMyWayText, shouldSendOnNavigate, techFirstName, walkOnMyWayText } from "@/lib/on-my-way";
+import { dogNamesPhrase } from "@/lib/walk-report";
 import { trackingUrl } from "@/lib/live-tracking";
 
 /** Tell a customer their tech is on the way: by text when a text can go,
@@ -36,7 +37,7 @@ export async function sendOnMyWay(opts: {
   const { data: v, error } = await supabase
     .from("visits")
     .select(
-      "id, organization_id, client_id, status, scheduled_on, eta_start, eta_end, on_my_way_sent_at, tracking_token, clients(display_name, primary_phone, sms_opt_out, comms_paused), properties(street, city, visit_contact_name, visit_contact_phone, visit_contact_email)",
+      "id, organization_id, client_id, status, scheduled_on, eta_start, eta_end, on_my_way_sent_at, tracking_token, clients(display_name, primary_phone, sms_opt_out, comms_paused), properties(street, city, visit_contact_name, visit_contact_phone, visit_contact_email, dogs(name, active)), services(service_line)",
     )
     .eq("id", visitId)
     .single();
@@ -75,6 +76,7 @@ export async function sendOnMyWay(opts: {
     visit_contact_name: string | null;
     visit_contact_phone: string | null;
     visit_contact_email: string | null;
+    dogs?: { name: string | null; active: boolean | null }[] | null;
   } | null;
   // Same rule as the other visit texts (P3.5): the property's own contact,
   // when it has one, is who is waiting at the gate.
@@ -97,6 +99,21 @@ export async function sendOnMyWay(opts: {
       ? trackingUrl(await ensureTrackingToken(visitId, v.tracking_token))
       : null;
 
+  const walk = isDogWalk((v as { services?: unknown }).services);
+  const textFields = {
+    customerName,
+    orgName: org.name ?? "your service",
+    techName,
+    eta,
+    trackUrl,
+  };
+  const body = walk
+    ? walkOnMyWayText({
+        ...textFields,
+        dogs: dogNamesPhrase((prop?.dogs ?? []).filter((d) => d.active !== false).map((d) => d.name)),
+      })
+    : onMyWayText(textFields);
+
   const sms = await trySms({
     supabase,
     org,
@@ -104,13 +121,7 @@ export async function sendOnMyWay(opts: {
     client,
     destPhone: prop?.visit_contact_phone || client?.primary_phone || null,
     staffId: staff?.id ?? null,
-    body: onMyWayText({
-      customerName,
-      orgName: org.name ?? "your service",
-      techName,
-      eta,
-      trackUrl,
-    }),
+    body,
   });
 
   let result: OnMyWayResult;
@@ -134,6 +145,9 @@ export async function sendOnMyWay(opts: {
         eta: eta ?? undefined,
         address,
         trackUrl: trackUrl ?? undefined,
+        // A dog walk's email says walk and walker (#410); every other visit's
+        // email is exactly what it was.
+        ...(isDogWalk((v as any).services) ? { walk: true } : {}),
       },
       manual: trigger === "button",
     });
@@ -150,6 +164,14 @@ export async function sendOnMyWay(opts: {
       .eq("id", visitId);
   }
   return result;
+}
+
+function isDogWalk(services: unknown): boolean {
+  const s = (Array.isArray(services) ? services[0] : services) as
+    | { service_line?: string | null }
+    | null
+    | undefined;
+  return s?.service_line === "dog_walking";
 }
 
 /** The visit's tracking token, minted on first use. One per visit, kept

@@ -37,7 +37,11 @@ import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendOnMyWayMessage, sendVisitStatusSms } from "@/lib/messages.functions";
-import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
+import {
+  SKIP_REASON_LABELS,
+  WALK_SKIP_REASON_LABELS,
+  techSkipReasonCodes,
+} from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
@@ -86,6 +90,7 @@ import {
   Ban,
   ShieldCheck,
   ReceiptText,
+  BellRing,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
@@ -112,7 +117,13 @@ import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { OffTheClockBanner } from "@/components/TimeClock";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
-import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
+import {
+  dueCents,
+  formatMoney,
+  moreThanOwedFromRefusal,
+  newClientKey,
+  type StopFacts,
+} from "@/lib/stop-facts";
 import {
   CollectForm,
   DogsLine,
@@ -122,6 +133,27 @@ import {
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
 import { useServiceLines } from "@/components/CommercialOnly";
+import {
+  WalkAccess,
+  WalkMeta,
+  WalkReportFields,
+  WalkTimer,
+  isWalkVisit,
+  useWalkReport,
+} from "@/components/my-day/WalkParts";
+import {
+  SitCareLog,
+  SitCodesHint,
+  SitEmergencyFacts,
+  SitMeta,
+  SitNoteField,
+  SitPetsCare,
+  isSitVisit,
+  sitEmergency,
+  sitStepLabel,
+  useSitCare,
+  useSitPets,
+} from "@/components/my-day/SitParts";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
   captureCompletionFile,
@@ -978,6 +1010,7 @@ function MyDay() {
               <VisitCard
                 key={v.id}
                 visit={v}
+                dayVisits={visits}
                 index={idx + 1}
                 day={day}
                 preview={previewing}
@@ -1237,9 +1270,13 @@ function cacheAgeText(t: TFunction, ageMs: number): string {
     : t(`cacheAge.${age.unit}`);
 }
 
-/** A skip reason code in the tech's language, by code (`skipReason.<code>`),
- *  with the office's English as the fallback and an unknown code shown as-is. */
-function skipReasonLabel(t: TFunction, code: string): string {
+/** A skip reason code in the tech's language. A walk uses the walker labels
+ *  (`walkSkipReason.<code>`). An unknown code is shown as-is. */
+function skipReasonLabel(t: TFunction, code: string, walk = false): string {
+  if (walk) {
+    const english = WALK_SKIP_REASON_LABELS[code as keyof typeof WALK_SKIP_REASON_LABELS];
+    if (english) return t(`walkSkipReason.${code}`, { defaultValue: english });
+  }
   const english = SKIP_REASON_LABELS[code as keyof typeof SKIP_REASON_LABELS];
   return english ? t(`skipReason.${code}`, { defaultValue: english }) : code;
 }
@@ -1527,6 +1564,7 @@ function AccessFact({
 
 function VisitCard({
   visit,
+  dayVisits = [],
   index,
   day,
   preview = false,
@@ -1534,6 +1572,8 @@ function VisitCard({
   onLogExpense,
 }: {
   visit: any;
+  /** The whole day, for a group walk's pickup order (WalkMeta). */
+  dayVisits?: any[];
   index: number;
   day: string;
   preview?: boolean;
@@ -1565,6 +1605,16 @@ function VisitCard({
   // answered, refusing honestly beats failing with a network error.)
   const cardOnline = useOnline();
   const tz = useOrgTimezone();
+  // A dog walk reads as a walk (components/my-day/WalkParts.tsx). Every other
+  // stop, pet waste included, keeps its card exactly as it was.
+  const walk = isWalkVisit(visit);
+  const walkReport = useWalkReport(visit.id);
+  // A pet sitting visit reads as a sit (components/my-day/SitParts.tsx): the
+  // stay, the pets' care, the care log. Its note for the client is the walk
+  // report's note.
+  const sit = isSitVisit(visit);
+  const sitPets = useSitPets(visit);
+  const sitCare = useSitCare(visit, sit);
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -1609,7 +1659,7 @@ function VisitCard({
     onError: (e: Error) => toast.error(e.message),
   });
   const [reason, setReason] = useState("");
-  const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
+  const [reasonCode, setReasonCode] = useState("other");
   // What the tech tells the office on completion, why there is no photo when
   // the business requires one, and which checklist items were checked. All
   // three travel with the queued action.
@@ -1734,7 +1784,13 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      // The balance moved since the card loaded (the office applied a
+      // payment, or another collection is waiting): say the most it can be,
+      // in the tech's language.
+      const owed = moreThanOwedFromRefusal(e.message);
+      toast.error(
+        owed != null ? t("pay.moreThanDue", { amount: formatMoney(owed, locale) }) : e.message,
+      );
     },
   });
 
@@ -1782,8 +1838,13 @@ function VisitCard({
     return t("visit.completedWithNotices", { notices: labels });
   };
   const complete = useMutation({
-    mutationFn: () =>
-      actions.complete({
+    mutationFn: async () => {
+      // A walk's report goes first, so the completion email is written from
+      // it (#410). Queued, the completion queues behind it, never ahead.
+      const reportQueued = (walk || sit) && (await walkReport.send()).queued;
+      // A sit's care entries still on the device go first as well (#411).
+      const careQueued = sit && (await sitCare.hasQueued());
+      return actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
         // Only ids still on the owner's list: a tick left over from an item
@@ -1792,11 +1853,14 @@ function VisitCard({
           checklist.length > 0
             ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
-      }),
+        queueOnly: reportQueued || careQueued,
+      });
+    },
     onSuccess: (r) => {
       haptic("success");
       showCompletionCheck();
       toast.success(completeToast(r));
+      walkReport.reset();
       setCheckedItems([]);
       setNote("");
       setNoteOpen(false);
@@ -1935,6 +1999,8 @@ function VisitCard({
   const hasStations = p?.account_type === "commercial" || !!p?.has_units;
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
   const service = visitServiceLabel(visit.services);
+  const walkStop = service?.line === "dog_walking";
+  const skipCodes = techSkipReasonCodes(walkStop);
 
   // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
@@ -2023,12 +2089,20 @@ function VisitCard({
         : "";
   const stepLabel =
     step === "start"
-      ? t("myDay.start")
+      ? walk
+        ? t("walk.start")
+        : sit
+          ? sitStepLabel(t, visit.sit_facts, "start")
+          : t("myDay.start")
       : step === "photo"
         ? uploading
           ? t("photo.uploading")
           : t("visit.takeCompletionPhotoStep")
-        : t("myDay.complete");
+        : walk
+          ? t("walk.end")
+          : sit
+            ? sitStepLabel(t, visit.sit_facts, "end")
+            : t("myDay.complete");
 
   // The owner's checklist, as rows. Each row is the label AND the box, 44px
   // tall at every width, so a gloved thumb anywhere on the line ticks it --
@@ -2178,7 +2252,8 @@ function VisitCard({
                 {t("visit.queuedCount", { count: pendingLocal })}
               </span>
             )}
-            {inProg && visit.started_at && (
+            {inProg && visit.started_at && walk && <WalkTimer startedAt={visit.started_at} />}
+            {inProg && visit.started_at && !walk && (
               // Larger + bolder than the meta row: techs read this outdoors
               // in sunlight (P2 field-readiness).
               <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 dark:text-blue-300">
@@ -2246,6 +2321,8 @@ function VisitCard({
               )}
             </div>
           )}
+          {walk && <WalkMeta visit={visit} dayVisits={dayVisits} />}
+          {sit && <SitMeta visit={visit} locale={locale} />}
 
           {!collapsed && (
             <>
@@ -2281,11 +2358,20 @@ function VisitCard({
                   they're walking into. Never silent: the priced count when
                   there are no dog records, "No dogs on file" when there is
                   neither -- see DogsLine. */}
-              <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
+              {sit ? (
+                <>
+                  <SitPetsCare pets={sitPets} locale={locale} />
+                  <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
+                </>
+              ) : (
+                <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
+              )}
 
+              {(walk || sit) && <WalkAccess property={p} />}
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
-              {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
+              {sit && <SitCodesHint visit={visit} locale={locale} />}
+              {(p?.gate_code || p?.lock_box_code || p?.key_location || p?.alarm_notes) && (
                 <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border bg-muted/30 p-2.5">
                   {p?.gate_code && (
                     <AccessFact icon={Fence} label={t("access.gate")} value={p.gate_code} mono />
@@ -2301,6 +2387,11 @@ function VisitCard({
                   {p?.key_location && (
                     <div className="col-span-2">
                       <AccessFact icon={KeyRound} label={t("access.key")} value={p.key_location} />
+                    </div>
+                  )}
+                  {p?.alarm_notes && (
+                    <div className="col-span-2">
+                      <AccessFact icon={BellRing} label={t("access.alarm")} value={p.alarm_notes} />
                     </div>
                   )}
                 </div>
@@ -2366,7 +2457,9 @@ function VisitCard({
                   {visit.skipped_at
                     ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
-                  {visit.skip_reason_code ? ` (${skipReasonLabel(t, visit.skip_reason_code)})` : ""}
+                  {visit.skip_reason_code
+                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, walkStop)})`
+                    : ""}
                   {visit.skip_reason ? ": " : ""}
                   {visit.skip_reason ? <bdi>{visit.skip_reason}</bdi> : null}
                 </div>
@@ -2594,6 +2687,17 @@ function VisitCard({
             </fieldset>
           )}
 
+          {walk && underWay && canPerformVisit && (
+            <WalkReportFields visitId={visit.id} report={walkReport} />
+          )}
+
+          {sit && underWay && canPerformVisit && (
+            <>
+              <SitCareLog visit={visit} pets={sitPets} care={sitCare} tz={tz} locale={locale} />
+              <SitNoteField visitId={visit.id} report={walkReport} />
+            </>
+          )}
+
           {underWay && canPerformVisit && (
             <div className="space-y-2">
               {noteOpen ? (
@@ -2678,7 +2782,7 @@ function VisitCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  className="h-11 px-4"
                   onClick={() => setShowSkip((s) => !s)}
                 >
                   {t("myDay.skip")}
@@ -2773,11 +2877,11 @@ function VisitCard({
                 <select
                   value={reasonCode}
                   onChange={(e) => setReasonCode(e.target.value as any)}
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className="mt-1 h-11 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  {TECH_SKIP_REASON_CODES.map((c) => (
+                  {skipCodes.map((c) => (
                     <option key={c} value={c}>
-                      {skipReasonLabel(t, c)}
+                      {skipReasonLabel(t, c, walkStop)}
                     </option>
                   ))}
                 </select>

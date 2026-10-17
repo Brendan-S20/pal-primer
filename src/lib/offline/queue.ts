@@ -63,6 +63,36 @@ export type PendingAction =
       checkedItems?: string[];
     } & ActionBase)
   | ({ kind: "skip"; visitId: string; reason: string; code: string } & ActionBase)
+  // A walk's report (#410): pee, poo, and the note for the client. Queued
+  // just before its Complete, so the replay, oldest first, records it before
+  // the completion email is written from it.
+  | ({
+      kind: "walk_report";
+      visitId: string;
+      pee: boolean | null;
+      poo: boolean | null;
+      reportNote: string | null;
+    } & ActionBase)
+  // A sitter's care log entry (#411): fed, water, a dose given or missed.
+  // `entryId` is minted on the device, so the replay of a request that
+  // landed is the same row, and an undo can name it. Queued as it is tapped,
+  // so the replay, oldest first, logs it before the visit's completion and
+  // the visit report is written from it. Replay passes `ts` as when it was
+  // done.
+  | ({
+      kind: "care_entry";
+      visitId: string;
+      entryId: string;
+      petId: string | null;
+      careKind: "feed" | "meds" | "litter" | "walk" | "water" | "other";
+      medName: string | null;
+      status: "done" | "missed";
+      missedReason: string | null;
+      note: string | null;
+    } & ActionBase)
+  // Undo of an entry that had already reached the server. An entry still in
+  // the queue is undone by dropping it from the queue instead.
+  | ({ kind: "care_entry_undo"; visitId: string; entryId: string } & ActionBase)
   | ({
       kind: "station";
       visitId: string;

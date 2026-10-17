@@ -34,6 +34,7 @@ import { linkOneOffBooking } from "@/lib/concerns.functions";
 import { getPortalBookingSettings } from "@/lib/portal-booking.functions";
 import { formatDay } from "@/lib/format";
 import { oneOffVisitNote } from "@/lib/one-off-booking";
+import { windowLabel } from "@/lib/walk-windows";
 import { isZonePriced, servicePriceCents, type Service } from "@/lib/services";
 import { useOrgToday } from "@/hooks/useOrgToday";
 
@@ -59,6 +60,10 @@ export type OneOffRequestTicket = {
     | "extra_pet_cents"
     | "default_duration_min"
   > | null;
+  /** The time window a walk was asked for in (#410), "HH:MM[:SS]", or null.
+   *  Booked onto the visit's one-off service so the planner keeps it. */
+  earliestTime?: string | null;
+  latestTime?: string | null;
 };
 
 /** The service a request names when it is not the extra cleanup. */
@@ -112,6 +117,7 @@ export function BookOneOffRequestDialog({
   const svc = requestedService(ticket);
   const pets = ticket?.pets ?? 1;
   const svcCents = svc ? servicePriceCents(svc, { pets }) : null;
+  const asked = windowLabel(ticket?.earliestTime, ticket?.latestTime);
   useEffect(() => {
     if (!ticket) return;
     const cents = svc ? svcCents : settingsQ.data?.priceCents;
@@ -136,6 +142,9 @@ export function BookOneOffRequestDialog({
             ...(requestedService(t) ? { serviceId: requestedService(t)!.id } : {}),
             staffId: staffId || null,
             note: oneOffVisitNote(formatDay(t.requestedOn), false, requestedService(t)?.name),
+            ...(t.earliestTime && t.latestTime
+              ? { earliestTime: t.earliestTime, latestTime: t.latestTime }
+              : {}),
           },
         });
         visitId = r.visitId;
@@ -178,6 +187,7 @@ export function BookOneOffRequestDialog({
             {ticket?.clientName ?? "This client"} asked for{" "}
             {svc ? `${svc.name} on ` : ""}
             {ticket ? formatDay(ticket.requestedOn) : "a day"}
+            {asked ? `, ${asked}` : ""}
             {ticket?.address ? ` at ${ticket.address}` : ""}. It bills like any other visit.
           </DialogDescription>
         </DialogHeader>

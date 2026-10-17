@@ -18,6 +18,7 @@ import {
   type StopFacts,
   type StopFactsRow,
 } from "@/lib/stop-facts";
+import { stampVisitAccess } from "@/lib/property-access";
 
 export const getMyDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -81,16 +82,21 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(name, temperament), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents), walk_group_id, pee, poo, report_note, properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, access_method, key_held, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, temperament, species, species_note, active, vet_clinic_name, vet_clinic_phone, pet_care_instructions(feeding, meds, other_care)), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line, default_duration_min), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
       .order("sequence", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);
 
+    // A pet sitting stop's stay and care log (#411); nothing asked otherwise.
+    const { withSitDay } = await import("@/lib/sit-day.server");
     return {
       staff: targetStaff,
-      visits: await withStopFacts(supabase, visits ?? []),
+      visits: await withSitDay(
+        supabase,
+        await withStopFacts(supabase, await stampVisitAccess(supabase, visits ?? [])),
+      ),
       previewing,
       canText: await businessCanText(targetStaff.organization_id),
     };
@@ -351,7 +357,7 @@ export const completeVisit = createServerFn({ method: "POST" })
       const { data: v } = await context.supabase
         .from("visits")
         .select(
-          "organization_id, client_id, scheduled_on, visit_checklist, properties(street, city, visit_contact_email), organizations(email_visit_checklist)",
+          "organization_id, client_id, scheduled_on, visit_checklist, properties(street, city, visit_contact_email), organizations(email_visit_checklist), services(service_line)",
         )
         .eq("id", data.visitId)
         .single();
@@ -404,11 +410,27 @@ export const completeVisit = createServerFn({ method: "POST" })
         } catch (e) {
           console.warn("visit-completed photos could not be signed", data.visitId, e);
         }
-        const [{ enqueueAppEmail }, { sendPushToClient }] = await Promise.all([
-          import("@/lib/email/enqueue.server"),
-          import("@/lib/push.server"),
+        // A dog walk's email is a walk report (#410). A pet sitting visit's
+        // email is a visit report (#411), read only for a sitting visit.
+        // Null for every other visit, which leaves the email and push as they
+        // were. Both reads finish before the sends, which stay on the notice
+        // deadline so a slow inbox does not hold the tech's button.
+        const svc: any = Array.isArray((v as any).services)
+          ? (v as any).services[0]
+          : (v as any).services;
+        const sitting = svc?.service_line === "pet_sitting";
+        const [{ walkCompletionFor }, sitReport, { enqueueAppEmail }, { sendPushToClient }] =
+          await Promise.all([
+            import("@/lib/walk-report.server"),
+            sitting ? import("@/lib/sit-report.server") : Promise.resolve(null),
+            import("@/lib/email/enqueue.server"),
+            import("@/lib/push.server"),
+          ]);
+        const [walk, sit] = await Promise.all([
+          walkCompletionFor(data.visitId),
+          sitReport ? sitReport.sitCompletionFor(data.visitId) : Promise.resolve(null),
         ]);
-        const [emailResult, pushResult] = await Promise.all([
+        const [emailResult, pushResult, sitFollowup] = await Promise.all([
           withNoticeDeadline(
             "visit-completed email enqueue",
             enqueueAppEmail({
@@ -427,6 +449,8 @@ export const completeVisit = createServerFn({ method: "POST" })
                 photoUrls,
                 gatePhotoUrl,
                 checklist,
+                ...(walk ? { walk: walk.email } : {}),
+                ...(sit ? { sit: sit.email } : {}),
               },
             }),
             keepAlive,
@@ -434,13 +458,28 @@ export const completeVisit = createServerFn({ method: "POST" })
           withNoticeDeadline(
             "visit-completed push",
             sendPushToClient(v.client_id, {
-              title: "Visit completed",
-              body: address ? `We just cleaned up at ${address}.` : "Your yard visit is complete.",
+              title: walk ? walk.push.title : sit ? sit.push.title : "Visit completed",
+              body: walk
+                ? walk.push.body
+                : sit
+                  ? sit.push.body
+                  : address
+                    ? `We just cleaned up at ${address}.`
+                    : "Your yard visit is complete.",
               tag: `visit-${data.visitId}`,
               url: "/portal",
             }),
             keepAlive,
           ),
+          // Missed medication email, and the stay summary after the last
+          // visit. Never throws.
+          sitReport
+            ? withNoticeDeadline(
+                "sit follow-up after completion",
+                sitReport.afterSitCompleted(data.visitId),
+                keepAlive,
+              )
+            : Promise.resolve(null),
         ]);
         if (emailResult.timedOut) noticesPending = true;
         else if ((emailResult.value as { ok?: boolean })?.ok)
@@ -448,6 +487,7 @@ export const completeVisit = createServerFn({ method: "POST" })
         if (pushResult.timedOut) noticesPending = true;
         else if (((pushResult.value as { sent?: number })?.sent ?? 0) > 0)
           sentClientNotices.push("push");
+        if (sitFollowup?.timedOut) noticesPending = true;
       }
     } catch (e) {
       console.error("visit-completed email failed", e);
@@ -591,6 +631,9 @@ export const skipVisit = createServerFn({ method: "POST" })
             "access_blocked",
             "unsafe_conditions",
             "other",
+            "key_failed",
+            "no_one_home",
+            "dog_unwell",
           ])
           .default("other"),
         /** When the tech actually skipped, for a REPLAYED action. */
@@ -614,6 +657,9 @@ export const skipVisit = createServerFn({ method: "POST" })
     // A late-canceled lesson can use a session. Never throws.
     const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
     await afterLessonSessionChange(data.visitId);
+    // A dog walk's client hears it too (#410); nothing for any other visit.
+    const { notifyWalkNotDone } = await import("@/lib/walk-notify.server");
+    await notifyWalkNotDone({ visitId: data.visitId, kind: "skipped" });
     return { ok: true };
   });
 

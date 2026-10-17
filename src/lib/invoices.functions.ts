@@ -17,6 +17,8 @@ import {
   receivedOnProblem,
 } from "@/lib/manual-payments";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
+import { invoiceDueCents } from "@/lib/ar";
+import { formatCents } from "@/lib/digest-alerts";
 import { QUANTITY_MAX, lineTotalCents } from "@/lib/invoice-lines";
 
 /** Each payment row with how much of it has been refunded, from the reversal
@@ -66,7 +68,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("invoices")
       .select(
-        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)",
+        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)",
       )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -343,6 +345,9 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
          *  against exactly these invoices -- and its own method, check number
          *  and time are what get recorded, whatever else was sent. */
         fieldCollectionId: z.string().uuid().optional(),
+        /** Less than the balance is a partial payment; more is refused. One
+         *  invoice only. Absent means the whole balance, as it always did. */
+        amountCents: z.number().int().min(1).max(100_000_000).optional(),
       })
       .parse(d),
   )
@@ -360,20 +365,35 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
       const problem = receivedOnProblem(data.receivedOn, tz, now);
       if (problem) throw new Error(problem);
     }
-    // A FIELD COLLECTION goes through this same loop rather than a copy of
-    // it, so a tech's cash becomes exactly the payment rows, activity lines
-    // and pay-page cancellations an office-recorded check does. The claim
-    // comes first: confirm_field_collection refuses a second confirmation,
-    // an invoice that is not this customer's or not open, and invoices that
-    // add up to more than was collected -- so a double click, a retry or two
-    // people at once apply the money once.
+    // Every manual payment goes through record_invoice_payment, which locks
+    // the invoice, refuses more than its balance, writes the payment row and
+    // marks the invoice paid only when the balance reaches zero. That one
+    // function replaces a read, a status claim and an insert done here, so a
+    // double click or a retry cannot write two rows: the second one finds the
+    // invoice paid (or the balance smaller) and is refused.
+    //
+    // A FIELD COLLECTION is confirmed by confirm_field_collection, which
+    // applies the cash oldest invoice first, the last one partly, and records
+    // those payments in the same transaction. What is left for this loop is
+    // the activity line and the pay-page intent for each invoice it touched.
+    type Recorded = {
+      invoice_id: string;
+      organization_id: string;
+      client_id: string;
+      amount_cents: number;
+      balance_cents: number;
+      paid: boolean;
+    };
     type ClaimedCollection = {
       id: string;
       method: string;
       reference: string | null;
       collected_at: string;
+      allocations: Recorded[];
     };
-    let ids = data.ids;
+    if (data.amountCents != null && (data.ids.length !== 1 || data.fieldCollectionId)) {
+      throw new Error("An amount can only be recorded against one invoice at a time");
+    }
     let field: ClaimedCollection | null = null;
     if (data.fieldCollectionId) {
       const { data: claimed, error: cErr } = await supabase.rpc("confirm_field_collection", {
@@ -382,7 +402,6 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
       });
       if (cErr) throw new Error(cErr.message);
       field = claimed as unknown as ClaimedCollection;
-      ids = ((claimed as { invoice_ids?: string[] } | null)?.invoice_ids ?? []) as string[];
     }
     const method = field ? (field.method as (typeof MANUAL_PAYMENT_METHODS)[number]) : data.method;
     // A check received Friday and entered Monday is Friday's income on the
@@ -400,90 +419,59 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         : null;
     let ok = 0,
       failed = 0;
+    // Partly paid: recorded, and the invoice is still open for the rest.
+    const partial: string[] = [];
+    // The first refusal, word for word ("That is more than the $20.00 still
+    // owed on this invoice"), so a single-invoice caller can show it.
+    let refusal: string | null = null;
     // Invoices marked paid whose live PaymentIntent we could NOT cancel. These
     // are not failures -- the invoice IS paid and the row is correct -- but the
     // customer can still be charged on the pay page, and that second charge
     // lands nowhere. Counted separately so the office is told, rather than
     // reading a clean "Marked 12 paid" over a live intent. See the block below.
     const intentStillLive: string[] = [];
-    for (const id of ids) {
-      const { data: inv, error: rErr } = await supabase
-        .from("invoices")
-        .select(
-          "id, status, total_cents, credit_applied_cents, currency, client_id, organization_id",
-        )
-        .eq("id", id)
-        .single();
-      if (rErr || !inv) {
-        failed++;
-        continue;
+    const recorded: Recorded[] = [];
+    if (field) {
+      recorded.push(...(field.allocations ?? []));
+    } else {
+      for (const id of data.ids) {
+        const { data: r, error: rErr } = await supabase.rpc("record_invoice_payment", {
+          _invoice_id: id,
+          // Absent: the whole balance, which is what a bulk "mark paid" means.
+          _amount_cents: data.amountCents ?? undefined,
+          _method: method ?? undefined,
+          _reference: reference ?? undefined,
+          _paid_at: nowIso,
+          _note: data.note ?? undefined,
+        });
+        if (rErr || !r) {
+          failed++;
+          refusal ??= rErr?.message ?? null;
+          continue;
+        }
+        recorded.push(r as unknown as Recorded);
       }
-      if (inv.status === "paid" || inv.status === "void") {
-        failed++;
-        continue;
-      }
-      // An ATOMIC CLAIM, not a read-then-write. The status was read above and
-      // checked, but two requests — a double-click on "Mark paid", or a retry —
-      // both read `open` and both proceeded, inserting two `payments` rows for
-      // one invoice. `payments_pi_unique` cannot catch it: that index is
-      // `WHERE stripe_payment_intent_id IS NOT NULL` and an out-of-band payment
-      // has none. A $340 invoice became $680 of revenue in the dashboard,
-      // /reports, the CPA cash-income sheet and the franchise royalty base.
-      //
-      // `markInvoicePaidFromStripe` has always done it this way and documents
-      // why; this path was the one that did not. Narrowing the UPDATE to rows
-      // still unpaid means the loser of the race writes zero rows and takes the
-      // `failed` branch instead of inserting a second payment.
-      const { data: claimed, error: uErr } = await supabase
-        .from("invoices")
-        .update({ status: "paid", paid_at: nowIso })
-        .eq("id", id)
-        .eq("status", inv.status)
-        .select("id");
-      if (uErr || !claimed?.length) {
-        failed++;
-        continue;
-      }
-      // Record only the cash actually collected out-of-band: the open amount
-      // net of applied credit. The credit portion is already in the credit
-      // ledger; recording the gross total would double-count revenue.
-      await supabase.from("payments").insert({
-        invoice_id: id,
-        organization_id: inv.organization_id,
-        // BUILD-6: deliberately the location itself, NOT the routing target.
-        // This is cash or a cheque handed to the location out of band; it never
-        // passed through anyone's Stripe account, so crediting the franchise
-        // with holding it would make the settlement claim they owe money they
-        // never received.
-        collected_by_organization_id: inv.organization_id,
-        amount_cents: Math.max(
-          (inv.total_cents ?? 0) -
-            ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
-          0,
-        ),
-        currency: inv.currency ?? "usd",
-        status: "succeeded",
-        paid_at: nowIso,
-        method: method ?? null,
-        reference,
-        raw_event: {
-          source: "manual_mark_paid",
-          note: data.note ?? null,
-          field_collection_id: field?.id ?? null,
-        },
-      });
+    }
+    for (const r of recorded) {
       const how = describeManualPayment(method, reference);
+      const label = await invoiceRef(supabase, r.invoice_id);
       const { logActivity } = await import("@/lib/activity.server");
       await logActivity(supabase, {
-        orgId: inv.organization_id,
-        clientId: inv.client_id,
+        orgId: r.organization_id,
+        clientId: r.client_id,
         actorUserId: context.userId,
         kind: "invoice.payment_recorded",
-        summary: `Recorded ${how ? `${how} ` : ""}payment on invoice ${await invoiceRef(supabase, id)}`,
+        summary: r.paid
+          ? `Recorded ${how ? `${how} ` : ""}payment on invoice ${label}`
+          : `Recorded ${how ? `${how} ` : ""}partial payment of ${formatCents(r.amount_cents)} on invoice ${label}, ${formatCents(r.balance_cents)} still owed`,
       });
+      if (!r.paid) partial.push(r.invoice_id);
 
       // CANCEL THE CUSTOMER'S LIVE PAYMENT INTENT, for the same reason
       // voidInvoice does and with worse consequences if we do not.
+      //
+      // A partial payment shrinks it instead: the intent is updated to the
+      // balance that is left, so the client cannot pay the old full amount.
       //
       // Marking an invoice paid out of band -- a cheque, cash at the door --
       // says the money is collected. The PaymentIntent minted for the pay page
@@ -502,15 +490,15 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
       // Never throws, so a Stripe outage cannot block marking a cheque paid.
       try {
         const { syncInvoicePaymentIntentAmount } = await import("@/lib/invoice-reconcile.server");
-        await syncInvoicePaymentIntentAmount(id);
+        await syncInvoicePaymentIntentAmount(r.invoice_id);
       } catch (e) {
-        console.error("[mark-paid] could not cancel the pay-page intent for", id, e);
-        intentStillLive.push(id);
+        console.error("[mark-paid] could not sync the pay-page intent for", r.invoice_id, e);
+        intentStillLive.push(r.invoice_id);
       }
 
       ok++;
     }
-    return { ok, failed, intentStillLive };
+    return { ok, failed, partial, refusal, intentStillLive };
   });
 
 // In-app payment (Payment Element): staff take a card or ACH payment right on
@@ -538,15 +526,18 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     const { data: invoice, error } = await supabase
       .from("invoices")
       .select(
-        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
       )
       .eq("id", data.id)
       .single();
     if (error) throw new Error(error.message);
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
-    // Charge the OPEN amount: total net of applied credit (B7).
-    const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
+    // Charge the OPEN amount: total net of applied credit (B7) and of any
+    // partial payment already recorded.
+    const dueCents = invoiceDueCents(invoice);
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // If a previous session/intent was already paid but the status is stale
     // (webhook missed), reconcile instead of minting a second charge.
@@ -645,7 +636,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -684,7 +675,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );
@@ -734,7 +725,7 @@ async function chargeSavedCardCore(
   const { data: invoiceRow, error: iErr } = await supabase
     .from("invoices")
     .select(
-      "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+      "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
     )
     .eq("id", invoiceId)
     .single();
@@ -746,7 +737,7 @@ async function chargeSavedCardCore(
   // Charging a draft would also skip the credit-first ordering, since
   // apply_credit_to_invoice only touches open invoices.
   if (invoice.status !== "open") throw new Error("Only open invoices can be charged");
-  const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
+  const dueCents = invoiceDueCents(invoice);
   if (dueCents <= 0) throw new Error("Nothing due on this invoice");
   // Stale-open guard: if a prior session/intent already paid this invoice
   // (webhook missed), reconcile instead of charging the saved card too.
@@ -834,6 +825,8 @@ async function chargeSavedCardCore(
     taxCents: taxShareCents(dueCents, invoice.tax_cents, invoice.total_cents),
     config: await orgFeeConfig(feeAdmin, invoice.organization_id),
   });
+  const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+  const stayRails = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, []);
   try {
     const pi = await stripe.paymentIntents.create(
       {
@@ -842,6 +835,7 @@ async function chargeSavedCardCore(
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
+        ...(stayRails.length ? { payment_method_types: stayRails } : {}),
         off_session: true,
         confirm: true,
         metadata: {
@@ -1142,7 +1136,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
+          "id, number, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
         )
         .eq("client_id", data.clientId)
         .order("created_at", { ascending: false })
@@ -1214,7 +1208,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
         )
         .eq("id", data.invoiceId)
         .single(),
@@ -1341,7 +1335,7 @@ async function invoiceByPublicToken(token: string) {
       // `organizations(timezone)` so the public pay page can date "overdue" in
       // the business's day rather than the server's — it used to keep its own
       // copy of the date logic, with the bug src/lib/overdue.ts documents.
-      "id, number, organization_id, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone), clients(display_name)",
+      "id, number, organization_id, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone), clients(display_name)",
     )
     .eq("public_token", token)
     .maybeSingle();
@@ -1391,10 +1385,9 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
         totalCents: (invoice.total_cents ?? 0) as number,
         // B7: credit already applied and the net amount actually due.
         creditAppliedCents: (invoice.credit_applied_cents ?? 0) as number,
-        amountDueCents: Math.max(
-          (invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0),
-          0,
-        ),
+        // Partial payments: what was paid already, and the rest that is due.
+        amountPaidCents: (invoice.amount_paid_cents ?? 0) as number,
+        amountDueCents: invoiceDueCents(invoice),
         periodStart: invoice.period_start as string | null,
         periodEnd: invoice.period_end as string | null,
         issuedAt: invoice.issued_at as string | null,
@@ -1433,8 +1426,11 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!invoice) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
-    // Charge the OPEN amount: total net of applied credit (B7).
-    const dueCents = Math.max((invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0), 0);
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
+    // Charge the OPEN amount: total net of applied credit (B7) and of any
+    // partial payment already recorded.
+    const dueCents = invoiceDueCents(invoice);
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // The tip, decided here and only here: a percent from the fixed list or a
     // custom amount under the cap, taken of `dueCents` as read above. Refused
@@ -1545,7 +1541,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -1584,7 +1580,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );

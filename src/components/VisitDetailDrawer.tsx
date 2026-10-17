@@ -52,6 +52,7 @@ import { Link } from "@tanstack/react-router";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
+import { visitStayDates } from "@/lib/stays";
 import {
   TrainingProgressPanel,
   TrainingSessionBadge,
@@ -178,8 +179,9 @@ export function VisitDetailDrawer({
   useEffect(() => setMoveTo(""), [visitId]);
   const rescheduleMut = useMutation({
     mutationFn: () => doReschedule({ data: { visitId: visitId!, newDate: moveTo } }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       toast.success(`Visit moved to ${formatDay(moveTo)}`);
+      if (r.clash) toast.warning(r.clash);
       setMoveTo("");
       invalidate();
     },
@@ -187,8 +189,9 @@ export function VisitDetailDrawer({
   });
   const reassignMut = useMutation({
     mutationFn: (staffId: string | null) => doReassign({ data: { visitId: visitId!, staffId } }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       toast.success("Visit reassigned");
+      if (r.clash) toast.warning(r.clash);
       invalidate();
       // The board and the mobile day list both key off "visits"; invalidate()
       // covers those, but the tech lanes are grouped client-side from the same
@@ -308,6 +311,10 @@ export function VisitDetailDrawer({
             {/* Booked by text, through the AI receptionist (subscriptions.booked_via). */}
             {(v as any)?.subscriptions?.booked_via === "ai_receptionist" && (
               <Badge variant="outline">Booked by AI receptionist</Badge>
+            )}
+            {/* Part of a sitter's stay (#411): the stay's dates. */}
+            {visitStayDates((v as any)?.subscriptions?.stays) && (
+              <Badge variant="outline">Stay, {visitStayDates((v as any).subscriptions.stays)}</Badge>
             )}
           </SheetTitle>
           <SheetDescription>

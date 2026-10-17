@@ -29,6 +29,7 @@ import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { StaffRoutingDialog } from "@/components/routes/StaffRoutingDialog";
 import { LaneStrip } from "@/components/routes/LaneStrip";
 import { AutoRoutingPanel } from "@/components/routes/AutoRoutingPanel";
+import { GroupWalksPanel } from "@/components/routes/GroupWalksPanel";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
@@ -79,6 +80,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { visitStayDates } from "@/lib/stays";
 
 export const Route = createFileRoute("/_authenticated/routes")({
   head: () => titleHead("Schedule"),
@@ -711,6 +713,7 @@ function RoutesPage() {
           ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
           : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
       );
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -730,6 +733,7 @@ function RoutesPage() {
       } else {
         toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
       }
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -904,9 +908,10 @@ function RoutesPage() {
     setLocalColumns(next);
 
     try {
-      await reassign({
+      const r = await reassign({
         data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
       });
+      if (r.clash) toast.warning(r.clash);
       if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
       if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
     } catch (err) {
@@ -1259,6 +1264,8 @@ function RoutesPage() {
           onReviewDay={(d) => setDay(d)}
         />
       )}
+
+      <GroupWalksPanel day={day} staff={staff} onChanged={() => setLocalColumns(null)} />
 
       {/* The "One tech, one day" card that stood here is gone, and with it a
           live data-loss bug.
@@ -2335,6 +2342,14 @@ function VisitCardView({
                 title={visit.services.name}
               >
                 <bdi className="truncate">{visit.services.name}</bdi>
+              </Badge>
+            )}
+            {visitStayDates((visit as any).subscriptions?.stays) && (
+              // Part of a sitter's stay (#411), with its dates.
+              <Badge variant="outline" className="h-4 min-w-0 max-w-full px-1 text-3xs">
+                <span className="truncate">
+                  Stay, {visitStayDates((visit as any).subscriptions?.stays)}
+                </span>
               </Badge>
             )}
             {visit.zones?.name && (

@@ -8,7 +8,16 @@ import { platformFeeCents } from "@/lib/platform-fee";
 import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
+import { invoiceNumberLabel } from "@/lib/invoice-labels";
 import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
+import {
+  WALK_ISSUE_CODES,
+  WALK_ISSUE_LABELS,
+  YARD_ONLY_CONCERNS,
+  isWalkIssue,
+  isWalkLine,
+  walkConcernRow,
+} from "@/lib/walk-concerns";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -271,15 +280,22 @@ export const portalListInvoices = createServerFn({ method: "GET" })
       .from("invoices")
       // tax_*: the sales tax inside total_cents, drawn as "includes $X sales
       // tax" beside the amount when there is any.
-      .select("id, due_on, credit_applied_cents, tax_cents, tax_rate_bps, tax_label")
+      // number: the stored invoice number, so the list prints INV-10427 like
+      // the PDF, the email and the pay link (C-03). It used to number rows by
+      // their position in the list.
+      .select(
+        "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label",
+      )
       .eq("client_id", session.clientId);
     if (dueErr) throw new Error(dueErr.message);
     const dueById = new Map(
       (
         (dueRows ?? []) as Array<{
           id: string;
+          number: number | null;
           due_on: string | null;
           credit_applied_cents: number | null;
+          amount_paid_cents?: number | null;
           tax_cents?: number | null;
           tax_rate_bps?: number | null;
           tax_label?: string | null;
@@ -300,18 +316,23 @@ export const portalListInvoices = createServerFn({ method: "GET" })
       const extra = dueById.get(r.invoice_id);
       const due_on = extra?.due_on ?? null;
       const credit_applied_cents = extra?.credit_applied_cents ?? 0;
+      const amount_paid_cents = extra?.amount_paid_cents ?? 0;
       return {
         ...r,
+        number_label: invoiceNumberLabel({ id: r.invoice_id, number: extra?.number ?? null }),
         due_on,
         credit_applied_cents,
+        amount_paid_cents,
         tax_cents: Number(extra?.tax_cents ?? 0),
         tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
         tax_label: (extra?.tax_label ?? null) as string | null,
-        // What the client still owes on this invoice, net of applied credit (B7).
+        // What the client still owes on this invoice, net of applied credit
+        // (B7) and of any partial payment.
         amount_due_cents: invoiceOutstandingCents({
           status: r.status,
           total_cents: r.total_cents,
           credit_applied_cents,
+          amount_paid_cents,
         }),
         overdue: isInvoiceOverdue(r.status, due_on),
       };
@@ -836,7 +857,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
       )
       .eq("id", data.invoiceId)
       .single();
@@ -947,6 +968,8 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
       taxCents: taxShareCents(dueCents, invoice.tax_cents, invoice.total_cents),
       config: await orgFeeConfig(supabaseAdmin, invoice.organization_id),
     });
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const stayRails = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, []);
     try {
       const pi = await stripe.paymentIntents.create(
         {
@@ -955,6 +978,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           currency: invoice.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
+          ...(stayRails.length ? { payment_method_types: stayRails } : {}),
           off_session: true,
           confirm: true,
           metadata: {
@@ -1007,15 +1031,71 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
 
 // ── Portal: history, dogs, concerns, photo signing ──────────────────────────
 
+/** The service line of each of these visits, for the session's own client.
+ *  A visit that is not theirs, or a read that fails, is simply absent. */
+async function serviceLinesOf(
+  sb: any,
+  session: { clientId: string; organizationId: string },
+  visitIds: string[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (visitIds.length === 0) return out;
+  try {
+    const { data } = await sb
+      .from("visits")
+      .select("id, services(service_line)")
+      .in("id", visitIds)
+      .eq("client_id", session.clientId)
+      .eq("organization_id", session.organizationId);
+    for (const v of (Array.isArray(data) ? data : []) as Array<{ id: string; services: any }>) {
+      const svc = Array.isArray(v.services) ? v.services[0] : v.services;
+      out.set(v.id, (svc?.service_line as string | null | undefined) ?? null);
+    }
+  } catch (e) {
+    console.warn("portal could not read visit service lines", (e as Error).message);
+  }
+  return out;
+}
+
+/** Whether this visit of the session's client is a dog walk (#410). Throws
+ *  when it cannot tell, so a refusal that depends on it cannot be skipped by
+ *  a failed read. A visit that is not the client's is not a walk here; the
+ *  RPC refuses it on its own. */
+async function visitIsWalk(
+  sb: any,
+  session: { clientId: string; organizationId: string },
+  visitId: string | null,
+): Promise<boolean> {
+  if (!visitId) return false;
+  const { data, error } = await sb
+    .from("visits")
+    .select("id, services(service_line)")
+    .eq("id", visitId)
+    .eq("client_id", session.clientId)
+    .eq("organization_id", session.organizationId)
+    .maybeSingle();
+  if (error) throw new Error("We couldn't check that visit. Please try again.");
+  const svc = Array.isArray(data?.services) ? data.services[0] : data?.services;
+  return isWalkLine(svc?.service_line);
+}
+
 export const portalListRecentVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
+    const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
     if (error) throw new Error(error.message);
-    return (rows ?? []) as Array<{
+    const list = (rows ?? []) as Array<Record<string, any> & { visit_id: string }>;
+    // Which rows are dog walks (#410): a walk is offered no re-clean and no
+    // yard options, and reads in walk words. The RPC does not return it.
+    const lines = await serviceLinesOf(
+      sb,
+      session,
+      list.map((r) => r.visit_id),
+    );
+    return list.map((r) => ({ ...r, service_line: lines.get(r.visit_id) ?? null })) as Array<{
       visit_id: string;
       scheduled_on: string;
       status: string;
@@ -1033,6 +1113,9 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
       // is shown only when the customer wrote it.
       skip_reason: string | null;
       skip_reason_code: string | null;
+      // The visit's service line, or null when it could not be read. A walk
+      // is "dog_walking".
+      service_line: string | null;
     }>;
   });
 
@@ -1060,20 +1143,41 @@ export const portalReportConcern = createServerFn({ method: "POST" })
       .object({
         token: z.string().uuid(),
         visitId: z.string().uuid().nullable(),
-        category: z.enum(["missed_spot", "gate_left_open", "damage", "wrong_yard", "other"]),
+        // The yard categories, and the walk issues (#410), which are stored
+        // as yard categories with the issue in the message. See
+        // walk-concerns.ts.
+        category: z.enum([
+          "missed_spot",
+          "gate_left_open",
+          "damage",
+          "wrong_yard",
+          "other",
+          ...WALK_ISSUE_CODES,
+        ]),
         message: z.string().max(1000).optional().default(""),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+    // A walk is not a yard: the portal does not offer these on a walk, and
+    // a request that sends one anyway is refused.
+    if (
+      (YARD_ONLY_CONCERNS as readonly string[]).includes(data.category) &&
+      (await visitIsWalk(sb, session, data.visitId))
+    ) {
+      throw new Error("That option is for a yard visit. Pick one that fits the walk.");
+    }
+    const row = isWalkIssue(data.category)
+      ? walkConcernRow(data.category, data.message)
+      : { category: data.category, message: data.message };
     const { data: id, error } = await sb.rpc("portal_report_concern", {
       _token: data.token,
       _visit_id: data.visitId as string,
-      _category: data.category,
-      _message: data.message,
+      _category: row.category,
+      _message: row.message,
     });
     if (error) throw new Error(error.message);
 
@@ -1097,7 +1201,7 @@ export const portalReportConcern = createServerFn({ method: "POST" })
         await notifyRoles(["owner", "office_manager"], {
           orgId: cl.organization_id,
           type: "concern",
-          title: `New concern: ${CONCERN_LABELS[data.category] ?? "Concern"}`,
+          title: `New concern: ${concernLabel(data.category) ?? "Concern"}`,
           body: `${cl.display_name ?? "A client"}${data.message ? `: ${data.message.slice(0, 120)}` : ""}`,
           link: "/concerns",
         });
@@ -1133,8 +1237,15 @@ export const portalRequestReclean = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+
+    // The guarantee is for pet waste. A walk is refused here, before
+    // anything is written, so a request sent past the portal is refused too.
+    if (await visitIsWalk(sb, session, data.visitId)) {
+      const { recleanRefusalMessage } = await import("@/lib/reclean");
+      throw new Error(recleanRefusalMessage("visit_is_a_walk"));
+    }
 
     // Was there already an open request? Asked before the RPC so the office
     // is not told twice about one request.
@@ -1213,10 +1324,13 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
     const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
     const { data: org } = await (sb.from("organizations") as any)
-      .select("timezone, work_days, portal_auto_accept_bookings, one_off_price_cents, currency")
+      .select(
+        "timezone, work_days, portal_auto_accept_bookings, one_off_price_cents, currency, workday_start, workday_end",
+      )
       .eq("id", session.organizationId)
       .maybeSingle();
     const tz = (org?.timezone as string | null) || "America/Chicago";
+    const { walkWindows } = await import("@/lib/walk-windows");
     const today = orgToday(tz);
     const { addDaysToDay } = await import("@/lib/reclean");
     const { bookableDays, ONE_OFF_MAX_DAYS_AHEAD, oneOffServiceOptions } = await import(
@@ -1259,7 +1373,8 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       const { data: dogs } = await (sb.from("dogs") as any)
         .select("property_id")
         .in("property_id", propertyIds)
-        .not("active", "is", false);
+        .not("active", "is", false)
+        .eq("species", "dog");
       for (const d of (dogs ?? []) as Array<{ property_id: string }>) {
         if (d.property_id in petsByProperty) petsByProperty[d.property_id] += 1;
       }
@@ -1291,6 +1406,9 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       services: oneOffServiceOptions((services ?? []) as any[], priceCents),
       petsByProperty,
       currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
+      // The times a walk can be asked for (#410): the working day in two-hour
+      // windows. portalRequestOneOff accepts only these, or no window.
+      walkWindows: walkWindows(org?.workday_start ?? null, org?.workday_end ?? null),
     };
   });
 
@@ -1319,6 +1437,10 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         /** The service asked for (phase 5). Omitted: the extra cleanup, as
          *  every request before the catalog. */
         serviceId: z.string().uuid().optional(),
+        /** A walk's time window (#410), "HH:MM". Both or neither, and only
+         *  one of the windows portalOneOffBookingOptions offered. */
+        earliestTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        latestTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
       })
       .parse(d),
   )
@@ -1340,6 +1462,10 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       service = svc ?? null;
     }
     const petWaste = !service || service.service_line === "pet_waste";
+    // A walk's window: one the card offered, or none. Refused before anything
+    // is saved, in plain words.
+    const { checkedWalkWindow, recordRequestedWindow } = await import("@/lib/walk-request.server");
+    const walkWindow = await checkedWalkWindow(sb, session.organizationId, service, data);
 
     const { data: rows, error } = await (sb as any).rpc("portal_request_one_off", {
       _token: data.token,
@@ -1366,7 +1492,12 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       return { ticketId, alreadyAsked: true, bookedOn: (bv?.scheduled_on as string) ?? null };
     }
 
-    const dayLabel = formatDay(data.day);
+    // The window rides on the request, so the inbox shows it and the office's
+    // Book it carries it.
+    if (walkWindow) await recordRequestedWindow(sb, session.organizationId, ticketId, walkWindow);
+    const dayLabel = walkWindow
+      ? `${formatDay(data.day)}, ${walkWindow.label}`
+      : formatDay(data.day);
     let bookedOn: string | null = null;
     const { data: org } = await (sb.from("organizations") as any)
       .select("portal_auto_accept_bookings, one_off_price_cents")
@@ -1390,6 +1521,8 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
           serviceId: service?.id ?? null,
           note: oneOffVisitNote(dayLabel, true, petWaste ? null : service?.name),
           asService: true,
+          earliestTime: walkWindow?.earliest ?? null,
+          latestTime: walkWindow?.latest ?? null,
         });
         const { data: linked } = await (sb.from("qc_tickets") as any)
           .update({
@@ -1457,6 +1590,11 @@ const CONCERN_LABELS: Record<string, string> = {
   one_off_request: "Extra cleanup request",
 };
 
+/** The office's words for a category, or for a walk issue (#410). */
+function concernLabel(category: string): string | undefined {
+  return isWalkIssue(category) ? `Walk: ${WALK_ISSUE_LABELS.en[category]}` : CONCERN_LABELS[category];
+}
+
 /** Exported for the training lesson request (portal-training.functions.ts),
  *  which tells the office the same way a one-off request does. */
 export async function notifyOfficeOfConcern(
@@ -1487,7 +1625,7 @@ export async function notifyOfficeOfConcern(
   const to = org?.contact_email;
   if (!to) return; // no office inbox on file
 
-  const label = CONCERN_LABELS[category] ?? category;
+  const label = concernLabel(category) ?? category;
   const isReclean = category === "reclean_request";
   // For a one-off request `visitDay` is the day the customer ASKED for, and
   // `booked` says whether auto-accept already put it on the schedule.
@@ -1747,7 +1885,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id",
+        "id, number, organization_id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id",
       )
       .eq("id", data.invoiceId)
       .single();
@@ -1755,6 +1893,8 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
     // Charge what's still owed, net of applied credit (B7) — never the gross total.
     // Net the client's account credit off FIRST, which is what the comment
     // above this line has always claimed and what the code did not do.
@@ -1901,7 +2041,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -1939,7 +2079,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );
@@ -1980,6 +2120,8 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       tipsEnabled,
       currency,
       invoiceId: invoice.id,
+      /** "INV-10427": the number the PDF, the email and the pay link print. */
+      invoiceLabel: invoiceNumberLabel({ id: invoice.id, number: invoice.number ?? null }),
       businessName: client?.display_name as string,
     };
   });

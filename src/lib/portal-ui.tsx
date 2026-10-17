@@ -46,6 +46,8 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { customerSkipReason } from "@/lib/skip-rules.functions";
 import { isInsideRecleanWindow, recleanDeadlineLabel } from "@/lib/reclean";
+import { walkSkipReason } from "@/lib/walk-notify";
+import { WALK_CONCERN_OPTIONS, isWalkLine } from "@/lib/walk-concerns";
 import { oneOffRequestState } from "@/lib/one-off-booking";
 import {
   portalContext,
@@ -1120,6 +1122,12 @@ function VisitRow({
                 {orgLocalTime(v.eta_end, tz)}
               </span>
             )}
+            {/* A walk not routed yet shows its plan's window (#410). */}
+            {!v.eta_start && v.walk_window && (
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3 shrink-0" /> {v.walk_window}
+              </span>
+            )}
             {relativeFromToday(v.scheduled_on) && (
               <span>· {relativeFromToday(v.scheduled_on)}</span>
             )}
@@ -1716,6 +1724,8 @@ export function ServiceHistorySection({
         />
       ) : (
         <ul className="space-y-3">
+          {/* A dog walk (#410) reads in walk words, offers walk issues, and
+              never offers the re-clean guarantee, which is for pet waste. */}
           {rows.map((r) => (
             <li key={r.visit_id} className="rounded-md border bg-card p-3 text-sm">
               <div className="flex items-start justify-between gap-2">
@@ -1725,7 +1735,8 @@ export function ServiceHistorySection({
                     {r.status === "completed" ? (
                       <>
                         <span className="inline-flex items-center gap-1 text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3 shrink-0" /> Completed
+                          <CheckCircle2 className="h-3 w-3 shrink-0" />{" "}
+                          {isWalkLine(r.service_line) ? "Walk done" : "Completed"}
                           {r.completed_at && <> at {orgLocalTime(r.completed_at, tz)}</>}
                         </span>
                         {r.tech_name && (
@@ -1747,8 +1758,13 @@ export function ServiceHistorySection({
 
                             The free text is shown only when the customer wrote
                             it themselves from the portal, which is the one
-                            case where the words are their own. */}
-                        {customerSkipReason(r.skip_reason_code)}
+                            case where the words are their own.
+
+                            A walk says it in walk words, the same sentence
+                            the walk-not-done email used. */}
+                        {isWalkLine(r.service_line) && r.skip_reason_code !== "customer_requested"
+                          ? walkSkipReason(r.skip_reason_code)
+                          : customerSkipReason(r.skip_reason_code)}
                         {r.skip_reason_code === "customer_requested" && r.skip_reason && (
                           <>: {r.skip_reason}</>
                         )}
@@ -1758,6 +1774,12 @@ export function ServiceHistorySection({
                 </div>
                 {r.status === "completed" && (
                   <ConcernButton
+                    options={isWalkLine(r.service_line) ? WALK_CONCERN_OPTIONS : CONCERN_OPTIONS}
+                    placeholder={
+                      isWalkLine(r.service_line)
+                        ? "Tell us what happened"
+                        : "Tell us what to look for or fix"
+                    }
                     onSubmit={(cat, msg) => onReport(r.visit_id, cat, msg)}
                     pending={reporting}
                   />
@@ -1765,6 +1787,7 @@ export function ServiceHistorySection({
               </div>
 
               {reclean &&
+                !isWalkLine(r.service_line) &&
                 (reclean.requestedVisitIds.has(r.visit_id) ? (
                   <p className="mt-2 flex items-start gap-1 text-xs text-emerald-700">
                     <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
@@ -1785,7 +1808,9 @@ export function ServiceHistorySection({
 
               {r.status === "completed" && (r.photo_paths?.length ?? 0) === 0 && (
                 <p className="mt-2 text-xs text-muted-foreground italic">
-                  Photos not available for this visit.
+                  {isWalkLine(r.service_line)
+                    ? "No photos from this walk."
+                    : "Photos not available for this visit."}
                 </p>
               )}
 
@@ -1915,15 +1940,21 @@ const CONCERN_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
+/** Report on one visit. A walk passes WALK_CONCERN_OPTIONS (walk-concerns.ts):
+ *  no missed spot and no wrong yard on a walk. */
 function ConcernButton({
+  options,
+  placeholder,
   onSubmit,
   pending,
 }: {
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
   onSubmit: (cat: string, msg: string) => void;
   pending: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [cat, setCat] = useState("missed_spot");
+  const [cat, setCat] = useState(options[0].value);
   const [msg, setMsg] = useState("");
   return (
     <>
@@ -1943,7 +1974,7 @@ function ConcernButton({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CONCERN_OPTIONS.map((o) => (
+                  {options.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       {o.label}
                     </SelectItem>
@@ -1957,7 +1988,7 @@ function ConcernButton({
                 value={msg}
                 onChange={(e) => setMsg(e.target.value)}
                 rows={3}
-                placeholder="Tell us what to look for or fix"
+                placeholder={placeholder}
               />
             </div>
             <p className="text-xs text-muted-foreground">
