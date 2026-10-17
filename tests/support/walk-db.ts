@@ -3,6 +3,7 @@
 // Every user signs in for real so RLS and the RPCs see who is asking.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { orgDay } from "./org-day";
 
 export const DB_URL = process.env.TEST_SUPABASE_URL;
 export const DB_SERVICE = process.env.TEST_SUPABASE_SERVICE_KEY;
@@ -10,6 +11,10 @@ export const DB_ANON = process.env.TEST_SUPABASE_ANON_KEY;
 export const dbEnabled = Boolean(DB_URL && DB_SERVICE && DB_ANON);
 
 const password = "walk-test-password-123!";
+
+/** The zone every walk org is created in. The database reads "today" in the
+ *  org's zone, so a test builds its days with orgDay(WALK_ORG_TZ). */
+export const WALK_ORG_TZ = "UTC";
 
 export type WalkPerson = { userId: string; staffId: string | null; client: SupabaseClient };
 
@@ -41,7 +46,7 @@ export async function makeWalkOrg(label: string): Promise<WalkOrg> {
   const orgId = await insertRow(admin, "organizations", {
     name: `${label} ${runId}`,
     service_lines: ["dog_walking"],
-    timezone: "UTC",
+    timezone: WALK_ORG_TZ,
   });
   const serviceId = await insertRow(admin, "services", {
     organization_id: orgId,
@@ -137,7 +142,7 @@ export async function makeWalkVisit(
     name: `Dog ${n}`,
     active: true,
   });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = orgDay(WALK_ORG_TZ);
   const subscriptionId = await insertRow(admin, "subscriptions", {
     organization_id: orgId,
     client_id: clientId,
