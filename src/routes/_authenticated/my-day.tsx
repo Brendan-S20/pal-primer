@@ -124,6 +124,14 @@ import {
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
 import { useServiceLines } from "@/components/CommercialOnly";
+import {
+  WalkAccess,
+  WalkMeta,
+  WalkReportFields,
+  WalkTimer,
+  isWalkVisit,
+  useWalkReport,
+} from "@/components/my-day/WalkParts";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
   captureCompletionFile,
@@ -980,6 +988,7 @@ function MyDay() {
               <VisitCard
                 key={v.id}
                 visit={v}
+                dayVisits={visits}
                 index={idx + 1}
                 day={day}
                 preview={previewing}
@@ -1529,6 +1538,7 @@ function AccessFact({
 
 function VisitCard({
   visit,
+  dayVisits = [],
   index,
   day,
   preview = false,
@@ -1536,6 +1546,8 @@ function VisitCard({
   onLogExpense,
 }: {
   visit: any;
+  /** The whole day, for a group walk's pickup order (WalkMeta). */
+  dayVisits?: any[];
   index: number;
   day: string;
   preview?: boolean;
@@ -1567,6 +1579,10 @@ function VisitCard({
   // answered, refusing honestly beats failing with a network error.)
   const cardOnline = useOnline();
   const tz = useOrgTimezone();
+  // A dog walk reads as a walk (components/my-day/WalkParts.tsx). Every other
+  // stop, pet waste included, keeps its card exactly as it was.
+  const walk = isWalkVisit(visit);
+  const walkReport = useWalkReport(visit.id);
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -1797,8 +1813,11 @@ function VisitCard({
     return t("visit.completedWithNotices", { notices: labels });
   };
   const complete = useMutation({
-    mutationFn: () =>
-      actions.complete({
+    mutationFn: async () => {
+      // A walk's report goes first, so the completion email is written from
+      // it (#410). Queued, the completion queues behind it, never ahead.
+      const reportQueued = walk && (await walkReport.send()).queued;
+      return actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
         // Only ids still on the owner's list: a tick left over from an item
@@ -1807,11 +1826,14 @@ function VisitCard({
           checklist.length > 0
             ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
-      }),
+        queueOnly: reportQueued,
+      });
+    },
     onSuccess: (r) => {
       haptic("success");
       showCompletionCheck();
       toast.success(completeToast(r));
+      walkReport.reset();
       setCheckedItems([]);
       setNote("");
       setNoteOpen(false);
@@ -2039,12 +2061,16 @@ function VisitCard({
         : "";
   const stepLabel =
     step === "start"
-      ? t("myDay.start")
+      ? walk
+        ? t("walk.start")
+        : t("myDay.start")
       : step === "photo"
         ? uploading
           ? t("photo.uploading")
           : t("visit.takeCompletionPhotoStep")
-        : t("myDay.complete");
+        : walk
+          ? t("walk.end")
+          : t("myDay.complete");
 
   // The owner's checklist, as rows. Each row is the label AND the box, 44px
   // tall at every width, so a gloved thumb anywhere on the line ticks it --
@@ -2196,7 +2222,8 @@ function VisitCard({
                 {t("visit.queuedCount", { count: pendingLocal })}
               </span>
             )}
-            {inProg && visit.started_at && (
+            {inProg && visit.started_at && walk && <WalkTimer startedAt={visit.started_at} />}
+            {inProg && visit.started_at && !walk && (
               // Larger + bolder than the meta row: techs read this outdoors
               // in sunlight (P2 field-readiness).
               <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 dark:text-blue-300">
@@ -2261,6 +2288,7 @@ function VisitCard({
               )}
             </div>
           )}
+          {walk && <WalkMeta visit={visit} dayVisits={dayVisits} />}
 
           {!collapsed && (
             <>
@@ -2298,6 +2326,7 @@ function VisitCard({
                   neither -- see DogsLine. */}
               <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
 
+              {walk && <WalkAccess property={p} />}
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
               {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
@@ -2607,6 +2636,10 @@ function VisitCard({
               </legend>
               {checklistRows()}
             </fieldset>
+          )}
+
+          {walk && underWay && canPerformVisit && (
+            <WalkReportFields visitId={visit.id} report={walkReport} />
           )}
 
           {underWay && canPerformVisit && (
