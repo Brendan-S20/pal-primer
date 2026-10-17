@@ -43,7 +43,14 @@ export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
 export SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
 
 echo "── 2/4  migrations ────────────────────────────────────────────────────"
-applied=$(psql "$DB_URL" -tAc "select count(*) from supabase_migrations.schema_migrations" 2>/dev/null || echo 0)
+count_sql="select count(*) from supabase_migrations.schema_migrations"
+if command -v psql >/dev/null 2>&1; then
+  applied=$(psql "$DB_URL" -tAc "$count_sql" 2>/dev/null || echo 0)
+else
+  # No psql on the runner (the Windows PC): ask the stack's own database container.
+  db_container=$(docker ps --format '{{.Names}}' | grep -E '^supabase_db_' | head -1)
+  applied=$(docker exec "$db_container" psql -U postgres -d postgres -tAc "$count_sql" 2>/dev/null || echo 0)
+fi
 echo "     $applied in the ledger"
 if [ "$applied" -lt 300 ]; then
   echo "     that is too few. Run 'supabase db reset' and try again." >&2

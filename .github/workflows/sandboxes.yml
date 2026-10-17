@@ -202,29 +202,41 @@ jobs:
     needs: changes
     if: needs.changes.outputs.database == 'true'
     name: A database built from the migrations alone
-    # Follows CI_RUNNER exactly like ci.yml — see docs/self-hosted-runner.md.
-    # Deleting that repository variable puts this back on hosted runners.
-    # ── THIS JOB CANNOT RUN ON WINDOWS ──────────────────────────────────
+    # ── ON THE WINDOWS PC SINCE 2026-10-17 ────────────────────────────────
     #
-    # A second self-hosted runner joined on 2026-09-16 and it is a Windows
-    # machine. `CI_RUNNER` is `self-hosted`, which matches BOTH, so GitHub
-    # dispatches to whichever is idle. The steps below need a Unix shell and
-    # Unix tooling -- psql, Docker, the Supabase CLI, or a bash guard -- and
-    # would fail on that box in a way that reads like a broken migration
-    # rather than a broken match.
+    # This job used to follow UNIX_RUNNER (`macOS`), because the steps were
+    # written for a Unix shell. The Mac has no Docker, so every run failed at
+    # "Find Docker and the Supabase CLI" and the migrations and DB tests went
+    # unchecked in CI. DESKTOP-JUC6SL1 has Docker Desktop and the Supabase CLI.
     #
-    # `UNIX_RUNNER` is checked FIRST and set to `macOS`, a label only the Mac
-    # carries. `CI_RUNNER` stays as the fallback so the existing escape hatch
-    # is untouched: clear both variables and everything returns to hosted
-    # runners with no edit to this file.
+    # What makes it portable: Git Bash is the default shell (first step puts it
+    # on PATH), line endings are forced to LF before checkout like the other
+    # Windows jobs, test:db is run with bash rather than through npm (npm runs
+    # scripts with cmd.exe on Windows), and the proofs fall back to psql inside
+    # the stack's own database container when psql is not on the runner.
     #
-    # ci.yml's `verify` job deliberately does NOT have this line. Every step
-    # in it is `npm run` and portable, which is the point -- it is the long
-    # one, and the whole reason for a second machine.
-    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    # DB_RUNNER_JSON overrides the label set, e.g. '["self-hosted","macOS"]'
+    # to send it back to the Mac once that has Docker, or '"ubuntu-latest"'
+    # for a hosted runner.
+    runs-on: ${{ fromJSON(vars.DB_RUNNER_JSON || vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
     timeout-minutes: 30
     steps:
+      - name: Put Git Bash on PATH
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
+      - name: Make git write LF
+        if: runner.os == 'Windows'
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
       - uses: actions/checkout@v4
+      - name: Renormalise a workspace checked out before .gitattributes
+        if: runner.os == 'Windows'
+        run: |
+          git rm --cached -r -q .
+          git reset --hard
+          git status --porcelain
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -237,7 +249,7 @@ jobs:
           # reads empty (= caching off) whenever a self-hosted runner variable
           # is set, and 'npm' on the hosted fallback, where a fresh VM really
           # does need the cache.
-          cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
+          cache: ''
       - run: npm ci
 
       - name: Find Docker and the Supabase CLI
@@ -556,7 +568,8 @@ jobs:
           exit 1
 
       - name: The RLS and portal-auth backstops, finally executed
-        run: npm run test:db
+        # bash, not `npm run test:db`: npm hands scripts to cmd.exe on Windows.
+        run: bash tests/run-db-tests.sh
 
       # ── AND THE PROOFS, WHICH THIS WORKFLOW WATCHED WITHOUT RUNNING ─────
       #
@@ -580,11 +593,21 @@ jobs:
           set -o pipefail
           eval "$(supabase status -o env | grep -E '^DB_URL=')"
           : "${DB_URL:?supabase status did not report a DB_URL}"
+          # psql on the runner when it has one; otherwise the psql inside the
+          # stack's own database container (the Windows PC has no psql).
+          if command -v psql >/dev/null 2>&1; then
+            run_sql() { psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$1"; }
+          else
+            db_container=$(docker ps --format '{{.Names}}' | grep -E '^supabase_db_.*-ci$' | head -1)
+            : "${db_container:?no psql on this runner and no supabase_db_*-ci container found}"
+            echo "no psql on the runner; using the one in $db_container"
+            run_sql() { docker exec -i "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q < "$1"; }
+          fi
           failed=0
           for f in supabase/proofs/*.sql; do
             [ -e "$f" ] || continue
             echo "── $(basename "$f")"
-            if psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"; then
+            if run_sql "$f"; then
               echo "   ok"
             else
               echo "::error file=$f::proof failed — this is an exploit that is no longer prevented, or a fixture that no longer builds"
@@ -616,7 +639,7 @@ jobs:
       - name: The QA list's behavioural half, against that same database
         run: |
           npx playwright install chromium
-          npm run test:e2e
+          bash tests/e2e/run.sh
 
       - name: Keep what the E2E suite saw when it failed
         if: failure()
