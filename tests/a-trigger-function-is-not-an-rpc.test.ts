@@ -225,7 +225,9 @@ describe("no trigger function is executable by a signed-in user", () => {
     // All three revoked in that file.
     // 74 -> 75 (20261016230000): pet_vaccinations_review_stamp takes the
     // reviewer who rejected a portal upload from the session. Revoked there.
-    expect(triggerFunctions().size).toBe(75);
+    // 75 -> 76 (20261017110000): tg_visits_groom_plan_addons_void voids a
+    // groom's add-on charges when the visit leaves completed. Revoked there.
+    expect(triggerFunctions().size).toBe(76);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
