@@ -16,6 +16,7 @@ import {
   DoorClosed,
   Dog as DogIcon,
   Home,
+  KeyRound,
   MapPin,
   MoreHorizontal,
   Pencil,
@@ -47,6 +48,7 @@ import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
 import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-time";
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
+import { ACCESS_METHOD_LABEL, isAccessMethod, type AccessMethod } from "@/lib/walk-access";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 const HAZARD_LABELS: Array<[string, string]> = [
@@ -616,6 +618,25 @@ function PropertyCard({
                     </span>
                   ) : (
                     <span>No gate code</span>
+                  )}
+                  {isAccessMethod(p.access_method) && (
+                    <span>
+                      Way in:{" "}
+                      <span className="text-foreground">{ACCESS_METHOD_LABEL[p.access_method as AccessMethod]}</span>
+                    </span>
+                  )}
+                  {p.key_held && (
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <KeyRound className="h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        We hold a key
+                        {p.key_tag ? (
+                          <>
+                            , tag <span className="font-medium text-foreground">{p.key_tag}</span>
+                          </>
+                        ) : null}
+                      </span>
+                    </span>
                   )}
                   {(p.visit_contact_name || p.visit_contact_phone || p.visit_contact_email) && (
                     <span>

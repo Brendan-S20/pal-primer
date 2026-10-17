@@ -289,6 +289,7 @@ describe.skipIf(!enabled)("walk scheduling and group walks in the database", () 
     const foreignOrg = await ins("organizations", {
       name: `Other walks ${runId}`,
       service_lines: ["dog_walking"],
+      timezone: ORG_TZ,
     });
     try {
       const foreignService = await ins("services", {

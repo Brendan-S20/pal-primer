@@ -303,7 +303,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const { data: before } = await supabase
       .from("subscriptions")
       .select(
-        "organization_id, client_id, price_cents, frequency, weekdays, started_on, ends_on, status, service_id",
+        "organization_id, client_id, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
       )
       .eq("id", data.subscriptionId)
       .single();
@@ -376,6 +376,19 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // Schedule inputs may have changed; top the horizon back up.
     const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
     if (before?.organization_id) await generateVisitHorizon(supabase, before.organization_id);
+
+    // A walk plan whose days or window changed: the client hears it (#410).
+    if (before) {
+      const { notifyWalkPlanChanged } = await import("@/lib/walk-notify.server");
+      await notifyWalkPlanChanged({
+        subscriptionId: data.subscriptionId,
+        before: {
+          weekdays: before.weekdays ?? null,
+          earliest_time: before.earliest_time ?? null,
+          latest_time: before.latest_time ?? null,
+        },
+      });
+    }
 
     if (before) {
       const { logActivity } = await import("@/lib/activity.server");

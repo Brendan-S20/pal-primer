@@ -63,6 +63,16 @@ export type PendingAction =
       checkedItems?: string[];
     } & ActionBase)
   | ({ kind: "skip"; visitId: string; reason: string; code: string } & ActionBase)
+  // A walk's report (#410): pee, poo, and the note for the client. Queued
+  // just before its Complete, so the replay, oldest first, records it before
+  // the completion email is written from it.
+  | ({
+      kind: "walk_report";
+      visitId: string;
+      pee: boolean | null;
+      poo: boolean | null;
+      reportNote: string | null;
+    } & ActionBase)
   | ({
       kind: "station";
       visitId: string;

@@ -65,7 +65,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
-         properties(id, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
+         properties(id, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
          subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via),
@@ -76,6 +76,14 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .eq("organization_id", orgId)
       .single();
     if (error) throw new Error(error.message);
+
+    const { accessFor, readPropertyAccess } = await import("@/lib/property-access");
+    const propertyId = (v as { property_id: string | null }).property_id;
+    const access = accessFor(await readPropertyAccess(supabase, [propertyId]), propertyId);
+    const visit =
+      v.properties && typeof v.properties === "object" && !Array.isArray(v.properties)
+        ? { ...v, properties: { ...v.properties, ...access } }
+        : v;
 
     // dogs at this property
     const { data: dogs } = await supabase
@@ -108,7 +116,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       others().gte("scheduled_on", today).order("scheduled_on", { ascending: true }).limit(3),
     ]);
 
-    return { visit: v, dogs: dogs ?? [], recent: recent ?? [], upcoming: upcoming ?? [] };
+    return { visit, dogs: dogs ?? [], recent: recent ?? [], upcoming: upcoming ?? [] };
   });
 
 export const listStaff = createServerFn({ method: "GET" })
@@ -176,6 +184,9 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
         staffId: z.string().uuid().nullable().optional(),
         /** Why it was booked. Shows on the client's activity timeline. */
         note: z.string().max(300).optional(),
+        /** A walk request's window (#410), carried from /concerns. */
+        earliestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
+        latestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
       })
       .parse(d),
   )
@@ -529,6 +540,9 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     // The day it left and the day it went to.
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    // A dog walk's client is told the new day (#410).
+    const { watchWalkSchedule } = await import("@/lib/walk-notify.server");
+    const walks = await watchWalkSchedule([data.visitId]);
     const { error } = await supabase.rpc("reschedule_visit", {
       _visit_id: data.visitId,
       _new_date: data.newDate,
@@ -536,6 +550,7 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
+    await walks.finish(`${data.visitId}-${data.newDate}`);
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: v.organization_id,
@@ -810,6 +825,9 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities(data.visitIds);
+    // Each dog-walk client gets one email for the whole move (#410).
+    const { watchWalkSchedule, moveKey } = await import("@/lib/walk-notify.server");
+    const walks = await watchWalkSchedule(data.visitIds);
     const { data: rows, error } = await (context.supabase as any).rpc("bulk_reschedule_visits", {
       _visit_ids: data.visitIds,
       _to_date: data.toDate,
@@ -817,6 +835,7 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
+    await walks.finish(moveKey(data.visitIds, data.toDate));
     // `skipped` is not an error and must reach the caller: a weekly client
     // moved exactly a week already has a visit there, and the honest report is
     // "moved 12, left 2 alone", not silence.

@@ -279,7 +279,8 @@ export const SURFACES: Surface[] = [
     // switch only draws for manage_settings, and its label is the proof.
     id: "/settings/scheduling · calendar feeds",
     path: "/settings/scheduling",
-    proof: (p) => p.getByText("Include gate codes in technicians' own calendars").first(),
+    proof: (p) =>
+      p.getByText("Say in technicians' own calendars when a visit has access details").first(),
     proofLabel: "the access-code switch",
     expectsData: "Last read by a calendar",
   },

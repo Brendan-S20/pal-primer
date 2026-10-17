@@ -4,6 +4,7 @@
 // For user-authenticated queries (with RLS), use the auth middleware instead.
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
+import { serviceKeyProblem } from './service-key';
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
@@ -44,6 +45,12 @@ function createSupabaseAdminClient() {
     const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Set them in Project Settings → Secrets.`;
     console.error(`[Supabase] ${message}`);
     throw new Error(message);
+  }
+
+  const keyProblem = serviceKeyProblem(SUPABASE_SERVICE_ROLE_KEY);
+  if (keyProblem) {
+    console.error(`[Supabase] ${keyProblem}`);
+    throw new Error(keyProblem);
   }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

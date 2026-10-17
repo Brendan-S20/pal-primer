@@ -5,9 +5,10 @@
 //
 // Two scopes, and the difference between them is the point:
 //
-//   mine  a technician's own assigned visits. May carry access codes, but only
-//         when the owner turned that on (organizations.calendar_feed_access_codes);
-//         the SQL returns them as null otherwise.
+//   mine  a technician's own assigned visits. The SQL may send access codes
+//         when the owner turned that on (organizations.calendar_feed_access_codes),
+//         but this file prints only that access details are in the app, never
+//         the codes (#410).
 //   org   every visit, for whoever runs the board. NEVER carries access codes:
 //         the SQL does not select them for this scope, and this file does not
 //         print them for it either, so a regression in one layer is not a leak.
@@ -93,17 +94,20 @@ export function visitTiming(v: FeedVisit): Pick<IcsEvent, "allDay" | "timed"> {
   return { allDay: { start: v.scheduled_on, end: nextDay(v.scheduled_on) } };
 }
 
+/** What a technician's own feed says in place of a gate code, lock box code
+ *  or key location. */
+export const ACCESS_IN_APP = "Access details are in the app";
+
 export function visitDescription(v: FeedVisit, scope: FeedScope): string {
   const lines: string[] = [];
   lines.push(`Status: ${STATUS_LABEL[v.status] ?? v.status}`);
   if (scope === "org") {
     lines.push(`Technician: ${v.tech_name ?? "Unassigned"}`);
-  } else {
-    // Only ever for the technician's own feed, and only what the SQL chose
-    // to send (null unless the owner switched access codes on).
-    if (v.gate_code) lines.push(`Gate code: ${v.gate_code}`);
-    if (v.lock_box_code) lines.push(`Lock box: ${v.lock_box_code}`);
-    if (v.key_location) lines.push(`Key: ${v.key_location}`);
+  } else if (v.gate_code || v.lock_box_code || v.key_location) {
+    // The codes themselves never go in a feed. Calendar apps sync events to
+    // their own servers, and a lock box code there is out of the business's
+    // hands (#410). The technician's own feed says where to find them.
+    lines.push(ACCESS_IN_APP);
   }
   return lines.join("\n");
 }

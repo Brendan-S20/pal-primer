@@ -3701,6 +3701,8 @@ export type Database = {
           notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
+          notify_email_walk_not_done: boolean
+          notify_email_walk_schedule_change: boolean
           notify_email_weather_reschedule: boolean
           notify_email_weekly_digest: boolean
           notify_email_welcome: boolean
@@ -3845,6 +3847,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_not_done?: boolean
+          notify_email_walk_schedule_change?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -3989,6 +3993,8 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_not_done?: boolean
+          notify_email_walk_schedule_change?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
@@ -5079,6 +5085,7 @@ export type Database = {
       }
       properties: {
         Row: {
+          access_method: string | null
           access_notes: string | null
           account_type: Database["public"]["Enums"]["account_type"] | null
           address_source: string | null
@@ -5106,7 +5113,9 @@ export type Database = {
           hazard_notes: string | null
           id: string
           invisible_fence: boolean
+          key_held: boolean
           key_location: string | null
+          key_tag: string | null
           label: string | null
           latest_service_time: string | null
           latitude: number | null
@@ -5131,6 +5140,7 @@ export type Database = {
           zone_override_reason: string | null
         }
         Insert: {
+          access_method?: string | null
           access_notes?: string | null
           account_type?: Database["public"]["Enums"]["account_type"] | null
           address_source?: string | null
@@ -5158,7 +5168,9 @@ export type Database = {
           hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
+          key_held?: boolean
           key_location?: string | null
+          key_tag?: string | null
           label?: string | null
           latest_service_time?: string | null
           latitude?: number | null
@@ -5183,6 +5195,7 @@ export type Database = {
           zone_override_reason?: string | null
         }
         Update: {
+          access_method?: string | null
           access_notes?: string | null
           account_type?: Database["public"]["Enums"]["account_type"] | null
           address_source?: string | null
@@ -5210,7 +5223,9 @@ export type Database = {
           hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
+          key_held?: boolean
           key_location?: string | null
+          key_tag?: string | null
           label?: string | null
           latest_service_time?: string | null
           latitude?: number | null
@@ -5419,6 +5434,8 @@ export type Database = {
           organization_id: string
           property_id: string | null
           reclean_visit_id: string | null
+          requested_earliest_time: string | null
+          requested_latest_time: string | null
           requested_on: string | null
           requested_via: string | null
           resolution_note: string | null
@@ -5441,6 +5458,8 @@ export type Database = {
           organization_id: string
           property_id?: string | null
           reclean_visit_id?: string | null
+          requested_earliest_time?: string | null
+          requested_latest_time?: string | null
           requested_on?: string | null
           requested_via?: string | null
           resolution_note?: string | null
@@ -5463,6 +5482,8 @@ export type Database = {
           organization_id?: string
           property_id?: string | null
           reclean_visit_id?: string | null
+          requested_earliest_time?: string | null
+          requested_latest_time?: string | null
           requested_on?: string | null
           requested_via?: string | null
           resolution_note?: string | null
@@ -6967,8 +6988,11 @@ export type Database = {
           live_tracking_stopped_at: string | null
           on_my_way_sent_at: string | null
           organization_id: string
+          pee: boolean | null
+          poo: boolean | null
           price_cents: number | null
           property_id: string
+          report_note: string | null
           rescheduled_from: string | null
           scheduled_on: string
           sequence: number | null
@@ -7013,8 +7037,11 @@ export type Database = {
           live_tracking_stopped_at?: string | null
           on_my_way_sent_at?: string | null
           organization_id: string
+          pee?: boolean | null
+          poo?: boolean | null
           price_cents?: number | null
           property_id: string
+          report_note?: string | null
           rescheduled_from?: string | null
           scheduled_on: string
           sequence?: number | null
@@ -7059,8 +7086,11 @@ export type Database = {
           live_tracking_stopped_at?: string | null
           on_my_way_sent_at?: string | null
           organization_id?: string
+          pee?: boolean | null
+          poo?: boolean | null
           price_cents?: number | null
           property_id?: string
+          report_note?: string | null
           rescheduled_from?: string | null
           scheduled_on?: string
           sequence?: number | null
@@ -8822,6 +8852,16 @@ export type Database = {
           violations: number
         }[]
       }
+      property_access_codes: {
+        Args: { _property_ids: string[] }
+        Returns: {
+          gate_code: string
+          key_location: string
+          key_tag: string
+          lock_box_code: string
+          property_id: string
+        }[]
+      }
       provision_franchise_location: {
         Args: { _members?: Json; _name: string }
         Returns: string
@@ -8962,6 +9002,15 @@ export type Database = {
       record_visit_station_service: {
         Args: { _visit_id: string }
         Returns: number
+      }
+      record_walk_report: {
+        Args: {
+          _pee: boolean
+          _poo: boolean
+          _report_note: string
+          _visit_id: string
+        }
+        Returns: undefined
       }
       redeem_client_unsubscribe_token: {
         Args: { _token: string }
@@ -9454,6 +9503,9 @@ export type Database = {
         | "unsafe_conditions"
         | "other"
         | "customer_requested"
+        | "key_failed"
+        | "no_one_home"
+        | "dog_unwell"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
       visit_status:
@@ -9663,6 +9715,9 @@ export const Constants = {
         "unsafe_conditions",
         "other",
         "customer_requested",
+        "key_failed",
+        "no_one_home",
+        "dog_unwell",
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],
