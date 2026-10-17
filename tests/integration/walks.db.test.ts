@@ -1,6 +1,7 @@
 /** Local stack only. CI builds the database from migrations before running this suite. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { addDays, nextOrgWeekday } from "../support/org-day";
 
 const URL = process.env.TEST_SUPABASE_URL;
 const SERVICE = process.env.TEST_SUPABASE_SERVICE_KEY;
@@ -8,13 +9,12 @@ const ANON = process.env.TEST_SUPABASE_ANON_KEY;
 const enabled = Boolean(URL && SERVICE && ANON);
 const runId = Math.random().toString(36).slice(2, 10);
 const password = "walk-test-password-123!";
-const nextMonday = new Date();
-nextMonday.setUTCDate(nextMonday.getUTCDate() + 7);
-while (nextMonday.getUTCDay() !== 1) nextMonday.setUTCDate(nextMonday.getUTCDate() + 1);
-const monday = nextMonday.toISOString().slice(0, 10);
-const fridayDate = new Date(nextMonday);
-fridayDate.setUTCDate(fridayDate.getUTCDate() + 4);
-const friday = fridayDate.toISOString().slice(0, 10);
+// The generator walks from the org's today, so every date here is counted
+// from today in the org's zone.
+const ORG_TZ = "UTC";
+const monday = nextOrgWeekday(ORG_TZ, 1, 7);
+const tuesday = addDays(monday, 1);
+const friday = addDays(monday, 4);
 
 let admin: SupabaseClient;
 let tech: SupabaseClient;
@@ -109,7 +109,7 @@ describe.skipIf(!enabled)("walk scheduling and group walks in the database", () 
     orgId = await ins("organizations", {
       name: `Walks ${runId}`,
       service_lines: ["dog_walking"],
-      timezone: "UTC",
+      timezone: ORG_TZ,
     });
     soloServiceId = await ins("services", {
       organization_id: orgId,
@@ -262,10 +262,8 @@ describe.skipIf(!enabled)("walk scheduling and group walks in the database", () 
     );
     const groupId = await makeGroup();
     const walk = await makeWalk();
-    const tomorrow = new Date(nextMonday);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     for (const patch of [
-      { scheduled_on: tomorrow.toISOString().slice(0, 10) },
+      { scheduled_on: tuesday },
       { scheduled_on: monday, service_id: soloServiceId },
       { service_id: groupServiceId, status: "canceled" },
     ]) {
@@ -445,12 +443,6 @@ describe.skipIf(!enabled)("walk scheduling and group walks in the database", () 
     expect(error).toBeNull();
     return data!;
   }
-
-  const tuesday = (() => {
-    const date = new Date(nextMonday);
-    date.setUTCDate(date.getUTCDate() + 1);
-    return date.toISOString().slice(0, 10);
-  })();
 
   it("moves a group member to another day and takes it out of the group", async () => {
     const { groupId, a, b } = await walkedGroup();
