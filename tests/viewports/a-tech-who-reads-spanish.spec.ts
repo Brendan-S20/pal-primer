@@ -230,7 +230,7 @@ for (const width of [360, 768]) {
     expect(first.text).toMatch(/hace 3 h/);
     expect(first.leftover, `English still on /notifications @${width}px`).toEqual([]);
 
-    await page.getByRole("button", { name: "Ajustes de avisos" }).click();
+    await page.getByRole("button", { name: "Configuración de avisos" }).click();
     await expect(page.getByText("Quejas de clientes")).toBeVisible();
     await measure(page, width, `/notifications (es, settings open) @${width}px`);
     const open = await englishLeftOn(page, "/notifications");
