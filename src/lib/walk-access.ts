@@ -21,6 +21,11 @@ export const ACCESS_METHOD_LABEL: Record<AccessMethod, string> = {
 
 export const KEY_TAG_MAX = 40;
 
+/** The longest lock box or door code, in the office drawer, the portal form
+ *  and both server schemas. One number, so a code the office saved is never
+ *  one the client cannot retype. */
+export const ACCESS_CODE_MAX = 60;
+
 export function isAccessMethod(v: unknown): v is AccessMethod {
   return typeof v === "string" && (ACCESS_METHODS as readonly string[]).includes(v);
 }

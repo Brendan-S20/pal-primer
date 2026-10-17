@@ -442,6 +442,17 @@ const es: Translations = {
     access_blocked: "Acceso bloqueado (carro, obra, etc.)",
     unsafe_conditions: "Condiciones inseguras",
     other: "Otro",
+    key_failed: "La llave o el código no funcionó",
+    no_one_home: "No había nadie en casa",
+    dog_unwell: "El perro no se sentía bien",
+  },
+  walkSkipReason: {
+    access_blocked: "No pude entrar",
+    key_failed: "La llave o el código no funcionó",
+    no_one_home: "No había nadie en casa",
+    dog_unwell: "El perro no se sentía bien",
+    weather: "Clima",
+    other: "Otro",
   },
   addon: {
     billed: "Extra cobrado",
