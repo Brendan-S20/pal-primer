@@ -38,7 +38,9 @@ describe("which lines can be booked", () => {
 describe("copy about walking", () => {
   it("Settings > Services says only pet waste removal is bookable", () => {
     const page = read("src/routes/_authenticated/settings.services.tsx");
-    expect(page).toMatch(/Pet waste removal is bookable; other service lines are Coming soon/);
+    expect(page).toMatch(
+      /Pet\s+waste\s+removal\s+is\s+bookable;\s+other\s+service\s+lines\s+are\s+Coming\s+soon/,
+    );
     expect(page).not.toMatch(/dog walking are bookable/i);
   });
 });
