@@ -44,6 +44,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { supabase, isImpersonationTab } from "@/integrations/supabase/client";
 import { readLastUser } from "@/lib/offline/read-cache";
+import { getVerifiedUser } from "@/lib/offline/identity";
 import { hasSeenTourLocally, rememberTourSeen, forgetTourSeen } from "@/lib/tour-seen";
 import { canAccess, type AppRole } from "@/hooks/useMyRole";
 import type { OnboardingStep, OnboardingStepId } from "@/lib/onboarding.functions";
@@ -171,8 +172,9 @@ function resolvePhase() {
     set({ phase: "closed", userId: localId });
     return;
   }
-  supabase.auth
-    .getUser()
+  const user = getVerifiedUser();
+  const request = user ? Promise.resolve({ data: { user } }) : supabase.auth.getUser();
+  request
     .then(({ data }) => {
       const id = data.user?.id ?? localId;
       if (data.user) {

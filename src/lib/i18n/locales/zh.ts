@@ -625,7 +625,7 @@ const zh: TranslationsWithPlurals<"other"> = {
   },
   nativePush: {
     title: "这部手机上的通知",
-    description: "路线变更、新任务和消息，即使应用已关闭也会提醒。",
+    description: "路线变更、新服务和消息，即使应用已关闭也会提醒。",
     promptBody: "这部手机还没有被询问过。点按按钮，然后选择“允许”。",
     turnOn: "打开通知",
     turnedOn: "通知已打开",
@@ -667,7 +667,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       Field: "现场",
       Billing: "账单",
       Insights: "洞察",
-      Setup: "设置",
+      Setup: "初始设置",
       Platform: "平台",
     },
     item: {
@@ -688,7 +688,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       concerns: "投诉",
       neighbors: "邻居拜访",
       dna: "DNA 合规",
-      invoices: "账单",
+      invoices: "发票",
       quotes: "报价",
       payments: "付款",
       "tax-reports": "税务与会计",
@@ -790,7 +790,7 @@ const zh: TranslationsWithPlurals<"other"> = {
   pay: {
     autopay: "自动付款 · 已绑定银行卡",
     cashCheck: "现金/支票付款",
-    invoiced: "开账单",
+    invoiced: "通过发票付款",
     due: "应付 {{amount}}",
     waiting: "已收 {{amount}} · 等待办公室确认",
     collect: "已收现金/支票",

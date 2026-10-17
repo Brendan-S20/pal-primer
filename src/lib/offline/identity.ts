@@ -95,6 +95,11 @@ export const IDENTITY_REUSE_MS = 5 * 60_000;
 let verified: { userId: string; user: User; at: number } | null = null;
 let watching = false;
 
+/** Reuse the shell's verified user while the identity answer is fresh. */
+export function getVerifiedUser(): User | null {
+  return verified && Date.now() - verified.at < IDENTITY_REUSE_MS ? verified.user : null;
+}
+
 /** Forget the reused answer the moment the session says someone else, or
  *  nobody, is signed in. Subscribed on the first verified answer rather than
  *  at import, so importing this module has no side effect. */
