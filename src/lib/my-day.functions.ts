@@ -88,7 +88,7 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, groom_dog_ids, start_time, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, muzzle_required, bite_history, senior_or_medical, handling_notes), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, groom_dog_ids, start_time, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, muzzle_required, bite_history, senior_or_medical, handling_notes), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -97,12 +97,15 @@ export const getMyDay = createServerFn({ method: "GET" })
 
     return {
       staff: targetStaff,
-      visits: await withStopFacts(
+      visits: await withAccessCodes(
         supabase,
-        await withGroomPets(
+        await withStopFacts(
           supabase,
-          await withPriorGroomNotes(supabase, visits ?? [], data.day),
-          data.day,
+          await withGroomPets(
+            supabase,
+            await withPriorGroomNotes(supabase, visits ?? [], data.day),
+            data.day,
+          ),
         ),
       ),
       previewing,
@@ -368,6 +371,55 @@ async function withStopFacts<V extends { id: string; properties?: unknown }>(
             })),
           }
         : v.properties,
+    };
+  });
+}
+
+/**
+ * The gate code, lock box code and key location for each stop, read through
+ * property_access_codes and nothing else (20261017100000; the visits select
+ * above leaves the three columns out, and
+ * tests/access-codes-are-read-through-one-function.test.ts holds it there).
+ * They land on the stop's `properties` under the same names, so the card
+ * reads them as before. A failure leaves them null and the day still loads.
+ */
+async function withAccessCodes<V extends { property_id?: string | null; properties?: unknown }>(
+  supabase: SupabaseClient<Database>,
+  visits: V[],
+): Promise<V[]> {
+  const ids = [...new Set(visits.map((v) => v.property_id).filter((id): id is string => !!id))];
+  const codes = new Map<
+    string,
+    { gate_code: string | null; lock_box_code: string | null; key_location: string | null }
+  >();
+  if (ids.length) {
+    try {
+      const { data: rows, error } = await supabase.rpc("property_access_codes", {
+        _property_ids: ids,
+      });
+      if (error) throw error;
+      for (const r of rows ?? [])
+        codes.set(r.property_id, {
+          gate_code: r.gate_code,
+          lock_box_code: r.lock_box_code,
+          key_location: r.key_location,
+        });
+    } catch (e) {
+      console.warn("property_access_codes failed; the cards will omit access codes", e);
+    }
+  }
+  return visits.map((v) => {
+    const p = v.properties as Record<string, unknown> | null | undefined;
+    if (!p) return v;
+    const c = (v.property_id && codes.get(v.property_id)) || null;
+    return {
+      ...v,
+      properties: {
+        ...p,
+        gate_code: c?.gate_code ?? null,
+        lock_box_code: c?.lock_box_code ?? null,
+        key_location: c?.key_location ?? null,
+      },
     };
   });
 }
