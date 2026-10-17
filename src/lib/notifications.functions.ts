@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { invoiceEmailTaxData } from "@/lib/sales-tax";
+import { invoiceDueCents } from "@/lib/ar";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { appOrigin } from "@/lib/app-origin";
@@ -23,7 +24,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
     const { data: invRow, error } = await supabase
       .from("invoices")
       .select(
-        "id, organization_id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, period_start, period_end, public_token, clients(portal_token)",
+        "id, organization_id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, public_token, clients(portal_token)",
       )
       .eq("id", data.invoiceId)
       .eq("organization_id", orgId)
@@ -69,6 +70,11 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
         invoiceUrl,
         periodLabel: period,
         reminder: data.reminder === true,
+        // Partly paid: the email says what was paid and what is left, so a
+        // reminder does not ask for money that already arrived.
+        ...((inv.amount_paid_cents ?? 0) > 0
+          ? { amountPaidCents: inv.amount_paid_cents, balanceCents: invoiceDueCents(inv) }
+          : {}),
         // Sales tax, only when there is some: the email for an untaxed
         // invoice carries exactly the data it always did.
         ...invoiceEmailTaxData(inv),

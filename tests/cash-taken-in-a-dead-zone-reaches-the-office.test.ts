@@ -108,7 +108,7 @@ describe("a collection queued at the gate replays as the collection it was", () 
     const { syncQueue } = await import("@/lib/offline/sync");
     pending = [collection()];
     const { as } = fakeCallers(async () => {
-      throw new Error("That is more than this customer owes ($25.00)");
+      throw new Error("That is more than this customer owes ($25.00). Enter $25.00 or less.");
     });
     const res = await syncQueue(as, "tech-a");
     expect(res.succeeded).toBe(0);
