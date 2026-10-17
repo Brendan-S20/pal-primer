@@ -193,9 +193,11 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
       : { data: [], error: null },
     share && recentIds.length
       ? // Through the portal function, never the table: its RETURNS TABLE is
-        // (visit_id, note), so the staff-only note cannot come back.
+        // (visit_id, note), so the staff-only note cannot come back, and it
+        // returns only this client's visits.
         sb.rpc("portal_training_lesson_notes", {
           _organization_id: orgId,
+          _client_id: clientId,
           _visit_ids: recentIds,
         })
       : { data: [], error: null },

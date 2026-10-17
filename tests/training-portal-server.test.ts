@@ -284,10 +284,13 @@ describe("the portal Training page", () => {
       },
     ]);
     // The shared note only, through the portal function. The table itself is
-    // never read, so no column list on it can widen to the trainer's note.
+    // never read, so no column list on it can widen to the trainer's note. The
+    // session's client goes with it, so another client's visit ids return
+    // nothing.
     expect(state.queries.some((q) => q.table === "training_session_notes")).toBe(false);
     expect(state.rpc).toHaveBeenCalledWith("portal_training_lesson_notes", {
       _organization_id: "org-1",
+      _client_id: "client-1",
       _visit_ids: ["v-done"],
     });
   });
@@ -302,6 +305,9 @@ describe("the portal Training page", () => {
     ).replace(/--.*$/gm, "");
     expect(sql).toMatch(/RETURNS TABLE \(visit_id uuid, note text\)/);
     expect(sql).toMatch(/SELECT n\.visit_id, n\.note\s+FROM public\.training_session_notes n/);
+    expect(sql).toMatch(/_organization_id uuid, _client_id uuid, _visit_ids uuid\[\]/);
+    expect(sql).toMatch(/JOIN public\.visits v ON v\.id = n\.visit_id/);
+    expect(sql).toMatch(/AND v\.client_id = _client_id/);
     expect(sql).not.toMatch(/trainer_note|\*/);
     expect(sql).toMatch(/FROM PUBLIC, anon, authenticated;/);
   });

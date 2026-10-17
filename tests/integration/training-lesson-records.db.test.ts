@@ -110,6 +110,7 @@ describe.skipIf(!enabled)("training lesson records", () => {
 
     const { data, error } = await admin.rpc("portal_training_lesson_notes", {
       _organization_id: orgId,
+      _client_id: clientId,
       _visit_ids: [visitId, trainerOnlyId],
     });
     expect(error).toBeNull();
@@ -120,10 +121,78 @@ describe.skipIf(!enabled)("training lesson records", () => {
     // Another business's id returns nothing for these lessons.
     const other = await admin.rpc("portal_training_lesson_notes", {
       _organization_id: "00000000-0000-4000-8000-000000000000",
+      _client_id: clientId,
       _visit_ids: [visitId],
     });
     expect(other.error).toBeNull();
     expect(other.data).toEqual([]);
+  });
+
+  it("the portal read returns nothing for another client's lessons in the same business", async () => {
+    const otherClientId = await insert("clients", {
+      organization_id: orgId,
+      display_name: `Other client ${runId}`,
+      account_type: "residential",
+    });
+    const otherPropertyId = await insert("properties", {
+      organization_id: orgId,
+      client_id: otherClientId,
+      street: "2 Test St",
+      city: "Testville",
+      postal_code: "48000",
+    });
+    const otherSubId = await insert("subscriptions", {
+      organization_id: orgId,
+      client_id: otherClientId,
+      property_id: otherPropertyId,
+      account_type: "residential",
+      frequency: "one_time",
+      dog_count: 1,
+      price_cents: 9500,
+      service_id: serviceId,
+      started_on: "2026-10-22",
+    });
+    const otherVisitId = await insert("visits", {
+      organization_id: orgId,
+      subscription_id: otherSubId,
+      client_id: otherClientId,
+      property_id: otherPropertyId,
+      service_id: serviceId,
+      scheduled_on: "2026-10-22",
+    });
+    const saved = await admin.from("training_session_notes").insert({
+      visit_id: otherVisitId,
+      organization_id: orgId,
+      note: "Another family's lesson.",
+    });
+    expect(saved.error).toBeNull();
+
+    // The first client asking with the other client's visit id gets nothing.
+    const asked = await admin.rpc("portal_training_lesson_notes", {
+      _organization_id: orgId,
+      _client_id: clientId,
+      _visit_ids: [otherVisitId],
+    });
+    expect(asked.error).toBeNull();
+    expect(asked.data).toEqual([]);
+
+    // A mixed list returns only the asking client's own note.
+    const mixed = await admin.rpc("portal_training_lesson_notes", {
+      _organization_id: orgId,
+      _client_id: clientId,
+      _visit_ids: [visitId, otherVisitId],
+    });
+    expect(mixed.error).toBeNull();
+    expect(mixed.data).toEqual([{ visit_id: visitId, note: "Recall at 20 feet." }]);
+
+    // The other client still reads their own.
+    const own = await admin.rpc("portal_training_lesson_notes", {
+      _organization_id: orgId,
+      _client_id: otherClientId,
+      _visit_ids: [otherVisitId],
+    });
+    expect(own.error).toBeNull();
+    expect(own.data).toEqual([{ visit_id: otherVisitId, note: "Another family's lesson." }]);
   });
 
   it("the portal read is the service role's only", async () => {
@@ -132,6 +201,7 @@ describe.skipIf(!enabled)("training lesson records", () => {
     const anon = createClient(URL!, ANON, { auth: { persistSession: false } });
     const { data, error } = await anon.rpc("portal_training_lesson_notes", {
       _organization_id: orgId,
+      _client_id: clientId,
       _visit_ids: [visitId],
     });
     expect(data).toBeNull();

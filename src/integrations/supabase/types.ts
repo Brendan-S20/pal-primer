@@ -8214,7 +8214,11 @@ export type Database = {
         Returns: string
       }
       portal_training_lesson_notes: {
-        Args: { _organization_id: string; _visit_ids: string[] }
+        Args: {
+          _client_id: string
+          _organization_id: string
+          _visit_ids: string[]
+        }
         Returns: {
           note: string
           visit_id: string
