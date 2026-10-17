@@ -454,6 +454,7 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     // A rained-off today or tomorrow comes off the techs' routes: they hear it.
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: userId, orgId, visitIds: data.visitIds });
+    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
 
     for (const id of data.visitIds) {
       const pre = preMap.get(id);
@@ -462,6 +463,15 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
         blackouts,
         hasPrefs: pre?.hasPrefs ?? false,
       });
+      // A groom keeps its start time and groomer; the day it moves to must
+      // have room for it, as at booking. A clash leaves that groom where it
+      // was and is reported with the others.
+      try {
+        await refuseGroomMoveClash(supabase, { visitIds: [id], toDate: target });
+      } catch (e) {
+        errors.push((e as Error).message);
+        continue;
+      }
       const { error } = await supabase.rpc("reschedule_visit", {
         _visit_id: id,
         _new_date: target,
@@ -545,7 +555,16 @@ export const undoReschedule = createServerFn({ method: "POST" })
       actorUserId: context.userId,
       visitIds: data.moves.map((m) => m.visitId),
     });
+    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
     for (const m of data.moves) {
+      // Back to its old day is still a move: something may have been booked
+      // into that slot since.
+      try {
+        await refuseGroomMoveClash(supabase, { visitIds: [m.visitId], toDate: m.from });
+      } catch (e) {
+        errors.push((e as Error).message);
+        continue;
+      }
       const { error } = await supabase.rpc("reschedule_visit", {
         _visit_id: m.visitId,
         _new_date: m.from,

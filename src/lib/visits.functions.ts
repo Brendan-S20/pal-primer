@@ -215,6 +215,13 @@ export const reassignVisit = createServerFn({ method: "POST" })
     z.object({ visitId: z.string().uuid(), staffId: z.string().uuid().nullable() }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    // A groom refuses a groomer who already has a groom at that time, as
+    // booking does. The board's drag between lanes lands here.
+    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
+    await refuseGroomMoveClash(context.supabase, {
+      visitIds: [data.visitId],
+      toStaffId: data.staffId,
+    });
     // The tech it comes off and the tech it goes to are told (field-notify).
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: [data.visitId] });
@@ -519,6 +526,9 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
+    // A groom keeps its start time and groomer; the new day must have room.
+    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
+    await refuseGroomMoveClash(supabase, { visitIds: [data.visitId], toDate: data.newDate });
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({
       actorUserId: userId,
@@ -779,6 +789,13 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Grooms in the batch: none may land on a groomer who is busy then, and
+    // two of them may not land on one groomer at once.
+    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
+    await refuseGroomMoveClash(context.supabase, {
+      visitIds: data.visitIds,
+      toStaffId: data.staffId,
+    });
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
@@ -804,6 +821,9 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Grooms keep their start time and groomer; the new day must have room.
+    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
+    await refuseGroomMoveClash(context.supabase, { visitIds: data.visitIds, toDate: data.toDate });
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");

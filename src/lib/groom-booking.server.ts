@@ -12,16 +12,15 @@
 import {
   clockMinutes,
   COAT_TYPES,
-  groomClashes,
   groomHoldMinutes,
   groomPlanSummary,
   groomQuote,
   groomRepeatDates,
-  openGroomStarts,
   petSize,
   type CoatType,
   type PetSize,
 } from "@/lib/groom";
+import { groomClashRefusal, loadGroomerBusy } from "@/lib/groom-clash.server";
 import { groomVaccineCheck, type VaccineRule } from "@/lib/vaccines";
 import { loadVaccineSettings } from "@/lib/vaccines.server";
 
@@ -240,43 +239,20 @@ export async function bookGroomAppointment(
       );
   }
 
-  // One van is one groomer: two grooms for the same groomer cannot share a
-  // minute. The first date refuses; a later repeat that collides is reported.
+  // One van is one groomer (groom-clash.server.ts, the check a move and a
+  // reassign also run). The first date refuses; a later repeat that collides
+  // is reported.
   const clashOn: string[] = [];
   {
-    let q = db
-      .from("visits")
-      .select("id, scheduled_on, start_time, duration_min, groom_summary")
-      .eq("organization_id", input.orgId)
-      .in("scheduled_on", dates)
-      .in("status", ["scheduled", "in_progress", "completed"])
-      .not("start_time", "is", null);
-    q = input.staffId ? q.eq("assigned_staff_id", input.staffId) : q.is("assigned_staff_id", null);
-    const { data: busyRows, error: busyErr } = await q;
-    if (busyErr) throw new Error(busyErr.message);
-    const busy = (busyRows ?? []) as Array<{
-      scheduled_on: string;
-      start_time: string;
-      duration_min: number | null;
-      groom_summary: string | null;
-    }>;
+    const busy = await loadGroomerBusy(db, {
+      orgId: input.orgId,
+      staffId: input.staffId,
+      dates,
+    });
     for (const date of dates) {
-      const booked = busy
-        .filter((b) => b.scheduled_on === date)
-        .map((b) => ({
-          start: b.start_time,
-          minutes: b.duration_min ?? 0,
-          summary: b.groom_summary,
-        }));
-      if (groomClashes(input.startTime, holdMinutes, booked).length === 0) continue;
-      if (date === input.scheduledOn) {
-        const open = openGroomStarts(holdMinutes, booked);
-        throw new Error(
-          open.length
-            ? `This groomer already has a groom at that time on ${date}. Open start times that day: ${open.join(", ")}.`
-            : `This groomer already has a groom at that time on ${date}, and no ${holdMinutes}-minute opening is left that day.`,
-        );
-      }
+      const refusal = groomClashRefusal(date, input.startTime, holdMinutes, busy.get(date) ?? []);
+      if (!refusal) continue;
+      if (date === input.scheduledOn) throw new Error(refusal);
       clashOn.push(date);
     }
   }
