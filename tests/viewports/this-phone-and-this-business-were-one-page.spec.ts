@@ -280,7 +280,9 @@ test.describe("the portal header says who it is from", () => {
       await holdsTogether(page, `portal home ${s.label}`, touch || s.w < 768);
 
       // Another tab: the same name, and no hero. On a phone the header used
-      // to be ~280px on every tab.
+      // to be ~280px on every tab. The cap is 160px, not tighter: the name
+      // wraps instead of truncating, and on narrow phones the bell drops
+      // below it (about 144px at 320, 121px at 360).
       await page.goto(`${PORTAL}/visits`, { waitUntil: "domcontentloaded" });
       await expect(page.getByText(PORTAL_CLIENT_NAME).first()).toBeVisible({ timeout: 30_000 });
       const visits = await portalHeader(page);
@@ -288,7 +290,7 @@ test.describe("the portal header says who it is from", () => {
       expect(
         visits!.height,
         `${s.label}: the header is ${visits!.height}px on Visits`,
-      ).toBeLessThanOrEqual(110);
+      ).toBeLessThanOrEqual(160);
       await expect(page.getByText(/check your next visit, pay invoices/)).toHaveCount(0);
       await expect(page).toHaveTitle(`Visits · ${PORTAL_ORG_NAME}`);
       await expect(page).not.toHaveTitle(/HoundStack/);
