@@ -3701,6 +3701,7 @@ export type Database = {
           notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
+          notify_email_walk_canceled: boolean
           notify_email_walk_not_done: boolean
           notify_email_walk_schedule_change: boolean
           notify_email_weather_reschedule: boolean
@@ -3847,6 +3848,7 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_canceled?: boolean
           notify_email_walk_not_done?: boolean
           notify_email_walk_schedule_change?: boolean
           notify_email_weather_reschedule?: boolean
@@ -3993,6 +3995,7 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
+          notify_email_walk_canceled?: boolean
           notify_email_walk_not_done?: boolean
           notify_email_walk_schedule_change?: boolean
           notify_email_weather_reschedule?: boolean

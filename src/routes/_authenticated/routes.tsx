@@ -80,6 +80,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { skipReasonText } from "@/lib/skip-reason-text";
 
 export const Route = createFileRoute("/_authenticated/routes")({
   head: () => titleHead("Schedule"),
@@ -1723,6 +1724,12 @@ function RoutesPage() {
           />
         </div>
       )}
+      {/* Room under the floating auto-routing card, at the foot of the page,
+          so the last cards of a lane can be scrolled up out from under it.
+          The card measures itself into --auto-routing-h (QA row 17). */}
+      {toolsOpen && (
+        <div aria-hidden="true" data-auto-routing-room="" className="h-[var(--auto-routing-h,0px)]" />
+      )}
       <StaffRoutingDialog
         staff={routingDialogStaff}
         open={Boolean(routingDialogStaff)}
@@ -2367,6 +2374,13 @@ function VisitCardView({
               </Badge>
             )}
           </div>
+          {/* A skipped stop says why, or that nobody recorded why (QA row
+              15: a future stop read "Skipped" and nothing else). */}
+          {visit.status === "skipped" && (
+            <div className="mt-0.5 break-words text-3xs text-muted-foreground">
+              Skip: {skipReasonText(visit.skip_reason, visit.skip_reason_code)}
+            </div>
+          )}
           {(dirUrl || canComplete) && !dragging && (
             <div className="mt-2 flex flex-wrap gap-1">
               {dirUrl && (

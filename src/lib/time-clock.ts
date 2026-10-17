@@ -32,6 +32,36 @@ import { orgLocalDay } from "@/lib/org-day";
  *  US federal rule (FLSA): forty hours in a workweek. */
 export const OVERTIME_THRESHOLD_MINUTES = 40 * 60;
 
+// ── A SHIFT NOBODY CLOSED ────────────────────────────────────────────────────
+//
+// QA row 22 (#438): shifts left open for 19 to 24 hours went unflagged, on
+// My Day and on Timesheets alike. Nothing here closes a shift: the person may
+// really be working, and a guessed clock-out on a payroll record is worse
+// than an open one. These say when to ASK.
+
+/** Open this long, My Day asks the tech whether they are still working. */
+export const LONG_SHIFT_PROMPT_MINUTES = 12 * 60;
+/** Closed shifts longer than this are flagged on Timesheets too: a clock-out
+ *  at 16 hours or more is usually a forgotten one, entered the next day. */
+export const LONG_CLOSED_SHIFT_MINUTES = 16 * 60;
+
+/** Minutes a shift has run: to its clock-out, or to `now` while open. */
+export function shiftMinutes(entry: ClockEntry, now: number): number {
+  return minutesBetween(entry.clock_in, entry.clock_out ?? now);
+}
+
+/** True when an open shift has run long enough that My Day should ask. */
+export function shouldAskStillWorking(entry: ClockEntry | null, now: number): boolean {
+  return !!entry && entry.clock_out == null && shiftMinutes(entry, now) >= LONG_SHIFT_PROMPT_MINUTES;
+}
+
+/** True for a shift Timesheets marks as a possible missed clock-out: open for
+ *  12 hours or more, or closed after more than 16. */
+export function possibleMissedClockOut(entry: ClockEntry, now: number): boolean {
+  const m = shiftMinutes(entry, now);
+  return entry.clock_out == null ? m >= LONG_SHIFT_PROMPT_MINUTES : m > LONG_CLOSED_SHIFT_MINUTES;
+}
+
 export type ClockEntry = {
   id: string;
   staff_id: string;
@@ -224,7 +254,12 @@ export type TimesheetDay = {
   visitsCompleted: number;
   /** Tips credited to this person on payments received this day. */
   tipsCents: number;
+  /** A shift touching this day looks like a missed clock-out. */
+  possibleMissedClockOut: boolean;
 };
+
+/** A visit on somebody's route this week, whatever became of it. */
+export type ScheduledVisit = { assigned_staff_id: string | null; scheduled_on: string };
 
 export type TimesheetRow = {
   staff: TimesheetStaff;
@@ -235,6 +270,15 @@ export type TimesheetRow = {
   tipsCents: number;
   /** Somebody is on the clock right now. */
   onTheClock: boolean;
+  /** Any clocked time at all this week. False is "No clock-ins", which the
+   *  page says in words rather than as a row of zeros. */
+  clockedIn: boolean;
+  /** Visits on this person's route this week by their scheduled day, any
+   *  status: the number My Day counts against, beside the completed count
+   *  this sheet keeps by the day each was completed. */
+  visitsScheduled: number;
+  /** Shifts this week that look like a missed clock-out. */
+  possibleMissedClockOuts: number;
 };
 
 export type Timesheet = {
@@ -266,17 +310,29 @@ export function buildTimesheet(input: {
   visits: readonly CompletedVisit[];
   /** Tips credited this week. Optional so a caller with none passes nothing. */
   tips?: readonly ReceivedTip[];
+  /** Visits scheduled this week. Optional, like tips. */
+  scheduled?: readonly ScheduledVisit[];
 }): Timesheet {
   const days = weekDays(input.weekStart);
   const inWeek = new Set(days);
   const rows: TimesheetRow[] = input.staff.map((s) => ({
     staff: s,
-    days: days.map((day) => ({ day, minutes: 0, segments: [], visitsCompleted: 0, tipsCents: 0 })),
+    days: days.map((day) => ({
+      day,
+      minutes: 0,
+      segments: [],
+      visitsCompleted: 0,
+      tipsCents: 0,
+      possibleMissedClockOut: false,
+    })),
     totalMinutes: 0,
     overtimeMinutes: 0,
     visitsCompleted: 0,
     tipsCents: 0,
     onTheClock: false,
+    clockedIn: false,
+    visitsScheduled: 0,
+    possibleMissedClockOuts: 0,
   }));
   const byStaff = new Map(rows.map((r) => [r.staff.id, r]));
   const index = new Map(days.map((d, i) => [d, i]));
@@ -285,13 +341,24 @@ export function buildTimesheet(input: {
     const row = byStaff.get(e.staff_id);
     if (!row) continue;
     if (e.clock_out == null) row.onTheClock = true;
+    const flagged = possibleMissedClockOut(e, input.now);
+    let touched = false;
     for (const seg of splitByOrgDay(e, input.tz, input.now)) {
       if (!inWeek.has(seg.day)) continue;
       const cell = row.days[index.get(seg.day)!];
       cell.segments.push(seg);
       cell.minutes += seg.minutes;
       row.totalMinutes += seg.minutes;
+      row.clockedIn = true;
+      touched = true;
+      if (flagged) cell.possibleMissedClockOut = true;
     }
+    if (flagged && touched) row.possibleMissedClockOuts += 1;
+  }
+  for (const v of input.scheduled ?? []) {
+    if (!v.assigned_staff_id || !inWeek.has(v.scheduled_on)) continue;
+    const row = byStaff.get(v.assigned_staff_id);
+    if (row) row.visitsScheduled += 1;
   }
   for (const v of input.visits) {
     if (!v.assigned_staff_id || !v.completed_at) continue;
@@ -413,6 +480,7 @@ export function timesheetCsvRows(sheet: Timesheet, tz: string): string[][] {
         if (s.open) notes.push("Still clocked in");
         if (s.continuesFromPreviousDay) notes.push("Continued from the previous day");
         if (s.continuesIntoNextDay) notes.push("Continues past midnight");
+        if (i === 0 && d.possibleMissedClockOut) notes.push("Possible missed clock-out");
         out.push([
           row.staff.display_name,
           d.day,

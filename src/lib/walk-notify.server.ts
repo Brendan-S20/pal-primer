@@ -7,6 +7,8 @@
  *                            or moved them for weather (rescheduleVisits)
  *    notifyWalkPlanChanged   the office changed a walk plan's days or window
  *                            (updateSubscription)
+ *    notifyWalksCanceled     the office canceled one or more upcoming walks
+ *                            (cancelVisitFromOffice, notifyCanceledWalks)
  *
  *  Every one of them reads the service line first and does nothing for a
  *  visit or plan that is not a dog walk, so a pet-waste client is sent
@@ -20,6 +22,7 @@
 import { dogNamesPhrase } from "@/lib/walk-report";
 import {
   SCHEDULE_LINES_MAX,
+  canceledWalkLabel,
   walkPlanScheduleChanged,
   walkScheduleLine,
   walkSkipReason,
@@ -62,7 +65,8 @@ type VisitRow = {
     | null;
 };
 
-const VISIT_COLUMNS =
+/** Exported for the real-database test, which reads a canceled walk with it. */
+export const VISIT_COLUMNS =
   "id, organization_id, client_id, scheduled_on, status, skip_reason_code, subscription_id, services(service_line), subscriptions(earliest_time, latest_time), properties(visit_contact_email, dogs(name, active))";
 
 const isWalk = (v: Pick<VisitRow, "services">) => one(v.services)?.service_line === "dog_walking";
@@ -226,6 +230,87 @@ export function moveKey(visitIds: readonly string[], toDate: string): string {
   let h = 0;
   for (let i = 0; i < ids.length; i++) h = (Math.imul(31, h) + ids.charCodeAt(i)) | 0;
   return `${toDate}-${(h >>> 0).toString(16)}-${visitIds.length}`;
+}
+
+// ── The office canceled walks ───────────────────────────────────────────────
+
+/** After the office cancels one or more visits (cancelVisitFromOffice, or the
+ *  client page's bulk cancel through notifyCanceledWalks): one email per
+ *  client, listing every walk among `visitIds` that is now skipped and was
+ *  for today or later in the business's own timezone. A visit that is not a
+ *  dog walk, or a walk whose day has passed, sends nothing. `orgId`, when
+ *  given, keeps the read to that business. */
+export async function notifyWalksCanceled(opts: {
+  visitIds: readonly string[];
+  orgId?: string;
+}): Promise<void> {
+  try {
+    if (opts.visitIds.length === 0) return;
+    const sb = await admin();
+    let q = sb.from("visits").select(VISIT_COLUMNS).in("id", [...opts.visitIds]);
+    if (opts.orgId) q = q.eq("organization_id", opts.orgId);
+    const { data } = await q;
+    const walks = ((data ?? []) as VisitRow[]).filter((v) => isWalk(v) && v.status === "skipped");
+    if (walks.length === 0) return;
+
+    const { orgToday, DEFAULT_ORG_TIMEZONE } = await import("@/lib/org-day");
+    const todayByOrg = new Map<string, string>();
+    for (const orgId of new Set(walks.map((v) => v.organization_id))) {
+      const { data: org } = await sb
+        .from("organizations")
+        .select("timezone")
+        .eq("id", orgId)
+        .maybeSingle();
+      const tz = (org as { timezone?: string | null } | null)?.timezone || DEFAULT_ORG_TIMEZONE;
+      todayByOrg.set(orgId, orgToday(tz));
+    }
+
+    const byClient = new Map<string, VisitRow[]>();
+    for (const v of walks) {
+      if (v.scheduled_on < (todayByOrg.get(v.organization_id) ?? "")) continue;
+      byClient.set(v.client_id, [...(byClient.get(v.client_id) ?? []), v]);
+    }
+    for (const [clientId, rows] of byClient) {
+      try {
+        await sendWalksCanceled(clientId, rows);
+      } catch (e) {
+        console.warn("walk-canceled email failed", clientId, e);
+      }
+    }
+  } catch (e) {
+    console.warn("walk-canceled emails failed", e);
+  }
+}
+
+async function sendWalksCanceled(clientId: string, rows: VisitRow[]): Promise<void> {
+  const sorted = [...rows].sort((a, b) => (a.scheduled_on < b.scheduled_on ? -1 : 1));
+  const first = sorted[0];
+  const names = new Set<string>();
+  for (const v of sorted) {
+    for (const d of one(v.properties)?.dogs ?? []) {
+      if (d.active !== false && d.name) names.add(d.name);
+    }
+  }
+  const ids = sorted.map((v) => v.id);
+  const key = ids.length === 1 ? ids[0] : moveKey(ids, clientId);
+  const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+  await enqueueAppEmail({
+    organizationId: first.organization_id,
+    clientId,
+    templateName: "walk-canceled",
+    notifyKey: "notify_email_walk_canceled",
+    // A canceled visit stays canceled, so one walk is one email for good;
+    // several canceled together are one email for that set.
+    idempotencyKey: `walk-canceled-${key}`,
+    oncePerKey: true,
+    toOverride: one(first.properties)?.visit_contact_email || undefined,
+    templateData: {
+      dogs: dogNamesPhrase([...names]),
+      walks: sorted.slice(0, SCHEDULE_LINES_MAX).map((v) => canceledWalkLabel(slotOf(v))),
+      day: formatDay(first.scheduled_on),
+      count: sorted.length,
+    },
+  });
 }
 
 // ── The office changed a walk plan ──────────────────────────────────────────

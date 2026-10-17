@@ -505,7 +505,9 @@ describe.skipIf(!enabled)("walk scheduling and group walks in the database", () 
       scheduled_on: tuesday,
       status: "scheduled",
       walk_group_id: null,
-      assigned_staff_id: null,
+      // reschedule_visit keeps the technician on a work day they are free
+      // (20261015131000), so the walker stays on it.
+      assigned_staff_id: techStaffId,
     });
 
     const bulk = await dispatcher.rpc("bulk_reschedule_visits", {
