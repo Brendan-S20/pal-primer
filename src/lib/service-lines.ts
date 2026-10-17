@@ -49,7 +49,9 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
  *  approved to go live: dog walking (#410), pet sitting (#411), mobile
  *  grooming (#412) and training (#413) each join with their approval. Until
  *  then the picker shows them as Coming soon. A business that already runs
- *  one keeps it; setServiceLines refuses only adding one. */
+ *  one keeps it; setServiceLines refuses only adding one. Walking's path
+ *  (booking, the walker's day, portal reports and access, client emails,
+ *  invoices) is built and waits on that approval. */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {

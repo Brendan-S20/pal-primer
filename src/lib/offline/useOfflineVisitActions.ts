@@ -35,7 +35,12 @@ export type CompleteExtra = {
 
 export interface OfflineVisitActions {
   start: () => Promise<{ queued: boolean }>;
-  complete: (extra?: CompleteExtra) => Promise<{ queued: boolean; result?: unknown }>;
+  /** `queueOnly` is not sent anywhere: it puts the completion straight on the
+   *  queue, no network attempt, so it replays behind something already queued
+   *  there (a walk's report, #410). */
+  complete: (
+    extra?: CompleteExtra & { queueOnly?: boolean },
+  ) => Promise<{ queued: boolean; result?: unknown }>;
   skip: (reason: string, code: string) => Promise<{ queued: boolean }>;
   uploadPhoto: (file: File, kind: PhotoKind) => Promise<{ queued: boolean }>;
 }
@@ -90,9 +95,9 @@ export function useOfflineVisitActions(
   );
 
   const complete = useCallback(
-    (extra: CompleteExtra = {}) =>
+    ({ queueOnly, ...extra }: CompleteExtra & { queueOnly?: boolean } = {}) =>
       runOrQueue({
-        online: isNavigatorOnline(),
+        online: !queueOnly && isNavigatorOnline(),
         label: "Complete visit",
         send: () => completeFn({ data: { visitId, ...extra } }),
         queue: async () => {

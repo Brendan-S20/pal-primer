@@ -196,7 +196,7 @@ describe("the plan's Service picker", () => {
     expect(
       fns.match(/\.\.\.\(data\.serviceId \? \{ service_id: data\.serviceId \} : \{\}\)/g),
     ).toHaveLength(2);
-    expect(fns).toMatch(/service_id, services\(name, service_line\)/);
+    expect(fns).toMatch(/service_id, services\(name, service_line(, default_duration_min)?\)/);
   });
 });
 
@@ -255,7 +255,9 @@ describe("how a card names the service", () => {
     const src = read("src/routes/_authenticated/my-day.tsx");
     for (const line of SERVICE_LINES) expect(src).toContain(`t("serviceLine.${line}")`);
     expect(src).toMatch(/<bdi>\{service\.ownName\}<\/bdi>/);
-    expect(read("src/lib/my-day.functions.ts")).toMatch(/services\(name, service_line\)/);
+    expect(read("src/lib/my-day.functions.ts")).toMatch(
+      /services\(name, service_line(, default_duration_min)?\)/,
+    );
   });
 
   it("shows it on the visit drawer and both schedule cards", () => {

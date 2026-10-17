@@ -65,7 +65,7 @@ function cadenceWords(frequency: string, weekdays?: number[] | null): string {
   return weekdays?.length ? formatWeekdaySet(weekdays, "en-US") : frequency.replace(/_/g, " ");
 }
 
-const createSubSchema = z
+export const createSubSchema = z
   .object({
     clientId: z.string().uuid(),
     propertyId: z.string().uuid(),
@@ -136,30 +136,43 @@ async function assertServiceBookable(
   return { zonePriced: isZonePriced(svc) };
 }
 
-export const createSubscription = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => createSubSchema.parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    // Creating a service sets pricing, so it needs the same permission the
-    // edit/pause/end lifecycle actions require (QA: a dispatcher could
-    // create a service they then couldn't touch).
-    await requirePermission(supabase, userId, "manage_pricing");
-    const { data: client, error: cErr } = await supabase
-      .from("clients")
-      .select("organization_id")
-      .eq("id", data.clientId)
+/** Shared creation path. One INSERT keeps sibling plans together on a failed write. */
+export async function createSubscriptionPlans(
+  supabase: any,
+  userId: string,
+  plans: Array<z.infer<typeof createSubSchema>>,
+  walkOnly = false,
+): Promise<{ ids: string[] }> {
+  const data = plans[0];
+  // Creating a service sets pricing, so it needs the same permission the
+  // edit/pause/end lifecycle actions require (QA: a dispatcher could
+  // create a service they then couldn't touch).
+  await requirePermission(supabase, userId, "manage_pricing");
+  const { data: client, error: cErr } = await supabase
+    .from("clients")
+    .select("organization_id")
+    .eq("id", data.clientId)
+    .single();
+  if (cErr) throw new Error(cErr.message);
+  // A walk is priced from its service, not from any zone: its provenance
+  // must not claim the zone's rate card (priced_from_zone_id stays NULL).
+  if (walkOnly) {
+    const { data: service, error } = await supabase
+      .from("services")
+      .select("service_line")
+      .eq("id", data.serviceId!)
       .single();
-    if (cErr) throw new Error(cErr.message);
-    // A walk is priced from its service, not from any zone: its provenance
-    // must not claim the zone's rate card (priced_from_zone_id stays NULL).
-    const zonePriced = data.serviceId
-      ? (await assertServiceBookable(supabase, data.serviceId, null)).zonePriced
-      : true;
+    if (error) throw new Error(error.message);
+    if (service?.service_line !== "dog_walking") throw new Error("Choose a dog walking service.");
+  }
+  const zonePriced = data.serviceId
+    ? (await assertServiceBookable(supabase, data.serviceId, null)).zonePriced
+    : true;
 
-    const { data: row, error } = await supabase
-      .from("subscriptions")
-      .insert({
+  const { data: rows, error } = await supabase
+    .from("subscriptions")
+    .insert(
+      plans.map((data) => ({
         organization_id: client.organization_id,
         client_id: data.clientId,
         property_id: data.propertyId,
@@ -196,21 +209,22 @@ export const createSubscription = createServerFn({ method: "POST" })
         earliest_time: data.earliestTime ?? null,
         latest_time: data.latestTime ?? null,
         ...(data.serviceId ? { service_id: data.serviceId } : {}),
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
+      })),
+    )
+    .select("id");
+  if (error) throw new Error(error.message);
 
-    // Cadence feeds the property's auto-calculated service time.
-    const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
-    await recomputePropertyEstimate(supabase, data.propertyId);
+  // Cadence feeds the property's auto-calculated service time.
+  const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+  await recomputePropertyEstimate(supabase, data.propertyId);
 
-    // An active service must have visits immediately, not after the nightly
-    // job (QA follow-up 1.6).
-    const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
-    await generateVisitHorizon(supabase, client.organization_id);
+  // An active service must have visits immediately, not after the nightly
+  // job (QA follow-up 1.6).
+  const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+  await generateVisitHorizon(supabase, client.organization_id);
 
-    const { logActivity } = await import("@/lib/activity.server");
+  const { logActivity } = await import("@/lib/activity.server");
+  for (const row of rows ?? [])
     await logActivity(supabase, {
       orgId: client.organization_id,
       clientId: data.clientId,
@@ -225,7 +239,15 @@ export const createSubscription = createServerFn({ method: "POST" })
         price_cents: data.priceCents,
       },
     });
-    return { id: row.id as string };
+  return { ids: (rows ?? []).map((row: { id: string }) => row.id) };
+}
+
+export const createSubscription = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => createSubSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const result = await createSubscriptionPlans(context.supabase, context.userId, [data]);
+    return { id: result.ids[0] };
   });
 
 const updateSubSchema = z
@@ -281,7 +303,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const { data: before } = await supabase
       .from("subscriptions")
       .select(
-        "organization_id, client_id, price_cents, frequency, weekdays, started_on, ends_on, status, service_id",
+        "organization_id, client_id, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
       )
       .eq("id", data.subscriptionId)
       .single();
@@ -354,6 +376,19 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // Schedule inputs may have changed; top the horizon back up.
     const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
     if (before?.organization_id) await generateVisitHorizon(supabase, before.organization_id);
+
+    // A walk plan whose days or window changed: the client hears it (#410).
+    if (before) {
+      const { notifyWalkPlanChanged } = await import("@/lib/walk-notify.server");
+      await notifyWalkPlanChanged({
+        subscriptionId: data.subscriptionId,
+        before: {
+          weekdays: before.weekdays ?? null,
+          earliest_time: before.earliest_time ?? null,
+          latest_time: before.latest_time ?? null,
+        },
+      });
+    }
 
     if (before) {
       const { logActivity } = await import("@/lib/activity.server");

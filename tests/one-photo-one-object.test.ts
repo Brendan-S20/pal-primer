@@ -130,7 +130,7 @@ describe("the portal skip rule is reachable", () => {
     expect(src).toMatch(/export const TECH_SKIP_REASON_CODES/);
     expect(src).toMatch(/c !== "customer_requested"/);
     const myDay = readFileSync(join(ROOT, "src/routes/_authenticated/my-day.tsx"), "utf8");
-    expect(myDay).toMatch(/TECH_SKIP_REASON_CODES\.map/);
+    expect(myDay).toMatch(/techSkipReasonCodes\(/);
     expect(myDay).not.toMatch(/\{SKIP_REASON_CODES\.map/);
   });
 });

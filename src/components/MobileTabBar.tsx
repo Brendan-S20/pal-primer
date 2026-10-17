@@ -96,9 +96,9 @@ export function MobileTabBar() {
   // retries behind a bar that is only decoration when it fails.
   const notificationsFn = useServerFn(listMyNotifications);
   const { data: notifications } = useQuery({
-    queryKey: ["my-notifications", "tab-badge"],
+    queryKey: ["notifications"],
     queryFn: () => notificationsFn(),
-    staleTime: 60_000,
+    staleTime: 30_000,
     retry: false,
   });
   const unread = notifications?.unread ?? 0;

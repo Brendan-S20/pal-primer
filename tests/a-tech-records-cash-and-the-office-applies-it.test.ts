@@ -77,28 +77,43 @@ describe("a confirmation goes through the office's own Record payment path", () 
   const rest = fn.slice(start + 1);
   const body = rest.slice(0, rest.indexOf("\nexport const "));
 
+  // Since 20261015120000 the claim also records the payments, oldest invoice
+  // first and the last one partly, in the same transaction
+  // (tests/a-check-for-less-than-the-bill.test.ts). What is left here is the
+  // activity line and the pay-page intent for each invoice it paid.
   it("claims the collection before it pays anything", () => {
     const claim = body.indexOf('rpc("confirm_field_collection"');
     expect(claim, "bulkMarkInvoicesPaid never claims the collection").toBeGreaterThan(-1);
-    expect(claim).toBeLessThan(body.indexOf('from("payments").insert'));
-    expect(claim).toBeLessThan(body.indexOf("for (const id of ids)"));
+    expect(claim).toBeLessThan(body.indexOf('rpc("record_invoice_payment"'));
+    expect(body).not.toMatch(/from\("payments"\)\.insert/);
     // A refused claim stops it: nothing after it runs.
     expect(body.slice(claim, claim + 300)).toMatch(/if \(cErr\) throw new Error\(cErr\.message\)/);
   });
 
   it("pays exactly the invoices the claim accepted", () => {
+    // A field collection's payments are the claim's own allocations; the
+    // office's loop over data.ids runs only when there is no collection.
     expect(body).toMatch(
-      /ids = \(\(claimed as \{ invoice_ids\?: string\[\] \} \| null\)\?\.invoice_ids/,
+      /if \(field\) \{\s*recorded\.push\(\.\.\.\(field\.allocations \?\? \[\]\)\);\s*\} else \{/,
     );
-    expect(body).toMatch(/for \(const id of ids\)/);
-    expect(body).not.toMatch(/for \(const id of data\.ids\)/);
+    const sql = readFileSync(
+      join(ROOT, "supabase/migrations/20261015120000_a-check-for-less-than-the-bill.sql"),
+      "utf8",
+    );
+    expect(sql).toMatch(/FOR _row IN\s+SELECT i\.id,[\s\S]*?WHERE i\.id = ANY \(_ids\)/);
   });
 
   it("records the collection's own method, check number and time", () => {
     expect(body).toMatch(/const method = field \?/);
     expect(body).toMatch(/const nowIso = field\s*\?\s*field\.collected_at/);
     expect(body).toMatch(/const reference = field\s*\?\s*field\.reference/);
-    expect(body).toMatch(/field_collection_id: field\?\.id \?\? null/);
+    const sql = readFileSync(
+      join(ROOT, "supabase/migrations/20261015120000_a-check-for-less-than-the-bill.sql"),
+      "utf8",
+    );
+    expect(sql).toContain(
+      "_row.id, _take::integer, _fc.method, _fc.reference, _fc.collected_at, NULL, _fc.id",
+    );
   });
 
   it("is still gated on manage_client_billing before any of it", () => {

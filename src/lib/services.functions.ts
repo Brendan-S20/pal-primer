@@ -30,7 +30,7 @@ import {
 } from "@/lib/services";
 
 const SERVICE_COLUMNS =
-  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, active, created_at, updated_at";
+  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, max_dogs, active, created_at, updated_at";
 
 const cents = z.number().int().min(0).max(SERVICE_MAX_CENTS);
 
@@ -40,6 +40,7 @@ export const serviceDraftSchema = z.object({
   price_unit: z.enum(PRICE_UNITS),
   base_price_cents: cents.nullable(),
   extra_pet_cents: cents.default(0),
+  max_dogs: z.number().int().min(1).max(50).nullable().optional(),
   default_duration_min: z
     .number()
     .int()
@@ -51,7 +52,11 @@ export const serviceDraftSchema = z.object({
 /** Schema first (shape), then the sentence-level rules (night is for
  *  sitting, a walk needs a duration). Exported for the tests. */
 export function parseServiceDraft(d: unknown): ServiceDraft {
-  const draft = serviceDraftSchema.parse(d) as ServiceDraft;
+  const parsed = serviceDraftSchema.parse(d);
+  const draft: ServiceDraft = {
+    ...parsed,
+    max_dogs: parsed.service_line === "dog_walking" ? (parsed.max_dogs ?? null) : null,
+  };
   const problem = serviceProblem(draft);
   if (problem) throw new Error(problem);
   return draft;

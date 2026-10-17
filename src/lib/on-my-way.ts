@@ -61,6 +61,22 @@ export function onMyWayText(p: {
   return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}.${track} Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.`;
 }
 
+/** A walk's text. The walker is coming to pick the dog up, so it does not
+ *  ask the customer to reply ENT or DNE. `dogs` is dogNamesPhrase. */
+export function walkOnMyWayText(p: {
+  customerName: string;
+  orgName: string;
+  techName: string | null;
+  eta: string | null;
+  dogs: string;
+  trackUrl?: string | null;
+}): string {
+  const who = p.techName ? `${p.techName} from ${p.orgName}` : `your ${p.orgName} walker`;
+  const when = p.eta ? `, arriving ${p.eta}` : "";
+  const track = p.trackUrl ? ` Live map: ${p.trackUrl}` : "";
+  return `Hi ${p.customerName}, ${who} is on the way to pick up ${p.dogs} for today's walk${when}.${track} Reply STOP to opt out.`;
+}
+
 export type NavigateCheck =
   | { send: true }
   | { send: false; reason: "turned_off" | "not_today" | "not_scheduled" | "already_sent" };

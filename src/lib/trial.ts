@@ -258,7 +258,7 @@ export const TRIAL_COPY: Record<
     // being told "your free trial has ended" would reasonably conclude the
     // product has lost track of what they paid for.
     headline: () => "Your plan has ended",
-    body: "Your account is locked until you choose a plan. You can export your data for 30 days after cancelling.",
+    body: "Your account is locked until you choose a plan. You can export your data for 30 days after canceling.",
     tone: "warn",
   },
   trialing: {

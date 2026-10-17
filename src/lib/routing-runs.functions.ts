@@ -14,9 +14,10 @@
 // See src/lib/auto-routing.server.ts for the run itself, and
 // 20261004160000_routing-runs-in-the-background for the table.
 
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { LEVELS, type RoutingRunRow } from "@/lib/routing-run";
 import { resolveCaller } from "@/lib/authz.server";
 
@@ -100,14 +101,19 @@ export const listMyRoutingRuns = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }) => loadMyRoutingRuns(context, data));
+
+/** listMyRoutingRuns's answer, also asked by getShellContext. */
+export const loadMyRoutingRuns = createServerOnlyFn(
+  async (context: AuthedContext, data: { watching: boolean; also: string[] }) => {
     const { data: rows, error } = await (context.supabase as any).rpc("my_routing_runs", {
       _watching: data.watching,
       _also: data.also,
     });
     if (error) throw new Error(error.message);
     return { runs: (rows ?? []) as RoutingRunRow[], serverNow: Date.now() };
-  });
+  },
+);
 
 export const markRoutingRunSeen = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

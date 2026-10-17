@@ -57,7 +57,7 @@ describe("every way this function can charge has a way to undo", () => {
     const body = subscribeBody();
     const rollback = body.slice(body.indexOf("if (recordErr)"));
     expect(rollback).toMatch(/You have not been charged/);
-    expect(rollback).toMatch(/could not be cancelled automatically/);
+    expect(rollback).toMatch(/could not be canceled automatically/);
   });
 
   it("has no charge-creating call that the rollback does not name", () => {

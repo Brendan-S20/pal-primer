@@ -1,3 +1,4 @@
+import i18n from "@/lib/i18n";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
 // estimates into facts. Rows open a detail drawer (QA follow-up 2.3) with
@@ -28,10 +29,17 @@ import { listClientHolds } from "@/lib/clients.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { formatVisitDuration } from "@/lib/visit-lifecycle";
+import { officeSkipReason } from "@/lib/skip-rules.functions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+
+/** A skip's reason as words: a code through the office's labels, free text
+ *  (from before reasons were codes) as it was typed. */
+function skipReasonText(v: { skip_reason_code?: string | null; skip_reason?: string | null }) {
+  return v.skip_reason_code ? officeSkipReason(v.skip_reason_code) : (v.skip_reason ?? "");
+}
 
 function fmtWindow(v: any, tz: string): string {
   // ETAs are instants and read on the ORG's clock; the service/property
@@ -642,10 +650,10 @@ function VisitTable({
                   )}
                 </td>
                 <td className="px-4 py-2.5">
-                  <StatusChip status={v.status} />
+                  <StatusChip label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })} status={v.status} />
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
                     <span className="ml-1 text-xs text-muted-foreground">
-                      {String(v.skip_reason_code ?? v.skip_reason).replace(/_/g, " ")}
+                      {skipReasonText(v)}
                     </span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
@@ -1007,7 +1015,7 @@ function VisitDetailDrawer({
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Status</dt>
             <dd>
-              <StatusChip status={v.status} />
+              <StatusChip label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })} status={v.status} />
             </dd>
           </div>
           <div className="flex items-center justify-between">
@@ -1043,7 +1051,7 @@ function VisitDetailDrawer({
           {(v.skip_reason_code || v.skip_reason) && (
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Skip reason</dt>
-              <dd>{String(v.skip_reason_code ?? v.skip_reason).replace(/_/g, " ")}</dd>
+              <dd>{skipReasonText(v)}</dd>
             </div>
           )}
         </dl>

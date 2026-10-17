@@ -335,9 +335,10 @@ describe("a table in a scroll container still has to be wider than the container
 describe("two more things measured at 360px", () => {
   it("caps the Crew popover so it fits a phone", () => {
     // 320px of popover on a 320px screen, with the page's own padding still
-    // to pay for.
+    // to pay for. CHANGED (QA row 43): Crew now lives in the toolbar's
+    // "More" popover with the display options, and the cap moved with it.
     const src = codeOnly(read("src/routes/_authenticated/routes.tsx"));
-    expect(src).toMatch(/className="w-80 max-w-\[calc\(100vw-1rem\)\] p-0"/);
+    expect(src).toMatch(/w-80 max-w-\[calc\(100vw-1rem\)\] space-y-4 overflow-y-auto/);
   });
 
   it("stacks the revenue tiles two-up instead of four-across", () => {

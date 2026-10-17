@@ -49,3 +49,8 @@ export function pickEmailedPhotos(rows: { storage_path: string; kind: string }[]
   const gates = rows.filter((r) => r.kind === "gate");
   return { completion, gate: gates.length ? gates[gates.length - 1].storage_path : null };
 }
+
+/** Default for a new photo, based on whether work has started. */
+export function defaultPhotoKind(status: string | null | undefined, startedHere = false): PhotoKind {
+  return startedHere || status === "in_progress" || status === "completed" ? "completion" : "before";
+}

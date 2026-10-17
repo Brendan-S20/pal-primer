@@ -1,6 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { requirePermission } from "@/lib/authz.server";
 import { paymentWasReceived, receivedPaymentStatuses } from "@/lib/revenue";
 import { REVERSAL_KINDS, reducesIncome } from "@/lib/cpa-reports";
@@ -48,7 +49,11 @@ export type FranchiseRow = {
 
 export const getFranchiseContext = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }) => loadFranchiseContext(context));
+
+/** getFranchiseContext's answer, also asked by getShellContext. */
+export const loadFranchiseContext = createServerOnlyFn(
+  async (context: AuthedContext) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data: org, error } = await context.supabase
       .from("organizations")
@@ -69,7 +74,8 @@ export const getFranchiseContext = createServerFn({ method: "GET" })
       isParent: !!org?.is_franchise_parent || kids.length > 0,
       children: kids,
     };
-  });
+  },
+);
 
 // BUILD-6: computeRowForOrg was removed here. It recomputed each location's
 // numbers in TypeScript on the caller's RLS-bound client, so it returned zeros

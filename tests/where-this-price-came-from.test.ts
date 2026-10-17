@@ -102,7 +102,7 @@ describe("the columns are written where a price is set", () => {
   const fns = read("src/lib/subscriptions.functions.ts");
 
   it("records the rate card at creation", () => {
-    const create = fns.slice(fns.indexOf("export const createSubscription"));
+    const create = fns.slice(fns.indexOf("export async function createSubscriptionPlans"));
     // ...for a zone-priced plan (pet waste). A plan priced from its service
     // (phase 5: a walk, a sit, a groom) records no zone, because no zone
     // priced it; tests/a-walk-is-priced-as-a-walk.test.ts covers that half.
@@ -119,7 +119,7 @@ describe("the columns are written where a price is set", () => {
     // explanation for the very behaviour being asserted.
     const create = stripComments(
       fns.slice(
-        fns.indexOf("export const createSubscription"),
+        fns.indexOf("export async function createSubscriptionPlans"),
         fns.indexOf("export const updateSubscription"),
       ),
     );

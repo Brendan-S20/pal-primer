@@ -466,7 +466,7 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
       throw new Error(
         undone
           ? "Couldn't record the add-on. You have not been charged; try again."
-          : "Couldn't record the add-on, and the pending charge could not be cancelled automatically. Contact support before retrying.",
+          : "Couldn't record the add-on, and the pending charge could not be canceled automatically. Contact support before retrying.",
       );
     }
     await setFeatureFlag(orgId, addon.feature_flag, true);

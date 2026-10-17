@@ -60,6 +60,7 @@ function Dashboard() {
   const { data: orgData, isPending: orgLoading } = useQuery({
     queryKey: ["my-org"],
     queryFn: () => orgFn(),
+    staleTime: 60_000,
     throwOnError: (_error, query) => query.state.data === undefined,
   });
   const { data: sum, isPending: sumLoading } = useQuery({
@@ -339,6 +340,11 @@ function Dashboard() {
         )}
       </div>
 
+      {/* The same checklist, folded to one line once there is a client. It
+          renders only in one of its two slots (checklistPlacement), and this
+          slot carries max-md:order-2 so a phone keeps it under the KPIs. */}
+      <OnboardingChecklist placement="below-kpis" />
+
       <div className="grid gap-4 max-md:order-1 lg:grid-cols-3">
         {/* MEASURED 2026-08-19: 487px in a 360px viewport. Same fault as
             SummaryTab's columns — a grid item's `min-width` is `auto`, so it
@@ -462,7 +468,7 @@ function Dashboard() {
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground">Nothing overdue. 🎉</p>
+                <p className="text-xs text-muted-foreground">Nothing overdue.</p>
               )}
             </div>
           )}

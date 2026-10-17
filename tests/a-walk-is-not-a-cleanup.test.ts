@@ -40,6 +40,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 // which is what TanStack Start does once the auth middleware has run.
 let context: { supabase: unknown; userId: string } = { supabase: null, userId: "" };
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     let validate: (d: unknown) => unknown = (d) => d;
     const b: any = {
@@ -215,6 +216,7 @@ describe("what makes a service saveable", () => {
     expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste"]);
     expect(serviceLineChoices(["pet_waste", "dog_walking"])).toEqual(["pet_waste", "dog_walking"]);
     expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual(["pet_waste", "pet_sitting"]);
+    expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
     expect(serviceLineChoices(["mobile_grooming"])).toContain("mobile_grooming");
     expect(serviceLineChoices(["pet_waste"], "other")).toContain("other");
     expect(defaultServiceLine(["dog_walking", "pet_waste"])).toBe("dog_walking");
@@ -316,6 +318,7 @@ describe("the server functions", () => {
     expect(insert?.args[0]).toEqual({
       ...WALK,
       name: "30-minute walk",
+      max_dogs: null,
       organization_id: "org-a",
       active: true,
     });
