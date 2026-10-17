@@ -115,7 +115,7 @@ describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () 
     }
   });
 
-  it("charges the plan's add-ons once when the groom is completed", async () => {
+  it("charges the plan's add-ons once per completion that stands", async () => {
     const { data: visit } = await admin
       .from("visits")
       .select("id")
@@ -133,12 +133,16 @@ describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () 
       .update({ status: "scheduled", completed_at: null })
       .eq("id", visit!.id);
     expect((await complete()).error).toBeNull();
+    // Reopening voided the first charge (20261017110000); the second
+    // completion charged once more. One live charge.
     const { data: charges } = await admin
       .from("addon_charges")
-      .select("addon_service_id, amount_cents, note")
-      .eq("visit_id", visit!.id);
+      .select("addon_service_id, amount_cents, note, status")
+      .eq("visit_id", visit!.id)
+      .order("created_at");
     expect(charges).toEqual([
-      { addon_service_id: addonId, amount_cents: 1500, note: "Booked with the groom" },
+      { addon_service_id: addonId, amount_cents: 1500, note: "Booked with the groom", status: "voided" },
+      { addon_service_id: addonId, amount_cents: 1500, note: "Booked with the groom", status: "pending" },
     ]);
   });
 
