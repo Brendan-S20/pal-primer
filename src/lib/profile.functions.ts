@@ -18,9 +18,10 @@
  *     not done. The staff row is updated only when the change is confirmed,
  *     by `syncMyEmailFromAuth` on the next profile load.
  */
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 
 const STAFF_FIELDS =
   "id, organization_id, user_id, display_name, email, phone, role, avatar_url, is_field_tech, active, created_at";
@@ -37,7 +38,11 @@ async function myStaffRow(supabase: any, userId: string) {
 
 export const getMyProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }) => loadMyProfile(context));
+
+/** getMyProfile's answer, also asked by getShellContext. */
+export const loadMyProfile = createServerOnlyFn(
+  async (context: AuthedContext) => {
     const { supabase, userId } = context;
     const staff = await myStaffRow(supabase, userId);
 
@@ -62,7 +67,8 @@ export const getMyProfile = createServerFn({ method: "GET" })
       emailConfirmed: Boolean(auth?.user?.email_confirmed_at),
       pendingEmail: (auth?.user as any)?.new_email ?? null,
     };
-  });
+  },
+);
 
 export const updateMyProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

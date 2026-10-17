@@ -17,6 +17,7 @@ const DAY = "2026-10-06";
 const HOUR = 60 * 60_000;
 
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   useServerFn: (f: unknown) => f,
   // Every builder step hands back the same callable, so `.handler(...)`
   // yields something the page can hold as a server function.

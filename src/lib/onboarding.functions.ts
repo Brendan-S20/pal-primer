@@ -1,5 +1,6 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
 
 export type OnboardingStepId = "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts";
@@ -39,7 +40,11 @@ export const ONBOARDING_STEP_IDS: readonly OnboardingStepId[] = [
 
 export const getOnboardingStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }) => loadOnboardingStatus(context));
+
+/** getOnboardingStatus's answer, also asked by getShellContext. */
+export const loadOnboardingStatus = createServerOnlyFn(
+  async (context: AuthedContext) => {
     const { supabase, userId } = context;
 
     const { data: role } = await supabase
@@ -294,7 +299,8 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
       dismissed,
       emailVerified: Boolean(o.email_verified_at),
     };
-  });
+  },
+);
 
 export const dismissOnboarding = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
