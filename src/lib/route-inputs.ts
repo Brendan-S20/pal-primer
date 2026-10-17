@@ -72,6 +72,10 @@ export type RouteDayInputs = {
     pref: string;
     assigned_staff_id: string | null;
     fixed: boolean;
+    group_walker_id?: string | null;
+    /** The group walk this visit belongs to, with the group's own window as
+     *  HH:MM. Members of one group are planned as a single stop. */
+    walk_group?: { id: string; earliest: string | null; latest: string | null } | null;
     /** What the visit is (visits.service_id) and its name, for the skill
      *  check and the sentence that names a stop nobody can take. */
     service_id?: string | null;
@@ -84,6 +88,133 @@ export type RouteDayInputs = {
   points: Array<[number, number]>;
   legs: Array<[number, number, number]>;
 };
+
+export type WalkGroupMember = {
+  id: string;
+  walkerId: string | null;
+  /** Absent when membership was not read. The visit is pinned to the walker
+   *  and otherwise planned as its own stop. */
+  groupId?: string | null;
+  earliest?: string | null;
+  latest?: string | null;
+};
+
+/** Keep group members on their walker even when the dispatcher allows
+ *  reassignment, and mark which group each belongs to. */
+export function pinWalkGroupVisits(
+  inputs: RouteDayInputs,
+  members: ReadonlyArray<WalkGroupMember>,
+): RouteDayInputs {
+  const byId = new Map(members.map((m) => [m.id, m]));
+  return {
+    ...inputs,
+    visits: inputs.visits.map((visit) => {
+      const member = byId.get(visit.id);
+      if (!member || (!member.walkerId && !member.groupId)) return visit;
+      const out = { ...visit };
+      if (member.walkerId) {
+        out.fixed = true;
+        out.assigned_staff_id = member.walkerId;
+        out.group_walker_id = member.walkerId;
+      }
+      if (member.groupId) {
+        out.walk_group = {
+          id: member.groupId,
+          earliest: member.earliest?.slice(0, 5) || null,
+          latest: member.latest?.slice(0, 5) || null,
+        };
+      }
+      return out;
+    }),
+  };
+}
+
+/** Minutes at each door of a group walk to collect or hand back a dog.
+ *  apply_route_plan uses the same number. */
+export const GROUP_PICKUP_MIN = 3;
+
+/**
+ * A group walk is one walk, so the planner sees it as one stop.
+ *
+ * Every group with two or more visits in play becomes a single stop at its
+ * first member's door. The stop takes the walk once, GROUP_PICKUP_MIN at
+ * each door, and the drive from door to door collecting the dogs and back
+ * again handing them over. Its window is the group's own when the group has
+ * one, otherwise the overlap of the members' windows. A group with one visit
+ * stays a solo walk, inside the group's window when the group has one.
+ *
+ * `members` maps the stop that stands for each group (its first member's id)
+ * to every member id in pickup order: located members first, in the order
+ * route_day_inputs gave them, then any with no map location. planDay puts
+ * them back in that order, consecutively.
+ */
+export function collapseWalkGroups(inp: RouteDayInputs): {
+  inputs: RouteDayInputs;
+  members: Map<string, string[]>;
+} {
+  const groups = new Map<string, RouteDayInputs["visits"]>();
+  for (const visit of inp.visits) {
+    if (!visit.walk_group) continue;
+    const list = groups.get(visit.walk_group.id) ?? [];
+    list.push(visit);
+    groups.set(visit.walk_group.id, list);
+  }
+  const members = new Map<string, string[]>();
+  if (groups.size === 0) return { inputs: inp, members };
+
+  const drive = driveModel(inp);
+  const stands = new Map<string, RouteDayInputs["visits"][number]>();
+  const folded = new Set<string>();
+  for (const list of groups.values()) {
+    const ordered = [
+      ...list.filter((v) => located(v.lat, v.lon)),
+      ...list.filter((v) => !located(v.lat, v.lon)),
+    ];
+    const head = ordered[0];
+    const group = head.walk_group!;
+    const ownWindow = group.earliest != null || group.latest != null;
+    if (ordered.length < 2) {
+      if (ownWindow) {
+        stands.set(head.id, { ...head, earliest: group.earliest, latest: group.latest });
+      }
+      continue;
+    }
+    const doors = ordered.map((v) => located(v.lat, v.lon)).filter((c): c is LatLon => c != null);
+    let collect = 0;
+    let handBack = 0;
+    for (let i = 1; i < doors.length; i++) {
+      collect += drive(doors[i - 1], doors[i]) ?? 0;
+      handBack += drive(doors[i], doors[i - 1]) ?? 0;
+    }
+    const walk = Math.max(...ordered.map((v) => Number(v.service_min ?? 8)));
+    const starts = ordered.map((v) => v.earliest).filter((t): t is string => t != null);
+    const ends = ordered.map((v) => v.latest).filter((t): t is string => t != null);
+    const pinned = ordered.find((v) => v.fixed && v.assigned_staff_id) ?? head;
+    stands.set(head.id, {
+      ...head,
+      service_min: walk + GROUP_PICKUP_MIN * ordered.length + collect + handBack,
+      earliest: ownWindow ? group.earliest : (starts.sort()[starts.length - 1] ?? null),
+      latest: ownWindow ? group.latest : (ends.sort()[0] ?? null),
+      pref: ordered.every((v) => v.pref === head.pref) ? head.pref : "any",
+      fixed: pinned.fixed,
+      assigned_staff_id: pinned.assigned_staff_id,
+      group_walker_id: pinned.group_walker_id ?? head.group_walker_id ?? null,
+    });
+    for (const v of ordered.slice(1)) folded.add(v.id);
+    members.set(
+      head.id,
+      ordered.map((v) => v.id),
+    );
+  }
+  if (stands.size === 0 && folded.size === 0) return { inputs: inp, members };
+  return {
+    inputs: {
+      ...inp,
+      visits: inp.visits.filter((v) => !folded.has(v.id)).map((v) => stands.get(v.id) ?? v),
+    },
+    members,
+  };
+}
 
 /** Rounded exactly as road_legs stores a coordinate. */
 const r5 = (n: number) => Number(Number(n).toFixed(5));
@@ -167,9 +298,13 @@ const minutesAfter = (day: string, hhmm: string, tz: string, start: number) =>
  * assignment stands, skills decide only what the planner may choose.
  */
 export function eligibleTechsFor(
-  visit: { service_id?: string | null; fixed?: boolean },
-  techs: Array<{ services?: string[] | null }>,
+  visit: { service_id?: string | null; fixed?: boolean; group_walker_id?: string | null },
+  techs: Array<{ id?: string; services?: string[] | null }>,
 ): number[] | null {
+  if (visit.group_walker_id) {
+    const index = techs.findIndex((tech) => tech.id === visit.group_walker_id);
+    return index < 0 ? [] : [index];
+  }
   if (visit.fixed || !visit.service_id) return null;
   const out: number[] = [];
   techs.forEach((t, i) => {
@@ -327,9 +462,35 @@ export type DayPlan = {
   driveMin: number[];
 };
 
-/** Plan one day: build, solve, settle the starts that depend on the answer,
- *  and put the stops with no location last. */
+/** Plan one day: fold each group walk into one stop, build, solve, settle
+ *  the starts that depend on the answer, put the stops with no location
+ *  last, and give each group's stop back as its member visits. */
 export function planDay(
+  given: RouteDayInputs,
+  opts: { day: string; honourWindows: boolean; solver?: SolverOptions },
+): DayPlan {
+  const { inputs: inp, members } = collapseWalkGroups(given);
+  const plan = planCollapsedDay(inp, opts);
+  if (members.size === 0) return plan;
+  const visits = new Map(given.visits.map((v) => [v.id, v]));
+  const expand = (id: string) => members.get(id) ?? [id];
+  return {
+    ...plan,
+    routes: plan.routes.map((r) => ({ ...r, visit_ids: r.visit_ids.flatMap(expand) })),
+    // Every member is named, each with its own client, under the window the
+    // group was planned with.
+    unassigned: plan.unassigned.flatMap((u) =>
+      expand(u.visit_id).map((id) => ({
+        ...u,
+        visit_id: id,
+        client: visits.get(id)?.client ?? u.client,
+        service: visits.get(id)?.service ?? u.service,
+      })),
+    ),
+  };
+}
+
+function planCollapsedDay(
   inp: RouteDayInputs,
   opts: { day: string; honourWindows: boolean; solver?: SolverOptions },
 ): DayPlan {

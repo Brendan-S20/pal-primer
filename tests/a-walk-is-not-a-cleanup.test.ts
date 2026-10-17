@@ -317,6 +317,7 @@ describe("the server functions", () => {
     expect(insert?.args[0]).toEqual({
       ...WALK,
       name: "30-minute walk",
+      max_dogs: null,
       organization_id: "org-a",
       active: true,
     });

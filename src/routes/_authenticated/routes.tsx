@@ -29,6 +29,7 @@ import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { StaffRoutingDialog } from "@/components/routes/StaffRoutingDialog";
 import { LaneStrip } from "@/components/routes/LaneStrip";
 import { AutoRoutingPanel } from "@/components/routes/AutoRoutingPanel";
+import { GroupWalksPanel } from "@/components/routes/GroupWalksPanel";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
@@ -1258,6 +1259,8 @@ function RoutesPage() {
           onReviewDay={(d) => setDay(d)}
         />
       )}
+
+      <GroupWalksPanel day={day} staff={staff} onChanged={() => setLocalColumns(null)} />
 
       {/* The "One tech, one day" card that stood here is gone, and with it a
           live data-loss bug.
