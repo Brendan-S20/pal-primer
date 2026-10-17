@@ -212,7 +212,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // validate_walk_group, validate_walk_group_member, copy_walk_group_walker
     // and guard_visit_walk_group. Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
-    expect(triggerFunctions().size).toBe(67);
+    //
+    // 67 -> 68 on 2026-10-17 (20261017004000, a service line is turned on
+    // only when bookable): tg_orgs_service_lines_bookable, which refuses a
+    // REST write adding a line that is still Coming soon. REVOKEd in the
+    // same file.
+    expect(triggerFunctions().size).toBe(68);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
