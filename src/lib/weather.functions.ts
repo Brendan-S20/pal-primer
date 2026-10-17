@@ -454,7 +454,7 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     // A rained-off today or tomorrow comes off the techs' routes: they hear it.
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: userId, orgId, visitIds: data.visitIds });
-    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
 
     for (const id of data.visitIds) {
       const pre = preMap.get(id);
@@ -477,7 +477,10 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
         _new_date: target,
         _note: data.note ?? undefined,
       });
-      if (error) errors.push(error.message);
+      if (error)
+        errors.push(
+          (await groomWriteError(supabase, error, { visitIds: [id], toDate: target })).message,
+        );
       else {
         moved++;
         if (pre) moves.push({ visitId: id, from: pre.scheduled_on, to: target });
@@ -555,7 +558,7 @@ export const undoReschedule = createServerFn({ method: "POST" })
       actorUserId: context.userId,
       visitIds: data.moves.map((m) => m.visitId),
     });
-    const { refuseGroomMoveClash } = await import("@/lib/groom-clash.server");
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
     for (const m of data.moves) {
       // Back to its old day is still a move: something may have been booked
       // into that slot since.
@@ -570,7 +573,11 @@ export const undoReschedule = createServerFn({ method: "POST" })
         _new_date: m.from,
         _note: "Undo weather reschedule",
       });
-      if (error) errors.push(error.message);
+      if (error)
+        errors.push(
+          (await groomWriteError(supabase, error, { visitIds: [m.visitId], toDate: m.from }))
+            .message,
+        );
       else restored++;
     }
     await watch.finish();

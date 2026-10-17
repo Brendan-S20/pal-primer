@@ -20,7 +20,12 @@ import {
   type CoatType,
   type PetSize,
 } from "@/lib/groom";
-import { groomClashRefusal, loadGroomerBusy } from "@/lib/groom-clash.server";
+import {
+  GROOM_OVERLAP_SQLSTATE,
+  groomClashRefusal,
+  groomWriteError,
+  loadGroomerBusy,
+} from "@/lib/groom-clash.server";
 import { groomVaccineCheck, type VaccineRule } from "@/lib/vaccines";
 import { loadVaccineSettings } from "@/lib/vaccines.server";
 
@@ -354,10 +359,6 @@ export async function bookGroomAppointment(
     );
   }
 
-  const clashWarning = clashOn.length
-    ? `This groomer already has a groom at that time on ${clashOn.join(", ")}. Move those repeats or the other grooms.`
-    : null;
-
   let assigned = false;
   let assignWarning: string | null = null;
   if (input.staffId) {
@@ -367,13 +368,25 @@ export async function bookGroomAppointment(
         _visit_id: visit.id,
         _staff_id: input.staffId,
       });
-      if (error) {
-        assigned = false;
-        assignWarning = error.message;
-        break;
+      if (!error) continue;
+      // The database refuses a repeat that lands on another groom for this
+      // groomer (zz_visits_groom_no_overlap). That repeat stays unassigned
+      // and is reported with the clashes found above; the rest are assigned.
+      if (error.code === GROOM_OVERLAP_SQLSTATE && visit.id !== first.id) {
+        if (!clashOn.includes(visit.scheduled_on)) clashOn.push(visit.scheduled_on);
+        continue;
       }
+      assigned = false;
+      assignWarning = (
+        await groomWriteError(db, error, { visitIds: [visit.id], toStaffId: input.staffId })
+      ).message;
+      break;
     }
   }
+
+  const clashWarning = clashOn.length
+    ? `This groomer already has a groom at that time on ${clashOn.sort().join(", ")}, so those repeats were left unassigned. Move them or the other grooms.`
+    : null;
 
   try {
     const { logActivity } = await import("@/lib/activity.server");

@@ -269,6 +269,31 @@ describe("every office path that moves or reassigns runs it", () => {
     expect(rpcNames()).toContain("reassign_visit");
   });
 
+  it("a save that loses the race to the database's guard gets the server's sentence", async () => {
+    // The check passed (Carl is free), then another save gave Carl a 09:30
+    // groom before this one wrote, and zz_visits_groom_no_overlap refused it.
+    const CARL = ID(103);
+    state.rpc.mockImplementationOnce(async () => {
+      state.tables.visits.push(
+        groom({ id: ID(7), scheduled_on: DAY, assigned_staff_id: CARL, start_time: "09:30:00" }),
+      );
+      return {
+        data: null,
+        error: { code: "23P01", message: `This groomer already has a groom at that time on ${DAY}.` },
+      } as any;
+    });
+    await expect(reassignVisit({ data: { visitId: MOVED, staffId: CARL } })).rejects.toThrow(
+      new RegExp(`already has a groom at that time on ${DAY}\\. Open start times that day: `),
+    );
+    // Any other database error keeps its own message.
+    state.rpc.mockImplementationOnce(
+      async () => ({ data: null, error: { code: "P0001", message: "staff not in org" } }) as any,
+    );
+    await expect(reassignVisit({ data: { visitId: SCOOP, staffId: CARL } })).rejects.toThrow(
+      /^staff not in org$/,
+    );
+  });
+
   it("rescheduleVisitFromOffice refuses before the RPC", async () => {
     state.tables.visits.push(
       groom({ id: ID(6), scheduled_on: NEXT, assigned_staff_id: ANA, start_time: "10:00:00" }),
@@ -317,7 +342,9 @@ describe("every office path that moves or reassigns runs it", () => {
 
   it("booking uses the same helper, and keeps its own refusal for the first date", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/groom-booking.server.ts"), "utf8");
-    expect(src).toMatch(/import \{ groomClashRefusal, loadGroomerBusy \} from "@\/lib\/groom-clash\.server"/);
+    expect(src).toMatch(
+      /import \{\s*GROOM_OVERLAP_SQLSTATE,\s*groomClashRefusal,\s*groomWriteError,\s*loadGroomerBusy,\s*\} from "@\/lib\/groom-clash\.server"/,
+    );
     expect(src).toMatch(/if \(date === input\.scheduledOn\) throw new Error\(refusal\);/);
     // No second copy of the overlap rule anywhere in src/lib.
     expect(src).not.toMatch(/groomClashes\(|openGroomStarts\(/);
