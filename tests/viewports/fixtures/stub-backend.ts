@@ -1581,6 +1581,11 @@ export async function installStubBackend(
     /** organizations.service_lines for this run. Omitted, the org is the
      *  pet-waste business BASE_STUBS describes. */
     serviceLines?: string[];
+    /** Server functions answered differently for this run. Given here rather
+     *  than as a page route because some of them (the clock, the profile, the
+     *  rest of SHELL_PART_KEYS) reach the page inside getShellParts, which a
+     *  route on the single function's name never sees. */
+    overrides?: Record<string, Stub>;
   } = {},
 ): Promise<StubReport> {
   const report: StubReport = { unstubbed: [], blockedHosts: [], leadPosts: [] };
@@ -1618,6 +1623,8 @@ export async function installStubBackend(
       ),
     };
   }
+
+  Object.assign(STUBS, options.overrides);
 
   if (!options.portal) {
     STUBS.getShellContext = (args) => shellContextFixture(STUBS, args);
