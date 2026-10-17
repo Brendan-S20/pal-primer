@@ -12,16 +12,18 @@
  *  this suite. Skipped without TEST_SUPABASE_* env. */
 import { beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { orgDay } from "../support/org-day";
 
 const URL = process.env.TEST_SUPABASE_URL;
 const SERVICE = process.env.TEST_SUPABASE_SERVICE_KEY;
 const enabled = Boolean(URL && SERVICE);
 const runId = Math.random().toString(36).slice(2, 10);
 
-const lastWeek = new Date();
-lastWeek.setUTCDate(lastWeek.getUTCDate() - 7);
-const walkDay = lastWeek.toISOString().slice(0, 10);
-const today = new Date().toISOString().slice(0, 10);
+// The org's zone is set on the org below. Every date here is counted from
+// today in that zone, so the walk and the billing cutoff agree at any hour.
+const ORG_TZ = "UTC";
+const today = orgDay(ORG_TZ);
+const walkDay = orgDay(ORG_TZ, -7);
 
 let admin: SupabaseClient;
 let orgId: string;
@@ -150,7 +152,7 @@ describe.skipIf(!enabled)("a walk bills as a walk", () => {
     orgId = await ins("organizations", {
       name: `Walk invoices ${runId}`,
       service_lines: ["dog_walking"],
-      timezone: "UTC",
+      timezone: ORG_TZ,
     });
   });
 
