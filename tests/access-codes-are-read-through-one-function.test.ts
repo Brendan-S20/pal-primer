@@ -1,17 +1,16 @@
-// A gate code, a lock box code and a key location are read through
-// property_access_codes (20261017100000) and nothing else, on My Day and in
-// the portal's grooming code.
+// The grooming code added by this PR never reads a gate code, a lock box
+// code, a key location or alarm details itself. GroomPetPanel and the
+// portal's grooming page with the server code behind it are scanned here.
 //
-// Until that migration My Day asked for the three columns in its visits
-// select, beside forty that are not secrets, so nothing marked which reads
-// handled a code, and the portal's grooming page was one embedded
-// `properties(...)` away from handing one to a customer. This walks every
-// string in the files below, comments excluded because a comment reads
-// nothing, and names file:line for a string that asks for a code column or
-// for everything (`*`), which would carry the codes with it.
+// My Day's visits query (src/lib/my-day.functions.ts) still asks for the
+// code columns on main. The walking stack moves that read to
+// property_access_codes, and this PR lands after it, so My Day is not
+// listed here and this PR does not define its own property_access_codes.
 //
-// Reading a code that has arrived (`p.gate_code` on the card) is not a
-// query and is not caught. Nor is the RPC's own name.
+// This walks every string in the files below, comments excluded, and names
+// file:line for a string that asks for a code column or for every column
+// (`*`), which would carry the codes with it. Reading a code that has
+// already arrived (`p.gate_code` on a card) is not a query and is not caught.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,11 +19,9 @@ import ts from "typescript";
 
 const root = join(import.meta.dirname, "..");
 
-/** My Day and everything it opens for a groom, and the portal's grooming
- *  page with the server code behind it. */
+/** What My Day opens for a groom, and the portal's grooming page with the
+ *  server code behind it. */
 const ACCESS_CODE_FREE_FILES = [
-  "src/lib/my-day.functions.ts",
-  "src/routes/_authenticated/my-day.tsx",
   "src/components/my-day/GroomPetPanel.tsx",
   "src/routes/portal.$slug.$token.grooming.tsx",
   "src/components/portal/PortalVaccines.tsx",
@@ -73,22 +70,16 @@ function isSelectArgument(node: ts.Node): boolean {
 
 const read = (rel: string) => readFileSync(join(root, rel), "utf8");
 
-describe("access codes are read through property_access_codes", () => {
-  it("no file on My Day or the portal's grooming code asks for a code column itself", () => {
+describe("the grooming code reads no access codes itself", () => {
+  it("no grooming file asks for a code column itself", () => {
     const found = ACCESS_CODE_FREE_FILES.flatMap((f) => directCodeReads(f, read(f)));
     expect(
       found,
-      `read access codes through property_access_codes (20261017100000), not in a select:\n${found.join("\n")}`,
+      `read access codes through property_access_codes, not in a select:\n${found.join("\n")}`,
     ).toEqual([]);
   });
 
-  it("My Day gets them from the RPC", () => {
-    const fns = read("src/lib/my-day.functions.ts");
-    expect(fns).toMatch(/supabase\.rpc\("property_access_codes", \{\s*_property_ids: ids,\s*\}\)/);
-    expect(fns).toMatch(/visits: await withAccessCodes\(/);
-  });
-
-  it("catches the select My Day shipped with, and a wildcard", () => {
+  it("catches a code column in a select, and a wildcard", () => {
     const shipped = `const q = supabase.from("visits").select(
       "id, properties(label, street, has_units, gate_code, lock_box_code, key_location, parking_notes)",
     );`;
@@ -113,12 +104,5 @@ describe("access codes are read through property_access_codes", () => {
       await supabase.rpc("property_access_codes", { _property_ids: ids });
       const label = "Gate";`;
     expect(directCodeReads("x.tsx", fine)).toEqual([]);
-  });
-
-  it("the migration keeps the function under the caller's RLS and off the publishable key", () => {
-    const sql = read("supabase/migrations/20261017100000_access-codes-are-read-through-one-function.sql");
-    expect(sql).toMatch(/SECURITY INVOKER/);
-    expect(sql).not.toMatch(/SECURITY DEFINER/);
-    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.property_access_codes\(uuid\[\]\) FROM PUBLIC, anon;/);
   });
 });

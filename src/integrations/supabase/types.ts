@@ -8511,15 +8511,6 @@ export type Database = {
           violations: number
         }[]
       }
-      property_access_codes: {
-        Args: { _property_ids: string[] }
-        Returns: {
-          gate_code: string | null
-          key_location: string | null
-          lock_box_code: string | null
-          property_id: string
-        }[]
-      }
       provision_franchise_location: {
         Args: { _members?: Json; _name: string }
         Returns: string
