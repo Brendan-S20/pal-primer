@@ -80,6 +80,9 @@ export type OneOffServiceOption = Pick<
   /** True for the business's pet-waste service: the extra cleanup, at the
    *  one-off price, booked exactly as before the catalog. */
   petWaste: boolean;
+  /** The service's line. A dog walk offers a time window (#410). Optional
+   *  so an older payload without it reads as no window. */
+  serviceLine?: string | null;
 };
 
 /**
@@ -143,6 +146,7 @@ export function oneOffServiceOptions(
         priceCents: oneOffPriceCents,
         perExtraPetCents: 0,
         petWaste: true,
+        serviceLine: s.service_line,
       });
       continue;
     }
@@ -155,6 +159,7 @@ export function oneOffServiceOptions(
       priceCents: cents,
       perExtraPetCents: s.extra_pet_cents,
       petWaste: false,
+      serviceLine: s.service_line,
     });
   }
   return out;

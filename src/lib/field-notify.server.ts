@@ -335,6 +335,26 @@ export async function startRouteWatch(input: {
 
 // ── Access to a stop today ─────────────────────────────────────────────────
 
+/** The stored gate code, read before an edit so notifyAccessChanged can tell
+ *  whether it changed. Signed-in users cannot select gate_code
+ *  (property_access_codes is their only read), so this uses the service role.
+ *  The caller must already have read the property under RLS. The value is
+ *  only compared, never returned to a browser. Null when it cannot be read. */
+export async function storedGateCode(propertyId: string, orgId: string): Promise<string | null> {
+  try {
+    const db = await admin();
+    const { data } = await db
+      .from("properties")
+      .select("gate_code")
+      .eq("id", propertyId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    return (data as { gate_code: string | null } | null)?.gate_code ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The gate code, the do-not-enter rule or the hazard notes changed on a
  *  property that a tech is going to today: tell that tech. */
 export async function notifyAccessChanged(input: {

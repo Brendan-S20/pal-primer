@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import i18n from "@/lib/i18n";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
@@ -15,11 +16,14 @@ export const SKIP_REASON_CODES = [
   "access_blocked",
   "unsafe_conditions",
   "other",
+  "key_failed",
+  "no_one_home",
+  "dog_unwell",
 ] as const;
 
 export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
   customer_requested: "Customer skipped via portal",
-  client_cancelled_late: "Client cancelled late",
+  client_cancelled_late: "Client canceled late",
   gate_locked: "Gate locked / no access",
   dog_outside: "Dog was outside",
   weather: "Weather",
@@ -27,6 +31,9 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
   access_blocked: "Access blocked (car, construction, etc.)",
   unsafe_conditions: "Unsafe conditions",
   other: "Other",
+  key_failed: "Key or code did not work",
+  no_one_home: "No one home",
+  dog_unwell: "Dog unwell",
 };
 
 /**
@@ -44,7 +51,7 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
  */
 export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
   customer_requested: "You asked us to skip this one",
-  client_cancelled_late: "Cancelled after our cut-off",
+  client_cancelled_late: "Canceled after our cut-off",
   gate_locked: "The gate was locked, so we could not get in",
   dog_outside: "Your dog was out in the yard",
   weather: "Called off for weather",
@@ -52,11 +59,23 @@ export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[numb
   access_blocked: "We could not get to the yard",
   unsafe_conditions: "It was not safe to work",
   other: "Skipped",
+  key_failed: "The key or the code did not work",
+  no_one_home: "No one was home",
+  dog_unwell: "The dog was not well enough to walk",
 };
 
-/** The customer-facing sentence for a code, or a plain fallback for a code
- *  this build does not know — a value added to the enum in the database and
- *  not yet here must not render as a raw identifier on a customer's screen. */
+/** Translate known office reasons and format older, unknown codes as words. */
+export function officeSkipReason(code: string | null | undefined): string {
+  if (!code) return "";
+  const label = SKIP_REASON_LABELS[code as (typeof SKIP_REASON_CODES)[number]];
+  if (label) return i18n.t(`skipReason.${code}`, { defaultValue: label });
+  // A code this build does not know, or a free-text reason from before codes
+  // existed: readable, never a raw snake_case identifier.
+  const spaced = code.replace(/_/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** The customer-facing sentence for a code, with a fallback for unknown codes. */
 export function customerSkipReason(code: string | null | undefined): string {
   if (!code) return "Skipped";
   return CUSTOMER_SKIP_REASON_LABELS[code as (typeof SKIP_REASON_CODES)[number]] ?? "Skipped";
@@ -76,20 +95,56 @@ const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
   access_blocked: 100,
   unsafe_conditions: 50,
   other: 0,
+  // Same numbers as default_skip_billable_pct. A key that did not work or an
+  // empty house bills half: the walker made the trip but no walk happened,
+  // and a failed key can be either side's fault. A dog that cannot walk bills
+  // nothing. Owners change these in skip rules.
+  key_failed: 50,
+  no_one_home: 50,
+  dog_unwell: 0,
 };
 
+/** Reasons that exist for a walk and would be the wrong list on a yard. */
+const WALK_ONLY_SKIP_REASON_CODES = ["key_failed", "no_one_home", "dog_unwell"] as const;
+type WalkOnlySkip = (typeof WALK_ONLY_SKIP_REASON_CODES)[number];
+
 /**
- * The reasons a TECH may pick in the field.
+ * The reasons a TECH may pick on a yard visit.
  *
  * `customer_requested` is written only by `portal_skip_visit` when a client
  * skips their own visit. A tech choosing it would be recording the customer's
  * decision as though the customer had made it, on the one code whose billing
- * the customer's own action drives — so the picker gets this list and the
- * settings screen gets the full one.
+ * the customer's own action drives, so the picker gets this list and the
+ * settings screen gets the full one. The three walk-only codes are not on a
+ * yard card.
  */
 export const TECH_SKIP_REASON_CODES = SKIP_REASON_CODES.filter(
-  (c) => c !== "customer_requested",
+  (c) => c !== "customer_requested" && !WALK_ONLY_SKIP_REASON_CODES.includes(c as WalkOnlySkip),
 ) as ReadonlyArray<(typeof SKIP_REASON_CODES)[number]>;
+
+/** What a walker picks. Yard reasons stay off this list. */
+export const WALK_SKIP_REASON_CODES = [
+  "access_blocked",
+  "key_failed",
+  "no_one_home",
+  "dog_unwell",
+  "weather",
+  "other",
+] as const satisfies readonly (typeof SKIP_REASON_CODES)[number][];
+
+/** Short labels for the walker's picker. The office labels stay on a yard. */
+export const WALK_SKIP_REASON_LABELS: Record<(typeof WALK_SKIP_REASON_CODES)[number], string> = {
+  access_blocked: "Could not get in",
+  key_failed: "Key or code did not work",
+  no_one_home: "No one home",
+  dog_unwell: "Dog unwell",
+  weather: "Weather",
+  other: "Other",
+};
+
+export function techSkipReasonCodes(walk: boolean): readonly string[] {
+  return walk ? WALK_SKIP_REASON_CODES : TECH_SKIP_REASON_CODES;
+}
 
 async function getOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is

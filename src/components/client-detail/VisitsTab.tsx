@@ -1,3 +1,4 @@
+import i18n from "@/lib/i18n";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
 // estimates into facts. Rows open a detail drawer (QA follow-up 2.3) with
@@ -27,13 +28,26 @@ import {
   listStaff,
 } from "@/lib/visits.functions";
 import { listClientHolds } from "@/lib/clients.functions";
+import { notifyCanceledWalks } from "@/lib/walk-notify.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { formatVisitDuration } from "@/lib/visit-lifecycle";
+import { officeSkipReason } from "@/lib/skip-rules.functions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  ClientCalledAtField,
+  clientCalledAtIso,
+  nowAsCalledAt,
+} from "@/components/training/ClientCalledAtField";
+
+/** A skip's reason as words: a code through the office's labels, free text
+ *  (from before reasons were codes) as it was typed. */
+function skipReasonText(v: { skip_reason_code?: string | null; skip_reason?: string | null }) {
+  return v.skip_reason_code ? officeSkipReason(v.skip_reason_code) : (v.skip_reason ?? "");
+}
 
 function fmtWindow(v: any, tz: string): string {
   // ETAs are instants and read on the ORG's clock; the service/property
@@ -136,6 +150,8 @@ export function VisitsTab({
   const qc = useQueryClient();
   const { confirm, dialog: bulkConfirmDialog } = useConfirmDialog();
   const bulkCancelFn = useServerFn(cancelVisitFromOffice);
+  const notifyWalksFn = useServerFn(notifyCanceledWalks);
+  const runsWalks = useServiceLines().lines.includes("dog_walking");
   const bulkReassignFn = useServerFn(reassignVisit);
   const bulkStaffFn = useServerFn(listStaff);
 
@@ -173,10 +189,20 @@ export function VisitsTab({
       const results = await Promise.allSettled(
         ids.map((visitId) =>
           bulkCancelFn({
-            data: { visitId, reason: bulkCancelReason.trim(), code: bulkCancelCode as any },
+            data: {
+              visitId,
+              reason: bulkCancelReason.trim(),
+              code: bulkCancelCode as any,
+              // A walk's client gets one email for the whole set, below.
+              notifyClient: !runsWalks,
+            },
           }),
         ),
       );
+      const canceled = ids.filter((_, i) => results[i].status === "fulfilled");
+      if (runsWalks && canceled.length > 0) {
+        await notifyWalksFn({ data: { visitIds: canceled } }).catch(() => undefined);
+      }
       const ok = results.filter((r) => r.status === "fulfilled").length;
       return { ok, failed: results.length - ok };
     },
@@ -190,9 +216,17 @@ export function VisitsTab({
         ids.map((visitId) => bulkReassignFn({ data: { visitId, staffId: bulkStaffId || null } })),
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
-      return { ok, failed: results.length - ok };
+      const clash = results.find((r) => r.status === "fulfilled" && r.value.clash);
+      return {
+        ok,
+        failed: results.length - ok,
+        clash: clash?.status === "fulfilled" ? clash.value.clash : null,
+      };
     },
-    onSuccess: (r) => afterBulk(r, bulkStaffId ? "Reassigned" : "Unassigned"),
+    onSuccess: (r) => {
+      afterBulk(r, bulkStaffId ? "Reassigned" : "Unassigned");
+      if (r.clash) toast.warning(r.clash);
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -681,10 +715,10 @@ function VisitTable({
                   )}
                 </td>
                 <td className="px-4 py-2.5">
-                  <StatusChip status={v.status} />
+                  <StatusChip label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })} status={v.status} />
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
                     <span className="ml-1 text-xs text-muted-foreground">
-                      {String(v.skip_reason_code ?? v.skip_reason).replace(/_/g, " ")}
+                      {skipReasonText(v)}
                     </span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
@@ -970,8 +1004,9 @@ function VisitDetailDrawer({
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
 
-  const afterAction = (msg: string) => {
+  const afterAction = (msg: string, clash?: string | null) => {
     toast.success(msg);
+    if (clash) toast.warning(clash);
     setAction(null);
     setNewDate("");
     setCancelReason("");
@@ -988,7 +1023,7 @@ function VisitDetailDrawer({
   });
   const rescheduleMut = useMutation({
     mutationFn: () => rescheduleFn({ data: { visitId: v.id, newDate } }),
-    onSuccess: () => afterAction("Visit rescheduled"),
+    onSuccess: (r) => afterAction("Visit rescheduled", r.clash),
     onError: (e) => toast.error((e as Error).message),
   });
   const cancelMut = useMutation({
@@ -998,7 +1033,7 @@ function VisitDetailDrawer({
           visitId: v.id,
           reason: cancelReason.trim(),
           code: cancelCode as any,
-          clientCancelledAt: v.client_package_id ? fromLocalInput(calledAt) : null,
+          clientCancelledAt: v.client_package_id ? clientCalledAtIso(calledAt) : null,
         },
       }),
     onSuccess: () => afterAction("Visit canceled"),
@@ -1006,7 +1041,8 @@ function VisitDetailDrawer({
   });
   const reassignMut = useMutation({
     mutationFn: () => reassignFn({ data: { visitId: v.id, staffId: newStaffId || null } }),
-    onSuccess: () => afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned"),
+    onSuccess: (r) =>
+      afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned", r.clash),
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -1053,7 +1089,7 @@ function VisitDetailDrawer({
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Status</dt>
             <dd>
-              <StatusChip status={v.status} />
+              <StatusChip label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })} status={v.status} />
             </dd>
           </div>
           <div className="flex items-center justify-between">
@@ -1101,7 +1137,7 @@ function VisitDetailDrawer({
           {(v.skip_reason_code || v.skip_reason) && (
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Skip reason</dt>
-              <dd>{String(v.skip_reason_code ?? v.skip_reason).replace(/_/g, " ")}</dd>
+              <dd>{skipReasonText(v)}</dd>
             </div>
           )}
         </dl>
@@ -1159,7 +1195,7 @@ function VisitDetailDrawer({
                     variant={action === "cancel" ? "destructive" : "outline"}
                     className={action === "cancel" ? undefined : "text-destructive"}
                     onClick={() => {
-                      setCalledAt(toLocalInput(new Date().toISOString()));
+                      setCalledAt(nowAsCalledAt());
                       setAction(action === "cancel" ? null : "cancel");
                     }}
                   >
@@ -1275,22 +1311,7 @@ function VisitDetailDrawer({
                   </div>
                 </div>
                 {v.client_package_id && (
-                  <div>
-                    <Label htmlFor="va-called-at" className="text-xs">
-                      Client called to cancel at
-                    </Label>
-                    <Input
-                      id="va-called-at"
-                      type="datetime-local"
-                      className="w-full sm:w-56"
-                      value={calledAt}
-                      max={toLocalInput(new Date().toISOString())}
-                      onChange={(e) => setCalledAt(e.target.value)}
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      The late-cancel window is measured from this time, not from when you save.
-                    </p>
-                  </div>
+                  <ClientCalledAtField id="va-called-at" value={calledAt} onChange={setCalledAt} />
                 )}
                 <p className="text-xs text-muted-foreground">
                   The visit is recorded as skipped with this reason; the org's skip-billing rules

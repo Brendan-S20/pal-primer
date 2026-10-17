@@ -22,8 +22,10 @@ describe("a trainer-only note the portal never reads", () => {
   });
   it("is never selected by the portal's training reads", () => {
     const portal = readFileSync(join(root, "src/lib/training-portal.server.ts"), "utf8");
-    const selects = [...portal.matchAll(/\.from\("training_session_notes"\)\s*\.select\("([^"]*)"\)/g)];
-    expect(selects.map((m) => m[1])).toEqual(["visit_id, note"]);
+    // The portal never reads the table. It calls portal_training_lesson_notes
+    // (20261016237000), whose RETURNS TABLE is (visit_id, note).
+    expect(portal).not.toMatch(/\.from\("training_session_notes"\)/);
+    expect(portal).toMatch(/\.rpc\(\s*"portal_training_lesson_notes"/);
   });
 });
 

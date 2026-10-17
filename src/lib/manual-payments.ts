@@ -87,3 +87,26 @@ export function describeManualPayment(
   if (!ref) return label;
   return method === "check" ? `${label} #${ref.replace(/^#/, "")}` : `${label} · ${ref}`;
 }
+
+const usd = (cents: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+
+/** "60", "60.5", "$1,060.00" to cents; null for anything that is not an
+ *  amount with at most two decimals. */
+export function parsePaymentAmount(raw: string): number | null {
+  const s = raw.trim().replace(/^\$/, "").replace(/,/g, "").trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(s) && !/^\.\d{1,2}$/.test(s)) return null;
+  const [whole, frac = ""] = s.split(".");
+  return Number(whole || "0") * 100 + Number((frac + "00").slice(0, 2));
+}
+
+/** Why an amount cannot be recorded against an invoice with `balanceCents`
+ *  still owed, or null. Less than the balance is a partial payment and fine;
+ *  more is refused, in the same words record_invoice_payment uses. */
+export function paymentAmountProblem(cents: number | null, balanceCents: number): string | null {
+  if (cents == null || cents <= 0) return "Enter an amount greater than zero.";
+  if (cents > balanceCents) {
+    return `That is more than the ${usd(balanceCents)} still owed on this invoice.`;
+  }
+  return null;
+}

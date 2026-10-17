@@ -1,3 +1,4 @@
+import { PortalStayTimeline } from "@/components/portal/Stays";
 import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
@@ -10,6 +11,7 @@ import {
   EmptyBox,
   ServiceHistorySection,
 } from "@/lib/portal-ui";
+import { usePortalWalks, WalkReportsSection } from "@/components/portal/WalkReports";
 
 export const Route = createFileRoute("/portal/$slug/$token/visits")({
   component: PortalVisits,
@@ -33,6 +35,8 @@ function PortalVisits() {
     requestsQ,
   } = usePortalCtx();
   const c = clientQ.data as any;
+  // Walks (#410): reports below, and each upcoming walk's window.
+  const walks = usePortalWalks();
   const isCommercial = c?.account_type === "commercial";
   // A visit whose re-clean is already asked for shows that instead of the
   // button. Read from the customer's own request list, so it survives a reload
@@ -49,6 +53,7 @@ function PortalVisits() {
 
   return (
     <div className="space-y-6">
+      <PortalStayTimeline />
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
           <CalendarDays className="h-4 w-4 shrink-0" /> Upcoming visits
@@ -61,7 +66,10 @@ function PortalVisits() {
           />
         ) : (
           <UpcomingVisitsList
-            rows={visitsQ.data ?? []}
+            rows={(visitsQ.data ?? []).map((v: any) => ({
+              ...v,
+              walk_window: walks.upcomingWindows[v.visit_id],
+            }))}
             // No cutoff prop: each row carries `changes_allowed_until` from
             // the server, computed in the org's timezone by the same function
             // the reschedule and skip RPCs refuse against.
@@ -112,6 +120,8 @@ function PortalVisits() {
           />
         </section>
       )}
+
+      <WalkReportsSection reports={walks.reports} />
 
       {/* Past visits belong with visits, not under Requests (G4). */}
       <ServiceHistorySection

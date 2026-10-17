@@ -54,6 +54,8 @@ export type Service = {
   base_price_cents: number | null;
   extra_pet_cents: number;
   default_duration_min: number | null;
+  max_dogs?: number | null;
+  holiday_surcharge_pct?: number;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -68,6 +70,8 @@ export type ServiceDraft = {
   base_price_cents: number | null;
   extra_pet_cents: number;
   default_duration_min: number | null;
+  max_dogs?: number | null;
+  holiday_surcharge_pct?: number;
 };
 
 export type DefaultServiceSeed = ServiceDraft & { active: boolean };
@@ -127,6 +131,15 @@ export const DEFAULT_SERVICE_SEEDS: Readonly<Record<ServiceLine, readonly Defaul
     },
     {
       name: "Overnight stay",
+      service_line: "pet_sitting",
+      price_unit: "night",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: null,
+      active: true,
+    },
+    {
+      name: "House sit",
       service_line: "pet_sitting",
       price_unit: "night",
       base_price_cents: null,
@@ -208,12 +221,10 @@ export function durationRequired(line: ServiceLine): boolean {
   return line !== "pet_waste";
 }
 
-/** The lines a service can be put on: every line Settings → Business offers,
- *  plus anything the business itself runs (`other`) and the line a service
- *  being edited already has, in the order the settings screen lists them.
- *  Not narrowed to what the business has ticked: on 2026-10-09 the owner put
- *  every line live, and a scooper writing up the walks it is about to start
- *  should not have to tick a box elsewhere first. */
+/** The lines a service can be put on: every bookable line, plus any line the
+ *  business already runs (`other` too) and the line a service being edited
+ *  already has, in the order the settings screen lists them. A line that is
+ *  Coming soon is offered only to a business that already runs it. */
 export function serviceLineChoices(
   orgLines: readonly ServiceLine[],
   current?: ServiceLine | null,
@@ -266,6 +277,22 @@ export function serviceProblem(d: ServiceDraft): string | null {
   if (!isPriceUnit(d.price_unit)) return "Choose how this service is priced.";
   if (!priceUnitsFor(d.service_line).includes(d.price_unit))
     return "Only pet sitting can be priced per night.";
+  if (
+    d.max_dogs != null &&
+    (d.service_line !== "dog_walking" ||
+      !Number.isInteger(d.max_dogs) ||
+      d.max_dogs < 1 ||
+      d.max_dogs > 50)
+  )
+    return "A group walk needs a dog walking service with room for 1 to 50 dogs.";
+  if (
+    d.holiday_surcharge_pct != null &&
+    (!Number.isInteger(d.holiday_surcharge_pct) ||
+      d.holiday_surcharge_pct < 0 ||
+      d.holiday_surcharge_pct > 500 ||
+      (d.service_line !== "pet_sitting" && d.holiday_surcharge_pct !== 0))
+  )
+    return "A sitting holiday surcharge is a whole percentage from 0 to 500.";
   for (const [cents, what] of [
     [d.base_price_cents, "The price"],
     [d.extra_pet_cents, "The extra-pet charge"],
@@ -277,7 +304,9 @@ export function serviceProblem(d: ServiceDraft): string | null {
   }
   const min = d.default_duration_min;
   if (min === null) {
-    if (durationRequired(d.service_line)) return "Say how long the service usually takes.";
+    // A night is the length. An overnight or a house sit has no minute count.
+    if (d.price_unit !== "night" && durationRequired(d.service_line))
+      return "Say how long the service usually takes.";
   } else if (!Number.isInteger(min) || min < SERVICE_DURATION_MIN || min > SERVICE_DURATION_MAX) {
     return `A duration is between ${SERVICE_DURATION_MIN} and ${SERVICE_DURATION_MAX} minutes.`;
   }

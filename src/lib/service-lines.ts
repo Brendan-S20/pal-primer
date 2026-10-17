@@ -45,19 +45,19 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** Lines an owner can choose today. No feature branch adds a line here; that
- *  is a product decision made on main. Mobile grooming (#412) and training
- *  (#413) are offered and marked Coming soon, and an owner cannot tick them.
- *  Their office screens still work for a business that already has the line.
- *  setServiceLines refuses a line that is not on this list unless the
- *  business already runs it. Customers, the public form and the receptionist
- *  cannot request either: see CUSTOMER_BOOKABLE_SERVICE_LINES and
- *  customerCanRequestService. */
-export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [
-  "pet_waste",
-  "dog_walking",
-  "pet_sitting",
-];
+/** Lines an owner can turn on today. A line joins this list when it is
+ *  approved to go live: dog walking (#410), pet sitting (#411), mobile
+ *  grooming (#412) and training (#413) each join with their approval. Until
+ *  then the picker shows them as Coming soon. A business that already runs
+ *  one keeps it; setServiceLines refuses only adding one. Walking's path
+ *  (booking, the walker's day, portal reports and access, client emails,
+ *  invoices) is built and waits on that approval. An org runs training only
+ *  when its `organizations.service_lines` is set to include it directly, and
+ *  customers still cannot request it (`customerCanRequestService`). Mobile
+ *  grooming's office screens work for a business that already has the line;
+ *  customers, the public form and the receptionist cannot request it (see
+ *  CUSTOMER_BOOKABLE_SERVICE_LINES and customerCanRequestService). */
+export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
 
 /** Why a new set of lines cannot be saved, given what the business runs now:
  *  a line that is not bookable may stay (or be removed), never be added. Null
@@ -116,6 +116,21 @@ export function serviceLinesProblem(lines: readonly unknown[]): string | null {
   if (!lines.every(isServiceLine)) return "That isn't a service HoundStack knows about.";
   if (new Set(lines).size !== lines.length) return "A service is listed twice.";
   return null;
+}
+
+/**
+ * Null when `next` adds no line that is still Coming soon. A line the org
+ * already runs is kept, so a business that runs walking can still save an
+ * unrelated change. Once it turns walking off, it cannot turn it on again.
+ */
+export function serviceLinesAdditionProblem(
+  current: readonly ServiceLine[],
+  next: readonly ServiceLine[],
+): string | null {
+  const added = next.filter((l) => !current.includes(l));
+  return added.every((l) => BOOKABLE_SERVICE_LINES.includes(l))
+    ? null
+    : "That service is coming soon.";
 }
 
 /**

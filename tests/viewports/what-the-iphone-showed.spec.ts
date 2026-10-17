@@ -204,7 +204,7 @@ for (const size of SIZES) {
       const title = page.getByText("Recurring pet waste removal").first();
       await expect(title).toBeVisible();
       const card = page.locator("li", { has: title }).first();
-      // The visible price: below sm it is the one in the title row.
+      // The visible price: on a card under 48rem it is the one in the title row.
       const price = card.locator("span", { hasText: "$33.00" }).locator("visible=true").first();
       const warning = card.getByText(/Bills for 3 dogs/).first();
       await expect(warning).toBeVisible();

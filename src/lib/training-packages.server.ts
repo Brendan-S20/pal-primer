@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
+import { newClientPackage } from "@/lib/db-insert";
 import { insertManualInvoice } from "@/lib/manual-invoice.server";
 import {
   CHOOSE_DOG,
@@ -200,15 +201,17 @@ export async function createPackageSale(
   });
   const { data: row, error } = await db
     .from("client_packages")
-    .insert({
-      organization_id: orgId,
-      client_id: input.clientId,
-      service_package_id: input.servicePackageId,
-      dog_id: input.dogId ?? null,
-      invoice_id: invoice.invoiceId,
-      request_id: input.requestId,
-      created_by: userId,
-    })
+    .insert(
+      newClientPackage({
+        organization_id: orgId,
+        client_id: input.clientId,
+        service_package_id: input.servicePackageId,
+        dog_id: input.dogId ?? null,
+        invoice_id: invoice.invoiceId,
+        request_id: input.requestId,
+        created_by: userId,
+      }),
+    )
     .select("*")
     .single();
   if (error) {

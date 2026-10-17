@@ -19,19 +19,37 @@ export const Route = createFileRoute("/_authenticated/settings/emails")({
 });
 
 // The switches. quote_followup_days is a number and gets its own control.
-type SwitchKey = Exclude<keyof Settings, "quote_followup_days">;
+type SwitchKey = Exclude<
+  keyof Settings,
+  "quote_followup_days" | "runs_dog_walking" | "runs_pet_sitting"
+>;
 
 const ROWS: Array<{ key: SwitchKey; label: string; help: string; trainingOnly?: boolean }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
   { key: "notify_email_invoice_sent", label: "Invoice sent", help: "Sent when you email a new invoice from the invoice page." },
   { key: "notify_email_quote_sent", label: "Quote sent", help: "Sent when you press Send on a quote, with a link the client accepts or declines from. Off means Send only marks the quote sent, and you share the link yourself." },
   { key: "notify_email_payment_received", label: "Payment received (receipt)", help: "Sent automatically when a payment is confirmed." },
-  { key: "notify_email_overdue", label: "Overdue and declined-card reminders", help: "Sent by the nightly worker when an invoice is past due, and when an automatic charge to a client's card on file is declined (at most once a day per invoice), with a link to update the card or pay." },
-  { key: "notify_email_visit_completed", label: "Visit completed", help: "Sent after a tech marks a visit complete. Off by default (can be chatty)." },
+  { key: "notify_email_overdue", label: "Overdue and declined-card reminders", help: "Sent when an invoice is past due, and when an automatic charge to a client's card on file is declined (at most once a day per invoice), with a link to update the card or pay." },
+  { key: "notify_email_visit_completed", label: "Visit completed", help: "Sent after a tech marks a visit complete." },
   { key: "notify_email_visit_reminder", label: "Day-before visit reminder", help: "Sent early each morning to every client with a visit the next day, with a link to skip or reschedule. Replies go to your business email." },
   { key: "notify_email_on_my_way", label: "On my way (when a text can't go)", help: "Sent instead of the \"on my way\" text when the client has no texting consent, no mobile number, or the text fails. Names the tech and the arrival window." },
   { key: "notify_email_weather_reschedule", label: "Weather reschedule", help: "Sent when a visit is bumped due to weather." },
   { key: "notify_email_training_package", label: "Training package notices", help: "Sent once when a package has one session left, and once 14 days before it expires, with a link to the client's training page. The office gets the same notices in the app either way.", trainingOnly: true },
+];
+
+// Dog walking only (#410): drawn for a business that runs it, and sent only
+// for walks, so a pet-waste client's emails are unchanged either way.
+const WALK_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
+  { key: "notify_email_walk_not_done", label: "Walk skipped or missed", help: "Sent when a walker skips a walk, with the reason in plain words, or when a walk's day passes and it did not happen." },
+  { key: "notify_email_walk_schedule_change", label: "Walk schedule changed", help: "Sent when you move a walk to another day, or change the days or time window of a walk plan. One email per client each time, with the old and new times." },
+  { key: "notify_email_walk_canceled", label: "Walk canceled by the office", help: "Sent when you cancel a walk for today or later, with the day and time window. Your typed reason stays with you. Canceling several at once sends one email per client." },
+];
+
+// Pet sitting only (#411), the same way.
+const SIT_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
+  { key: "notify_email_missed_meds", label: "Missed medication", help: "Sent when a sitting visit ends with a medication the sitter could not give, with their reason. One email per visit. The office is told in the app either way." },
+  { key: "notify_email_stay_confirmed", label: "Stay confirmed", help: "Sent when you confirm a stay, with its dates and a link to pay the deposit when one is due." },
+  { key: "notify_email_stay_ending", label: "Stay ends tomorrow", help: "Sent the day before a confirmed stay ends, once per stay." },
 ];
 
 type Settings = Awaited<ReturnType<typeof getEmailSettings>>;
@@ -49,8 +67,40 @@ function EmailSettingsPage() {
   const [values, setValues] = useState<Settings>(data);
   useEffect(() => setValues(data), [data]);
 
+  const base = ROWS.filter((r) => !r.trainingOnly || lines.includes("training"));
+  const rows = values.runs_dog_walking ? [...base, ...WALK_ROWS] : base;
+  const shown = [...rows, ...(values.runs_pet_sitting ? SIT_ROWS : [])];
   const mut = useMutation({
-    mutationFn: () => save({ data: values }),
+    mutationFn: () => {
+      // The walk and sitting switches are saved only where they were drawn.
+      const {
+        runs_dog_walking,
+        runs_pet_sitting,
+        notify_email_walk_not_done,
+        notify_email_walk_schedule_change,
+        notify_email_walk_canceled,
+        notify_email_missed_meds,
+        notify_email_stay_confirmed,
+        notify_email_stay_ending,
+        ...rest
+      } = values;
+      const walk = runs_dog_walking
+        ? {
+            ...rest,
+            notify_email_walk_not_done,
+            notify_email_walk_schedule_change,
+            notify_email_walk_canceled,
+          }
+        : rest;
+      return save({
+        data: {
+          ...walk,
+          ...(runs_pet_sitting
+            ? { notify_email_missed_meds, notify_email_stay_confirmed, notify_email_stay_ending }
+            : {}),
+        },
+      });
+    },
     onSuccess: () => { toast.success("Email preferences saved"); refetch(); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -66,7 +116,7 @@ function EmailSettingsPage() {
       <Card>
         <CardHeader><CardTitle>Notifications</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {ROWS.filter((r) => !r.trainingOnly || lines.includes("training")).map((r) => (
+          {shown.map((r) => (
             <label key={r.key} className="flex items-start gap-3 text-sm">
               <input
                 type="checkbox"

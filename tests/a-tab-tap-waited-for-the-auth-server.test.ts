@@ -36,7 +36,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-import { forgetVerifiedIdentity, IDENTITY_REUSE_MS, resolveIdentity } from "@/lib/offline/identity";
+import { forgetVerifiedIdentity, getVerifiedUser, IDENTITY_REUSE_MS, resolveIdentity } from "@/lib/offline/identity";
 
 const USER = { id: "11111111-1111-4111-8111-111111111111" };
 
@@ -53,6 +53,16 @@ describe("who is signed in, asked once and not on every tap", () => {
       expect(await resolveIdentity()).toMatchObject({ ok: true, userId: USER.id });
     }
     expect(auth.getUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares the verified user without another request and expires it", async () => {
+    vi.useFakeTimers();
+    expect(getVerifiedUser()).toBeNull();
+    await resolveIdentity();
+    expect(getVerifiedUser()).toEqual(USER);
+    expect(auth.getUser).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(Date.now() + IDENTITY_REUSE_MS);
+    expect(getVerifiedUser()).toBeNull();
   });
 
   it("asks again once the reuse window is over", async () => {
@@ -72,6 +82,7 @@ describe("who is signed in, asked once and not on every tap", () => {
     expect(auth.listener, "nothing is watching the session").not.toBeNull();
 
     auth.listener!("SIGNED_OUT", null);
+    expect(getVerifiedUser()).toBeNull();
     auth.getUser.mockResolvedValue({ data: { user: null }, error: { status: 401 } });
     expect(await resolveIdentity()).toMatchObject({ ok: false, rejected: true });
 

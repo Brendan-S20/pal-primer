@@ -38,7 +38,7 @@
  * Proof the page rendered and is the tech's, before any "nothing is wrong"
  * assertion: the heading, and a client name only the fixture holds.
  */
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
 import { FIRST_PAINT_MS } from "./fixtures/first-paint";
@@ -78,16 +78,6 @@ const SIZES: { name: string; width: number; height: number; insets: Insets }[] =
   },
 ];
 
-function serverFnName(route: Route): string {
-  const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
-  try {
-    const meta = JSON.parse(Buffer.from(decodeURIComponent(id), "base64url").toString());
-    return String(meta.export ?? "").replace(/_createServerFn_handler$/, "");
-  } catch {
-    return "";
-  }
-}
-
 async function emulateInsets(page: Page, insets: Insets) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setSafeAreaInsetsOverride" as never, { insets } as never);
@@ -114,19 +104,13 @@ async function expectInsetsResolve(page: Page, insets: Insets) {
 
 async function openMyDay(page: Page, opts: { offTheClock?: boolean } = {}) {
   await installSignedInSession(page.context());
-  await installStubBackend(page.context(), { role: "tech" });
-  if (opts.offTheClock) {
-    // Registered after the shared stubs, so matched before them: the same
-    // tech, nothing on the clock today.
-    await page.context().route("**/_serverFn/**", (route) => {
-      if (serverFnName(route) !== "getMyClock") return route.fallback();
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ result: { ...fx.MY_CLOCK, entries: [] } }),
-      });
-    });
-  }
+  // The same tech, nothing on the clock today. An override rather than a
+  // route on getMyClock: the shell's first load carries the clock inside
+  // getShellParts, and My Day reads that answer without asking again.
+  await installStubBackend(page.context(), {
+    role: "tech",
+    overrides: opts.offTheClock ? { getMyClock: { ...fx.MY_CLOCK, entries: [] } } : undefined,
+  });
   await page.goto("/my-day", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "My day" })).toBeVisible({
     timeout: FIRST_PAINT_MS,

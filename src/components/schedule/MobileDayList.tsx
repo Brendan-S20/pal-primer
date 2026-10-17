@@ -19,6 +19,8 @@ import { ChevronRight, CloudRain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { visitStayDates } from "@/lib/stays";
+import { skipReasonText } from "@/lib/skip-reason-text";
 
 type Visit = any;
 type Staff = any;
@@ -174,6 +176,17 @@ export function MobileDayList({
                             <bdi className="truncate">{v.services.name}</bdi>
                           </Badge>
                         )}
+                        {visitStayDates(v.subscriptions?.stays) && (
+                          // Part of a sitter's stay (#411), with its dates.
+                          <Badge
+                            variant="outline"
+                            className="h-4 min-w-0 max-w-full px-1 text-3xs"
+                          >
+                            <span className="truncate">
+                              Stay, {visitStayDates(v.subscriptions?.stays)}
+                            </span>
+                          </Badge>
+                        )}
                         {v.zones?.name && (
                           <Badge variant="outline" className="h-4 px-1 text-3xs">
                             {v.zones.name}
@@ -185,16 +198,27 @@ export function MobileDayList({
                           </Badge>
                         )}
                         {v.weather_flagged && (
+                          // The forecast note can be longer than a phone row
+                          // holds. It was clipped mid-word inside the pill
+                          // (QA row 43); now it ends in an ellipsis and the
+                          // full note is the title.
                           <Badge
                             variant="destructive"
-                            className="h-4 gap-0.5 px-1 text-3xs"
+                            className="h-4 min-w-0 max-w-full gap-0.5 px-1 text-3xs"
                             title={v.weather_note ?? "Weather risk"}
                           >
                             <CloudRain className="h-2.5 w-2.5 shrink-0" />
-                            {v.weather_note ? String(v.weather_note).split(",")[0] : "Weather"}
+                            <span className="truncate">
+                              {v.weather_note ? String(v.weather_note).split(",")[0] : "Weather"}
+                            </span>
                           </Badge>
                         )}
                       </div>
+                      {v.status === "skipped" && (
+                        <div className="mt-0.5 break-words text-2xs text-muted-foreground">
+                          Skip: {skipReasonText(v.skip_reason, v.skip_reason_code)}
+                        </div>
+                      )}
                     </div>
                     <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                   </button>

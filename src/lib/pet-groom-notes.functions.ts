@@ -8,6 +8,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { newPetGroomNote } from "@/lib/db-insert";
 
 const clean = (v: string | null | undefined) => {
   const s = (v ?? "").trim();
@@ -31,13 +32,13 @@ export const savePetGroomNote = createServerFn({ method: "POST" })
   .inputValidator((d) => petGroomNoteSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.from("pet_groom_notes").upsert(
-      {
+      newPetGroomNote({
         visit_id: data.visitId,
         dog_id: data.dogId,
         blade: clean(data.blade),
         style: clean(data.style),
         problems: clean(data.problems),
-      },
+      }),
       { onConflict: "visit_id,dog_id" },
     );
     if (error) throw new Error(error.message);

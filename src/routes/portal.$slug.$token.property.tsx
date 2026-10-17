@@ -8,6 +8,7 @@ import {
   money, fmtDayShort, friendlyFrequency,
 } from "@/lib/portal-ui";
 import { portalListProperties } from "@/lib/portal.functions";
+import { WalkAccessCard } from "@/components/portal/WalkAccessCard";
 
 export const Route = createFileRoute("/portal/$slug/$token/property")({
   component: PortalProperty,
@@ -87,6 +88,9 @@ function PortalProperty() {
           )}
         </section>
       )}
+
+      {/* Dog walking only (#410): draws nothing without a walk plan. */}
+      <WalkAccessCard />
 
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">

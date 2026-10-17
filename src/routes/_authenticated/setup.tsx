@@ -40,6 +40,7 @@ import {
   useSetupGuide,
 } from "@/lib/setup-guide";
 import { titleHead } from "@/lib/page-title";
+import { setupProgressPct } from "@/lib/setup-progress";
 import { APP_NAME } from "@/lib/scoop";
 
 // ── THE GUIDED SETUP ──────────────────────────────────────────────────────
@@ -183,7 +184,7 @@ function SetupPage() {
             one tap away from the next. */}
         <nav aria-label="Setup steps" className="min-w-0">
           <div className="lg:hidden">
-            <Progress value={((index + 1) / steps.length) * 100} />
+            <Progress value={setupProgressPct(steps)} />
           </div>
           <ol className="hidden space-y-1 lg:block">
             {steps.map((s, i) => (

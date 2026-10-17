@@ -60,6 +60,7 @@ import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { servicesVary, type VisitServiceRef } from "@/lib/visit-service";
 import { formatWeekdaySet } from "@/lib/weekday-set";
 import { useIntlLocale } from "@/lib/i18n";
+import { visitStayDates, type VisitStayRef } from "@/lib/stays";
 
 export type CalendarVisit = {
   id: string;
@@ -84,6 +85,9 @@ export type CalendarVisit = {
     frequency?: string | null;
     /** A set-days plan's days (0 = Sunday), migration 20261010010000. */
     weekdays?: number[] | null;
+    /** A sitter's stay this visit belongs to (#411). */
+    stay_id?: string | null;
+    stays?: VisitStayRef;
   } | null;
   /** What the visit is (services, phase 2). */
   service_id?: string | null;
@@ -263,10 +267,13 @@ function VisitChip({
   // repeat what the client list already says. The service name likewise, only
   // when it varies.
   const oneTime = visit.subscriptions?.frequency === "one_time" ? "One-time" : null;
+  // A stay visit runs every day of the stay, so its plan's cadence ("Every
+  // day") says nothing; the stay's dates do (#411).
+  const stayDates = visitStayDates(visit.subscriptions?.stays);
   const second = [
     mins == null ? null : clock(mins),
     showService ? serviceName : null,
-    oneTime,
+    stayDates ? "Stay" : oneTime,
     street,
   ]
     .filter(Boolean)
@@ -334,8 +341,16 @@ function VisitChip({
               <dt className="text-muted-foreground">Service</dt>
               <dd>
                 {serviceName && <bdi>{serviceName}</bdi>}
-                {serviceName && cadence ? " · " : null}
-                {cadence}
+                {stayDates ? (
+                  <>
+                    {serviceName ? " · " : null}Stay, {stayDates}
+                  </>
+                ) : (
+                  <>
+                    {serviceName && cadence ? " · " : null}
+                    {cadence}
+                  </>
+                )}
               </dd>
             </>
           )}
@@ -362,6 +377,7 @@ export function ScheduleCalendar({
   onHoverVisit,
   hideWeekends = false,
   onPickDay,
+  onPickUnassigned,
   onOpenVisit,
 }: {
   day: string;
@@ -376,6 +392,9 @@ export function ScheduleCalendar({
   onHoverVisit?: (id: string | null) => void;
   hideWeekends?: boolean;
   onPickDay: (d: string) => void;
+  /** "N unassigned" under a day: open that day's unassigned visits. Falls
+   *  back to opening the day when the page has no separate handler. */
+  onPickUnassigned?: (d: string) => void;
   onOpenVisit: (visitId: string) => void;
 }) {
   const tz = useOrgTimezone();
@@ -607,14 +626,20 @@ export function ScheduleCalendar({
                   </button>
                 )}
 
+                {/* A button, not a label: it said "2 unassigned" and did
+                    nothing when tapped (QA #439). It opens that day with its
+                    unassigned visits in front. */}
                 {unassigned > 0 && (
-                  <span
-                    className={`mt-auto px-1 pt-1 text-3xs text-amber-700 ${
+                  <button
+                    type="button"
+                    onClick={() => (onPickUnassigned ?? onPickDay)(d)}
+                    data-unassigned-link={d}
+                    className={`mt-auto px-1 pt-1 text-left text-3xs text-amber-700 underline-offset-2 hover:underline touch:min-h-11 ${
                       isMonth ? "hidden md:block" : ""
                     }`}
                   >
                     {unassigned} unassigned
-                  </span>
+                  </button>
                 )}
               </div>
             );
@@ -627,7 +652,7 @@ export function ScheduleCalendar({
           the hover card it pointed at is a shortcut, not the only way in.
           Tapping a chip opens the visit, which is where all of it lives. */}
       <p className="mt-3 text-2xs text-muted-foreground">
-        Colours match the map: each technician keeps the same colour in both, and the badge on a
+        Colors match the map: each technician keeps the same color in both, and the badge on a
         visit is their initials. Open a visit for who and where, or the date for that day&apos;s
         board.
         {isMonth && (

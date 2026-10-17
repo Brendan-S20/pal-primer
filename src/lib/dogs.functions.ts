@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller, type CallerContext } from "@/lib/authz.server";
 import { assertValidDogName, dogNeedsUnitReview } from "@/lib/dna-linkage";
+import { cleanSpeciesNote, PET_SPECIES, SPECIES_NOTE_MAX } from "@/lib/pets";
 
 /** Server-side twin of the can_write_org() SQL helper (everyone but techs) —
  * same posture as units.functions.ts. Dog writes edit client records (and the
@@ -28,6 +29,12 @@ async function propertyHasUnits(supabase: any, propertyId: string): Promise<bool
 const temperament = z.enum(["friendly", "nervous", "aggressive", "unknown"]);
 // PooPrints-style registration state for commercial units.
 const dnaStatus = z.enum(["not_registered", "pending", "registered"]);
+// A pet that is not a dog (#411). Omitted, a new row is a dog.
+const species = z.enum(PET_SPECIES);
+const speciesNote = z.string().max(SPECIES_NOTE_MAX).optional().nullable();
+// The pet's vet, for the sitter (#411). Omitted leaves the stored value.
+const vetClinicName = z.string().max(200).optional().nullable();
+const vetClinicPhone = z.string().max(40).optional().nullable();
 
 /** How a groomer has to handle the pet. Shown at the top of its My Day card. */
 const handlingFields = {
@@ -54,6 +61,10 @@ function handlingPatch(data: {
 const addDogSchema = z.object({
   propertyId: z.string().uuid(),
   name: z.string().min(1).max(80),
+  species: species.optional(),
+  speciesNote,
+  vetClinicName,
+  vetClinicPhone,
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
   coatType: z.enum(COAT_TYPES).nullable().optional(),
@@ -106,6 +117,10 @@ export const addDog = createServerFn({ method: "POST" })
         property_id: data.propertyId,
         organization_id: prop.organization_id,
         name: dogName,
+        species: data.species ?? "dog",
+        species_note: cleanSpeciesNote(data.species ?? "dog", data.speciesNote),
+        vet_clinic_name: data.vetClinicName?.trim() || null,
+        vet_clinic_phone: data.vetClinicPhone?.trim() || null,
         breed: data.breed || null,
         weight_class: data.weightClass || null,
         coat_type: data.coatType ?? null,
@@ -137,7 +152,7 @@ export const addDog = createServerFn({ method: "POST" })
         propertyId: data.propertyId,
         actorUserId: context.userId,
         kind: "dog.added",
-        summary: `Added dog ${data.name}${propRow?.street ? ` at ${propRow.street}` : ""}`,
+        summary: `Added ${(data.species ?? "dog") === "dog" ? "dog" : "pet"} ${data.name}${propRow?.street ? ` at ${propRow.street}` : ""}`,
       });
     } catch {}
     return { id: row.id as string };
@@ -146,6 +161,10 @@ export const addDog = createServerFn({ method: "POST" })
 const editDogSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).max(80).optional(),
+  species: species.optional(),
+  speciesNote,
+  vetClinicName,
+  vetClinicPhone,
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
   coatType: z.enum(COAT_TYPES).nullable().optional(),
@@ -213,6 +232,13 @@ export const updateDog = createServerFn({ method: "POST" })
             propertyHasUnits: await propertyHasUnits(context.supabase, dogPropertyId),
           });
     }
+    if (data.species !== undefined) {
+      patch.species = data.species;
+      patch.species_note = cleanSpeciesNote(data.species, data.speciesNote);
+    }
+    if (data.vetClinicName !== undefined) patch.vet_clinic_name = data.vetClinicName?.trim() || null;
+    if (data.vetClinicPhone !== undefined)
+      patch.vet_clinic_phone = data.vetClinicPhone?.trim() || null;
     if (data.breed !== undefined) patch.breed = data.breed || null;
     if (data.weightClass !== undefined) patch.weight_class = data.weightClass || null;
     if (data.coatType !== undefined) patch.coat_type = data.coatType;
@@ -241,7 +267,8 @@ export const updateDog = createServerFn({ method: "POST" })
     const row = rows?.[0];
     if (!row) throw new Error("Dog not found");
 
-    if (data.active !== undefined && row.property_id) {
+    // Active dogs feed the estimate; a species change moves a pet in or out.
+    if ((data.active !== undefined || data.species !== undefined) && row.property_id) {
       const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
       await recomputePropertyEstimate(context.supabase, row.property_id);
     }

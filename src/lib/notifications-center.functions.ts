@@ -1,22 +1,26 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 
 // Reader/mutator server fns for the in-app notification center. All scoped to
 // the signed-in user via RLS (recipient_user_id = auth.uid()).
 
 export const listMyNotifications = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { data, error } = await (context.supabase as any)
-      .from("app_notifications")
-      .select("id, type, title, body, link, read_at, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as any[];
-    return { notifications: rows, unread: rows.filter((r) => !r.read_at).length };
-  });
+  .handler(async ({ context }) => loadMyNotifications(context));
+
+/** listMyNotifications's answer, also asked by getShellContext. */
+export const loadMyNotifications = createServerOnlyFn(async (context: AuthedContext) => {
+  const { data, error } = await (context.supabase as any)
+    .from("app_notifications")
+    .select("id, type, title, body, link, read_at, created_at")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as any[];
+  return { notifications: rows, unread: rows.filter((r) => !r.read_at).length };
+});
 
 export const markNotificationRead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -83,6 +87,9 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   // to the person who pressed Apply, and only when they had left the page.
   { type: "routing_ready", label: "Auto-routing finished in the background" },
   { type: "routing_failed", label: "Auto-routing did not finish" },
+  // A sitter logged a medication as missed (src/lib/sit-notify.server.ts), to
+  // the owner, office managers and dispatchers.
+  { type: "missed_meds", label: "A sitter missed a medication" },
 ];
 
 export const getNotificationPrefs = createServerFn({ method: "GET" })

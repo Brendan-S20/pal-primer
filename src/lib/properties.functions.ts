@@ -1,6 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import {
+  ACCESS_CODE_MAX,
+  ACCESS_METHODS,
+  ALARM_NOTES_MAX,
+  KEY_TAG_MAX,
+  cleanKeyTag,
+} from "@/lib/walk-access";
 
 // yard_size is derived from the boundary by a DB trigger now; the field is
 // still accepted (older forms send it) but never written.
@@ -29,7 +36,10 @@ const createPropSchema = z.object({
   city: z.string().min(1).max(120),
   region: z.string().max(120).optional(),
   postalCode: z.string().min(1).max(20),
-  gateCode: z.string().max(60).optional(),
+  // On update, absent leaves the stored gate code alone and null clears it.
+  // The drawer sends it only when the user changed it (gateCodeSave), so an
+  // editor who could not load the codes does not wipe it.
+  gateCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
   parkingNotes: z.string().max(1000).optional(),
   // Provider-resolved coordinates (skip Nominatim when present) + whether
   // the address came from the search provider or manual entry.
@@ -55,7 +65,42 @@ const createPropSchema = z.object({
   // Service boundary sketched during creation (UX round 4: no more
   // save-then-reopen to draw the yard).
   boundary: polygonSchema.optional(),
+  // How the walker gets in (#410). Sent only by a drawer that shows the
+  // walker-access fields; absent means "leave the stored value alone", so a
+  // pet-waste business's saves never touch these columns. The drawer also
+  // leaves out a code the user did not change, so an editor who could not
+  // load the codes does not wipe them. Null still clears.
+  accessMethod: z.enum(ACCESS_METHODS).nullable().optional(),
+  keyHeld: z.boolean().optional(),
+  keyTag: z.string().max(KEY_TAG_MAX).nullable().optional(),
+  lockBoxCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
+  keyLocation: z.string().max(200).nullable().optional(),
+  alarmNotes: z.string().max(ALARM_NOTES_MAX).nullable().optional(),
 });
+
+/** The walker-access columns to write: only the fields the form sent. */
+function walkAccessPatch(
+  data: Pick<
+    z.infer<typeof createPropSchema>,
+    "accessMethod" | "keyHeld" | "keyTag" | "lockBoxCode" | "keyLocation" | "alarmNotes"
+  >,
+) {
+  const patch: {
+    access_method?: string | null;
+    key_held?: boolean;
+    key_tag?: string | null;
+    lock_box_code?: string | null;
+    key_location?: string | null;
+    alarm_notes?: string | null;
+  } = {};
+  if (data.accessMethod !== undefined) patch.access_method = data.accessMethod;
+  if (data.keyHeld !== undefined) patch.key_held = data.keyHeld;
+  if (data.keyTag !== undefined) patch.key_tag = cleanKeyTag(data.keyTag);
+  if (data.lockBoxCode !== undefined) patch.lock_box_code = data.lockBoxCode?.trim() || null;
+  if (data.keyLocation !== undefined) patch.key_location = data.keyLocation?.trim() || null;
+  if (data.alarmNotes !== undefined) patch.alarm_notes = data.alarmNotes?.trim() || null;
+  return patch;
+}
 
 export const createProperty = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -133,6 +178,7 @@ export const createProperty = createServerFn({ method: "POST" })
         longitude: geo?.longitude ?? null,
         boundary: (data.boundary as any) ?? null,
         boundary_area_sqm: data.boundary ? polygonAreaSqm(data.boundary as any) : null,
+        ...walkAccessPatch(data),
       })
       .select("id")
       .single();
@@ -189,11 +235,22 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { data: current, error: curErr } = await supabase
       .from("properties")
       .select(
-        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, gate_code, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
       )
       .eq("id", data.propertyId)
       .single();
     if (curErr) throw new Error(curErr.message);
+
+    // The caller cannot select gate_code. The stored value is read with the
+    // service role only to tell whether it changed, and only for a property
+    // the caller's own query just returned. It is never sent back.
+    const gateCodeSent = data.gateCode !== undefined;
+    const nextGateCode = gateCodeSent ? data.gateCode?.trim() || null : undefined;
+    let gateCodeBefore: string | null = null;
+    if (gateCodeSent) {
+      const { storedGateCode } = await import("@/lib/field-notify.server");
+      gateCodeBefore = await storedGateCode(data.propertyId, current.organization_id);
+    }
 
     // Provider-resolved coordinates win; otherwise re-geocode via OSM when
     // the address might have changed (cheap, keeps lat/lng fresh).
@@ -246,7 +303,7 @@ export const updateProperty = createServerFn({ method: "POST" })
         city: data.city,
         region: data.region || null,
         postal_code: data.postalCode,
-        gate_code: data.gateCode || null,
+        ...(gateCodeSent ? { gate_code: nextGateCode } : {}),
         parking_notes: data.parkingNotes || null,
         address_source: data.addressSource ?? "manual",
         ...zonePatch,
@@ -262,6 +319,7 @@ export const updateProperty = createServerFn({ method: "POST" })
         visit_contact_name: data.visitContactName || null,
         visit_contact_phone: data.visitContactPhone || null,
         visit_contact_email: data.visitContactEmail || null,
+        ...walkAccessPatch(data),
         ...geoPatch,
       })
       .eq("id", data.propertyId);
@@ -273,9 +331,10 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { notifyAccessChanged } = await import("@/lib/field-notify.server");
     await notifyAccessChanged({
       propertyId: data.propertyId,
-      before: current as any,
+      // A gate code left out of the save did not change.
+      before: { ...(current as any), gate_code: gateCodeBefore },
       after: {
-        gate_code: data.gateCode || null,
+        gate_code: gateCodeSent ? nextGateCode : gateCodeBefore,
         do_not_enter_if_dog_out: !!data.doNotEnterIfDogOut,
         hazard_notes: data.hazardNotes || null,
       },
@@ -459,12 +518,24 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source",
+        "id, label, street, city, region, postal_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source, access_method, key_held",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
-    return { properties: rows ?? [] };
+    const { accessFor, accessLoaded, readPropertyAccess } = await import("@/lib/property-access");
+    const access = await readPropertyAccess(
+      supabase,
+      (rows ?? []).map((r) => r.id),
+    );
+    return {
+      properties: (rows ?? []).map((r) => ({
+        ...r,
+        ...accessFor(access, r.id),
+        // The drawer sends the codes only when they were loaded or typed.
+        access_codes_loaded: accessLoaded(access, r.id),
+      })),
+    };
   });
 
 // Shoelace on lat/lng, projected as equirectangular around the polygon centroid.

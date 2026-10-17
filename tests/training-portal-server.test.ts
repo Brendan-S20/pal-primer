@@ -243,10 +243,6 @@ describe("the portal Training page", () => {
       data: [{ visit_id: "v-done", score: 4, training_skills: { name: "Sit", sort_order: 1 } }],
       error: null,
     }),
-    training_session_notes: () => ({
-      data: [{ visit_id: "v-done", note: "Good focus" }],
-      error: null,
-    }),
     homework: () => ({
       data: [{ visit_id: "v-done", body: "Practice sit", due_on: null }],
       error: null,
@@ -254,8 +250,16 @@ describe("the portal Training page", () => {
     staff: () => ({ data: [{ id: "s1", display_name: "Maria Lopez" }], error: null }),
   });
 
+  const lessonNotes = () =>
+    state.rpc.mockImplementation(async (fn: string) =>
+      fn === "portal_training_lesson_notes"
+        ? { data: [{ visit_id: "v-done", note: "Good focus" }], error: null }
+        : { data: null, error: { message: `unexpected rpc ${fn}` } },
+    );
+
   it("shows a lesson's scores, note and homework, the balance and what is booked", async () => {
     on(lessonData(true));
+    lessonNotes();
     const r = await portalGetTraining({ data: { token: TOKEN } });
     if (!r.visible) throw new Error("expected the page");
     const p = r.packages[0];
@@ -279,9 +283,33 @@ describe("the portal Training page", () => {
         homework: { body: "Practice sit", dueOn: null },
       },
     ]);
-    // The shared note only. The trainer's own note is never asked for.
-    const notes = state.queries.filter((q) => q.table === "training_session_notes");
-    expect(notes.map((q) => q.cols)).toEqual(["visit_id, note"]);
+    // The shared note only, through the portal function. The table itself is
+    // never read, so no column list on it can widen to the trainer's note. The
+    // session's client goes with it, so another client's visit ids return
+    // nothing.
+    expect(state.queries.some((q) => q.table === "training_session_notes")).toBe(false);
+    expect(state.rpc).toHaveBeenCalledWith("portal_training_lesson_notes", {
+      _organization_id: "org-1",
+      _client_id: "client-1",
+      _visit_ids: ["v-done"],
+    });
+  });
+
+  it("reads lesson notes only through portal_training_lesson_notes, which returns visit_id and note", () => {
+    const code = readFileSync("src/lib/training-portal.server.ts", "utf8").replace(/\/\/.*$/gm, "");
+    expect(code).not.toMatch(/from\(\s*["']training_session_notes["']/);
+    expect(code).toMatch(/\.rpc\(\s*"portal_training_lesson_notes"/);
+    const sql = readFileSync(
+      "supabase/migrations/20261016237000_portal-reads-no-trainer-note.sql",
+      "utf8",
+    ).replace(/--.*$/gm, "");
+    expect(sql).toMatch(/RETURNS TABLE \(visit_id uuid, note text\)/);
+    expect(sql).toMatch(/SELECT n\.visit_id, n\.note\s+FROM public\.training_session_notes n/);
+    expect(sql).toMatch(/_organization_id uuid, _client_id uuid, _visit_ids uuid\[\]/);
+    expect(sql).toMatch(/JOIN public\.visits v ON v\.id = n\.visit_id/);
+    expect(sql).toMatch(/AND v\.client_id = _client_id/);
+    expect(sql).not.toMatch(/trainer_note|\*/);
+    expect(sql).toMatch(/FROM PUBLIC, anon, authenticated;/);
   });
 
   it("never names the trainer-only note anywhere in the portal code", () => {
@@ -304,6 +332,7 @@ describe("the portal Training page", () => {
     expect(r.packages[0].recent[0]).toMatchObject({ note: null, homework: null });
     expect(r.packages[0].recent[0].scores).toHaveLength(1);
     expect(state.queries.some((q) => q.table === "training_session_notes")).toBe(false);
+    expect(state.rpc).not.toHaveBeenCalledWith("portal_training_lesson_notes", expect.anything());
     expect(state.queries.some((q) => q.table === "homework")).toBe(false);
   });
 });

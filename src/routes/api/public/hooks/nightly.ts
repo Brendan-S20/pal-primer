@@ -3,6 +3,7 @@ import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { invoiceEmailTaxData, taxShareCents } from "@/lib/sales-tax";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
+import { invoiceDueCents } from "@/lib/ar";
 import type { EndCustomerSmsSender } from "@/lib/twilio-credentials.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
@@ -65,7 +66,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, workday_start, workday_end, notify_email_visit_reminder, quote_followup_days",
+            "id, name, service_lines, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, workday_start, workday_end, notify_email_visit_reminder, quote_followup_days",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -182,6 +183,21 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
               { _org_id: org.id },
             );
             perOrg.visits_missed = error ? `err: ${error.message}` : (n as number);
+            // A missed dog walk's client is told, once per walk (#410). Reads
+            // nothing but walks, so a pet-waste business is untouched.
+            if (!error) {
+              const { notifyMissedWalks } = await import("@/lib/walk-notify.server");
+              perOrg.missed_walks_emailed = await notifyMissedWalks(org.id, todayStr);
+            }
+          }
+
+          if (org.service_lines?.includes("pet_sitting")) {
+            try {
+              const { notifyStaysEnding } = await import("@/lib/stay-notify.server");
+              perOrg.stays_ending_emailed = await notifyStaysEnding(org.id, todayStr);
+            } catch (error) {
+              console.error("stay ending notices failed", org.id, error);
+            }
           }
 
           if (org.auto_invoice_enabled) {
@@ -887,7 +903,9 @@ async function sendOverdueEmails(
     invoices = await fetchAllPages<any>((a, b) =>
       supabaseAdmin
         .from("invoices")
-        .select("id, client_id, total_cents, issued_at, due_on, last_email_reminder_at")
+        .select(
+          "id, client_id, total_cents, credit_applied_cents, amount_paid_cents, issued_at, due_on, last_email_reminder_at",
+        )
         .eq("organization_id", orgId)
         .eq("status", "open")
         .not("due_on", "is", null)
@@ -932,7 +950,9 @@ async function sendOverdueEmails(
       notifyKey: "notify_email_overdue",
       idempotencyKey: `overdue-${inv.id}-${new Date().toISOString().slice(0, 10)}`,
       templateData: {
-        amountCents: inv.total_cents,
+        // What is past due: the balance, net of credit and of any part
+        // already paid, not the invoice's original total.
+        amountCents: invoiceDueCents(inv),
         daysPastDue,
         invoiceUrl,
       },
@@ -957,7 +977,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   if (!acct || !acct.chargesEnabled) return 0;
   const { data: org } = await supabaseAdmin
     .from("organizations")
-    .select("dunning_retry_days, dunning_pause_after_failures")
+    .select("dunning_retry_days, dunning_pause_after_failures, service_lines")
     .eq("id", orgId)
     .single();
   const retryDays: number[] =
@@ -970,7 +990,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
     .select(
-      "id, client_id, total_cents, tax_cents, credit_applied_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)",
+      "id, client_id, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)",
     )
     .eq("organization_id", orgId)
     // Only open invoices: drafts are unfinalized staff WIP and must never be
@@ -1045,7 +1065,8 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     // apply_credit_to_invoice is idempotent (advisory lock + row locks) and
     // only touches 'open' postpaid invoices; if credit fully covers the
     // invoice it is marked paid and there is nothing to charge.
-    let dueCents = Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
+    // Net of any partial payment too: autopay charges what is left.
+    let dueCents = invoiceDueCents(inv);
     try {
       const { data: applied, error: applyErr } = await supabaseAdmin.rpc(
         "apply_credit_to_invoice",
@@ -1082,6 +1103,9 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         taxCents: taxShareCents(dueCents, inv.tax_cents, inv.total_cents),
         config: await orgFeeConfig(supabaseAdmin, inv.organization_id),
       });
+      const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+      const stayRails = org?.service_lines?.includes("pet_sitting")
+        ? await stayInvoicePaymentTypes(inv.id, inv.organization_id, []) : [];
       const pi = await stripe.paymentIntents.create(
         {
           amount: quote.totalCents,
@@ -1089,6 +1113,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           currency: inv.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
+          ...(stayRails.length ? { payment_method_types: stayRails } : {}),
           off_session: true,
           confirm: true,
           metadata: {

@@ -183,16 +183,33 @@ export function FieldClientView({
 
             <div>
               <h3 className="text-xs font-semibold uppercase text-muted-foreground">
-                {t("fieldClient.dogsHeading", { number: dogRows.length })}
+                {dogRows.some((d) => d.species && d.species !== "dog")
+                  ? t("fieldClient.petsHeading", { number: dogRows.length })
+                  : t("fieldClient.dogsHeading", { number: dogRows.length })}
               </h3>
               {dogRows.length ? (
                 <ul className="mt-1 space-y-2">
                   {dogRows.map((d) => {
                     const details = dogDetails(d);
+                    const species =
+                      d.species === "cat" ? (
+                        t("sit.species.cat")
+                      ) : d.species === "other" ? (
+                        d.species_note ? (
+                          <bdi>{d.species_note}</bdi>
+                        ) : (
+                          t("sit.species.other")
+                        )
+                      ) : null;
                     return (
                       <li key={d.id} className="rounded-md border p-2 text-sm">
                         <div className="font-medium">
                           {d.name ? <bdi>{d.name}</bdi> : t("dog.fallbackName")}
+                          {species && (
+                            <span className="ms-2 font-normal text-muted-foreground">
+                              {species}
+                            </span>
+                          )}
                         </div>
                         {d.vaccine_status && (
                           <span className="inline-block rounded-md border px-2 py-1 text-xs">{t(`vaccineStatus.${d.vaccine_status}`)}</span>

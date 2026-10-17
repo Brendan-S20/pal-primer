@@ -455,6 +455,10 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: userId, orgId, visitIds: data.visitIds });
     const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    // A dog walk's client is told the old and new day and window, as for an
+    // office move (#410). Read before the move.
+    const { watchWalkSchedule, moveKey } = await import("@/lib/walk-notify.server");
+    const walks = await watchWalkSchedule(data.visitIds);
 
     for (const id of data.visitIds) {
       const pre = preMap.get(id);
@@ -488,6 +492,9 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     }
 
     await watch.finish();
+    // Behind the walk schedule switch, like an office move. Best-effort: it
+    // never throws.
+    await walks.finish(`weather-${moveKey(data.visitIds, data.newDate)}`);
 
     // Fire weather-reschedule emails (best-effort) — only for visits that
     // actually moved, and with each visit's REAL target date (which may have
@@ -509,6 +516,11 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     for (const m of moves) {
       const pre = preMap.get(m.visitId);
       if (!pre) continue;
+      // A walk's client got the walk email above, which says the same move
+      // with the window. One email per move, not two. When the walks could
+      // not be read before the move, walkIds is empty and the weather email
+      // goes out, so the client still hears.
+      if (walks.walkIds.has(m.visitId)) continue;
       // Dedupe per destination+target date — a property contact (P3.5) and
       // the account contact are distinct recipients.
       const key = `${pre.contact_email ?? pre.client_id}|${m.to}`;

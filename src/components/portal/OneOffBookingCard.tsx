@@ -8,7 +8,9 @@
 // from its tomorrow through 30 days out, so the list is a <select> rather than
 // a calendar: every option in it is one the server will accept, and a phone's
 // native picker is the best one-handed control there is. The services come
-// from the same call, active and priced, in the plan picker's order.
+// from the same call, active and priced, in the plan picker's order. A dog
+// walk also offers a Time: the business's working day in two-hour windows
+// (walkWindows), "Any time" by default, and the confirmation says which.
 //
 // It is a REQUEST unless the owner turned auto-accept on, and the card says
 // which before the customer taps, so "Send request" never reads as a booking.
@@ -26,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { portalOneOffBookingOptions, portalRequestOneOff } from "@/lib/portal.functions";
 import { oneOffPriceFor } from "@/lib/one-off-booking";
 import { fmtDay, fmtDayShort, money, usePortalCtx } from "@/lib/portal-ui";
+import { windowLabel, type WalkWindow } from "@/lib/walk-windows";
 
 const selectClass =
   "h-10 w-full min-w-0 rounded-md border bg-background px-2 text-sm touch:min-h-11";
@@ -44,7 +47,13 @@ export function OneOffBookingCard() {
   const [propertyId, setPropertyId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [note, setNote] = useState("");
-  const [done, setDone] = useState<{ day: string; bookedOn: string | null } | null>(null);
+  // A walk's time window (#410): "" is Any time, else "HH:MM-HH:MM".
+  const [windowKey, setWindowKey] = useState("");
+  const [done, setDone] = useState<{
+    day: string;
+    bookedOn: string | null;
+    window: string | null;
+  } | null>(null);
 
   const opts = q.data;
   const services = opts?.services ?? [];
@@ -64,6 +73,10 @@ export function OneOffBookingCard() {
   const pets = opts?.petsByProperty?.[propertyId] ?? 1;
   const priceCents = chosen ? oneOffPriceFor(chosen, pets) : (opts?.priceCents ?? null);
   const autoAccept = !!opts?.autoAccept && priceCents != null;
+  // A walk is asked for in a window; nothing else offers one.
+  const windows: WalkWindow[] =
+    chosen?.serviceLine === "dog_walking" ? (opts?.walkWindows ?? []) : [];
+  const picked = windows.find((w) => `${w.start}-${w.end}` === windowKey) ?? null;
 
   const mut = useMutation({
     mutationFn: () =>
@@ -74,12 +87,18 @@ export function OneOffBookingCard() {
           day,
           message: note.trim(),
           ...(chosen && !chosen.petWaste ? { serviceId: chosen.id } : {}),
+          ...(picked ? { earliestTime: picked.start, latestTime: picked.end } : {}),
         },
       }),
     onSuccess: (r) => {
-      setDone({ day, bookedOn: r.bookedOn });
+      setDone({
+        day,
+        bookedOn: r.bookedOn,
+        window: picked ? windowLabel(picked.start, picked.end) : null,
+      });
       setNote("");
       setDay("");
+      setWindowKey("");
       invalidatePortal();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -95,8 +114,8 @@ export function OneOffBookingCard() {
         <div className="min-w-0 flex-1 space-y-2">
           <p>
             {done.bookedOn
-              ? `You're booked for ${fmtDay(done.bookedOn)}.`
-              : `Request sent for ${fmtDay(done.day)}. We'll confirm it, and you can see where it stands under Your requests.`}
+              ? `You're booked for ${fmtDay(done.bookedOn)}${done.window ? `, ${done.window}` : ""}.`
+              : `Request sent for ${fmtDay(done.day)}${done.window ? `, ${done.window}` : ""}. We'll confirm it, and you can see where it stands under Your requests.`}
           </p>
           <Button size="sm" variant="outline" onClick={() => setDone(null)}>
             Ask for another day
@@ -174,6 +193,26 @@ export function OneOffBookingCard() {
             ))}
           </select>
         </div>
+        {windows.length > 0 && (
+          <div className="min-w-0 space-y-1">
+            <Label htmlFor="one-off-time" className="text-xs">
+              Time
+            </Label>
+            <select
+              id="one-off-time"
+              className={selectClass}
+              value={windowKey}
+              onChange={(e) => setWindowKey(e.target.value)}
+            >
+              <option value="">Any time</option>
+              {windows.map((w) => (
+                <option key={`${w.start}-${w.end}`} value={`${w.start}-${w.end}`}>
+                  {windowLabel(w.start, w.end)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {opts.properties.length > 1 && (
           <div className="min-w-0 space-y-1">
             <Label htmlFor="one-off-where" className="text-xs">

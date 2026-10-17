@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { repoRelative } from "./support/repo-paths";
 
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   useServerFn: (f: unknown) => f,
   createServerFn: () => {
     const chain: any = () => chain;
@@ -51,6 +52,7 @@ import {
   PET_WASTE_ROUTES,
   SERVICE_LINES,
   addOnExampleFor,
+  customerCanRequestService,
   newClientWizardSteps,
   runsPetWaste,
   serviceLinesAddedProblem,
@@ -388,7 +390,7 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
-  it("offers five lines; scooping, walking and sitting are bookable", () => {
+  it("offers five lines; only scooping is bookable", () => {
     expect([...OFFERED_SERVICE_LINES]).toEqual([
       "pet_waste",
       "dog_walking",
@@ -396,7 +398,7 @@ describe("what an owner can choose", () => {
       "mobile_grooming",
       "training",
     ]);
-    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste"]);
   });
 
   it("a Coming soon line can be kept or dropped, never added", () => {
@@ -406,17 +408,27 @@ describe("what an owner can choose", () => {
     expect(serviceLinesAddedProblem(["dog_walking"], ["dog_walking", "training"])).toMatch(
       /Dog training is coming soon/,
     );
-    // Set some other way before the hotfix: it stays, and it can go.
-    const kept = ["pet_waste", "mobile_grooming"] as const;
-    expect(serviceLinesAddedProblem(kept, [...kept, "dog_walking"])).toBeNull();
-    expect(serviceLinesAddedProblem(["pet_waste", "training"], ["pet_waste"])).toBeNull();
-    expect(serviceLinesAddedProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toBeNull();
-    const fns = read("src/lib/org-features.functions.ts");
-    const setter = fns.slice(fns.indexOf("export const setServiceLines"));
-    expect(setter).toMatch(/serviceLinesAddedProblem\([\s\S]{0,80}\);\s*if \(added\) throw/);
-    expect(setter.indexOf("serviceLinesAddedProblem")).toBeLessThan(
-      setter.indexOf("updateOwnOrg("),
+    expect(serviceLinesAddedProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toMatch(
+      /Pet sitting is coming soon/,
     );
+    // Set some other way before the hotfix: it stays, and it can go.
+    const kept = ["mobile_grooming"] as const;
+    expect(serviceLinesAddedProblem(kept, [...kept, "pet_waste"])).toBeNull();
+    expect(serviceLinesAddedProblem(["pet_waste", "training"], ["pet_waste"])).toBeNull();
+    // The setter's own gate is serviceLinesAdditionProblem, pinned by
+    // tests/only-pet-waste-can-be-turned-on.test.ts.
+  });
+
+  it("training is offered as Coming soon, and neither an owner nor a customer can turn it on", () => {
+    expect(OFFERED_SERVICE_LINES).toContain("training");
+    expect(BOOKABLE_SERVICE_LINES).not.toContain("training");
+    expect(customerCanRequestService("training")).toBe(false);
+    expect(customerCanRequestService("dog_walking")).toBe(true);
+    // The row draws the badge and refuses the tick for any line that is not
+    // bookable, so training reads Coming soon and its box cannot be ticked.
+    const rows = codeOnly(read("src/components/ServiceLinesChoices.tsx"));
+    expect(rows).toMatch(/const bookable = BOOKABLE_SERVICE_LINES\.includes\(line\);/);
+    expect(rows).toMatch(/\{!bookable && <ComingSoonBadge \/>\}/);
   });
 
   it("refuses what the database's CHECK refuses, with a sentence", () => {

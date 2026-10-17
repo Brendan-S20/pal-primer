@@ -178,8 +178,8 @@ function SchedulingSettings() {
       <section className="rounded-lg border bg-card p-5">
         <h3 className="text-sm font-semibold">How far ahead the schedule is built</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          Every night we fill the calendar out to this many days from today, from each client&apos;s
-          recurring plan. It rolls forward on its own, and there is nothing to press.
+          Every night the calendar is filled out to this many days from today, from each
+          client&apos;s recurring plan.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
@@ -228,10 +228,8 @@ function SchedulingSettings() {
           <span>
             <span className="font-medium">Tell me when the schedule moves into a new week</span>
             <span className="block text-xs text-muted-foreground">
-              A note in your notifications saying what date the calendar now runs to. Off by
-              default. It exists because a schedule that fills itself is invisible (working
-              perfectly looks identical to nothing happening) and this used to be confirmed by
-              pressing a button. Sent once a week at most, never nightly.
+              A note in your notifications saying what date the calendar now runs to. Sent once a
+              week at most.
             </span>
           </span>
         </label>
@@ -251,7 +249,7 @@ function SchedulingSettings() {
             [
               [
                 "honour",
-                "Honour clients' arrival windows",
+                "Honor clients' arrival windows",
                 "A truck drives further, or waits, rather than arrive outside a window. A window that cannot be met is still planned and flagged.",
               ],
               [
@@ -313,9 +311,8 @@ function SchedulingSettings() {
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Drive times come from real road data. Each time you optimize a day, the trips
-                between its stops are measured on the road network; until there are enough of them,
-                a trip nobody has measured is estimated from the straight-line distance.
+                Drive times come from real road data, measured each time you optimize a day. Until
+                enough trips are measured, a trip is estimated from the straight-line distance.
               </p>
             )}
           </div>
@@ -343,7 +340,7 @@ function SchedulingSettings() {
             />
             <p className="mt-1 text-2xs text-muted-foreground">
               An assignment implying a longer drive than this is flagged as implausible on the
-              board. It is a warning, not a limit, and nothing is blocked.
+              board. Visits stay on the board so you can reassign them.
             </p>
           </div>
         </div>
@@ -360,9 +357,8 @@ function SchedulingSettings() {
             DEFAULT_TIMEZONE}
         </p>
         <p className="mt-1 text-2xs text-muted-foreground">
-          Arrival windows are anchored to the workday start in this time zone. It also decides what
-          counts as &ldquo;today&rdquo; for the client portal and the end-of-day close-out, so it is
-          set once in{" "}
+          Arrival windows and what counts as &ldquo;today&rdquo; follow this time zone. Change it
+          in{" "}
           <Link to="/settings/business" className="underline underline-offset-2">
             Settings → Business defaults
           </Link>

@@ -85,7 +85,12 @@ function PortalShell() {
   // Yard and Waste Services". The client signed up with them, and a tab with a
   // vendor's name on it is one they cannot place among their others.
   const orgName = (clientQ.data as { org_name?: string } | undefined)?.org_name;
-  useDocumentTitle(orgName ? customerTitle(section?.label ?? null, orgName) : null);
+  // A page under a tab that is not itself a tab (paying one invoice) keeps its
+  // own name: without this the tab read only the business name, because this
+  // effect replaced the pay page's "Pay invoice" with no label at all.
+  const pageLabel =
+    section?.label ?? (pathname.startsWith(`${base}/pay/`) ? "Pay invoice" : null);
+  useDocumentTitle(orgName ? customerTitle(pageLabel, orgName) : null);
 
   // Auth gate (finding #4): resolve the session before anything else.
   if (contextQ.isLoading) {
@@ -200,8 +205,9 @@ function PortalShell() {
           style={headerStyle}
           data-testid="portal-header"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
+          {/* Put notifications below the name when the row is too narrow. */}
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+            <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-3">
               {c.logo_url ? (
                 <img
                   src={c.logo_url}
@@ -222,7 +228,7 @@ function PortalShell() {
                 </span>
               )}
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-semibold leading-tight sm:text-xl">
+                <h1 className="break-words text-lg font-semibold leading-tight sm:text-xl">
                   {c.org_name}
                 </h1>
                 <p className="truncate text-sm opacity-90">

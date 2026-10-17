@@ -1,5 +1,8 @@
 import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
+import { LoadError } from "@/components/LoadError";
+import { LineBones } from "@/components/PageSkeletons";
+import { nextInvoiceTotalCents } from "@/lib/next-invoice-total";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -116,7 +119,12 @@ function BillingPage() {
     queryKey: ["billing-status"],
     queryFn: () => statusFn(),
   });
-  const { data: subInfo, isLoading: subInfoLoading } = useQuery({
+  const {
+    data: subInfo,
+    isLoading: subInfoLoading,
+    isError: subInfoError,
+    refetch: refetchSubInfo,
+  } = useQuery({
     queryKey: ["billing-subscription-items"],
     queryFn: () => itemsFn(),
     enabled: !!data?.isPaidTier,
@@ -323,7 +331,7 @@ function BillingPage() {
             {!canBuySaas || data.isPaidTier ? "Plans" : "Choose a plan"}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Unlimited clients, dogs, jobs, routes, and zones on every tier. You're billed per
+            Unlimited clients, dogs, visits, routes, and zones on every tier. You're billed per
             employee, and every charge is shown before it is made.
             {canBuySaas &&
               data.isPaidTier &&
@@ -368,7 +376,14 @@ function BillingPage() {
 
       {canBuySaas && <PlatformAddonsSection planInterval={currentInterval} />}
 
-      {data.isPaidTier && <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />}
+      {data.isPaidTier && (
+        <NextInvoice
+          subInfo={subInfo as any}
+          isLoading={subInfoLoading}
+          isError={subInfoError}
+          onRetry={() => refetchSubInfo()}
+        />
+      )}
 
       <InvoiceHistory />
 
@@ -869,6 +884,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
 function NextInvoice({
   subInfo,
   isLoading,
+  isError,
+  onRetry,
 }: {
   subInfo:
     | {
@@ -889,6 +906,8 @@ function NextInvoice({
       }
     | undefined;
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }) {
   const items = subInfo?.items ?? [];
   const periodEnd = futureSubscriptionPeriodEnd(subInfo);
@@ -900,16 +919,16 @@ function NextInvoice({
   // Total in the subscription's own interval (all items share it; anything
   // odd an admin attached by hand is excluded and called out).
   const planInterval = subInfo?.planInterval ?? "month";
-  const total = items.reduce(
-    (sum, i) =>
-      i.unitAmountCents != null && i.interval === planInterval && i.intervalCount === 1
-        ? sum + i.unitAmountCents * (i.quantity ?? 1)
-        : sum,
-    0,
-  );
+  // A line with no price is usage: the priced sum is shown with "+ usage",
+  // never as if it were the whole bill.
+  const total = nextInvoiceTotalCents(items, planInterval);
   const allSameInterval = items.every((i) => i.interval === planInterval && i.intervalCount === 1);
   const totalLabel = planInterval === "year" ? "Yearly total" : "Monthly total";
   const totalSuffix = planInterval === "year" ? "/yr" : "/mo";
+  const totalText =
+    total.hasUsage && !total.hasKnown
+      ? "Usage only"
+      : `${formatUsd(total.knownCents)}${totalSuffix}${total.hasUsage ? " + usage" : ""}`;
 
   const intervalSuffix = (i: (typeof items)[number]) =>
     i.interval
@@ -924,7 +943,7 @@ function NextInvoice({
     return i.name;
   };
   const lineAmount = (i: (typeof items)[number]) => {
-    if (i.unitAmountCents == null) return "-";
+    if (i.unitAmountCents == null) return "Usage";
     const lineTotal = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
     return `${lineTotal}${intervalSuffix(i)}`;
   };
@@ -936,7 +955,12 @@ function NextInvoice({
         <p className="text-sm text-muted-foreground">Bills {formatDay(periodEnd)}</p>
       )}
       {isLoading ? (
-        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+        <div className="mt-3">
+          <LineBones rows={2} />
+        </div>
+      ) : isError && !subInfo ? (
+        // Not "No subscription line items": a failed read is not an empty plan.
+        <LoadError className="mt-3" what="your next invoice" onRetry={onRetry} />
       ) : ordered.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No subscription line items to show.</p>
       ) : (
@@ -963,8 +987,7 @@ function NextInvoice({
               {allSameInterval ? totalLabel : `${totalLabel} (excludes other billing periods)`}
             </p>
             <p className="text-sm font-semibold">
-              {formatUsd(total)}
-              {totalSuffix}
+              {totalText}
             </p>
           </div>
         </>

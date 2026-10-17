@@ -17,6 +17,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { invoiceDueCents } from "@/lib/ar";
 
 export const FIELD_COLLECTION_METHODS = ["cash", "check"] as const;
 
@@ -135,18 +136,26 @@ export const listFieldCollections = createServerFn({ method: "GET" })
     if (waitingClients.length) {
       const { data: invs, error: iErr } = await supabase
         .from("invoices")
-        .select("id, client_id, number, total_cents, credit_applied_cents, period_end, due_on")
+        .select(
+          "id, client_id, number, total_cents, credit_applied_cents, amount_paid_cents, period_end, due_on",
+        )
         .eq("organization_id", orgId)
         .eq("status", "open")
         .in("client_id", waitingClients)
-        .order("period_end", { ascending: true });
+        // Oldest first, in exactly the order confirm_field_collection applies
+        // the money (20261015120000).
+        .order("period_end", { ascending: true })
+        .order("issued_at", { ascending: true })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
       if (iErr) throw new Error(iErr.message);
       for (const i of invs ?? []) {
         const list = invoicesByClient.get(i.client_id) ?? [];
         list.push({
           id: i.id,
           number: (i as { number?: number | null }).number ?? null,
-          open_cents: Math.max((i.total_cents ?? 0) - (i.credit_applied_cents ?? 0), 0),
+          // The balance, net of credit and of anything already paid on it.
+          open_cents: invoiceDueCents(i),
           period_end: i.period_end,
           due_on: i.due_on,
         });

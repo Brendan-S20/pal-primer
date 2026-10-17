@@ -1,6 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { resolveCaller } from "@/lib/authz.server";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import {
@@ -13,7 +14,7 @@ import {
 } from "@/lib/visit-checklist";
 import {
   SERVICE_LINES,
-  serviceLinesAddedProblem,
+  serviceLinesAdditionProblem,
   serviceLinesOrDefault,
   serviceLinesProblem,
   type ServiceLine,
@@ -66,7 +67,11 @@ export type MyOrgFeatures = {
 
 export const getMyOrgFeatures = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<MyOrgFeatures> => {
+  .handler(async ({ context }) => loadMyOrgFeatures(context));
+
+/** getMyOrgFeatures's answer, also asked by getShellContext. */
+export const loadMyOrgFeatures = createServerOnlyFn(
+  async (context: AuthedContext): Promise<MyOrgFeatures> => {
     const { orgId } = await resolveCaller(context.supabase, context.userId);
     const [{ data: org }, { data: hasData }, { data: lines }] = await Promise.all([
       context.supabase
@@ -100,7 +105,8 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
         ?.email_visit_checklist,
       serviceLines: Array.isArray(lines?.service_lines) ? lines.service_lines : null,
     };
-  });
+  },
+);
 
 export const setCommercialAccounts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -243,7 +249,11 @@ async function ensureDefaultServicesForLines(
  *  accounts, nothing hidden by dropping pet waste is billing anybody (the
  *  modules that could -- a configured first cleanup, area pricing on a zone,
  *  a seasonal campaign -- stay visible while they are configured), and the
- *  rows themselves are untouched. */
+ *  rows themselves are untouched.
+ *
+ *  The one refusal is a launch gate: a line outside BOOKABLE_SERVICE_LINES
+ *  cannot be added. A line the org already has is kept, so saving an
+ *  unrelated change never fails for a business that runs one. */
 export const setServiceLines = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -262,14 +272,19 @@ export const setServiceLines = createServerFn({ method: "POST" })
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     // A line that is Coming soon can be kept or dropped, never added.
-    const { data: org, error: readError } = await context.supabase
+    // Read, not assumed: a failed read must not pass as {pet_waste} and
+    // refuse a line the org already runs.
+    const { data: org, error } = await context.supabase
       .from("organizations")
       .select("service_lines")
       .eq("id", orgId)
       .maybeSingle();
-    if (readError) throw new Error(readError.message);
-    const added = serviceLinesAddedProblem(serviceLinesOrDefault(org?.service_lines), data.lines);
-    if (added) throw new Error(added);
+    if (error) throw new Error(error.message);
+    const adding = serviceLinesAdditionProblem(
+      serviceLinesOrDefault(org?.service_lines),
+      data.lines,
+    );
+    if (adding) throw new Error(adding);
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
     await ensureDefaultServicesForLines(context.supabase, orgId, data.lines);

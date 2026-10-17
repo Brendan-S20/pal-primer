@@ -1,8 +1,8 @@
 // Settings → Services: what this business sells.
 //
-// The catalog behind dog walking, pet sitting and mobile grooming going live
-// beside pet waste removal (owner's decision, 2026-10-09; the design is
-// docs/other-trades-service-catalog.md). Office only: the route is limited
+// The catalog for service lines (docs/other-trades-service-catalog.md).
+// Only pet waste removal is bookable; other lines join when their paths
+// work end to end. Office only: the route is limited
 // to owner and office manager in ROUTE_ROLES, the same people who hold
 // manage_pricing, which is what every write here asks for on the server and
 // in RLS.
@@ -45,6 +45,8 @@ import {
 } from "@/lib/services";
 import type { ServiceLine } from "@/lib/service-lines";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { HolidayDatesCard } from "@/components/settings/HolidayDatesCard";
+import { StayDepositCard } from "@/components/settings/StayDepositCard";
 import { usePermissions } from "@/hooks/useMyRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,6 +93,9 @@ type FormState = {
   price: string;
   extraPet: string;
   minutes: string;
+  maxDogs: string;
+  groupWalk: boolean;
+  holidayPct: string;
 };
 
 function formFor(s: Service | null, line: ServiceLine): FormState {
@@ -103,6 +108,9 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
       price: "",
       extraPet: "",
       minutes: "",
+      maxDogs: "",
+      groupWalk: false,
+      holidayPct: "0",
     };
   }
   return {
@@ -113,6 +121,9 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
     price: centsToDollarInput(s.base_price_cents),
     extraPet: s.extra_pet_cents > 0 ? centsToDollarInput(s.extra_pet_cents) : "",
     minutes: s.default_duration_min === null ? "" : String(s.default_duration_min),
+    maxDogs: s.max_dogs == null ? "" : String(s.max_dogs),
+    groupWalk: s.max_dogs != null,
+    holidayPct: String(s.holiday_surcharge_pct ?? 0),
   };
 }
 
@@ -128,12 +139,14 @@ function draftOf(f: FormState): { draft: ServiceDraft } | { problem: string } {
   if (minutes !== null && !Number.isInteger(minutes))
     return { problem: "Enter the length in whole minutes." };
   const draft: ServiceDraft = {
+    ...(f.service_line === "pet_sitting" ? { holiday_surcharge_pct: Number(f.holidayPct) } : {}),
     name: f.name.trim(),
     service_line: f.service_line,
     price_unit: f.price_unit,
     base_price_cents: base,
     extra_pet_cents: extra ?? 0,
     default_duration_min: minutes,
+    max_dogs: f.service_line === "dog_walking" && f.groupWalk ? Number(f.maxDogs) : null,
   };
   const problem = serviceProblem(draft);
   return problem ? { problem } : { draft };
@@ -209,8 +222,8 @@ function ServicesPage() {
         <div className="min-w-0">
           <h2 className="text-lg font-semibold">Services</h2>
           <p className="text-sm text-muted-foreground">
-            What you sell, and how each one is priced: a flat price per visit or by the hour, and
-            per night for pet sitting.
+            Set prices per visit or by the hour, or per night for pet sitting. Only pet waste
+            removal is bookable today; other service lines are Coming soon.
           </p>
         </div>
         {canEdit && (
@@ -254,6 +267,9 @@ function ServicesPage() {
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       {servicePriceLabel(s)}
                       {duration ? ` · usually ${duration}` : ""}
+                      {s.service_line === "dog_walking" && s.max_dogs != null && (
+                        <p>Group walk, up to {s.max_dogs} dogs</p>
+                      )}
                     </div>
                   </div>
                   {canEdit && (
@@ -289,6 +305,8 @@ function ServicesPage() {
       </section>
 
       {lines.includes("mobile_grooming") && <VaccineSettings />}
+      {lines.includes("pet_sitting") && <HolidayDatesCard canEdit={canEdit} />}
+      {lines.includes("pet_sitting") && <StayDepositCard canEdit={canEdit} />}
 
       <Dialog open={sizeService !== null} onOpenChange={(open) => !open && setSizeService(null)}>
         <DialogContent className="sm:max-w-4xl">
@@ -348,7 +366,7 @@ function ServiceForm({
   onSubmit: () => void;
 }) {
   const units = priceUnitsFor(form.service_line);
-  const minutesRequired = durationRequired(form.service_line);
+  const minutesRequired = durationRequired(form.service_line) && form.price_unit !== "night";
   const per = form.price_unit;
 
   return (
@@ -386,7 +404,12 @@ function ServiceForm({
             const line = v as ServiceLine;
             // Night is for sitting only; moving off sitting moves off night.
             const unit = priceUnitsFor(line).includes(form.price_unit) ? form.price_unit : "visit";
-            setForm({ ...form, service_line: line, price_unit: unit });
+            setForm({
+              ...form,
+              service_line: line,
+              price_unit: unit,
+              groupWalk: line === "dog_walking" && form.groupWalk,
+            });
           }}
         >
           <SelectTrigger id="service-line">
@@ -458,13 +481,65 @@ function ServiceForm({
             inputMode="numeric"
             min={1}
             max={720}
-            placeholder={minutesRequired ? "30" : "Set by each yard"}
+            placeholder={
+              form.price_unit === "night" ? "Optional" : minutesRequired ? "30" : "Set by each yard"
+            }
             value={form.minutes}
             onChange={(e) => setForm({ ...form, minutes: e.target.value })}
             required={minutesRequired}
           />
         </div>
       </div>
+
+      {form.service_line === "pet_sitting" && (
+        <div className="space-y-1.5">
+          <Label htmlFor="service-holiday">Holiday surcharge (%)</Label>
+          <Input
+            id="service-holiday"
+            type="number"
+            min={0}
+            max={500}
+            step={1}
+            value={form.holidayPct}
+            onChange={(e) => setForm({ ...form, holidayPct: e.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Applied to sitting visits on the holiday dates set on this page. Zero means the usual
+            rate.
+          </p>
+        </div>
+      )}
+
+      {form.service_line === "dog_walking" && (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Group walk</legend>
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.groupWalk}
+              onChange={(e) =>
+                setForm({ ...form, groupWalk: e.target.checked, maxDogs: form.maxDogs || "4" })
+              }
+            />
+            Offer a group walk
+          </label>
+          {form.groupWalk && (
+            <div className="space-y-1.5">
+              <Label htmlFor="service-max-dogs">Up to this many dogs</Label>
+              <Input
+                id="service-max-dogs"
+                className="min-h-11"
+                type="number"
+                min={1}
+                max={50}
+                required
+                value={form.maxDogs}
+                onChange={(e) => setForm({ ...form, maxDogs: e.target.value })}
+              />
+            </div>
+          )}
+        </fieldset>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

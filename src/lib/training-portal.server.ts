@@ -192,11 +192,14 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
           .eq("organization_id", orgId)
       : { data: [], error: null },
     share && recentIds.length
-      ? sb
-          .from("training_session_notes")
-          .select("visit_id, note")
-          .in("visit_id", recentIds)
-          .eq("organization_id", orgId)
+      ? // Through the portal function, never the table: its RETURNS TABLE is
+        // (visit_id, note), so the staff-only note cannot come back, and it
+        // returns only this client's visits.
+        sb.rpc("portal_training_lesson_notes", {
+          _organization_id: orgId,
+          _client_id: clientId,
+          _visit_ids: recentIds,
+        })
       : { data: [], error: null },
     share && recentIds.length
       ? sb
@@ -223,7 +226,7 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
     scoresBy.set(s.visit_id, list);
   }
   const noteBy = new Map(
-    // `note` only. trainer_note is staff only and is never selected here.
+    // `note` only: portal_training_lesson_notes returns nothing else.
     ((notes.data ?? []) as { visit_id: string; note: string | null }[]).map((n) => [
       n.visit_id,
       n.note,

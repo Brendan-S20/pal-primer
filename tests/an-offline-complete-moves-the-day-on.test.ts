@@ -369,7 +369,7 @@ describe("My Day draws from the day as worked", () => {
     expect(page).toMatch(/withQueuedLifecycle\(serverVisits \?\? \[\], queuedLifecycle\)/);
     // The count, the open job and the next stop come from that list — not
     // from `data.visits`, which is the server's copy and knows nothing queued.
-    expect(page).toMatch(/= dayAtAGlance\(visits\)/);
+    expect(page).toMatch(/=\s*dayAtAGlance\(visits\)/);
     expect(page).not.toMatch(/data\?\.visits\s*\?\?\s*\[\]/);
   });
 

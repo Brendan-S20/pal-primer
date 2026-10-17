@@ -219,11 +219,13 @@ export async function requestGroomFromPortal(
       quantity: a.quantity,
     })),
     _on: input.day,
-    _from: window.from,
-    _until: window.until,
+    // The SQL function takes NULL for these: any time of day, and no price
+    // or length the rules could work out.
+    _from: window.from as string,
+    _until: window.until as string,
     _message: input.message,
-    _quoted_cents: quote.cents,
-    _quoted_minutes: quote.minutes > 0 ? Math.min(quote.minutes, 720) : null,
+    _quoted_cents: quote.cents as number,
+    _quoted_minutes: (quote.minutes > 0 ? Math.min(quote.minutes, 720) : null) as number,
   });
   if (error) throw new Error(groomRequestRefusal(error.message));
   const row = ((rows ?? []) as Array<{ ticket_id: string; created: boolean }>)[0];

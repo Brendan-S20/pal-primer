@@ -29,6 +29,7 @@ import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { StaffRoutingDialog } from "@/components/routes/StaffRoutingDialog";
 import { LaneStrip } from "@/components/routes/LaneStrip";
 import { AutoRoutingPanel } from "@/components/routes/AutoRoutingPanel";
+import { GroupWalksPanel } from "@/components/routes/GroupWalksPanel";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
@@ -79,6 +80,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { visitStayDates } from "@/lib/stays";
+import { skipReasonText } from "@/lib/skip-reason-text";
 
 export const Route = createFileRoute("/_authenticated/routes")({
   head: () => titleHead("Schedule"),
@@ -711,6 +714,7 @@ function RoutesPage() {
           ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
           : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
       );
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -730,6 +734,7 @@ function RoutesPage() {
       } else {
         toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
       }
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -911,9 +916,10 @@ function RoutesPage() {
     setLocalColumns(next);
 
     try {
-      await reassign({
+      const r = await reassign({
         data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
       });
+      if (r.clash) toast.warning(r.clash);
       if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
       if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
     } catch (err) {
@@ -992,6 +998,45 @@ function RoutesPage() {
                 />
               </PopoverContent>
             </Popover>
+            {/* Step by whatever you are LOOKING at: a day, a week or a calendar
+                month, so the control matches the view it drives. Beside the
+                date it steps rather than in the toolbar: at 1024px the toolbar
+                wrapped to three rows (QA row 43), and the heading row had the
+                room. */}
+            <div className="inline-flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => shiftDay(-1)}
+                title={`Previous ${rangeNoun}`}
+                aria-label={`Previous ${rangeNoun}`}
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => shiftDay(1)}
+                title={`Next ${rangeNoun}`}
+                aria-label={`Next ${rangeNoun}`}
+              >
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => {
+                  setLocalColumns(null);
+                  setDay(null);
+                }}
+                disabled={day === orgTodayIso}
+              >
+                Today
+              </Button>
+            </div>
           </div>
           {/* A-P2-10: completing a visit from the office is an owner or office
               manager action (office_complete_visit refuses a dispatcher), so
@@ -1013,50 +1058,6 @@ function RoutesPage() {
               One-off visit
             </Button>
           )}
-          {/* Step by whatever you are LOOKING at.
-              A date input alone made "show me next week" a date-arithmetic
-              exercise: you had to work out which Monday you wanted. The arrows
-              move by the active range — a day, a week, or a calendar month —
-              so the control matches the view it drives.
-
-              The date input that sat between them has gone to the heading,
-              which now opens the calendar. Jumping to an arbitrary date is a
-              rarer act than stepping to the next one and does not need to hold
-              150px of the toolbar to be available. */}
-          <div className="inline-flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={() => shiftDay(-1)}
-              title={`Previous ${rangeNoun}`}
-              aria-label={`Previous ${rangeNoun}`}
-            >
-              <ChevronLeft className="h-4 w-4 shrink-0" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={() => shiftDay(1)}
-              title={`Next ${rangeNoun}`}
-              aria-label={`Next ${rangeNoun}`}
-            >
-              <ChevronRight className="h-4 w-4 shrink-0" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9"
-              onClick={() => {
-                setLocalColumns(null);
-                setDay(null);
-              }}
-              disabled={day === orgTodayIso}
-            >
-              Today
-            </Button>
-          </div>
           {/* Two clean axes instead of five mixed buttons: WHAT you look at
               (Map = map + load + board, Board = board only) and WHEN
               (Today / Week / Month). */}
@@ -1086,13 +1087,25 @@ function RoutesPage() {
               </button>
             ))}
           </div>
+          {/* The controls used now and then (display options, and who runs
+              routes) share one "More" menu, so the toolbar stays one row at
+              1024px. They were two more buttons on it. */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" title="Display options">
+              <Button
+                variant="outline"
+                size="sm"
+                title="Display options and crew"
+                data-testid="schedule-more"
+              >
                 <Settings2 className="h-4 w-4 shrink-0" />
+                <span className="ml-1.5">More</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 space-y-4">
+            <PopoverContent
+              align="end"
+              className="max-h-[min(36rem,calc(100vh-6rem))] w-80 max-w-[calc(100vw-1rem)] space-y-4 overflow-y-auto"
+            >
               <div className="text-xs font-semibold uppercase text-muted-foreground">Display</div>
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1156,22 +1169,13 @@ function RoutesPage() {
                   </button>
                 </div>
               </div>
-            </PopoverContent>
-          </Popover>
-          {canManageCrew && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" title="Who runs routes">
-                  <Users className="h-4 w-4 shrink-0" />
-                  <span className="ml-1.5 max-sm:hidden">Crew</span>
-                </Button>
-              </PopoverTrigger>
-              {/* 320px of popover does not fit a 320px phone. The cap matches
-                  WeatherPopover's, which is the pattern the other popovers on
-                  this board already use. */}
-              <PopoverContent align="end" className="w-80 max-w-[calc(100vw-1rem)] p-0">
+            {canManageCrew && (
+              <div className="-mx-4 -mb-4 border-t" data-testid="schedule-crew">
                 <div className="border-b px-3 py-2">
-                  <div className="text-sm font-medium">Who runs routes</div>
+                  <div className="flex items-center gap-1.5 text-sm font-medium">
+                    <Users className="h-4 w-4 shrink-0" />
+                    Who runs routes
+                  </div>
                   <div className="text-2xs text-muted-foreground">
                     Everyone switched on here gets a lane on the board and can be assigned work.
                     Everyone else stays in the office.
@@ -1235,9 +1239,10 @@ function RoutesPage() {
                   Switching somebody off doesn&apos;t move their visits, so use{" "}
                   <strong>Cover</strong> on their lane for that.
                 </div>
-              </PopoverContent>
-            </Popover>
-          )}
+              </div>
+            )}
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
             {toolsOpen ? "Hide auto-routing" : "Auto-routing"}
           </Button>
@@ -1266,6 +1271,8 @@ function RoutesPage() {
           onReviewDay={(d) => setDay(d)}
         />
       )}
+
+      <GroupWalksPanel day={day} staff={staff} onChanged={() => setLocalColumns(null)} />
 
       {/* The "One tech, one day" card that stood here is gone, and with it a
           live data-loss bug.
@@ -1375,6 +1382,14 @@ function RoutesPage() {
               setLocalColumns(null);
               setDay(d);
               setRangePersist("today");
+            }}
+            // That day's board, whose first column is Unassigned. The day board
+            // is where a visit gets assigned, by dragging it out of that column.
+            onPickUnassigned={(d) => {
+              setLocalColumns(null);
+              setDay(d);
+              setRangePersist("today");
+              setViewModePersist("board");
             }}
             onOpenVisit={setDetailVisitId}
           />
@@ -1719,6 +1734,12 @@ function RoutesPage() {
             onOpen={setDetailVisitId}
           />
         </div>
+      )}
+      {/* Room under the floating auto-routing card, at the foot of the page,
+          so the last cards of a lane can be scrolled up out from under it.
+          The card measures itself into --auto-routing-h (QA row 17). */}
+      {toolsOpen && (
+        <div aria-hidden="true" data-auto-routing-room="" className="h-[var(--auto-routing-h,0px)]" />
       )}
       <StaffRoutingDialog
         staff={routingDialogStaff}
@@ -2277,18 +2298,29 @@ function VisitCardView({
     >
       <div className="flex items-start gap-2">
         {onToggleSelect && (
-          <input
-            type="checkbox"
-            checked={Boolean(selected)}
-            aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+          // 13px, and the bulk-select control on every stop card. The square
+          // stays 13px; the LABEL around it is the 44px box on a touch screen,
+          // so a tap anywhere in it toggles the box (QA row 23). It replaced a
+          // `::before` on the input itself: a native checkbox is a replaced
+          // element, and whether its pseudo-element draws, and takes the tap,
+          // is up to the browser. A label's hit area is not.
+          // stopPropagation on both: the label's own click and the click it
+          // forwards to the input each bubble to the card, whose onClick would
+          // toggle the selection a second time.
+          <label
+            data-select-hit=""
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => onToggleSelect(visit.id, e as unknown as React.MouseEvent)}
-            // 13px, and the bulk-select control on every stop card. The
-            // square stays 13px — a 44px checkbox is a different component,
-            // not a bigger one — and an out-of-flow ::before takes the tap,
-            // the same pattern ui/checkbox.tsx uses and the sweep credits.
-            className="relative mt-1 shrink-0 touch:before:absolute touch:before:left-1/2 touch:before:top-1/2 touch:before:h-11 touch:before:w-11 touch:before:-translate-x-1/2 touch:before:-translate-y-1/2 touch:before:content-['']"
-          />
+            className="mt-1 flex shrink-0 cursor-pointer items-center justify-center touch:mt-0 touch:min-h-11 touch:min-w-11"
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(selected)}
+              aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => onToggleSelect(visit.id, e as unknown as React.MouseEvent)}
+              className="shrink-0 cursor-pointer"
+            />
+          </label>
         )}
         <button
           {...(dragHandle ?? {})}
@@ -2344,6 +2376,14 @@ function VisitCardView({
                 <bdi className="truncate">{visit.services.name}</bdi>
               </Badge>
             )}
+            {visitStayDates((visit as any).subscriptions?.stays) && (
+              // Part of a sitter's stay (#411), with its dates.
+              <Badge variant="outline" className="h-4 min-w-0 max-w-full px-1 text-3xs">
+                <span className="truncate">
+                  Stay, {visitStayDates((visit as any).subscriptions?.stays)}
+                </span>
+              </Badge>
+            )}
             {visit.zones?.name && (
               // `h-4` is a fixed 16px, so a zone name longer than the lane
               // wrapped to three lines inside a one-line pill and printed
@@ -2364,6 +2404,13 @@ function VisitCardView({
               </Badge>
             )}
           </div>
+          {/* A skipped stop says why, or that nobody recorded why (QA row
+              15: a future stop read "Skipped" and nothing else). */}
+          {visit.status === "skipped" && (
+            <div className="mt-0.5 break-words text-3xs text-muted-foreground">
+              Skip: {skipReasonText(visit.skip_reason, visit.skip_reason_code)}
+            </div>
+          )}
           {(dirUrl || canComplete) && !dragging && (
             <div className="mt-2 flex flex-wrap gap-1">
               {dirUrl && (
@@ -2371,7 +2418,9 @@ function VisitCardView({
                   href={dirUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted"
+                  // 25px, beside a Complete button that was already 44 on
+                  // touch (QA row 23). Same fix: only the box grows.
+                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted touch:min-h-11"
                 >
                   <Navigation className="h-3 w-3 shrink-0" /> Directions
                 </a>

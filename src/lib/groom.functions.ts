@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { COAT_TYPES, PET_SIZES, type GroomRule } from "@/lib/groom";
+import { newServiceSizeRule } from "@/lib/db-insert";
 
 export type ServiceSizeRule = GroomRule & {
   id: string;
@@ -52,13 +53,13 @@ export const upsertServiceSizeRule = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_pricing");
     await requireGroomService(context.supabase, data.serviceId, orgId);
-    const row = {
+    const row = newServiceSizeRule({
       service_id: data.serviceId,
       size: data.size,
       coat_type: data.coatType,
       duration_min: data.durationMin,
       price_cents: data.priceCents,
-    };
+    });
     const query = data.id
       ? context.supabase
           .from("service_size_rules")

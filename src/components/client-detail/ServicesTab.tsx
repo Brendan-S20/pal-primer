@@ -89,6 +89,10 @@ import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
 import { WORK_WEEK, normalizeWeekdays, offersSetDays } from "@/lib/weekday-set";
 import { servicePriceCents } from "@/lib/services";
 import { useIntlLocale } from "@/lib/i18n";
+import { createWalkPlans } from "@/lib/walk-plans.functions";
+import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
+import { isDog } from "@/lib/pets";
+import { StaysSection } from "@/components/client-detail/StaysSection";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -97,10 +101,10 @@ export function ServicesTab({
   clientId,
   client,
   properties,
-  subscriptions,
+  subscriptions: allSubscriptions,
   zones,
   visits,
-  dogs,
+  dogs: pets,
   canBill,
   canManagePricing,
   editServiceId,
@@ -128,6 +132,14 @@ export function ServicesTab({
 }) {
   const qc = useQueryClient();
   const today = useOrgToday();
+  // A stay's plans (#411) are listed with their stay under Stays, not as
+  // services of their own; and every dog count here counts dogs, not a
+  // sitting client's cat.
+  const subscriptions = useMemo(
+    () => allSubscriptions.filter((s: any) => !s.stay_id),
+    [allSubscriptions],
+  );
+  const dogs = useMemo(() => pets.filter((p: any) => isDog(p)), [pets]);
   // The formatters' locale, so a set-days plan reads "Mon–Fri" in the
   // interface language.
   const locale = useIntlLocale();
@@ -386,7 +398,7 @@ export function ServicesTab({
             const showEnd = !ended && started;
             const showDelete = !started;
             return (
-              <li key={s.id} className="rounded-lg border bg-card shadow-sm p-4 text-sm">
+              <li key={s.id} className="@container rounded-lg border bg-card shadow-sm p-4 text-sm">
                 {/* THREE ITEMS, ONE WRAPPING ROW: the details, the price, the
                     actions. The details were `flex-1` with no basis, and a
                     basis of 0 always fits on the first line — so the row never
@@ -395,14 +407,18 @@ export function ServicesTab({
                     80px: the title ran into "$33.00", the meta line went one
                     word per line, and the amber dog-count warning was
                     narrower than its own words.
-                    Now the details take the full width below sm (the price
-                    moves into the title row, the actions to a row of their
-                    own), and from sm up they ask for 18rem before the actions
-                    will share a line with them, which is what keeps a tablet
-                    from the same squeeze. */}
+                    Now the details take the full width until the CARD is 48rem
+                    wide (the price moves into the title row, the actions to a
+                    row of their own), and from there they ask for 18rem before
+                    the actions will share a line with them.
+                    The card's width and not the screen's, because the column
+                    beside the sidebar decides it: at 768px the office sidebar
+                    became a 60px rail, the card grew to 660px, and a viewport
+                    `sm:` let all three share one line again with the details
+                    at 342px, a long street wrapping the meta line. */}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div
-                    className="min-w-0 flex-1 basis-full cursor-pointer sm:basis-72"
+                    className="min-w-0 flex-1 basis-full cursor-pointer @3xl:basis-72"
                     role="button"
                     tabIndex={0}
                     onClick={() => setDetailSub(s)}
@@ -427,11 +443,11 @@ export function ServicesTab({
                           {s.billing_cadence === "prepaid" ? "Prepaid" : "Postpaid"}
                         </MetaChip>
                       </div>
-                      {/* The phone's price: beside the title it belongs to.
-                          The one after this block takes over from sm up;
-                          `hidden` is display:none, so a screen reader hears
-                          one price, not two. */}
-                      <div className="shrink-0 whitespace-nowrap text-right sm:hidden">
+                      {/* The narrow card's price: beside the title it belongs
+                          to. The one after this block takes over once the
+                          card is 48rem wide; `hidden` is display:none, so a
+                          screen reader hears one price, not two. */}
+                      <div className="shrink-0 whitespace-nowrap text-right @3xl:hidden">
                         <span className="font-semibold">${(s.price_cents / 100).toFixed(2)}</span>
                         <span className="text-xs text-muted-foreground"> /visit</span>
                       </div>
@@ -528,7 +544,7 @@ export function ServicesTab({
                     )}
                   </div>
 
-                  <div className="shrink-0 whitespace-nowrap text-right max-sm:hidden">
+                  <div className="shrink-0 whitespace-nowrap text-right @max-3xl:hidden">
                     <span className="font-semibold">${(s.price_cents / 100).toFixed(2)}</span>
                     <span className="text-xs text-muted-foreground"> /visit</span>
                   </div>
@@ -664,6 +680,14 @@ export function ServicesTab({
           )}
         </div>
       )}
+
+      <StaysSection
+        clientId={clientId}
+        client={client}
+        properties={properties}
+        pets={pets}
+        canManagePricing={canManagePricing}
+      />
 
       <ServiceDrawer
         open={drawerSub !== null}
@@ -1112,6 +1136,7 @@ function ServiceDrawer({
   onSaved: () => void;
 }) {
   const createFn = useServerFn(createSubscription);
+  const createWalksFn = useServerFn(createWalkPlans);
   const convertedFn = useServerFn(markQuoteConverted);
   const updateFn = useServerFn(updateSubscription);
   const stationsFn = useServerFn(listStations);
@@ -1162,6 +1187,7 @@ function ServiceDrawer({
   }, [subscription, properties, dogs, fromQuote]);
 
   const [form, setForm] = useState(initial);
+  const [extraWalkWindows, setExtraWalkWindows] = useState<WalkWindow[]>([]);
   // Reset only when the drawer transitions closed -> open; a background
   // refetch changing `initial`'s identity must not wipe in-progress edits.
   const wasOpen = useRef(false);
@@ -1172,12 +1198,13 @@ function ServiceDrawer({
   useEffect(() => {
     if (open && !wasOpen.current) {
       setForm(initial);
+      setExtraWalkWindows([]);
       setShowErrors(false);
       setSetDaysOn(false);
     }
     wasOpen.current = open;
   }, [open, initial]);
-  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial) || extraWalkWindows.length > 0;
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -1188,6 +1215,11 @@ function ServiceDrawer({
   // What the plan sells, as the picker shows it (its default until chosen).
   const chosenService =
     orgServices.find((x) => x.id === effectiveServiceId(form.serviceId, orgServices)) ?? null;
+  const creatingWalk = !subscription && chosenService?.service_line === "dog_walking";
+  const walkWindows = [
+    { earliestTime: form.earliestTime, latestTime: form.latestTime },
+    ...extraWalkWindows,
+  ];
   const setDaysOffered = offersSetDays({
     serviceLine: chosenService?.service_line,
     alreadySetDays: initial.choice === "set_days" || form.choice === "set_days",
@@ -1223,6 +1255,10 @@ function ServiceDrawer({
     errors.weekdays = "Choose at least one day";
   if (form.earliestTime && form.latestTime && form.earliestTime >= form.latestTime)
     errors.window = "The earliest arrival must be before the latest arrival";
+  if (creatingWalk && extraWalkWindows.length > 0) {
+    const problem = walkWindowsProblem(walkWindows);
+    if (problem) errors.window = problem;
+  }
 
   // Pricing precedence (spec): Standard -> Zone -> Custom, always displayed,
   // never silently replaced. The buttons copy a computed price into the
@@ -1462,7 +1498,17 @@ function ServiceDrawer({
       };
       const run = subscription
         ? updateFn({ data: { subscriptionId: subscription.id, ...common } })
-        : createFn({ data: { clientId, accountType, ...common } });
+        : creatingWalk && extraWalkWindows.length > 0
+          ? createWalksFn({
+              data: {
+                clientId,
+                accountType,
+                ...common,
+                serviceId: chosenService!.id,
+                windows: walkWindows,
+              },
+            })
+          : createFn({ data: { clientId, accountType, ...common } });
       return run.then(() => ({ ok: true }));
     },
     onSuccess: async () => {
@@ -1809,6 +1855,64 @@ function ServiceDrawer({
               The arrival window for this service's visits. Leave as anytime if the client has no
               preference.
             </p>
+          )}
+          {creatingWalk && (
+            <div className="mt-3 space-y-3">
+              {extraWalkWindows.map((window, index) => (
+                <fieldset key={index} className="min-w-0 space-y-2 rounded-md border p-3">
+                  <legend className="px-1 text-sm font-medium">Walk time {index + 2}</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <TimeField
+                      label="Earliest arrival"
+                      value={window.earliestTime}
+                      onChange={(value) =>
+                        setExtraWalkWindows((rows) =>
+                          rows.map((row, i) =>
+                            i === index ? { ...row, earliestTime: value } : row,
+                          ),
+                        )
+                      }
+                    />
+                    <TimeField
+                      label="Latest arrival"
+                      value={window.latestTime}
+                      onChange={(value) =>
+                        setExtraWalkWindows((rows) =>
+                          rows.map((row, i) => (i === index ? { ...row, latestTime: value } : row)),
+                        )
+                      }
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="min-h-11"
+                    aria-label={`Remove walk time ${index + 2}`}
+                    onClick={() =>
+                      setExtraWalkWindows((rows) => rows.filter((_, i) => i !== index))
+                    }
+                  >
+                    Remove walk time
+                  </Button>
+                </fieldset>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                disabled={extraWalkWindows.length >= 5}
+                onClick={() =>
+                  setExtraWalkWindows((rows) => [...rows, { earliestTime: "", latestTime: "" }])
+                }
+              >
+                <Plus className="h-4 w-4 shrink-0" /> Add another walk time
+              </Button>
+              {extraWalkWindows.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Each walk time creates its own plan at the price shown above.
+                </p>
+              )}
+            </div>
           )}
         </div>
 

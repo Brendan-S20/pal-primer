@@ -89,7 +89,7 @@ export const REVIEW_KIND_COPY: Record<
   visit_timestamps_unreliable: {
     label: "Visit duration can't be trusted",
     whatItMeans:
-      "Start and completion were recorded as the same moment, so the real duration is unknown. This is the signature of the old office-completion bug, where a visit was closed out without a tech ever starting it.",
+      "Start and completion were recorded as the same moment, so the real duration is unknown. This usually means the visit was marked complete from the office without a tech starting it.",
     howToFix:
       "Open the visit and either correct the times if you know them, or dismiss this if the visit is fine as recorded.",
   },
@@ -112,14 +112,14 @@ export const REVIEW_KIND_COPY: Record<
   billing_run_failed: {
     label: "This client could not be invoiced",
     whatItMeans:
-      "The nightly invoicing run reached this client and the invoice failed to generate. The run itself finished (one client's failure is caught so it cannot stop everyone else's) which means nothing else anywhere will tell you this happened. Work is still being recorded; it is only the bill that did not get made.",
+      "Last night's invoicing could not create an invoice for this client. Other clients were invoiced normally. Their visits are still recorded; only the invoice is missing.",
     howToFix:
-      "Open the client and check their billing setup and unbilled work. Invoicing them by hand clears the backlog; the run retries on its own each night, so if the cause is fixed it will simply succeed and this stops re-filing.",
+      "Open the client and check their billing setup and unbilled work, then invoice them by hand. Invoicing tries again each night, and this item stops coming back once it succeeds.",
   },
   ai_allowance_warning: {
     label: "AI usage is near this month's allowance",
     whatItMeans:
-      "You have used most of the AI actions included in your plan for this month. Nothing is paused and nothing is broken. This is here so the overage on the next invoice is not the first you hear of it.",
+      "You have used most of the AI actions included in your plan for this month. Nothing is paused. Usage past the allowance is added to your next invoice.",
     howToFix:
       "Nothing, if the spend is expected. If it is not, the monthly ceiling and which tools may spend against it are in Settings → AI usage.",
   },

@@ -212,6 +212,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.redistribute_staff_work(uuid, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.redistribute_staff_work(uuid, date) TO authenticated, service_role;
+
 COMMENT ON FUNCTION public.redistribute_staff_work(uuid, date) IS
   'Moves a tech''s open visits from _from (default today) round-robin to the '
   'other available techs. A fixed-time groom goes to the first of them with '

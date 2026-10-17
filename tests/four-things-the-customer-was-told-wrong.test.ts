@@ -190,6 +190,12 @@ describe("emails say who sent them", () => {
     "campaign",
     // 2026-10-16: one session left, or 14 days to expiry, on a training package.
     "training-package-notice",
+    "walk-not-done",
+    "walk-schedule-changed",
+    "walk-canceled",
+    "sit-missed-meds",
+    "stay-summary",
+    "stay-notice",
   ];
 
   it("there is a shared footer", () => {

@@ -85,7 +85,7 @@ export async function completeNativeOAuth(url: string): Promise<CallbackResult |
   const err = params.get("error_description") ?? queryParams.get("error_description");
   const errCode = params.get("error") ?? queryParams.get("error");
   if (err || errCode) {
-    return { ok: false, message: err ?? errCode ?? "Sign-in was cancelled." };
+    return { ok: false, message: err ?? errCode ?? "Sign-in was canceled." };
   }
 
   const access_token = params.get("access_token");

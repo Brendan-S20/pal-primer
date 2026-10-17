@@ -276,9 +276,7 @@ describe("what kind of work the chip says it is", () => {
     // (migration 20261010010000), so the label reads them first.
     expect(src).toMatch(/days\?\.length \? formatWeekdaySet\(days, locale\)/);
     for (const f of ["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]) {
-      expect(src, `${f} is missing from FREQUENCY_LABEL`).toMatch(
-        new RegExp(`\\b${f}: "`),
-      );
+      expect(src, `${f} is missing from FREQUENCY_LABEL`).toMatch(new RegExp(`\\b${f}: "`));
     }
     // Every member of public.service_frequency, so an unmapped enum value
     // cannot fall through to the raw snake_case string on screen.
@@ -292,7 +290,7 @@ describe("what kind of work the chip says it is", () => {
     // and one that stops asking for the service drops the name the same way.
     const fn = readFileSync(join(root, "src/lib/visits.functions.ts"), "utf8");
     const q = fn.slice(fn.indexOf("export const listVisitsForDay"));
-    const select = q.slice(0, q.indexOf(".eq(\"organization_id\""));
+    const select = q.slice(0, q.indexOf('.eq("organization_id"'));
     expect(select).toMatch(/subscriptions\(price_cents, account_type, frequency,/);
     expect(select).toMatch(/service_id, services\(name, service_line/);
   });
@@ -305,7 +303,7 @@ describe("what kind of work the chip says it is", () => {
     // dispatcher plans around, and it is the only part promoted to the chip.
     expect(src).toMatch(/visit\.subscriptions\?\.frequency === "one_time" \? "One-time" : null/);
     expect(src).toMatch(
-      /mins == null \? null : clock\(mins\),\s*showService \? serviceName : null,\s*oneTime,\s*street,/,
+      /mins == null \? null : clock\(mins\),\s*showService \? serviceName : null,\s*(stayDates \? "Stay" : )?oneTime,\s*street,/,
     );
     // And the chip learns whether services vary from the whole set on screen.
     expect(src).toMatch(/const showService = servicesVary\(visits\);/);
