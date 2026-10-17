@@ -383,11 +383,13 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
   });
 
   it("pet-waste generation and per-client billing keep their existing price and wording", async () => {
+    // Every day a work day: day(0) is two weeks out and can land on a weekend,
+    // where a one-time visit would move past its end date.
     expect(
       (
         await other.admin
           .from("organizations")
-          .update({ service_lines: ["pet_waste"] })
+          .update({ service_lines: ["pet_waste"], work_days: [0, 1, 2, 3, 4, 5, 6] })
           .eq("id", other.orgId)
       ).error,
     ).toBeNull();
