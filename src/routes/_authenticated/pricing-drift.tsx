@@ -211,11 +211,8 @@ function PricingDriftPage() {
           ) : null}
 
           <p className="max-w-3xl text-xs text-muted-foreground">
-            The per-visit totals above are the sum of the gaps, not money anybody is owed.
-            A service below the card is not a debt; it is a price that was agreed when the
-            card said something else. Sorted worst first by ratio rather than by dollars,
-            so a service paying $26 against a card price of $489 outranks one paying $90
-            against $108.
+            Totals show the gap between agreed prices and today&apos;s rate card. Clients do not owe
+            this difference. Services are sorted by the size of the percentage gap.
           </p>
 
           {/* Phones get cards. A nine-column table does not become usable by

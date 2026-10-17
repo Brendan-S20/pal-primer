@@ -8,6 +8,7 @@ import { commitRefusal, refusalMessage } from "@/lib/import-commit-guard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
+import { importStatusLabel } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
@@ -70,7 +71,7 @@ function BatchDetail() {
     setBusy(true);
     try {
       await cancelFn({ data: { batchId } });
-      toast.success("Import cancelled");
+      toast.success("Import canceled");
       navigate({ to: "/imports" });
     } catch (e: any) {
       toast.error(e?.message ?? "Cancel failed");
@@ -269,7 +270,7 @@ function ImportStatusBadge({ status }: { status: string }) {
   };
   return (
     <Badge variant={status === "cancelled" ? "outline" : "secondary"} className={cls[status] ?? ""}>
-      {status}
+      {importStatusLabel(status)}
     </Badge>
   );
 }

@@ -331,7 +331,7 @@ function BillingPage() {
             {!canBuySaas || data.isPaidTier ? "Plans" : "Choose a plan"}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Unlimited clients, dogs, jobs, routes, and zones on every tier. You're billed per
+            Unlimited clients, dogs, visits, routes, and zones on every tier. You're billed per
             employee, and every charge is shown before it is made.
             {canBuySaas &&
               data.isPaidTier &&

@@ -125,9 +125,8 @@ function InvoicingPage() {
             Bill clients automatically on each client's cadence
           </label>
           <p className="text-xs text-muted-foreground">
-            When on, invoices for completed and billable-skipped postpaid visits are generated at
-            the end of each client's billing cycle (set per client), held for the grace period
-            below, then emailed automatically. A nightly worker runs this.
+            When on, each client is invoiced at the end of their billing cycle for completed and
+            billable skipped visits. The invoice waits for the grace period below, then is emailed.
           </p>
 
           <div className="max-w-xs pt-1">
@@ -163,8 +162,7 @@ function InvoicingPage() {
           <p>
             <span className="font-medium text-foreground">Send now</span>: open a held invoice and
             use <span className="font-medium text-foreground">Send now</span> to email it right
-            away, bypassing the remaining grace. It stamps the invoice as sent and takes it out of
-            the nightly auto-send loop, so the client never gets it twice.
+            away instead of waiting. It is marked sent and will not be emailed again.
           </p>
           <p>
             <span className="font-medium text-foreground">Sent</span>: once emailed (automatically
@@ -268,10 +266,8 @@ function SalesTaxCard() {
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          A new rate applies to invoices made after you save it. Invoices already issued keep the
-          rate they were made at. Mark a client tax-exempt on their page (Edit client) and their
-          invoices carry no tax at any rate. Tax you collect is kept out of your revenue and
-          reported on its own in Tax reports, under Sales tax collected.
+          New invoices use the rate you save. Existing invoices keep their rate. Set tax exemptions
+          in Edit client. Collected tax appears separately in Tax reports.
         </p>
         <Button onClick={() => mut.mutate()} disabled={mut.isPending || rateBps === null}>
           {mut.isPending ? "Saving…" : "Save sales tax"}
