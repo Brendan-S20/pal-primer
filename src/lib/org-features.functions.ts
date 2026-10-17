@@ -11,7 +11,13 @@ import {
   parseChecklist,
   type ChecklistItem,
 } from "@/lib/visit-checklist";
-import { SERVICE_LINES, serviceLinesProblem, type ServiceLine } from "@/lib/service-lines";
+import {
+  SERVICE_LINES,
+  serviceLinesAdditionProblem,
+  serviceLinesOrDefault,
+  serviceLinesProblem,
+  type ServiceLine,
+} from "@/lib/service-lines";
 import { defaultServiceSeedsFor } from "@/lib/services";
 
 // What KIND of business this org is, for rendering.
@@ -236,7 +242,11 @@ async function ensureDefaultServicesForLines(
  *  accounts, nothing hidden by dropping pet waste is billing anybody (the
  *  modules that could -- a configured first cleanup, area pricing on a zone,
  *  a seasonal campaign -- stay visible while they are configured), and the
- *  rows themselves are untouched. */
+ *  rows themselves are untouched.
+ *
+ *  The one refusal is a launch gate: a line outside BOOKABLE_SERVICE_LINES
+ *  cannot be added. A line the org already has is kept, so saving an
+ *  unrelated change never fails for a business that runs one. */
 export const setServiceLines = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -254,6 +264,19 @@ export const setServiceLines = createServerFn({ method: "POST" })
     if (problem) throw new Error(problem);
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    // Read, not assumed: a failed read must not pass as {pet_waste} and
+    // refuse a line the org already runs.
+    const { data: org, error } = await context.supabase
+      .from("organizations")
+      .select("service_lines")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const adding = serviceLinesAdditionProblem(
+      serviceLinesOrDefault(org?.service_lines),
+      data.lines,
+    );
+    if (adding) throw new Error(adding);
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
     await ensureDefaultServicesForLines(context.supabase, orgId, data.lines);

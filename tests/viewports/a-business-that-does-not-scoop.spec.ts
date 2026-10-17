@@ -92,25 +92,27 @@ async function showAllSteps(page: Page) {
 const allText = (page: Page) => page.evaluate(() => document.body.textContent ?? "");
 
 /** ServiceLinesChoices, as /setup step 1 and Settings → Business defaults both
- *  draw it for a dog-walking business. Walking and sitting are bookable;
- *  mobile grooming is listed, marked, and cannot be ticked. */
+ *  draw it for a dog-walking business. Only pet waste is bookable. The
+ *  business keeps walking, marked Coming soon; sitting and grooming are
+ *  listed, marked, and cannot be ticked. */
 async function expectServiceLineChoices(page: Page) {
   await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole("checkbox", { name: "Dog walking", exact: true })).toBeChecked();
+  const walking = page.getByRole("checkbox", { name: /^Dog walking/ });
+  await expect(walking).toBeChecked();
+  await expect(page.locator("li").filter({ has: walking }).getByText("Coming soon")).toBeVisible();
   const petWaste = page.getByRole("checkbox", {
     name: "Pet waste removal (scooping)",
     exact: true,
   });
   await expect(petWaste).not.toBeChecked();
   await expect(petWaste).toBeEnabled();
-  // Bookable since the service catalog: shown, selectable, no badge.
-  const sitting = page.getByRole("checkbox", { name: "Pet sitting", exact: true });
+  // Not approved yet: shown, marked, and not selectable.
+  const sitting = page.getByRole("checkbox", { name: /^Pet sitting/ });
   await expect(sitting).not.toBeChecked();
-  await expect(sitting).toBeEnabled();
-  await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toHaveCount(0);
-  // Not bookable yet: shown, marked, and not selectable.
+  await expect(sitting).toBeDisabled();
+  await expect(page.locator("li").filter({ has: sitting }).getByText("Coming soon")).toBeVisible();
   const grooming = page.getByRole("checkbox", { name: /^Mobile grooming/ });
   await expect(grooming).toBeDisabled();
   await expect(page.locator("li").filter({ has: grooming }).getByText("Coming soon")).toBeVisible();
