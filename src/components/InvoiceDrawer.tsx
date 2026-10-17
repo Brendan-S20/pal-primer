@@ -6,6 +6,8 @@
 // void, open the full page.
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { LoadError } from "@/components/LoadError";
+import { LineBones } from "@/components/PageSkeletons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { LineQuantity } from "@/components/LineQuantity";
@@ -82,7 +84,7 @@ export function InvoiceDrawer({
   const [view, setView] = useState<"detail" | "pay">("detail");
   useEffect(() => setView("detail"), [invoiceId]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isError, isFetching, refetch } = useQuery({
     queryKey: ["invoice-detail", invoiceId],
     queryFn: () => detailFn({ data: { invoiceId: invoiceId! } }),
     enabled: !!invoiceId,
@@ -204,8 +206,19 @@ export function InvoiceDrawer({
         title={inv ? `Invoice ${invoiceNumberLabel(inv)}` : "Invoice"}
         size="md"
       >
-        {isLoading || !inv ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+        {/* Three states before the invoice, not one. `isLoading || !inv` read
+            "Loading" forever after a failed read, because an errored query is
+            no longer loading and still has no invoice (A-05). */}
+        {!inv ? (
+          isError ? (
+            <LoadError what="this invoice" onRetry={() => refetch()} retrying={isFetching} />
+          ) : data ? (
+            <p className="text-sm text-muted-foreground">
+              This invoice was not found. It may have been deleted.
+            </p>
+          ) : (
+            <LineBones rows={4} />
+          )
         ) : view === "pay" ? (
           /* Embedded payment view (B2): saved card / credit / new card, all
            * inside the popup. Back arrow returns to the invoice detail. */
