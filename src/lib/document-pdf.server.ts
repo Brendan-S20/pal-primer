@@ -55,7 +55,7 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 
 /** Everything an invoice PDF prints, in one read. */
 export const INVOICE_PDF_SELECT =
-  "id, number, organization_id, client_id, status, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone, contact_email, contact_phone, contact_address), clients(display_name, primary_email)";
+  "id, number, organization_id, client_id, status, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name, timezone, contact_email, contact_phone, contact_address), clients(display_name, primary_email)";
 
 type InvoicePdfRow = {
   id: string;
@@ -171,10 +171,12 @@ export async function invoicePdfForRow(
     creditAppliedCents: creditCents,
     amountPaidCents,
     refundedCents,
+    // Net of what was paid, so a partly paid invoice prints the rest.
     balanceDueCents: invoiceOutstandingCents({
       status: inv.status,
       total_cents: totalCents,
       credit_applied_cents: creditCents,
+      amount_paid_cents: amountPaidCents,
     }),
     payUrl: inv.public_token ? appUrl(`/pay/i/${inv.public_token}`) : null,
   };

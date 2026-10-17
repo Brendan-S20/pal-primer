@@ -1,41 +1,82 @@
 // The office's half of a field collection, as arithmetic.
 //
-// An invoice here is paid whole or not at all -- bulkMarkInvoicesPaid records
-// the open balance, and there is no partial payment to record -- so applying
-// $40 of cash means choosing open invoices whose balances add up to no more
-// than $40. confirm_field_collection refuses any choice that adds up to more;
-// this proposes the one the office will usually want.
+// Cash is applied oldest invoice first. Each ticked invoice takes what it is
+// owed until the money runs out, and the one where it runs out takes the rest
+// and stays open for the remainder (a partial payment). confirm_field_collection
+// does exactly this in SQL and records the payments; this is the same rule
+// for the card, so what it previews is what happens.
+//
+// `invoices` must be in the card's order, which is the order the SQL uses:
+// period_end, then issued_at, created_at, id (listFieldCollections).
 
 export type OpenInvoice = { id: string; open_cents: number };
 
-/** Oldest first, every invoice that still fits. Oldest first because that is
- *  the debt the customer was most likely paying, and because it is the order
- *  the list is shown in, so the ticks read top-down. An invoice that does not
- *  fit is skipped, not a reason to stop: $40 against $25, $30, $15 settles the
- *  $25 and the $15. */
+const usd = (cents: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+
+const joinLabels = (labels: string[], word: "or" | "and") =>
+  labels.length <= 1
+    ? (labels[0] ?? "")
+    : `${labels.slice(0, -1).join(", ")} ${word} ${labels[labels.length - 1]}`;
+
+/** What the card says when the cash runs out before a ticked invoice:
+ *  how much came in, which invoices it does not reach, and what to do.
+ *  `starvedLabels` are those invoices' numbers (INV-1102), oldest first. */
+export function starvedWarning(amountCents: number, starvedLabels: string[]): string {
+  return `${usd(amountCents)} was collected, which doesn't reach ${joinLabels(
+    starvedLabels,
+    "or",
+  )}. Untick ${joinLabels(starvedLabels, "and")} to apply the cash to the older invoices.`;
+}
+
+/** Oldest first, until the money runs out: $60 against $40, $40, $15 ticks
+ *  the first two (the second partly). Invoices with nothing owed are left. */
 export function defaultInvoiceSelection(invoices: OpenInvoice[], amountCents: number): string[] {
   let left = amountCents;
   const out: string[] = [];
   for (const inv of invoices) {
-    if (inv.open_cents > 0 && inv.open_cents <= left) {
-      out.push(inv.id);
-      left -= inv.open_cents;
-    }
+    if (left <= 0) break;
+    if (inv.open_cents <= 0) continue;
+    out.push(inv.id);
+    left -= inv.open_cents;
   }
   return out;
 }
 
-/** What a selection applies, and what is left over. */
-export function selectionTotals(
+export type Allocation = { id: string; cents: number; partial: boolean };
+
+/** Where the money goes for a selection, oldest first. `starved` lists ticked
+ *  invoices the money never reaches: confirm_field_collection refuses those,
+ *  so the card says so before anyone presses Confirm. */
+export function allocateOldestFirst(
   invoices: OpenInvoice[],
   selected: string[],
   amountCents: number,
-): { appliedCents: number; unappliedCents: number; overBy: number } {
+): {
+  allocations: Allocation[];
+  appliedCents: number;
+  unappliedCents: number;
+  starved: string[];
+} {
   const chosen = new Set(selected);
-  const applied = invoices.filter((i) => chosen.has(i.id)).reduce((s, i) => s + i.open_cents, 0);
+  let left = amountCents;
+  const allocations: Allocation[] = [];
+  const starved: string[] = [];
+  for (const inv of invoices) {
+    if (!chosen.has(inv.id)) continue;
+    if (inv.open_cents > 0 && left <= 0) {
+      starved.push(inv.id);
+      continue;
+    }
+    const cents = Math.min(left, Math.max(inv.open_cents, 0));
+    allocations.push({ id: inv.id, cents, partial: cents < inv.open_cents });
+    left -= cents;
+  }
+  const appliedCents = allocations.reduce((s, a) => s + a.cents, 0);
   return {
-    appliedCents: applied,
-    unappliedCents: Math.max(amountCents - applied, 0),
-    overBy: Math.max(applied - amountCents, 0),
+    allocations,
+    appliedCents,
+    unappliedCents: Math.max(amountCents - appliedCents, 0),
+    starved,
   };
 }
