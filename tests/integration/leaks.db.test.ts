@@ -12,6 +12,11 @@
  */
 import { beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
+import { orgDay } from "../support/org-day";
+
+// The org below takes the column default, so its today is today in that zone.
+const today = orgDay(DEFAULT_ORG_TIMEZONE);
 
 const URL = process.env.TEST_SUPABASE_URL;
 const ANON = process.env.TEST_SUPABASE_ANON_KEY;
@@ -127,7 +132,6 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
       status: "active",
       started_on: "2026-01-01",
     });
-    const today = new Date().toISOString().slice(0, 10);
     techVisitId = await ins("visits", {
       organization_id: orgId,
       subscription_id: subscriptionId,
@@ -221,7 +225,6 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
   // ── Leak 2: Dispatcher had full client-billing control ───────────────────
   describe("dispatcher vs client billing (leak 2)", () => {
     it("cannot insert invoices", async () => {
-      const today = new Date().toISOString().slice(0, 10);
       const { error } = await dispatcher.from("invoices").insert({
         organization_id: orgId,
         client_id: clientId,
@@ -236,7 +239,6 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
     });
 
     it("cannot void an invoice via the RPC", async () => {
-      const today = new Date().toISOString().slice(0, 10);
       const invId = await ins("invoices", {
         organization_id: orgId,
         client_id: clientId,
