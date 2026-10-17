@@ -45,10 +45,11 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** A line joins this list when its path can be booked end to end.
- *  Dog walking (#410), pet sitting (#411), mobile grooming (#412) and
- *  training (#413) join with their paths. Until then the picker lists them
- *  as Coming soon. */
+/** Lines an owner can turn on today. A line joins this list when it is
+ *  approved to go live: dog walking (#410), pet sitting (#411), mobile
+ *  grooming (#412) and training (#413) each join with their approval. Until
+ *  then the picker shows them as Coming soon. A business that already runs
+ *  one keeps it; setServiceLines refuses only adding one. */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
@@ -73,6 +74,21 @@ export function serviceLinesProblem(lines: readonly unknown[]): string | null {
   if (!lines.every(isServiceLine)) return "That isn't a service HoundStack knows about.";
   if (new Set(lines).size !== lines.length) return "A service is listed twice.";
   return null;
+}
+
+/**
+ * Null when `next` adds no line that is still Coming soon. A line the org
+ * already runs is kept, so a business that runs walking can still save an
+ * unrelated change. Once it turns walking off, it cannot turn it on again.
+ */
+export function serviceLinesAdditionProblem(
+  current: readonly ServiceLine[],
+  next: readonly ServiceLine[],
+): string | null {
+  const added = next.filter((l) => !current.includes(l));
+  return added.every((l) => BOOKABLE_SERVICE_LINES.includes(l))
+    ? null
+    : "That service is coming soon.";
 }
 
 /**

@@ -37,7 +37,7 @@ import { totalReversals, type Reversal } from "@/lib/reversals.server";
 // answered the same two questions its own way — which is how the pack reported
 // $2,550.00 open for July and the page reported $2,655.00. One implementation,
 // two callers.
-import { billedDay, outstandingAsOf } from "@/lib/ar";
+import { billedDay, invoiceDueCents, outstandingAsOf } from "@/lib/ar";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 import type { AppRole } from "@/hooks/useMyRole";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
@@ -249,6 +249,7 @@ type InvoiceRow = {
   tax_rate_bps?: number | null;
   tax_label?: string | null;
   credit_applied_cents: number | null;
+  amount_paid_cents: number | null;
   issued_at: string | null;
   paid_at: string | null;
   voided_at: string | null;
@@ -257,14 +258,14 @@ type InvoiceRow = {
 };
 
 const INVOICE_COLS =
-  "id, number, client_id, status, total_cents, tax_cents, tax_rate_bps, tax_label, credit_applied_cents, issued_at, paid_at, voided_at, due_on, updated_at";
+  "id, number, client_id, status, total_cents, tax_cents, tax_rate_bps, tax_label, credit_applied_cents, amount_paid_cents, issued_at, paid_at, voided_at, due_on, updated_at";
 
 /** The whole invoice ledger for this org. The bridge and the aging report both
  *  need point-in-time positions, which cannot be derived from a filtered
  *  window — an invoice issued three years ago and still open is part of today's
  *  receivables. */
 async function loadInvoices(supabase: any, ctx: OrgContext) {
-  return fetchAll<InvoiceRow>((a, b) =>
+  const rows = await fetchAll<InvoiceRow>((a, b) =>
     supabase
       .from("invoices")
       .select(INVOICE_COLS)
@@ -274,6 +275,10 @@ async function loadInvoices(supabase: any, ctx: OrgContext) {
       .order("id")
       .range(a, b),
   );
+  // An invoice paid in parts was owed less after each part; the opening and
+  // closing receivables need the day each part arrived.
+  const { attachDatedPartialPayments } = await import("@/lib/partial-payments.server");
+  return attachDatedPartialPayments(supabase, ctx.orgId, rows);
 }
 
 async function clientNames(supabase: any, ctx: OrgContext, ids: string[]) {
@@ -735,7 +740,9 @@ async function buildBridge(supabase: any, ctx: OrgContext, from: string, to: str
     } else if (inv.status === "uncollectible") {
       const off = inv.updated_at ? orgLocalDay(inv.updated_at, tz) : null;
       if (off && inRange(off, from, to)) {
-        writtenOff += Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
+        // What was still owed when it was written off: net of credit and of
+        // any part already paid.
+        writtenOff += invoiceDueCents(inv);
       }
     }
   }
@@ -989,7 +996,7 @@ async function buildWriteOffs(supabase: any, ctx: OrgContext, from: string, to: 
           inv,
           day: off,
           label: "Written off as uncollectible",
-          amount: Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0),
+          amount: invoiceDueCents(inv),
         });
       }
     }

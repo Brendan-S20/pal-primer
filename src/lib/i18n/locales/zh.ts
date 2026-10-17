@@ -702,7 +702,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     savedToast: "已记录。办公室会确认。",
     queuedToast: "已保存在这部手机上。有信号时会发送给办公室。",
     enterAmount: "请输入你收到的金额。",
-    moreThanDue: "超过了这位客户应付的 {{amount}}。",
+    moreThanDue: "超过了这位客户应付的金额（{{amount}}）。请输入 {{amount}} 或更少。",
     officeConfirms: "由办公室确认并入账到客户的账单。在这里不能把账单标记为已付。",
   },
   notificationType: {
