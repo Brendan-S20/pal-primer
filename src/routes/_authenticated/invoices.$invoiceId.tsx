@@ -1,4 +1,5 @@
 import { appUrl } from "@/lib/app-origin";
+import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -116,9 +117,16 @@ function InvoiceDetail() {
     mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId], ...how } }),
     onSuccess: (r) => {
       if (!r.ok) {
-        toast.error("The payment could not be recorded. The invoice may already be paid or void.");
+        toast.error(
+          r.refusal ??
+            "The payment could not be recorded. The invoice may already be paid or void.",
+        );
       } else {
-        toast.success("Payment recorded. Invoice paid");
+        toast.success(
+          r.partial?.length
+            ? "Partial payment recorded. The rest stays open on the invoice"
+            : "Payment recorded. Invoice paid",
+        );
         setPayOpen(false);
       }
       if (r.intentStillLive?.length) {
@@ -334,39 +342,37 @@ function InvoiceDetail() {
                 </span>
               </div>
               {/* Credit applications live on the invoice (credit_applied_cents
-                  + the credit ledger), not in the payments cash list. */}
-              {((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) >
-                0 && (
-                <>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>Credit applied</span>
+                  + the credit ledger), not in the payments cash list. Paid is
+                  the sum of this invoice's payments; a partly paid invoice
+                  stays open for the balance. */}
+              {(invoice.credit_applied_cents ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Credit applied</span>
+                  <span className="tabular-nums">
+                    -{fmtCents(invoice.credit_applied_cents ?? 0, invoice.currency)}
+                  </span>
+                </div>
+              )}
+              {(invoice.amount_paid_cents ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Paid</span>
+                  <span className="tabular-nums">
+                    -{fmtCents(invoice.amount_paid_cents ?? 0, invoice.currency)}
+                  </span>
+                </div>
+              )}
+              {invoice.status === "open" &&
+                ((invoice.credit_applied_cents ?? 0) > 0 ||
+                  (invoice.amount_paid_cents ?? 0) > 0) && (
+                  <div className="flex items-center justify-between text-sm font-medium">
+                    <span>
+                      {isPartiallyPaid(invoice) ? "Balance due (partially paid)" : "Balance due"}
+                    </span>
                     <span className="tabular-nums">
-                      -
-                      {fmtCents(
-                        (invoice as { credit_applied_cents?: number | null })
-                          .credit_applied_cents ?? 0,
-                        invoice.currency,
-                      )}
+                      {fmtCents(invoiceDueCents(invoice), invoice.currency)}
                     </span>
                   </div>
-                  {invoice.status === "open" && (
-                    <div className="flex items-center justify-between text-sm font-medium">
-                      <span>Amount due</span>
-                      <span className="tabular-nums">
-                        {fmtCents(
-                          Math.max(
-                            (invoice.total_cents ?? 0) -
-                              ((invoice as { credit_applied_cents?: number | null })
-                                .credit_applied_cents ?? 0),
-                            0,
-                          ),
-                          invoice.currency,
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </>
-              )}
+                )}
               {invoice.status === "paid" && invoice.paid_at && (
                 <p className="text-right text-xs text-muted-foreground">
                   Paid {formatDay(String(invoice.paid_at))}
@@ -393,14 +399,10 @@ function InvoiceDetail() {
               variant="outline"
               disabled={recordM.isPending}
               onClick={async () => {
-                const due = Math.max(
-                  (invoice.total_cents ?? 0) -
-                    ((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ??
-                      0),
-                  0,
-                );
+                const due = invoiceDueCents(invoice);
                 const how = await askPayment({
-                  amountLine: `${fmtCents(due, invoice.currency)}, the open balance${client?.display_name ? ` for ${client.display_name}` : ""}. This marks the invoice paid and can't be undone here.`,
+                  amountLine: `${fmtCents(due, invoice.currency)} is still owed${client?.display_name ? ` by ${client.display_name}` : ""}. The invoice is marked paid when the balance reaches zero. A payment can't be undone here.`,
+                  balanceCents: due,
                 });
                 if (how) recordM.mutate(how);
               }}
