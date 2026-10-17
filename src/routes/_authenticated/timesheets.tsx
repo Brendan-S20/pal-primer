@@ -53,6 +53,8 @@ import {
   mondayOf,
   orgTimeInputValue,
   orgWallTimeToInstant,
+  possibleMissedClockOut,
+  shiftMinutes,
   timesheetCsvRows,
   TIMESHEET_CSV_HEADERS,
   type ClockEntry,
@@ -120,6 +122,7 @@ function TimesheetsPage() {
         entries: data.entries,
         visits: data.visits,
         tips: data.tips,
+        scheduled: data.scheduled,
       })
     : null;
   const entriesById = useMemo(
@@ -144,6 +147,7 @@ function TimesheetsPage() {
 
   const onTheClock = sheet?.rows.filter((r) => r.onTheClock).length ?? 0;
   const visits = sheet?.rows.reduce((n, r) => n + r.visitsCompleted, 0) ?? 0;
+  const missed = sheet?.rows.reduce((n, r) => n + r.possibleMissedClockOuts, 0) ?? 0;
 
   const exportCsv = () => {
     if (!sheet) return;
@@ -160,8 +164,10 @@ function TimesheetsPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Timesheets</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Hours from the time clock on My Day, by day, with the visits each person completed.
-            Tap a day to fix a forgotten clock-out.
+            Hours from the time clock, by day, with the visits each person completed. A completed
+            visit counts on the day it was completed, the day its hours were worked; "scheduled"
+            is every visit on their route this week, the number My Day counts against. Tap a day
+            to fix a forgotten clock-out.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -241,13 +247,39 @@ function TimesheetsPage() {
               warn={sheet.overtimeMinutes > 0}
             />
             <Stat label="On the clock now" value={String(onTheClock)} />
-            <Stat label="Visits completed" value={String(visits)} />
+            <Stat
+              label="Visits completed"
+              value={String(visits)}
+              hint="on the day each was completed"
+            />
             <Stat
               label="Tips"
               value={tipMoney(sheet.tipsCents)}
               hint="from the most recent visit on each tipped invoice"
             />
           </div>
+
+          {/* A shift open 12 hours or more, or closed after more than 16, is
+              usually a forgotten clock-out (QA row 22, #438). Flagged, never
+              closed for them: the office decides what the real time was. */}
+          {missed > 0 && (
+            <Card
+              role="status"
+              className="flex items-start gap-2 border-amber-400/60 bg-amber-50/60 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-950/30"
+            >
+              <TriangleAlert
+                className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300"
+                aria-hidden="true"
+              />
+              <span className="min-w-0">
+                {missed === 1
+                  ? "1 shift looks like a missed clock-out"
+                  : `${missed} shifts look like a missed clock-out`}{" "}
+                (open 12 hours or more, or longer than 16 hours). They are marked below. Tap the day
+                to fix the time.
+              </span>
+            </Card>
+          )}
 
           {sheet.rows.length === 0 ? (
             <Card className="p-6 text-sm text-muted-foreground">
@@ -282,7 +314,12 @@ function TimesheetsPage() {
                         </TableHead>
                       ))}
                       <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Visits</TableHead>
+                      <TableHead
+                        className="text-right"
+                        title="Completed (by the day completed) and scheduled (on their route this week)"
+                      >
+                        Visits
+                      </TableHead>
                       <TableHead className="text-right">Tips</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -298,6 +335,7 @@ function TimesheetsPage() {
                               On the clock
                             </div>
                           )}
+                          {row.possibleMissedClockOuts > 0 && <MissedClockOutNote row={row} />}
                         </TableCell>
                         {row.days.map((d) => (
                           <TableCell key={d.day} className="p-1 text-center">
@@ -311,8 +349,11 @@ function TimesheetsPage() {
                         <TableCell className="text-right tabular-nums">
                           <TotalCell row={row} />
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {row.visitsCompleted}
+                        <TableCell className="whitespace-nowrap text-right tabular-nums">
+                          <div>{row.visitsCompleted} done</div>
+                          <div className="text-xs text-muted-foreground">
+                            {row.visitsScheduled} scheduled
+                          </div>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {row.tipsCents > 0 ? tipMoney(row.tipsCents) : "–"}
@@ -372,6 +413,13 @@ function TimesheetsPage() {
                               : ""}
                             {entry?.edited_at ? " · corrected by the office" : ""}
                           </p>
+                          {entry && possibleMissedClockOut(entry, Date.now()) && (
+                            <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-300">
+                              Possible missed clock-out: this shift{" "}
+                              {entry.clock_out ? "ran" : "has been open for"}{" "}
+                              {formatDuration(shiftMinutes(entry, Date.now()))}.
+                            </p>
+                          )}
                           {entry?.note && (
                             <p className="mt-1 break-words text-xs text-muted-foreground">
                               {entry.note}
@@ -457,7 +505,24 @@ function Stat({
   );
 }
 
+/** "Possible missed clock-out", under a person's name. */
+function MissedClockOutNote({ row }: { row: TimesheetRow }) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {row.possibleMissedClockOuts === 1
+        ? "Possible missed clock-out"
+        : `${row.possibleMissedClockOuts} possible missed clock-outs`}
+    </div>
+  );
+}
+
 function TotalCell({ row }: { row: TimesheetRow }) {
+  // A person with no clocked time at all this week is not "0m": they never
+  // clocked in, which is the thing the office needs to read (QA row 22).
+  if (!row.clockedIn) {
+    return <div className="text-sm text-muted-foreground">No clock-ins</div>;
+  }
   return (
     <div>
       <div className="font-medium">{formatDuration(row.totalMinutes)}</div>
@@ -483,16 +548,31 @@ function DayCellButton({
 }) {
   const open = day.segments.some((s) => s.open);
   const empty = day.segments.length === 0;
+  const flagged = day.possibleMissedClockOut;
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${label}: ${empty ? "no time" : formatDuration(day.minutes)}`}
+      aria-label={`${label}: ${empty ? "no time" : formatDuration(day.minutes)}${
+        flagged ? ", possible missed clock-out" : ""
+      }`}
       className={`flex min-h-11 w-full min-w-[4.5rem] flex-col items-center justify-center rounded-md px-1 py-1 text-sm tabular-nums transition-colors hover:bg-muted ${
-        open ? "bg-emerald-500/10" : ""
+        flagged
+          ? "bg-amber-500/15 ring-1 ring-inset ring-amber-500/60"
+          : open
+            ? "bg-emerald-500/10"
+            : ""
       }`}
     >
-      <span className={empty ? "text-muted-foreground" : "font-medium"}>
+      <span
+        className={`inline-flex items-center gap-1 ${empty ? "text-muted-foreground" : "font-medium"}`}
+      >
+        {flagged && (
+          <TriangleAlert
+            className="h-3 w-3 shrink-0 text-amber-700 dark:text-amber-300"
+            aria-hidden="true"
+          />
+        )}
         {empty ? "–" : formatDuration(day.minutes)}
       </span>
       {day.visitsCompleted > 0 && (
@@ -522,10 +602,12 @@ function PersonCard({
         <div className="min-w-0 flex-1">
           <div className="break-words font-medium">{row.staff.display_name}</div>
           <div className="text-xs text-muted-foreground">
-            {row.visitsCompleted} visit{row.visitsCompleted === 1 ? "" : "s"} completed
+            {row.visitsCompleted} visit{row.visitsCompleted === 1 ? "" : "s"} completed ·{" "}
+            {row.visitsScheduled} scheduled
             {row.tipsCents > 0 ? ` · ${tipMoney(row.tipsCents)} in tips` : ""}
             {row.onTheClock ? " · on the clock" : ""}
           </div>
+          {row.possibleMissedClockOuts > 0 && <MissedClockOutNote row={row} />}
         </div>
         <div className="shrink-0 text-right tabular-nums">
           <TotalCell row={row} />
@@ -544,8 +626,10 @@ function PersonCard({
                 // person's Monday" is one question in both shapes.
                 aria-label={`${row.staff.display_name}, ${formatDay(d.day)}: ${
                   d.segments.length ? formatDuration(d.minutes) : "no time"
+                }${d.possibleMissedClockOut ? ", possible missed clock-out" : ""}`}
+                className={`flex min-h-11 w-full items-center gap-3 py-1 text-left text-sm ${
+                  d.possibleMissedClockOut ? "bg-amber-500/10" : ""
                 }`}
-                className="flex min-h-11 w-full items-center gap-3 py-1 text-left text-sm"
               >
                 <span className="w-24 shrink-0">{formatDay(d.day)}</span>
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground tabular-nums">
@@ -562,8 +646,14 @@ function PersonCard({
                       : ""}
                 </span>
                 <span
-                  className={`shrink-0 tabular-nums ${d.segments.length ? "font-medium" : "text-muted-foreground"}`}
+                  className={`inline-flex shrink-0 items-center gap-1 tabular-nums ${d.segments.length ? "font-medium" : "text-muted-foreground"}`}
                 >
+                  {d.possibleMissedClockOut && (
+                    <TriangleAlert
+                      className="h-3 w-3 shrink-0 text-amber-700 dark:text-amber-300"
+                      aria-hidden="true"
+                    />
+                  )}
                   {d.segments.length ? formatDuration(d.minutes) : "–"}
                 </span>
               </button>

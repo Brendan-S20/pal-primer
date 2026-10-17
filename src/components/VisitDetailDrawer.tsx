@@ -1,7 +1,9 @@
 import i18n from "@/lib/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { holdForUndo, UNDO_WINDOW_MS, type HeldChange } from "@/lib/undo-window";
+import { skipReasonText } from "@/lib/skip-reason-text";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { orgLocalTime } from "@/lib/org-day";
@@ -162,24 +164,73 @@ export function VisitDetailDrawer({
   useEffect(() => setMoveTo(""), [visitId]);
   const rescheduleMut = useMutation({
     mutationFn: () => doReschedule({ data: { visitId: visitId!, newDate: moveTo } }),
-    onSuccess: () => {
-      toast.success(`Visit moved to ${formatDay(moveTo)}`);
+    onSuccess: (r) => {
+      const who = r.techName ?? "The tech";
+      if (r.tech === "kept") {
+        toast.success(`Visit moved to ${formatDay(moveTo)}`, {
+          description: `${who} keeps it.`,
+        });
+      } else if (r.tech === "dropped") {
+        toast.warning(`Visit moved to ${formatDay(moveTo)}, unassigned`, {
+          description: `${who} is not working that day, so dispatch or auto-routing places it.`,
+          duration: 9000,
+        });
+      } else {
+        toast.success(`Visit moved to ${formatDay(moveTo)}`);
+      }
       setMoveTo("");
       invalidate();
     },
     onError: (e: Error) => toast.error(e.message),
   });
-  const reassignMut = useMutation({
-    mutationFn: (staffId: string | null) => doReassign({ data: { visitId: visitId!, staffId } }),
-    onSuccess: () => {
-      toast.success("Visit reassigned");
-      invalidate();
-      // The board and the mobile day list both key off "visits"; invalidate()
-      // covers those, but the tech lanes are grouped client-side from the same
-      // query so no extra refetch is needed.
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Reassigning used to apply the moment the native select changed, with no
+  // undo, and reassignVisit tells the tech losing the stop and the tech
+  // gaining it before it returns (QA row 16). On a phone a mis-tap in a
+  // native picker is easy. So the change is HELD for a few seconds behind an
+  // Undo toast and only then sent: nothing is written and nobody is told
+  // until the window closes. `pendingStaff` is what the select shows while
+  // it waits (undefined: nothing held).
+  const [pendingStaff, setPendingStaff] = useState<string | null | undefined>(undefined);
+  const held = useRef<{ change: HeldChange; toastId: string | number } | null>(null);
+  useEffect(() => setPendingStaff(undefined), [visitId]);
+  const reassignTo = (staffId: string | null, name: string | null) => {
+    const vid = visitId!;
+    // A second pick inside the window replaces the first: the latest choice
+    // is the one meant, and the first was never sent.
+    if (held.current && held.current.change.undo()) toast.dismiss(held.current.toastId);
+    // Picking the tech it already has is the same as Undo.
+    if (staffId === (v?.assigned_staff_id ?? null)) {
+      setPendingStaff(undefined);
+      return;
+    }
+    setPendingStaff(staffId);
+    const change = holdForUndo(() => doReassign({ data: { visitId: vid, staffId } }), {
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not reassign the visit"),
+    });
+    const toastId = toast(name ? `Reassigned to ${name}` : "Visit unassigned", {
+      description: "The techs are told when this closes.",
+      duration: UNDO_WINDOW_MS,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          if (change.undo()) setPendingStaff(undefined);
+        },
+      },
+    });
+    held.current = { change, toastId };
+    void change.done.then(async (sent) => {
+      if (held.current?.change === change) held.current = null;
+      if (sent) {
+        // The board and the mobile day list both key off "visits"; the tech
+        // lanes are grouped client-side from the same query.
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["visit-detail", vid] }),
+          qc.invalidateQueries({ queryKey: ["visits"] }),
+        ]);
+      }
+      setPendingStaff((p) => (p === staffId ? undefined : p));
+    });
+  };
 
   const { data, isLoading } = useQuery({
     enabled: !!visitId,
@@ -427,6 +478,7 @@ export function VisitDetailDrawer({
             )}
 
             {(v.skip_reason ||
+              v.status === "skipped" ||
               v.weather_note ||
               v.tech_note ||
               v.completion_photo_waived_reason) && (
@@ -445,8 +497,13 @@ export function VisitDetailDrawer({
                   </p>
                 )}
                 {v.weather_note && <p className="whitespace-pre-wrap text-sm">{v.weather_note}</p>}
-                {v.skip_reason && (
-                  <p className="mt-1 text-sm text-muted-foreground">Skip: {v.skip_reason}</p>
+                {/* A skipped visit always says why, or says that nobody
+                    recorded why. A bare "Skipped" badge on a future stop read
+                    as a fault in the schedule (QA row 15). */}
+                {(v.skip_reason || v.status === "skipped") && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Skip: {skipReasonText(v.skip_reason, v.skip_reason_code)}
+                  </p>
                 )}
               </section>
             )}
@@ -469,12 +526,19 @@ export function VisitDetailDrawer({
                 <Label htmlFor="reassign" className="text-xs">
                   Assigned tech
                 </Label>
+                {/* 36px on a pointer, 44px on touch: the same floor the
+                    Timesheets person picker uses. */}
                 <select
                   id="reassign"
-                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-                  value={v?.assigned_staff_id ?? ""}
-                  disabled={reassignMut.isPending}
-                  onChange={(e) => reassignMut.mutate(e.target.value || null)}
+                  className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm touch:min-h-11"
+                  value={(pendingStaff === undefined ? v?.assigned_staff_id : pendingStaff) ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value || null;
+                    const name = id
+                      ? String(techs.find((s: any) => s.id === id)?.display_name ?? "another tech")
+                      : null;
+                    reassignTo(id, name);
+                  }}
                 >
                   <option value="">Unassigned</option>
                   {techs.map((s: any) => (
@@ -514,8 +578,9 @@ export function VisitDetailDrawer({
                       </Button>
                     </div>
                     <p className="text-2xs text-muted-foreground">
-                      The visit leaves this route. Dispatch or auto-routing places it on the new
-                      day. Reordering a tech's stops is on the Schedule board.
+                      It stays with the same tech when the new day is a work day and they are
+                      not off. Otherwise it is left unassigned for dispatch. Reordering a
+                      tech's stops is on the Schedule board.
                     </p>
                   </form>
                 )}
@@ -623,7 +688,13 @@ function OtherVisits({
   visits,
 }: {
   title: string;
-  visits: Array<{ id: string; scheduled_on: string; status: string }>;
+  visits: Array<{
+    id: string;
+    scheduled_on: string;
+    status: string;
+    skip_reason?: string | null;
+    skip_reason_code?: string | null;
+  }>;
 }) {
   if (visits.length === 0) return null;
   return (
@@ -632,8 +703,15 @@ function OtherVisits({
       <ul className="space-y-1 text-xs">
         {visits.map((h) => (
           <li key={h.id} className="flex justify-between gap-2">
-            <span>{formatDay(h.scheduled_on)}</span>
-            <span className="capitalize text-muted-foreground">{i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}</span>
+            <span className="shrink-0">{formatDay(h.scheduled_on)}</span>
+            <span className="min-w-0 text-end text-muted-foreground">
+              <span className="capitalize">{i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}</span>
+              {h.status === "skipped" && (
+                <span className="block break-words">
+                  {skipReasonText(h.skip_reason, h.skip_reason_code)}
+                </span>
+              )}
+            </span>
           </li>
         ))}
       </ul>
