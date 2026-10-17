@@ -40,8 +40,9 @@ async function orgTimezone(supabase: Db, orgId: string): Promise<string> {
 }
 
 /** The caller's clock for today: their shifts that touch the org's today,
- *  the open one among them, and the visits they have completed today. */
-async function loadMyClock(supabase: Db, userId: string) {
+ *  the open one among them, and the visits they have completed today. Also
+ *  asked by getShellContext. */
+export async function loadMyClock(supabase: Db, userId: string) {
   const { data: staff, error: staffErr } = await supabase
     .from("staff")
     .select("id, organization_id, display_name")
@@ -269,7 +270,8 @@ export const editTimeEntry = createServerFn({ method: "POST" })
     const { error } = await context.supabase.rpc("office_edit_time_entry", {
       _id: data.id,
       _clock_in: data.clockIn,
-      _clock_out: data.clockOut,
+      // The SQL function takes NULL: it leaves a running shift running.
+      _clock_out: data.clockOut as string,
       _note: data.note ?? "",
     });
     if (error) throw new Error(error.message);

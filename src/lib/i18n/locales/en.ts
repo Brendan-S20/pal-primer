@@ -415,7 +415,7 @@ const en = {
   },
   skipReason: {
     customer_requested: "Client skipped via portal",
-    client_cancelled_late: "Client cancelled late",
+    client_cancelled_late: "Client canceled late",
     gate_locked: "Gate locked / no access",
     dog_outside: "Dog was outside",
     weather: "Weather",
@@ -557,7 +557,7 @@ const en = {
   },
   nativePush: {
     title: "Notifications on this phone",
-    description: "Route changes, new jobs and messages, even when the app is closed.",
+    description: "Route changes, new visits and messages, even when the app is closed.",
     promptBody: "This phone has not been asked yet. Tap the button, then choose Allow.",
     turnOn: "Turn on notifications",
     turnedOn: "Notifications are on",

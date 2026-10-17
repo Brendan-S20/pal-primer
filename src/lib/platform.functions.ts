@@ -1,6 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
 import { collectedNetCents } from "@/lib/platform-metrics";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
@@ -15,16 +16,19 @@ async function assertPlatformAdmin(supabase: any, userId: string) {
 
 export const getPlatformContext = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { data, error } = await context.supabase.rpc("is_platform_admin", {
-      _user_id: context.userId,
-    });
-    if (error) throw new Error(error.message);
-    // userId so the console can name its own error reports (by id only);
-    // a platform admin with no org never passes through the _authenticated
-    // layout, which is where every other page sets that.
-    return { isPlatformAdmin: !!data, userId: context.userId };
+  .handler(async ({ context }) => loadPlatformContext(context));
+
+/** getPlatformContext's answer, also asked by getShellContext. */
+export const loadPlatformContext = createServerOnlyFn(async (context: AuthedContext) => {
+  const { data, error } = await context.supabase.rpc("is_platform_admin", {
+    _user_id: context.userId,
   });
+  if (error) throw new Error(error.message);
+  // userId so the console can name its own error reports (by id only);
+  // a platform admin with no org never passes through the _authenticated
+  // layout, which is where every other page sets that.
+  return { isPlatformAdmin: !!data, userId: context.userId };
+});
 
 const updatePlanSchema = z.object({
   organization_id: z.string().uuid(),

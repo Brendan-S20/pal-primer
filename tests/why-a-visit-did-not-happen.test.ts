@@ -11,16 +11,19 @@
 // And the code — which is exactly the answer a customer wants — was not
 // returned by the RPC at all, so the page had only the free text.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import i18n from "@/lib/i18n";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   SKIP_REASON_CODES,
   CUSTOMER_SKIP_REASON_LABELS,
   customerSkipReason,
+  officeSkipReason,
 } from "../src/lib/skip-rules.functions";
 
 const root = join(import.meta.dirname, "..");
+afterAll(() => i18n.changeLanguage("en"));
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const strip = (s: string) => s.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
 const SQL = readdirSync(join(root, "supabase/migrations"))
@@ -45,7 +48,7 @@ describe("a customer is told why, in a sentence somebody would say to them", () 
 
   it("does not reuse the office's wording, which is about the customer not to them", () => {
     expect(CUSTOMER_SKIP_REASON_LABELS.our_fault).not.toBe("Our fault");
-    expect(CUSTOMER_SKIP_REASON_LABELS.client_cancelled_late).not.toBe("Client cancelled late");
+    expect(CUSTOMER_SKIP_REASON_LABELS.client_cancelled_late).not.toBe("Client canceled late");
     expect(CUSTOMER_SKIP_REASON_LABELS.customer_requested).not.toBe("Customer skipped via portal");
   });
 
@@ -56,6 +59,21 @@ describe("a customer is told why, in a sentence somebody would say to them", () 
     expect(customerSkipReason(null)).toBe("Skipped");
     expect(customerSkipReason(undefined)).toBe("Skipped");
     expect(customerSkipReason("gate_locked")).toBe(CUSTOMER_SKIP_REASON_LABELS.gate_locked);
+  });
+});
+
+describe("office skip reasons", () => {
+  it.each(["en", "es", "ar", "zh"])("uses the %s labels for every known code", async (language) => {
+    await i18n.changeLanguage(language);
+    for (const code of SKIP_REASON_CODES) {
+      expect(officeSkipReason(code)).toBe(i18n.t(`skipReason.${code}`));
+      expect(officeSkipReason(code)).not.toBe(code);
+    }
+  });
+
+  it("keeps unknown codes readable", () => {
+    expect(officeSkipReason("reason_from_newer_app")).toBe("Reason from newer app");
+    expect(officeSkipReason(null)).toBe("");
   });
 });
 

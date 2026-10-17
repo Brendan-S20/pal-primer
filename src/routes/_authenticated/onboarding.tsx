@@ -106,13 +106,12 @@ function OnboardingPage() {
         <div className="rounded-xl border bg-card p-8">
           <h1 className="text-2xl font-semibold">
             Welcome to {APP_NAME}
-            {billing?.orgName ? `, ${billing.orgName}` : ""} 🎉
+            {billing?.orgName ? `, ${billing.orgName}` : ""}
           </h1>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-            Your workspace is ready. Two minutes of setup gets you running: pick the plan that fits
-            your crew (every tier has unlimited clients, jobs, routes and zones; you're billed per
-            employee), then set the business up: an address, a price, a first client. You can
-            change or cancel the plan anytime in Settings → Plan &amp; billing.
+            Choose a plan for your crew, then follow the setup guide. Plans include unlimited
+            clients and visits, billed per employee. Change or cancel anytime in
+            Settings → Plan &amp; billing.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Button onClick={() => setStep("plan")}>Pick a plan</Button>

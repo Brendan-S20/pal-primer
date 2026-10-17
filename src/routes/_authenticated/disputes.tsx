@@ -117,14 +117,17 @@ function DisputesPage() {
                 <Label htmlFor="disputes-analytics" className="text-sm font-medium">
                   Count open disputes as revenue in analytics
                 </Label>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Off by default, because the money has genuinely left your account. Turn it on
-                  to see revenue as though the open disputes hold, useful if you expect to win
-                  them, and easy to forget you did, so the figures say which way this is set.
+                {/* Says what the switch is doing NOW. "Off by default" sat
+                    beside a switch that was on (#439). The words "Counted" and
+                    "Deducted" stay out of this sentence: they are the state
+                    label beside the switch, and the E2E finds them by text. */}
+                <p className="mt-1 text-sm text-muted-foreground" data-testid="disputes-lens-state">
+                  {data.includeOpenInAnalytics
+                    ? "Open disputes are included in revenue, as though you will win them. Turn this off to take them out, since the money has left your account."
+                    : "Open disputes are taken out of revenue, because the money has left your account. Turn this on to include them if you expect to win."}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  This is a lens on your own analytics only. It never changes your tax reports,
-                  which read what actually happened.
+                  Tax reports are not affected.
                 </p>
               </div>
               <div className="flex items-center gap-2">
