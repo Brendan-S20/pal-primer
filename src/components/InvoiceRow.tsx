@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RowActions, type RowAction } from "@/components/RowActions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
+import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { isInvoiceOverdue } from "@/lib/overdue";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
@@ -28,6 +29,9 @@ export type InvoiceRowData = {
   kind?: string | null;
   currency?: string | null;
   total_cents: number | null;
+  /** For the balance on a partly paid invoice. Absent reads as none. */
+  credit_applied_cents?: number | null;
+  amount_paid_cents?: number | null;
   period_start: string | null;
   period_end: string | null;
   due_on: string | null;
@@ -161,10 +165,18 @@ export function InvoiceRow({
       </td>
       <td className="px-4 py-2.5 text-right tabular-nums">
         {fmtCents(invoice.total_cents ?? 0, invoice.currency ?? "usd")}
+        {isPartiallyPaid(invoice) && (
+          <div className="text-xs text-muted-foreground">
+            {fmtCents(invoiceDueCents(invoice), invoice.currency ?? "usd")} due
+          </div>
+        )}
       </td>
       <td className="px-4 py-2.5">
         <span className="inline-flex flex-wrap items-center gap-1.5">
           <StatusChip status={invoice.status} />
+          {isPartiallyPaid(invoice) && (
+            <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
+          )}
           {showKind && <MetaChip>{invoiceKindLabel(invoice.kind)}</MetaChip>}
           {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
             <MetaChip>Scheduled to send {formatDay(invoice.send_after)}</MetaChip>
@@ -250,6 +262,11 @@ export function InvoiceCard({
             </div>
             <div className="shrink-0 text-right text-sm font-semibold tabular-nums">
               {fmtCents(invoice.total_cents ?? 0, invoice.currency ?? "usd")}
+              {isPartiallyPaid(invoice) && (
+                <div className="text-xs font-normal text-muted-foreground">
+                  {fmtCents(invoiceDueCents(invoice), invoice.currency ?? "usd")} due
+                </div>
+              )}
             </div>
           </div>
           {/* Only when there is a period. A one-off or deposit invoice has
@@ -275,6 +292,9 @@ export function InvoiceCard({
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <StatusChip status={invoice.status} />
+            {isPartiallyPaid(invoice) && (
+              <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
+            )}
             {showKind && <MetaChip>{invoiceKindLabel(invoice.kind)}</MetaChip>}
             {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
               <MetaChip>Scheduled to send {formatDay(invoice.send_after)}</MetaChip>

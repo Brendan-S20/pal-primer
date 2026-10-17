@@ -5,7 +5,8 @@
 // recording a payment on invoices: "Confirm and apply" sends the ticked
 // invoices through bulkMarkInvoicesPaid with the collection's id, the same
 // path the office's Record payment takes, so the result is the same payment
-// rows, activity entries and pay-page cancellations. Draws nothing when
+// rows, activity entries and pay-page updates. The money goes oldest invoice
+// first, and the last one it reaches can be paid in part. Draws nothing when
 // nothing is waiting and nothing was decided in the last two weeks.
 
 import { useEffect, useMemo, useState } from "react";
@@ -23,7 +24,11 @@ import {
   type FieldCollectionRow,
 } from "@/lib/field-collections.functions";
 import { bulkMarkInvoicesPaid } from "@/lib/invoices.functions";
-import { defaultInvoiceSelection, selectionTotals } from "@/lib/field-collections";
+import {
+  allocateOldestFirst,
+  defaultInvoiceSelection,
+  starvedWarning,
+} from "@/lib/field-collections";
 import { describeManualPayment } from "@/lib/manual-payments";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
 import { formatDay } from "@/lib/format";
@@ -158,9 +163,12 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
     defaultInvoiceSelection(c.open_invoices, c.amount_cents),
   );
   const totals = useMemo(
-    () => selectionTotals(c.open_invoices, selected, c.amount_cents),
+    () => allocateOldestFirst(c.open_invoices, selected, c.amount_cents),
     [c.open_invoices, selected, c.amount_cents],
   );
+  const partly = totals.allocations.find((a) => a.partial && a.cents > 0);
+  const partlyInvoice = partly ? c.open_invoices.find((i) => i.id === partly.id) : undefined;
+  const starved = totals.starved.length > 0;
   const paidFn = useServerFn(bulkMarkInvoicesPaid);
   const unappliedFn = useServerFn(confirmFieldCollectionUnapplied);
   const rejectFn = useServerFn(rejectFieldCollection);
@@ -175,17 +183,20 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
     mutationFn: async () => {
       if (selected.length === 0) {
         await unappliedFn({ data: { id: c.id } });
-        return { ok: 0, failed: 0, intentStillLive: [] as string[] };
+        return { ok: 0, failed: 0, partial: [] as string[], intentStillLive: [] as string[] };
       }
       return paidFn({ data: { ids: selected, fieldCollectionId: c.id } });
     },
     onSuccess: (r) => {
+      const inPart = r.partial?.length ?? 0;
+      const whole = r.ok - inPart;
       if (selected.length === 0) toast.success("Confirmed as received. Nothing was applied");
-      else if (r.failed > 0)
-        toast.warning(
-          `Confirmed. ${r.ok} invoice${r.ok === 1 ? "" : "s"} paid, ${r.failed} could not be (already paid or voided)`,
+      else
+        toast.success(
+          `Confirmed. ${whole} invoice${whole === 1 ? "" : "s"} paid${
+            inPart > 0 ? `, ${inPart} paid in part` : ""
+          }`,
         );
-      else toast.success(`Confirmed. ${r.ok} invoice${r.ok === 1 ? "" : "s"} paid`);
       if (r.intentStillLive?.length) {
         toast.warning(
           "A payment link for one of these invoices is still live. Cancel it in Stripe, or the client can still be charged.",
@@ -252,18 +263,34 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
                     <span className="text-muted-foreground"> · due {formatDay(inv.due_on)}</span>
                   ) : null}
                 </span>
-                <span className="shrink-0 tabular-nums">{money(inv.open_cents)}</span>
+                <span className="shrink-0 text-end tabular-nums">
+                  {money(inv.open_cents)}
+                  {partly?.id === inv.id && (
+                    <span className="block text-xs text-muted-foreground">
+                      {money(partly.cents)} applied
+                    </span>
+                  )}
+                </span>
               </label>
             );
           })}
           <p
-            className={`mt-1 text-xs ${totals.overBy > 0 ? "font-medium text-destructive" : "text-muted-foreground"}`}
+            className={`mt-1 text-xs ${starved ? "font-medium text-destructive" : "text-muted-foreground"}`}
           >
-            {totals.overBy > 0
-              ? `Those come to ${money(totals.overBy)} more than was collected. An invoice is paid in full or not at all.`
-              : `Applies ${money(totals.appliedCents)}${
+            {starved
+              ? starvedWarning(
+                  c.amount_cents,
+                  c.open_invoices
+                    .filter((i) => totals.starved.includes(i.id))
+                    .map((i) => invoiceNumberLabel(i)),
+                )
+              : `Applies ${money(totals.appliedCents)}, oldest invoice first${
+                  partly && partlyInvoice
+                    ? `. ${invoiceNumberLabel(partlyInvoice)} is paid in part and stays open for ${money(partlyInvoice.open_cents - partly.cents)}`
+                    : ""
+                }${
                   totals.unappliedCents > 0
-                    ? `. ${money(totals.unappliedCents)} stays unapplied, because an invoice is paid in full or not at all.`
+                    ? `. ${money(totals.unappliedCents)} is more than these invoices owe and stays unapplied.`
                     : "."
                 }`}
           </p>
@@ -273,14 +300,14 @@ function WaitingCollection({ c }: { c: FieldCollectionRow }) {
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           className="touch:min-h-11"
-          disabled={busy || totals.overBy > 0}
+          disabled={busy || starved}
           onClick={async () => {
             if (
               selected.length === 0 &&
               !(await confirm({
                 title: "Confirm without applying it?",
                 description:
-                  "It is recorded as received from the client, and no invoice is marked paid. Use this when it does not cover a whole invoice.",
+                  "It is recorded as received from the client, and nothing is applied to an invoice. Use this when the money is not for an invoice.",
                 confirmLabel: "Confirm as received",
               }))
             )
