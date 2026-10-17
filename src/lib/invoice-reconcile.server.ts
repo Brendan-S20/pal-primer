@@ -332,7 +332,7 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
     const { data: inv } = await supabaseAdmin
       .from("invoices")
       .select(
-        "id, organization_id, status, total_cents, tax_cents, credit_applied_cents, currency, stripe_payment_intent_id",
+        "id, organization_id, status, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, currency, stripe_payment_intent_id",
       )
       .eq("id", invoiceId)
       .maybeSingle();
@@ -356,11 +356,10 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
       pi.status === "requires_action";
     if (!confirmable) return "other";
 
-    const dueCents = Math.max(
-      (inv.total_cents ?? 0) -
-        ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
-      0,
-    );
+    // Net of credit and of any partial payment: after a check for part of
+    // the bill, the client's open pay page is shrunk to what is left.
+    const { invoiceDueCents } = await import("@/lib/ar");
+    const dueCents = invoiceDueCents(inv);
     if (inv.status !== "open" || dueCents <= 0) {
       await stripe.paymentIntents.cancel(pi.id, {}, acctOpts);
       return "canceled";

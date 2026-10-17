@@ -140,6 +140,15 @@ export function collectionAmountProblem(
   return null;
 }
 
+/** The most the customer still owes, in cents, when record_field_collection
+ *  refused an amount as too much ("That is more than this customer owes
+ *  ($25.00). Enter $25.00 or less."), so My Day can say it in the tech's
+ *  language. Null for any other error. */
+export function moreThanOwedFromRefusal(message: string | null | undefined): number | null {
+  const m = /^That is more than this customer owes \(\$([\d,]+\.\d{2})\)/.exec(message ?? "");
+  return m ? parseDollars(m[1]) : null;
+}
+
 // ── The yard ────────────────────────────────────────────────────────────────
 
 export type Polygon = { type: "Polygon"; coordinates: number[][][] };

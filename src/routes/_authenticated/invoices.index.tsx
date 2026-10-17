@@ -51,7 +51,7 @@ import { EmptyState, SectionLabel } from "@/components/client-detail/primitives"
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
 import type { RowAction } from "@/components/RowActions";
-import { invoiceOutstandingCents } from "@/lib/ar";
+import { invoiceDueCents, invoiceOutstandingCents } from "@/lib/ar";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
@@ -348,6 +348,8 @@ const INVOICE_CSV_HEADERS = [
   "Period start",
   "Period end",
   "Total",
+  "Amount paid",
+  "Balance due",
   "Issued",
   "Due",
   "Paid",
@@ -363,6 +365,9 @@ function invoiceCsvRow(inv: InvoiceListRow): string[] {
     inv.period_start ?? "",
     inv.period_end ?? "",
     ((inv.total_cents ?? 0) / 100).toFixed(2),
+    ((inv.amount_paid_cents ?? 0) / 100).toFixed(2),
+    // What is still open: zero for a paid, void or draft invoice.
+    (invoiceOutstandingCents(inv) / 100).toFixed(2),
     (inv.issued_at ?? "").slice(0, 10),
     inv.due_on ?? "",
     (inv.paid_at ?? "").slice(0, 10),
@@ -643,8 +648,10 @@ function InvoicesPage() {
       return paidBulk({ data: { ids: [id], ...how } });
     },
     onSuccess: (r) => {
-      if (r.ok) toast.success("Payment recorded. Invoice paid");
-      else toast.error("The payment could not be recorded");
+      if (!r.ok) toast.error(r.refusal ?? "The payment could not be recorded");
+      else if (r.partial?.length)
+        toast.success("Partial payment recorded. The rest stays open on the invoice");
+      else toast.success("Payment recorded. Invoice paid");
       if (r.intentStillLive?.length) {
         toast.warning(
           "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
@@ -697,8 +704,10 @@ function InvoicesPage() {
         label: "Record payment",
         disabled: busy,
         onSelect: async () => {
+          const owed = invoiceDueCents(inv);
           const how = await askPayment({
-            amountLine: `${fmtCents(invoiceOutstandingCents(inv as any), inv.currency ?? "usd")}, the open balance for ${client?.display_name ?? "this client"}. This marks the invoice paid and can't be undone here.`,
+            amountLine: `${fmtCents(owed, inv.currency ?? "usd")} is still owed by ${client?.display_name ?? "this client"}. The invoice is marked paid when the balance reaches zero. A payment can't be undone here.`,
+            balanceCents: owed,
           });
           if (how) rowPaidM.mutate({ id: inv.id, ...how });
         },
