@@ -911,7 +911,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     savedToast: "تم التسجيل. سيؤكده المكتب.",
     queuedToast: "محفوظ على هذا الهاتف. يصل إلى المكتب عند توفر الإشارة.",
     enterAmount: "أدخل المبلغ الذي حصّلته.",
-    moreThanDue: "هذا أكثر من {{amount}} المستحقة على هذا العميل.",
+    moreThanDue: "هذا أكثر مما يدين به هذا العميل ({{amount}}). أدخل {{amount}} أو أقل.",
     officeConfirms:
       "يؤكد المكتب الدفعة ويطبقها على فواتير العميل. لا يمكن تعليم الفواتير كمدفوعة من هنا.",
   },

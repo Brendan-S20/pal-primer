@@ -115,7 +115,15 @@ function PayInvoice() {
       </Link>
 
       <div className="rounded-md border bg-card p-4">
-        <h1 className="text-lg font-semibold">Pay your invoice</h1>
+        <h1 className="text-lg font-semibold">
+          Pay your invoice
+          {intentQ.data?.invoiceLabel && (
+            <>
+              {" "}
+              <span dir="ltr">{intentQ.data.invoiceLabel}</span>
+            </>
+          )}
+        </h1>
         {intentQ.data && live && (
           <p className="mt-1 text-sm text-muted-foreground">
             {intentQ.data.businessName}: total{" "}

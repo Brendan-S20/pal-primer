@@ -13,6 +13,8 @@
 // (billed but the line is gone, paid from credit and never invoiced at all),
 // and those are exactly the ones a vague label would paper over.
 
+import { invoiceNumberLabel } from "@/lib/invoice-labels";
+
 export type AddonChargeBillingRow = {
   status: string;
   invoice_line_item_id?: string | null;
@@ -20,6 +22,8 @@ export type AddonChargeBillingRow = {
   /** Resolved by the server function from the line item. */
   billed_invoice_id?: string | null;
   billed_invoice_status?: string | null;
+  /** The invoice's stored number (INV-1042), resolved with the status. */
+  billed_invoice_number?: number | null;
 };
 
 export type AddonBillingTrail = {
@@ -30,9 +34,10 @@ export type AddonBillingTrail = {
   warning: string | null;
 };
 
-/** The app's short form for an invoice, matching the payments list. */
-export function shortInvoiceRef(invoiceId: string): string {
-  return `#${invoiceId.slice(0, 8)}`;
+/** What an invoice is called on every other screen: its stored number
+ *  ("INV-1042"), and a fragment of the id only for a row read without it. */
+export function shortInvoiceRef(invoiceId: string, number?: number | null): string {
+  return invoiceNumberLabel({ id: invoiceId, number: number ?? null });
 }
 
 export function addonBillingTrail(charge: AddonChargeBillingRow): AddonBillingTrail {
@@ -56,7 +61,7 @@ export function addonBillingTrail(charge: AddonChargeBillingRow): AddonBillingTr
     if (invoiceId) {
       const paid = charge.billed_invoice_status === "paid";
       return {
-        label: `Billed on invoice ${shortInvoiceRef(invoiceId)}${paid ? " (paid)" : ""}`,
+        label: `Billed on invoice ${shortInvoiceRef(invoiceId, charge.billed_invoice_number)}${paid ? " (paid)" : ""}`,
         invoiceId,
         warning: null,
       };

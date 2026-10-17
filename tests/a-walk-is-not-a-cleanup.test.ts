@@ -241,10 +241,13 @@ describe("what makes a service saveable", () => {
     ).toMatch(/how long/);
   });
 
-  it("offers every bookable line, keeps a line the business runs, and starts on the business's first", () => {
-    // Pet sitting is Coming soon, so only a business that already runs it is offered it.
-    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste", "dog_walking"]);
+  it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
+    // Walking and sitting are Coming soon, so only a business that already
+    // runs one, or a service already on it, is offered it.
+    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste"]);
     expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste", "dog_walking"])).toEqual(["pet_waste", "dog_walking"]);
+    expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual(["pet_waste", "pet_sitting"]);
     expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toContain("pet_sitting");
     expect(serviceLineChoices(["mobile_grooming"])).toContain("mobile_grooming");

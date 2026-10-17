@@ -125,18 +125,27 @@ export const listClientAddons = createServerFn({ method: "GET" })
     // embed: one FK hop is the pattern used everywhere else in this file.
     const invoiceIds = [...new Set(rows.map((r: any) => r.billed_invoice_id).filter(Boolean))];
     const statuses = new Map<string, string>();
+    // The stored number too, so the trail reads "INV-1042" like every other
+    // screen, the PDF and the email, not a fragment of the id.
+    const numbers = new Map<string, number | null>();
     if (invoiceIds.length) {
       const { data: invs } = await context.supabase
         .from("invoices")
-        .select("id, status")
+        .select("id, number, status")
         .in("id", invoiceIds as string[]);
-      for (const i of invs ?? []) statuses.set(i.id as string, i.status as string);
+      for (const i of invs ?? []) {
+        statuses.set(i.id as string, i.status as string);
+        numbers.set(i.id as string, (i.number as number | null) ?? null);
+      }
     }
 
     const withInvoice = rows.map((r: any) => ({
       ...r,
       billed_invoice_status: r.billed_invoice_id
         ? (statuses.get(r.billed_invoice_id) ?? null)
+        : null,
+      billed_invoice_number: r.billed_invoice_id
+        ? (numbers.get(r.billed_invoice_id) ?? null)
         : null,
     }));
 

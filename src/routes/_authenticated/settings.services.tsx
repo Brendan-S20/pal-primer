@@ -1,8 +1,8 @@
 // Settings → Services: what this business sells.
 //
 // The catalog for service lines (docs/other-trades-service-catalog.md).
-// Pet waste removal and dog walking are bookable; other lines join when
-// their paths work end to end. Office only: the route is limited
+// Pet waste removal is bookable; other lines join BOOKABLE_SERVICE_LINES
+// when they are approved to go live. Office only: the route is limited
 // to owner and office manager in ROUTE_ROLES, the same people who hold
 // manage_pricing, which is what every write here asks for on the server and
 // in RLS.
@@ -200,8 +200,8 @@ function ServicesPage() {
         <div className="min-w-0">
           <h2 className="text-lg font-semibold">Services</h2>
           <p className="text-sm text-muted-foreground">
-            What you sell, and how each one is priced: a flat price per visit or by the hour.
-            Pet waste removal and dog walking are bookable; other service lines are Coming soon.
+            What you sell, and how each one is priced: a flat price per visit or by the hour. Pet
+            waste removal is bookable; other service lines are Coming soon.
           </p>
         </div>
         {canEdit && (

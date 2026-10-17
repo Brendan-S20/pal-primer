@@ -843,7 +843,7 @@ const es: Translations = {
     savedToast: "Registrado. La oficina lo confirmará.",
     queuedToast: "Guardado en este teléfono. Llegará a la oficina cuando tengas señal.",
     enterAmount: "Escribe el monto que cobraste.",
-    moreThanDue: "Es más de los {{amount}} que debe este cliente.",
+    moreThanDue: "Es más de lo que debe este cliente ({{amount}}). Escribe {{amount}} o menos.",
     officeConfirms:
       "La oficina lo confirma y lo aplica a las facturas del cliente. Desde aquí no se pueden marcar facturas como pagadas.",
   },
