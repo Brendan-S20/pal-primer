@@ -176,10 +176,18 @@ export function argTypes(args: string): string {
     .join(",");
 }
 
+// Reuse parsed statements while checking overloads against the same files.
+const parsedGrantFiles = new Map<string, string[]>();
+
 /** Every GRANT/REVOKE EXECUTE naming this exact overload, in replay order. */
 function grantEvents(file: string, fn: string, types: string): { grant: boolean; roles: string }[] {
   const out: { grant: boolean; roles: string }[] = [];
-  for (const st of statements(stripLineComments(readMigration(file)))) {
+  let parsed = parsedGrantFiles.get(file);
+  if (!parsed) {
+    parsed = statements(stripLineComments(readMigration(file)));
+    parsedGrantFiles.set(file, parsed);
+  }
+  for (const st of parsed) {
     const isGrant = /^grant\b/i.test(st);
     if (!isGrant && !/^revoke\b/i.test(st)) continue;
     const m = /\bon\s+function\s+public\.([a-z0-9_]+)\s*\(([^)]*)\)/i.exec(st);
@@ -253,7 +261,11 @@ describe("a function handed a tenant's id checks the caller, or is closed", () =
   });
 
   it("leaves none that takes a tenant id, skips auth.uid(), and stays open", () => {
-    const offenders = definedInWindow()
+    // A replacement supplies the current body for this exact overload. An
+    // earlier internal body may be granted only after a guarded replacement.
+    const latest = new Map<string, Defined>();
+    for (const d of definedInWindow()) latest.set(`${d.name}(${argTypes(d.args)})`, d);
+    const offenders = [...latest.values()]
       .filter((d) => /security\s+definer/i.test(d.sql))
       .filter((d) => TENANT_SCOPED_PARAM.test(d.args))
       .filter((d) => !/auth\.uid\s*\(\s*\)/i.test(d.sql))
@@ -304,7 +316,10 @@ describe("the migration that closed them", () => {
       ["is_staff_off", "uuid, date"],
       ["assert_runs_routes", "uuid"],
       ["assert_available_on", "uuid, date"],
-      ["drive_minutes", "uuid, double precision, double precision, double precision, double precision"],
+      [
+        "drive_minutes",
+        "uuid, double precision, double precision, double precision, double precision",
+      ],
       ["route_segment_km", "uuid[], double precision, double precision"],
     ] as const) {
       expect(closedToTheWeb(THIS_MIGRATION, fn, args), `${fn} is not revoked`).toBe(true);

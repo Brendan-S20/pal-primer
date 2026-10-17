@@ -119,6 +119,7 @@ const en = {
     missedCount: "{{count}} missed",
     progressRule:
       "Done means completed visits out of all stops. Missed and skipped stops count separately.",
+    howProgressCounts: "How progress is counted",
     view: "View",
     viewList: "List",
     viewMap: "Map",
@@ -633,6 +634,9 @@ const en = {
     clockOut: "Clock out",
     offTheClock: "You're off the clock",
     offTheClockShort: "Off the clock",
+    /** My Day, once a shift has been open 12 hours or more. */
+    stillWorking_one: "You have been clocked in for {{count}} hour. Still working?",
+    stillWorking_other: "You have been clocked in for {{count}} hours. Still working?",
   },
   duration: {
     minutes: "{{m}}m",
@@ -700,6 +704,8 @@ const en = {
     staySignedIn: "Stay signed in",
     yourAccount: "Your account",
     viewAccount: "View and edit your account",
+    expandMenu: "Show menu labels",
+    collapseMenu: "Hide menu labels",
     group: {
       Overview: "Overview",
       Operations: "Operations",
@@ -738,6 +744,7 @@ const en = {
       "pricing-drift": "Rate card drift",
       franchise: "Royalties",
       imports: "Import",
+      "settings/users": "Team",
       settings: "Settings",
       platform: "Platform admin",
     },

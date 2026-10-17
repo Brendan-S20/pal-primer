@@ -118,6 +118,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     skippedCount: "已跳过 {{count}} 个",
     missedCount: "未完成 {{count}} 个",
     progressRule: "进度按已完成的上门服务占全部站点的比例计算。未服务和已跳过的站点单独统计。",
+    howProgressCounts: "进度如何计算",
     view: "视图",
     viewList: "列表",
     viewMap: "地图",
@@ -599,6 +600,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     clockOut: "下班打卡",
     offTheClock: "你还没有上班打卡",
     offTheClockShort: "未打卡",
+    stillWorking_other: "你已经上班 {{count}} 小时了。还在工作吗？",
   },
   duration: {
     minutes: "{{m}} 分钟",
@@ -661,6 +663,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     staySignedIn: "保持登录",
     yourAccount: "你的账号",
     viewAccount: "查看和编辑你的账号",
+    expandMenu: "显示菜单名称",
+    collapseMenu: "隐藏菜单名称",
     group: {
       Overview: "概览",
       Operations: "运营",
@@ -699,6 +703,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       "pricing-drift": "价格偏差",
       franchise: "特许权使用费",
       imports: "导入",
+      "settings/users": "团队",
       settings: "设置",
       platform: "平台管理",
     },

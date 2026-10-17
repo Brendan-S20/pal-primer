@@ -397,7 +397,7 @@ export function ServicesTab({
             const showEnd = !ended && started;
             const showDelete = !started;
             return (
-              <li key={s.id} className="rounded-lg border bg-card shadow-sm p-4 text-sm">
+              <li key={s.id} className="@container rounded-lg border bg-card shadow-sm p-4 text-sm">
                 {/* THREE ITEMS, ONE WRAPPING ROW: the details, the price, the
                     actions. The details were `flex-1` with no basis, and a
                     basis of 0 always fits on the first line — so the row never
@@ -406,14 +406,18 @@ export function ServicesTab({
                     80px: the title ran into "$33.00", the meta line went one
                     word per line, and the amber dog-count warning was
                     narrower than its own words.
-                    Now the details take the full width below sm (the price
-                    moves into the title row, the actions to a row of their
-                    own), and from sm up they ask for 18rem before the actions
-                    will share a line with them, which is what keeps a tablet
-                    from the same squeeze. */}
+                    Now the details take the full width until the CARD is 48rem
+                    wide (the price moves into the title row, the actions to a
+                    row of their own), and from there they ask for 18rem before
+                    the actions will share a line with them.
+                    The card's width and not the screen's, because the column
+                    beside the sidebar decides it: at 768px the office sidebar
+                    became a 60px rail, the card grew to 660px, and a viewport
+                    `sm:` let all three share one line again with the details
+                    at 342px, a long street wrapping the meta line. */}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div
-                    className="min-w-0 flex-1 basis-full cursor-pointer sm:basis-72"
+                    className="min-w-0 flex-1 basis-full cursor-pointer @3xl:basis-72"
                     role="button"
                     tabIndex={0}
                     onClick={() => setDetailSub(s)}
@@ -438,11 +442,11 @@ export function ServicesTab({
                           {s.billing_cadence === "prepaid" ? "Prepaid" : "Postpaid"}
                         </MetaChip>
                       </div>
-                      {/* The phone's price: beside the title it belongs to.
-                          The one after this block takes over from sm up;
-                          `hidden` is display:none, so a screen reader hears
-                          one price, not two. */}
-                      <div className="shrink-0 whitespace-nowrap text-right sm:hidden">
+                      {/* The narrow card's price: beside the title it belongs
+                          to. The one after this block takes over once the
+                          card is 48rem wide; `hidden` is display:none, so a
+                          screen reader hears one price, not two. */}
+                      <div className="shrink-0 whitespace-nowrap text-right @3xl:hidden">
                         <span className="font-semibold">${(s.price_cents / 100).toFixed(2)}</span>
                         <span className="text-xs text-muted-foreground"> /visit</span>
                       </div>
@@ -539,7 +543,7 @@ export function ServicesTab({
                     )}
                   </div>
 
-                  <div className="shrink-0 whitespace-nowrap text-right max-sm:hidden">
+                  <div className="shrink-0 whitespace-nowrap text-right @max-3xl:hidden">
                     <span className="font-semibold">${(s.price_cents / 100).toFixed(2)}</span>
                     <span className="text-xs text-muted-foreground"> /visit</span>
                   </div>

@@ -347,7 +347,9 @@ function WorkspaceShell() {
   // one.
   const tier = useTabletTier();
   const { mainBottomPadding, barThroughTablet } = tier;
-  const myDayHeaderHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
+  // `touch:hidden` because for a tech the bar now stays on every touch
+  // screen, iPad landscape included (useTabletTier, QA row 35).
+  const myDayHeaderHidden = barThroughTablet ? "max-lg:hidden touch:hidden" : "max-md:hidden";
 
   // ── THE BAR THAT APPEARED AND DISAPPEARED AS YOU WALKED ─────────────────
   //
@@ -404,7 +406,7 @@ function WorkspaceShell() {
     shellHeaderHidden === "" || isMyDay
       ? ""
       : barThroughTablet
-        ? "max-lg:pt-[env(safe-area-inset-top)]"
+        ? "max-lg:pt-[env(safe-area-inset-top)] touch:pt-[env(safe-area-inset-top)]"
         : "max-md:pt-[env(safe-area-inset-top)]";
   // Sign out lives in the tab bar's More sheet wherever the tab bar reaches, so
   // the header avatar hides over exactly the same range. This was hardcoded
@@ -417,13 +419,13 @@ function WorkspaceShell() {
   // header at all", this one answers "is Sign out already in the sheet". They
   // agree because both follow the bar's reach, not because they are the same
   // question, and collapsing them would hide that.
-  const accountMenuHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
+  const accountMenuHidden = barThroughTablet ? "max-lg:hidden touch:hidden" : "max-md:hidden";
   // "Hidden exactly where the tab bar reaches", for the sidebar toggle. Same
   // spelling as the two above and a third constant for the same reason they
   // are two: this one answers "is there already a menu at the bottom of this
   // screen", which is a different question that happens to have the same
   // answer. Literal strings, because Tailwind cannot see an assembled one.
-  const phoneOnlyHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
+  const phoneOnlyHidden = barThroughTablet ? "max-lg:hidden touch:hidden" : "max-md:hidden";
   // Scope the tenant brand color to the internal staff app only. Platform-admin
   // routes and the sign-in page live outside this shell and stay HoundStack-branded.
   const brandStyle = brand
@@ -459,7 +461,9 @@ function WorkspaceShell() {
   }
 
   return (
-    <SidebarProvider docksFrom={docksFrom}>
+    // railBelowXl: under 1280px the docked sidebar is the icon rail and its
+    // labelled panel opens over the page (QA row 34, ui/sidebar.tsx).
+    <SidebarProvider docksFrom={docksFrom} railBelowXl>
       <div className="flex min-h-screen w-full bg-background" style={brandStyle}>
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -588,7 +592,7 @@ function WorkspaceShell() {
             <div
               aria-hidden
               className={`pointer-events-none fixed inset-x-0 top-0 z-30 bg-background/80 backdrop-blur ${
-                barThroughTablet ? "lg:hidden" : "md:hidden"
+                barThroughTablet ? "lg:mouse:hidden" : "md:hidden"
               }`}
               style={{ height: "env(safe-area-inset-top)" }}
             />

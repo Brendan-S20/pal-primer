@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@tanstack/react-start", () => ({
   useServerFn: (f: unknown) => f,
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     const chain: any = () => chain;
     chain.validator = () => chain;

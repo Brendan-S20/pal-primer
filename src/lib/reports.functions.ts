@@ -38,6 +38,7 @@ import { createServerFn } from "@tanstack/react-start";
 // below. This import is the org's default, and the guard in
 // tests/org-day.test.ts that this page never takes its day from the server.
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
+import { reportZoneId } from "@/lib/report-zone";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -91,7 +92,11 @@ export const getReports = createServerFn({ method: "POST" })
     const { data: visits, error: vErr } = await supabase
       .from("visits")
       .select(
-        "id, status, scheduled_on, assigned_staff_id, zone_id, subscription_id, client_id, skip_reason_code, skip_charge_cents",
+        // properties(...): the zone fallback for a visit that carries none of
+        // its own (lib/report-zone.ts, #437). Plain columns, not a zones
+        // embed: properties has two foreign keys to zones, and a bare embed
+        // through it is ambiguous (see pricing-drift.functions.ts).
+        "id, status, scheduled_on, assigned_staff_id, zone_id, subscription_id, client_id, skip_reason_code, skip_charge_cents, properties(zone_id, auto_zone_id)",
       )
       .eq("organization_id", orgId)
       .gte("scheduled_on", from)
@@ -117,7 +122,7 @@ export const getReports = createServerFn({ method: "POST" })
       perTech[tid].total++;
       if (v.status === "completed") perTech[tid].completed++;
       if (v.status === "skipped") perTech[tid].skipped++;
-      const zid = v.zone_id ?? "no_zone";
+      const zid = reportZoneId(v);
       perZone[zid] ??= { completed: 0, skipped: 0, total: 0 };
       perZone[zid].total++;
       if (v.status === "completed") perZone[zid].completed++;

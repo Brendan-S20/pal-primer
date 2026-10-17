@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { visitStayDates } from "@/lib/stays";
+import { skipReasonText } from "@/lib/skip-reason-text";
 
 type Visit = any;
 type Staff = any;
@@ -213,6 +214,11 @@ export function MobileDayList({
                           </Badge>
                         )}
                       </div>
+                      {v.status === "skipped" && (
+                        <div className="mt-0.5 break-words text-2xs text-muted-foreground">
+                          Skip: {skipReasonText(v.skip_reason, v.skip_reason_code)}
+                        </div>
+                      )}
                     </div>
                     <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                   </button>

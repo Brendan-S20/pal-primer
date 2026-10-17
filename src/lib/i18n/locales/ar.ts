@@ -126,6 +126,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     missedCount: "{{count}} فائتة",
     progressRule:
       "المنجزة هي الزيارات المكتملة من إجمالي المحطات. تُحسب المحطات الفائتة والمتخطاة بشكل منفصل.",
+    howProgressCounts: "كيف يُحسب التقدم",
     view: "العرض",
     viewList: "قائمة",
     viewMap: "خريطة",
@@ -662,6 +663,12 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     clockOut: "تسجيل الانصراف",
     offTheClock: "لم تسجّل حضورك",
     offTheClockShort: "لم تسجّل الحضور",
+    stillWorking_zero: "أنت في الدوام منذ أقل من ساعة. هل ما زلت تعمل؟",
+    stillWorking_one: "أنت في الدوام منذ ساعة واحدة. هل ما زلت تعمل؟",
+    stillWorking_two: "أنت في الدوام منذ ساعتين. هل ما زلت تعمل؟",
+    stillWorking_few: "أنت في الدوام منذ {{count}} ساعات. هل ما زلت تعمل؟",
+    stillWorking_many: "أنت في الدوام منذ {{count}} ساعة. هل ما زلت تعمل؟",
+    stillWorking_other: "أنت في الدوام منذ {{count}} ساعة. هل ما زلت تعمل؟",
   },
   duration: {
     minutes: "{{m}} د",
@@ -737,6 +744,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     staySignedIn: "البقاء متصلًا",
     yourAccount: "حسابك",
     viewAccount: "عرض حسابك وتعديله",
+    expandMenu: "إظهار أسماء القائمة",
+    collapseMenu: "إخفاء أسماء القائمة",
     group: {
       Overview: "نظرة عامة",
       Operations: "العمليات",
@@ -775,6 +784,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       "pricing-drift": "انحراف الأسعار",
       franchise: "الإتاوات",
       imports: "استيراد",
+      "settings/users": "الفريق",
       settings: "الإعدادات",
       platform: "إدارة المنصة",
     },

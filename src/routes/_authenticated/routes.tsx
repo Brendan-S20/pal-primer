@@ -81,6 +81,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
 import { visitStayDates } from "@/lib/stays";
+import { skipReasonText } from "@/lib/skip-reason-text";
 
 export const Route = createFileRoute("/_authenticated/routes")({
   head: () => titleHead("Schedule"),
@@ -1727,6 +1728,12 @@ function RoutesPage() {
           />
         </div>
       )}
+      {/* Room under the floating auto-routing card, at the foot of the page,
+          so the last cards of a lane can be scrolled up out from under it.
+          The card measures itself into --auto-routing-h (QA row 17). */}
+      {toolsOpen && (
+        <div aria-hidden="true" data-auto-routing-room="" className="h-[var(--auto-routing-h,0px)]" />
+      )}
       <StaffRoutingDialog
         staff={routingDialogStaff}
         open={Boolean(routingDialogStaff)}
@@ -2284,18 +2291,29 @@ function VisitCardView({
     >
       <div className="flex items-start gap-2">
         {onToggleSelect && (
-          <input
-            type="checkbox"
-            checked={Boolean(selected)}
-            aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+          // 13px, and the bulk-select control on every stop card. The square
+          // stays 13px; the LABEL around it is the 44px box on a touch screen,
+          // so a tap anywhere in it toggles the box (QA row 23). It replaced a
+          // `::before` on the input itself: a native checkbox is a replaced
+          // element, and whether its pseudo-element draws, and takes the tap,
+          // is up to the browser. A label's hit area is not.
+          // stopPropagation on both: the label's own click and the click it
+          // forwards to the input each bubble to the card, whose onClick would
+          // toggle the selection a second time.
+          <label
+            data-select-hit=""
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => onToggleSelect(visit.id, e as unknown as React.MouseEvent)}
-            // 13px, and the bulk-select control on every stop card. The
-            // square stays 13px — a 44px checkbox is a different component,
-            // not a bigger one — and an out-of-flow ::before takes the tap,
-            // the same pattern ui/checkbox.tsx uses and the sweep credits.
-            className="relative mt-1 shrink-0 touch:before:absolute touch:before:left-1/2 touch:before:top-1/2 touch:before:h-11 touch:before:w-11 touch:before:-translate-x-1/2 touch:before:-translate-y-1/2 touch:before:content-['']"
-          />
+            className="mt-1 flex shrink-0 cursor-pointer items-center justify-center touch:mt-0 touch:min-h-11 touch:min-w-11"
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(selected)}
+              aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => onToggleSelect(visit.id, e as unknown as React.MouseEvent)}
+              className="shrink-0 cursor-pointer"
+            />
+          </label>
         )}
         <button
           {...(dragHandle ?? {})}
@@ -2379,6 +2397,13 @@ function VisitCardView({
               </Badge>
             )}
           </div>
+          {/* A skipped stop says why, or that nobody recorded why (QA row
+              15: a future stop read "Skipped" and nothing else). */}
+          {visit.status === "skipped" && (
+            <div className="mt-0.5 break-words text-3xs text-muted-foreground">
+              Skip: {skipReasonText(visit.skip_reason, visit.skip_reason_code)}
+            </div>
+          )}
           {(dirUrl || canComplete) && !dragging && (
             <div className="mt-2 flex flex-wrap gap-1">
               {dirUrl && (
@@ -2386,7 +2411,9 @@ function VisitCardView({
                   href={dirUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted"
+                  // 25px, beside a Complete button that was already 44 on
+                  // touch (QA row 23). Same fix: only the box grows.
+                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted touch:min-h-11"
                 >
                   <Navigation className="h-3 w-3 shrink-0" /> Directions
                 </a>
