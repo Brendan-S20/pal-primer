@@ -102,7 +102,9 @@ describe("the Team entry", () => {
     for (const role of ROLES) {
       for (const it of NAV_GROUPS.flatMap((g) => g.items)) {
         if (it.officeOnly) continue;
-        expect(isNavItemVisible(it, role, ALL_ON), `${role} ${it.url}`).toBe(canAccess(role, it.url));
+        expect(isNavItemVisible(it, role, ALL_ON), `${role} ${it.url}`).toBe(
+          canAccess(role, it.url),
+        );
       }
     }
     // Only the Team entry carries the new flag.
