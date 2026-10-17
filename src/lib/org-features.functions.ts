@@ -1,6 +1,7 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { resolveCaller } from "@/lib/authz.server";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import {
@@ -65,7 +66,11 @@ export type MyOrgFeatures = {
 
 export const getMyOrgFeatures = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<MyOrgFeatures> => {
+  .handler(async ({ context }) => loadMyOrgFeatures(context));
+
+/** getMyOrgFeatures's answer, also asked by getShellContext. */
+export const loadMyOrgFeatures = createServerOnlyFn(
+  async (context: AuthedContext): Promise<MyOrgFeatures> => {
     const { orgId } = await resolveCaller(context.supabase, context.userId);
     const [{ data: org }, { data: hasData }, { data: lines }] = await Promise.all([
       context.supabase
@@ -99,7 +104,8 @@ export const getMyOrgFeatures = createServerFn({ method: "GET" })
         ?.email_visit_checklist,
       serviceLines: Array.isArray(lines?.service_lines) ? lines.service_lines : null,
     };
-  });
+  },
+);
 
 export const setCommercialAccounts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

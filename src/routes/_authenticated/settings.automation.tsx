@@ -119,7 +119,7 @@ function AutomationPage() {
       <div>
         <h2 className="text-lg font-semibold">Automation</h2>
         <p className="text-sm text-muted-foreground">
-          A nightly worker runs these tasks against your organization.
+          These run on their own each night.
         </p>
       </div>
 
@@ -282,12 +282,9 @@ function AutomationPage() {
             <span className="min-w-0">
               Include a live map of the tech on the way
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                The on-my-way text and email get a link. From the moment that message goes until
-                the tech starts the visit (two hours at most), the client sees the tech&apos;s
-                approximate position, rounded to about 100 m, and only while the tech has the app
-                open. Nothing is shared before the message or after the visit starts, and no
-                trail is kept: only the latest position, deleted when the visit starts. Techs see
-                a banner whenever their location is being shared, and can stop it.
+                Shares the tech&apos;s approximate location while the app is open, for up to two
+                hours. Techs can stop sharing. The link expires and the location is deleted when
+                the visit starts.
               </span>
             </span>
             <input

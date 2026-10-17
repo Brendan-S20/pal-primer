@@ -403,7 +403,7 @@ function ChurnTab() {
         <p className="text-xs text-muted-foreground mt-1">
           Grouped by churn reason. Revenue at risk = paid revenue from these clients in
           the last 180 days, <span className="font-medium">before refunds</span>. This is an
-          estimate for prioritising outreach, not a reported figure. Score churn from the{" "}
+          estimate for prioritizing outreach, not a reported figure. Score churn from the{" "}
           <Link to="/clients" className="font-medium underline underline-offset-2">
             Clients
           </Link>{" "}

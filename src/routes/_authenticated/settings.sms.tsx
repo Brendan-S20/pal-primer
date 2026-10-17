@@ -76,20 +76,15 @@ function SmsSettings() {
                     and the 10DLC-queue paragraph that stood here, and it sits in
                     this branch rather than under the heading because it says
                     "coming soon", which is only true until a number is issued. */}
-                Two-way texting with your clients is coming soon. Each business gets its own local
-                number, registered with US carriers under your business name. You won&apos;t need a
-                Twilio account of your own: HoundStack files the carrier registration on your
-                behalf. Before we file, we&apos;ll ask for your legal business name, EIN (or
-                sole-proprietor details), business address and website, and for your approval.
-                Carrier review can take several days or longer, and your number will appear here
-                once it&apos;s approved.
+                Client texting is coming soon. We&apos;ll ask for your business details and approval
+                before registering your local number with carriers. Your number appears here after
+                carrier approval, which can take several days.
               </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Until then, nothing is texted to your clients. On-my-way notices, review requests,
-            overdue reminders and portal sign-in codes go by email instead. HoundStack&apos;s own
-            number only texts the people who sign in to HoundStack, never your clients.
+            Until then, client updates and portal sign-in codes go by email. HoundStack&apos;s own
+            number texts account holders only.
           </p>
         </div>
       )}

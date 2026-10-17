@@ -40,8 +40,9 @@ async function orgTimezone(supabase: Db, orgId: string): Promise<string> {
 }
 
 /** The caller's clock for today: their shifts that touch the org's today,
- *  the open one among them, and the visits they have completed today. */
-async function loadMyClock(supabase: Db, userId: string) {
+ *  the open one among them, and the visits they have completed today. Also
+ *  asked by getShellContext. */
+export async function loadMyClock(supabase: Db, userId: string) {
   const { data: staff, error: staffErr } = await supabase
     .from("staff")
     .select("id, organization_id, display_name")

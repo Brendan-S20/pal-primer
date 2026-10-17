@@ -113,8 +113,11 @@ function SignupPage() {
         }
       >
         <div className="mb-8">
-          <div className="text-sm text-muted-foreground">{org.name}</div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight break-words sm:text-4xl">
+          {/* The shell's header already names the business; only the
+              embedded form, which has no header, says it here (QA row 42:
+              the name was printed twice). */}
+          {embedded && <div className="mb-2 text-sm text-muted-foreground">{org.name}</div>}
+          <h1 className="text-3xl font-semibold tracking-tight break-words sm:text-4xl">
             {copy.headline}
           </h1>
           <p className="mt-2 break-words text-muted-foreground">{copy.intro}</p>

@@ -36,7 +36,7 @@ export function useOfflineSignOut() {
       callers,
       confirmDiscard: (remaining) =>
         confirm({
-          title: `${remaining} ${remaining === 1 ? "job hasn't" : "jobs haven't"} synced yet`,
+          title: `${remaining} ${remaining === 1 ? "visit update hasn't" : "visit updates haven't"} synced yet`,
           // Say what is lost and who can recover it. "Unsaved changes" would be
           // both vague and wrong: the work exists, it just only exists here.
           description: (
