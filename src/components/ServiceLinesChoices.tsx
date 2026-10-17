@@ -18,7 +18,9 @@ import {
  *
  * Two rules keep it from ever stranding anybody:
  *   - a line that is already ticked can always be unticked, even one that is
- *     not offered yet (set some other way, or offered once and withdrawn);
+ *     Coming soon (set some other way, or offered once and withdrawn). Once
+ *     unticked, a Coming soon line cannot be ticked again, and setServiceLines
+ *     refuses it too;
  *   - the last ticked line cannot be unticked: the database refuses an empty
  *     set, and "runs nothing" is not a business.
  *

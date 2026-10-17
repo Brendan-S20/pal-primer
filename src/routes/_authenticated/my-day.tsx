@@ -108,7 +108,13 @@ import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
 import { OffTheClockBanner, StillWorkingPrompt } from "@/components/TimeClock";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
-import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
+import {
+  dueCents,
+  formatMoney,
+  moreThanOwedFromRefusal,
+  newClientKey,
+  type StopFacts,
+} from "@/lib/stop-facts";
 import {
   CollectForm,
   DogsLine,
@@ -1734,7 +1740,13 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      // The balance moved since the card loaded (the office applied a
+      // payment, or another collection is waiting): say the most it can be,
+      // in the tech's language.
+      const owed = moreThanOwedFromRefusal(e.message);
+      toast.error(
+        owed != null ? t("pay.moreThanDue", { amount: formatMoney(owed, locale) }) : e.message,
+      );
     },
   });
 

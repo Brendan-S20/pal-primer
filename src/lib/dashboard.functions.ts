@@ -66,7 +66,7 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
               // while Reports (which selects status) showed the real figure.
               // due_on + credit_applied_cents feed the shared overdue/net math.
               .select(
-                "id, status, total_cents, credit_applied_cents, due_on, issued_at, client_id, clients(display_name)",
+                "id, status, total_cents, credit_applied_cents, amount_paid_cents, due_on, issued_at, client_id, clients(display_name)",
               )
               .eq("organization_id", orgId)
               .eq("status", "open")

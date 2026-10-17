@@ -750,7 +750,7 @@ const en = {
     savedToast: "Recorded. The office will confirm it.",
     queuedToast: "Saved on this phone. It reaches the office when you have signal.",
     enterAmount: "Enter the amount you collected.",
-    moreThanDue: "That's more than the {{amount}} this client owes.",
+    moreThanDue: "That's more than this client owes ({{amount}}). Enter {{amount}} or less.",
     officeConfirms:
       "The office confirms it and applies it to the client's invoices. Invoices can't be marked paid from here.",
   },

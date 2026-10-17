@@ -49,6 +49,7 @@ import { sendInvoiceEmail } from "@/lib/notifications.functions";
 // working; the implementation now lives in the shared domain lib (I3).
 export { isInvoiceOverdue } from "@/lib/overdue";
 import { isInvoiceOverdue } from "@/lib/overdue";
+import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { appUrl } from "@/lib/app-origin";
 
@@ -113,7 +114,12 @@ export function InvoiceDrawer({
     mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId!], ...how } }),
     onSuccess: (r) => {
       if (!r.ok) {
-        toast.error("The payment could not be recorded. The invoice may already be paid or void.");
+        toast.error(
+          r.refusal ??
+            "The payment could not be recorded. The invoice may already be paid or void.",
+        );
+      } else if (r.partial?.length) {
+        toast.success("Partial payment recorded. The rest stays open on the invoice");
       } else {
         toast.success("Payment recorded. Invoice paid");
       }
@@ -131,15 +137,15 @@ export function InvoiceDrawer({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const creditCents = inv?.credit_applied_cents ?? 0;
+  const paidCents = inv?.amount_paid_cents ?? 0;
+  const dueCents = inv ? invoiceDueCents(inv) : 0;
+
   const recordPayment = async () => {
     if (!inv) return;
-    const due = Math.max(
-      (inv.total_cents ?? 0) -
-        ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
-      0,
-    );
     const how = await askPayment({
-      amountLine: `${fmtCents(due, inv.currency ?? "usd")}, the open balance${client?.display_name ? ` for ${client.display_name}` : ""}. This marks the invoice paid and can't be undone here.`,
+      amountLine: `${fmtCents(dueCents, inv.currency ?? "usd")} is still owed${client?.display_name ? ` by ${client.display_name}` : ""}. The invoice is marked paid when the balance reaches zero. A payment can't be undone here.`,
+      balanceCents: dueCents,
     });
     if (how) recordMut.mutate(how);
   };
@@ -243,6 +249,7 @@ export function InvoiceDrawer({
             {/* Status line */}
             <div className="flex flex-wrap items-center gap-2">
               <InvoiceStatusBadge status={inv.status} />
+              {isPartiallyPaid(inv) && <MetaChip>Partially paid</MetaChip>}
               {overdue && (
                 <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
                   Overdue
@@ -396,35 +403,26 @@ export function InvoiceDrawer({
                 <span>{fmtCents(inv.total_cents, inv.currency ?? "usd")}</span>
               </div>
               {/* Credit applications live on the invoice (credit_applied_cents
-                  + the credit ledger), not in the payments cash list. */}
-              {((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) >
-                0 && (
-                <>
-                  <div className="mt-2 flex items-center justify-between text-muted-foreground">
-                    <span>Credit applied</span>
-                    <span>
-                      -
-                      {fmtCents(
-                        (inv as { credit_applied_cents?: number | null }).credit_applied_cents,
-                        inv.currency ?? "usd",
-                      )}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
-                    <span>Amount due</span>
-                    <span>
-                      {fmtCents(
-                        Math.max(
-                          (inv.total_cents ?? 0) -
-                            ((inv as { credit_applied_cents?: number | null })
-                              .credit_applied_cents ?? 0),
-                          0,
-                        ),
-                        inv.currency ?? "usd",
-                      )}
-                    </span>
-                  </div>
-                </>
+                  + the credit ledger), not in the payments cash list. Paid is
+                  the sum of the payments below; on a partly paid invoice the
+                  balance is what is still open. */}
+              {creditCents > 0 && (
+                <div className="mt-2 flex items-center justify-between text-muted-foreground">
+                  <span>Credit applied</span>
+                  <span>-{fmtCents(creditCents, inv.currency ?? "usd")}</span>
+                </div>
+              )}
+              {paidCents > 0 && (
+                <div className="mt-2 flex items-center justify-between text-muted-foreground">
+                  <span>Paid</span>
+                  <span>-{fmtCents(paidCents, inv.currency ?? "usd")}</span>
+                </div>
+              )}
+              {(creditCents > 0 || paidCents > 0) && inv.status !== "void" && (
+                <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
+                  <span>Balance due</span>
+                  <span>{fmtCents(dueCents, inv.currency ?? "usd")}</span>
+                </div>
               )}
             </div>
 

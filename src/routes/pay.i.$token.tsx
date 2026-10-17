@@ -304,14 +304,27 @@ function PublicPayPage() {
                   anonymous payer ever sees, with nothing explaining the gap.
                   Both staff-facing surfaces already show this split; the
                   customer-facing one was the only one missing it. */}
-              {(invoice.creditAppliedCents ?? 0) > 0 && (
+              {/* A part paid already (a check for less than the bill) is the
+                  same kind of gap, and is explained the same way. */}
+              {((invoice.creditAppliedCents ?? 0) > 0 ||
+                ((invoice.amountPaidCents ?? 0) > 0 && invoice.status !== "paid")) && (
                 <>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>Account credit applied</span>
-                    <span className="tabular-nums">
-                      −{fmtCents(invoice.creditAppliedCents ?? 0, invoice.currency)}
-                    </span>
-                  </div>
+                  {(invoice.creditAppliedCents ?? 0) > 0 && (
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Account credit applied</span>
+                      <span className="tabular-nums">
+                        −{fmtCents(invoice.creditAppliedCents ?? 0, invoice.currency)}
+                      </span>
+                    </div>
+                  )}
+                  {(invoice.amountPaidCents ?? 0) > 0 && invoice.status !== "paid" && (
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Already paid</span>
+                      <span className="tabular-nums">
+                        −{fmtCents(invoice.amountPaidCents ?? 0, invoice.currency)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between border-t pt-2">
                     <span className="text-sm font-medium">Amount due</span>
                     <span className="text-xl font-semibold tabular-nums">
