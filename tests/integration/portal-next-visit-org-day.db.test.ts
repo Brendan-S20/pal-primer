@@ -3,7 +3,7 @@
  *
  * portal_get_client chose the next visit with `scheduled_on >= CURRENT_DATE`,
  * the UTC day. For an org behind UTC that skipped today's visit every evening.
- * 20261017010000 compares against the organization's day instead.
+ * 20261017090000 compares against the organization's day instead.
  *
  * Local stack only. Skipped without TEST_SUPABASE_* env (see run-db-tests.sh).
  */
