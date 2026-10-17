@@ -728,7 +728,7 @@ export function AutoRoutingPanel({
             <div role="radiogroup" aria-label="Arrival windows this run" className="grid gap-1">
               {(
                 [
-                  ["honour", "Honour arrival windows"],
+                  ["honour", "Honor arrival windows"],
                   ["ignore", "Shortest driving (ignore windows)"],
                 ] as const
               ).map(([value, label]) => {

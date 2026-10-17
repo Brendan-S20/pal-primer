@@ -179,10 +179,8 @@ function DemoDataCard() {
       <CardHeader>
         <CardTitle>Demo data</CardTitle>
         <CardDescription>
-          Wipes your organization's demo rows and rebuilds a rich fixture: 6 clients (residential +
-          HOA), zones, sketched yards, subscriptions, 8 weeks of visits (including weather
-          reschedules and skips), invoices in multiple states, promo codes, a gift card, referrals,
-          and QC tickets. Safe to run repeatedly.
+          Replaces your demo data with a fresh sample business: clients, zones, plans, eight weeks
+          of visits and invoices. You can run it again at any time.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -433,9 +431,8 @@ function CommercialAccountsCard() {
         </div>
         {locked && (
           <p className="text-xs text-muted-foreground">
-            This can&apos;t be switched off while you have commercial clients, properties or waste
-            stations on the books. Their units, service records and any DNA fines live on the
-            screens it would hide. Move them to residential first if you no longer serve them.
+            Commercial clients, properties or waste stations still use these screens. Switch this
+            off after moving them to residential.
           </p>
         )}
       </CardContent>

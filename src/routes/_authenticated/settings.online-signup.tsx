@@ -27,7 +27,7 @@ import { FORM_DEFAULTS, normalizeFormConfig, type FormFields } from "@/lib/new-c
 //   from Online signup   the switch (organizations.public_signup_enabled),
 //                        now meaning "offer Start service on the form", and
 //                        the optional signup-specific web address
-//   from Lead form       the link, the embed code, the brand colour and logo,
+//   from Lead form       the link, the embed code, the brand color and logo,
 //                        the headline, intro and confirmation, which optional
 //                        questions to ask, and the submission counts
 //
@@ -205,7 +205,7 @@ function SignupAndQuoteFormSettings() {
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Put this on your website, in your Google listing, and in your voicemail greeting.
-                  It shows your logo and brand colour, not ours. Old lead form links keep working
+                  It shows your logo and brand color, not ours. Old lead form links keep working
                   and open this form.
                   {cfg?.portalSlug && cfg?.signupSlug && cfg.portalSlug !== cfg.signupSlug ? (
                     <>
@@ -405,7 +405,7 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Leave these empty to use the logo and colour from Settings → Client portal.
+        Leave these empty to use the logo and color from Settings → Client portal.
       </p>
 
       <div>

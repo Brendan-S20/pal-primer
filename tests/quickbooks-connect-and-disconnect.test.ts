@@ -186,7 +186,8 @@ describe("Settings → Accounting", () => {
   it("shows recent errors with Intuit's transaction id, and how to reach support", () => {
     expect(page).toMatch(/l\.intuit_tid/);
     expect(page).toMatch(/support@houndstack\.com/);
-    expect(page).toMatch(/to="\/help"/);
+    expect(page).toMatch(/Questions about QuickBooks sync\? Email/);
+    expect(page).not.toMatch(/Questions about QuickBooks sync\? See the/);
   });
 
   it("no longer takes tokens or a realm typed in by hand", () => {

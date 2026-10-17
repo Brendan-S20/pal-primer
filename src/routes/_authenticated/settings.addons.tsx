@@ -20,11 +20,20 @@ export const Route = createFileRoute("/_authenticated/settings/addons")({
 const FREQS = ["", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
 const FREQUENCY_LABELS: Record<string, string> = {
   weekly: "Weekly",
-  biweekly: "Biweekly",
+  biweekly: "Every 2 weeks",
   monthly: "Monthly",
-  quarterly: "Quarterly",
+  quarterly: "Every 3 months",
   yearly: "Yearly",
 };
+
+const ADDON_KIND_LABEL: Record<string, string> = {
+  one_time: "One-time",
+  recurring: "Recurring",
+};
+
+function addonFrequencyLabel(value: string | null | undefined): string {
+  return value ? (FREQUENCY_LABELS[value] ?? "Recurring") : "None";
+}
 
 function AddonsCatalog() {
   const qc = useQueryClient();
@@ -141,11 +150,7 @@ function AddonsCatalog() {
               value={draft.default_frequency}
               onChange={(e) => setDraft({ ...draft, default_frequency: e.target.value })}
             >
-              {FREQS.map((f) => (
-                <option key={f} value={f}>
-                  {f ? FREQUENCY_LABELS[f] : "-"}
-                </option>
-              ))}
+              {FREQS.map((f) => <option key={f} value={f}>{addonFrequencyLabel(f)}</option>)}
             </select>
           </div>
           <div className="sm:col-span-2 flex items-end">
@@ -167,14 +172,15 @@ function AddonsCatalog() {
                 <div>
                   <div className="text-sm font-medium">
                     {s.name}
-                    {!s.active && (
-                      <Badge variant="outline" className="ml-2">
-                        inactive
-                      </Badge>
-                    )}
+                    {!s.active && <Badge variant="outline" className="ml-2">Inactive</Badge>}
                     <Badge variant="secondary" className="ml-2 text-3xs">
-                      {s.kind === "one_time" ? "One-time" : "Recurring"}
+                      {ADDON_KIND_LABEL[s.kind] ?? s.kind}
                     </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {s.kind === "recurring" && s.default_frequency
+                      ? ` · ${addonFrequencyLabel(s.default_frequency)}`
+                      : ""}
                   </div>
                   {s.description && (
                     <div className="text-xs text-muted-foreground">{s.description}</div>
