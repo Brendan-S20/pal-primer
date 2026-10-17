@@ -580,6 +580,9 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
             "other",
           ])
           .default("other"),
+        // A bulk cancel sends false and emails once for the whole set
+        // afterwards (notifyCanceledWalks), one email per client.
+        notifyClient: z.boolean().default(true),
       })
       .parse(d),
   )
@@ -603,6 +606,11 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
+    // A dog walk's client is told (#410). The typed reason is not sent.
+    if (data.notifyClient) {
+      const { notifyWalksCanceled } = await import("@/lib/walk-notify.server");
+      await notifyWalksCanceled({ visitIds: [data.visitId], orgId: v.organization_id });
+    }
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: v.organization_id,

@@ -37,6 +37,7 @@ const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
 const WALK_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_walk_not_done", label: "Walk skipped or missed", help: "Sent when a walker skips a walk, with the reason in plain words, or when a walk's day passes and it did not happen." },
   { key: "notify_email_walk_schedule_change", label: "Walk schedule changed", help: "Sent when you move a walk to another day, or change the days or time window of a walk plan. One email per client each time, with the old and new times." },
+  { key: "notify_email_walk_canceled", label: "Walk canceled by the office", help: "Sent when you cancel a walk for today or later, with the day and time window. Your typed reason stays with you. Canceling several at once sends one email per client." },
 ];
 
 type Settings = Awaited<ReturnType<typeof getEmailSettings>>;
@@ -57,11 +58,21 @@ function EmailSettingsPage() {
   const mut = useMutation({
     mutationFn: () => {
       // The walk switches are saved only where they were drawn.
-      const { runs_dog_walking, notify_email_walk_not_done, notify_email_walk_schedule_change, ...rest } =
-        values;
+      const {
+        runs_dog_walking,
+        notify_email_walk_not_done,
+        notify_email_walk_schedule_change,
+        notify_email_walk_canceled,
+        ...rest
+      } = values;
       return save({
         data: runs_dog_walking
-          ? { ...rest, notify_email_walk_not_done, notify_email_walk_schedule_change }
+          ? {
+              ...rest,
+              notify_email_walk_not_done,
+              notify_email_walk_schedule_change,
+              notify_email_walk_canceled,
+            }
           : rest,
       });
     },

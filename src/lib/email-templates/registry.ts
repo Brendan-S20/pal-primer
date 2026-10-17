@@ -16,6 +16,7 @@ import { template as quoteSentTemplate } from "./quote-sent";
 import { template as campaignTemplate } from "./campaign";
 import { template as walkNotDoneTemplate } from "./walk-not-done";
 import { template as walkScheduleChangedTemplate } from "./walk-schedule-changed";
+import { template as walkCanceledTemplate } from "./walk-canceled";
 
 export interface TemplateEntry {
   component: ComponentType<any>;
@@ -43,4 +44,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   campaign: campaignTemplate,
   "walk-not-done": walkNotDoneTemplate,
   "walk-schedule-changed": walkScheduleChangedTemplate,
+  "walk-canceled": walkCanceledTemplate,
 };

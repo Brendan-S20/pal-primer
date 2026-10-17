@@ -190,6 +190,7 @@ describe("emails say who sent them", () => {
     "campaign",
     "walk-not-done",
     "walk-schedule-changed",
+    "walk-canceled",
   ];
 
   it("there is a shared footer", () => {
