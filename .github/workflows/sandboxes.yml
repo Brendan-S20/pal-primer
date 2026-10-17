@@ -252,6 +252,51 @@ jobs:
           cache: ''
       - run: npm ci
 
+      # A Windows service account does not get the PATH of the person who
+      # installed Docker Desktop or the Supabase CLI, so look where the
+      # installers put them and add what is found. The output names the
+      # account and what docker said, so a refusal is explained in the log.
+      - name: Put Docker and the Supabase CLI on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Write-Output "runner account: $(whoami)"
+          $dirs = @('C:\Program Files\Docker\Docker\resources\bin', 'C:\ProgramData\scoop\shims', 'C:\ProgramData\chocolatey\bin')
+          foreach ($u in Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue) {
+            $dirs += Join-Path $u.FullName 'scoop\shims'
+            $dirs += Join-Path $u.FullName 'AppData\Local\Microsoft\WinGet\Links'
+            $dirs += Join-Path $u.FullName 'AppData\Roaming\npm'
+            $dirs += Join-Path $u.FullName '.supabase\bin'
+          }
+          foreach ($d in $dirs) {
+            foreach ($exe in @('docker.exe', 'supabase.exe', 'supabase.cmd')) {
+              if (Test-Path (Join-Path $d $exe)) {
+                Write-Output "found $exe in $d"
+                Add-Content -Path $env:GITHUB_PATH -Value $d
+              }
+            }
+          }
+          $docker = Get-Command docker -ErrorAction SilentlyContinue
+          if (-not $docker) { $docker = Get-Item 'C:\Program Files\Docker\Docker\resources\bin\docker.exe' -ErrorAction SilentlyContinue }
+          if ($docker) {
+            $out = & $docker.Source info 2>&1 | Select-Object -First 8
+            Write-Output "docker info said:"; $out | ForEach-Object { Write-Output "  $_" }
+          } else {
+            Write-Output "docker.exe not found in any of the usual places"
+          }
+          exit 0
+
+      # No Supabase CLI on the machine: install the npm package, which
+      # downloads the CLI binary, into the job's temp folder.
+      - name: Supabase CLI from npm when the machine has none
+        if: runner.os == 'Windows'
+        run: |
+          if ! command -v supabase >/dev/null 2>&1; then
+            npm install --no-save --prefix "$RUNNER_TEMP/sbcli" supabase@^2 >/dev/null
+            echo "$RUNNER_TEMP/sbcli/node_modules/.bin" >> "$GITHUB_PATH"
+            "$RUNNER_TEMP/sbcli/node_modules/.bin/supabase" --version
+          fi
+
       - name: Find Docker and the Supabase CLI
         id: prereq
         run: |
