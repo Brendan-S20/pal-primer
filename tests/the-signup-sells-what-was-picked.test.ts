@@ -33,6 +33,7 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     let validate: (d: unknown) => unknown = (d) => d;
     const b: any = {

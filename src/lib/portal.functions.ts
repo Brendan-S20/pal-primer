@@ -1,6 +1,7 @@
 import { addonPurchasable } from "@/lib/addon-launch";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { PortalSession } from "@/lib/portal-auth.server";
 import { liveServiceOrFilter } from "@/lib/subscription-form";
 import { orgToday } from "@/lib/org-day";
 import { appUrl } from "@/lib/app-origin";
@@ -39,6 +40,52 @@ async function admin() {
 
 const tokenSchema = z.object({ token: z.string().uuid() });
 
+const portalHomeLoaders = {
+  client: loadPortalClient,
+  visits: loadPortalUpcomingVisits,
+  invoices: loadPortalInvoices,
+  subs: loadPortalPrepaidSubs,
+  catalog: loadPortalAddonCatalog,
+  clientAddons: loadPortalClientAddons,
+  history: loadPortalRecentVisits,
+  dogs: loadPortalDogs,
+  referral: loadPortalReferral,
+  stations: loadPortalStations,
+  requests: loadPortalMyRequests,
+};
+
+type PortalHome = {
+  [K in keyof typeof portalHomeLoaders]?: Awaited<ReturnType<(typeof portalHomeLoaders)[K]>>;
+};
+
+/** How long the home parts may take. */
+export const PORTAL_HOME_BUDGET_MS = 1200;
+
+async function loadPortalHome(token: string, session: PortalSession): Promise<PortalHome> {
+  // getPortalSession applies every check required by a read-only session.
+  // Parts that fail, or are not back within the budget, are left out for
+  // their own queries to fetch.
+  const done: Record<string, unknown> = {};
+  const all = Promise.all(
+    Object.entries(portalHomeLoaders).map(async ([name, load]) => {
+      try {
+        done[name] = await load(token, session);
+      } catch {
+        // Left out.
+      }
+    }),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    all,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, PORTAL_HOME_BUDGET_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  return { ...done } as PortalHome;
+}
+
 // ============ Auth entry points (no session required) ============
 
 /**
@@ -48,7 +95,7 @@ const tokenSchema = z.object({ token: z.string().uuid() });
  * leaks before the OTP is passed.
  */
 export const portalContext = createServerFn({ method: "GET" })
-  .inputValidator((d) => tokenSchema.parse(d))
+  .inputValidator((d) => tokenSchema.extend({ withHome: z.boolean().optional() }).parse(d))
   .handler(async ({ data }) => {
     const { portalContactChannels, getPortalSession } = await portalAuth();
     const contact = await portalContactChannels(data.token);
@@ -86,6 +133,7 @@ export const portalContext = createServerFn({ method: "GET" })
       // A staff preview: the portal shows a banner and the server refuses
       // every action (requirePortalSession).
       preview: session.preview,
+      ...(data.withHome ? { home: await loadPortalHome(data.token, session) } : {}),
     };
   });
 
@@ -182,183 +230,199 @@ export const portalGetClient = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
-    if (error) throw new Error(error.message);
-    const row = rows?.[0];
-    if (!row) throw new Error("Invalid or expired portal link");
-    // What a portal skip actually costs, so the Skip button can stop guessing.
-    //
-    // `portal_request_skip` bills the visit at the org's `customer_requested`
-    // percentage and ends with `IF _pct IS NULL THEN _pct := 0` — no row means
-    // free, and skip-rules.functions.ts deliberately seeds that reason at 0 to
-    // match. So on a default org the customer was warned about a charge that
-    // could not be raised. This is read here rather than added to
-    // portal_get_client because it needs no migration: the handler already
-    // holds the org id from the row and runs as service_role.
-    //
-    // The re-clean guarantee's window rides along the same way and for the
-    // same reason: the Visits tab needs it to decide which completed visits
-    // get a "Request a re-clean" button, and portal_request_reclean refuses
-    // against this same column, so the button and the refusal cannot disagree
-    // about which setting they read. 0 means the owner switched it off.
-    //
-    // A re-clean is a pet-waste promise, so a business that does not run pet
-    // waste (organizations.service_lines) offers no button, whatever the
-    // stored window says. Read on its own so that, on a database the
-    // service-lines migration has not reached, the missing column fails this
-    // read alone and the answer falls OPEN to pet waste, as everywhere else.
-    // The window itself is untouched, and portal_request_reclean still
-    // answers: this hides an offer, it does not refuse one.
-    const [{ data: rule }, { data: org }, { data: lines }] = await Promise.all([
-      sb
-        .from("skip_billing_rules")
-        .select("billable_pct")
-        .eq("organization_id", row.organization_id)
-        .eq("reason_code", "customer_requested")
-        .maybeSingle(),
-      sb
-        .from("organizations")
-        .select("reclean_window_hours")
-        .eq("id", row.organization_id)
-        .maybeSingle(),
-      sb.from("organizations").select("service_lines").eq("id", row.organization_id).maybeSingle(),
-    ]);
-    const petWaste = runsPetWaste(serviceLinesOrDefault(lines?.service_lines));
-    return {
-      ...row,
-      skip_billable_pct: rule?.billable_pct ?? 0,
-      reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
-    };
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalClient(data.token, session);
   });
+
+async function loadPortalClient(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_get_client", { _token: token });
+  if (error) throw new Error(error.message);
+  const row = rows?.[0];
+  if (!row) throw new Error("Invalid or expired portal link");
+  // What a portal skip actually costs, so the Skip button can stop guessing.
+  //
+  // `portal_request_skip` bills the visit at the org's `customer_requested`
+  // percentage and ends with `IF _pct IS NULL THEN _pct := 0` — no row means
+  // free, and skip-rules.functions.ts deliberately seeds that reason at 0 to
+  // match. So on a default org the customer was warned about a charge that
+  // could not be raised. This is read here rather than added to
+  // portal_get_client because it needs no migration: the handler already
+  // holds the org id from the row and runs as service_role.
+  //
+  // The re-clean guarantee's window rides along the same way and for the
+  // same reason: the Visits tab needs it to decide which completed visits
+  // get a "Request a re-clean" button, and portal_request_reclean refuses
+  // against this same column, so the button and the refusal cannot disagree
+  // about which setting they read. 0 means the owner switched it off.
+  //
+  // A re-clean is a pet-waste promise, so a business that does not run pet
+  // waste (organizations.service_lines) offers no button, whatever the
+  // stored window says. Read on its own so that, on a database the
+  // service-lines migration has not reached, the missing column fails this
+  // read alone and the answer falls OPEN to pet waste, as everywhere else.
+  // The window itself is untouched, and portal_request_reclean still
+  // answers: this hides an offer, it does not refuse one.
+  const [{ data: rule }, { data: org }, { data: lines }] = await Promise.all([
+    sb
+      .from("skip_billing_rules")
+      .select("billable_pct")
+      .eq("organization_id", row.organization_id)
+      .eq("reason_code", "customer_requested")
+      .maybeSingle(),
+    sb
+      .from("organizations")
+      .select("reclean_window_hours")
+      .eq("id", row.organization_id)
+      .maybeSingle(),
+    sb.from("organizations").select("service_lines").eq("id", row.organization_id).maybeSingle(),
+  ]);
+  const petWaste = runsPetWaste(serviceLinesOrDefault(lines?.service_lines));
+  return {
+    ...row,
+    skip_billable_pct: rule?.billable_pct ?? 0,
+    reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
+  };
+}
 
 export const portalListUpcomingVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", {
-      _token: data.token,
-    });
-    if (error) throw new Error(error.message);
-    return rows ?? [];
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalUpcomingVisits(data.token, session);
   });
+
+async function loadPortalUpcomingVisits(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", {
+    _token: token,
+  });
+  if (error) throw new Error(error.message);
+  return rows ?? [];
+}
 
 export const portalListInvoices = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    // Webhook-independent safety net: the client may have just returned from a
-    // paid Checkout (?paid=1) before the webhook landed — verify this client's
-    // open sessions against Stripe so the list shows the real state.
-    const { data: opens } = await sb
-      .from("invoices")
-      .select("id")
-      .eq("client_id", session.clientId)
-      .eq("status", "open")
-      .or("stripe_checkout_session_id.not.is.null,stripe_payment_intent_id.not.is.null")
-      .order("updated_at", { ascending: false })
-      .limit(5);
-    if (opens?.length) {
-      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
-      for (const r of opens) await reconcileInvoicePayment(r.id);
-    }
-    const { data: rows, error } = await sb.rpc("portal_list_invoices", { _token: data.token });
-    if (error) throw new Error(error.message);
+    return loadPortalInvoices(data.token, session);
+  });
 
-    // G1: the portal must show the client's real debt — due dates, overdue
-    // state, and open count/total. The RPC predates due_on; merge it from the
-    // invoices table (scoped to this session's client) and compute the
-    // summary with the same shared helper the staff surfaces use.
-    const { isInvoiceOverdue, summarizeOpenInvoices } = await import("@/lib/overdue");
-    const { invoiceOutstandingCents } = await import("@/lib/ar");
-    const { data: dueRows, error: dueErr } = await sb
-      .from("invoices")
-      // tax_*: the sales tax inside total_cents, drawn as "includes $X sales
-      // tax" beside the amount when there is any.
-      // number: the stored invoice number, so the list prints INV-10427 like
-      // the PDF, the email and the pay link (C-03). It used to number rows by
-      // their position in the list.
-      .select(
-        "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label",
-      )
-      .eq("client_id", session.clientId);
-    if (dueErr) throw new Error(dueErr.message);
-    const dueById = new Map(
-      (
-        (dueRows ?? []) as Array<{
-          id: string;
-          number: number | null;
-          due_on: string | null;
-          credit_applied_cents: number | null;
-          amount_paid_cents?: number | null;
-          tax_cents?: number | null;
-          tax_rate_bps?: number | null;
-          tax_label?: string | null;
-        }>
-      ).map((r) => [r.id, r]),
-    );
-    const invoices = (
-      (rows ?? []) as Array<{
-        invoice_id: string;
-        status: string;
-        kind: string;
-        total_cents: number | null;
-        issued_at: string | null;
-        period_start: string | null;
-        period_end: string | null;
+async function loadPortalInvoices(token: string, session: PortalSession) {
+  const sb = await admin();
+  // Webhook-independent safety net: the client may have just returned from a
+  // paid Checkout (?paid=1) before the webhook landed — verify this client's
+  // open sessions against Stripe so the list shows the real state.
+  const { data: opens } = await sb
+    .from("invoices")
+    .select("id")
+    .eq("client_id", session.clientId)
+    .eq("status", "open")
+    .or("stripe_checkout_session_id.not.is.null,stripe_payment_intent_id.not.is.null")
+    .order("updated_at", { ascending: false })
+    .limit(5);
+  if (opens?.length) {
+    const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+    for (const r of opens) await reconcileInvoicePayment(r.id);
+  }
+  const { data: rows, error } = await sb.rpc("portal_list_invoices", { _token: token });
+  if (error) throw new Error(error.message);
+
+  // G1: the portal must show the client's real debt — due dates, overdue
+  // state, and open count/total. The RPC predates due_on; merge it from the
+  // invoices table (scoped to this session's client) and compute the
+  // summary with the same shared helper the staff surfaces use.
+  const { isInvoiceOverdue, summarizeOpenInvoices } = await import("@/lib/overdue");
+  const { invoiceOutstandingCents } = await import("@/lib/ar");
+  const { data: dueRows, error: dueErr } = await sb
+    .from("invoices")
+    // tax_*: the sales tax inside total_cents, drawn as "includes $X sales
+    // tax" beside the amount when there is any.
+    // number: the stored invoice number, so the list prints INV-10427 like
+    // the PDF, the email and the pay link (C-03). It used to number rows by
+    // their position in the list.
+    .select(
+      "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label",
+    )
+    .eq("client_id", session.clientId);
+  if (dueErr) throw new Error(dueErr.message);
+  const dueById = new Map(
+    (
+      (dueRows ?? []) as Array<{
+        id: string;
+        number: number | null;
+        due_on: string | null;
+        credit_applied_cents: number | null;
+        amount_paid_cents?: number | null;
+        tax_cents?: number | null;
+        tax_rate_bps?: number | null;
+        tax_label?: string | null;
       }>
-    ).map((r) => {
-      const extra = dueById.get(r.invoice_id);
-      const due_on = extra?.due_on ?? null;
-      const credit_applied_cents = extra?.credit_applied_cents ?? 0;
-      const amount_paid_cents = extra?.amount_paid_cents ?? 0;
-      return {
-        ...r,
-        number_label: invoiceNumberLabel({ id: r.invoice_id, number: extra?.number ?? null }),
-        due_on,
+    ).map((r) => [r.id, r]),
+  );
+  const invoices = (
+    (rows ?? []) as Array<{
+      invoice_id: string;
+      status: string;
+      kind: string;
+      total_cents: number | null;
+      issued_at: string | null;
+      period_start: string | null;
+      period_end: string | null;
+    }>
+  ).map((r) => {
+    const extra = dueById.get(r.invoice_id);
+    const due_on = extra?.due_on ?? null;
+    const credit_applied_cents = extra?.credit_applied_cents ?? 0;
+    const amount_paid_cents = extra?.amount_paid_cents ?? 0;
+    return {
+      ...r,
+      number_label: invoiceNumberLabel({ id: r.invoice_id, number: extra?.number ?? null }),
+      due_on,
+      credit_applied_cents,
+      amount_paid_cents,
+      tax_cents: Number(extra?.tax_cents ?? 0),
+      tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
+      tax_label: (extra?.tax_label ?? null) as string | null,
+      // What the client still owes on this invoice, net of applied credit
+      // (B7) and of any partial payment.
+      amount_due_cents: invoiceOutstandingCents({
+        status: r.status,
+        total_cents: r.total_cents,
         credit_applied_cents,
         amount_paid_cents,
-        tax_cents: Number(extra?.tax_cents ?? 0),
-        tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
-        tax_label: (extra?.tax_label ?? null) as string | null,
-        // What the client still owes on this invoice, net of applied credit
-        // (B7) and of any partial payment.
-        amount_due_cents: invoiceOutstandingCents({
-          status: r.status,
-          total_cents: r.total_cents,
-          credit_applied_cents,
-          amount_paid_cents,
-        }),
-        overdue: isInvoiceOverdue(r.status, due_on),
-      };
-    });
-    const summary = summarizeOpenInvoices(invoices);
-    return {
-      invoices,
-      openCount: summary.openCount,
-      openTotalCents: summary.openTotalCents,
-      overdueCount: summary.overdueCount,
-      nextDueOn: summary.nextDueOn,
+      }),
+      overdue: isInvoiceOverdue(r.status, due_on),
     };
   });
+  const summary = summarizeOpenInvoices(invoices);
+  return {
+    invoices,
+    openCount: summary.openCount,
+    openTotalCents: summary.openTotalCents,
+    overdueCount: summary.overdueCount,
+    nextDueOn: summary.nextDueOn,
+  };
+}
 
 export const portalListPrepaidSubs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_prepaid_subscriptions", {
-      _token: data.token,
-    });
-    if (error) throw new Error(error.message);
-    return rows ?? [];
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalPrepaidSubs(data.token, session);
   });
+
+async function loadPortalPrepaidSubs(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_prepaid_subscriptions", {
+    _token: token,
+  });
+  if (error) throw new Error(error.message);
+  return rows ?? [];
+}
 
 export const portalRequestSkip = createServerFn({ method: "POST" })
   .inputValidator((d) =>
@@ -568,23 +632,31 @@ export const portalListAddonCatalog = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_addon_catalog", { _token: data.token });
-    if (error) throw new Error(error.message);
-    return rows ?? [];
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalAddonCatalog(data.token, session);
   });
+
+async function loadPortalAddonCatalog(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_addon_catalog", { _token: token });
+  if (error) throw new Error(error.message);
+  return rows ?? [];
+}
 
 export const portalListClientAddons = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_client_addons", { _token: data.token });
-    if (error) throw new Error(error.message);
-    return rows ?? [];
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalClientAddons(data.token, session);
   });
+
+async function loadPortalClientAddons(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_client_addons", { _token: token });
+  if (error) throw new Error(error.message);
+  return rows ?? [];
+}
 
 export const portalSubscribeAddon = createServerFn({ method: "POST" })
   .inputValidator((d) =>
@@ -1084,58 +1156,66 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
-    if (error) throw new Error(error.message);
-    const list = (rows ?? []) as Array<Record<string, any> & { visit_id: string }>;
-    // Which rows are dog walks (#410): a walk is offered no re-clean and no
-    // yard options, and reads in walk words. The RPC does not return it.
-    const lines = await serviceLinesOf(
-      sb,
-      session,
-      list.map((r) => r.visit_id),
-    );
-    return list.map((r) => ({ ...r, service_line: lines.get(r.visit_id) ?? null })) as Array<{
-      visit_id: string;
-      scheduled_on: string;
-      status: string;
-      photo_paths: string[];
-      // Parallel to photo_paths, same order, added in 20260903130000. The page
-      // used to label a photo by its INDEX -- `i % 2 === 0 ? "Before" :
-      // "After"` -- because position was all it had.
-      photo_kinds: string[];
-      tech_name: string | null;
-      // When the visit was finished. The re-clean window is measured from
-      // this, not from scheduled_on.
-      completed_at: string | null;
-      // Free text a technician typed at the gate, and the structured reason
-      // beside it. The page shows the code; see portal-ui.tsx for why the text
-      // is shown only when the customer wrote it.
-      skip_reason: string | null;
-      skip_reason_code: string | null;
-      // The visit's service line, or null when it could not be read. A walk
-      // is "dog_walking".
-      service_line: string | null;
-    }>;
+    return loadPortalRecentVisits(data.token, session);
   });
+
+async function loadPortalRecentVisits(token: string, session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: token });
+  if (error) throw new Error(error.message);
+  const list = (rows ?? []) as Array<Record<string, any> & { visit_id: string }>;
+  // Which rows are dog walks (#410): a walk is offered no re-clean and no
+  // yard options, and reads in walk words. The RPC does not return it.
+  const lines = await serviceLinesOf(
+    sb,
+    session,
+    list.map((r) => r.visit_id),
+  );
+  return list.map((r) => ({ ...r, service_line: lines.get(r.visit_id) ?? null })) as Array<{
+    visit_id: string;
+    scheduled_on: string;
+    status: string;
+    photo_paths: string[];
+    // Parallel to photo_paths, same order, added in 20260903130000. The page
+    // used to label a photo by its INDEX -- `i % 2 === 0 ? "Before" :
+    // "After"` -- because position was all it had.
+    photo_kinds: string[];
+    tech_name: string | null;
+    // When the visit was finished. The re-clean window is measured from
+    // this, not from scheduled_on.
+    completed_at: string | null;
+    // Free text a technician typed at the gate, and the structured reason
+    // beside it. The page shows the code; see portal-ui.tsx for why the text
+    // is shown only when the customer wrote it.
+    skip_reason: string | null;
+    skip_reason_code: string | null;
+    // The visit's service line, or null when it could not be read. A walk
+    // is "dog_walking".
+    service_line: string | null;
+  }>;
+}
 
 export const portalListDogs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_dogs", { _token: data.token });
-    if (error) throw new Error(error.message);
-    return (rows ?? []) as Array<{
-      dog_id: string;
-      name: string;
-      breed: string | null;
-      weight_class: string | null;
-      temperament: string | null;
-      notes: string | null;
-    }>;
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalDogs(data.token, session);
   });
+
+async function loadPortalDogs(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_dogs", { _token: token });
+  if (error) throw new Error(error.message);
+  return (rows ?? []) as Array<{
+    dog_id: string;
+    name: string;
+    breed: string | null;
+    weight_class: string | null;
+    temperament: string | null;
+    notes: string | null;
+  }>;
+}
 
 export const portalReportConcern = createServerFn({ method: "POST" })
   .inputValidator((d) =>
@@ -1723,12 +1803,16 @@ export const portalGetReferral = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_get_referral", { _token: data.token });
-    if (error) throw new Error(error.message);
-    return (rows?.[0] ?? { referral_code: null }) as { referral_code: string | null };
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalReferral(data.token, session);
   });
+
+async function loadPortalReferral(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_get_referral", { _token: token });
+  if (error) throw new Error(error.message);
+  return (rows?.[0] ?? { referral_code: null }) as { referral_code: string | null };
+}
 
 // ── Portal: stations, requests, vacation hold, promo redemption ─────────────
 
@@ -1736,50 +1820,58 @@ export const portalListStations = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_stations" as any, {
-      _token: data.token,
-    });
-    if (error) throw new Error(error.message);
-    return (rows ?? []) as Array<{
-      station_id: string;
-      station_number: number | null;
-      label: string | null;
-      location_description: string | null;
-      liner_size: string | null;
-      last_serviced_on: string | null;
-    }>;
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalStations(data.token, session);
   });
+
+async function loadPortalStations(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_stations" as any, {
+    _token: token,
+  });
+  if (error) throw new Error(error.message);
+  return (rows ?? []) as Array<{
+    station_id: string;
+    station_number: number | null;
+    label: string | null;
+    location_description: string | null;
+    liner_size: string | null;
+    last_serviced_on: string | null;
+  }>;
+}
 
 export const portalListMyRequests = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token, { readOnly: true });
-    const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, {
-      _token: data.token,
-    });
-    if (error) throw new Error(error.message);
-    return (rows ?? []) as Array<{
-      ticket_id: string;
-      visit_id: string | null;
-      visit_date: string | null;
-      category: string;
-      message: string | null;
-      status: string;
-      resolution_note: string | null;
-      resolved_at: string | null;
-      created_at: string;
-      /** For a one-off request: the day asked for, and the day booked. */
-      requested_on: string | null;
-      booked_on: string | null;
-      /** The service a one-off request named ("30-minute walk"); null for
-       *  the extra cleanup and for every other kind of request. */
-      service_name: string | null;
-    }>;
+    const session = await requirePortalSession(data.token, { readOnly: true });
+    return loadPortalMyRequests(data.token, session);
   });
+
+async function loadPortalMyRequests(token: string, _session: PortalSession) {
+  const sb = await admin();
+  const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, {
+    _token: token,
+  });
+  if (error) throw new Error(error.message);
+  return (rows ?? []) as Array<{
+    ticket_id: string;
+    visit_id: string | null;
+    visit_date: string | null;
+    category: string;
+    message: string | null;
+    status: string;
+    resolution_note: string | null;
+    resolved_at: string | null;
+    created_at: string;
+    /** For a one-off request: the day asked for, and the day booked. */
+    requested_on: string | null;
+    booked_on: string | null;
+    /** The service a one-off request named ("30-minute walk"); null for
+     *  the extra cleanup and for every other kind of request. */
+    service_name: string | null;
+  }>;
+}
 
 export const portalRequestVacationHold = createServerFn({ method: "POST" })
   .inputValidator((d) =>

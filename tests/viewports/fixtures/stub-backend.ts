@@ -95,6 +95,9 @@ const DAY_END_WORDING = {
 export const BASE_STUBS: Record<string, Stub> = {
   // ── The shell. Every authenticated route waits on these. ────────────────
   getMyOrg: { organization: fx.ORGANIZATION },
+  getAccountLock: { locked: false, canChoosePlan: true },
+  getShellContext: (args) => shellContextFixture(BASE_STUBS, args),
+  getShellParts: (args) => shellContextFixture(BASE_STUBS, args).parts,
   getPlatformContext: { isPlatformAdmin: true },
   getMyProfile: {
     staff: {
@@ -1470,12 +1473,29 @@ function tippedIntent<T extends { dueCents: number }>(base: T, args: Record<stri
 
 const PORTAL_STUBS: Record<string, Stub> = {
   portalOrgBySlug: { found: true, branding: pfx.PORTAL_BRANDING },
-  portalContext: {
+  portalContext: (args) => ({
     verified: true,
     valid: true,
     client: pfx.PORTAL_CLIENT,
     branding: pfx.PORTAL_BRANDING,
-  },
+    ...(args.withHome
+      ? {
+          home: {
+            client: PORTAL_STUBS.portalGetClient,
+            visits: PORTAL_STUBS.portalListUpcomingVisits,
+            invoices: PORTAL_STUBS.portalListInvoices,
+            subs: PORTAL_STUBS.portalListPrepaidSubs,
+            catalog: PORTAL_STUBS.portalListAddonCatalog,
+            clientAddons: PORTAL_STUBS.portalListClientAddons,
+            history: PORTAL_STUBS.portalListRecentVisits,
+            dogs: PORTAL_STUBS.portalListDogs,
+            referral: PORTAL_STUBS.portalGetReferral,
+            stations: PORTAL_STUBS.portalListStations,
+            requests: PORTAL_STUBS.portalListMyRequests,
+          },
+        }
+      : {}),
+  }),
   portalGetClient: pfx.PORTAL_CLIENT,
   portalListUpcomingVisits: pfx.PORTAL_UPCOMING_VISITS,
   portalListRecentVisits: pfx.PORTAL_RECENT_VISITS,
@@ -1543,6 +1563,36 @@ const PORTAL_STUBS: Record<string, Stub> = {
   },
 };
 
+function shellContextFixture(stubs: Record<string, Stub>, args: Record<string, any>) {
+  const read = (name: string) => {
+    const stub = stubs[name];
+    return typeof stub === "function" ? stub(args) : stub;
+  };
+  const parts = {
+    profile: "getMyProfile",
+    features: "getMyOrgFeatures",
+    trial: "getTrialState",
+    billingBanner: "getBillingBannerStatus",
+    announcements: "listActiveAnnouncements",
+    franchise: "getFranchiseContext",
+    onboarding: "getOnboardingStatus",
+    reviewCount: "getReviewQueueCount",
+    platform: "getPlatformContext",
+    notifications: "listMyNotifications",
+    routingRuns: "listMyRoutingRuns",
+    clock: "getMyClock",
+  };
+  return {
+    org: read("getMyOrg"),
+    lock: read("getAccountLock"),
+    parts: Object.fromEntries(
+      Object.entries(parts)
+        .filter(([, name]) => name in stubs)
+        .map(([part, name]) => [part, read(name)]),
+    ),
+  };
+}
+
 export async function installStubBackend(
   context: BrowserContext,
   options: {
@@ -1551,6 +1601,11 @@ export async function installStubBackend(
     /** organizations.service_lines for this run. Omitted, the org is the
      *  pet-waste business BASE_STUBS describes. */
     serviceLines?: string[];
+    /** Server functions answered differently for this run. Given here rather
+     *  than as a page route because some of them (the clock, the profile, the
+     *  rest of SHELL_PART_KEYS) reach the page inside getShellParts, which a
+     *  route on the single function's name never sees. */
+    overrides?: Record<string, Stub>;
   } = {},
 ): Promise<StubReport> {
   const report: StubReport = { unstubbed: [], blockedHosts: [], leadPosts: [] };
@@ -1757,6 +1812,13 @@ export async function installStubBackend(
         return { ...day, visits: [sit, ...visits.slice(1)] };
       };
     }
+  }
+
+  Object.assign(STUBS, options.overrides);
+
+  if (!options.portal) {
+    STUBS.getShellContext = (args) => shellContextFixture(STUBS, args);
+    STUBS.getShellParts = (args) => shellContextFixture(STUBS, args).parts;
   }
 
   // ── THE FENCE ─────────────────────────────────────────────────────────

@@ -211,8 +211,34 @@ DECLARE
   _capacity integer;
   _dogs integer;
   _total integer;
+  _kept boolean := false;
 BEGIN
   IF NEW.walk_group_id IS NULL THEN RETURN NEW; END IF;
+  -- The row keeps the group it had: something else about the visit changed.
+  IF TG_OP = 'UPDATE' AND NEW.walk_group_id IS NOT DISTINCT FROM OLD.walk_group_id THEN
+    _kept := true;
+    IF NEW.status IN ('skipped', 'canceled') THEN
+      NEW.walk_group_id := NULL;
+      RETURN NEW;
+    END IF;
+    SELECT * INTO _group FROM public.walk_groups WHERE id = NEW.walk_group_id;
+    IF NOT FOUND OR NEW.organization_id IS DISTINCT FROM _group.organization_id
+      OR NEW.scheduled_on IS DISTINCT FROM _group.scheduled_on
+      OR NEW.service_id IS DISTINCT FROM _group.service_id THEN
+      NEW.walk_group_id := NULL;
+      RETURN NEW;
+    END IF;
+    -- Completed stays, and does not hold a place. Recheck capacity when the
+    -- dog count changes, or when a walk that was not holding a place comes
+    -- back to scheduled or in progress.
+    IF NEW.status NOT IN ('scheduled', 'in_progress') THEN
+      RETURN NEW;
+    END IF;
+    IF OLD.status IN ('scheduled', 'in_progress')
+      AND NEW.subscription_id IS NOT DISTINCT FROM OLD.subscription_id THEN
+      RETURN NEW;
+    END IF;
+  END IF;
   -- Serialize joins to the same group before reading its members.
   SELECT * INTO _group FROM public.walk_groups WHERE id = NEW.walk_group_id FOR UPDATE;
   IF NOT FOUND OR NEW.organization_id IS DISTINCT FROM _group.organization_id
@@ -233,8 +259,12 @@ BEGIN
     (SELECT count(*)::integer FROM public.dogs d
       WHERE d.property_id = NEW.property_id AND d.active AND d.species = 'dog'),
     1), 1) INTO _dogs;
+  -- Only walks still to happen hold a place. Skipping or canceling already
+  -- detaches a member above; the status filter is the second guard, and it
+  -- also leaves a completed walk in the group without holding its place.
   SELECT coalesce(sum(public.walk_dogs_on_visit(v.id)), 0)::integer + _dogs INTO _total
-    FROM public.visits v WHERE v.walk_group_id = NEW.walk_group_id AND v.id <> NEW.id;
+    FROM public.visits v WHERE v.walk_group_id = NEW.walk_group_id AND v.id <> NEW.id
+      AND v.status IN ('scheduled', 'in_progress');
   IF _total > _capacity THEN
     RAISE EXCEPTION 'This group walk is full: % of % dogs.', _total, _capacity
       USING ERRCODE = 'check_violation';
@@ -242,6 +272,7 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM public.visits v
     WHERE v.walk_group_id = NEW.walk_group_id AND v.id <> NEW.id
+      AND v.status IN ('scheduled', 'in_progress')
       AND v.client_id <> NEW.client_id
       AND (
         EXISTS (SELECT 1 FROM public.dogs d WHERE d.property_id = NEW.property_id
@@ -253,7 +284,9 @@ BEGIN
     RAISE EXCEPTION 'A dog marked aggressive walks alone. Book a solo walk instead.'
       USING ERRCODE = 'check_violation';
   END IF;
-  IF _group.assigned_staff_id IS NOT NULL THEN
+  -- A walk joining the group takes its walker. One already in it keeps
+  -- whoever it has, so a plan change does not undo a reassignment.
+  IF NOT _kept AND _group.assigned_staff_id IS NOT NULL THEN
     NEW.assigned_staff_id := _group.assigned_staff_id;
   END IF;
   RETURN NEW;

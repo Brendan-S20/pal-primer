@@ -1,5 +1,6 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { AuthedContext } from "@/lib/server-fn-context";
 import { resolveCaller } from "@/lib/authz.server";
 import { aiAvailableFor, trialStateFor, type TrialState } from "@/lib/trial";
 
@@ -22,7 +23,11 @@ export type TrialView = TrialState & {
 
 export const getTrialState = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<TrialView | null> => {
+  .handler(async ({ context }) => loadTrialState(context));
+
+/** getTrialState's answer, also asked by getShellContext. */
+export const loadTrialState = createServerOnlyFn(
+  async (context: AuthedContext): Promise<TrialView | null> => {
     const { supabase, userId } = context;
     const { orgId, role } = await resolveCaller(supabase, userId);
     if (!orgId) return null;
@@ -55,4 +60,5 @@ export const getTrialState = createServerFn({ method: "GET" })
       aiAvailable: aiAvailableFor(state),
       canManageBilling: hasPermission(role, "manage_org_billing"),
     };
-  });
+  },
+);

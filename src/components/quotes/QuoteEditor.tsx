@@ -26,6 +26,7 @@ import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanu
 import { getQuotePricing } from "@/lib/quote-pricing.functions";
 import {
   QUOTE_FREQUENCIES,
+  asSentence,
   type QuotePricingZone,
   type QuoteStandardPricing,
   type QuoteSubject,
@@ -608,12 +609,18 @@ export function QuoteEditor({
                 <p className="text-xs text-muted-foreground" data-testid="line-priced-from">
                   {isUntouchedPrefill(l) ? (
                     <>
-                      <span className="font-medium text-foreground">{l.pricedFrom.note}.</span>{" "}
+                      <span className="font-medium text-foreground">
+                        {asSentence(l.pricedFrom.note)}
+                      </span>{" "}
                       {l.pricedFrom.breakdown}. Change anything here; it is only a starting point.
                     </>
                   ) : (
                     <>
-                      Started from {l.pricedFrom.note.replace(/^Priced from /, "")} at $
+                      Started from{" "}
+                      {l.pricedFrom.note
+                        .replace(/^Priced from /, "")
+                        .replace(/\. The yard is not measured yet.*$/, "")}{" "}
+                      at $
                       {l.pricedFrom.price}, then changed here.
                     </>
                   )}

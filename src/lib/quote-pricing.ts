@@ -100,6 +100,14 @@ export interface PricingChoice {
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+/** A pricing note as one sentence. One zone note already ends in a full stop
+ *  (the unmeasured-yard one), and the editor adding another printed
+ *  "charge.." (#433). */
+export function asSentence(note: string): string {
+  const s = note.trim();
+  return /[.!?]$/.test(s) ? s : `${s}.`;
+}
+
 function dogsWord(n: number) {
   return `${n} ${n === 1 ? "dog" : "dogs"}`;
 }

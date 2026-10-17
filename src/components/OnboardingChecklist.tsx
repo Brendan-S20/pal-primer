@@ -16,6 +16,7 @@ import {
   stepsFor,
   useSetupGuide,
 } from "@/lib/setup-guide";
+import { setupProgressPct } from "@/lib/setup-progress";
 
 type Step = {
   id: string;
@@ -57,7 +58,26 @@ export function stepVisibility(
   return out;
 }
 
-export function OnboardingChecklist() {
+/**
+ * Where the checklist sits on the dashboard.
+ *
+ * Until the business has a client it is the main thing to do, so it is the
+ * full card at the top. Once a client exists the business is running, and the
+ * full card pushed the day's numbers below the fold (QA row 44). From then on
+ * it is one line under the KPIs with a "Finish setup" button. The clients
+ * step's `done` is the server's `clients.count > 0`.
+ */
+export function checklistPlacement(steps: Step[]): "top" | "below-kpis" {
+  return steps.some((s) => s.id === "clients" && s.done) ? "below-kpis" : "top";
+}
+
+export function OnboardingChecklist({
+  placement = "top",
+}: {
+  /** Which of the two dashboard slots this instance fills. Each renders only
+   *  when `checklistPlacement` picks it, so the page can hold both. */
+  placement?: "top" | "below-kpis";
+} = {}) {
   const qc = useQueryClient();
   const { role } = useMyRole();
   const statusFn = useServerFn(getOnboardingStatus);
@@ -69,6 +89,7 @@ export function OnboardingChecklist() {
   const { data } = useQuery({
     queryKey: ["onboarding-status"],
     queryFn: () => statusFn(),
+    staleTime: 30_000,
   });
 
   if (!data) return null;
@@ -83,7 +104,7 @@ export function OnboardingChecklist() {
   const completed = steps.filter((s) => s.done).length;
   const total = steps.length;
 
-  const pct = Math.round((completed / total) * 100);
+  const pct = setupProgressPct(steps);
   const allDone = completed === total;
   const visibility = stepVisibility(steps, expanded);
   const foldedAway = steps.filter((s) => visibility[s.id] !== "shown").length;
@@ -102,6 +123,45 @@ export function OnboardingChecklist() {
     await dismissFn();
     qc.invalidateQueries({ queryKey: ["onboarding-status"] });
   };
+
+  if (checklistPlacement(steps) !== placement) return null;
+
+  if (placement === "below-kpis") {
+    return (
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-2 text-sm max-md:order-2"
+        data-testid="onboarding-checklist"
+        data-compact=""
+      >
+        <p className="min-w-0 text-muted-foreground">
+          {allDone ? "Setup is complete." : `Setup: ${completed} of ${total} steps done.`}
+        </p>
+        <div className="flex shrink-0 items-center gap-1">
+          {!allDone && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={guideMe}
+              className="touch:min-h-11"
+              data-testid="setup-guide-me"
+            >
+              Finish setup
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleDismiss}
+            aria-label="Dismiss the setup checklist"
+            title="Dismiss the setup checklist"
+            className="shrink-0 touch:h-11 touch:w-11"
+          >
+            <X className="h-4 w-4 shrink-0" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border bg-card p-4 md:p-5" data-testid="onboarding-checklist">

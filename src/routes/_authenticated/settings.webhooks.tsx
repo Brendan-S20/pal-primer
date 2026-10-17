@@ -628,31 +628,29 @@ function WebhookSettings() {
         </summary>
         <div className="mt-2 space-y-2 text-sm text-muted-foreground">
           <p>
-            Every request carries a <code className="font-mono">{WEBHOOK_SIGNATURE_HEADER}</code>{" "}
-            header like <code className="break-all font-mono">t=1759132800,v1=5257a869...</code>. To
-            check it, compute an HMAC-SHA256 of the timestamp, a full stop, and the raw request
-            body, using the whole signing secret as the key, and compare the hex result with{" "}
-            <code>v1</code>. Refuse requests whose timestamp is more than five minutes old. This is
-            the same scheme Stripe uses.
+            Read <code>t</code> and <code>v1</code> from{" "}
+            <code className="font-mono">{WEBHOOK_SIGNATURE_HEADER}</code>. Use the raw request
+            body and whole signing secret for the HMAC below. Compare its hex value with{" "}
+            <code>v1</code>. Reject timestamps over five minutes old.
           </p>
           <pre className="overflow-x-auto rounded bg-muted p-3 font-mono text-xs text-foreground">
             {`expected = hex(HMAC_SHA256(secret, t + "." + body))`}
           </pre>
           <p>
-            A delivery that does not get a 2xx answer within 10 seconds is retried after 1 minute, 5
-            minutes, 30 minutes, 2 hours and 12 hours. Redirects are not followed. After 5
-            deliveries in a row fail, the webhook is switched off and the owners are notified. The
-            body&apos;s <code>id</code> is the same on every retry, so a receiver can ignore
-            repeats.
+            Without a 2xx response within 10 seconds, delivery retries after 1 minute, 5 minutes,
+            30 minutes, 2 hours and 12 hours. Redirects are not followed. Use the body&apos;s{" "}
+            <code>id</code> to ignore repeats.
           </p>
           <p>
-            Events carry ids, names, amounts and dates, and no contact details. A webhook with
-            &ldquo;Include client email and phone&rdquo; ticked also gets{" "}
+            After 5 deliveries in a row fail, the webhook is switched off and the owners are notified.
+          </p>
+          <p>
+            Events include IDs, names, amounts and dates. Enable &ldquo;Include client email and
+            phone&rdquo; to add{" "}
             <code className="break-all font-mono">
               data.contact = {`{ "email": ..., "phone": ... }`}
             </code>{" "}
-            on events about a client or lead, read when the event is sent, so switching it off stops
-            it for anything not yet delivered.
+            when sent. Turning it off stops contact details on pending deliveries.
           </p>
         </div>
       </details>

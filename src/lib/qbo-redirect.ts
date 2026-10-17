@@ -50,7 +50,7 @@ export function checkOAuthState(
 
 /** `?qbo_error=<code>` on Settings → Accounting, and what it says. */
 export const QBO_CALLBACK_ERRORS = {
-  access_denied: "QuickBooks wasn't connected: the request was cancelled on Intuit's page.",
+  access_denied: "QuickBooks wasn't connected: the request was canceled on Intuit's page.",
   missing_params: "QuickBooks sent the browser back without what it needed. Try connecting again.",
   state_invalid:
     "That connect link wasn't started from this page, or was already used, so it was refused. Start again with the Connect button.",

@@ -33,6 +33,9 @@ import {
   Inbox as InboxIcon,
   ShieldAlert,
   FileSignature,
+  PanelLeftClose,
+  PanelLeftOpen,
+  UserCog,
 } from "lucide-react";
 import { Megaphone } from "lucide-react";
 import { openTimeClock, useMyClock } from "@/components/TimeClock";
@@ -87,63 +90,77 @@ export type NavItem = {
   /** Other pages this entry stands for, so it stays highlighted there. Reports
    *  is one entry for three pages (see components/ReportsNav). */
   alsoActiveOn?: readonly string[];
+  /** Not signposted to a technician. The same filter settings.tsx applies to
+   *  every section without `techVisible`, so an entry that points into
+   *  Settings is shown to exactly the people the Settings menu shows it to.
+   *  Hiding only: the route's own role check (ROUTE_ROLES) is untouched. */
+  officeOnly?: boolean;
 };
 
 // Single source of nav truth — also consumed by MobileTabBar's "More" sheet so
 // the phone nav can never drift from (or exceed) what the sidebar offers.
+// ── THE FIVE AN OWNER OPENS MOST, FIRST (QA row 36, 2026-10-15) ─────────
+//
+// Dashboard, Schedule, Clients, Invoices and Payments are the evening round,
+// and they were spread over three groups with Inbox, Leads and Campaigns in
+// between. They are the first group now, in that order, and what is opened
+// once a season (zones, imports, settings) is at the bottom. The phone's More
+// sheet is built from this list minus the tab bar's own three, so on a phone
+// it now opens on Invoices and Payments. Order only: every entry is filtered
+// exactly as before (isNavItemVisible), so nobody sees anything new.
 export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Overview",
     items: [
       { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-      // Everything waiting on the office in one list: texts to answer,
-      // concerns, needs-review records, disputes and unread alerts, each
-      // linking to the page where it is done (launch pass, 2026-10). Second,
-      // because it is the evening round's first stop.
-      { title: "Inbox", url: "/inbox", icon: InboxIcon },
-      { title: "Leads", url: "/leads", icon: UserPlus },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { title: "Clients", url: "/clients", icon: Users },
-      { title: "Campaigns", url: "/campaigns", icon: Megaphone },
-      { title: "Zones", url: "/zones", icon: MapPin },
-      // "Schedule", not "Routes": there is no `routes` table — a route is
-      // visits filtered by a day and a tech — and MobileTabBar already called
+      // "Schedule", not "Routes": there is no `routes` table (a route is
+      // visits filtered by a day and a tech), and MobileTabBar already called
       // this Schedule, so desktop and phone were naming the same screen two
       // different things. Label only; the URL stays /routes because moving it
       // would touch the dispatcher landing redirect, the onboarding tour
       // anchors and the nightly push deep-links, to change a string no
       // customer ever reads.
       { title: "Schedule", url: "/routes", icon: RouteIcon },
+      { title: "Clients", url: "/clients", icon: Users },
+      { title: "Invoices", url: "/invoices", icon: Receipt },
+      { title: "Payments", url: "/payments", icon: CreditCard },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      // Everything waiting on the office in one list: texts to answer,
+      // concerns, needs-review records, disputes and unread alerts, each
+      // linking to the page where it is done (launch pass, 2026-10). First
+      // after the five above, because it is the evening round's next stop.
+      { title: "Inbox", url: "/inbox", icon: InboxIcon },
       // Messages and Concerns were under Field until the launch pass
       // (2026-10). Neither is a field screen: both are the office answering
       // customers, and neither is open to a technician (ROUTE_ROLES gives
       // both to owner, office manager and dispatcher only), so for the one
       // role Field exists for they were never in it at all.
       { title: "Messages", url: "/messages", icon: MessageSquare, textingOnly: true },
+      { title: "Leads", url: "/leads", icon: UserPlus },
       { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
+      { title: "Campaigns", url: "/campaigns", icon: Megaphone },
       // Inventory and Timesheets were a sixth group called "Ops", two groups
-      // below one called "Operations" — the same word twice, once abbreviated,
+      // below one called "Operations": the same word twice, once abbreviated,
       // in the sidebar and again in the phone's More sheet, which is built from
       // this list. Nobody could say which of the two a thing belonged in, so
       // they are one group.
-      { title: "Inventory", url: "/inventory", icon: Package },
+      //
       // The time clock's office half. Here rather than under Field because
       // the people who open it are the owner and the office manager; the
       // techs' half is the card at the top of My day.
       { title: "Timesheets", url: "/timesheets", icon: Timer },
       { title: "Expenses", url: "/expenses", icon: ReceiptText },
+      { title: "Inventory", url: "/inventory", icon: Package },
     ],
   },
   {
     label: "Billing",
     items: [
-      { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Quotes", url: "/quotes", icon: FileSignature },
-      { title: "Payments", url: "/payments", icon: CreditCard },
       // BUILD-13: the accountant's pack. In the nav rather than URL-only
       // because the whole point is that an owner finds it in January without
       // having to be told it exists.
@@ -220,7 +237,15 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Setup",
     items: [
+      // Moved down from Operations (QA row 36): service areas are drawn once
+      // and revisited rarely.
+      { title: "Zones", url: "/zones", icon: MapPin },
       { title: "Import", url: "/imports", icon: Upload },
+      // The team page already exists as Settings → Users & roles, and an
+      // owner looking for "who works for me" does not think to open
+      // Settings. Same page, same audience as that section (officeOnly
+      // mirrors settings.tsx's tech filter; ROUTE_ROLES is unchanged).
+      { title: "Team", url: "/settings/users", icon: UserCog, officeOnly: true },
       { title: "Settings", url: "/settings", icon: SettingsIcon },
     ],
   },
@@ -296,6 +321,7 @@ export function isNavItemVisible(
     (!it.commercialOnly || v.commercialEnabled) &&
     (!it.petWasteOnly || v.petWaste) &&
     (!it.franchiseParentOnly || v.franchiseParent) &&
+    (!it.officeOnly || role !== "tech") &&
     (!it.textingOnly || v.texting)
   );
 }
@@ -310,6 +336,7 @@ function TimeClockSidebarItem({ collapsed }: { collapsed: boolean }) {
         tooltip={`${t("clock.label")} · ${clock.status}`}
         onClick={openTimeClock}
         data-time-clock-row=""
+        aria-label={collapsed ? `${t("clock.label")} · ${clock.status}` : undefined}
       >
         <Timer
           className={`h-4 w-4 shrink-0 ${clock.open ? "text-emerald-600 dark:text-emerald-400" : ""}`}
@@ -327,7 +354,7 @@ function TimeClockSidebarItem({ collapsed }: { collapsed: boolean }) {
 }
 
 export function AppSidebar() {
-  const { state, isMobile, setOpenMobile } = useSidebar();
+  const { state, isMobile, setOpenMobile, rail, railOpen, setRailOpen } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
 
@@ -337,8 +364,10 @@ export function AppSidebar() {
   // covering four seconds later. Closing on the PATHNAME rather than on each
   // link's onClick catches every route change, including the command palette
   // and anything added later that this file does not know about.
+  // The rail's overlay panel (below 1280px) closes on the same signal.
   useEffect(() => {
     if (isMobile) setOpenMobile(false);
+    setRailOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
   const { role } = useMyRole();
@@ -390,6 +419,12 @@ export function AppSidebar() {
     items: g.items.filter((it) => isNavItemVisible(it, role, navVisibility)),
   })).filter((g) => g.items.length > 0);
 
+  // On /settings/users both Team and Settings match the path. The longer,
+  // more specific entry is the one lit.
+  const visibleUrls = visibleGroups.flatMap((g) => g.items.map((i) => i.url));
+  const shadowedBy = (url: string) =>
+    visibleUrls.some((u) => u !== url && u.startsWith(url + "/") && isActive(u));
+
   if (isPlatformAdmin) {
     visibleGroups.push({
       label: "Platform",
@@ -402,7 +437,7 @@ export function AppSidebar() {
     // in Arabic. The NEXT UP bar on My Day clears it with `start-` for the
     // same reason.
     <Sidebar collapsible="icon" side={dirFor(i18n.language) === "rtl" ? "right" : "left"}>
-      <SidebarHeader>
+      <SidebarHeader className={rail && !collapsed ? "flex-row items-center" : undefined}>
         {/* When collapsed, the menu icons sit centered in a 2rem button within
             the icon rail; match that geometry exactly (same width, centered,
             no horizontal padding) so the mark lines up with the icon column. */}
@@ -410,8 +445,8 @@ export function AppSidebar() {
           to="/dashboard"
           className={
             collapsed
-              ? "flex h-8 w-8 items-center justify-center text-sidebar-foreground"
-              : "flex items-center gap-2 px-2 py-1.5 text-sidebar-foreground"
+              ? "flex h-8 w-8 items-center justify-center text-sidebar-foreground touch:h-11 touch:w-11"
+              : "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sidebar-foreground"
           }
           aria-label={APP_NAME}
         >
@@ -424,6 +459,26 @@ export function AppSidebar() {
             <span className="truncate text-base font-semibold tracking-tight">{APP_NAME}</span>
           )}
         </Link>
+        {/* The rail's own way to the labels (below 1280px, QA row 34). The
+            panel opens over the page and closes on a route change, Escape,
+            a tap outside it, or this same button. */}
+        {rail && (
+          <button
+            type="button"
+            onClick={() => setRailOpen(!railOpen)}
+            aria-expanded={railOpen}
+            aria-label={railOpen ? t("nav.collapseMenu") : t("nav.expandMenu")}
+            title={railOpen ? t("nav.collapseMenu") : t("nav.expandMenu")}
+            data-sidebar="rail-toggle"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground touch:h-11 touch:w-11"
+          >
+            {railOpen ? (
+              <PanelLeftClose className="h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />
+            ) : (
+              <PanelLeftOpen className="h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />
+            )}
+          </button>
+        )}
       </SidebarHeader>
       <SidebarContent>
         {visibleGroups.map((group) => (
@@ -436,7 +491,8 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       isActive={
-                        isActive(item.url) || !!item.alsoActiveOn?.some((u) => isActive(u))
+                        (isActive(item.url) && !shadowedBy(item.url)) ||
+                        !!item.alsoActiveOn?.some((u) => isActive(u))
                       }
                       tooltip={
                         item.url === "/review" && openReviews > 0
@@ -444,7 +500,14 @@ export function AppSidebar() {
                           : navItemTitle(t, item)
                       }
                     >
-                      <Link to={item.url} className="flex items-center gap-2" data-tour={item.url}>
+                      <Link
+                        to={item.url}
+                        className="flex items-center gap-2"
+                        data-tour={item.url}
+                        // On the rail the label is not drawn, and a tooltip
+                        // is a description, not a name.
+                        aria-label={collapsed ? navItemTitle(t, item) : undefined}
+                      >
                         <item.icon className="h-4 w-4 shrink-0" />
                         {!collapsed && <span className="truncate">{navItemTitle(t, item)}</span>}
                         {/* Expanded: a count. Collapsed to the icon rail there is
@@ -488,7 +551,11 @@ export function AppSidebar() {
               isActive={isActive("/profile")}
               tooltip={t("nav.yourAccount")}
             >
-              <Link to="/profile" className="flex items-center gap-2">
+              <Link
+                to="/profile"
+                className="flex items-center gap-2"
+                aria-label={collapsed ? t("nav.yourAccount") : undefined}
+              >
                 <UserAvatar
                   name={me?.display_name}
                   avatarPath={me?.avatar_url}

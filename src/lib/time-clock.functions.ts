@@ -40,8 +40,9 @@ async function orgTimezone(supabase: Db, orgId: string): Promise<string> {
 }
 
 /** The caller's clock for today: their shifts that touch the org's today,
- *  the open one among them, and the visits they have completed today. */
-async function loadMyClock(supabase: Db, userId: string) {
+ *  the open one among them, and the visits they have completed today. Also
+ *  asked by getShellContext. */
+export async function loadMyClock(supabase: Db, userId: string) {
   const { data: staff, error: staffErr } = await supabase
     .from("staff")
     .select("id, organization_id, display_name")
@@ -144,7 +145,7 @@ export const listTimesheet = createServerFn({ method: "GET" })
     const from = new Date(orgMidnight(weekStart, tz)).toISOString();
     const to = new Date(orgMidnight(addDays(weekStart, 7), tz)).toISOString();
 
-    const [staff, entries, visits] = await Promise.all([
+    const [staff, entries, visits, scheduled] = await Promise.all([
       supabase
         .from("staff")
         .select("id, display_name, active, is_field_tech")
@@ -165,10 +166,23 @@ export const listTimesheet = createServerFn({ method: "GET" })
         .not("assigned_staff_id", "is", null)
         .gte("completed_at", from)
         .lt("completed_at", to),
+      // What each person had on their route this week, by scheduled day and
+      // any status. My Day counts "3 of 8 done" against this; the completed
+      // count above is by the day each visit was completed, which is the day
+      // its hours were worked. Showing both is what lets the two pages agree
+      // (QA row 22: a tech with a full week of visits read as 0).
+      supabase
+        .from("visits")
+        .select("assigned_staff_id, scheduled_on")
+        .eq("organization_id", orgId)
+        .not("assigned_staff_id", "is", null)
+        .gte("scheduled_on", weekStart)
+        .lte("scheduled_on", addDays(weekStart, 6)),
     ]);
     if (staff.error) throw new Error(staff.error.message);
     if (entries.error) throw new Error(entries.error.message);
     if (visits.error) throw new Error(visits.error.message);
+    if (scheduled.error) throw new Error(scheduled.error.message);
 
     // Tips credited this week, for the payroll columns. Service-role and
     // scoped to this org after the manage_users check above: payments are
@@ -213,6 +227,7 @@ export const listTimesheet = createServerFn({ method: "GET" })
         .map((s) => ({ id: s.id, display_name: s.display_name })),
       entries: rows,
       visits: (visits.data ?? []) as { assigned_staff_id: string | null; completed_at: string | null }[],
+      scheduled: (scheduled.data ?? []) as { assigned_staff_id: string | null; scheduled_on: string }[],
       tips,
     };
   });

@@ -49,7 +49,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { clockIn, clockOut, getMyClock, type MyClock } from "@/lib/time-clock.functions";
-import { minutesBetween, minutesOnDay } from "@/lib/time-clock";
+import { LONG_SHIFT_PROMPT_MINUTES, minutesBetween, minutesOnDay } from "@/lib/time-clock";
 import type { TFunction } from "i18next";
 import { orgLocalTime, orgToday } from "@/lib/org-day";
 import { runOrQueue } from "@/lib/offline/run-or-queue";
@@ -357,6 +357,43 @@ export function OffTheClockBanner({ visitsToday }: { visitsToday: number }) {
             <span className="sr-only">{clock.waiting}</span>
           </>
         )}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * My Day's question for a shift open 12 hours or more: "You have been
+ * clocked in for 13 hours. Still working?" and Clock out, one tap (QA row 22,
+ * #438). Clocking out from My Day was three taps (More, Time clock, Clock
+ * out), which is how shifts sat open for 19 to 24 hours. Nothing closes the
+ * shift for them: the tech may really be working, and a guessed clock-out on
+ * a payroll record is worse than an open one. The office sees the same shift
+ * flagged on Timesheets.
+ */
+export function StillWorkingPrompt() {
+  const clock = useMyClock();
+  const { t } = useTranslation();
+  if (!clock.staff || !clock.open || clock.shiftMinutes < LONG_SHIFT_PROMPT_MINUTES) return null;
+  const hours = Math.floor(clock.shiftMinutes / 60);
+  return (
+    <div
+      data-still-working=""
+      role="status"
+      className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 py-1.5 ps-3 pe-1.5 text-sm"
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2 font-medium text-amber-800 dark:text-amber-300">
+        <Timer className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="min-w-0">{t("clock.stillWorking", { count: hours })}</span>
+      </span>
+      <Button
+        type="button"
+        size="sm"
+        disabled={clock.busy}
+        onClick={() => void clock.tap("clock_out")}
+        className="min-h-11 shrink-0 gap-1.5 px-4"
+      >
+        {t("clock.clockOut")}
       </Button>
     </div>
   );

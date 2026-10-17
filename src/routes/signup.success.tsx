@@ -76,7 +76,7 @@ function SuccessPage() {
           ) : failed ? (
             refunded ? (
               <>
-                Something went wrong on our end, so we've cancelled the signup and refunded your
+                Something went wrong on our end, so we've canceled the signup and refunded your
                 card in full
                 {q.data?.refundedAmountCents
                   ? ` (${money(q.data.refundedAmountCents, q.data.currency ?? "usd")})`

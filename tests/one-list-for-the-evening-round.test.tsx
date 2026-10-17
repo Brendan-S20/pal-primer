@@ -153,7 +153,11 @@ describe("one Reports area", () => {
     expect(sidebar).toMatch(
       /\{ title: "Reports", url: "\/reports", icon: BarChart3, alsoActiveOn: REPORT_PATHS \}/,
     );
-    expect(sidebar).toMatch(/isActive\(item\.url\) \|\| !!item\.alsoActiveOn\?\.some/);
+    // A more specific visible entry (Team at /settings/users under Settings)
+    // may shadow a parent; the Reports pages still light the Reports entry.
+    expect(sidebar).toMatch(
+      /isActive\(item\.url\)(?: && !shadowedBy\(item\.url\)\))? \|\|\s*!!item\.alsoActiveOn\?\.some/,
+    );
     expect(REPORT_PATHS).toEqual(["/reports", "/analytics", "/tax-reports"]);
   });
 
@@ -180,16 +184,16 @@ describe("one Reports area", () => {
 
 describe("one Inbox", () => {
   it("is in the nav for the office, and not for a technician", () => {
+    // Second in the Overview group until 2026-10-15, when that group became
+    // the five an owner opens most (QA row 36,
+    // tests/the-five-an-owner-opens-first.test.ts). Inbox now leads the
+    // group after them: still the evening round's next stop.
     const sidebar = read("src/components/AppSidebar.tsx");
-    const overview = sidebar.slice(
-      sidebar.indexOf('label: "Overview"'),
+    const operations = sidebar.slice(
       sidebar.indexOf('label: "Operations"'),
+      sidebar.indexOf('label: "Billing"'),
     );
-    expect([...overview.matchAll(/url: "([^"]+)"/g)].map((m) => m[1])).toEqual([
-      "/dashboard",
-      "/inbox",
-      "/leads",
-    ]);
+    expect([...operations.matchAll(/url: "([^"]+)"/g)].map((m) => m[1])[0]).toBe("/inbox");
     expect(ROUTE_ROLES["/inbox"]).toEqual(["owner", "office_manager", "dispatcher"]);
     expect(canAccess("tech", "/inbox")).toBe(false);
   });

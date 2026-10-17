@@ -32,8 +32,11 @@ describe("the nav groups", () => {
   it("keep Inventory and Timesheets, under Operations", async () => {
     const { NAV_GROUPS } = await import("@/components/AppSidebar");
     const ops = NAV_GROUPS.find((g) => g.label === "Operations");
+    // Clients and Schedule moved up into the first group and Zones down into
+    // Setup on 2026-10-15 (QA row 36, tests/the-five-an-owner-opens-first
+    // .test.ts). Inventory and Timesheets, the pair this test is about, stay.
     expect(ops?.items.map((i) => i.url)).toEqual(
-      expect.arrayContaining(["/clients", "/zones", "/routes", "/inventory", "/timesheets"]),
+      expect.arrayContaining(["/inventory", "/timesheets"]),
     );
     // Moved, not dropped: each URL is in exactly one group.
     const urls = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.url));

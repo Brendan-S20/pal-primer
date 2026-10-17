@@ -10,19 +10,20 @@ import { Label } from "@/components/ui/label";
 import { pageTitle } from "@/lib/page-title";
 import { ReportsNav } from "@/components/ReportsNav";
 import { RevenueByServiceCard } from "@/components/reports/RevenueByServiceCard";
+import { officeSkipReason } from "@/lib/skip-rules.functions";
+import { useIntlLocale } from "@/lib/i18n";
+import {
+  REPORT_PRESETS,
+  formatReportDay,
+  matchingPreset,
+  presetRange,
+  type ReportRange,
+} from "@/lib/report-range";
 
 function fmtMoney(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     (cents ?? 0) / 100,
   );
-}
-
-function defaultRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 29);
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return { from: iso(from), to: iso(to) };
 }
 
 const reportsKey = (from: string, to: string) => ["reports", from, to] as const;
@@ -33,12 +34,21 @@ export const Route = createFileRoute("/_authenticated/reports")({
 });
 
 function ReportsPage() {
-  const initial = defaultRange();
+  const initial = presetRange("last30");
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
-  const [applied, setApplied] = useState(initial);
+  const [applied, setApplied] = useState<ReportRange>(initial);
   const call = useServerFn(getReports);
   const router = useRouter();
+  const locale = useIntlLocale();
+  const day = (d: string) => formatReportDay(d, locale);
+  const chosen = matchingPreset(applied);
+  const apply = (r: ReportRange) => {
+    setFrom(r.from);
+    setTo(r.to);
+    setApplied(r);
+    router.invalidate();
+  };
 
   const opts = queryOptions({
     queryKey: reportsKey(applied.from, applied.to),
@@ -53,8 +63,25 @@ function ReportsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Reports</h1>
           <p className="text-sm text-muted-foreground">
-            {applied.from} → {applied.to}
+            {day(applied.from)} to {day(applied.to)}
           </p>
+          {/* One tap for the ranges people actually ask about. Wraps, so
+              three buttons never set the width of a phone. */}
+          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Date range">
+            {REPORT_PRESETS.map((p) => (
+              <Button
+                key={p.id}
+                type="button"
+                size="sm"
+                variant={chosen === p.id ? "default" : "outline"}
+                aria-pressed={chosen === p.id}
+                className="touch:min-h-11"
+                onClick={() => apply(presetRange(p.id))}
+              >
+                {p.label}
+              </Button>
+            ))}
+          </div>
         </div>
         {/* Two date fields and a button in one row was 426px of controls
             that could not wrap, so on a phone the form set the width of the
@@ -64,8 +91,7 @@ function ReportsPage() {
           className="grid w-full grid-cols-2 items-end gap-2 sm:flex sm:w-auto"
           onSubmit={(e) => {
             e.preventDefault();
-            setApplied({ from, to });
-            router.invalidate();
+            apply({ from, to });
           }}
         >
           <div>
@@ -144,7 +170,7 @@ function ReportsPage() {
           label="Outstanding"
           value={fmtMoney(data.outstandingCents)}
           valueClass={data.outstandingCents > 0 ? "text-amber-600 dark:text-amber-400" : undefined}
-          hint={`Open as at ${data.arAsOf}`}
+          hint={`Open as of ${day(data.arAsOf)}`}
         />
         <Metric label="Completed visits" value={String(data.visitCounts.completed ?? 0)} />
         <Metric
@@ -170,7 +196,7 @@ function ReportsPage() {
         <RevenueByServiceCard from={applied.from} to={applied.to} />
         <Card>
           <CardHeader>
-            <CardTitle>AR aging as at {data.arAsOf}</CardTitle>
+            <CardTitle>AR aging as of {day(data.arAsOf)}</CardTitle>
             {/* The date is in the title, not a footnote. A receivables figure
                 without an "as at" is the ambiguity that let this card and the
                 CPA pack's aging sheet print different totals for July: this one
@@ -227,7 +253,7 @@ function ReportsPage() {
               <table className="w-full text-sm">
                 <tbody>
                   {data.skipReasons.map((r) => (
-                    <Row key={r.code} label={r.code.replaceAll("_", " ")} value={String(r.count)} />
+                    <Row key={r.code} label={officeSkipReason(r.code)} value={String(r.count)} />
                   ))}
                 </tbody>
               </table>
@@ -262,31 +288,68 @@ function ReportsPage() {
           </CardHeader>
           {/* Four columns of figures in a half-width card. Without a scroll
               container the table sets the width of the page rather than of
-              itself, which is the one thing a layout must never do. */}
+              itself, which is the one thing a layout must never do.
+
+              QA row 31 (2026-10-15): it also carried `min-w-[720px]`, so the
+              card scrolled sideways at every width it is ever drawn at, and
+              at 390px all that showed was the names. Three counts beside a
+              name fit a phone, so the floor is gone, the figures are right
+              aligned on one baseline like any column of numbers, and below
+              `sm` each tech is one stacked row: the name, then the counts. */}
           <CardContent className="overflow-x-auto">
             {data.perTech.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits.</p>
             ) : (
-              <table className="w-full text-sm min-w-[720px]">
-                <thead className="text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="py-1">Tech</th>
-                    <th>Completed</th>
-                    <th>Skipped</th>
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul data-tech-productivity="stacked" className="divide-y text-sm sm:hidden">
                   {data.perTech.map((t) => (
-                    <tr key={t.id} className="border-t">
-                      <td className="py-1">{t.name}</td>
-                      <td>{t.completed}</td>
-                      <td>{t.skipped}</td>
-                      <td>{t.total}</td>
-                    </tr>
+                    <li key={t.id} className="py-2">
+                      <div className="truncate font-medium">{t.name}</div>
+                      <dl className="mt-1 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                        <div>
+                          <dt>Completed</dt>
+                          <dd className="text-sm tabular-nums text-foreground">{t.completed}</dd>
+                        </div>
+                        <div>
+                          <dt>Skipped</dt>
+                          <dd className="text-sm tabular-nums text-foreground">{t.skipped}</dd>
+                        </div>
+                        <div>
+                          <dt>Total</dt>
+                          <dd className="text-sm tabular-nums text-foreground">{t.total}</dd>
+                        </div>
+                      </dl>
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+                <table
+                  data-tech-productivity="table"
+                  className="hidden w-full text-sm sm:table"
+                >
+                  <thead className="text-start text-xs text-muted-foreground">
+                    <tr>
+                      <th className="py-1 text-start font-medium">Tech</th>
+                      <th className="whitespace-nowrap ps-3 text-end font-medium">Completed</th>
+                      <th className="whitespace-nowrap ps-3 text-end font-medium">Skipped</th>
+                      <th className="whitespace-nowrap ps-3 text-end font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.perTech.map((t) => (
+                      <tr key={t.id} className="border-t">
+                        {/* Takes what the counts leave, and ends in an
+                            ellipsis rather than widening the card. */}
+                        <td className="w-full max-w-0 truncate py-1" title={t.name}>
+                          {t.name}
+                        </td>
+                        <td className="ps-3 text-end tabular-nums">{t.completed}</td>
+                        <td className="ps-3 text-end tabular-nums">{t.skipped}</td>
+                        <td className="ps-3 text-end tabular-nums">{t.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
           </CardContent>
         </Card>
@@ -414,7 +477,7 @@ function Metric({
 function Row({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
     <tr className="border-t">
-      <td className="py-1 capitalize">{label}</td>
+      <td className="py-1">{label}</td>
       <td className={`py-1 text-right font-medium ${valueClass ?? ""}`}>{value}</td>
     </tr>
   );

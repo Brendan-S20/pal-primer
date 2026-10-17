@@ -35,7 +35,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     let q = supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time, stay_id, stays(kind, starts_on, ends_on)), service_id, services(name, service_line, default_duration_min)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, skip_reason, skip_reason_code, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time, stay_id, stays(kind, starts_on, ends_on)), service_id, services(name, service_line, default_duration_min)",
       )
       .eq("organization_id", orgId);
     q =
@@ -108,7 +108,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
     const others = () =>
       supabase
         .from("visits")
-        .select("id, scheduled_on, status")
+        .select("id, scheduled_on, status, skip_reason, skip_reason_code")
         .eq("client_id", (v as any).client_id)
         .neq("id", data.visitId);
     const [{ data: recent }, { data: upcoming }] = await Promise.all([
@@ -533,6 +533,11 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
+    const { data: was } = await supabase
+      .from("visits")
+      .select("assigned_staff_id, staff(display_name)")
+      .eq("id", data.visitId)
+      .maybeSingle();
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({
       actorUserId: userId,
@@ -563,9 +568,26 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       summary: `Rescheduled the visit from ${v.scheduled_on} to ${data.newDate}`,
       meta: { from: v.scheduled_on, to: data.newDate },
     });
+    // reschedule_visit keeps the technician when the new day is a work day
+    // and they are not off (20261015131000). Read back rather than predicted,
+    // so the sentence the dispatcher sees is what the database did.
+    const { data: now } = await supabase
+      .from("visits")
+      .select("assigned_staff_id")
+      .eq("id", data.visitId)
+      .maybeSingle();
+    const hadTech = (was as any)?.assigned_staff_id ?? null;
     const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     return {
       ok: true,
+      techName: hadTech ? (((was as any)?.staff?.display_name as string | undefined) ?? null) : null,
+      /** "kept": still theirs. "dropped": they had it and the new day is not
+       *  one they work. "none": it had nobody to keep. */
+      tech: !hadTech
+        ? ("none" as const)
+        : (now as any)?.assigned_staff_id === hadTech
+          ? ("kept" as const)
+          : ("dropped" as const),
       clash: await overnightClashWarning(supabase, { visitIds: [data.visitId] }),
     };
   });
