@@ -8937,6 +8937,18 @@ export type Database = {
         }
         Returns: string
       }
+      record_invoice_payment: {
+        Args: {
+          _amount_cents?: number
+          _field_collection_id?: string
+          _invoice_id: string
+          _method?: string
+          _note?: string
+          _paid_at?: string
+          _reference?: string
+        }
+        Returns: Json
+      }
       record_franchise_adjustment: {
         Args: {
           _amount_cents: number

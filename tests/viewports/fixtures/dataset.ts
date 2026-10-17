@@ -409,7 +409,10 @@ export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
   status: i % 3 === 0 ? "open" : i % 3 === 1 ? "paid" : "void",
   total_cents: 8_800 + i * 1_275,
   credit_applied_cents: i === 2 ? 2_000 : 0,
-  amount_paid_cents: i % 3 === 1 ? 8_800 + i * 1_275 : 0,
+  // Paid invoices carry their total. The fourth (open, $126.25) is PARTLY
+  // paid, $40.00 of it, so the list draws the "Partially paid" chip and the
+  // "$86.25 due" line under the total that production draws for one.
+  amount_paid_cents: i % 3 === 1 ? 8_800 + i * 1_275 : i === 3 ? 4_000 : 0,
   due_on: day(-3 + i),
   issued_at: iso(new Date(Date.now() - (i + 4) * 864e5)),
   client_id: c.id,

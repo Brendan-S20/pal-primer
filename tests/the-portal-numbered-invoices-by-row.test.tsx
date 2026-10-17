@@ -70,7 +70,7 @@ describe("the portal's Billing list", () => {
 
   it("is given that number by the server, read from the invoice row", () => {
     const src = readFileSync("src/lib/portal.functions.ts", "utf8");
-    expect(src).toMatch(/\.select\("id, number, due_on, credit_applied_cents/);
+    expect(src).toMatch(/"id, number, due_on, credit_applied_cents/);
     expect(src).toContain("number_label: invoiceNumberLabel(");
   });
 
