@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
+import { importStatusLabel } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
 import { useServiceLines } from "@/components/CommercialOnly";
 
@@ -180,7 +181,7 @@ function ImportStatusBadge({ status }: { status: string }) {
   };
   return (
     <Badge variant={status === "cancelled" ? "outline" : "secondary"} className={cls[status] ?? ""}>
-      {status}
+      {importStatusLabel(status)}
     </Badge>
   );
 }

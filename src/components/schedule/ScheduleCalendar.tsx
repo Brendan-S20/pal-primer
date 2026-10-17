@@ -362,6 +362,7 @@ export function ScheduleCalendar({
   onHoverVisit,
   hideWeekends = false,
   onPickDay,
+  onPickUnassigned,
   onOpenVisit,
 }: {
   day: string;
@@ -376,6 +377,9 @@ export function ScheduleCalendar({
   onHoverVisit?: (id: string | null) => void;
   hideWeekends?: boolean;
   onPickDay: (d: string) => void;
+  /** "N unassigned" under a day: open that day's unassigned visits. Falls
+   *  back to opening the day when the page has no separate handler. */
+  onPickUnassigned?: (d: string) => void;
   onOpenVisit: (visitId: string) => void;
 }) {
   const tz = useOrgTimezone();
@@ -607,14 +611,20 @@ export function ScheduleCalendar({
                   </button>
                 )}
 
+                {/* A button, not a label: it said "2 unassigned" and did
+                    nothing when tapped (QA #439). It opens that day with its
+                    unassigned visits in front. */}
                 {unassigned > 0 && (
-                  <span
-                    className={`mt-auto px-1 pt-1 text-3xs text-amber-700 ${
+                  <button
+                    type="button"
+                    onClick={() => (onPickUnassigned ?? onPickDay)(d)}
+                    data-unassigned-link={d}
+                    className={`mt-auto px-1 pt-1 text-left text-3xs text-amber-700 underline-offset-2 hover:underline touch:min-h-11 ${
                       isMonth ? "hidden md:block" : ""
                     }`}
                   >
                     {unassigned} unassigned
-                  </span>
+                  </button>
                 )}
               </div>
             );
@@ -627,7 +637,7 @@ export function ScheduleCalendar({
           the hover card it pointed at is a shortcut, not the only way in.
           Tapping a chip opens the visit, which is where all of it lives. */}
       <p className="mt-3 text-2xs text-muted-foreground">
-        Colours match the map: each technician keeps the same colour in both, and the badge on a
+        Colors match the map: each technician keeps the same color in both, and the badge on a
         visit is their initials. Open a visit for who and where, or the date for that day&apos;s
         board.
         {isMonth && (

@@ -36,6 +36,7 @@ export function NotificationBell() {
   const q = useQuery({
     queryKey: ["notifications"],
     queryFn: () => listFn(),
+    staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });

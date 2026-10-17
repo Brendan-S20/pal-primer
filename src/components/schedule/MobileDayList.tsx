@@ -185,13 +185,19 @@ export function MobileDayList({
                           </Badge>
                         )}
                         {v.weather_flagged && (
+                          // The forecast note can be longer than a phone row
+                          // holds. It was clipped mid-word inside the pill
+                          // (QA row 43); now it ends in an ellipsis and the
+                          // full note is the title.
                           <Badge
                             variant="destructive"
-                            className="h-4 gap-0.5 px-1 text-3xs"
+                            className="h-4 min-w-0 max-w-full gap-0.5 px-1 text-3xs"
                             title={v.weather_note ?? "Weather risk"}
                           >
                             <CloudRain className="h-2.5 w-2.5 shrink-0" />
-                            {v.weather_note ? String(v.weather_note).split(",")[0] : "Weather"}
+                            <span className="truncate">
+                              {v.weather_note ? String(v.weather_note).split(",")[0] : "Weather"}
+                            </span>
                           </Badge>
                         )}
                       </div>

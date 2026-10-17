@@ -254,7 +254,18 @@ export function usePortal(token: string, slug?: string) {
   const verifyOtpFn = useServerFn(portalVerifyOtp);
   const contextQ = useQuery({
     queryKey: ["portal", token, "context"],
-    queryFn: () => contextFn({ data: { token } }),
+    queryFn: async () => {
+      const withHome = qc.getQueryData(["portal", token, "client"]) === undefined;
+      const answer = await contextFn({ data: { token, ...(withHome ? { withHome: true } : {}) } });
+      if (!answer.verified) return answer;
+      const { home, ...context } = answer;
+      if (home) {
+        for (const [part, value] of Object.entries(home)) {
+          qc.setQueryData(["portal", token, part], value);
+        }
+      }
+      return context;
+    },
     staleTime,
     retry: false,
   });

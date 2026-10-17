@@ -87,6 +87,7 @@ vi.mock("@/lib/monitoring/client", () => ({
 // the button both end in, and the test push, run through a fake createServerFn
 // that hands the handler whatever context the call supplies.
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     let validate: (d: unknown) => unknown = (d) => d;
     const b: any = {

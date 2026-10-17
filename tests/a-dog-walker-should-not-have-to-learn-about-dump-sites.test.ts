@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { repoRelative } from "./support/repo-paths";
 
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   useServerFn: (f: unknown) => f,
   createServerFn: () => {
     const chain: any = () => chain;

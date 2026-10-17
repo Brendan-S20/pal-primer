@@ -61,7 +61,7 @@ const STATUS_LABEL: Record<string, string> = {
   in_progress: "In progress",
   completed: "Completed",
   skipped: "Skipped",
-  canceled: "Cancelled",
+  canceled: "Canceled",
   missed: "Missed",
 };
 
@@ -120,7 +120,7 @@ export function visitToEvent(v: FeedVisit, scope: FeedScope): IcsEvent {
   return {
     uid: visitUid(v.id),
     summary: cancelled
-      ? `${v.status === "skipped" ? "Skipped" : "Cancelled"}: ${summary}`
+      ? `${v.status === "skipped" ? "Skipped" : "Canceled"}: ${summary}`
       : summary,
     location: address(v) || null,
     description: visitDescription(v, scope),
