@@ -54,6 +54,7 @@ export type Service = {
   base_price_cents: number | null;
   extra_pet_cents: number;
   default_duration_min: number | null;
+  max_dogs?: number | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -68,6 +69,7 @@ export type ServiceDraft = {
   base_price_cents: number | null;
   extra_pet_cents: number;
   default_duration_min: number | null;
+  max_dogs?: number | null;
 };
 
 export type DefaultServiceSeed = ServiceDraft & { active: boolean };
@@ -264,6 +266,14 @@ export function serviceProblem(d: ServiceDraft): string | null {
   if (!isPriceUnit(d.price_unit)) return "Choose how this service is priced.";
   if (!priceUnitsFor(d.service_line).includes(d.price_unit))
     return "Only pet sitting can be priced per night.";
+  if (
+    d.max_dogs != null &&
+    (d.service_line !== "dog_walking" ||
+      !Number.isInteger(d.max_dogs) ||
+      d.max_dogs < 1 ||
+      d.max_dogs > 50)
+  )
+    return "A group walk needs a dog walking service with room for 1 to 50 dogs.";
   for (const [cents, what] of [
     [d.base_price_cents, "The price"],
     [d.extra_pet_cents, "The extra-pet charge"],

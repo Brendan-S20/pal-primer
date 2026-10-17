@@ -138,7 +138,7 @@ describe("a plan that ended stops being paid", () => {
     expect(TRIAL_COPY.lapsed.headline({} as any)).toMatch(/plan has ended/i);
     // NP-12 (2026-10-09): locked until a plan is chosen, export for 30 days.
     expect(TRIAL_COPY.lapsed.body).toBe(
-      "Your account is locked until you choose a plan. You can export your data for 30 days after cancelling.",
+      "Your account is locked until you choose a plan. You can export your data for 30 days after canceling.",
     );
   });
 

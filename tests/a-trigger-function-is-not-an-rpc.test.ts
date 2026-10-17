@@ -202,11 +202,22 @@ describe("no trigger function is executable by a signed-in user", () => {
     // is matched): tg_staff_services_same_org, which keeps a technician's
     // service skill inside their own business. REVOKEd in the same file.
     //
-    // 61 -> 62 on 2026-10-17 (20261017004000, a service line is turned on
+    // 61 -> 63 on 2026-10-15 (20261015120000, a check for less than the
+    // bill): tg_payments_sync_invoice_paid, which keeps
+    // invoices.amount_paid_cents equal to the ledger, and
+    // tg_invoices_guard_amount_paid, which lets nothing else write it. Both
+    // REVOKEd in the same file.
+    //
+    // 63 -> 67 on 2026-10-15 (20261015200000, a walk can be a group walk):
+    // validate_walk_group, validate_walk_group_member, copy_walk_group_walker
+    // and guard_visit_walk_group. Each REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    //
+    // 67 -> 68 on 2026-10-17 (20261017004000, a service line is turned on
     // only when bookable): tg_orgs_service_lines_bookable, which refuses a
     // REST write adding a line that is still Coming soon. REVOKEd in the
     // same file.
-    expect(triggerFunctions().size).toBe(62);
+    expect(triggerFunctions().size).toBe(68);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
@@ -336,8 +347,10 @@ describe("the account menu follows the tab bar, like everything else in that hea
     // hook, so from 768 to 1023px the avatar was in the header AND Sign out was
     // in the sheet — the duplication the tier was introduced to remove.
     const src = codeOnly(route());
+    // `touch:hidden` too since the tech's bar stays on every touch screen
+    // (useTabletTier, QA row 35).
     expect(src).toMatch(
-      /const accountMenuHidden = barThroughTablet \? "max-lg:hidden" : "max-md:hidden"/,
+      /const accountMenuHidden = barThroughTablet \? "max-lg:hidden touch:hidden" : "max-md:hidden"/,
     );
     expect(src).toMatch(/<div className=\{accountMenuHidden\}>/);
   });
@@ -346,6 +359,6 @@ describe("the account menu follows the tab bar, like everything else in that hea
     // An assembled class name is one Tailwind never sees and never emits.
     const src = codeOnly(route());
     expect(src).not.toMatch(/`max-\$\{/);
-    expect(src).toMatch(/"max-lg:hidden"/);
+    expect(src).toMatch(/"max-lg:hidden touch:hidden"/);
   });
 });

@@ -280,6 +280,7 @@ describe("a skill is matched", () => {
 });
 
 describe("nothing changes for a business with no skills and no windows", () => {
+  // Nine 40-stop solves. About 7s on a laptop, but past 30s on the shared Windows runner when other jobs load it.
   it("routes the same day the same way whether skills are absent or say everyone", () => {
     for (let seed = 1; seed <= 3; seed++) {
       const plain = day(40, 3, seed * 7);
@@ -297,7 +298,7 @@ describe("nothing changes for a business with no skills and no windows", () => {
       expect(b.objective).toBe(a.objective);
       expect(a.unassigned).toEqual([]);
     }
-  });
+  }, 120_000);
 
   it("routes a day with no windows identically whether windows are honoured or set aside", () => {
     // Without a window on any stop the clock does not enter the search at

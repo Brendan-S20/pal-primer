@@ -27,6 +27,7 @@ let quoteRow: Record<string, unknown> | null = null;
 // "validate the input, then run the handler", which is what TanStack Start
 // does on the server once the request has been decoded.
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     let validate: (d: unknown) => unknown = (d) => d;
     const b: any = {

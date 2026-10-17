@@ -108,10 +108,9 @@ function FranchiseSettings() {
               </p>
             </div>
             <p className="text-xs text-muted-foreground">
-              Being part of a franchise is set by your franchise agreement, so this connection is
-              managed by <strong>{m.parentName ?? "them"}</strong> rather than from here. If you
-              need to end it, speak to them first. If they&apos;re unreachable, contact HoundStack
-              support and we can help.
+              This connection is managed by <strong>{m.parentName ?? "your franchise"}</strong>{" "}
+              under your franchise agreement. To end it, speak to them first. If you can&apos;t
+              reach them, contact HoundStack support.
             </p>
           </CardContent>
         </Card>

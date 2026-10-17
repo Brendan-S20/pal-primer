@@ -2,9 +2,10 @@
 // Any authenticated user may list active announcements they haven't dismissed
 // and mark them as read. Admin-only mutations live in platform-directory.functions.ts.
 
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import type { AuthedContext } from "@/lib/server-fn-context";
 
 export type ActiveAnnouncement = {
   id: string;
@@ -19,7 +20,11 @@ export type ActiveAnnouncement = {
 
 export const listActiveAnnouncements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }) => loadActiveAnnouncements(context));
+
+/** listActiveAnnouncements's answer, also asked by getShellContext. */
+export const loadActiveAnnouncements = createServerOnlyFn(
+  async (context: AuthedContext) => {
     // Active window is enforced by RLS SELECT policy on the table.
     const { data: all, error } = await context.supabase
       .from("platform_announcements")
@@ -83,7 +88,8 @@ export const listActiveAnnouncements = createServerFn({ method: "GET" })
     });
 
     return { rows: filtered as ActiveAnnouncement[] };
-  });
+  },
+);
 
 export const dismissAnnouncement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

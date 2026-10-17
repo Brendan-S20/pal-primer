@@ -22,6 +22,9 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
  *  header disagree with its own cells before `calendarWindow` existed. */
 const at = (d: string) => new Date(`${d}T12:00:00`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+/** "Tue, Oct 6" for a cell's title, rather than the ISO day. */
+const dayLabel = (d: string) =>
+  at(d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
 function eachDay(from: string, to: string) {
   const out: string[] = [];
@@ -124,8 +127,11 @@ export function LaneStrip({
             const off = offOn.get(s.id);
             return (
               <tr key={s.id} className="border-b last:border-0">
+                {/* Wraps to two lines instead of truncating: "Alejandra Gutierrez-
+                    Morales" cut to "Alejandra Gu…" in a 10rem column told the
+                    dispatcher nothing (#425). The full name is the title. */}
                 <td
-                  className="sticky left-0 z-10 max-w-[10rem] truncate bg-card px-3 py-1"
+                  className="sticky left-0 z-10 w-[9rem] min-w-[9rem] bg-card px-3 py-1"
                   title={s.display_name}
                 >
                   <span className="flex items-center gap-1.5">
@@ -133,7 +139,9 @@ export function LaneStrip({
                       className="inline-block h-2 w-2 shrink-0 rounded-full"
                       style={{ background: techColors.get(s.id) ?? "#888" }}
                     />
-                    <span className="truncate">{s.display_name}</span>
+                    <span className="line-clamp-2 min-w-0 break-words leading-tight">
+                      {s.display_name}
+                    </span>
                   </span>
                 </td>
                 {days.map((d) => {
@@ -145,8 +153,10 @@ export function LaneStrip({
                         onClick={() => onPickDay(d)}
                         title={
                           away
-                            ? `${s.display_name} is away on ${d}${n ? `, ${n} visit(s) still assigned` : ""}`
-                            : `${n} visit${n === 1 ? "" : "s"} on ${d}`
+                            ? `${s.display_name} is away on ${dayLabel(d)}${
+                                n ? `, with ${n} visit${n === 1 ? "" : "s"} still assigned` : ""
+                              }`
+                            : `${n} visit${n === 1 ? "" : "s"} on ${dayLabel(d)}`
                         }
                         className={`flex w-full items-center justify-center rounded ${cell} ${
                           away
@@ -183,7 +193,7 @@ export function LaneStrip({
                   <td key={d} className="p-0.5">
                     <button
                       onClick={() => onPickDay(d)}
-                      title={`${n} unassigned on ${d}`}
+                      title={`${n} unassigned on ${dayLabel(d)}`}
                       className={`flex w-full items-center justify-center rounded ${cell} ${
                         n > 0
                           ? "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"

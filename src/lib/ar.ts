@@ -8,6 +8,11 @@ import { DEFAULT_ORG_TIMEZONE, daysBetweenOrgDays, orgLocalDay, orgToday } from 
 // Since credit application (B7), invoices carry `credit_applied_cents`: the
 // portion of `total_cents` already covered by the client's credit balance.
 // An OPEN invoice's outstanding balance is total_cents - credit_applied_cents.
+//
+// Since partial payments (QA batch 6), invoices also carry `amount_paid_cents`:
+// the sum of their succeeded payments, kept by a trigger on `payments`. An
+// open invoice can have money against it and still be open, so its balance is
+// total_cents - credit_applied_cents - amount_paid_cents.
 // (`uncollectible` is written-off debt, not AR; `paid`/`void`/`draft` are
 // never outstanding.)
 //
@@ -21,6 +26,9 @@ export type ArInvoice = {
   /** Portion of total_cents already covered by applied credit (B7). Rows
    * fetched before the column existed may omit it; treated as 0. */
   credit_applied_cents?: number | null;
+  /** Succeeded payments against this invoice (partial payments). Rows
+   *  fetched without it are treated as 0, which was every row before it. */
+  amount_paid_cents?: number | null;
   due_on?: string | null;
   client_id?: string | null;
   /** Sales tax inside total_cents. Part of what the customer owes, so every
@@ -35,10 +43,29 @@ export function isOutstanding(inv: ArInvoice): boolean {
   return OUTSTANDING_STATUSES.has(inv.status ?? "");
 }
 
-/** Outstanding balance for one invoice (0 unless it's open), net of applied credit. */
+/** What is still owed on an invoice whatever its status: total, less credit
+ *  applied, less what has been paid. The amount a pay page, an autopay run or
+ *  a Stripe intent charges, so a partly paid invoice is charged only the rest. */
+export function invoiceDueCents(
+  inv: Pick<ArInvoice, "total_cents" | "credit_applied_cents" | "amount_paid_cents">,
+): number {
+  return Math.max(
+    (inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0) - (inv.amount_paid_cents ?? 0),
+    0,
+  );
+}
+
+/** Outstanding balance for one invoice (0 unless it's open), net of applied
+ *  credit and of payments already made. */
 export function invoiceOutstandingCents(inv: ArInvoice): number {
   if (!isOutstanding(inv)) return 0;
-  return Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
+  return invoiceDueCents(inv);
+}
+
+/** Open, with money already against it. Not a status of its own: the invoice
+ *  stays `open` until the balance is zero. */
+export function isPartiallyPaid(inv: ArInvoice): boolean {
+  return isOutstanding(inv) && (inv.amount_paid_cents ?? 0) > 0 && invoiceDueCents(inv) > 0;
 }
 
 /** Whether this invoice is overdue: open and past its due date. */
@@ -131,6 +158,14 @@ export type LedgerInvoice = ArInvoice & {
    *  Optional: absent, the live column is used, which is exactly right when the
    *  day being asked about IS today. */
   creditAppliedAsOf?: number | null;
+  /** This invoice's succeeded payments, dated, so a partial payment counts
+   *  from the day it arrived and not before. Same reason as
+   *  `creditAppliedAsOf`: `amount_paid_cents` is live and undated.
+   *
+   *  Absent, an OPEN invoice uses the live column (right when the day asked
+   *  about is today) and any other invoice uses none, which is what this
+   *  function did before partial payments existed. */
+  paymentsAsOf?: Array<{ amount_cents: number | null; paid_at: string | null }> | null;
 };
 
 /** Was this invoice an open receivable at the end of `day`, and for how much?
@@ -161,7 +196,15 @@ export function outstandingAsOf(
   // Dated credit when the caller supplied it; the live column otherwise. See
   // `creditAppliedAsOf` on LedgerInvoice for why the difference matters.
   const credit = inv.creditAppliedAsOf ?? inv.credit_applied_cents ?? 0;
-  return Math.max((inv.total_cents ?? 0) - credit, 0);
+  const paidBy = inv.paymentsAsOf
+    ? inv.paymentsAsOf.reduce(
+        (s, p) => (p.paid_at && orgLocalDay(p.paid_at, tz) <= day ? s + (p.amount_cents ?? 0) : s),
+        0,
+      )
+    : inv.status === "open"
+      ? (inv.amount_paid_cents ?? 0)
+      : 0;
+  return Math.max((inv.total_cents ?? 0) - credit - paidBy, 0);
 }
 
 export type ArAging = { current: number; d30: number; d60: number; d90: number };

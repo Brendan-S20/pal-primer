@@ -36,12 +36,15 @@ export function recleanWindowClosesAt(
   return new Date(done.getTime() + hours * HOUR_MS);
 }
 
-/** Whether the portal should offer "Request a re-clean" for this visit. */
+/** Whether the portal should offer "Request a re-clean" for this visit. Never
+ *  for a dog walk: the guarantee is for pet waste, and portalRequestReclean
+ *  refuses a walk too. */
 export function isInsideRecleanWindow(
-  visit: { status?: string | null; completed_at?: string | null },
+  visit: { status?: string | null; completed_at?: string | null; service_line?: string | null },
   windowHours: number | null | undefined,
   now: Date = new Date(),
 ): boolean {
+  if (visit.service_line === "dog_walking") return false;
   if (visit.status !== "completed") return false;
   const closes = recleanWindowClosesAt(visit.completed_at, windowHours);
   if (!closes) return false;
@@ -94,6 +97,8 @@ export function recleanRefusalMessage(raw: string): string {
   if (/visit_not_completed/.test(raw)) return "That visit hasn't been completed yet.";
   if (/visit_is_a_reclean/.test(raw))
     return "This visit was already a re-clean. Please report a concern instead.";
+  if (/visit_is_a_walk/.test(raw))
+    return "A walk is not covered by the re-clean guarantee. You can still report a concern.";
   if (/visit_not_found|invalid_token/.test(raw))
     return "We couldn't find that visit on your account.";
   return raw;

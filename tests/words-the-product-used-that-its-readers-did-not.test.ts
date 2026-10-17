@@ -144,16 +144,20 @@ describe("the lifecycle texts call it the same thing the portal does", () => {
     ].map((m) => m[0]),
   ];
 
-  it("finds all three", () => {
-    // Two in one ternary and one in on-my-way.ts. Two would mean this suite
-    // is checking a subset of the copy and calling it done.
-    expect(templates()).toHaveLength(3);
+  it("finds the three visit texts and the walk text", () => {
+    // Two in one ternary, the scoop on-my-way text, and the walk text.
+    // Fewer would mean this suite is checking a subset of the copy.
+    expect(templates()).toHaveLength(4);
   });
 
-  it("says visit, everywhere the customer is texted", () => {
-    for (const t of templates()) {
-      expect(t, t).toMatch(/\bvisit\b/);
-    }
+  it("says visit on a scoop and walk on a walk", () => {
+    const walks = templates().filter((t) => t.includes("today's walk"));
+    const visits = templates().filter((t) => !t.includes("today's walk"));
+    expect(walks).toHaveLength(1);
+    expect(visits).toHaveLength(3);
+    for (const t of visits) expect(t, t).toMatch(/\bvisit\b/);
+    expect(walks[0]).toMatch(/\bwalk\b/);
+    expect(walks[0]).not.toMatch(/Reply ENT|Reply DNE/);
   });
 
   it("has no yard cleanup left in the customer-facing copy", () => {

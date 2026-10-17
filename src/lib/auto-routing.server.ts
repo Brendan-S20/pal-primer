@@ -234,9 +234,27 @@ export async function runAutoRouting(
     orgId,
     staffIds: data.staffIds,
   });
+  // What the write is about to replace, so it can be undone (#435). Best
+  // effort: a run whose snapshot failed still routes, it just offers no Undo.
+  let undoCaptured = false;
+  try {
+    const { error } = await (supabase as any).rpc("capture_routing_run_undo", { _run_id: runId });
+    if (error) throw new Error(error.message);
+    undoCaptured = true;
+  } catch (err) {
+    console.error("routing undo snapshot failed", runId, (err as Error).message);
+  }
   const written = await applyRoutePlans(supabase, { runId, reassign: data.reassign, plans });
   // Only after a write that committed: a refused write changed nobody's day.
   await watch.finish();
+  if (undoCaptured) {
+    try {
+      const { error } = await (supabase as any).rpc("seal_routing_run_undo", { _run_id: runId });
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      console.error("routing undo seal failed", runId, (err as Error).message);
+    }
+  }
   const planOf = new Map(plans.map((p) => [p.day, p]));
 
   for (const w of written) {

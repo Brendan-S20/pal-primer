@@ -117,6 +117,8 @@ export const SERVER_FNS_OPEN_WHEN_LOCKED: Record<string, "*" | readonly string[]
   "src/lib/founding-offer.functions.ts": "*",
   // The shell: who am I, which org, what is the trial state, is it locked.
   "src/lib/org.functions.ts": ["getMyOrg"],
+  // The same org and lock in one request. Locked, it returns nothing else.
+  "src/lib/shell-context.functions.ts": ["getShellContext"],
   // The account menu's own name and email, beside Sign out.
   "src/lib/profile.functions.ts": ["getMyProfile"],
   "src/lib/platform.functions.ts": ["getPlatformContext"],

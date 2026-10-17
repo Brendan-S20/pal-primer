@@ -553,11 +553,12 @@ describe("the wiring", () => {
     expect(read("src/lib/notifications-center.functions.ts")).toMatch(/type: "quote_response"/);
   });
 
-  it("is in the nav beside Invoices, and gated like it", () => {
+  it("keeps Quotes in Billing after the owner's five frequent destinations, and gated like Invoices", () => {
     const nav = read("src/components/AppSidebar.tsx");
-    expect(nav).toMatch(
-      /\{ title: "Invoices", url: "\/invoices", icon: Receipt \},\s+\{ title: "Quotes", url: "\/quotes", icon: FileSignature \},/,
-    );
+    expect(nav).toContain('{ title: "Invoices", url: "/invoices", icon: Receipt }');
+    const billing = nav.slice(nav.indexOf('label: "Billing"'), nav.indexOf('label: "Field"'));
+    expect(billing).toContain('{ title: "Quotes", url: "/quotes", icon: FileSignature }');
+    expect(nav.indexOf('url: "/payments"')).toBeLessThan(nav.indexOf('url: "/quotes"'));
     expect(read("src/hooks/useMyRole.ts")).toMatch(/"\/quotes": \["owner", "office_manager"\]/);
   });
 

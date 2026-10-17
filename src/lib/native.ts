@@ -137,7 +137,7 @@ export async function watchPositionNative(
 export const ANDROID_PUSH_CHANNEL = {
   id: "general",
   name: "HoundStack",
-  description: "Route changes, new jobs and messages",
+  description: "Route changes, new visits and messages",
   importance: 4 as const,
   visibility: 1 as const,
 };

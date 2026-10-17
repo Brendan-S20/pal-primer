@@ -18,18 +18,26 @@ export const Route = createFileRoute("/_authenticated/settings/emails")({
 });
 
 // The switches. quote_followup_days is a number and gets its own control.
-type SwitchKey = Exclude<keyof Settings, "quote_followup_days">;
+type SwitchKey = Exclude<keyof Settings, "quote_followup_days" | "runs_dog_walking">;
 
 const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
   { key: "notify_email_invoice_sent", label: "Invoice sent", help: "Sent when you email a new invoice from the invoice page." },
   { key: "notify_email_quote_sent", label: "Quote sent", help: "Sent when you press Send on a quote, with a link the client accepts or declines from. Off means Send only marks the quote sent, and you share the link yourself." },
   { key: "notify_email_payment_received", label: "Payment received (receipt)", help: "Sent automatically when a payment is confirmed." },
-  { key: "notify_email_overdue", label: "Overdue and declined-card reminders", help: "Sent by the nightly worker when an invoice is past due, and when an automatic charge to a client's card on file is declined (at most once a day per invoice), with a link to update the card or pay." },
-  { key: "notify_email_visit_completed", label: "Visit completed", help: "Sent after a tech marks a visit complete. Off by default (can be chatty)." },
+  { key: "notify_email_overdue", label: "Overdue and declined-card reminders", help: "Sent when an invoice is past due, and when an automatic charge to a client's card on file is declined (at most once a day per invoice), with a link to update the card or pay." },
+  { key: "notify_email_visit_completed", label: "Visit completed", help: "Sent after a tech marks a visit complete." },
   { key: "notify_email_visit_reminder", label: "Day-before visit reminder", help: "Sent early each morning to every client with a visit the next day, with a link to skip or reschedule. Replies go to your business email." },
   { key: "notify_email_on_my_way", label: "On my way (when a text can't go)", help: "Sent instead of the \"on my way\" text when the client has no texting consent, no mobile number, or the text fails. Names the tech and the arrival window." },
   { key: "notify_email_weather_reschedule", label: "Weather reschedule", help: "Sent when a visit is bumped due to weather." },
+];
+
+// Dog walking only (#410): drawn for a business that runs it, and sent only
+// for walks, so a pet-waste client's emails are unchanged either way.
+const WALK_ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
+  { key: "notify_email_walk_not_done", label: "Walk skipped or missed", help: "Sent when a walker skips a walk, with the reason in plain words, or when a walk's day passes and it did not happen." },
+  { key: "notify_email_walk_schedule_change", label: "Walk schedule changed", help: "Sent when you move a walk to another day, or change the days or time window of a walk plan. One email per client each time, with the old and new times." },
+  { key: "notify_email_walk_canceled", label: "Walk canceled by the office", help: "Sent when you cancel a walk for today or later, with the day and time window. Your typed reason stays with you. Canceling several at once sends one email per client." },
 ];
 
 type Settings = Awaited<ReturnType<typeof getEmailSettings>>;
@@ -46,8 +54,28 @@ function EmailSettingsPage() {
   const [values, setValues] = useState<Settings>(data);
   useEffect(() => setValues(data), [data]);
 
+  const rows = values.runs_dog_walking ? [...ROWS, ...WALK_ROWS] : ROWS;
   const mut = useMutation({
-    mutationFn: () => save({ data: values }),
+    mutationFn: () => {
+      // The walk switches are saved only where they were drawn.
+      const {
+        runs_dog_walking,
+        notify_email_walk_not_done,
+        notify_email_walk_schedule_change,
+        notify_email_walk_canceled,
+        ...rest
+      } = values;
+      return save({
+        data: runs_dog_walking
+          ? {
+              ...rest,
+              notify_email_walk_not_done,
+              notify_email_walk_schedule_change,
+              notify_email_walk_canceled,
+            }
+          : rest,
+      });
+    },
     onSuccess: () => { toast.success("Email preferences saved"); refetch(); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -63,7 +91,7 @@ function EmailSettingsPage() {
       <Card>
         <CardHeader><CardTitle>Notifications</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {ROWS.map((r) => (
+          {rows.map((r) => (
             <label key={r.key} className="flex items-start gap-3 text-sm">
               <input
                 type="checkbox"

@@ -168,17 +168,14 @@ function FeedRow({
   );
 }
 
-/** Why gate codes are left out by default. Said where the switch is, because
- *  the cost of turning it on cannot be seen from this screen. */
+/** Why the codes themselves never go in a calendar. Said where the switch is,
+ *  because the reason cannot be seen from this screen. */
 function AccessCodesNote() {
   return (
     <p className="text-xs text-muted-foreground">
-      A subscribed calendar is copied onto Google&apos;s, Apple&apos;s or Microsoft&apos;s
-      servers, and from there to lock screens, watches and anyone the calendar is shared with.
-      Getting a new link stops future updates but cannot pull back what a calendar already
-      stored. So gate codes, lock-box codes and key locations stay out of calendars unless you
-      turn this on, and they never go in the all-visits feed. Technicians still see them in the
-      app at the gate.
+      Calendar providers keep copies that cannot be pulled back, so access codes never go in a
+      calendar. With this on, a technician&apos;s own calendar says when a visit has access
+      details, and they read them in the app.
     </p>
   );
 }
@@ -194,8 +191,8 @@ export function CalendarFeedCard({ showOrgSetting = false }: { showOrgSetting?: 
     onSuccess: (r) => {
       toast.success(
         r.accessCodesInFeed
-          ? "Gate codes will appear in technicians' own calendars"
-          : "Gate codes are out of every calendar",
+          ? "Technicians' own calendars will say when a visit has access details"
+          : "Calendars will not mention access details",
       );
       refresh();
     },
@@ -211,7 +208,7 @@ export function CalendarFeedCard({ showOrgSetting = false }: { showOrgSetting?: 
         <CardTitle className="text-base">Calendar feed</CardTitle>
         <CardDescription>
           See your visits in Google Calendar, Apple Calendar or Outlook. The calendar checks for
-          changes on its own, usually every few hours; skipped visits show as cancelled.
+          changes on its own, usually every few hours; skipped visits show as canceled.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -237,7 +234,7 @@ export function CalendarFeedCard({ showOrgSetting = false }: { showOrgSetting?: 
               <div className="space-y-2 border-t pt-3">
                 <div className="flex items-start justify-between gap-3">
                   <label htmlFor="calendar-access-codes" className="min-w-0 flex-1 text-sm">
-                    Include gate codes in technicians&apos; own calendars
+                    Say in technicians&apos; own calendars when a visit has access details
                   </label>
                   <Switch
                     id="calendar-access-codes"
@@ -253,7 +250,7 @@ export function CalendarFeedCard({ showOrgSetting = false }: { showOrgSetting?: 
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                 <span className="min-w-0">
                   {d.accessCodesInFeed
-                    ? "Your business includes gate codes in technicians' own calendars. The all-visits feed never has them."
+                    ? "Gate codes and lock-box codes never go in a calendar. Your technicians' own calendars say when a visit has access details in the app."
                     : "Gate codes and lock-box codes are left out of calendars."}
                   {d.canManageSettings && (
                     <>

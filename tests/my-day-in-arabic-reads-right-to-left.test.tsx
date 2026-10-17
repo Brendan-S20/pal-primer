@@ -31,6 +31,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 const DAY = "2026-10-06";
 
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   useServerFn: (f: unknown) => f,
   createServerFn: () => {
     const chain: any = () => chain;
@@ -69,7 +70,7 @@ vi.mock("@/hooks/useMyRole", () => ({
   canAccess: () => true,
 }));
 vi.mock("@/components/ui/sidebar", () => ({
-  useSidebar: () => ({ docksFrom: "lg", isMobile: true, state: "expanded" }),
+  useSidebar: () => ({ docksFrom: "lg-mouse", isMobile: true, state: "expanded" }),
 }));
 
 import i18n, { applyDocumentLanguage } from "@/lib/i18n";

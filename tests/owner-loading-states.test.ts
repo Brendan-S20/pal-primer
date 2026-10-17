@@ -9,6 +9,7 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
 }));
 vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
   useServerFn: (f: any) => f,
   createServerFn: () => {
     const b: any = { middleware: () => b, inputValidator: () => b, handler: () => vi.fn(async () => ({})) };

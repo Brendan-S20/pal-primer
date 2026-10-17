@@ -119,6 +119,7 @@ const en = {
     missedCount: "{{count}} missed",
     progressRule:
       "Done means completed visits out of all stops. Missed and skipped stops count separately.",
+    howProgressCounts: "How progress is counted",
     view: "View",
     viewList: "List",
     viewMap: "Map",
@@ -347,6 +348,36 @@ const en = {
     lockBox: "Lock box",
     key: "Key",
   },
+  /** A dog walk's card (#410): components/my-day/WalkParts.tsx. */
+  walk: {
+    start: "Start walk",
+    end: "End walk",
+    length: "{{minutes}} min walk",
+    minutesOut: "Out {{minutes}} min",
+    groupWalk: "Group walk",
+    pickupOrder: "Pickup order",
+    thisStop: "This stop",
+    wayIn: "How you get in",
+    access: {
+      key: "Key",
+      lockbox: "Lock box",
+      code: "Door code",
+      garage: "Garage code",
+      personHome: "Someone is home",
+    },
+    officeHoldsKey: "Office holds the key",
+    officeHoldsKeyTag: "Office holds the key, tag {{tag}}",
+    reportHeading: "Walk report",
+    pee: "Pee",
+    poo: "Poo",
+    yes: "Yes",
+    no: "No",
+    noteForClient: "Note for the client",
+    noteForClientPlaceholder: "Happy walk, sniffed every tree",
+    /** Property drawer, when property_access_codes did not return the row. */
+    codesNotLoaded:
+      "The saved codes are hidden or could not be loaded. They stay as they are unless you type new ones.",
+  },
   visit: {
     stop: "Stop {{number}}.",
     queuedCount: "{{count}} queued",
@@ -415,13 +446,24 @@ const en = {
   },
   skipReason: {
     customer_requested: "Client skipped via portal",
-    client_cancelled_late: "Client cancelled late",
+    client_cancelled_late: "Client canceled late",
     gate_locked: "Gate locked / no access",
     dog_outside: "Dog was outside",
     weather: "Weather",
     our_fault: "Our fault",
     access_blocked: "Access blocked (car, construction, etc.)",
     unsafe_conditions: "Unsafe conditions",
+    other: "Other",
+    key_failed: "Key or code did not work",
+    no_one_home: "No one home",
+    dog_unwell: "Dog unwell",
+  },
+  walkSkipReason: {
+    access_blocked: "Could not get in",
+    key_failed: "Key or code did not work",
+    no_one_home: "No one home",
+    dog_unwell: "Dog unwell",
+    weather: "Weather",
     other: "Other",
   },
   addon: {
@@ -527,6 +569,9 @@ const en = {
     clockOut: "Clock out",
     offTheClock: "You're off the clock",
     offTheClockShort: "Off the clock",
+    /** My Day, once a shift has been open 12 hours or more. */
+    stillWorking_one: "You have been clocked in for {{count}} hour. Still working?",
+    stillWorking_other: "You have been clocked in for {{count}} hours. Still working?",
   },
   duration: {
     minutes: "{{m}}m",
@@ -554,7 +599,7 @@ const en = {
   },
   nativePush: {
     title: "Notifications on this phone",
-    description: "Route changes, new jobs and messages, even when the app is closed.",
+    description: "Route changes, new visits and messages, even when the app is closed.",
     promptBody: "This phone has not been asked yet. Tap the button, then choose Allow.",
     turnOn: "Turn on notifications",
     turnedOn: "Notifications are on",
@@ -594,6 +639,8 @@ const en = {
     staySignedIn: "Stay signed in",
     yourAccount: "Your account",
     viewAccount: "View and edit your account",
+    expandMenu: "Show menu labels",
+    collapseMenu: "Hide menu labels",
     group: {
       Overview: "Overview",
       Operations: "Operations",
@@ -632,6 +679,7 @@ const en = {
       "pricing-drift": "Rate card drift",
       franchise: "Royalties",
       imports: "Import",
+      "settings/users": "Team",
       settings: "Settings",
       platform: "Platform admin",
     },
@@ -747,7 +795,7 @@ const en = {
     savedToast: "Recorded. The office will confirm it.",
     queuedToast: "Saved on this phone. It reaches the office when you have signal.",
     enterAmount: "Enter the amount you collected.",
-    moreThanDue: "That's more than the {{amount}} this client owes.",
+    moreThanDue: "That's more than this client owes ({{amount}}). Enter {{amount}} or less.",
     officeConfirms:
       "The office confirms it and applies it to the client's invoices. Invoices can't be marked paid from here.",
   },

@@ -37,7 +37,11 @@ import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendOnMyWayMessage, sendVisitStatusSms } from "@/lib/messages.functions";
-import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
+import {
+  SKIP_REASON_LABELS,
+  WALK_SKIP_REASON_LABELS,
+  techSkipReasonCodes,
+} from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
@@ -86,7 +90,9 @@ import {
   Ban,
   ShieldCheck,
   ReceiptText,
+  Info as InfoIcon,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PushToggle } from "@/components/PushToggle";
 import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
 // LanguageToggle moved to Settings → Preferences
@@ -105,10 +111,16 @@ import { visitServiceLabel } from "@/lib/visit-service";
 import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
-import { OffTheClockBanner } from "@/components/TimeClock";
+import { OffTheClockBanner, StillWorkingPrompt } from "@/components/TimeClock";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { recordFieldCollection } from "@/lib/field-collections.functions";
-import { dueCents, formatMoney, newClientKey, type StopFacts } from "@/lib/stop-facts";
+import {
+  dueCents,
+  formatMoney,
+  moreThanOwedFromRefusal,
+  newClientKey,
+  type StopFacts,
+} from "@/lib/stop-facts";
 import {
   CollectForm,
   DogsLine,
@@ -118,6 +130,14 @@ import {
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
 import { useServiceLines } from "@/components/CommercialOnly";
+import {
+  WalkAccess,
+  WalkMeta,
+  WalkReportFields,
+  WalkTimer,
+  isWalkVisit,
+  useWalkReport,
+} from "@/components/my-day/WalkParts";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
   captureCompletionFile,
@@ -125,7 +145,7 @@ import {
   takeCompletionPhoto,
   visitStep,
 } from "@/lib/visit-step";
-import { PHOTO_KIND_OPTIONS, photoKindLabel, type PhotoKind } from "@/lib/photo-kinds";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
@@ -333,23 +353,31 @@ function MyDay() {
   //
   // 7rem clears the NEXT UP bar on its own; the wider value adds the tab bar
   // on top of it, for exactly as long as the tab bar is on screen.
+  //
+  // For a tech the bar also stays on every touch screen, iPad landscape
+  // included (useTabletTier, QA row 35), so each `max-lg:` here has a
+  // `touch:` twin.
   const belowTabBarPadding = !tabBarDrawn
     ? "pb-[calc(7rem+env(safe-area-inset-bottom))]"
     : barThroughTablet
-      ? "pb-[calc(7rem+env(safe-area-inset-bottom))] max-lg:pb-[calc(7rem+var(--tab-bar-h)+env(safe-area-inset-bottom))]"
+      ? "pb-[calc(7rem+env(safe-area-inset-bottom))] max-lg:pb-[calc(7rem+var(--tab-bar-h)+env(safe-area-inset-bottom))] touch:pb-[calc(7rem+var(--tab-bar-h)+env(safe-area-inset-bottom))]"
       : "pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(7rem+var(--tab-bar-h)+env(safe-area-inset-bottom))]";
   const nextUpAboveTabBar = !tabBarDrawn
     ? ""
     : barThroughTablet
-      ? "max-lg:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] max-lg:pb-0"
+      ? "max-lg:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] max-lg:pb-0 touch:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] touch:pb-0"
       : "max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] max-md:pb-0";
-  // And the NEXT UP bar starts clear of the docked sidebar — from wherever the
-  // sidebar docks, which for a tech is now `lg` (sidebarDocksFrom). A fixed
-  // `md:` here would leave a 256px gap on the left of a crew tablet, beside
-  // a sidebar that is no longer there.
+  // And the NEXT UP bar starts clear of the docked sidebar, from wherever the
+  // sidebar docks: for a tech with the tab bar that is `lg` and only with a
+  // mouse (sidebarDocksFrom). A fixed `md:` here would leave a gap on the
+  // left of a crew tablet, beside a sidebar that is no longer there.
+  // `--sidebar-docked-width` is what the sidebar actually takes from the page:
+  // the icon rail below 1280px (QA row 34), the full column above it.
   const { docksFrom } = useSidebar();
   const nextUpClearOfSidebar =
-    docksFrom === "lg" ? "lg:start-(--sidebar-width)" : "md:start-(--sidebar-width)";
+    docksFrom === "lg-mouse"
+      ? "lg:mouse:start-(--sidebar-docked-width)"
+      : "md:start-(--sidebar-docked-width)";
 
   const { data, isLoading, isError, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
@@ -592,39 +620,50 @@ function MyDay() {
           ended) that was never closed. Asks the tech what happened rather than
           guessing — nothing here completes anything on its own. */}
       <CloseOutOpenVisits />
-      {/* Sticky, blurred top bar — feels like a native nav.
+      {/* Sticky top bar, like a native nav.
           `top` is the impersonation banner's measured height, 0 when there is
           no banner: both are sticky to the same edge and the banner wins on
-          z-index, so a fixed top-0 here vanished under it. */}
+          z-index, so a fixed top-0 here vanished under it.
+
+          OPAQUE since QA rows 20 and 35 (2026-10-15). It was 60-80% background
+          with a blur, so the stop cards scrolling under it showed through
+          the heading on a phone and on an iPad alike. A bar that holds the
+          page's controls reads as part of the page when it is solid. */}
       <div
         data-page-bleed=""
-        className={`sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${PAGE_BLEED_X} ${PAGE_BLEED_TOP}`}
-        // Sizes to its content, so no height override — see nativeTopBarStyle.
+        className={`sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background ${PAGE_BLEED_X} ${PAGE_BLEED_TOP}`}
+        // Sizes to its content, so no height override. See nativeTopBarStyle.
         style={nativeTopBarStyle()}
       >
-        <div className="space-y-3 py-3">
-          {(!online || pending > 0) && (
+        {/* The same reading column as the list below on a wide screen. */}
+        <div className="space-y-2 py-3 lg:mx-auto lg:max-w-3xl">
+          {/* ── ONE LINE EACH (QA row 20) ─────────────────────────────────
+              The connection notice was a padded card, and the saved-copy
+              notice under it was a card of two lines, so offline the header
+              grew by about 110px before the heading. Each is now one line
+              that truncates, with its action at the end. When the saved-copy
+              line already says "Offline", the connection line is not drawn
+              again: its pending count joins the saved-copy line instead. */}
+          {(!online || pending > 0) && !(freshness?.status === "cached" && !online) && (
             <div
-              className={`flex items-center justify-between gap-3 rounded-lg border p-2.5 text-sm animate-fade-in ${
+              className={`flex min-h-9 items-center gap-2 rounded-md border ps-2.5 text-xs animate-fade-in ${
                 online
                   ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
                   : "border-destructive/50 bg-destructive/10 text-destructive"
               }`}
             >
-              <div className="flex items-center gap-2">
-                {!online && <WifiOff className="h-4 w-4 shrink-0" />}
-                <span className="font-medium">
-                  {!online ? t("common.offline") : t("common.online")}
-                  {pending > 0 ? ` · ${t("common.pending", { count: pending })}` : ""}
-                </span>
-              </div>
+              {!online && <WifiOff className="h-3.5 w-3.5 shrink-0" />}
+              <span className="min-w-0 flex-1 truncate py-1 font-medium">
+                {!online ? t("common.offline") : t("common.online")}
+                {pending > 0 ? ` · ${t("common.pending", { count: pending })}` : ""}
+              </span>
               {online && pending > 0 && (
                 <button
                   onClick={() => {
                     haptic("tap");
                     runSync("tap");
                   }}
-                  className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
+                  className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md px-3 text-xs font-semibold hover:bg-current/10 active:scale-95 transition-transform touch:min-h-11"
                 >
                   <RefreshCw className="h-3 w-3 shrink-0" /> {t("common.sync")}
                 </button>
@@ -633,55 +672,80 @@ function MyDay() {
           )}
 
           {/* Read-only offline fallback (Phase 3): what is on screen was not
-              fetched just now — either the device is offline or the refresh
-              failed — so it is labelled with WHEN it was fetched. Past the
-              trust horizon the wording escalates from "saved copy" to a
-              warning, because a route that old has probably been re-sequenced
-              and driving off it sends the tech to the wrong houses. */}
-          {freshness?.status === "cached" && (
-            <div
-              className={`flex items-center justify-between gap-3 rounded-lg border p-2.5 text-sm animate-fade-in ${
-                freshness.beyondTrustHorizon
-                  ? "border-destructive/50 bg-destructive/10 text-destructive"
-                  : "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-              }`}
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
+              fetched just now (the device is offline, or the refresh failed),
+              so it is labelled with WHEN it was fetched. Past the trust
+              horizon the wording escalates from "saved copy" to a warning,
+              because a route that old has probably been re-sequenced and
+              driving off it sends the tech to the wrong houses. One line
+              since QA row 20; tap the text for the saved-copy details. */}
+          {freshness?.status === "cached" &&
+            (() => {
+              const headline = t(online ? "myDay.cachedRefreshFailed" : "myDay.cachedOffline", {
+                age: cacheAgeText(t, freshness.ageMs),
+              });
+              const updated = t("myDay.lastUpdated", {
+                when: new Date(freshness.fetchedAt).toLocaleString(locale, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                }),
+              });
+              const queued =
+                !online && pending > 0 ? ` · ${t("common.pending", { count: pending })}` : "";
+              const warning = freshness.beyondTrustHorizon
+                ? ` · ${t("myDay.routeMayHaveChanged")}`
+                : "";
+              return (
+                <div
+                  className={`flex min-h-9 items-center gap-2 rounded-md border ps-2.5 text-xs animate-fade-in ${
+                    freshness.beyondTrustHorizon
+                      ? "border-destructive/50 bg-destructive/10 text-destructive"
+                      : "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  }`}
+                  title={`${headline}${queued}. ${updated}${warning}`}
+                >
                   {online ? (
-                    <RefreshCw className="h-4 w-4 shrink-0" />
+                    <RefreshCw className="h-3.5 w-3.5 shrink-0" />
                   ) : (
-                    <WifiOff className="h-4 w-4 shrink-0" />
+                    <WifiOff className="h-3.5 w-3.5 shrink-0" />
                   )}
-                  <span className="font-medium">
-                    {t(online ? "myDay.cachedRefreshFailed" : "myDay.cachedOffline", {
-                      age: cacheAgeText(t, freshness.ageMs),
-                    })}
-                  </span>
+                  {/* Popover draws no box, so this div is the flex item that shrinks. */}
+                  <div className="min-w-0 flex-1">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`${headline}${queued}. ${updated}${warning}`}
+                          className="block w-full truncate py-1 text-start touch:min-h-11"
+                        >
+                          <span className="font-medium">{headline}{queued}</span>
+                          {warning ? (
+                            <span className="font-medium">{warning}</span>
+                          ) : (
+                            <span className="opacity-90"> · {updated}</span>
+                          )}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[min(18rem,calc(100vw-2rem))] space-y-1 p-3 text-sm">
+                        <p>{headline}{queued}</p>
+                        <p>{updated}</p>
+                        {freshness.beyondTrustHorizon && <p>{t("myDay.routeMayHaveChanged")}</p>}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <button
+                    onClick={() => {
+                      haptic("tap");
+                      refetch();
+                    }}
+                    className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md px-3 text-xs font-semibold hover:bg-current/10 active:scale-95 transition-transform touch:min-h-11"
+                  >
+                    <RefreshCw className="h-3 w-3 shrink-0" /> {t("common.retryShort")}
+                  </button>
                 </div>
-                <div className="ps-6 text-xs opacity-90">
-                  {t("myDay.lastUpdated", {
-                    when: new Date(freshness.fetchedAt).toLocaleString(locale, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    }),
-                  })}
-                  {freshness.beyondTrustHorizon ? ` . ${t("myDay.routeMayHaveChanged")}` : ""}
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  haptic("tap");
-                  refetch();
-                }}
-                className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
-              >
-                <RefreshCw className="h-3 w-3 shrink-0" /> {t("common.retryShort")}
-              </button>
-            </div>
-          )}
+              );
+            })()}
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <div className="min-w-0">
@@ -792,12 +856,21 @@ function MyDay() {
                   is what a technician reads at a glance between driveways; the
                   toggle is pressed a few times a day. min-w-0 so the pill
                   yields to the toggle rather than pushing it off the edge. */}
-              <div className="flex min-w-0 items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
-                <div className="min-w-0 shrink-0 truncate text-xs font-medium">
+              <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg bg-muted/60 ps-3">
+                {/* No shrink-0 since the missed count joined this line (QA
+                    row 20): the bar still gives up its width first, because
+                    flex-1 starts it at zero, and only at 320px with a busy
+                    day does the text then end in an ellipsis. */}
+                <div className="min-w-0 truncate text-xs font-medium">
                   {completedCount} {t("common.of")} {total} {t("common.done")}
                   {skippedCount > 0 && (
                     <span className="ms-1 font-normal text-muted-foreground">
                       · {t("myDay.skippedCount", { count: skippedCount })}
+                    </span>
+                  )}
+                  {missedCount > 0 && (
+                    <span className="ms-1 font-normal text-muted-foreground">
+                      · {t("myDay.missedCount", { count: missedCount })}
                     </span>
                   )}
                 </div>
@@ -813,7 +886,28 @@ function MyDay() {
                     style={{ "--hs-meter": `${pct}%` } as CSSProperties}
                   />
                 </div>
-                <div className="shrink-0 text-xs font-medium text-muted-foreground">{pct}%</div>
+                {/* The percentage is also the way to the rule behind it. The
+                    rule was a paragraph under this row on every visit to the
+                    page (QA row 20: header and bars took most of a 390px
+                    screen); it is one tap away now, and the glyph says so. */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("myDay.howProgressCounts")}
+                      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-md pe-2 ps-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      {pct}%
+                      <InfoIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    className="w-[min(18rem,calc(100vw-2rem))] p-3 text-sm"
+                  >
+                    {t("myDay.progressRule")}
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Labelled, not icon-only. "List" and "Map" next to the glyph
@@ -851,15 +945,6 @@ function MyDay() {
                 ))}
               </div>
             </div>
-          )}
-
-          {total > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {missedCount > 0 && (
-                <span className="me-2 font-medium">{t("myDay.missedCount", { count: missedCount })}.</span>
-              )}
-              {t("myDay.progressRule")}
-            </p>
           )}
 
           {isOfficeRole && fieldStaff.length > 0 && (
@@ -907,12 +992,22 @@ function MyDay() {
         </div>
       </div>
 
-      <div className="space-y-3 pt-4">
+      {/* ── NOT A STRETCHED PHONE COLUMN (QA row 35) ────────────────────────
+          From `lg` the list is held to a reading column in the middle of the
+          page: a stop card 1100px wide put the client's name at one edge of
+          an iPad in landscape and the Start button at the other. The sticky
+          bar above keeps running edge to edge and holds its contents to the
+          same column. The map keeps the full width, which is what it is for. */}
+      <div className={`space-y-3 pt-4 ${view === "map" ? "" : "lg:mx-auto lg:max-w-3xl"}`}>
         {/* No cards above the first stop, with one exception that earns its
             place: work today and nobody on the clock. "You're off the clock"
             and Clock in, one tap, queued with no signal. On the clock, or on
             any other day, it is not drawn and the list starts right here. */}
         {staff && !previewing && day === orgTodayIso && <OffTheClockBanner visitsToday={total} />}
+        {/* The other exception: a shift open 12 hours or more. Asked, never
+            closed for them (QA row 22, #438). Any day, because a shift left
+            open overnight is still open whatever day is on screen. */}
+        {staff && !previewing && <StillWorkingPrompt />}
         {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}
@@ -974,6 +1069,7 @@ function MyDay() {
               <VisitCard
                 key={v.id}
                 visit={v}
+                dayVisits={visits}
                 index={idx + 1}
                 day={day}
                 preview={previewing}
@@ -1009,11 +1105,10 @@ function MyDay() {
              text on the viewport rather than the content column, so "NEXT UP"
              straddled the sidebar edge.
 
-             Starting at the sidebar's own width variable fixes both at once —
+             Starting at the sidebar's own width variable fixes both at once:
              the bar spans the content column and mx-auto centres within it.
-             When the rail is collapsed to icons the var still reads 16rem, so
-             the bar starts slightly inboard of the rail; a small gap, never an
-             overlap, and the navigation stays reachable either way. */
+             The variable is the docked width, so on the icon rail the bar
+             starts at the rail's edge rather than 16rem in. */
           data-bottom-chrome=""
           className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
         >
@@ -1233,9 +1328,13 @@ function cacheAgeText(t: TFunction, ageMs: number): string {
     : t(`cacheAge.${age.unit}`);
 }
 
-/** A skip reason code in the tech's language, by code (`skipReason.<code>`),
- *  with the office's English as the fallback and an unknown code shown as-is. */
-function skipReasonLabel(t: TFunction, code: string): string {
+/** A skip reason code in the tech's language. A walk uses the walker labels
+ *  (`walkSkipReason.<code>`). An unknown code is shown as-is. */
+function skipReasonLabel(t: TFunction, code: string, walk = false): string {
+  if (walk) {
+    const english = WALK_SKIP_REASON_LABELS[code as keyof typeof WALK_SKIP_REASON_LABELS];
+    if (english) return t(`walkSkipReason.${code}`, { defaultValue: english });
+  }
   const english = SKIP_REASON_LABELS[code as keyof typeof SKIP_REASON_LABELS];
   return english ? t(`skipReason.${code}`, { defaultValue: english }) : code;
 }
@@ -1523,6 +1622,7 @@ function AccessFact({
 
 function VisitCard({
   visit,
+  dayVisits = [],
   index,
   day,
   preview = false,
@@ -1530,6 +1630,8 @@ function VisitCard({
   onLogExpense,
 }: {
   visit: any;
+  /** The whole day, for a group walk's pickup order (WalkMeta). */
+  dayVisits?: any[];
   index: number;
   day: string;
   preview?: boolean;
@@ -1561,6 +1663,10 @@ function VisitCard({
   // answered, refusing honestly beats failing with a network error.)
   const cardOnline = useOnline();
   const tz = useOrgTimezone();
+  // A dog walk reads as a walk (components/my-day/WalkParts.tsx). Every other
+  // stop, pet waste included, keeps its card exactly as it was.
+  const walk = isWalkVisit(visit);
+  const walkReport = useWalkReport(visit.id);
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -1605,7 +1711,7 @@ function VisitCard({
     onError: (e: Error) => toast.error(e.message),
   });
   const [reason, setReason] = useState("");
-  const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
+  const [reasonCode, setReasonCode] = useState("other");
   // What the tech tells the office on completion, why there is no photo when
   // the business requires one, and which checklist items were checked. All
   // three travel with the queued action.
@@ -1623,6 +1729,13 @@ function VisitCard({
   const [startedHere, setStartedHere] = useState(false);
   const [completionPhotoHere, setCompletionPhotoHere] = useState(false);
   const [photoKind, setPhotoKind] = useState<PhotoKind>("completion");
+  // Before a visit is started, a photo is the yard as found, so the picker
+  // shows Before until the tech picks something else (#439: it opened on
+  // Completion, and a "before" shot got filed as the finished yard). Once the
+  // visit is under way it is `photoKind` again, which opens on Completion.
+  const [photoKindChosen, setPhotoKindChosen] = useState(false);
+  const shownPhotoKind: PhotoKind =
+    !photoKindChosen ? defaultPhotoKind(visit.status, startedHere) : photoKind;
   // Which photo the in-app viewer is showing, and the signed URLs the
   // thumbnails have already fetched. Keyed by photo id rather than index so a
   // photo arriving mid-render cannot shift somebody else's URL onto it.
@@ -1730,7 +1843,13 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      // The balance moved since the card loaded (the office applied a
+      // payment, or another collection is waiting): say the most it can be,
+      // in the tech's language.
+      const owed = moreThanOwedFromRefusal(e.message);
+      toast.error(
+        owed != null ? t("pay.moreThanDue", { amount: formatMoney(owed, locale) }) : e.message,
+      );
     },
   });
 
@@ -1778,8 +1897,11 @@ function VisitCard({
     return t("visit.completedWithNotices", { notices: labels });
   };
   const complete = useMutation({
-    mutationFn: () =>
-      actions.complete({
+    mutationFn: async () => {
+      // A walk's report goes first, so the completion email is written from
+      // it (#410). Queued, the completion queues behind it, never ahead.
+      const reportQueued = walk && (await walkReport.send()).queued;
+      return actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
         // Only ids still on the owner's list: a tick left over from an item
@@ -1788,11 +1910,14 @@ function VisitCard({
           checklist.length > 0
             ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
-      }),
+        queueOnly: reportQueued,
+      });
+    },
     onSuccess: (r) => {
       haptic("success");
       showCompletionCheck();
       toast.success(completeToast(r));
+      walkReport.reset();
       setCheckedItems([]);
       setNote("");
       setNoteOpen(false);
@@ -1861,7 +1986,7 @@ function VisitCard({
   });
 
   const uploadPhoto = async (file: File, kindOverride?: PhotoKind): Promise<boolean> => {
-    const photoKind_ = kindOverride ?? photoKind;
+    const photoKind_ = kindOverride ?? shownPhotoKind;
     setUploading(true);
     try {
       const r = await actions.uploadPhoto(file, photoKind_);
@@ -1884,6 +2009,7 @@ function VisitCard({
       // kept asking for a completion photo, and the only clue that anything
       // was wrong was the word "Before" in a toast that had already gone.
       setPhotoKind("completion");
+      setPhotoKindChosen(false);
       return true;
     } catch (e: any) {
       haptic("error");
@@ -1931,6 +2057,8 @@ function VisitCard({
   const hasStations = p?.account_type === "commercial" || !!p?.has_units;
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
   const service = visitServiceLabel(visit.services);
+  const walkStop = service?.line === "dog_walking";
+  const skipCodes = techSkipReasonCodes(walkStop);
 
   // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
@@ -2019,12 +2147,16 @@ function VisitCard({
         : "";
   const stepLabel =
     step === "start"
-      ? t("myDay.start")
+      ? walk
+        ? t("walk.start")
+        : t("myDay.start")
       : step === "photo"
         ? uploading
           ? t("photo.uploading")
           : t("visit.takeCompletionPhotoStep")
-        : t("myDay.complete");
+        : walk
+          ? t("walk.end")
+          : t("myDay.complete");
 
   // The owner's checklist, as rows. Each row is the label AND the box, 44px
   // tall at every width, so a gloved thumb anywhere on the line ticks it --
@@ -2069,8 +2201,11 @@ function VisitCard({
   const photoCapture = () => (
     <div className="flex flex-wrap items-center gap-2">
       <select
-        value={photoKind}
-        onChange={(e) => setPhotoKind(e.target.value as PhotoKind)}
+        value={shownPhotoKind}
+        onChange={(e) => {
+          setPhotoKind(e.target.value as PhotoKind);
+          setPhotoKindChosen(true);
+        }}
         // MEASURED 2026-08-19: 40px, four short of the floor, on the
         // screen a technician uses outdoors with gloves on.
         className="h-11 rounded-md border bg-background px-3 text-sm"
@@ -2173,7 +2308,8 @@ function VisitCard({
                 {t("visit.queuedCount", { count: pendingLocal })}
               </span>
             )}
-            {inProg && visit.started_at && (
+            {inProg && visit.started_at && walk && <WalkTimer startedAt={visit.started_at} />}
+            {inProg && visit.started_at && !walk && (
               // Larger + bolder than the meta row: techs read this outdoors
               // in sunlight (P2 field-readiness).
               <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 dark:text-blue-300">
@@ -2238,6 +2374,7 @@ function VisitCard({
               )}
             </div>
           )}
+          {walk && <WalkMeta visit={visit} dayVisits={dayVisits} />}
 
           {!collapsed && (
             <>
@@ -2275,6 +2412,7 @@ function VisitCard({
                   neither -- see DogsLine. */}
               <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
 
+              {walk && <WalkAccess property={p} />}
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
               {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
@@ -2358,7 +2496,9 @@ function VisitCard({
                   {visit.skipped_at
                     ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
-                  {visit.skip_reason_code ? ` (${skipReasonLabel(t, visit.skip_reason_code)})` : ""}
+                  {visit.skip_reason_code
+                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, walkStop)})`
+                    : ""}
                   {visit.skip_reason ? ": " : ""}
                   {visit.skip_reason ? <bdi>{visit.skip_reason}</bdi> : null}
                 </div>
@@ -2586,6 +2726,10 @@ function VisitCard({
             </fieldset>
           )}
 
+          {walk && underWay && canPerformVisit && (
+            <WalkReportFields visitId={visit.id} report={walkReport} />
+          )}
+
           {underWay && canPerformVisit && (
             <div className="space-y-2">
               {noteOpen ? (
@@ -2670,7 +2814,7 @@ function VisitCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  className="h-11 px-4"
                   onClick={() => setShowSkip((s) => !s)}
                 >
                   {t("myDay.skip")}
@@ -2765,11 +2909,11 @@ function VisitCard({
                 <select
                   value={reasonCode}
                   onChange={(e) => setReasonCode(e.target.value as any)}
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className="mt-1 h-11 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  {TECH_SKIP_REASON_CODES.map((c) => (
+                  {skipCodes.map((c) => (
                     <option key={c} value={c}>
-                      {skipReasonLabel(t, c)}
+                      {skipReasonLabel(t, c, walkStop)}
                     </option>
                   ))}
                 </select>
