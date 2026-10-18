@@ -3,13 +3,12 @@
 --
 -- 20261009150000 moved Launch, Growth and Scale to 1/5/20 included people and
 -- $15 per extra person, but it never rewrote `description`. So each row still
--- carried the July sentence from 20260710140100 ("Includes 10 employees;
--- $10/mo per additional active employee"), and the platform Plans table shows
--- it to staff. This file replaces the three sentences with houndstack.com's
+-- carried the July sentence from 20260710140100 (3/10/30 included, $10 per
+-- additional employee), and the platform Plans table shows it to staff. This file replaces the three sentences with houndstack.com's
 -- own wording (src/pages/pricing.astro), with "to" in place of the en dash.
 --
 -- Enterprise is priced by contract, so its price_per_seat_cents goes to NULL.
--- At 1000 the platform Plans table showed "$10/employee/month" for it, and
+-- At 1000 it read as a $10 seat price for a plan that has none, and
 -- platform-metrics added $10 per active seat to an Enterprise tenant's MRR
 -- (its included_seats is NULL, read as 0). It has no Stripe seat price, so
 -- seat sync already skipped it.
