@@ -86,15 +86,17 @@ describe("the schema gate can be scheduled", () => {
     //
     // ── WHY THEY ARE DIFFERENT RATHER THAN BOTH FREE ──────────────────────
     //
-    // `verify` is pinned to the Windows runner. `migrations`
-    // must NOT: it guards SUPABASE_DB_URL with bash `[ -z ... ]` and no
+    // `verify` runs on either self-hosted runner (plain `self-hosted`, via
+    // PORTABLE_RUNNER_JSON) since helm/ci-minutes; `windows-probe` keeps the
+    // Windows answer on every push to main. `migrations` must NOT follow it: it guards SUPABASE_DB_URL with bash `[ -z ... ]` and no
     // `shell:` override, and it decrypts a production credential, which is a
     // question about more than portability.
     //
     // The original worry -- two jobs, two spellings, half of CI somewhere
     // nobody meant -- is answered by asserting the difference explicitly here
     // rather than by forcing them to be equal.
-    expect(verify["runs-on"]).toContain("Windows");
+    expect(verify["runs-on"]).toContain("PORTABLE_RUNNER_JSON");
+    expect(verify["runs-on"]).toContain('["self-hosted"]');
     expect(migrations["runs-on"]).not.toBe(verify["runs-on"]);
     expect(migrations["runs-on"]).toContain("UNIX_RUNNER");
   });

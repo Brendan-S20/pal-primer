@@ -31,6 +31,15 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      # Binary attachments and screenshots that no test, build or job reads.
+      # docs/**/*.md is NOT ignored: about twenty tests read docs/ prose.
+      - "**/*.docx"
+      - "docs/**/*.png"
+      - "docs/**/*.jpg"
+      - "docs/**/*.jpeg"
+      - "docs/**/*.gif"
+      - "docs/**/*.webp"
   # ── A MIGRATION USED TO REACH main BEFORE ANYTHING REPLAYED IT ──────────
   #
   # This workflow ran on push-to-main and manual dispatch only, so the one
@@ -74,9 +83,16 @@ on:
       - "playwright.config.ts"
       - ".github/workflows/sandboxes.yml"
 
+# ── CANCEL SUPERSEDED PULL-REQUEST RUNS, NEVER main ─────────────────────
+#
+# A pull request's runs share one group per ref and a newer push cancels the
+# older run: nobody needs the result for a commit that is no longer the head.
+# Every other event (push to main, manual dispatch) gets a group of its own
+# run id, so it is never cancelled -- not even while pending, which a shared
+# group with cancel-in-progress: false would still do to a queued run.
 concurrency:
-  group: sandboxes-${{ github.ref }}
-  cancel-in-progress: true
+  group: sandboxes-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # ── GIT ON A RUNNER THAT RUNS AS A SERVICE ─────────────────────────────
 #
@@ -117,11 +133,18 @@ jobs:
   # the assertion that both answers are literally true or false.
   changes:
     name: What this change can affect
-    # Pin to the Windows self-hosted runner. CI_RUNNER and UNIX_RUNNER can both
-    # route to the offline Mac; WINDOWS_RUNNER_JSON is the Windows-only escape
-    # hatch if this runner has to move. This job only needs git and bash, both
-    # of which Git for Windows provides.
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
+    # This job only needs git and bash: Git for Windows provides both on the
+    # PC, and the Mac has them natively.
+    # ── EITHER SELF-HOSTED RUNNER (helm/ci-minutes) ─────────────────────
+    #
+    # Plain `self-hosted` matches BOTH DESKTOP-JUC6SL1 and Mac0s, so whichever
+    # machine is online and idle takes this job. Every step is portable: the
+    # Git Bash PATH step and the line-ending steps run only when
+    # runner.os == 'Windows'. PORTABLE_RUNNER_JSON (a repository variable,
+    # JSON) moves it without a commit:
+    #   '["self-hosted","Windows","X64"]'  back to the PC only
+    #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
+    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
     timeout-minutes: 10
     outputs:
       database: ${{ steps.decide.outputs.database }}
@@ -130,6 +153,7 @@ jobs:
       # Git Bash is installed but not on the runner's PATH. Add it so the
       # bash step below resolves.
       - name: Put Git Bash on PATH
+        if: runner.os == 'Windows'
         shell: powershell
         run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
@@ -661,11 +685,22 @@ jobs:
     # and timed out repeatedly on 2026-10-08. DESKTOP-JUC6SL1 sat idle for
     # all of it. With this line the two jobs run side by side, one per box.
     #
-    # Use the full Windows runner label set, not plain `self-hosted`: the
-    # latter matches both machines and can route this back to the Mac whenever
-    # it happens to be idle first. Git Bash is the default shell for every run
-    # step in this workflow.
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
+    # UPDATED by helm/ci-minutes: the job now takes plain `self-hosted`, so
+    # it runs on whichever machine is online rather than queueing for the PC
+    # for up to 24 hours. The cost is the one measured above: on the Mac it
+    # has run 40-45 minutes against this 45-minute ceiling. If Mac runs time
+    # out, either set VIEWPORTS_TIMEOUT_MINUTES (e.g. 60) or pin the job back
+    # to the PC with PORTABLE_RUNNER_JSON = '["self-hosted","Windows","X64"]'.
+    # ── EITHER SELF-HOSTED RUNNER (helm/ci-minutes) ─────────────────────
+    #
+    # Plain `self-hosted` matches BOTH DESKTOP-JUC6SL1 and Mac0s, so whichever
+    # machine is online and idle takes this job. Every step is portable: the
+    # Git Bash PATH step and the line-ending steps run only when
+    # runner.os == 'Windows'. PORTABLE_RUNNER_JSON (a repository variable,
+    # JSON) moves it without a commit:
+    #   '["self-hosted","Windows","X64"]'  back to the PC only
+    #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
+    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
     # 45, raised from 30 on 2026-09-14 after this job was cancelled at 30m13s
     # with the last step mid-run. Raising a ceiling is usually how a real
     # slowdown gets hidden, so here is the arithmetic it was raised against,
@@ -795,6 +830,7 @@ jobs:
       # Git Bash is installed but not on the runner's PATH. Add it so the
       # bash default shell resolves for every later step.
       - name: Put Git Bash on PATH
+        if: runner.os == 'Windows'
         shell: powershell
         run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # ── LINE ENDINGS, BEFORE ANYTHING IS CHECKED OUT (Windows only) ──────
@@ -823,9 +859,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # The self-hosted Windows runner keeps its own npm cache. Disable the
-          # Actions cache so its post-run save cannot fail an otherwise-green job.
-          cache: ''
+          # Actions cache only on a GitHub-hosted image; see ci.yml's verify.
+          cache: ${{ contains(vars.PORTABLE_RUNNER_JSON || '', '-latest') && 'npm' || '' }}
       - run: npm ci
 
       # Same prerequisite, smaller number — see the long note in the database
@@ -970,7 +1005,16 @@ jobs:
     # costs to stop a slow hour on that box from cancelling a PR at 45m00s.
     needs: changes
     if: needs.changes.outputs.viewports == 'true'
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
+    # ── EITHER SELF-HOSTED RUNNER (helm/ci-minutes) ─────────────────────
+    #
+    # Plain `self-hosted` matches BOTH DESKTOP-JUC6SL1 and Mac0s, so whichever
+    # machine is online and idle takes this job. Every step is portable: the
+    # Git Bash PATH step and the line-ending steps run only when
+    # runner.os == 'Windows'. PORTABLE_RUNNER_JSON (a repository variable,
+    # JSON) moves it without a commit:
+    #   '["self-hosted","Windows","X64"]'  back to the PC only
+    #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
+    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
     # ~17.5 min of tests plus ~4.5 of setup on a quiet box (2026-10-09),
     # and 20.3 min of tests in the slowest hour measured. If this ever needs most of 45, the
     # cases have outgrown one job too -- split them again by file, as this
@@ -987,6 +1031,7 @@ jobs:
       # Git Bash is installed but not on the runner's PATH. Add it so the
       # bash default shell resolves for every later step.
       - name: Put Git Bash on PATH
+        if: runner.os == 'Windows'
         shell: powershell
         run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       # The four setup steps are the `viewports` job's, for the reasons
@@ -1006,7 +1051,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: ''
+          # Actions cache only on a GitHub-hosted image; see ci.yml's verify.
+          cache: ${{ contains(vars.PORTABLE_RUNNER_JSON || '', '-latest') && 'npm' || '' }}
       - run: npm ci
 
       - name: Find room to work

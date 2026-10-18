@@ -3,16 +3,41 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      # Binary attachments and screenshots that no test, build or job reads.
+      # docs/**/*.md is NOT ignored: about twenty tests read docs/ prose.
+      - "**/*.docx"
+      - "docs/**/*.png"
+      - "docs/**/*.jpg"
+      - "docs/**/*.jpeg"
+      - "docs/**/*.gif"
+      - "docs/**/*.webp"
   pull_request:
+    paths-ignore:
+      # Binary attachments and screenshots that no test, build or job reads.
+      # docs/**/*.md is NOT ignored: about twenty tests read docs/ prose.
+      - "**/*.docx"
+      - "docs/**/*.png"
+      - "docs/**/*.jpg"
+      - "docs/**/*.jpeg"
+      - "docs/**/*.gif"
+      - "docs/**/*.webp"
   # The migration check reflects the state of the LIVE DATABASE, not of this
   # commit, so it can go stale (or newly pass) without anyone pushing anything.
   # Manual runs let you re-check after applying migrations, without inventing a
   # commit to trigger CI.
   workflow_dispatch:
 
+# ── CANCEL SUPERSEDED PULL-REQUEST RUNS, NEVER main ─────────────────────
+#
+# A pull request's runs share one group per ref and a newer push cancels the
+# older run: nobody needs the result for a commit that is no longer the head.
+# Every other event (push to main, manual dispatch) gets a group of its own
+# run id, so it is never cancelled -- not even while pending, which a shared
+# group with cancel-in-progress: false would still do to a queued run.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # ── GIT ON A RUNNER THAT RUNS AS A SERVICE ─────────────────────────────
 #
@@ -37,10 +62,16 @@ defaults:
 jobs:
   verify:
     name: Typecheck, lint, tests
-    # Pin to the Windows self-hosted runner. CI_RUNNER and UNIX_RUNNER can both
-    # route to the offline Mac; WINDOWS_RUNNER_JSON is the Windows-only escape
-    # hatch if this runner has to move.
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER_JSON || '["self-hosted","Windows","X64"]') }}
+    # ── EITHER SELF-HOSTED RUNNER (helm/ci-minutes) ─────────────────────
+    #
+    # Plain `self-hosted` matches BOTH DESKTOP-JUC6SL1 and Mac0s, so whichever
+    # machine is online and idle takes this job. Every step is portable: the
+    # Git Bash PATH step and the line-ending steps run only when
+    # runner.os == 'Windows'. PORTABLE_RUNNER_JSON (a repository variable,
+    # JSON) moves it without a commit:
+    #   '["self-hosted","Windows","X64"]'  back to the PC only
+    #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
+    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
     # A hosted runner is destroyed after each job; a self-hosted one is not, so
     # a wedged step there holds the machine until someone notices.
     #
@@ -80,6 +111,7 @@ jobs:
       # Git Bash is installed but not on the runner's PATH. Add it so the
       # bash default shell resolves for every later step.
       - name: Put Git Bash on PATH
+        if: runner.os == 'Windows'
         shell: powershell
         run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
       - uses: actions/checkout@v4
@@ -87,9 +119,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # The self-hosted Windows runner keeps its own npm cache. Disable the
-          # Actions cache so its post-run save cannot fail an otherwise-green job.
-          cache: ''
+          # A self-hosted runner keeps its own npm cache, so the Actions cache
+          # stays off there (its post-run save could fail a green job). It is
+          # on only when PORTABLE_RUNNER_JSON points at a GitHub-hosted image.
+          cache: ${{ contains(vars.PORTABLE_RUNNER_JSON || '', '-latest') && 'npm' || '' }}
 
       # npm, not bun: package-lock.json resolves to the public registry, which
       # is reachable from CI.
@@ -283,6 +316,11 @@ jobs:
   # measures the login screen twenty times.
   windows-probe:
     name: How much of the suite runs on the other machine
+    # main and manual runs only (helm/ci-minutes). On a pull request `verify`
+    # already runs the whole suite, often on this same PC, so this was the
+    # suite twice; and with the PC off it held every PR pending for 24 hours.
+    # A Windows-only regression still shows on the merge to main.
+    if: github.event_name != 'pull_request'
     # No `needs:` -- ci.yml has no `changes` job (that one lives in
     # sandboxes.yml), so this runs whenever CI does. It is cheap relative to
     # what it answers, and it runs on the machine that is otherwise idle, so it
