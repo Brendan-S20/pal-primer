@@ -58,6 +58,52 @@ describe("the invoice row keeps its number, period and due date on one line", ()
       /<MetaChip className="[^"]*\bmax-xl:hidden\b[^"]*">\s*\{invoiceKindLabel\(invoice\.kind\)\}/,
     );
   });
+
+  // PR #513 review: "Scheduled to send" matters on an open invoice, so below
+  // xl the hidden chip is replaced by a clock icon that still says it.
+  describe("below xl a scheduled send is a clock icon with the full text", () => {
+    it("the label is the full 'Scheduled to send <date>' text", () => {
+      expect(row).toMatch(
+        /const scheduledLabel =[\s\S]*?`Scheduled to send \$\{formatDay\(invoice\.send_after\)\}`/,
+      );
+    });
+
+    it("the chip is still hidden below xl and shown from xl up", () => {
+      expect(row).toMatch(
+        /<MetaChip className="[^"]*\bmax-xl:hidden\b[^"]*">\s*\{scheduledLabel\}\s*<\/MetaChip>/,
+      );
+    });
+
+    it("the icon is shown only below xl, labelled for a screen reader and in its title", () => {
+      const m = row.match(/<span\b([^>]*)>\s*<Clock\b([^>]*)\/>\s*<\/span>/);
+      expect(m, "no <span> wrapping a <Clock> in InvoiceRow").not.toBeNull();
+      const [, wrapper, icon] = m!;
+      expect(wrapper).toMatch(/role="img"/);
+      expect(wrapper).toMatch(/aria-label=\{scheduledLabel\}/);
+      expect(wrapper).toMatch(/title=\{scheduledLabel\}/);
+      expect(wrapper.match(/className="([^"]*)"/)?.[1].split(/\s+/)).toContain("xl:hidden");
+      expect(icon.match(/className="([^"]*)"/)?.[1].split(/\s+/)).toEqual(
+        expect.arrayContaining(["h-4", "w-4", "shrink-0"]),
+      );
+      expect(icon).toMatch(/aria-hidden="true"/);
+    });
+
+    it("the sent chip stays hidden below xl with no stand-in", () => {
+      expect(row).toMatch(
+        /<MetaChip className="[^"]*\bmax-xl:hidden\b[^"]*">\s*Sent \{formatDay\(invoice\.sent_at\)\}/,
+      );
+      expect(row.match(/<Clock\b/g)).toHaveLength(1);
+    });
+
+    it("the status cell stays on one line below xl", () => {
+      const cls = cellClassContaining(row, "<StatusChip status={invoice.status}");
+      expect(cls).not.toBeNull();
+      expect(cls!.split(/\s+/)).toContain("whitespace-nowrap");
+      expect(row).toMatch(
+        /className="inline-flex flex-wrap items-center gap-1\.5 max-xl:flex-nowrap"/,
+      );
+    });
+  });
 });
 
 describe.each([

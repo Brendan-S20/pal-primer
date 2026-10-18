@@ -13,6 +13,7 @@
 // page, so the B4 "one invoice-row implementation" mandate holds.
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Clock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RowActions, type RowAction } from "@/components/RowActions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
@@ -164,6 +165,10 @@ export function InvoiceRow({
   // Only the non-default kind (a prepaid top-up) is worth a chip; a plain
   // "Service" invoice needs no label. Either way the enum is never shown raw.
   const showKind = invoice.kind === "prepaid_topup";
+  const scheduledLabel =
+    invoice.status === "open" && !invoice.sent_at && invoice.send_after
+      ? `Scheduled to send ${formatDay(invoice.send_after)}`
+      : null;
 
   const menuActions = useInvoiceMenuActions(invoice, actions);
 
@@ -225,15 +230,19 @@ export function InvoiceRow({
           </div>
         )}
       </td>
-      <td className="px-4 py-2.5 max-xl:px-3">
+      <td className="whitespace-nowrap px-4 py-2.5 max-xl:px-3">
         {/* Every chip is `whitespace-nowrap` so none wraps inside itself.
             The scheduled / sent chip is the lowest value thing in the row and
             is hidden below `xl` (#497): at 1024 px, with it, the row needed
-            about 940 px of a 930 px column. The kind chip ("Prepaid top-up")
-            is hidden below `xl` too, so the Status column stays as narrow as
-            the status itself and the client floor has room. The drawer still
-            says both. */}
-        <span className="inline-flex flex-wrap items-center gap-1.5">
+            about 940 px of a 930 px column. A scheduled send still matters on
+            an open invoice, so below `xl` it shrinks to a clock icon that
+            names the full "Scheduled to send" date to a screen reader and in
+            its title; the sent chip has no stand-in. The cell stays on one
+            line below `xl` (`max-xl:flex-nowrap`). The kind chip ("Prepaid
+            top-up") is hidden below `xl` too, so the Status column stays as
+            narrow as the status itself and the client floor has room. The
+            drawer still says all of it. */}
+        <span className="inline-flex flex-wrap items-center gap-1.5 max-xl:flex-nowrap">
           <StatusChip status={invoice.status} className="whitespace-nowrap" />
           {isPartiallyPaid(invoice) && (
             <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
@@ -243,10 +252,18 @@ export function InvoiceRow({
               {invoiceKindLabel(invoice.kind)}
             </MetaChip>
           )}
-          {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
-            <MetaChip className="whitespace-nowrap max-xl:hidden">
-              Scheduled to send {formatDay(invoice.send_after)}
-            </MetaChip>
+          {scheduledLabel && (
+            <MetaChip className="whitespace-nowrap max-xl:hidden">{scheduledLabel}</MetaChip>
+          )}
+          {scheduledLabel && (
+            <span
+              role="img"
+              aria-label={scheduledLabel}
+              title={scheduledLabel}
+              className="inline-flex text-muted-foreground xl:hidden"
+            >
+              <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            </span>
           )}
           {invoice.sent_at && (
             <MetaChip className="whitespace-nowrap max-xl:hidden">
