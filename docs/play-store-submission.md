@@ -1,7 +1,8 @@
 # Google Play submission: HoundStack for Android
 
-Rewritten 2026-10-03 as a checklist; listing copy updated 2026-10-07. **Nothing has been submitted, and no Play
-Console app exists yet.** Every code-side piece is now done and tested; what is
+Rewritten 2026-10-03 as a checklist; listing copy updated 2026-10-07. **The Play
+Console app exists, and internal testing has accepted versionCodes 1
+(2026-10-07) and 2 (2026-10-08).** Every code-side piece is now done and tested; what is
 left needs the owner's accounts, a key only the owner should hold, or a phone.
 
 This is the Android counterpart to `docs/app-store-submission.md`. Where the
@@ -23,6 +24,7 @@ bundle is uploaded.
 | `keystore.properties`, `*.jks`, `*.keystore` ignored; template provided | `.gitignore`, `android/keystore.properties.example` | same test, which also checks `git ls-files` |
 | versionCode explicit, one committed number, bump script | `android/version.properties`, `npm run android:bump` | same test |
 | One command to a signed `.aab` | `npm run android:bundle` | prints `Signed: yes` or `Signed: NO` |
+| Signed `.aab` built in CI as a run artifact (uploaded to Play too, once the optional Play credential is set), key from secrets only | `.github/workflows/android-release.yml` (see §7) | same test; the workflow itself fails on an unsigned bundle |
 | google-services plugin applied only when `google-services.json` exists | `android/app/build.gradle` (Capacitor template, verified) | builds without it |
 | Push registration skipped when Firebase is absent (it would crash) | `FCM_CONFIGURED`, `src/lib/native-build.ts` | `tests/an-android-notification-drawn-as-a-white-square.test.ts` |
 | Monochrome status-bar icon, accent colour, a named channel | `res/drawable/ic_stat_notification.xml`, manifest meta-data, `ANDROID_PUSH_CHANNEL` | same test |
@@ -117,7 +119,12 @@ Each step says what it unblocks. Steps 1 to 4 can happen today.
       (hosting secrets, not the repo). `src/lib/push.server.ts` reads it;
       until it is set, Android sends are skipped quietly.
 
-5. **Build the bundle**:
+5. **Build the bundle.** From 2026-10-18 the usual way is CI: Actions >
+   Android release > Run workflow, which builds, signs and checks the
+   signature, and leaves the bundle in the run's artifacts as
+   `houndstack-<versionName>-<versionCode>.aab` to upload by hand in step 6.
+   Setup and the versionCode scheme are in §7. The local path below still
+   works, for a build that should not go through CI:
 
        npm run android:bump      # skip for the very first upload (versionCode 1)
        npm run android:bundle    # build:native, cap sync android, gradle bundleRelease
@@ -127,6 +134,8 @@ Each step says what it unblocks. Steps 1 to 4 can happen today.
    header of `android/build-debug.sh`. Commit the bumped
    `android/version.properties` with the release, so the number in git is the
    number on Play. Every upload to any track needs a higher versionCode.
+   Once CI has uploaded, a local build has to beat CI's highest code too
+   (§7), and `android:bump` adds only one.
 
 6. **Internal testing track**: Test and release > Testing > Internal testing >
    Create release. Accept **Play App Signing** (the default; Google holds the
@@ -353,3 +362,109 @@ The iOS app has no Associated Domains entitlement and the site serves no
 `components` from when that is wanted; it would need the entitlement in Xcode,
 the Team ID in the file, and a route like the assetlinks one. Out of scope for
 the Android track.
+
+---
+
+## 7. Automated builds: the Android release workflow
+
+`.github/workflows/android-release.yml` does what step 5 of §2 does by hand,
+on a GitHub-hosted Ubuntu runner: `npm ci`, `npm run build:native`,
+`npx cap sync android` (and fails if the bundle has no `index.html`),
+`gradlew bundleRelease` with the upload key, and a `jarsigner -verify` that
+fails the run on an unsigned bundle. The output is the signed `.aab` as a run
+artifact, `houndstack-<versionName>-<versionCode>.aab` (e.g.
+`houndstack-1.0-142.aab`; the file inside carries the same name), kept 14
+days. Uploading it to Play from CI is optional and off until the
+`PLAY_SERVICE_ACCOUNT_JSON` secret exists (below).
+`tests/an-android-release-signed-with-nothing-in-the-repo.test.ts` pins the
+parts that are easy to get wrong.
+
+### Running it (the default path: upload by hand)
+
+1. Actions > **Android release** > Run workflow. Leave **versionCode** empty
+   unless there is a reason to set it. The **track** input is ignored until
+   automatic upload is on.
+2. When the run finishes, its summary line gives the versionName,
+   versionCode, artifact name and whether the Play upload ran, and a notice
+   says the bundle must be uploaded by hand. Download the artifact from the
+   run page (GitHub serves it as a `.zip`; the `.aab` is inside).
+3. Play Console > Test and release > Testing > **Internal testing** >
+   **Create release**, upload the `.aab`, name the release
+   `<versionName> (<versionCode>)`, e.g. `1.0 (142)`, and roll it out.
+
+It runs on manual dispatch only. A `push` to `main` trigger is in the file,
+commented out, to be switched on once the manual path has uploaded and the
+result has been installed from Play on a phone.
+
+### The four required secrets
+
+Settings > Secrets and variables > Actions > New repository secret. The
+workflow names any that are empty and stops before building.
+
+| secret | what it is, and where it comes from |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | The **existing** upload keystore from §2 step 3 (`houndstack-upload.jks`, SHA-256 `DF:73:…:21:F1`), base64-encoded: `base64 -i houndstack-upload.jks \| pbcopy` on macOS, then paste. Not a new key: Play accepts uploads from the registered upload key only. |
+| `ANDROID_KEYSTORE_PASSWORD` | That keystore's store password, from the password manager. |
+| `ANDROID_KEY_ALIAS` | `upload`. |
+| `ANDROID_KEY_PASSWORD` | The key's password, from the password manager. |
+
+The keystore is decoded to `$RUNNER_TEMP`, outside the checkout, and deleted
+in an `always()` step. The signer's SHA-256 is printed after the check, so it
+can be compared with `DF:73:…:21:F1`; a fingerprint is public.
+
+### Optional: automatic upload to Play
+
+There is no Play service account yet, so this is off. Adding the
+`PLAY_SERVICE_ACCOUNT_JSON` secret turns it on with no change to the
+workflow: the next run uploads the same bundle to the **track** picked at
+dispatch (`internal` by default; `alpha`, `beta`, `production`), named
+`<versionName> (<versionCode>)` and rolled out to the track's testers
+(status `completed`). The artifact is still kept, so a refused upload can be
+retried by hand. Without the secret the upload step is skipped and the run
+still passes.
+
+To set it up:
+
+1. In a Google Cloud project, enable the **Google Play Android Developer
+   API**, create a service account, and create a JSON key for it.
+2. In Play Console > **Users and permissions** > Invite new users, invite the
+   service account's email and give it access to HoundStack with the release
+   permissions (at least "Release apps to testing tracks", plus "Release to
+   production…" if it will ever upload to `production`).
+3. Paste the whole JSON key as the repository secret
+   `PLAY_SERVICE_ACCOUNT_JSON`.
+
+### versionCode
+
+- **The input**, when given. Otherwise **`github.run_number + 100`**, which
+  goes up on every run of this workflow.
+- Play has accepted **1 and 2** (both built by hand), so the first CI upload
+  must be **3 or higher**. The +100 makes that true from run 1, and the
+  workflow refuses a code of 2 or lower before building.
+- `VERSION_NAME` still comes from `android/version.properties`; change it
+  there for a new marketing version.
+- A CI build does not need `android/version.properties` bumped and committed.
+  The local `npm run android:bundle` still reads `VERSION_CODE` from that
+  file, so a local build meant for Play must use a code **above the highest
+  one CI has uploaded** (Play Console > App bundle explorer shows it): set
+  `ANDROID_VERSION_CODE=<n>` for that one build, or write the number into the
+  file. `npm run android:bump` only adds one, which will usually collide.
+
+### What it needs from the environment, which is nothing
+
+`build:native` reads no secret. `scripts/build-native.mjs` sets
+`NATIVE_BUILD=1`; the Supabase URL and publishable key are literals in
+`src/integrations/supabase/client.ts`; the API origin defaults to
+`https://app.houndstack.com`; the Sentry release comes from `GITHUB_SHA` and
+the DSN has a public default; the Google Maps browser key, absent at build
+time here, is fetched from the server at runtime; and `google-services.json`
+is committed, so push is compiled on. That matches Xcode Cloud's
+`ios/App/ci_scripts/ci_post_clone.sh`, which sets nothing either.
+
+### Known risk
+
+Like `backup.yml`, it runs on `ubuntu-latest` on purpose (a hosted VM's disk,
+with the key on it, is destroyed after the job). If GitHub's hosted runners
+are still not allocated to this repository (`docs/self-hosted-runner.md`), the
+run fails in seconds with no steps; restore hosted-runner allocation rather
+than moving the job onto a self-hosted machine.
