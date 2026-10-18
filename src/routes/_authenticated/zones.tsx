@@ -410,115 +410,123 @@ function ZoneCard({
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        {onToggleSelect && (
-          <Checkbox
-            className="mt-1"
-            checked={selected}
-            onCheckedChange={(v) => onToggleSelect(v === true)}
-            aria-label={`Select zone ${zone.name}`}
-          />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">{zone.name}</h3>
-            <MetaChip>
-              {zone.account_type === "commercial"
-                ? "Commercial"
-                : zone.account_type === "residential"
-                  ? "Residential"
-                  : "All accounts"}
-            </MetaChip>
-            {zone.postal_prefix && (
-              <Badge variant="outline" className="text-xs">
-                prefix {zone.postal_prefix}
-              </Badge>
-            )}
-            {(zone.priority ?? 0) !== 0 && (
-              <Badge
-                variant="outline"
-                className="text-xs"
-                title="When zones overlap at the same match level, the higher priority wins."
-              >
-                priority {zone.priority}
-              </Badge>
-            )}
-            <Badge variant={hasGeo ? "secondary" : "outline"} className="text-xs">
-              {summary}
-            </Badge>
-          </div>
-          {/* A chip that cannot match anything must not look like one that can.
-              Zone matching is exact string equality against
-              `properties.postal_code`, so a stored value that is not a US
-              5-digit ZIP covers nothing — and the live database has one: a
-              zone whose ZIP list is the single word "Michigan", matching zero
-              properties. The drawer refuses these on save now, but a list you
-              never open is a list that never tells you, and this card is where
-              somebody looks to find out what a zone covers. */}
-          {zipList.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {zipList.slice(0, 12).map((z) => (
-                <Badge
-                  key={z}
-                  variant={normalizeUsZip(z) === z ? "secondary" : "destructive"}
-                  className="text-xs"
-                  title={
-                    normalizeUsZip(z) === z
-                      ? undefined
-                      : `"${z}" is not a US 5-digit ZIP, so it matches no address. Edit the zone to correct it.`
-                  }
-                >
-                  {z}
-                </Badge>
-              ))}
-              {zipList.length > 12 && (
+        {/* Below sm this column takes the whole row, so the price block wraps
+            under it instead of squeezing the ZIP warning into a word per line
+            beside it (#493). From sm up the zero basis gives today's layout.
+            The checkbox lives inside it so it stays beside the zone name. */}
+        <div className="flex min-w-0 grow basis-full items-start gap-3 sm:basis-0">
+          {onToggleSelect && (
+            <Checkbox
+              className="mt-1"
+              checked={selected}
+              onCheckedChange={(v) => onToggleSelect(v === true)}
+              aria-label={`Select zone ${zone.name}`}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-semibold">{zone.name}</h3>
+              <MetaChip>
+                {zone.account_type === "commercial"
+                  ? "Commercial"
+                  : zone.account_type === "residential"
+                    ? "Residential"
+                    : "All accounts"}
+              </MetaChip>
+              {zone.postal_prefix && (
                 <Badge variant="outline" className="text-xs">
-                  +{zipList.length - 12} more
+                  prefix {zone.postal_prefix}
                 </Badge>
               )}
-            </div>
-          )}
-          {deadZips.length > 0 && (
-            // Named, not counted: "1 invalid ZIP" sends you hunting through
-            // twelve chips for it, and the whole point of the colour above is
-            // that you should not have to.
-            <p className="mt-2 text-xs text-destructive">
-              {deadZips.length === 1
-                ? `${deadZips[0]} is not a US 5-digit ZIP and matches no address.`
-                : `${deadZips.join(", ")} are not US 5-digit ZIPs and match no addresses.`}{" "}
-              Edit the zone to correct {deadZips.length === 1 ? "it" : "them"}.
-            </p>
-          )}
-          {/* A drawn zone with no ZIPs quotes nobody on the signup page or the
-              lead form: public_quote matches a visitor by ZIP alone. Zones
-              drawn before 2026-10-01 were never filled, so say so and offer
-              the fill -- one click that opens the zone with the ZIPs inside
-              its area added, for the owner to look over and save. Not a
-              silent backfill: a ZIP list decides which zone an address goes
-              to, and that is the owner's call. */}
-          {hasGeo && zipList.length < FEW_ZIPS && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <p className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
-                {zipList.length === 0
-                  ? "No ZIPs listed, so the signup page and lead form can't quote this area."
-                  : `Only ${zipList.length} ${zipList.length === 1 ? "ZIP" : "ZIPs"} listed. The signup page and lead form quote by ZIP.`}
-              </p>
-              {canEdit && onFillZips && (
-                <Button size="sm" variant="outline" onClick={onFillZips}>
-                  Fill ZIPs from the area
-                </Button>
+              {(zone.priority ?? 0) !== 0 && (
+                <Badge
+                  variant="outline"
+                  className="text-xs"
+                  title="When zones overlap at the same match level, the higher priority wins."
+                >
+                  priority {zone.priority}
+                </Badge>
               )}
+              <Badge variant={hasGeo ? "secondary" : "outline"} className="text-xs">
+                {summary}
+              </Badge>
             </div>
-          )}
-          {zipList.length === 0 && !zone.postal_prefix && !hasGeo && (
-            <p className="mt-2 text-xs text-amber-600">
-              No ZIPs or map coverage set. This zone won't match any address.
-            </p>
-          )}
-          {zone.price_note && (
-            <p className="mt-2 text-xs text-muted-foreground">{zone.price_note}</p>
-          )}
+            {/* A chip that cannot match anything must not look like one that can.
+                Zone matching is exact string equality against
+                `properties.postal_code`, so a stored value that is not a US
+                5-digit ZIP covers nothing, and the live database has one: a
+                zone whose ZIP list is the single word "Michigan", matching zero
+                properties. The drawer refuses these on save now, but a list you
+                never open is a list that never tells you, and this card is where
+                somebody looks to find out what a zone covers. */}
+            {zipList.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {zipList.slice(0, 12).map((z) => (
+                  <Badge
+                    key={z}
+                    variant={normalizeUsZip(z) === z ? "secondary" : "destructive"}
+                    className="text-xs"
+                    title={
+                      normalizeUsZip(z) === z
+                        ? undefined
+                        : `"${z}" is not a US 5-digit ZIP, so it matches no address. Edit the zone to correct it.`
+                    }
+                  >
+                    {z}
+                  </Badge>
+                ))}
+                {zipList.length > 12 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{zipList.length - 12} more
+                  </Badge>
+                )}
+              </div>
+            )}
+            {deadZips.length > 0 && (
+              // Named, not counted: "1 invalid ZIP" sends you hunting through
+              // twelve chips for it, and the whole point of the colour above is
+              // that you should not have to.
+              <p className="mt-2 text-xs text-destructive">
+                {deadZips.length === 1
+                  ? `${deadZips[0]} is not a US 5-digit ZIP and matches no address.`
+                  : `${deadZips.join(", ")} are not US 5-digit ZIPs and match no addresses.`}{" "}
+                Edit the zone to correct {deadZips.length === 1 ? "it" : "them"}.
+              </p>
+            )}
+            {/* A drawn zone with no ZIPs quotes nobody on the signup page or the
+                lead form: public_quote matches a visitor by ZIP alone. Zones
+                drawn before 2026-10-01 were never filled, so say so and offer
+                the fill -- one click that opens the zone with the ZIPs inside
+                its area added, for the owner to look over and save. Not a
+                silent backfill: a ZIP list decides which zone an address goes
+                to, and that is the owner's call. Below sm the warning takes
+                its own full line and the button wraps under it. */}
+            {hasGeo && zipList.length < FEW_ZIPS && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="min-w-0 grow basis-full text-xs text-amber-700 sm:basis-0 dark:text-amber-300">
+                  {zipList.length === 0
+                    ? "No ZIPs listed, so the signup page and lead form can't quote this area."
+                    : `Only ${zipList.length} ${zipList.length === 1 ? "ZIP" : "ZIPs"} listed. The signup page and lead form quote by ZIP.`}
+                </p>
+                {canEdit && onFillZips && (
+                  <Button size="sm" variant="outline" onClick={onFillZips}>
+                    Fill ZIPs from the area
+                  </Button>
+                )}
+              </div>
+            )}
+            {zipList.length === 0 && !zone.postal_prefix && !hasGeo && (
+              <p className="mt-2 text-xs text-amber-600">
+                No ZIPs or map coverage set. This zone won't match any address.
+              </p>
+            )}
+            {zone.price_note && (
+              <p className="mt-2 text-xs text-muted-foreground">{zone.price_note}</p>
+            )}
+          </div>
         </div>
-        <div className="text-right">
+        {/* On its own line below sm, so it reads from the left like the rest. */}
+        <div className="sm:text-right">
           <div className="text-lg font-semibold">{money(zone.base_price_cents)}</div>
           <div className="text-xs text-muted-foreground">
             base + {money(zone.per_dog_addl_cents)} / extra dog
