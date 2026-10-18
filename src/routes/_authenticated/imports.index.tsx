@@ -37,8 +37,8 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const SOURCE_HINTS: Record<string, string> = {
-  sweepgo: "Export from Sweep&Go → Settings → Data Export. Use the Customers, Locations, and Pets CSVs (one at a time).",
-  jobber: "Export from Jobber → Gear icon → Imports & Exports → Export Data. Import clients first, then their recurring services (plans and prices), then opening balances.",
+  sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.",
+  jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so add one. For opening balances, export Insights > Reports > Client Balance Summary. Import clients first, then recurring services, then opening balances.",
   housecall_pro: "Housecall Pro Customers CSV uses separate First Name / Last Name columns. We'll combine them automatically.",
   time_to_pet: "Time To Pet → Admin → Data → Export Clients / Pets. Pets link back to a Client ID.",
   gorilla_desk: "GorillaDesk → Reports → Customers → Export CSV. Import Customers first, then Locations, then Pets.",
