@@ -27,6 +27,7 @@ import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { SetupGuideBanner } from "@/components/SetupGuideBanner";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { useNotificationLanguageSync } from "@/hooks/useNotificationLanguageSync";
+import { useRatingPrompt } from "@/hooks/useRatingPrompt";
 import { headerControlsForRole } from "@/lib/header-prefs";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -243,7 +244,11 @@ function WorkspaceShell() {
   // device, so the bar does not render full and then rearrange itself.
   const { prefs: headerPrefs } = useHeaderPrefs();
   // The language a push about this person's own route is written in.
-  useNotificationLanguageSync(Route.useRouteContext().userId);
+  const { userId } = Route.useRouteContext();
+  useNotificationLanguageSync(userId);
+  // The App Store / Google Play rating request, after a positive moment and
+  // only on a calm screen. Nothing on the web. See lib/rating-prompt.ts.
+  useRatingPrompt(userId);
 
   // Native Capacitor bootstrap — theme-coherent status bar; no-ops on web.
   // Also registers APNs/FCM device tokens with our backend and routes push
