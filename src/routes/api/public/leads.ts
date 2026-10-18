@@ -35,6 +35,7 @@ import {
   callerAddress,
   screenSubmission,
 } from "@/lib/public-form-guard";
+import { BOOKABLE_SERVICE_LINES } from "@/lib/service-lines";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -132,15 +133,20 @@ export const Route = createFileRoute("/api/public/leads")({
         // the same refusal as any other malformed input, before a turn is
         // taken or anything is written. A deactivated service of this business
         // is still recorded: the person asked for it, and the office should
-        // know that, even if it is no longer sold.
+        // know that, even if it is no longer sold. A service on a line that is
+        // still Coming soon is refused the same way (#506): the form never
+        // lists one (publicServiceChoices), so naming one is a hand-built body.
         let service: { id: string; name: string } | null = null;
         if (data.service_id) {
           const { data: svc } = await (supabaseAdmin.from("services") as any)
-            .select("id, name")
+            .select("id, name, service_line")
             .eq("id", data.service_id)
             .eq("organization_id", orgId)
             .maybeSingle();
-          if (!svc?.id) {
+          if (
+            !svc?.id ||
+            !(BOOKABLE_SERVICE_LINES as readonly string[]).includes(svc.service_line)
+          ) {
             return new Response(JSON.stringify({ error: "Invalid input" }), {
               status: 400,
               headers: jsonHeaders,

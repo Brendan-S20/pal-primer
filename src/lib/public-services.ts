@@ -17,7 +17,7 @@
  */
 
 import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
-import { SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
+import { BOOKABLE_SERVICE_LINES, SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
 
 /** One row of public_services: what public_quote needs back, and what a
  *  visitor needs to choose. No organization column. */
@@ -40,8 +40,16 @@ function isServiceLine(v: unknown): v is ServiceLine {
  * first, then by name). Anything that is not a row of the right shape is
  * dropped rather than guessed at: a malformed row would otherwise become a
  * picker option whose id public_quote refuses.
+ *
+ * A row on a line that is still Coming soon (not in BOOKABLE_SERVICE_LINES)
+ * is dropped too (#506): an owner may set up a walk before launch, and a
+ * stranger must not be able to pick it. A follow-up migration puts the same
+ * rule in public_services; this holds whether or not it has run. `bookable` is for tests, as in oneOffServiceOptions.
  */
-export function publicServiceChoices(raw: unknown): PublicService[] {
+export function publicServiceChoices(
+  raw: unknown,
+  bookable: readonly string[] = BOOKABLE_SERVICE_LINES,
+): PublicService[] {
   if (!Array.isArray(raw)) return [];
   const out: PublicService[] = [];
   const seen = new Set<string>();
@@ -50,6 +58,7 @@ export function publicServiceChoices(raw: unknown): PublicService[] {
     const o = r as Record<string, unknown>;
     if (typeof o.id !== "string" || typeof o.name !== "string") continue;
     if (!isServiceLine(o.service_line) || !isPriceUnit(o.price_unit)) continue;
+    if (!bookable.includes(o.service_line)) continue;
     if (seen.has(o.id)) continue;
     seen.add(o.id);
     out.push({
