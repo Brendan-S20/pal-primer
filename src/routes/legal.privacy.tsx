@@ -15,7 +15,7 @@ export const Route = createFileRoute("/legal/privacy")({
 
 function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="October 11, 2026">
+    <LegalShell title="Privacy Policy" updated="October 18, 2026">
       <section>
         <p>
           {APP_NAME} ("we", "us") provides field-service software for pet-care businesses at
@@ -41,17 +41,28 @@ function PrivacyPage() {
           <li>
             <strong>Payment information:</strong> payments are processed by Stripe. We never see or
             store full card numbers; we keep references (such as card brand and last four digits)
-            that Stripe provides.
+            that Stripe provides. Businesses that take card payments from their own clients connect
+            a Stripe account inside {APP_NAME}. During that setup Stripe, not {APP_NAME}, collects
+            the business owner&apos;s identity details and bank account for payouts. We receive the
+            account&apos;s status from Stripe, not the documents or full bank details.
           </li>
           <li>
             <strong>Location of field staff:</strong> when a technician uses the app to navigate or
-            view a route map, the device's location is used on the device to show where they are. If
-            a business turns on live tracking, a technician's approximate location (rounded to about
-            100 meters) is sent to us while they are on the way to a customer, from the &ldquo;on my
-            way&rdquo; message until they start that visit, for at most two hours, and only while
-            the app is open. Only the latest position is kept, and it is deleted when the visit
-            starts. Live tracking is off unless the business turns it on, and the technician can
-            stop it at any time.
+            view a route map, the device&apos;s location is used on the device to show where they
+            are. If a business turns on live tracking, the technician&apos;s precise location (the
+            phone&apos;s GPS position and its accuracy) is sent to us while they are on the way to a
+            customer, from the &ldquo;on my way&rdquo; message until they start that visit, for at
+            most two hours, and only while the app is open. We use it to show the customer roughly
+            where the technician is (rounded to about 100 meters before the customer sees it) and to
+            tell the business when the technician is likely to arrive late. Only the latest position
+            is kept. It is deleted when the visit starts, when the technician stops sharing, when
+            the business turns live tracking off, and by a nightly cleanup. Live tracking is off
+            unless the business turns it on, and the technician can stop it at any time.
+          </li>
+          <li>
+            <strong>Sign-in providers:</strong> if you sign in with Google, Apple or Facebook, we
+            receive your name and email address from that provider. We do not receive your password
+            for that service.
           </li>
           <li>
             <strong>Usage and device information:</strong> log data, browser type, and similar
@@ -79,7 +90,11 @@ function PrivacyPage() {
       <section>
         <h2>Text messaging</h2>
         <p>
-          <strong>Text messaging is coming soon and is pending carrier registration.</strong>
+          {APP_NAME} sends two kinds of text. From {APP_NAME}&apos;s own number we text account
+          holders who opt in (below). Texting between a business and its own clients is coming soon
+          and is pending carrier registration. When it launches, those texts are sent from a
+          separate Twilio account that {APP_NAME} sets up for that business, and the business is
+          responsible for having its clients&apos; consent.
         </p>
         <p>
           We collect mobile numbers and SMS consent records only from {APP_NAME} account holders who
@@ -138,13 +153,8 @@ function PrivacyPage() {
             together with the page in the app it opens)
           </li>
           <li>
-            Plausible (visit counts for the marketing site at www.houndstack.com only: it sets no
-            cookies, and we see page views and referral sources in aggregate, not individual
-            profiles)
-          </li>
-          <li>
-            Formspree (the contact and product-updates forms on www.houndstack.com only: the name,
-            business name, email address and message you submit)
+            Vercel Web Analytics (page view counts for the marketing site at houndstack.com only;
+            the app does not use it)
           </li>
           <li>
             Anthropic (the AI features, once a business switches them on: the AI receptionist and
@@ -152,6 +162,14 @@ function PrivacyPage() {
           </li>
           <li>Cloud hosting and infrastructure providers</li>
         </ul>
+        <p>
+          To turn addresses into map locations, plan routes and show weather, our servers may also
+          send addresses or coordinates to public services: OpenStreetMap Nominatim (address
+          lookup), the OSRM routing service (drive times between stops) and Open-Meteo (weather
+          forecasts). These services are run by third parties without a contract with us. We send
+          them only the address or coordinates needed for the request, never a name, phone number or
+          email address.
+        </p>
         <p>
           When a business turns on its AI receptionist (coming soon), the text of messages and calls
           to that business&apos;s own number, with the recent conversation, is sent to the AI
@@ -165,8 +183,8 @@ function PrivacyPage() {
         </p>
         <p>
           When a business turns on live tracking, the customer who received the &ldquo;on my
-          way&rdquo; message can see the technician&apos;s first name and approximate location on a
-          map until the technician arrives.
+          way&rdquo; message can see the technician&apos;s first name and an approximate location
+          (rounded to about 100 meters) on a map until the technician arrives.
         </p>
         <p>
           We may also disclose information if required by law, or as part of a business transfer (in
