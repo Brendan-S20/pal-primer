@@ -69,3 +69,28 @@ export function mphToStoredKmh(mph: number): number {
  *  server, not to express an opinion about how fast a truck moves. */
 export const MIN_SPEED_MPH = 3;
 export const MAX_SPEED_MPH = 74;
+
+/** The two units a distance is shown in. */
+export type DistanceUnit = "mi" | "km";
+
+/** A stored kilometre figure as the label a person reads: "1.0 mi", "1.6 km".
+ *
+ *  One decimal by default, which is what a stop-to-stop leg needs; a warning
+ *  about a 1,000-mile drive passes `{ digits: 0 }`. The unit comes from
+ *  `orgDistanceUnit` (src/lib/distance-unit.ts), never from a literal at the
+ *  call site, so a board card and a drawer cannot disagree about it.
+ *
+ *  `travel_km` arrives from PostgREST as a number or, for a numeric column, a
+ *  string, so both are accepted. Nothing to show (null, undefined, a string
+ *  that is not a number) is an empty string rather than "NaN mi". */
+export function formatDistance(
+  km: number | string | null | undefined,
+  unit: DistanceUnit,
+  opts: { digits?: number } = {},
+): string {
+  if (km == null || km === "") return "";
+  const n = typeof km === "number" ? km : Number(km);
+  if (!Number.isFinite(n)) return "";
+  const value = unit === "mi" ? kmToMiles(n) : n;
+  return `${value.toFixed(opts.digits ?? 1)} ${unit}`;
+}

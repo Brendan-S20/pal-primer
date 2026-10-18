@@ -4,11 +4,12 @@
 // pure helpers flag both so the dispatcher sees a warning instead of silently
 // accepting an impossible route.
 //
-// The stored figure is `travel_km` and the message now reads miles — the
-// conversion happens here, at the sentence, and nothing about the data
-// changes. See src/lib/measures.ts.
+// The stored figure is `travel_km` and the message reads the business's own
+// unit (miles in the US, km elsewhere; #496). The conversion happens here, at
+// the sentence, and nothing about the data changes. See src/lib/measures.ts
+// and src/lib/distance-unit.ts.
 
-import { kmToMiles } from "@/lib/measures";
+import { formatDistance, type DistanceUnit } from "@/lib/measures";
 import { DEFAULT_ORG_TIMEZONE, orgLocalDay, orgLocalMinutes } from "@/lib/org-day";
 
 export const DEFAULT_MAX_DRIVE_MINUTES = 240;
@@ -55,11 +56,16 @@ export function findRouteWarnings(
      *  that should be fetching it — the board reads it from the same
      *  `getDispatchSettings` row the other two thresholds come from. */
     timezone?: string;
+    /** The unit the sentence prints a distance in. The board passes
+     *  `useDistanceUnit()`, the same unit its cards print. Miles when left
+     *  out, which is what this message said before the unit was chosen. */
+    distanceUnit?: DistanceUnit;
   } = {},
 ): RouteWarning[] {
   const limit = opts.maxDriveMinutes ?? DEFAULT_MAX_DRIVE_MINUTES;
   const workdayStart = opts.workdayStartMinutes ?? DEFAULT_WORKDAY_START_MINUTES;
   const tz = opts.timezone || DEFAULT_ORG_TIMEZONE;
+  const unit: DistanceUnit = opts.distanceUnit ?? "mi";
   const warnings: RouteWarning[] = [];
 
   for (const v of visits) {
@@ -80,7 +86,7 @@ export function findRouteWarnings(
           // someone who measures their patch in miles makes them do the
           // arithmetic to find out how bad the problem is.
           `${name}: ${fmtHours(driveMin)} drive` +
-          (driveKm != null ? ` (${kmToMiles(driveKm).toFixed(0)} mi)` : "") +
+          (driveKm != null ? ` (${formatDistance(driveKm, unit, { digits: 0 })})` : "") +
           ` exceeds the ${fmtHours(limit)} limit. Check the technician's depot address.`,
       });
       continue; // one warning per stop is enough

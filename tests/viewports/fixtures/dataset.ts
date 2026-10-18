@@ -182,6 +182,10 @@ export const ORGANIZATION = {
   name: ORG_NAME,
   portal_slug: "whitfield-ramirez-yard-and-waste-services",
   timezone: FIXTURE_TIMEZONE,
+  // A Chicago business, so the board and drawer draw "mi" (useDistanceUnit).
+  // Left unset, the unit would follow the test browser's locale instead.
+  country: "US",
+  currency: "usd",
   active_client_count: 214,
   billing_tier: "pro",
   plan_status: "active",

@@ -3656,6 +3656,7 @@ export type Database = {
           contact_address: string | null
           contact_email: string | null
           contact_phone: string | null
+          country: string | null
           created_at: string
           currency: string
           current_period_end: string | null
@@ -3803,6 +3804,7 @@ export type Database = {
           contact_address?: string | null
           contact_email?: string | null
           contact_phone?: string | null
+          country?: string | null
           created_at?: string
           currency?: string
           current_period_end?: string | null
@@ -3950,6 +3952,7 @@ export type Database = {
           contact_address?: string | null
           contact_email?: string | null
           contact_phone?: string | null
+          country?: string | null
           created_at?: string
           currency?: string
           current_period_end?: string | null

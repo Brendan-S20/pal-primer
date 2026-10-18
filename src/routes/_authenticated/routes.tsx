@@ -22,6 +22,8 @@ import { RouteMap, buildTechGroups, legendEntries, techColorMap } from "@/compon
 import { WeatherStrip, hasPrecipitationRisk } from "@/components/WeatherStrip";
 import { getWeatherForZones } from "@/lib/weather.functions";
 import { findRouteWarnings } from "@/lib/route-plausibility";
+import { formatDistance } from "@/lib/measures";
+import { useDistanceUnit } from "@/hooks/useDistanceUnit";
 import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { listTimeOff } from "@/lib/users.functions";
@@ -145,6 +147,7 @@ function RoutesPage() {
   // resolved at render so it also follows midnight (the My Day pattern);
   // `setDay(null)` means "back to following today".
   const orgTodayIso = useOrgToday();
+  const distanceUnit = useDistanceUnit();
   const [pickedDay, setDay] = useState<string | null>(null);
   const day = pickedDay ?? orgTodayIso;
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -623,9 +626,12 @@ function RoutesPage() {
         // implausible. Same row as the two thresholds above, so the warning
         // and the setting can never disagree here either.
         timezone: s?.timezone ?? undefined,
+        // The unit the cards below print, so a warning and the card it is
+        // about give the same distance in the same unit (#496).
+        distanceUnit,
       },
     );
-  }, [visits, dispatchQ.data]);
+  }, [visits, dispatchQ.data, distanceUnit]);
 
   // One colour per tech, shared with the map. Built from the map's own grouping
   // so a calendar chip and that visit's pin can never end up different colours.
@@ -2369,6 +2375,7 @@ function VisitCardView({
   onHover?: (id: string | null) => void;
 }) {
   const tz = useOrgTimezone();
+  const distanceUnit = useDistanceUnit();
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
   const canComplete =
@@ -2461,7 +2468,9 @@ function VisitCardView({
           {(visit.eta_start || visit.travel_min != null) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
               {visit.eta_start && <span>ETA {orgLocalTime(visit.eta_start, tz)}</span>}
-              {visit.travel_km != null && <span>· {Number(visit.travel_km).toFixed(1)} km</span>}
+              {visit.travel_km != null && (
+                <span>· {formatDistance(visit.travel_km, distanceUnit)}</span>
+              )}
               {visit.travel_min != null && (
                 <span>· {Math.round(Number(visit.travel_min))} min drive</span>
               )}
