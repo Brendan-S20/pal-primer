@@ -63,13 +63,14 @@ beforeEach(() => {
     ],
     has_more: false,
   });
-  // Defaults: a Growth org (10 included) on a live subscription with base + seat items.
+  // Defaults: a Growth org (5 included, the Oct 9 catalog) with 13 active
+  // staff, so 8 extra, on a live subscription with base + seat items.
   h.results.organizations = { data: { stripe_subscription_id: "sub_abc123456" } };
   h.results.platform_plans = {
     data: [
       {
         slug: "growth",
-        included_seats: 10,
+        included_seats: 5,
         stripe_price_id: "price_base",
         stripe_seat_price_id: "price_seat",
         stripe_annual_price_id: null,
@@ -93,9 +94,9 @@ afterEach(() => {
 describe("syncOrgSeatQuantity", () => {
   it("raises the seat quantity to the current overage", async () => {
     const r = await syncOrgSeatQuantity(ORG);
-    expect(r).toEqual({ synced: true, quantity: 3, changed: true });
+    expect(r).toEqual({ synced: true, quantity: 8, changed: true });
     expect(h.stripe.subscriptionItems.update).toHaveBeenCalledWith("si_seat", {
-      quantity: 3,
+      quantity: 8,
       proration_behavior: "create_prorations",
     });
   });
@@ -106,17 +107,17 @@ describe("syncOrgSeatQuantity", () => {
       sub([{ id: "si_base", price: "price_base", quantity: 1 }]),
     );
     const r = await syncOrgSeatQuantity(ORG);
-    expect(r).toEqual({ synced: true, quantity: 2, changed: true });
+    expect(r).toEqual({ synced: true, quantity: 7, changed: true });
     expect(h.stripe.subscriptionItems.create).toHaveBeenCalledWith({
       subscription: "sub_abc123456",
       price: "price_seat",
-      quantity: 2,
+      quantity: 7,
       proration_behavior: "create_prorations",
     });
   });
 
   it("removes the seat item when the org drops to/under included seats", async () => {
-    h.results.staff = { count: 8 };
+    h.results.staff = { count: 5 };
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ synced: true, quantity: 0, changed: true });
     expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", {
@@ -128,11 +129,11 @@ describe("syncOrgSeatQuantity", () => {
     h.stripe.subscriptions.retrieve.mockResolvedValue(
       sub([
         { id: "si_base", price: "price_base", quantity: 1 },
-        { id: "si_seat", price: "price_seat", quantity: 3 },
+        { id: "si_seat", price: "price_seat", quantity: 8 },
       ]),
     );
     const r = await syncOrgSeatQuantity(ORG);
-    expect(r).toEqual({ synced: true, quantity: 3, changed: false });
+    expect(r).toEqual({ synced: true, quantity: 8, changed: false });
     expect(h.stripe.subscriptionItems.update).not.toHaveBeenCalled();
   });
 
@@ -186,13 +187,13 @@ describe("syncOrgSeatQuantity", () => {
       sub([{ id: "si_base", price: "price_sandbox_base", quantity: 1 }]),
     );
     const r = await syncOrgSeatQuantity(ORG);
-    expect(r).toEqual({ synced: true, quantity: 3, changed: true });
+    expect(r).toEqual({ synced: true, quantity: 8, changed: true });
     // And the seat item it creates is THIS account's seat price, not the live
     // id the database holds — which Stripe would reject outright.
     expect(h.stripe.subscriptionItems.create).toHaveBeenCalledWith({
       subscription: "sub_abc123456",
       price: "price_sandbox_seat",
-      quantity: 3,
+      quantity: 8,
       proration_behavior: "create_prorations",
     });
   });
@@ -205,7 +206,7 @@ describe("syncOrgSeatQuantity", () => {
       data: [
         {
           slug: "growth",
-          included_seats: 10,
+          included_seats: 5,
           stripe_price_id: "price_base",
           stripe_seat_price_id: "price_seat",
           stripe_annual_price_id: "price_base_year",
@@ -224,7 +225,7 @@ describe("syncOrgSeatQuantity", () => {
       sub([{ id: "si_base", price: "price_sb_year", quantity: 1 }]),
     );
     const r = await syncOrgSeatQuantity(ORG);
-    expect(r).toEqual({ synced: true, quantity: 3, changed: true });
+    expect(r).toEqual({ synced: true, quantity: 8, changed: true });
     expect(h.stripe.subscriptionItems.create).toHaveBeenCalledWith(
       expect.objectContaining({ price: "price_ss_year" }),
     );
@@ -238,7 +239,7 @@ describe("syncOrgSeatQuantity", () => {
       data: [
         {
           slug: "growth",
-          included_seats: 10,
+          included_seats: 5,
           stripe_price_id: "price_base",
           stripe_seat_price_id: null,
           stripe_annual_price_id: null,
@@ -267,9 +268,9 @@ describe("syncOrgSeatQuantity", () => {
     // behaviour that worked before any of this, and one nobody would see.
     h.stripe.prices.list.mockResolvedValue({ data: [], has_more: false });
     const r = await syncOrgSeatQuantity(ORG);
-    expect(r).toEqual({ synced: true, quantity: 3, changed: true });
+    expect(r).toEqual({ synced: true, quantity: 8, changed: true });
     expect(h.stripe.subscriptionItems.update).toHaveBeenCalledWith("si_seat", {
-      quantity: 3,
+      quantity: 8,
       proration_behavior: "create_prorations",
     });
   });
