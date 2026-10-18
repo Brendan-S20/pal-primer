@@ -45,7 +45,6 @@ export function withoutCountry(columns: string): string {
  *  once more without it and answer `country: null`. */
 // The callers' PostgREST builders are already `any` (the generated types lag
 // the migration), so the row stays `any` here rather than inventing a shape.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export async function selectWithCountryFallback(
   columns: string,
   run: (columns: string) => PromiseLike<{ data: any; error: any }>,
@@ -59,4 +58,3 @@ export async function selectWithCountryFallback(
     error: retry.error,
   };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
