@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
   signups: [] as Row[],
   leads: [] as Row[],
   services: [] as Row[],
+  orgs: [] as Row[],
   rpcs: [] as Array<{ fn: string; args: Row }>,
   notices: [] as Row[],
   intents: [] as Row[],
@@ -98,6 +99,7 @@ const admin = {
     if (table === "signup_requests") return writable(() => h.signups, "sr");
     if (table === "leads") return writable(() => h.leads, "lead");
     if (table === "services") return query(() => h.services);
+    if (table === "organizations") return query(() => h.orgs);
     throw new Error(`unexpected table ${table}`);
   },
   rpc: async (fn: string, args: Row) => {
@@ -107,6 +109,14 @@ const admin = {
   },
 };
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: admin }));
+// This file pins how a walk is sold once dog walking is bookable. Today only
+// pet waste is (#506); the refusal of a Coming soon walk is pinned in
+// tests/a-coming-soon-service-is-not-offered.test.ts, so here every offered
+// line is treated as launched.
+vi.mock("@/lib/service-lines", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/service-lines")>();
+  return { ...real, BOOKABLE_SERVICE_LINES: real.OFFERED_SERVICE_LINES };
+});
 vi.mock("@/lib/lead-notify.server", () => ({
   notifyOfficeOfNewLead: async (lead: Row) => {
     h.notices.push(lead);
@@ -179,7 +189,10 @@ beforeEach(() => {
   h.rpcs = [];
   h.notices = [];
   h.intents = [];
-  h.services = [{ id: WALK, organization_id: ORG, name: "30-minute walk" }];
+  h.services = [
+    { id: WALK, organization_id: ORG, name: "30-minute walk", service_line: "dog_walking" },
+  ];
+  h.orgs = [{ id: ORG, slug: "whitfield", portal_slug: null }];
 });
 
 async function checkout(data: Row) {

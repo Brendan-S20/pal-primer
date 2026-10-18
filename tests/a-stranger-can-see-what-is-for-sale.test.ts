@@ -437,6 +437,14 @@ const admin = {
 };
 
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: admin }));
+// This file pins how the catalog sells a walk or a groom once their lines are
+// bookable. Today only pet waste is (#506), and what a Coming soon line is
+// refused is pinned in tests/a-coming-soon-service-is-not-offered.test.ts; so
+// here every offered line is treated as launched.
+vi.mock("@/lib/service-lines", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/service-lines")>();
+  return { ...real, BOOKABLE_SERVICE_LINES: real.OFFERED_SERVICE_LINES };
+});
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
     rpc: async (fn: string) =>
@@ -487,9 +495,27 @@ beforeEach(() => {
   h.rpcs = [];
   h.notices = [];
   h.services = [
-    { id: WALK.id, organization_id: ORG, name: "30-minute walk", active: true },
-    { id: GROOM.id, organization_id: OTHER_ORG, name: "Full groom", active: true },
-    { id: PW.id, organization_id: ORG, name: "Old walk", active: false },
+    {
+      id: WALK.id,
+      organization_id: ORG,
+      name: "30-minute walk",
+      service_line: "dog_walking",
+      active: true,
+    },
+    {
+      id: GROOM.id,
+      organization_id: OTHER_ORG,
+      name: "Full groom",
+      service_line: "mobile_grooming",
+      active: true,
+    },
+    {
+      id: PW.id,
+      organization_id: ORG,
+      name: "Old walk",
+      service_line: "dog_walking",
+      active: false,
+    },
   ];
   process.env.SUPABASE_PUBLISHABLE_KEY = "anon_test";
   process.env.SUPABASE_URL = "http://127.0.0.1:1";

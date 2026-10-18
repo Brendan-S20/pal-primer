@@ -10,6 +10,7 @@ import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
 import { publicServiceChoices, type PublicService } from "@/lib/public-services";
+import { BOOKABLE_SERVICE_LINES } from "@/lib/service-lines";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -176,9 +177,45 @@ function publicQuoteArgs(data: z.infer<typeof quoteSchema>) {
   };
 }
 
+/** What a visitor reads when the service they named is not for sale online:
+ *  another business's, a deactivated one, or one still Coming soon. */
+const SERVICE_NOT_OFFERED_ONLINE = "That service isn't offered online right now. Pick another.";
+
+/**
+ * Refuses a service on a line that is still Coming soon (#506), before
+ * public_quote is asked about it. The picker never lists one
+ * (publicServiceChoices), so a request that names one anyway is a hand-built
+ * body; it gets the words a refused service always got. Read with the
+ * service role, scoped to the business the slug names. An id that is not that business's is left to
+ * public_quote, which answers it with silence as before. A follow-up migration
+ * makes public_quote ignore one too; this says so in words either way.
+ */
+async function refuseAComingSoonService(slug: string, serviceId: string | undefined) {
+  if (!serviceId) return;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: svc, error: svcErr } = await (supabaseAdmin as any)
+    .from("services")
+    .select("service_line, organization_id")
+    .eq("id", serviceId)
+    .maybeSingle();
+  if (svcErr) throw new Error(svcErr.message);
+  if (!svc) return;
+  const { data: org, error: orgErr } = await (supabaseAdmin as any)
+    .from("organizations")
+    .select("slug, portal_slug")
+    .eq("id", svc.organization_id)
+    .maybeSingle();
+  if (orgErr) throw new Error(orgErr.message);
+  if (!org || (org.slug !== slug && org.portal_slug !== slug)) return;
+  if (!(BOOKABLE_SERVICE_LINES as readonly string[]).includes(svc.service_line)) {
+    throw new Error(SERVICE_NOT_OFFERED_ONLINE);
+  }
+}
+
 export const getSignupQuote = createServerFn({ method: "POST" })
   .inputValidator((d) => quoteSchema.parse(d))
   .handler(async ({ data }) => {
+    await refuseAComingSoonService(data.slug, data.service_id);
     const sb = anon();
     const { data: rows, error } = await sb.rpc("public_quote", publicQuoteArgs(data));
     if (error) throw new Error(error.message);
@@ -233,6 +270,9 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       throw new Error(CALM_REFUSAL);
     }
 
+    // A Coming soon service takes no card and writes nothing (#506).
+    await refuseAComingSoonService(data.slug, data.service_id);
+
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", publicQuoteArgs(data));
     if (qErr) throw new Error(qErr.message);
@@ -243,7 +283,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       // longer offered. With a service named, say the second.
       throw new Error(
         data.service_id
-          ? "That service isn't offered online right now. Pick another."
+          ? SERVICE_NOT_OFFERED_ONLINE
           : "No service in that ZIP code yet. Try another.",
       );
     }
