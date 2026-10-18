@@ -9,7 +9,8 @@ import { isTestAccountEmail, type RatingPromptCounts } from "@/lib/rating-prompt
  * or visit row ever leaves the database for this.
  *
  * Only the count that person's role is judged on is asked for. An owner or
- * office user is judged on the business's paid invoices; a technician on the
+ * office manager is judged on the business's paid invoices (a dispatcher is
+ * never asked, so nothing is counted for one); a technician on the
  * visits assigned to their own staff row (`visits.assigned_staff_id`, the
  * column My Day reads in getMyDay). A tech may not read invoices at all, so
  * asking would be a refused query rather than a zero.
@@ -23,7 +24,7 @@ export const getRatingPromptCounts = createServerFn({ method: "GET" })
     let paidInvoiceCount = 0;
     let completedVisitCount = 0;
 
-    if (role === "owner" || role === "office_manager" || role === "dispatcher") {
+    if (role === "owner" || role === "office_manager") {
       const { count, error } = await supabase
         .from("invoices")
         .select("id", { count: "exact", head: true })

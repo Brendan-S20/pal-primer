@@ -1013,6 +1013,11 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     weather: "الطقس",
     weatherAria: "إظهار زر الطقس في الشريط العلوي",
   },
+  rateApp: {
+    title: "قيّم HoundStack",
+    ios: "اترك تقييمًا في App Store",
+    android: "اترك تقييمًا في Google Play",
+  },
   liveActivity: {
     title: "مسار اليوم",
     stopOf: "المحطة {{position}} من {{total}}",

@@ -8,9 +8,11 @@
 //
 // Policy, which is why some things are absent rather than forgotten: no
 // "Do you like HoundStack?" pre-prompt and no gating by sentiment (App Review
-// Guideline 5.6.1, and Google Play's policy says the same), no incentive, no
-// button that deep links to a review. Apple and Google decide whether the
-// sheet actually appears, and neither tells us.
+// Guideline 5.6.1, and Google Play's policy says the same), no incentive, and
+// nothing that pops up a link to a review. The one deep link is the static
+// "Rate HoundStack" row a person finds for themselves on Preferences
+// (RATE_APP_URLS below), which both stores allow. Apple and Google decide
+// whether the sheet actually appears, and neither tells us.
 
 import type { AppRole } from "@/hooks/useMyRole";
 
@@ -26,13 +28,10 @@ export const RATING_PROMPT_TECH_VISITS = 10;
 
 export type RatingPromptTrigger = "first_paid_invoice" | "tenth_completed_visit";
 
-/** The roles whose positive moment is the business getting paid. A dispatcher
- *  is office staff here, the way field-notify.server.ts's OFFICE list has it. */
-const OFFICE_ROLES: ReadonlySet<string> = new Set<AppRole>([
-  "owner",
-  "office_manager",
-  "dispatcher",
-]);
+/** The roles whose positive moment is the business getting paid. Not a
+ *  dispatcher: a paid invoice is the owner's moment, not the person routing
+ *  the trucks, so a dispatcher is never asked. */
+const OFFICE_ROLES: ReadonlySet<string> = new Set<AppRole>(["owner", "office_manager"]);
 const TECH_ROLE: AppRole = "tech";
 
 export type RatingPromptCounts = {
@@ -110,6 +109,21 @@ export function isRatingPromptEligible(input: RatingPromptInput): boolean {
   if (input.isTestAccount) return false;
   if (!ratingPromptDeviceAllows(input)) return false;
   return ratingPromptTrigger(input) !== null;
+}
+
+/** The store pages the static "Rate HoundStack" row on Preferences opens,
+ *  each straight to its write-a-review screen. */
+export const RATE_APP_URLS = {
+  ios: "https://apps.apple.com/app/id6804336787?action=write-review",
+  android: "https://play.google.com/store/apps/details?id=consulting.thenorth.houndstack",
+} as const;
+
+/** The store page for `Capacitor.getPlatform()`, or null where there is no
+ *  store to rate in (the web, the PWA). */
+export function rateAppUrl(platform: string): string | null {
+  if (platform === "ios") return RATE_APP_URLS.ios;
+  if (platform === "android") return RATE_APP_URLS.android;
+  return null;
 }
 
 /** The seed accounts in tests/e2e/seed.mjs and the demo org's invites

@@ -62,6 +62,8 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/components/settings/NativePushCard.tsx" },
   // "Route on the lock screen" on Preferences, beside it.
   { file: "src/components/settings/RouteOnLockScreenCard.tsx" },
+  // "Rate HoundStack" at the foot of Preferences, native apps only.
+  { file: "src/components/settings/RateAppCard.tsx" },
   { file: "src/routes/_authenticated/my-schedule.tsx" },
   { file: "src/routes/_authenticated/waste-log.tsx" },
   { file: "src/routes/_authenticated/notifications.tsx" },

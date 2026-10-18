@@ -8,6 +8,8 @@
 // development build from Xcode the sheet always shows and in TestFlight it
 // never does. Neither store says what happened.
 /* eslint-disable @typescript-eslint/no-explicit-any -- fakes of plugin and server-fn shapes */
+import fs from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   RATING_PROMPT_CAP_DAYS,
@@ -15,6 +17,8 @@ import {
   isRatingPromptEligible,
   isTestAccountEmail,
   parseRatingPromptState,
+  RATE_APP_URLS,
+  rateAppUrl,
   ratingPromptKey,
   ratingPromptTrigger,
   withinRatingPromptCap,
@@ -49,9 +53,14 @@ describe("the two positive moments", () => {
     expect(ratingPromptTrigger(owner())).toBe("first_paid_invoice");
   });
 
-  it("an office manager and a dispatcher the same way", () => {
+  it("an office manager the same way", () => {
     expect(isRatingPromptEligible(owner({ role: "office_manager" }))).toBe(true);
-    expect(isRatingPromptEligible(owner({ role: "dispatcher" }))).toBe(true);
+  });
+
+  it("never a dispatcher, however many invoices are paid", () => {
+    expect(isRatingPromptEligible(owner({ role: "dispatcher" }))).toBe(false);
+    const busy = { role: "dispatcher", paidInvoiceCount: 99, completedVisitCount: 99 };
+    expect(ratingPromptTrigger(owner(busy))).toBeNull();
   });
 
   it("0 paid invoices is not yet; 1 is", () => {
@@ -218,6 +227,42 @@ describe("isTestAccountEmail", () => {
     expect(isTestAccountEmail("")).toBe(false);
     expect(isTestAccountEmail(null)).toBe(false);
     expect(isTestAccountEmail(undefined)).toBe(false);
+  });
+});
+
+describe("the static Rate HoundStack link", () => {
+  it("opens the write-a-review page of the right store, and nothing on the web", () => {
+    expect(rateAppUrl("ios")).toBe("https://apps.apple.com/app/id6804336787?action=write-review");
+    expect(rateAppUrl("android")).toBe(
+      "https://play.google.com/store/apps/details?id=consulting.thenorth.houndstack",
+    );
+    expect(rateAppUrl("web")).toBeNull();
+    expect(rateAppUrl("electron")).toBeNull();
+    expect(rateAppUrl("")).toBeNull();
+    expect(Object.values(RATE_APP_URLS)).toEqual([rateAppUrl("ios"), rateAppUrl("android")]);
+  });
+
+  it("is drawn only by the native app, behind IS_NATIVE_BUNDLE and isNative()", () => {
+    const root = path.resolve(__dirname, "..");
+    const card = fs.readFileSync(
+      path.join(root, "src/components/settings/RateAppCard.tsx"),
+      "utf8",
+    );
+    expect(card).toMatch(/import \{ IS_NATIVE_BUNDLE \} from "@\/lib\/native-build"/);
+    expect(card).toMatch(/import \{[^}]*\bisNative\b[^}]*\} from "@\/lib\/native"/);
+    // The platform is read only once both say native; anything else is "web".
+    expect(card).toMatch(/IS_NATIVE_BUNDLE && isNative\(\) \? platform\(\) : "web"/);
+    // And the render bails before any markup when the bundle is not native.
+    const bail = card.indexOf("if (!IS_NATIVE_BUNDLE || !url) return null;");
+    expect(bail).toBeGreaterThan(-1);
+    expect(bail).toBeLessThan(card.indexOf("return ("));
+    // The Preferences page draws it, and it is the only way onto that page.
+    const prefs = fs.readFileSync(
+      path.join(root, "src/routes/_authenticated/settings.preferences.tsx"),
+      "utf8",
+    );
+    expect(prefs).toContain("<RateAppCard />");
+    expect(prefs).not.toMatch(/apps\.apple\.com|play\.google\.com/);
   });
 });
 
