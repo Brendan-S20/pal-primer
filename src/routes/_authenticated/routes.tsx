@@ -66,6 +66,8 @@ import {
   useSensors,
   DragOverlay,
   closestCenter,
+  pointerWithin,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -925,6 +927,34 @@ function RoutesPage() {
 
   const activeVisit = activeId ? visits.find((v) => v.id === activeId) : null;
 
+  /** An empty Unassigned lane is drawn as a 3.5rem strip so its width goes to
+   *  the techs (#495). It stays collapsed during a drag: widening it at drag
+   *  start would shove every lane sideways under the pointer, after dnd-kit
+   *  has measured where they are. The collision rule below is what makes the
+   *  narrow strip easy to hit instead. */
+  const unassignedEmpty = (columns[UNASSIGNED] ?? []).length === 0;
+  const unassignedCollapsed = boardLayout === "columns" && unassignedEmpty;
+
+  /** `closestCenter` compares the CENTRE of the dragged card, and the grip is
+   *  at the card's left edge, so with the pointer on a 56px strip the card's
+   *  centre is over the first tech lane and that lane wins. While the strip is
+   *  collapsed, a pointer inside it means Unassigned; everywhere else the
+   *  board behaves exactly as it did. */
+  const collisionDetection: CollisionDetection = (args) => {
+    if (unassignedCollapsed) {
+      const onStrip = pointerWithin({
+        ...args,
+        droppableContainers: args.droppableContainers.filter((c) => c.id === UNASSIGNED),
+      });
+      if (onStrip.length > 0) return onStrip;
+    }
+    return closestCenter(args);
+  };
+
+  const [laneRow, setLaneRow] = useState<HTMLDivElement | null>(null);
+  const laneRowShape = [staff.length, stranded.length, unassignedCollapsed];
+  const moreLanesToTheEnd = useMoreToTheEnd(laneRow, laneRowShape);
+
   return (
     <>
       {moveDialog}
@@ -1573,34 +1603,47 @@ function RoutesPage() {
               <MobileDayList visits={visits} staff={staff} onOpen={setDetailVisitId} />
             </div>
 
-            {/* `@container`, and the lane count below keys on IT rather than
-                on the viewport. Beside the map at 1280 the board gets about
-                3/5 of the content width (~570px), and `xl:grid-cols-4` — which
-                asked the WINDOW how wide it was — cut that into four 130px
-                lanes: names reduced to "U…" and "M…", the zone pill printed
-                over the visit window, status badges over the zone. A lane
-                needs roughly 220px to hold a card, so the count is chosen
-                from the width the board actually has (launch pass, 2026-10).
+            {/* Lanes are ONE ROW, never a second grid row (#495).
 
-                Two lanes start at 32rem (512px), not at `@md` (448px). At 768,
-                a tablet in portrait with the sidebar docked, the board is
-                about 470px, and `@md` split it into two 225px lanes whose
-                header cut the tech's name to "Alejandr…" (launch pass,
-                recommendation 10). Below 512px the lanes stack, one per row,
-                full width: reflowed rather than shrunk. Beside the map at 1280
-                (~570px) it is still two. */}
-            <div className="@container max-md:hidden">
+                This used to be a wrapping grid, 2/3/4 columns by container
+                width. At 1032px (an iPad in landscape) that gave Unassigned
+                plus two techs, and the third tech wrapped onto a row below the
+                fold, so the board never showed the whole crew at once. Lanes
+                in the same row are the point of a dispatch board: dragging
+                from the first tech to the last has to be one gesture.
+
+                So every lane asks for at least 15rem (240px, what a card needs
+                with its header unbroken) and grows to share whatever is left
+                (`flex-[1_0_15rem]`). If they all fit, they share the row and
+                nothing scrolls. If they do not, the ROW scrolls sideways
+                inside its own `overflow-x-auto`, never the page, and a fade
+                on the end edge says more lanes are there.
+
+                Drag across that scroll: dnd-kit's autoScroll scrolls the
+                nearest scrollable ancestor of the dragged card, which is this
+                row, when the pointer nears its edge, so a lane that starts
+                off-screen comes to the card. A swipe on a card body scrolls
+                the row; only the grip starts a drag (`touch-none` on it, and
+                the PointerSensor wants 5px of travel first).
+
+                An empty Unassigned lane is a 3.5rem strip (count and a
+                vertical label), still the same droppable. The rows layout is
+                its own mode and keeps its one-lane-per-row grid. */}
+            <div className="@container relative max-md:hidden">
               <DndContext
                 sensors={sensors}
-                collisionDetection={closestCenter}
+                collisionDetection={collisionDetection}
+                autoScroll
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
               >
                 <div
+                  ref={setLaneRow}
+                  data-lane-row
                   className={
                     boardLayout === "rows"
                       ? "grid gap-4 grid-cols-1"
-                      : "grid gap-4 @min-[32rem]:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4"
+                      : "flex items-stretch gap-4 overflow-x-auto pb-2"
                   }
                 >
                   <Column
@@ -1608,6 +1651,8 @@ function RoutesPage() {
                     title="Unassigned"
                     items={columns[UNASSIGNED] ?? []}
                     tone="muted"
+                    collapsed={unassignedCollapsed}
+                    dropHint={activeId !== null}
                     layout={boardLayout}
                     onComplete={(id) => completeMut.mutate(id)}
                     completingId={completeMut.isPending ? (completeMut.variables as string) : null}
@@ -1700,6 +1745,13 @@ function RoutesPage() {
                     />
                   ))}
                 </div>
+                {boardLayout === "columns" && moreLanesToTheEnd && (
+                  <div
+                    aria-hidden
+                    data-more-lanes
+                    className="pointer-events-none absolute inset-y-0 end-0 w-12 bg-linear-to-l from-background to-transparent rtl:bg-linear-to-r"
+                  />
+                )}
                 <DragOverlay>
                   {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
                 </DragOverlay>
@@ -2004,6 +2056,34 @@ function MapPanel({
 // upcoming volume, overloaded days, and gaps across a week, rolling 4 weeks,
 // or a true calendar month — with weekends optionally hidden.
 
+/** True while a horizontal scroller has content past its end edge: it
+ *  overflows and is not scrolled all the way. Drives the lane row's edge fade
+ *  (#495). `Math.abs` because `scrollLeft` counts down from 0 under
+ *  `dir="rtl"`. The lanes themselves are observed too, because a lane changing
+ *  width (Unassigned collapsing, a long day of cards) changes the overflow
+ *  without the scroller's own box moving at all. */
+function useMoreToTheEnd(el: HTMLElement | null, deps: unknown[]) {
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    if (!el) {
+      setMore(false);
+      return;
+    }
+    const measure = () => setMore(el.scrollWidth - el.clientWidth - Math.abs(el.scrollLeft) > 1);
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    for (const child of Array.from(el.children)) ro?.observe(child);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      ro?.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [el, ...deps]);
+  return more;
+}
+
 function Column({
   id,
   title,
@@ -2025,12 +2105,20 @@ function Column({
   hoveredVisitId,
   onHover,
   laneAction,
+  collapsed,
+  dropHint,
 }: {
   id: string;
   title: string;
   subtitle?: string;
   items: any[];
   tone?: "muted";
+  /** Drawn as a narrow strip: the count and a vertical label. Still the same
+   *  droppable, so a visit dragged onto it lands in this lane (#495). */
+  collapsed?: boolean;
+  /** A drag is in progress somewhere on the board. Only the collapsed strip
+   *  reads it, to look like somewhere a card can go. */
+  dropHint?: boolean;
   offRoutes?: boolean;
   /** Has dated time off covering the day on screen. Distinct from `offRoutes`,
    *  which is the undated same-day flag — this one has an end and the server
@@ -2057,11 +2145,34 @@ function Column({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: notRoutable });
   const totalCents = items.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
+  // Inset in the columns layout: the lane row scrolls sideways, and a
+  // scroller clips on both axes, so a ring drawn outside the lane loses its
+  // top, bottom and outer edges to the row it sits in.
+  const overRing = layout === "columns" ? "ring-2 ring-inset ring-primary" : "ring-2 ring-primary";
+  if (collapsed) {
+    // Full height of the row, so the whole strip is the target, not a box
+    // the size of the label. The label reads bottom to top like a book spine.
+    return (
+      <div
+        ref={setNodeRef}
+        data-lane-collapsed
+        title={`${title}: nothing here. Drop a visit to unassign it.`}
+        className={`flex w-14 flex-none flex-col items-center gap-3 rounded-lg border bg-muted/30 py-2 ${
+          dropHint ? "border-dashed border-primary" : ""
+        } ${isOver ? overRing : ""}`}
+      >
+        <Badge variant="secondary">{items.length}</Badge>
+        <span className="rotate-180 whitespace-nowrap text-xs font-medium text-muted-foreground [writing-mode:vertical-rl]">
+          {title}
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       ref={setNodeRef}
-      className={`min-w-0 rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
-        isOver ? "ring-2 ring-primary" : ""
+      className={`min-w-0 rounded-lg border ${layout === "columns" ? "flex-[1_0_15rem]" : ""} ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
+        isOver ? overRing : ""
       }`}
     >
       {/* The header WRAPS rather than squeezing. The name block asks for at
