@@ -195,6 +195,8 @@ export const BASE_STUBS: Record<string, Stub> = {
   // a sweep that measured cards with no allowance line would be measuring a
   // page the product does not ship. Enterprise keeps nulls on purpose, because
   // "renders nothing rather than null" is the case most likely to regress.
+  // Seats and team sizes follow the Oct 9 catalog (20261009150000): 1/5/20
+  // included, caps of 3/15/none, $15 per extra person (#491).
   listPlatformPlans: {
     plans: [
       {
@@ -207,8 +209,9 @@ export const BASE_STUBS: Record<string, Stub> = {
         currency: "usd",
         interval: "month",
         features: {},
-        included_seats: 3,
-        price_per_seat_cents: 1_000,
+        included_seats: 1,
+        max_team_size: 3,
+        price_per_seat_cents: 1_500,
         ai_actions_included: 200,
         ai_overage_cents_per_action: 10,
         is_free: false,
@@ -226,8 +229,9 @@ export const BASE_STUBS: Record<string, Stub> = {
         currency: "usd",
         interval: "month",
         features: {},
-        included_seats: 10,
-        price_per_seat_cents: 1_000,
+        included_seats: 5,
+        max_team_size: 15,
+        price_per_seat_cents: 1_500,
         ai_actions_included: 750,
         ai_overage_cents_per_action: 10,
         is_free: false,
@@ -245,8 +249,9 @@ export const BASE_STUBS: Record<string, Stub> = {
         currency: "usd",
         interval: "month",
         features: {},
-        included_seats: 30,
-        price_per_seat_cents: 1_000,
+        included_seats: 20,
+        max_team_size: null,
+        price_per_seat_cents: 1_500,
         ai_actions_included: 2_500,
         ai_overage_cents_per_action: 10,
         is_free: false,
@@ -265,7 +270,8 @@ export const BASE_STUBS: Record<string, Stub> = {
         interval: "month",
         features: {},
         included_seats: null,
-        price_per_seat_cents: 1_000,
+        max_team_size: null,
+        price_per_seat_cents: null,
         ai_actions_included: null,
         ai_overage_cents_per_action: null,
         is_free: false,

@@ -45,10 +45,12 @@ import { Route } from "@/routes/_authenticated/settings.billing";
 
 const PAST = "2026-08-16T12:00:00Z";
 const FUTURE = "2026-11-16T12:00:00Z";
+// The card is built from the structured columns, never from the catalog text.
+const CATALOG_DESCRIPTION = "CATALOG DESCRIPTION SHOULD NOT RENDER";
 const plans = [
-  { name: "Launch", included_seats: 1, max_team_size: 3, price_cents: 7900, oldSeats: 3 },
-  { name: "Growth", included_seats: 5, max_team_size: 15, price_cents: 19900, oldSeats: 10 },
-  { name: "Scale", included_seats: 20, max_team_size: null, price_cents: 44900, oldSeats: 30 },
+  { name: "Launch", included_seats: 1, max_team_size: 3, price_cents: 7900 },
+  { name: "Growth", included_seats: 5, max_team_size: 15, price_cents: 19900 },
+  { name: "Scale", included_seats: 20, max_team_size: null, price_cents: 44900 },
 ].map((p) => ({
   ...p,
   id: p.name,
@@ -56,7 +58,7 @@ const plans = [
   annual_price_cents: p.price_cents * 10,
   price_per_seat_cents: 1500,
   is_free: false,
-  description: `Includes ${p.oldSeats} employees; $10/mo per additional active employee.`,
+  description: CATALOG_DESCRIPTION,
 }));
 
 type Subscription = {
@@ -148,6 +150,7 @@ describe("billing cards use the checkout catalog", () => {
       ).toHaveLength(3);
       expect(text).not.toContain("per additional active employee");
       expect(text).not.toContain("$10/mo");
+      expect(text).not.toContain(CATALOG_DESCRIPTION);
     },
   );
 });

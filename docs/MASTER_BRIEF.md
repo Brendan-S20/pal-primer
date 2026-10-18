@@ -864,6 +864,8 @@ correct.
 | Growth | $199.00 | $1,990.00 | $10.00 | $100.00 |
 | Scale | $449.00 | $4,490.00 | $10.00 | $100.00 |
 
+Superseded Oct 9, 2026 (NP-1, confirmed by Brendan Oct 17): 1/5/20 included, $15/mo or $150/yr per extra person; see 20261009150000.
+
 Annual is 10× monthly throughout — the two-months-free convention the sandbox
 already used. **The annual per-seat amount was a decision, not a lookup.** There
 is no `annual_seat_price_cents` column and `check-stripe-catalog.mjs`

@@ -160,6 +160,8 @@ Implementation note (added after an infrastructure rebuild subsequent to this fi
 
 Engineering follow-up since this finding was first raised confirms the scope precisely: the current platform_plans table is tiered by active_client_count with the stale dog-themed names described above; organizations.plan_id (the FK to a concrete plan row) is never set by any database function today — only billing_tier (a text slug) gets auto-assigned via trigger; and there is no permanent free tier in the real pricing model — it's a 14-day free trial with limitations, not an ongoing “free” plan status. This confirms the fix needs a proper design pass, not a quick patch: new platform_plans rows matching the real four tiers (with the $10/employee overage), a seat-count-based (not client-count-based) tier-assignment function, a real trial state with an expiry mechanism, and plan_id actually wired for every organization rather than left null.
 
+Superseded Oct 9, 2026 (NP-1, confirmed by Brendan Oct 17): Launch $79 for teams of 1 to 3 with 1 included, Growth $199 for 4 to 15 with 5 included, Scale $449 for 16 or more with 20 included; $15/mo or $150/yr per extra person; see 20261009150000.
+
 **Why this model:**  Large, multi-step, or new-feature build — matches Fable 5's documented strength on large migrations, complex implementations, and multi-day autonomous sessions. Rebuilding the Plans catalog to match houndstack.com's real pricing tiers is a substantial data-model and UI project, and should be scoped together with item #51 (duplicate free tiers) and the Pricing/Signup PRD (Appendix A).
 
 ---
