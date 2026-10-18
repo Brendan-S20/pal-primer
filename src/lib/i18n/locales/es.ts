@@ -931,6 +931,11 @@ const es: Translations = {
     weather: "Clima",
     weatherAria: "Mostrar el botón del clima en la barra superior",
   },
+  rateApp: {
+    title: "Calificar HoundStack",
+    ios: "Deja una calificación en el App Store",
+    android: "Deja una calificación en Google Play",
+  },
   liveActivity: {
     title: "Ruta de hoy",
     stopOf: "Parada {{position}} de {{total}}",

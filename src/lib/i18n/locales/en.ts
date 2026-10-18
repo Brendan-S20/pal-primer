@@ -941,6 +941,14 @@ const en = {
     weather: "Weather",
     weatherAria: "Show the weather button in the top bar",
   },
+  // The static "Rate HoundStack" link on Preferences, in the iPhone and
+  // Android apps only (components/settings/RateAppCard.tsx). Store names stay
+  // as the stores spell them.
+  rateApp: {
+    title: "Rate HoundStack",
+    ios: "Leave a rating in the App Store",
+    android: "Leave a rating in Google Play",
+  },
   // The route on the lock screen and in the Dynamic Island (a Live Activity),
   // and its two controls: the toggle in My Day's status row and the switch on
   // Preferences. The first group is sent to

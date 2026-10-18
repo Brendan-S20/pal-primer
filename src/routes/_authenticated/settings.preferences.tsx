@@ -19,6 +19,7 @@ import { headerControlsForRole } from "@/lib/header-prefs";
 import { ThemeCard } from "@/components/settings/ThemeCard";
 import { NativePushCard } from "@/components/settings/NativePushCard";
 import { RouteOnLockScreenCard } from "@/components/settings/RouteOnLockScreenCard";
+import { RateAppCard } from "@/components/settings/RateAppCard";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 
 // ── THIS DEVICE, AND NOTHING ELSE ─────────────────────────────────────────
@@ -184,6 +185,9 @@ function PreferencesPage() {
       <RouteOnLockScreenCard />
       <ThemeCard />
       <AppearanceCard />
+      {/* About: iPhone and Android apps only, last so it never sits between
+          a person and a setting. */}
+      <RateAppCard />
     </div>
   );
 }

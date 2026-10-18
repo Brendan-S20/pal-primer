@@ -885,6 +885,11 @@ const zh: TranslationsWithPlurals<"other"> = {
     weather: "天气",
     weatherAria: "在顶部栏显示天气按钮",
   },
+  rateApp: {
+    title: "为 HoundStack 评分",
+    ios: "在 App Store 中留下评分",
+    android: "在 Google Play 中留下评分",
+  },
   liveActivity: {
     title: "今日路线",
     stopOf: "第 {{position}} 站，共 {{total}} 站",
