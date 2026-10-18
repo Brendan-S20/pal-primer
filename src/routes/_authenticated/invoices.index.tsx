@@ -1120,20 +1120,20 @@ function InvoicesPage() {
             <table className="w-full text-sm min-w-[720px]">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="w-10 px-4 py-2">
+                  <th className="w-10 px-4 py-2 max-xl:px-3">
                     <Checkbox
                       checked={allVisibleSelected}
                       onCheckedChange={toggleAll}
                       aria-label="Select all invoices"
                     />
                   </th>
-                  <th className="px-4 py-2 font-semibold">Client</th>
-                  <th className="px-4 py-2 font-semibold">Invoice</th>
-                  <th className="px-4 py-2 font-semibold">Period</th>
-                  <th className="px-4 py-2 font-semibold">Due</th>
-                  <th className="px-4 py-2 text-right font-semibold">Total</th>
-                  <th className="px-4 py-2 font-semibold">Status</th>
-                  <th className="w-28 px-4 py-2 text-right font-semibold">
+                  <th className="px-4 py-2 max-xl:px-3 font-semibold">Client</th>
+                  <th className="whitespace-nowrap px-4 py-2 max-xl:px-3 font-semibold">Invoice</th>
+                  <th className="whitespace-nowrap px-4 py-2 max-xl:px-3 font-semibold">Period</th>
+                  <th className="whitespace-nowrap px-4 py-2 max-xl:px-3 font-semibold">Due</th>
+                  <th className="px-4 py-2 max-xl:px-3 text-right font-semibold">Total</th>
+                  <th className="px-4 py-2 max-xl:px-3 font-semibold">Status</th>
+                  <th className="w-28 px-4 py-2 max-xl:px-3 text-right font-semibold">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>

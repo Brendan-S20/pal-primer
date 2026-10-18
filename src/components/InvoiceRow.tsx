@@ -13,6 +13,7 @@
 // page, so the B4 "one invoice-row implementation" mandate holds.
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Clock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RowActions, type RowAction } from "@/components/RowActions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
@@ -58,6 +59,47 @@ export function invoicePeriodLabel(
 ) {
   if (start && end) return `${formatDay(start)} to ${formatDay(end)}`;
   return formatDay(end ?? start) || "-";
+}
+
+function parsePeriodDay(iso: string): Date | null {
+  // Same anchoring as formatDay: a date-only string at local noon, so the
+  // calendar day cannot slip in a western timezone.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`) : new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** The table's period (#497): "Fri, Sep 11" for one day, "Oct 1 to 31"
+ * within a month, "Sep 28 to Oct 4" within a year, and the year on both ends
+ * across one. The long form wrapped onto two lines at 1024 px. A year that is
+ * not the current one is added at the end, as formatDay does. The phone card
+ * keeps invoicePeriodLabel, which has the room. */
+export function invoicePeriodLabelCompact(
+  start: string | null | undefined,
+  end: string | null | undefined,
+) {
+  if (!start || !end) return invoicePeriodLabel(start, end);
+  const a = parsePeriodDay(start);
+  const b = parsePeriodDay(end);
+  if (!a || !b) return invoicePeriodLabel(start, end);
+  const thisYear = new Date().getFullYear();
+  const monthDay = (d: Date, withYear = false) =>
+    d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      ...(withYear ? { year: "numeric" } : {}),
+    });
+  if (a.getFullYear() !== b.getFullYear()) {
+    return `${monthDay(a, true)} to ${monthDay(b, true)}`;
+  }
+  const year = a.getFullYear() === thisYear ? "" : `, ${a.getFullYear()}`;
+  if (a.getMonth() === b.getMonth()) {
+    if (a.getDate() === b.getDate()) {
+      const weekday = a.toLocaleDateString("en-US", { weekday: "short" });
+      return `${weekday}, ${monthDay(a)}${year}`;
+    }
+    return `${monthDay(a)} to ${b.getDate()}${year}`;
+  }
+  return `${monthDay(a)} to ${monthDay(b)}${year}`;
 }
 
 /** Built-in ••• actions available anywhere the row/card renders; callers
@@ -123,6 +165,10 @@ export function InvoiceRow({
   // Only the non-default kind (a prepaid top-up) is worth a chip; a plain
   // "Service" invoice needs no label. Either way the enum is never shown raw.
   const showKind = invoice.kind === "prepaid_topup";
+  const scheduledLabel =
+    invoice.status === "open" && !invoice.sent_at && invoice.send_after
+      ? `Scheduled to send ${formatDay(invoice.send_after)}`
+      : null;
 
   const menuActions = useInvoiceMenuActions(invoice, actions);
 
@@ -132,7 +178,7 @@ export function InvoiceRow({
       onClick={() => onOpen(invoice.id)}
     >
       {selectable && (
-        <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+        <td className="px-4 py-2.5 max-xl:px-3" onClick={(e) => e.stopPropagation()}>
           <Checkbox
             checked={selected}
             onCheckedChange={(v) => onToggleSelect?.(!!v)}
@@ -140,16 +186,29 @@ export function InvoiceRow({
           />
         </td>
       )}
+      {/* Client takes whatever width is left and truncates (#497).
+          `w-full max-w-0` is what lets a table cell give up width: in an auto
+          layout table a cell is never narrower than its content, and
+          `truncate` alone does not change that. The number, period and due
+          cells are `whitespace-nowrap`, so they keep one line and this one
+          gives way. `min-w-36` is the floor it gives way to: without it, at
+          1024 px the cell was squeezed to about 80 px and every name read
+          "Paloma P...". Every cell drops to `px-3` below `xl` to pay for it,
+          so the table still fits the 930 px column with no scroll. */}
       {showClient && (
-        <td className="px-4 py-2.5 font-medium">{client?.display_name ?? "-"}</td>
+        <td className="w-full min-w-36 max-w-0 px-4 py-2.5 max-xl:px-3 font-medium">
+          <div className="truncate" title={client?.display_name ?? undefined}>
+            {client?.display_name ?? "-"}
+          </div>
+        </td>
       )}
-      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
+      <td className="whitespace-nowrap px-4 py-2.5 max-xl:px-3 font-mono text-xs text-muted-foreground">
         {invoiceNumberLabel(invoice)}
       </td>
-      <td className="px-4 py-2.5 text-muted-foreground">
-        {invoicePeriodLabel(invoice.period_start, invoice.period_end)}
+      <td className="whitespace-nowrap px-4 py-2.5 max-xl:px-3 text-muted-foreground">
+        {invoicePeriodLabelCompact(invoice.period_start, invoice.period_end)}
       </td>
-      <td className="px-4 py-2.5">
+      <td className="whitespace-nowrap px-4 py-2.5 max-xl:px-3">
         {invoice.due_on && invoice.status !== "paid" && invoice.status !== "void" ? (
           <span className={overdue ? "font-medium text-destructive" : "text-muted-foreground"}>
             {formatDay(invoice.due_on)}
@@ -163,7 +222,7 @@ export function InvoiceRow({
           <span className="text-muted-foreground">-</span>
         )}
       </td>
-      <td className="px-4 py-2.5 text-right tabular-nums">
+      <td className="px-4 py-2.5 max-xl:px-3 text-right tabular-nums">
         {fmtCents(invoice.total_cents ?? 0, invoice.currency ?? "usd")}
         {isPartiallyPaid(invoice) && (
           <div className="text-xs text-muted-foreground">
@@ -171,20 +230,49 @@ export function InvoiceRow({
           </div>
         )}
       </td>
-      <td className="px-4 py-2.5">
-        <span className="inline-flex flex-wrap items-center gap-1.5">
-          <StatusChip status={invoice.status} />
+      <td className="whitespace-nowrap px-4 py-2.5 max-xl:px-3">
+        {/* Every chip is `whitespace-nowrap` so none wraps inside itself.
+            The scheduled / sent chip is the lowest value thing in the row and
+            is hidden below `xl` (#497): at 1024 px, with it, the row needed
+            about 940 px of a 930 px column. A scheduled send still matters on
+            an open invoice, so below `xl` it shrinks to a clock icon that
+            names the full "Scheduled to send" date to a screen reader and in
+            its title; the sent chip has no stand-in. The cell stays on one
+            line below `xl` (`max-xl:flex-nowrap`). The kind chip ("Prepaid
+            top-up") is hidden below `xl` too, so the Status column stays as
+            narrow as the status itself and the client floor has room. The
+            drawer still says all of it. */}
+        <span className="inline-flex flex-wrap items-center gap-1.5 max-xl:flex-nowrap">
+          <StatusChip status={invoice.status} className="whitespace-nowrap" />
           {isPartiallyPaid(invoice) && (
             <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
           )}
-          {showKind && <MetaChip>{invoiceKindLabel(invoice.kind)}</MetaChip>}
-          {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
-            <MetaChip>Scheduled to send {formatDay(invoice.send_after)}</MetaChip>
+          {showKind && (
+            <MetaChip className="whitespace-nowrap max-xl:hidden">
+              {invoiceKindLabel(invoice.kind)}
+            </MetaChip>
           )}
-          {invoice.sent_at && <MetaChip>Sent {formatDay(invoice.sent_at)}</MetaChip>}
+          {scheduledLabel && (
+            <MetaChip className="whitespace-nowrap max-xl:hidden">{scheduledLabel}</MetaChip>
+          )}
+          {scheduledLabel && (
+            <span
+              role="img"
+              aria-label={scheduledLabel}
+              title={scheduledLabel}
+              className="inline-flex text-muted-foreground xl:hidden"
+            >
+              <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            </span>
+          )}
+          {invoice.sent_at && (
+            <MetaChip className="whitespace-nowrap max-xl:hidden">
+              Sent {formatDay(invoice.sent_at)}
+            </MetaChip>
+          )}
         </span>
       </td>
-      <td className="px-4 py-2.5 text-right">
+      <td className="px-4 py-2.5 max-xl:px-3 text-right">
         <RowActions
           view={{
             label: `View invoice for ${client?.display_name ?? "client"}`,

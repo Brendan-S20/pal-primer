@@ -225,12 +225,16 @@ export function BillingPanel({ clientId }: { clientId: string }) {
               <table className="w-full text-sm min-w-[540px]">
                 <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2 font-semibold">Invoice</th>
-                    <th className="px-4 py-2 font-semibold">Period</th>
-                    <th className="px-4 py-2 font-semibold">Due</th>
-                    <th className="px-4 py-2 text-right font-semibold">Total</th>
-                    <th className="px-4 py-2 font-semibold">Status</th>
-                    <th className="w-24 px-4 py-2 text-right font-semibold">
+                    <th className="whitespace-nowrap px-4 py-2 max-xl:px-3 font-semibold">
+                      Invoice
+                    </th>
+                    <th className="whitespace-nowrap px-4 py-2 max-xl:px-3 font-semibold">
+                      Period
+                    </th>
+                    <th className="whitespace-nowrap px-4 py-2 max-xl:px-3 font-semibold">Due</th>
+                    <th className="px-4 py-2 max-xl:px-3 text-right font-semibold">Total</th>
+                    <th className="px-4 py-2 max-xl:px-3 font-semibold">Status</th>
+                    <th className="w-24 px-4 py-2 max-xl:px-3 text-right font-semibold">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
