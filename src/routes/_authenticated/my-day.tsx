@@ -372,7 +372,8 @@ function MyDay() {
   // mouse (sidebarDocksFrom). A fixed `md:` here would leave a gap on the
   // left of a crew tablet, beside a sidebar that is no longer there.
   // `--sidebar-docked-width` is what the sidebar actually takes from the page:
-  // the icon rail below 1280px (QA row 34), the full column above it.
+  // the icon width on the rail below 1024px (QA row 34) or a collapsed
+  // column, the full column when it is expanded (#499).
   const { docksFrom } = useSidebar();
   const nextUpClearOfSidebar =
     docksFrom === "lg-mouse"

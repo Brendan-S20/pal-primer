@@ -2,8 +2,10 @@
  * Batch 10 of the 2026-10-15 launch review: the tablet rows, measured.
  *
  *   Row 34  Office pages on an iPad in portrait kept the 256px sidebar and
- *           left 564px of page at 820. Below 1280 the sidebar is an icon
- *           rail and its labelled panel opens over the page.
+ *           left 564px of page at 820. Below 1024 the sidebar is an icon
+ *           rail and its labelled panel opens over the page. From 1024 it
+ *           is the column, collapsed to the icons or expanded, and the
+ *           choice is kept on the device (#499).
  *   Row 35  A technician on an iPad got the office sidebar; My Day on a
  *           desktop was the phone layout 1100px wide under a see-through
  *           header. A tech keeps the tab bar on every touch screen, and My
@@ -56,8 +58,7 @@ test.describe("an office user on an iPad gets the icon rail", () => {
 
   for (const { w, h } of [
     { w: 820, h: 1180 },
-    { w: 1024, h: 1366 },
-    { w: 1180, h: 820 },
+    { w: 1000, h: 1180 },
   ]) {
     test(`@${w}px: the page gets the width back, and the panel opens over it`, async ({
       page,
@@ -114,12 +115,60 @@ test.describe("an office user on an iPad gets the icon rail", () => {
   }
 });
 
-test("from 1280px the full column is back, with no rail toggle", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await open(page, "/clients");
-  expect(await dockedWidth(page)).toBeGreaterThanOrEqual(250);
-  await expect(page.locator('[data-sidebar="rail-toggle"]')).toHaveCount(0);
-});
+// ── #499: from 1024 the column, and it remembers ─────────────────────────
+// Unit half: the same test file as row 34. Width decides, not the pointer,
+// so each size runs with a finger and with a mouse.
+for (const hasTouch of [true, false]) {
+  test.describe(`from 1024px the column keeps its choice (${hasTouch ? "touch" : "mouse"})`, () => {
+    test.use({ hasTouch });
+
+    for (const { w, h, expanded } of [
+      { w: 1024, h: 1366, expanded: false },
+      { w: 1032, h: 1376, expanded: false },
+      { w: 1180, h: 820, expanded: true },
+      { w: 1366, h: 1024, expanded: true },
+    ]) {
+      test(`@${w}px: ${expanded ? "expanded" : "the icons"} at first, and a toggle survives a reload`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: w, height: h });
+        await open(page, "/clients");
+        const toggle = page.locator('[data-sidebar="rail-toggle"]');
+        await expect(toggle).toBeVisible();
+        await expect(toggle).toHaveAttribute("aria-expanded", String(expanded));
+        const first = await dockedWidth(page);
+        if (expanded) expect(first).toBeGreaterThanOrEqual(250);
+        else expect(first).toBeLessThanOrEqual(61);
+        // Docked beside the page, not over it.
+        expect(await mainLeft(page)).toBeGreaterThanOrEqual(first - 1);
+
+        await toggle.click();
+        await expect(toggle).toHaveAttribute("aria-expanded", String(!expanded));
+        if (expanded) await expect.poll(() => dockedWidth(page)).toBeLessThanOrEqual(61);
+        else await expect.poll(() => dockedWidth(page)).toBeGreaterThanOrEqual(250);
+        const after = await dockedWidth(page);
+        expect(await mainLeft(page), "the column pushed the page").toBeGreaterThanOrEqual(
+          after - 1,
+        );
+        expect((await measurePageOverflow(page)).scrollW).toBeLessThanOrEqual(w);
+
+        // A route change keeps it.
+        await page.locator(DOCKED).getByRole("link", { name: "Invoices" }).click();
+        await expect(page).toHaveURL(/\/invoices$/);
+        await expect(toggle).toHaveAttribute("aria-expanded", String(!expanded));
+        expect((await measurePageOverflow(page)).scrollW).toBeLessThanOrEqual(w);
+
+        // And so does a reload.
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await expect(page.locator("main").first()).toBeVisible({ timeout: 30_000 });
+        await expect(toggle).toHaveAttribute("aria-expanded", String(!expanded));
+        expect(await page.evaluate(() => localStorage.getItem("hs.sidebar.expanded"))).toBe(
+          expanded ? "0" : "1",
+        );
+      });
+    }
+  });
+}
 
 // ── ROW 35: the tech's tab bar on a touch screen ─────────────────────────
 // Unit half: tests/a-technician-on-an-ipad-got-the-office-sidebar.test.ts

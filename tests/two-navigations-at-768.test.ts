@@ -150,7 +150,9 @@ describe("both halves of ui/sidebar.tsx read the same edge", () => {
     // The decision itself is lib/sidebar-shape.ts, tested in
     // tests/a-sidebar-that-took-a-third-of-an-ipad.test.ts.
     expect(src).toMatch(/useMediaMatch\("\(pointer: coarse\)"\)/);
-    expect(src).toMatch(/sidebarShape\(\{ belowDock, coarsePointer, belowRail, docksFrom, railBelowXl \}\)/);
+    expect(src).toMatch(
+      /sidebarShape\(\{ belowDock, coarsePointer, belowRail, docksFrom, railBelowLg \}\)/,
+    );
   });
 
   it("the CSS that shows the docked column, in both places it is spelled", () => {
@@ -179,7 +181,7 @@ describe("the consumers pass it on", () => {
     expect(src).toMatch(
       /sidebarDocksFrom\(\s*tier,\s*!!role && headerPrefs\.phoneNav === "bottom",?\s*\)/,
     );
-    expect(src).toMatch(/<SidebarProvider docksFrom=\{docksFrom\} railBelowXl>/);
+    expect(src).toMatch(/<SidebarProvider docksFrom=\{docksFrom\} railBelowLg rememberExpanded>/);
     // The render condition it copies. If this one changes, that one has to.
     expect(src).toMatch(/\{headerPrefs\.phoneNav === "bottom" && <MobileTabBar \/>\}/);
     expect(read("src/components/MobileTabBar.tsx")).toMatch(/if \(!role\) return null;/);
@@ -191,7 +193,8 @@ describe("the consumers pass it on", () => {
     // `start-`, not `left-`: in Arabic the sidebar docks on the right.
     const src = codeOnly(read("src/routes/_authenticated/my-day.tsx"));
     // And from the width it actually takes, which on the icon rail below
-    // 1280px is the rail's (QA row 34), not the full 16rem.
+    // 1024px or a collapsed column is the icons' (QA row 34, #499), not the
+    // full 16rem.
     expect(src).toMatch(/const \{ docksFrom \} = useSidebar\(\);/);
     expect(src).toMatch(
       /docksFrom === "lg-mouse"\s*\?\s*"lg:mouse:start-\(--sidebar-docked-width\)"\s*:\s*"md:start-\(--sidebar-docked-width\)"/,
