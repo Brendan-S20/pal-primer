@@ -39,6 +39,8 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
+import { connectAppearanceFor } from "@/lib/connect-appearance";
+import { isDarkApplied, watchDarkTheme } from "@/lib/theme";
 
 function ResendVerification() {
   const sendFn = useServerFn(sendEmailVerification);
@@ -633,8 +635,15 @@ function NeedsAWiderScreen({ what, refunds }: { what: string; refunds?: boolean 
 }
 
 /**
- * Stripe appearance for a finger: bigger type and more padding inside the
- * iframes, on a coarse pointer only, so a mouse keeps Stripe's defaults.
+ * Stripe appearance for this device, from two facts that combine:
+ *
+ *   A finger (coarse pointer): bigger type and more padding inside the
+ *   iframes. A mouse keeps Stripe's sizes.
+ *   Dark mode (the "dark" class theme.ts puts on <html>): the app's dark
+ *   palette, so the panels are not white boxes on a dark page. Light mode
+ *   keeps Stripe's colours, which is the look the light page was reviewed in.
+ *
+ * The values, and their source in styles.css, are in src/lib/connect-appearance.ts.
  *
  * What Stripe lets us change (AppearanceVariables in @stripe/connect-js):
  * fontSizeBase, spacingUnit, button and input padding, button label size,
@@ -644,25 +653,18 @@ function NeedsAWiderScreen({ what, refunds }: { what: string; refunds?: boolean 
  * at all, and no CSS of ours reaches across the origin. So this makes the
  * controls larger, not 44pt; the width gate is what keeps them off a phone.
  *
- * Read once when the instance is created. The pointer a device has does not
- * change while the page is open in any way worth an instance.update() for.
+ * Read when the instance is created, and again whenever the theme changes
+ * while the page is open (ConnectDashboard watches the class and calls
+ * instance.update()), so switching to dark in Preferences or a phone going
+ * dark at sunset repaints the panels without a reload. The pointer a device
+ * has does not change while the page is open, so nothing watches that.
  */
 function connectAppearance() {
-  if (typeof window === "undefined" || !window.matchMedia("(pointer: coarse)").matches) {
-    return undefined;
-  }
-  return {
-    variables: {
-      fontSizeBase: "16px",
-      spacingUnit: "11px",
-      buttonPaddingY: "12px",
-      buttonPaddingX: "16px",
-      buttonLabelFontSize: "16px",
-      inputFieldPaddingY: "12px",
-      inputFieldPaddingX: "12px",
-      tableRowPaddingY: "14px",
-    },
-  };
+  if (typeof window === "undefined") return undefined;
+  return connectAppearanceFor({
+    dark: isDarkApplied(),
+    coarse: window.matchMedia("(pointer: coarse)").matches,
+  });
 }
 
 function ConnectDashboard({
@@ -748,6 +750,15 @@ function ConnectDashboard({
       cancelled = true;
     };
   }, [reloadKey, measured, replaced]);
+
+  // The theme can change under an open page (Preferences, or a phone on
+  // "System" going dark). The iframes cannot see our CSS, so tell Stripe.
+  useEffect(() => {
+    if (!instance) return;
+    return watchDarkTheme(() => {
+      instance.update({ appearance: connectAppearance() });
+    });
+  }, [instance]);
 
   if (!measured) return <p className="text-sm text-muted-foreground">Loading payment dashboard…</p>;
 
