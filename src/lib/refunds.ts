@@ -1,8 +1,8 @@
 // Refunding a customer from the invoice, rather than from Stripe's own panel.
 //
 // Until this existed the only way to give a customer money back was the
-// embedded Connect "Payments" component on /payments. On a coarse pointer that
-// component is deliberately replaced by `NotOnAPhone` (its controls are too
+// embedded Connect "Payments" component on /payments. Below 1024px that
+// component is deliberately replaced by `NeedsAWiderScreen` (its controls are too
 // small to hit and we cannot resize them), so an owner standing in a driveway
 // with a phone could not refund anybody at all. The invoice is where the money
 // came in, so it is where it goes back out.

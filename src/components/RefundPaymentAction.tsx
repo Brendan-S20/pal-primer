@@ -3,7 +3,7 @@
 // Used on both invoice surfaces — the full invoice page and the invoice drawer
 // the invoices list and the client Billing tab open — because a phone reaches
 // the drawer first, and the phone is the reason this exists: Stripe's own
-// refund control on /payments is replaced by NotOnAPhone on a coarse pointer.
+// refund control on /payments is replaced by NeedsAWiderScreen below 1024px.
 //
 // Two steps, on purpose. The first collects the amount, a reason and a note;
 // the second states, in one sentence, the exact dollars going back and to

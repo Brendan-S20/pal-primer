@@ -29,7 +29,7 @@
 // it wins — that is the documented behaviour the fence in stub-backend.ts
 // already relies on, used here to vary one field and leave every other stub
 // alone.
-import { test, expect, type BrowserContext } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
 import { FIRST_PAINT_MS } from "./fixtures/first-paint";
@@ -72,10 +72,7 @@ async function pretendToBeIOS(context: BrowserContext) {
 }
 
 /** Override just `getBillingStatus`, leaving the rest of the stub intact. */
-async function forceBillingState(
-  context: BrowserContext,
-  patch: Record<string, unknown>,
-) {
+async function forceBillingState(context: BrowserContext, patch: Record<string, unknown>) {
   await context.route("**/_serverFn/**", async (route) => {
     const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
     let name = "";
@@ -198,37 +195,37 @@ test("a store build cannot reach a plan picker through onboarding either", async
 
   // Proof of render: the plan STEP is on screen, so a picker would be too if
   // one were going to be.
-  expect(
-    body,
-    "the plan step did not render, so its absence proves nothing",
-  ).toMatch(/plan|Plan/);
+  expect(body, "the plan step did not render, so its absence proves nothing").toMatch(/plan|Plan/);
 
   for (const word of ["Payment happens right here", "Choose plan", "Pick the plan that fits"]) {
-    expect(
-      body,
-      `/onboarding still offers a purchase in a store build: "${word}"`,
-    ).not.toContain(word);
+    expect(body, `/onboarding still offers a purchase in a store build: "${word}"`).not.toContain(
+      word,
+    );
   }
 });
 
-// ── ITEM 7: the org's money page on a finger ─────────────────────────────
+// ── ITEM 7: the org's money page, by WIDTH ───────────────────────────────
 //
 // Stripe Connect's embedded components are iframes on Stripe's origin. Their
-// controls measured 10-30pt on an iPad — "Edit Amount" 60x10, eight of them —
-// and nothing on our side can restyle the inside of an iframe. So on a coarse
-// pointer they are REPLACED rather than shrunk, and this proves the
-// replacement is what renders.
+// controls measured 10-30pt on an iPad ("Edit Amount" 60x10, eight of them)
+// and nothing on our side can restyle the inside of an iframe. Below 1024px
+// they are REPLACED rather than shrunk; at 1024px and wider they render,
+// touch or mouse.
+//
+// Until #494 this pair keyed on a coarse pointer, and so did the page: every
+// iPad, a 1032px landscape one included, got "needs a bigger screen" and was
+// told to find a computer. These three prove the rule is the width: a phone
+// gets the replacement, an iPad-sized touch screen gets the embeds, and a
+// mouse at the same width gets them too.
 //
 // Nothing here is an App Review question. This is the tenant's own money,
 // which app-store-billing.ts is explicit about never gating.
-test("the payments page replaces Stripe's tiny embeds on a touch device", async ({
-  page,
-  context,
-}) => {
+
+/** Report a coarse pointer, as a real iPad or phone does. `hasTouch` should
+ *  already make Chromium say so; this pins it, so a test that is meant to be
+ *  a finger cannot quietly measure a mouse. */
+async function reportACoarsePointer(context: BrowserContext) {
   await context.addInitScript(() => {
-    // A coarse pointer, which is what the page keys on. Chromium reports a
-    // fine pointer by default, so without this the desktop branch renders and
-    // the assertions below would pass while measuring the wrong thing.
     const mq = window.matchMedia.bind(window);
     window.matchMedia = ((q: string) =>
       q.includes("pointer: coarse")
@@ -244,10 +241,14 @@ test("the payments page replaces Stripe's tiny embeds on a touch device", async 
           } as unknown as MediaQueryList)
         : mq(q)) as typeof window.matchMedia;
   });
+}
+
+/** Open /payments with a live Stripe account. The fixture reports no Stripe
+ *  account, so the page stops at "Set one up" and never reaches the dashboard
+ *  the embeds live in; this forces a connected one so the branch under test
+ *  actually renders. Returns the visible text. */
+async function openConnectedPayments(page: Page, context: BrowserContext) {
   await installStubBackend(context);
-  // The fixture reports no Stripe account, so the page stops at "Set one up"
-  // and never reaches the dashboard the embeds live in. Force a connected
-  // account so the branch under test actually renders.
   await context.route("**/_serverFn/**", async (route) => {
     const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
     let name = "";
@@ -262,7 +263,12 @@ test("the payments page replaces Stripe's tiny embeds on a touch device", async 
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        result: { connected: true, chargesEnabled: true, detailsSubmitted: true, accountId: "acct_test" },
+        result: {
+          connected: true,
+          chargesEnabled: true,
+          detailsSubmitted: true,
+          accountId: "acct_test",
+        },
       }),
     });
   });
@@ -273,66 +279,79 @@ test("the payments page replaces Stripe's tiny embeds on a touch device", async 
   await page.waitForTimeout(2500);
 
   const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
-  // Proof the DASHBOARD rendered, not merely the page. Its tab strip is the
-  // tell; the page title says "Payments" either way, which is what made the
-  // first version of this guard fire on the wrong thing.
+  // Proof the DASHBOARD rendered, not merely the page. The page title says
+  // "Payments" either way, which is what made the first version of this guard
+  // fire on the wrong thing.
   test.skip(
     /No Stripe account connected yet/.test(body),
     "the payments page still reports no connected account, so the dashboard did not render",
   );
+  return body;
+}
 
-  expect(
-    body,
-    "the touch replacement did not render, so the tiny Stripe embeds are still what a finger gets",
-  ).toContain("needs a bigger screen");
+/** The desktop branch tries to load Stripe. In this harness the fence blocks
+ *  stripe.com, so it reaches the loading or error state of the dashboard or of
+ *  the Payouts card. Either proves it took the Stripe path rather than the
+ *  replacement. "Balance" is not used as the tell: BalanceSummary, which is
+ *  ours, draws "Loading balance" on both branches. */
+const TOOK_THE_STRIPE_PATH = /payment dashboard|(Loading|Couldn't load) payouts/i;
+
+test.describe("a phone, 390px with touch", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("the payments page replaces Stripe's embeds below 1024px", async ({ page, context }) => {
+    await reportACoarsePointer(context);
+    const body = await openConnectedPayments(page, context);
+
+    expect(
+      body,
+      "the narrow replacement did not render, so Stripe's cramped embeds are still what a phone gets",
+    ).toContain("needs a wider screen");
+    expect(body, "the replacement no longer says how to get the full view").toContain(
+      "turn a tablet sideways",
+    );
+    // The copy this replaced told an iPad owner their tablet was the problem.
+    expect(body).not.toContain("phone or tablet");
+    expect(body).not.toContain("needs a bigger screen");
+    // The route to the view built for touch is kept.
+    await expect(page.getByRole("link", { name: "Invoices" }).first()).toBeVisible();
+  });
 });
 
-// The other half of the pair. Replacing the embeds on touch is only correct if
-// a MOUSE still gets them — otherwise the fix is a feature removal wearing a
-// bug fix's clothes. Chromium reports a fine pointer by default, so this needs
-// no init script; it is the default branch.
-test("a mouse still gets Stripe's own dashboard, not the replacement", async ({
-  page,
-  context,
-}) => {
-  await installStubBackend(context);
-  await context.route("**/_serverFn/**", async (route) => {
-    const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
-    let name = "";
-    try {
-      const meta = JSON.parse(Buffer.from(decodeURIComponent(id), "base64url").toString());
-      name = String(meta.export ?? "").replace(/_createServerFn_handler$/, "");
-    } catch {
-      /* fall through */
-    }
-    if (name !== "getStripeConnectStatus") return route.fallback();
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        result: { connected: true, chargesEnabled: true, detailsSubmitted: true, accountId: "acct_test" },
-      }),
-    });
+test.describe("an iPad in landscape, 1032px with touch", () => {
+  test.use({ viewport: { width: 1032, height: 1376 }, hasTouch: true, isMobile: true });
+
+  test("a touch screen 1024px or wider gets Stripe's own dashboard", async ({ page, context }) => {
+    await reportACoarsePointer(context);
+    const body = await openConnectedPayments(page, context);
+
+    expect(
+      body,
+      "a 1032px iPad is getting the narrow replacement: the gate is keyed on touch again, not width",
+    ).not.toContain("needs a wider screen");
+    expect(body).not.toContain("needs a bigger screen");
+    expect(body, "the 1032px touch screen did not take the Stripe path").toMatch(
+      TOOK_THE_STRIPE_PATH,
+    );
   });
-  await installSignedInSession(context);
+});
 
-  await page.goto("/payments");
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(2500);
+// The other half of the pair. Gating on width is only correct if a MOUSE at
+// the same width still gets the embeds, unchanged from before #494. Chromium
+// reports a fine pointer by default, so this needs no init script.
+test.describe("a mouse at 1032px", () => {
+  test.use({ viewport: { width: 1032, height: 800 } });
 
-  const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  test("a mouse still gets Stripe's own dashboard, not the replacement", async ({
+    page,
+    context,
+  }) => {
+    const body = await openConnectedPayments(page, context);
 
-  // Proof of render: the dashboard was reached.
-  test.skip(
-    /No Stripe account connected yet/.test(body),
-    "the payments page reports no connected account, so there is no dashboard to check",
-  );
-
-  // The desktop branch tries to load Stripe. In this harness the fence blocks
-  // stripe.com, so it reaches the loading or error state — either proves it
-  // took the Stripe path rather than the replacement, which is the assertion.
-  expect(
-    body,
-    "a mouse is getting the touch replacement — the embeds have been removed for everyone",
-  ).not.toContain("needs a bigger screen");
+    expect(
+      body,
+      "a mouse is getting the narrow replacement: the embeds have been removed for everyone",
+    ).not.toContain("needs a wider screen");
+    expect(body).toMatch(TOOK_THE_STRIPE_PATH);
+  });
 });

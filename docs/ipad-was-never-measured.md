@@ -223,3 +223,38 @@ the four widths rather than replacing them — the Apple list stops at 1366, so
 the desktop end still needs the canonical sweep. It landed green: 462
 assertions, 8.4 minutes measured, zero failures. It is a ratchet, not a
 cleanup.
+
+## Oct 18, 2026: the payments gate is a width again, on purpose
+
+Everything above argues for keying on INPUT rather than width, and for touch
+SIZING that is still right. `/payments` took the argument one step too far.
+Stripe's Connect dashboards (Balance, Payouts, Payments, Business details)
+were gated on `(pointer: coarse)`, so every iPad got "needs a bigger screen"
+and was told to open the page on a computer, including a 1032px landscape iPad
+with room for the whole dashboard (#494).
+
+The question that gate answers is not "is this a finger" but "is there room for
+Stripe's layout", and that is a width. So `ConnectDashboard` now renders the
+embeds at `(min-width: 1024px)`, touch or mouse, and replaces them below it
+with `NeedsAWiderScreen`, which says the view needs a wider screen and points
+at Invoices (and at refunding from the invoice).
+
+What still applies:
+
+  * The controls inside Stripe's iframes are still small. The 2026-08-23 iPad
+    measurements ("Edit Amount" 60x10pt) are about Stripe's markup, and no CSS
+    of ours crosses the origin. On a coarse pointer the page now passes
+    Stripe's appearance variables (font size, spacing unit, button, input and
+    table row padding) to make them larger, but Stripe has no height or hit
+    area variable, so they are larger, not 44pt.
+  * Onboarding is never gated, at any width. It is how an account gets
+    connected at all.
+  * Touch target sizing on everything WE draw is still spelled `touch:`, never
+    `max-md:`. Showing or hiding a whole panel may key on width; how big a
+    control is for a finger may not.
+
+`tests/the-payments-gate-is-a-width-not-a-finger.test.ts` fails if the gate
+goes back to `(pointer: coarse)`, and
+`tests/viewports/the-billing-gate-in-every-state-it-ships.spec.ts` renders it
+at 390px with touch (replacement) and 1032px with touch and with a mouse
+(embeds).
