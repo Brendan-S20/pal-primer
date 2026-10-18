@@ -187,11 +187,14 @@ describe("messaging consent cannot be a condition of service", () => {
   });
 
   it("says texting is not live, and never claims an account never needs a text", () => {
-    for (const page of [legalSms, legalPrivacy]) {
-      expect(page.replace(/\s+/g, " ")).toMatch(
-        /Text messaging is coming soon and is pending carrier registration\./,
-      );
-    }
+    expect(legalSms.replace(/\s+/g, " ")).toMatch(
+      /Text messaging is coming soon and is pending carrier registration\./,
+    );
+    // #486: the privacy policy names two kinds of text; the one still pending
+    // is business-to-client texting.
+    expect(legalPrivacy.replace(/\s+/g, " ")).toMatch(
+      /Texting between a business and its own clients is coming soon and is pending carrier registration\./,
+    );
     expect(legalSms).not.toMatch(/never need to receive a text/i);
   });
 });

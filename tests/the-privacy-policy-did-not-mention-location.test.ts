@@ -20,9 +20,16 @@ const page = readFileSync(
 
 describe("the privacy policy on location", () => {
   it("says what is collected, how coarsely, and for how long", () => {
-    expect(page).toMatch(/approximate location \(rounded to about 100 meters\)/);
+    // #486: the position that reaches us is precise. Only the customer's view
+    // is rounded, and the page must not say otherwise.
+    expect(page).toMatch(
+      /precise location \(the phone&apos;s GPS position and its accuracy\) is sent to us/,
+    );
+    expect(page).toMatch(/rounded to about 100 meters before the customer sees it/);
+    expect(page).toMatch(/tell the business when the technician is likely to arrive late/);
     expect(page).toMatch(/until they start that visit, for at most two hours/);
     expect(page).toMatch(/Only the latest position is kept/);
+    expect(page).toMatch(/by a nightly cleanup/);
   });
 
   it("says it is off unless the business turns it on, and the technician can stop it", () => {
