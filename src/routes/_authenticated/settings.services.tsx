@@ -31,11 +31,13 @@ import {
   centsToDollarInput,
   defaultServiceLine,
   durationRequired,
+  isBookableServiceLine,
   parseDollarsToCents,
   priceUnitsFor,
   serviceDurationLabel,
   serviceLineChoices,
   serviceLineLabel,
+  serviceNamePlaceholder,
   servicePriceLabel,
   serviceProblem,
   type PriceUnit,
@@ -44,6 +46,7 @@ import {
 } from "@/lib/services";
 import type { ServiceLine } from "@/lib/service-lines";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { usePermissions } from "@/hooks/useMyRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -327,7 +330,7 @@ function ServiceForm({
           id="service-name"
           value={form.name}
           maxLength={80}
-          placeholder="30-minute walk"
+          placeholder={serviceNamePlaceholder(form.service_line)}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           required
         />
@@ -355,11 +358,19 @@ function ServiceForm({
           <SelectContent>
             {serviceLineChoices(lines, form.service_line).map((l) => (
               <SelectItem key={l} value={l}>
-                {serviceLineLabel(l)}
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 truncate">{serviceLineLabel(l)}</span>
+                  {!isBookableServiceLine(l) && <ComingSoonBadge />}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {!isBookableServiceLine(form.service_line) && (
+          <p className="text-xs text-muted-foreground">
+            Coming soon: you can set this up now, but clients can't book it yet.
+          </p>
+        )}
       </div>
 
       <fieldset className="space-y-1.5">

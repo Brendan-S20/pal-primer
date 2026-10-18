@@ -37,6 +37,14 @@ import {
 import { FakeDb } from "./support/fake-supabase";
 import { twoBusinesses, type FakeReceptionistDb } from "./support/fake-receptionist-store";
 
+// Walking and sitting are Coming soon (#506): today the receptionist neither
+// lists nor books them, which tests/a-coming-soon-service-is-not-offered.test.ts
+// pins. This file drives their path as it will run once the lines are bookable.
+vi.mock("@/lib/service-lines", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/service-lines")>()),
+  BOOKABLE_SERVICE_LINES: ["pet_waste", "dog_walking", "pet_sitting"],
+}));
+
 const read = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
 
 /** Every key, at any depth, that would carry a price. */

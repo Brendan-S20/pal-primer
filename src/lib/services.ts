@@ -223,6 +223,26 @@ export function serviceLineChoices(
   );
 }
 
+/** Whether clients can book a service on this line yet. The rest show as
+ *  Coming soon in Settings → Services, where an owner may still set them up. */
+export function isBookableServiceLine(line: ServiceLine): boolean {
+  return BOOKABLE_SERVICE_LINES.includes(line);
+}
+
+const SERVICE_NAME_EXAMPLE: Record<ServiceLine, string> = {
+  pet_waste: "Weekly yard cleanup",
+  dog_walking: "30-minute walk",
+  pet_sitting: "Overnight stay",
+  mobile_grooming: "Full groom",
+  training: "One-hour training session",
+  other: "Standard visit",
+};
+
+/** The Name field's placeholder on the Add service form, for the kind chosen. */
+export function serviceNamePlaceholder(line: ServiceLine): string {
+  return SERVICE_NAME_EXAMPLE[line] ?? SERVICE_NAME_EXAMPLE.other;
+}
+
 /** The line a new service starts on: the first one the business runs. */
 export function defaultServiceLine(orgLines: readonly ServiceLine[]): ServiceLine {
   return orgLines[0] ?? "pet_waste";

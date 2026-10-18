@@ -1536,6 +1536,17 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         .eq("organization_id", session.organizationId)
         .maybeSingle();
       service = svc ?? null;
+      // A line that is still Coming soon is never offered (oneOffServiceOptions),
+      // and the RPC does not know about launch lines, so a request that names
+      // one anyway is refused here, before anything is saved (#506).
+      const { BOOKABLE_SERVICE_LINES } = await import("@/lib/service-lines");
+      if (
+        service &&
+        !(BOOKABLE_SERVICE_LINES as readonly string[]).includes(service.service_line)
+      ) {
+        const { oneOffRefusalMessage } = await import("@/lib/one-off-booking");
+        throw new Error(oneOffRefusalMessage("service_not_offered"));
+      }
     }
     const petWaste = !service || service.service_line === "pet_waste";
     // A walk's window: one the card offered, or none. Refused before anything

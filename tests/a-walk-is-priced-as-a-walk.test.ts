@@ -450,10 +450,18 @@ const PW_SERVICE = {
 const WALK_SERVICE = { ...WALK, active: true };
 const UNPRICED = { ...WALK, id: "u", name: "Drop-in", base_price_cents: null, active: true };
 const RETIRED = { ...WALK, id: "r", name: "Old walk", active: false };
+// Walking is Coming soon (#506) and the portal does not offer it yet. These
+// drive the walk's portal path as it will run once the line is bookable;
+// tests/a-coming-soon-service-is-not-offered.test.ts pins today's list.
+const WALKING_LIVE = ["pet_waste", "dog_walking"];
 
 describe("the portal offers the business's services", () => {
   it("lists the extra cleanup at the one-off price and every active, priced service at its own", () => {
-    const opts = oneOffServiceOptions([UNPRICED, WALK_SERVICE, RETIRED, PW_SERVICE], 4500);
+    const opts = oneOffServiceOptions(
+      [UNPRICED, WALK_SERVICE, RETIRED, PW_SERVICE],
+      4500,
+      WALKING_LIVE,
+    );
     expect(opts.map((o) => o.id)).toEqual(["pw", "w"]);
     expect(opts[0]).toMatchObject({ id: "pw", name: "Pet waste removal", priceCents: 4500, perExtraPetCents: 0, petWaste: true });
     expect(opts[1]).toMatchObject({ id: "w", name: "30-minute walk", priceCents: 2500, perExtraPetCents: 500, petWaste: false });
@@ -469,7 +477,7 @@ describe("the portal offers the business's services", () => {
     // The card prices the chosen option for the address's pets with
     // oneOffPriceFor; bookOneOffVisit prices the service with servicePriceCents
     // for the property's active dog count. Same rule, same inputs.
-    const [pw, walk] = oneOffServiceOptions([PW_SERVICE, WALK_SERVICE], 4500);
+    const [pw, walk] = oneOffServiceOptions([PW_SERVICE, WALK_SERVICE], 4500, WALKING_LIVE);
     for (const pets of [1, 3]) {
       expect(oneOffPriceFor(walk, pets)).toBe(servicePriceCents(WALK_SERVICE, { pets }));
       // The extra cleanup has one price whatever the pets: the one-off price.
