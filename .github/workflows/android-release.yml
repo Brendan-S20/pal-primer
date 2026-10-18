@@ -1,0 +1,363 @@
+name: Android release
+
+# ── WHAT THIS DOES ──────────────────────────────────────────────────────────
+#
+# Builds the signed Android App Bundle that `npm run android:bundle` builds on
+# a laptop. Same steps, same order: npm ci, build:native, cap sync android,
+# gradle bundleRelease. Then it proves the bundle is signed, because an
+# unsigned bundle builds green (android/app/build.gradle leaves release
+# unsigned when no key is given, on purpose) and Play only refuses it at the
+# end.
+#
+# The product is the signed bundle as a run artifact,
+# houndstack-<versionName>-<versionCode>.aab (e.g. houndstack-1.0-142.aab),
+# kept 14 days, for uploading by hand in Play Console. Uploading it to Play
+# from here is OPTIONAL: it runs only when PLAY_SERVICE_ACCOUNT_JSON is set,
+# and is skipped cleanly, with a notice, when it is not.
+#
+# docs/play-store-submission.md section 7 is the runbook: how to run it, where
+# each secret comes from, and the versionCode scheme.
+#
+# ── SECRETS, BY NAME ───────────────────────────────────────────────────────
+#
+# Required (the run stops before building if any is empty):
+#
+#   ANDROID_KEYSTORE_BASE64    the upload keystore (.jks), base64-encoded
+#   ANDROID_KEYSTORE_PASSWORD  its store password
+#   ANDROID_KEY_ALIAS          the key alias, `upload`
+#   ANDROID_KEY_PASSWORD       the key password
+#
+# Optional (absent: no upload to Play, and the run still passes):
+#
+#   PLAY_SERVICE_ACCOUNT_JSON  a Google Cloud service account key (JSON) that
+#                              Play Console lets release this app
+#
+# The keystore must be the EXISTING upload key, the one already registered
+# with Play (SHA-256 DF:73:...:21:F1). A new key would build and sign fine and
+# be refused at upload: Play App Signing accepts uploads from one key only, and
+# changing it is a reset request that takes days. To produce the value, on
+# macOS:
+#
+#     base64 -i houndstack-upload.jks | pbcopy
+#
+# and paste it as the secret. The decoded file is written to $RUNNER_TEMP,
+# outside the checkout, and deleted at the end whether or not the job passed.
+#
+# ── versionCode ────────────────────────────────────────────────────────────
+#
+# Play refuses a bundle whose versionCode is not higher than every one it has
+# accepted, on any track. Play has accepted 1 and 2 (built by hand). From here:
+#
+#   * the `versionCode` input, when given; otherwise
+#   * github.run_number + 100, which goes up on every run of this workflow
+#     and starts well clear of 2.
+#
+# So a CI build no longer needs android/version.properties bumped and
+# committed. VERSION_NAME is still read from that file. The local path,
+# `npm run android:bundle`, still takes VERSION_CODE from the file, so whoever
+# builds locally must pick a code ABOVE the highest one CI has uploaded (set
+# ANDROID_VERSION_CODE, or edit the file); `npm run android:bump` only adds one.
+#
+# ── WHERE IT RUNS ──────────────────────────────────────────────────────────
+#
+# `ubuntu-latest`, written out, not `vars.UNIX_RUNNER || vars.CI_RUNNER` like
+# ci.yml. The job holds the upload key (and the Play credential, when set); on a hosted VM
+# that disk is destroyed when the job ends, on a self-hosted runner it is a
+# work directory on a machine that keeps everything. Same reasoning as
+# backup.yml, and the same known risk: if GitHub's hosted runners are still
+# not being allocated to this repository (docs/self-hosted-runner.md), the run
+# fails within seconds with no steps. That is the thing to fix, not the runner.
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play track to upload to (used only when PLAY_SERVICE_ACCOUNT_JSON is set)"
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+        default: internal
+      versionCode:
+        description: "versionCode for this bundle. Leave empty to use run_number + 100"
+        type: string
+        required: false
+        default: ""
+  # Off until the manual path above has uploaded at least once and been installed from Play.
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+
+# One release at a time, and never cancel one in flight: a cancelled upload
+# can leave a half-made edit in Play Console.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    name: Signed bundle for Google Play
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      # compileSdk/targetSdk are 36 (android/variables.gradle).
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0 platform-tools"
+
+      # Inputs reach the script as environment variables, never as `${{ }}`
+      # inside it: an expression is pasted into the script text before bash
+      # reads it, so an input could otherwise become a command.
+      - name: Choose the version
+        id: version
+        env:
+          INPUT_VERSION_CODE: ${{ inputs.versionCode }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          code="$(printf '%s' "${INPUT_VERSION_CODE:-}" | tr -d '[:space:]')"
+          if [ -z "$code" ]; then
+            code=$(( RUN_NUMBER + 100 ))
+          fi
+          if ! [[ "$code" =~ ^[1-9][0-9]{0,9}$ ]] || [ "$code" -gt 2100000000 ]; then
+            echo "::error::versionCode must be a positive integer no larger than 2100000000 (Play's limit); got '$code'"
+            exit 1
+          fi
+          # Play has accepted 1 and 2. Anything at or below that is refused at
+          # upload, after a ten-minute build; say so now instead.
+          if [ "$code" -le 2 ]; then
+            echo "::error::versionCode $code is not above 2, the highest Play has already accepted"
+            exit 1
+          fi
+          name="$(grep -E '^VERSION_NAME=' android/version.properties | head -1 | cut -d= -f2- | tr -d '[:space:]')"
+          if [ -z "$name" ]; then
+            echo "::error::android/version.properties has no VERSION_NAME"
+            exit 1
+          fi
+          # It becomes part of the artifact's file name, so nothing a path or
+          # an artifact name cannot hold.
+          if ! [[ "$name" =~ ^[0-9A-Za-z._-]+$ ]]; then
+            echo "::error::VERSION_NAME '$name' must be letters, digits, '.', '_' or '-'"
+            exit 1
+          fi
+          echo "ANDROID_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "versionCode $code, versionName $name"
+
+      # PLAY_SERVICE_ACCOUNT_JSON is optional. A step's `if:` cannot read a
+      # secret, so this turns "is it set" into an output the upload step can.
+      # Only its emptiness is tested; the value is never printed. No `exit 1`
+      # here: an absent credential means no upload, not a failed run.
+      - name: Is upload to Play set up
+        id: play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "play_upload=true" >> "$GITHUB_OUTPUT"
+            echo "PLAY_SERVICE_ACCOUNT_JSON is set: the bundle will be uploaded to Play"
+          else
+            echo "play_upload=false" >> "$GITHUB_OUTPUT"
+            echo "PLAY_SERVICE_ACCOUNT_JSON is not set: the bundle will be an artifact only, for upload by hand"
+          fi
+
+      # Runs package.json's postinstall (scripts/patch-native-plugins.mjs).
+      # Harmless here, and the same install Xcode Cloud does.
+      - run: npm ci
+
+      # What build:native needs from the environment: nothing. Checked
+      # against the code rather than assumed:
+      #   * scripts/build-native.mjs sets NATIVE_BUILD=1 itself; it is set
+      #     below as well, belt and braces.
+      #   * The Supabase URL and publishable key are literals in
+      #     src/integrations/supabase/client.ts; the VITE_SUPABASE_* override
+      #     is behind import.meta.env.DEV and compiled out of this build.
+      #   * NATIVE_API_ORIGIN defaults to https://app.houndstack.com
+      #     (vite.config.ts).
+      #   * The Sentry release is derived from GITHUB_SHA (vite.config.ts), and
+      #     the DSN has a public default (src/lib/monitoring/config.ts), so
+      #     VITE_SENTRY_DSN is only needed to override or switch it off.
+      #   * Google Maps: a build-time VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY
+      #     is used when present, and this build has none, so the app asks the
+      #     server for the key at runtime (getMapsBrowserKey, through the
+      #     origin above; src/lib/maps/google-loader.ts).
+      #   * Push: FCM_CONFIGURED is true because android/app/google-services.json
+      #     is committed, and it is in the checkout before this step.
+      # Xcode Cloud's ios/App/ci_scripts/ci_post_clone.sh sets nothing either.
+      - name: Build the web bundle for the app
+        env:
+          NATIVE_BUILD: "1"
+        run: npm run build:native
+
+      - name: Copy it into the Android project
+        run: |
+          set -euo pipefail
+          npx cap sync android
+          # A bundle with no index.html installs, launches to a white screen
+          # and passes every build check. The iOS script refuses it the same way.
+          if [ ! -f android/app/src/main/assets/public/index.html ]; then
+            echo "::error::cap sync produced no android/app/src/main/assets/public/index.html; the bundle would ship an empty WebView"
+            exit 1
+          fi
+          echo "web bundle present: $(find android/app/src/main/assets/public -type f | wc -l | tr -d ' ') files"
+
+      # Outside the checkout, so nothing that archives or uploads the
+      # workspace can pick it up. Values are only ever tested for emptiness,
+      # never printed.
+      - name: Put the upload key on disk
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::the $name secret is not set (Settings > Secrets and variables > Actions); see docs/play-store-submission.md section 7"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          if [ ! -s "$RUNNER_TEMP/upload.jks" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 decoded to an empty file"
+            exit 1
+          fi
+
+      # android/build-debug.sh does this locally, but it is zsh with macOS
+      # paths, so the two lines it needs are here instead.
+      - name: Build the signed bundle
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+          ANDROID_VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+          ./gradlew --no-daemon bundleRelease
+
+      # Matched on the text: jarsigner exits 0 for an UNSIGNED jar too
+      # ("jar is unsigned."), so its exit code cannot answer this.
+      - name: Prove the bundle is signed
+        run: |
+          set -euo pipefail
+          aab=android/app/build/outputs/bundle/release/app-release.aab
+          if [ ! -f "$aab" ]; then
+            echo "::error::no bundle at $aab"
+            exit 1
+          fi
+          out="$("$JAVA_HOME/bin/jarsigner" -verify "$aab" 2>&1 || true)"
+          if ! printf '%s\n' "$out" | grep -q '^jar verified'; then
+            printf '%s\n' "$out"
+            echo "::error::$aab is not signed; Play would refuse it"
+            exit 1
+          fi
+          echo "Signed: yes"
+          # A certificate fingerprint is public. Compare it with the upload
+          # key's SHA-256 in docs/play-store-submission.md (DF:73:...:21:F1).
+          "$JAVA_HOME/bin/keytool" -printcert -jarfile "$aab" | grep -E 'SHA256:' || true
+
+      - name: Remove the upload key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.jks"
+
+      # The file inside the artifact carries the same name as the artifact,
+      # so a downloaded bundle still says which build it is once unzipped.
+      - name: Name the bundle after its version
+        id: bundle
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          dir=android/app/build/outputs/bundle/release
+          cp "$dir/app-release.aab" "$dir/houndstack-${VERSION_NAME}-${VERSION_CODE}.aab"
+          ls -l "$dir/houndstack-${VERSION_NAME}-${VERSION_CODE}.aab"
+
+      # The main output. Kept whether or not Play takes it, so the bundle can
+      # be uploaded (or a refused upload retried) by hand in Play Console
+      # without a rebuild.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: houndstack-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}.aab
+          path: android/app/build/outputs/bundle/release/houndstack-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}.aab
+          retention-days: 14
+          if-no-files-found: error
+
+      # Only when PLAY_SERVICE_ACCOUNT_JSON is set (the `play` step above).
+      # status `completed` rolls the release out on the track (to everyone on
+      # it). Play requires it on internal, and it is what every track here
+      # wants. An app that has never been published past draft would need
+      # `draft` instead; this one has accepted releases already.
+      - name: Upload to Google Play
+        id: upload
+        if: steps.play.outputs.play_upload == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: consulting.thenorth.houndstack
+          releaseFiles: android/app/build/outputs/bundle/release/houndstack-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}.aab
+          track: ${{ inputs.track || 'internal' }}
+          status: completed
+          releaseName: ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
+
+      - name: Say where the bundle is
+        if: steps.play.outputs.play_upload != 'true'
+        env:
+          ARTIFACT: houndstack-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}.aab
+        run: |
+          echo "::notice title=Upload the bundle by hand::PLAY_SERVICE_ACCOUNT_JSON is not set, so nothing was sent to Play. The signed bundle is in this run's artifacts as $ARTIFACT; download it and upload it by hand in Play Console > Test and release > Testing > Internal testing > Create release."
+
+      # Runs after a failed Play upload too, as long as the bundle was built,
+      # so the summary still names the artifact to upload by hand.
+      - name: Summary
+        if: always() && steps.bundle.outcome == 'success'
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          PLAY_UPLOAD: ${{ steps.play.outputs.play_upload }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          TRACK: ${{ inputs.track || 'internal' }}
+        run: |
+          set -euo pipefail
+          artifact="houndstack-${VERSION_NAME}-${VERSION_CODE}.aab"
+          if [ "$PLAY_UPLOAD" != "true" ]; then
+            play="no (PLAY_SERVICE_ACCOUNT_JSON not set); upload the artifact by hand in Play Console"
+          elif [ "$UPLOAD_OUTCOME" = "success" ]; then
+            play="yes, to the $TRACK track"
+          else
+            play="attempted, did not succeed ($UPLOAD_OUTCOME); upload the artifact by hand in Play Console"
+          fi
+          echo "versionName \`$VERSION_NAME\`, versionCode \`$VERSION_CODE\`, artifact \`$artifact\`, Play upload: $play" >> "$GITHUB_STEP_SUMMARY"
