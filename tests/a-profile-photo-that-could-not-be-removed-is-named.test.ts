@@ -149,3 +149,37 @@ describe("removing the profile photo on account deletion", () => {
     expect(calls.signOut).toBe(1);
   });
 });
+
+describe("removeAvatarFolders refuses an id that is not a UUID", () => {
+  // The folder is `${orgId}/${userId}`. With an empty userId it becomes
+  // `${orgId}/`, which lists a whole org's photos and then removes them.
+  function spyAdmin() {
+    const list = vi.fn(async () => ({ data: [{ name: "a.jpg" }], error: null }));
+    const remove = vi.fn(async () => ({ data: [], error: null }));
+    return { admin: { storage: { from: vi.fn(() => ({ list, remove })) } }, list, remove };
+  }
+
+  it("an empty userId throws before anything is listed or removed", async () => {
+    const { removeAvatarFolders } = await import("@/lib/delete-account.functions");
+    const { admin, list, remove } = spyAdmin();
+    await expect(removeAvatarFolders(admin, [ORG], "")).rejects.toThrow();
+    expect(list).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('an orgId of "x" throws before anything is listed or removed', async () => {
+    const { removeAvatarFolders } = await import("@/lib/delete-account.functions");
+    const { admin, list, remove } = spyAdmin();
+    await expect(removeAvatarFolders(admin, ["x"], USER)).rejects.toThrow();
+    expect(list).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("one bad orgId among good ones still lists nothing", async () => {
+    const { removeAvatarFolders } = await import("@/lib/delete-account.functions");
+    const { admin, list, remove } = spyAdmin();
+    await expect(removeAvatarFolders(admin, [ORG, "x"], USER)).rejects.toThrow();
+    expect(list).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+});

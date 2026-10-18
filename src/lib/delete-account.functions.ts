@@ -58,6 +58,8 @@ const AVATAR_BUCKET = "avatars";
 const AVATAR_PAGE = 100;
 /** A stop for a folder that never empties, so the loop cannot spin. */
 const AVATAR_MAX_PAGES = 50;
+/** What a user or org id has to look like before it goes into a folder path. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Removes every file in each of the person's avatar folders.
@@ -72,6 +74,13 @@ export async function removeAvatarFolders(
 ): Promise<void> {
   // Null means the lookup failed. Not knowing the folders is a failed step.
   if (!orgIds) throw new Error("the person's organizations could not be read");
+  // The folder is `${orgId}/${userId}`. An empty or odd id would widen the
+  // listing to a whole org's photos (or the bucket root), so every id must be
+  // a UUID before anything is listed.
+  if (!UUID.test(userId)) throw new Error("refusing avatar removal: userId is not a UUID");
+  for (const orgId of orgIds) {
+    if (!UUID.test(orgId)) throw new Error("refusing avatar removal: an orgId is not a UUID");
+  }
   for (const orgId of orgIds) {
     const folder = `${orgId}/${userId}`;
     for (let page = 0; page < AVATAR_MAX_PAGES; page++) {
