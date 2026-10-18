@@ -197,7 +197,9 @@ function PrivacyPage() {
         <p>
           We keep your data while your account is active. You can delete your account yourself, from
           inside the app: open your profile and choose <strong>Delete my account</strong>. Deleting
-          removes your sign-in and access, and anonymizes your personal details.
+          removes your sign-in and access, anonymizes your personal details, deletes your profile
+          photo, and deletes the push notification tokens for your devices, so your phones stop
+          receiving {APP_NAME} notifications.
         </p>
         <p>
           Business records such as invoices, payments, service history, and audit logs may be
