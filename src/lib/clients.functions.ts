@@ -1373,10 +1373,10 @@ export const endClientHold = createServerFn({ method: "POST" })
  *  what the public SMS policy page says a HoundStack client agreed to. A
  *  carrier asks for this verbatim. */
 export const SMS_CONSENT_TEXT =
-  "I agree to receive service text messages about my appointments, visit " +
-  "updates, and billing from this business at the number provided. Consent " +
-  "is not a condition of purchase. Message and data rates may apply. Message " +
-  "frequency varies. Reply STOP to opt out or HELP for help.";
+  "I agree to receive text messages from this business at the number provided " +
+  "about my appointments, visit updates and billing. Consent is optional and " +
+  "is not a condition of purchase. Message frequency varies. " +
+  "Msg & data rates may apply. Reply STOP to opt out, HELP for help.";
 
 export const recordClientSmsConsent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

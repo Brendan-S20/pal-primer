@@ -187,7 +187,7 @@ describe("the wording is one string", () => {
     expect(c).toMatch(/export const SMS_CONSENT_TEXT/);
     // The four things a carrier looks for in the disclosure.
     expect(c).toMatch(/not a condition of purchase/i);
-    expect(c).toMatch(/Message and data rates may apply/i);
+    expect(c).toMatch(/Msg & data rates may apply/i);
     expect(c).toMatch(/frequency varies/i);
     expect(c).toMatch(/Reply STOP to opt out/i);
   });
