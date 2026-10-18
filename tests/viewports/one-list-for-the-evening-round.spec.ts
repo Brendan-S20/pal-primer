@@ -6,7 +6,7 @@
  *  - Reports, Analytics and Tax & accountant as tabs of one Reports area;
  *  - the dashboard's setup checklist folded to the next step on a phone;
  *  - invoice cards on a phone, most actionable first, with New invoice first;
- *  - Schedule lanes that stack at tablet width instead of truncating names.
+ *  - Schedule lanes at tablet width: one row, names not truncated (#495).
  */
 import { test, expect, type Page } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
@@ -238,9 +238,21 @@ test.describe("Schedule lanes at tablet width", () => {
               name: el.textContent ?? "",
               shown: Math.round(el.getBoundingClientRect().width),
               needs: el.scrollWidth,
+              // The lane's own top edge, not the title's: a title is centred
+              // against its lane's controls, which differ from lane to lane.
+              top: Math.round(
+                el.closest("[data-lane-header]")?.parentElement?.getBoundingClientRect().top ?? -1,
+              ),
             })),
         );
         expect(lanes.length).toBeGreaterThan(1);
+        // One row (#495). At 1032 the third tech used to wrap onto a second
+        // grid row below the fold; now a lane that does not fit is reached by
+        // scrolling the row sideways, at the same height as the rest.
+        expect(
+          new Set(lanes.map((l) => l.top)).size,
+          `${s.label}: lanes wrapped onto more than one row: ${JSON.stringify(lanes)}`,
+        ).toBe(1);
         for (const l of lanes) {
           // Either the whole name, or at least 150px of it: never "Alejandr…".
           expect(

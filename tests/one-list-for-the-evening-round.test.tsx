@@ -7,7 +7,7 @@
 //   * One Reports entry, whose three pages are tabs of one area.
 //   * The setup checklist on a phone shows the next step, not seven.
 //   * Invoices on a phone come most-actionable first.
-//   * Schedule lanes at tablet width stack rather than squeeze the tech's name.
+//   * Schedule lanes at tablet width keep the tech's name rather than squeeze it.
 
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -227,8 +227,12 @@ describe("one Inbox", () => {
 
 describe("Schedule lanes at tablet width", () => {
   const routes = read("src/routes/_authenticated/routes.tsx");
-  it("stack below 32rem of board instead of splitting it into two narrow lanes", () => {
-    expect(routes).toMatch(/@min-\[32rem\]:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4/);
+  it("never cut a lane narrower than a card needs", () => {
+    // The lanes used to stack below 32rem of board. Since #495 they stay in
+    // one row and the row scrolls instead, so the floor is per lane: 15rem,
+    // wide enough that the header below keeps the name.
+    // tests/board-lanes-stay-in-one-row.test.ts holds the rest of that rule.
+    expect(routes).toMatch(/flex-\[1_0_15rem\]/);
     expect(routes).not.toMatch(/@md:grid-cols-2/);
   });
   it("wrap the lane controls under the name rather than truncating the name", () => {
