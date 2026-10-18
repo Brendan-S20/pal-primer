@@ -524,6 +524,10 @@ xcrun simctl io <UDID> screenshot /tmp/warm.png   # should not be black
 Worth doing because otherwise the first test in the run absorbs the delay, and
 "the app was still painting" and "the app is broken" produce the same red.
 
+## The privacy manifest
+
+When a native dependency is added or upgraded, rescan it for required-reason APIs and update `ios/App/App/PrivacyInfo.xcprivacy`.
+
 ## Device QA that cannot be done any other way
 
 The static tests and the Chromium sweeps cover a lot, but not these. Each one
