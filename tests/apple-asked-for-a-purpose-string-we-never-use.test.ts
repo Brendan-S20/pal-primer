@@ -21,7 +21,23 @@ describe("location purpose strings", () => {
   });
 
   it("says, in the always string, that location is never used in the background", () => {
-    expect(purpose("NSLocationAlwaysAndWhenInUseUsageDescription")).toMatch(/never tracks your location in the background/);
+    expect(purpose("NSLocationAlwaysAndWhenInUseUsageDescription")).toMatch(
+      /never asks for location in the background or when the app is closed/,
+    );
+  });
+
+  // Live tracking sends a high accuracy fix that the server stores unrounded
+  // and uses to alert the office to a late arrival (#489). Only the
+  // customer's view is rounded, so neither string may call it approximate.
+  it("does not call the location approximate", () => {
+    expect(purpose("NSLocationWhenInUseUsageDescription")).not.toMatch(/approximate/i);
+    expect(purpose("NSLocationAlwaysAndWhenInUseUsageDescription")).not.toMatch(/approximate/i);
+  });
+
+  it("says, in the while-in-use string, that the location reaches HoundStack and the office", () => {
+    const whenInUse = purpose("NSLocationWhenInUseUsageDescription");
+    expect(whenInUse).toMatch(/is sent to HoundStack/);
+    expect(whenInUse).toMatch(/your office knows if you will be late/);
   });
 
   it("is true: no background location mode, and nothing asks for always-on location", () => {
