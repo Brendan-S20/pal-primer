@@ -14,8 +14,8 @@ import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
 import { isDemoOrganization } from "@/lib/demo-org";
-import { getMyOrg, getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
-import { BUSINESS_COUNTRIES } from "@/lib/distance-unit";
+import { getMyOrg } from "@/lib/org.functions";
+import { CountryCard } from "@/components/settings/CountryCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
@@ -142,66 +142,6 @@ function TimeZoneCard() {
               {tz.label}
             </option>
           ))}
-        </select>
-      </CardContent>
-    </Card>
-  );
-}
-
-// #496: the country decides whether stop distances read miles or km. Saved
-// through updateOrgBranding, the path that already writes the business's
-// address, and drawn for manage_settings only, like the time zone above.
-// "Other" stores null, and the app then decides from the browser's region and
-// the currency (orgDistanceUnit).
-function CountryCard() {
-  const qc = useQueryClient();
-  const getFn = useServerFn(getOrgBranding);
-  const updateFn = useServerFn(updateOrgBranding);
-  const q = useQuery({ queryKey: ["org-branding"], queryFn: () => getFn() });
-  const current = q.data?.country ?? null;
-  // A code the backfill or an earlier save stored that the short list does
-  // not name (PR, say) is still offered, so the select shows what is saved.
-  const options =
-    current && !BUSINESS_COUNTRIES.some((c) => c.value === current)
-      ? [...BUSINESS_COUNTRIES, { value: current, label: current }]
-      : BUSINESS_COUNTRIES;
-
-  const m = useMutation({
-    mutationFn: (country: string | null) => updateFn({ data: { country } }),
-    onSuccess: () => {
-      toast.success("Country saved");
-      qc.invalidateQueries({ queryKey: ["org-branding"] });
-      qc.invalidateQueries({ queryKey: ["my-org"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Country</CardTitle>
-        <CardDescription>
-          Where your business operates. Distances between stops show in miles for the United States
-          and in kilometres everywhere else.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Label htmlFor="org-country" className="text-xs">
-          Country
-        </Label>
-        <select
-          id="org-country"
-          value={current ?? ""}
-          disabled={q.isLoading || m.isPending}
-          onChange={(e) => m.mutate(e.target.value || null)}
-          className="mt-1 h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm disabled:opacity-60 touch:min-h-11"
-        >
-          {options.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-          <option value="">Other or not listed</option>
         </select>
       </CardContent>
     </Card>

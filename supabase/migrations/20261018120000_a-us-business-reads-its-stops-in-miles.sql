@@ -24,6 +24,8 @@
 --    c. currency = 'usd' and the timezone is a US zone: 'US'. A list of US
 --       zones rather than "anything under America/", because America/ is
 --       also Toronto, Mexico City and Bogota.
+--    c2. currency = 'usd' and America/Puerto_Rico or Pacific/Guam: 'PR' or
+--       'GU', the territory's own code, as in (a).
 --    d. currency = 'cad' and the timezone is a Canadian zone: 'CA'.
 --
 --    Anything else stays NULL, which the app treats as "ask the browser".
@@ -75,12 +77,22 @@ UPDATE public.organizations
        'America/Metlakatla', 'America/Adak', 'America/Menominee',
        'America/Indianapolis', 'America/Louisville', 'America/Fort_Wayne',
        'US/Eastern', 'US/Central', 'US/Mountain', 'US/Pacific', 'US/Arizona',
-       'US/Alaska', 'US/Hawaii', 'Pacific/Honolulu'
+       'US/Alaska', 'US/Hawaii', 'US/Aleutian', 'US/Michigan', 'Pacific/Honolulu'
      )
      OR timezone LIKE 'America/Indiana/%'
      OR timezone LIKE 'America/Kentucky/%'
      OR timezone LIKE 'America/North_Dakota/%'
    );
+
+-- c2. Dollars and a territory's clock: the territory's own code, as in (a).
+UPDATE public.organizations
+   SET country = CASE timezone
+         WHEN 'America/Puerto_Rico' THEN 'PR'
+         WHEN 'Pacific/Guam' THEN 'GU'
+       END
+ WHERE country IS NULL
+   AND lower(currency) = 'usd'
+   AND timezone IN ('America/Puerto_Rico', 'Pacific/Guam');
 
 -- d. Canadian dollars and a Canadian clock.
 UPDATE public.organizations

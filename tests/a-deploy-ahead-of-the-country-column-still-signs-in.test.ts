@@ -4,12 +4,17 @@
 // deploys before 20261018120000 is applied, that select fails and every
 // signed-in page with it. The readers and updateOrgBranding retry once
 // without `country`, but only for the error that names it: this pins which
-// errors those are, with the real messages Postgres and PostgREST send.
+// errors those are, with the real messages Postgres and PostgREST send. And
+// both say when they did it, so the Country card never reports a save that
+// stored nothing (the card's half is the-country-card-says-when-it-cannot-save).
 
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   isMissingCountryColumn,
   selectWithCountryFallback,
+  updateWithCountryFallback,
   withoutCountry,
 } from "@/lib/org-country-column";
 
@@ -102,7 +107,18 @@ describe("selectWithCountryFallback", () => {
         : { data: { id: "o1", currency: "usd" }, error: null };
     });
     expect(asked).toEqual(["id, country, currency", "id, currency"]);
-    expect(out).toEqual({ data: { id: "o1", currency: "usd", country: null }, error: null });
+    expect(out).toEqual({
+      data: { id: "o1", currency: "usd", country: null, country_column_missing: true },
+      error: null,
+    });
+  });
+
+  it("does not mark a row whose column is there, even when the country is null", async () => {
+    const out = await selectWithCountryFallback("id, country", async () => ({
+      data: { id: "o1", country: null },
+      error: null,
+    }));
+    expect(out.data).not.toHaveProperty("country_column_missing");
   });
 
   it("does not retry any other error", async () => {
@@ -117,5 +133,67 @@ describe("selectWithCountryFallback", () => {
     });
     expect(calls).toBe(1);
     expect(out.error).toBe(other);
+  });
+});
+
+describe("updateWithCountryFallback", () => {
+  const missing = () =>
+    new Error("Could not find the 'country' column of 'organizations' in the schema cache");
+
+  it("writes once and says the country was stored when the column is there", async () => {
+    const wrote: Record<string, unknown>[] = [];
+    const out = await updateWithCountryFallback({ country: "US", name: "Acme" }, async (p) => {
+      wrote.push(p);
+    });
+    expect(wrote).toEqual([{ country: "US", name: "Acme" }]);
+    expect(out).toEqual({ countryColumnMissing: false });
+  });
+
+  it("writes the rest without country and says so when the column is not there yet", async () => {
+    const wrote: Record<string, unknown>[] = [];
+    const out = await updateWithCountryFallback({ country: "US", name: "Acme" }, async (p) => {
+      wrote.push(p);
+      if ("country" in p) throw missing();
+    });
+    expect(wrote).toEqual([{ country: "US", name: "Acme" }, { name: "Acme" }]);
+    expect(out).toEqual({ countryColumnMissing: true });
+  });
+
+  it("does not write an empty patch when country was all there was", async () => {
+    let calls = 0;
+    const out = await updateWithCountryFallback({ country: "US" }, async () => {
+      calls++;
+      throw missing();
+    });
+    expect(calls).toBe(1);
+    expect(out).toEqual({ countryColumnMissing: true });
+  });
+
+  it("rethrows any other error, and the same error on a patch with no country", async () => {
+    const check = new Error(
+      'new row for relation "organizations" violates check constraint "organizations_country_iso2"',
+    );
+    await expect(
+      updateWithCountryFallback({ country: "us" }, async () => {
+        throw check;
+      }),
+    ).rejects.toBe(check);
+    const err = missing();
+    await expect(
+      updateWithCountryFallback({ name: "Acme" }, async () => {
+        throw err;
+      }),
+    ).rejects.toBe(err);
+  });
+
+  it("is what updateOrgBranding writes through, and its answer is returned", () => {
+    const fns = readFileSync(join(import.meta.dirname, "..", "src/lib/org.functions.ts"), "utf8");
+    const fn = fns.slice(fns.indexOf("export const updateOrgBranding"));
+    const body = fn.slice(0, fn.indexOf("\n  });"));
+    expect(body).toMatch(
+      /const \{ countryColumnMissing \} = await updateWithCountryFallback\(patch,/,
+    );
+    expect(body).toMatch(/return \{ ok: true, countryColumnMissing \};/);
+    expect(body).not.toMatch(/updateOwnOrg\(supabase, orgId, patch\)/);
   });
 });

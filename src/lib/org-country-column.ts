@@ -14,6 +14,11 @@
 // saves. Only an error that names `country` is forgiven; anything else, and a
 // second failure, still throws.
 //
+// Both say so when they did it: the row a reader returns carries
+// `country_column_missing: true`, and the writer answers
+// `countryColumnMissing: true`. The Country card reads those to say "can't be
+// saved yet" instead of claiming a save that nothing stored.
+//
 // Pure, no client imported: the caller passes the query in.
 
 type MaybeError = { code?: unknown; message?: unknown } | null | undefined;
@@ -42,7 +47,9 @@ export function withoutCountry(columns: string): string {
 }
 
 /** Run a select; if it failed only because `country` is not there yet, run it
- *  once more without it and answer `country: null`. */
+ *  once more without it and answer `country: null`, with
+ *  `country_column_missing: true` so a caller can tell "not set" from "cannot
+ *  be set". */
 // The callers' PostgREST builders are already `any` (the generated types lag
 // the migration), so the row stays `any` here rather than inventing a shape.
 export async function selectWithCountryFallback(
@@ -54,7 +61,39 @@ export async function selectWithCountryFallback(
   console.warn("organizations.country is not on this database yet; reading without it");
   const retry = await run(withoutCountry(columns));
   return {
-    data: retry.data ? { ...retry.data, country: null } : null,
+    data: retry.data ? { ...retry.data, country: null, country_column_missing: true } : null,
     error: retry.error,
   };
+}
+
+/** Run a write; if it failed only because the patch names `country` before the
+ *  column exists, write the rest once more without it. Answers whether that is
+ *  what happened, so the caller never reports a country it did not store. */
+export async function updateWithCountryFallback(
+  patch: Record<string, unknown>,
+  write: (patch: Record<string, unknown>) => PromiseLike<unknown>,
+): Promise<{ countryColumnMissing: boolean }> {
+  try {
+    await write(patch);
+    return { countryColumnMissing: false };
+  } catch (e) {
+    if (!("country" in patch) || !isMissingCountryColumn(e as Error)) throw e;
+    console.warn("organizations.country is not on this database yet; saved without it");
+    const { country: _notYet, ...rest } = patch;
+    if (Object.keys(rest).length) await write(rest);
+    return { countryColumnMissing: true };
+  }
+}
+
+/** What the card says while organizations.country is not on the database. */
+export const COUNTRY_NOT_YET = "Country can't be saved yet.";
+
+/** What a save answered, as the toast says it. "Saved" only when it was. */
+export function countrySaveOutcome(r: { countryColumnMissing?: boolean } | null | undefined): {
+  saved: boolean;
+  message: string;
+} {
+  return r?.countryColumnMissing
+    ? { saved: false, message: COUNTRY_NOT_YET }
+    : { saved: true, message: "Country saved" };
 }

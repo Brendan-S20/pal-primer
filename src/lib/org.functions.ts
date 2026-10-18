@@ -4,7 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { AuthedContext } from "@/lib/server-fn-context";
 import { accessTurnedOff, requirePermission } from "@/lib/authz.server";
 import { assertValidOrgName } from "@/lib/dna-linkage";
-import { isMissingCountryColumn, selectWithCountryFallback } from "@/lib/org-country-column";
+import { selectWithCountryFallback, updateWithCountryFallback } from "@/lib/org-country-column";
 
 const bootstrapSchema = z.object({
   orgName: z.string().min(1).max(120),
@@ -315,6 +315,8 @@ export const getOrgBranding = createServerFn({ method: "GET" })
       contact_email: string | null;
       contact_address: string | null;
       country: string | null;
+      /** Present only when the column is not on this database yet (#496). */
+      country_column_missing?: true;
       latitude: number | null;
       longitude: number | null;
       portal_reschedule_cutoff_hours: number;
@@ -375,15 +377,11 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     // email: an office manager "fixing" the reply-to used to get a success
     // toast while replies kept going to noreply@.
     const { updateOwnOrg } = await import("@/lib/org-write.server");
-    try {
-      await updateOwnOrg(supabase, orgId, patch);
-    } catch (e) {
-      // Before 20261018120000 is applied the whole update fails on `country`.
-      // Save everything else once more without it rather than lose the form.
-      if (!("country" in patch) || !isMissingCountryColumn(e as Error)) throw e;
-      console.warn("organizations.country is not on this database yet; saved without it");
-      const { country: _notYet, ...rest } = patch;
-      if (Object.keys(rest).length) await updateOwnOrg(supabase, orgId, rest);
-    }
-    return { ok: true };
+    // Before 20261018120000 is applied the whole update fails on `country`.
+    // Save everything else once more without it rather than lose the form,
+    // and say so: the Country card must not report a save that did not happen.
+    const { countryColumnMissing } = await updateWithCountryFallback(patch, (p) =>
+      updateOwnOrg(supabase, orgId, p),
+    );
+    return { ok: true, countryColumnMissing };
   });
