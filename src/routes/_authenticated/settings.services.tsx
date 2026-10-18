@@ -233,6 +233,7 @@ function ServicesPage() {
                       <Badge variant="secondary" className="shrink-0">
                         {serviceLineLabel(s.service_line)}
                       </Badge>
+                      {!isBookableServiceLine(s.service_line) && <ComingSoonBadge />}
                       {!s.active && (
                         <Badge variant="outline" className="shrink-0">
                           Inactive
