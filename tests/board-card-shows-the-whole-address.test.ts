@@ -7,8 +7,9 @@
 // street could not be told apart without opening each one.
 //
 // The card now gives the street its own line and the city and ZIP the next,
-// so a clamp can only cut the end of a street, and the full address is the
-// wrapper's `title` for anyone with a mouse.
+// The street may wrap to two lines whether or not a city line follows, so the
+// clamp never cuts a short street; the city and ZIP stay one truncated line.
+// The full address is the wrapper's `title` for anyone with a mouse.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,8 +37,14 @@ describe("VisitCardView's address", () => {
     expect(card).toMatch(
       /const cityLine = \[p\?\.city\?\.trim\(\), p\?\.postal_code\?\.trim\(\)\]/,
     );
-    // A street with a city line under it gets one line; alone it may take two.
-    expect(card).toMatch(/cityLine \? "truncate" : "line-clamp-2 break-words"/);
+    // The street may take two lines with or without a city line under it,
+    // and is never a one-line truncate; the city line stays one line.
+    const streetLine = card.match(/\{street && <div className=([^>]*)>\{street\}<\/div>\}/);
+    expect(streetLine).not.toBeNull();
+    expect(streetLine?.[1]).toMatch(/\bline-clamp-2\b/);
+    expect(streetLine?.[1]).toMatch(/\bbreak-words\b/);
+    expect(streetLine?.[1]).not.toMatch(/\btruncate\b/);
+    expect(streetLine?.[1]).not.toMatch(/cityLine/);
     expect(card).toMatch(/\{cityLine && <div className="truncate">\{cityLine\}<\/div>\}/);
   });
 

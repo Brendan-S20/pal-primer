@@ -2331,19 +2331,18 @@ function VisitCardView({
           {(() => {
             // Street on one line, city and ZIP on the next (#498). One
             // truncated line cut a lane's addresses off after a few words, so
-            // stops could not be told apart without opening each one. Two
-            // lines means the ellipsis can only ever cut the end of a street,
-            // never hide the city; a street with no city line under it may
-            // wrap to two lines instead. The whole address is the tooltip.
+            // stops could not be told apart without opening each one. The
+            // street may wrap to two lines whether or not a city line follows,
+            // so the clamp never cuts a short street; the city and ZIP stay
+            // one truncated line, three lines at most. The whole address is
+            // the tooltip.
             const street = p?.street?.trim() || "";
             const cityLine = [p?.city?.trim(), p?.postal_code?.trim()].filter(Boolean).join(" ");
             const full = [street, cityLine].filter(Boolean).join(", ");
             if (!full) return null;
             return (
               <div data-card-address="" className="text-muted-foreground" title={full}>
-                {street && (
-                  <div className={cityLine ? "truncate" : "line-clamp-2 break-words"}>{street}</div>
-                )}
+                {street && <div className="line-clamp-2 break-words">{street}</div>}
                 {cityLine && <div className="truncate">{cityLine}</div>}
               </div>
             );
