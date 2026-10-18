@@ -105,7 +105,7 @@ const ALLOWED: { file: string; text: RegExp; why: string }[] = [
   {
     file: "src/routes/_authenticated/imports.index.tsx",
     text: /Customer(s| ID)?\b/,
-    why: "the column and export names of Sweep&Go, Housecall Pro and GorillaDesk",
+    why: "the column and export names of Housecall Pro and GorillaDesk",
   },
   {
     file: "src/lib/imports.functions.ts",
