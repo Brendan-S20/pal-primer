@@ -117,7 +117,10 @@ test.describe("an office user on an iPad gets the icon rail", () => {
 
 // ── #499: from 1024 the column, and it remembers ─────────────────────────
 // Unit half: the same test file as row 34. Width decides, not the pointer,
-// so each size runs with a finger and with a mouse.
+// so each size runs with a finger and with a mouse. A first visit is the
+// icons below 1280 (SIDEBAR_EXPANDED_FROM) and the column from there; the
+// toggle and reload below then prove the saved choice wins either side of
+// that edge: expanded kept at 1024 and 1180, collapsed kept at 1366.
 for (const hasTouch of [true, false]) {
   test.describe(`from 1024px the column keeps its choice (${hasTouch ? "touch" : "mouse"})`, () => {
     test.use({ hasTouch });
@@ -125,7 +128,9 @@ for (const hasTouch of [true, false]) {
     for (const { w, h, expanded } of [
       { w: 1024, h: 1366, expanded: false },
       { w: 1032, h: 1376, expanded: false },
-      { w: 1180, h: 820, expanded: true },
+      { w: 1180, h: 820, expanded: false },
+      { w: 1279, h: 800, expanded: false },
+      { w: 1280, h: 800, expanded: true },
       { w: 1366, h: 1024, expanded: true },
     ]) {
       test(`@${w}px: ${expanded ? "expanded" : "the icons"} at first, and a toggle survives a reload`, async ({

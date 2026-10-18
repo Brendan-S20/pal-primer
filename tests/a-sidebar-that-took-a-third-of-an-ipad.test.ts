@@ -12,7 +12,9 @@
 // on every toggle and read by nothing. From 1024 the sidebar is now the
 // column, its toggle switches it between the icons and the labels beside
 // the page, and the choice is kept on the device. With no choice yet it is
-// expanded from 1180 and the icons below.
+// expanded from 1280 and the icons below, so a first visit on an iPad in
+// landscape keeps the invoice table and the board at full width; a saved
+// expand is kept at every width from 1024 and never collapsed for the person.
 //
 // The decision is lib/sidebar-shape.ts, so the breakpoints are checked here
 // as arithmetic; the browser half is
@@ -113,7 +115,7 @@ describe("the office sidebar's shape at each width", () => {
 });
 
 describe("the column remembers whether it is expanded (#499)", () => {
-  const WIDTHS = [1024, 1032, 1180, 1279, 1366];
+  const WIDTHS = [1024, 1032, 1180, 1279, 1280, 1366];
 
   it("a saved choice wins at every docked width, with a mouse or a finger", () => {
     for (const coarse of [false, true]) {
@@ -128,15 +130,29 @@ describe("the column remembers whether it is expanded (#499)", () => {
     }
   });
 
-  it("with no choice yet, expanded from 1180 and the icons below it", () => {
-    expect(SIDEBAR_EXPANDED_FROM).toBe(1180);
+  it("with no choice yet, expanded from 1280 and the icons below it", () => {
+    expect(SIDEBAR_EXPANDED_FROM).toBe(1280);
     for (const coarse of [false, true]) {
-      expect(officeSidebarAt(1024, null, coarse)).toBe("column collapsed");
-      expect(officeSidebarAt(1032, null, coarse)).toBe("column collapsed");
-      expect(officeSidebarAt(1179, null, coarse)).toBe("column collapsed");
-      expect(officeSidebarAt(1180, null, coarse)).toBe("column expanded");
-      expect(officeSidebarAt(1279, null, coarse)).toBe("column expanded");
-      expect(officeSidebarAt(1366, null, coarse)).toBe("column expanded");
+      for (const w of [1024, 1032, 1180, 1279]) {
+        expect(officeSidebarAt(w, null, coarse), `${w}px first visit, coarse=${coarse}`).toBe(
+          "column collapsed",
+        );
+      }
+      for (const w of [1280, 1366]) {
+        expect(officeSidebarAt(w, null, coarse), `${w}px first visit, coarse=${coarse}`).toBe(
+          "column expanded",
+        );
+      }
+    }
+  });
+
+  it("keeps an explicit expand below the default edge, and never collapses a saved choice", () => {
+    for (const coarse of [false, true]) {
+      // The owner who opened it on an iPad in landscape keeps it open.
+      expect(officeSidebarAt(1024, true, coarse)).toBe("column expanded");
+      expect(officeSidebarAt(1180, true, coarse)).toBe("column expanded");
+      // And one who closed it on a wide screen keeps it closed.
+      expect(officeSidebarAt(1366, false, coarse)).toBe("column collapsed");
     }
   });
 

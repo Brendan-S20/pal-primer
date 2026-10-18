@@ -23,8 +23,12 @@
 export const SIDEBAR_RAIL_BELOW = 1024;
 
 /** With no saved choice the column loads expanded from here, collapsed to
- *  the icons below it (#499: an iPad Air in landscape is 1180). */
-export const SIDEBAR_EXPANDED_FROM = 1180;
+ *  the icons below it. So a first visit at 1024, 1032 or 1180 (an iPad in
+ *  landscape) loads the icon rail, and the invoice table and the board keep
+ *  their full width. This is only the default: an explicit expand is kept at
+ *  every width from 1024, and a saved choice is never collapsed for the
+ *  person (#499). */
+export const SIDEBAR_EXPANDED_FROM = 1280;
 
 export type SidebarDocksFrom = "md" | "lg-mouse";
 export type SidebarShape = "sheet" | "rail" | "column";
