@@ -70,26 +70,29 @@ entered in Settings. No key = the tools are disabled with a clear prompt.
 
 ## 2. Plans & Billing — per-employee model  *(findings #6 / #51)*
 
-Plans are priced **per employee**: a flat base that includes N employees, plus
-**$10/mo per additional active employee**. Customers are unlimited on every
-plan. Stripe is in **sandbox** — no real charges.
+Plans are priced **per employee**: a flat base for a team-size range that
+includes N people, plus **$15/mo per extra person** ($150/yr on annual).
+Customers are unlimited on every plan. Stripe is in **sandbox**, so there are
+no real charges. These are the Oct 9, 2026 numbers (confirmed by Brendan on
+Oct 17).
 
 **A. Catalog**
 1. As platform admin, open **/platform/plans**. Confirm the three paid plans:
-   - **Launch** — $79/mo, 3 employees included.
-   - **Growth** — $199/mo, 10 employees included.
-   - **Scale** — $449/mo, 30 employees included.
-   - **Enterprise** — custom (no fixed price).
-   Each paid plan should show *"$10/employee/month"* for overage and *"N
-   employees included."*
+   - **Launch**: $79/mo, teams of 1 to 3, 1 person included.
+   - **Growth**: $199/mo, teams of 4 to 15, 5 people included.
+   - **Scale**: $449/mo, teams of 16 or more (no cap), 20 people included.
+   - **Enterprise**: custom (no fixed price and no extra-person price; the
+     overage column reads "By contract").
+   Each paid plan should show *"$15/employee/month"* for overage and the
+   number of people included.
 
 **B. Checkout (sandbox)**
 2. As the tenant **owner**, open **/billing**. Start a subscription / upgrade.
 3. On the Stripe checkout page, confirm:
    - The **base** line item matches the plan price ($79 / $199 / $449).
    - **If the org has more active employees than the plan includes**, a second
-     line item **"Per additional employee" × (overage count)** at $10 each
-     appears. (If the org is at/under the included seats, there's only the base
+     line item **"Per additional employee" × (overage count)** at $15 each
+     ($150 each on annual) appears. (If the org is at/under the included seats, there's only the base
      line — that's correct.)
 4. Pay with test card `4242 4242 4242 4242`.
    - **Expected:** redirect back with an "upgraded" state; **/billing** shows
