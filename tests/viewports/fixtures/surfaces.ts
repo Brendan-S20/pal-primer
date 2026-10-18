@@ -381,9 +381,9 @@ export const SURFACES: Surface[] = [
     // Was "750 AI actions". The card stopped selling the AI allowance on
     // 2026-10-03; the employee allowance is the fixture fact it still draws.
     // Was "Includes 10 employees" until the Oct 9 pricing (#388) reworded the
-    // card to "For teams of … · N active employees included"; the fixture's
-    // Growth plan still includes 10.
-    expectsData: "10 active employees included",
+    // card to "For teams of … · N active employees included". The fixture
+    // follows the Oct 9 catalog, so its Growth plan includes 5 (#491).
+    expectsData: "5 active employees included",
   },
   {
     // The pager shipped today, and it only exists past row 150.
