@@ -1,6 +1,6 @@
 // The only way to refund a customer was Stripe's embedded Payments panel on
-// /payments, and on a coarse pointer that panel is replaced by NotOnAPhone —
-// on purpose, its controls are too small to hit. So an owner in a driveway with
+// /payments, and below 1024px that panel is replaced by NeedsAWiderScreen,
+// on purpose: its controls are too small to hit. So an owner in a driveway with
 // a phone could not give anybody their money back. Refund now lives on the
 // invoice, where the money came in.
 //
@@ -606,7 +606,7 @@ describe("who is shown the button", () => {
 
   it("Stripe's panel, where a phone cannot reach, points at the invoice instead", () => {
     const src = read("src/routes/_authenticated/payments.tsx");
-    expect(src).toContain('<NotOnAPhone what="Payments" refunds />');
+    expect(src).toContain('<NeedsAWiderScreen what="Payments" refunds />');
     expect(src).toMatch(/open their invoice and press/);
   });
 });

@@ -80,6 +80,32 @@ export function followSystemTheme(): () => void {
   return () => mq.removeEventListener("change", onChange);
 }
 
+/** Is the dark class on <html> right now? What is painted, not what is
+ *  stored: the boot script and applyTheme are what put it there. */
+export function isDarkApplied(): boolean {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+}
+
+/** Call `onChange` whenever <html> gains or loses the dark class, whichever
+ *  path did it (setThemePref, followSystemTheme, the boot script). For things
+ *  our CSS cannot reach, like Stripe's iframes, that have to be told. Watches
+ *  the class rather than wrapping applyTheme so no caller can be missed.
+ *  Returns the unsubscribe. */
+export function watchDarkTheme(onChange: (dark: boolean) => void): () => void {
+  if (typeof document === "undefined" || typeof MutationObserver === "undefined") {
+    return () => {};
+  }
+  let dark = isDarkApplied();
+  const observer = new MutationObserver(() => {
+    const now = isDarkApplied();
+    if (now === dark) return;
+    dark = now;
+    onChange(now);
+  });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  return () => observer.disconnect();
+}
+
 /**
  * The same decision, as a string of JavaScript run in <head> before the first
  * paint. Without it a dark-mode user sees a white flash on every load: the

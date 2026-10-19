@@ -39,6 +39,8 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
+import { connectAppearanceFor } from "@/lib/connect-appearance";
+import { isDarkApplied, watchDarkTheme } from "@/lib/theme";
 
 function ResendVerification() {
   const sendFn = useServerFn(sendEmailVerification);
@@ -537,31 +539,49 @@ function ProcessingFeeCard() {
 // @stripe/connect-js on the client only; the Account Session is minted
 // server-side via createStripeAccountSession.
 /**
- * What a finger gets instead of a Stripe Connect embed.
+ * Stripe's Connect dashboards, or what a narrow screen gets instead of them.
  *
- * ── WHY THESE PANELS ARE NOT RENDERED ON A TOUCH DEVICE ───────────────────
+ * ── THE RULE: A WIDTH, NOT A FINGER ──────────────────────────────────────
+ *
+ * Below 1024px the Balance, Payouts, Payments and Business details panels are
+ * replaced by NeedsAWiderScreen. At 1024px and wider they render, touch or
+ * mouse, and so does Stripe's notification banner.
+ *
+ * Until 2026-10-18 the gate was `(pointer: coarse)`, which took the dashboards
+ * away from every iPad, including a 1032px landscape iPad with plenty of room
+ * for them, and told its owner to "open this page on a computer" (#494). A
+ * tablet turned sideways is the computer for a lot of the people using this.
+ *
+ * ── WHY ANYTHING IS GATED AT ALL ─────────────────────────────────────────
  *
  * Stripe's embedded components are iframes on Stripe's own origin. Their
- * internals cannot be restyled from here — no class, no CSS variable and no
- * amount of care on our side changes a control inside them.
+ * internals cannot be restyled from here: no class, no CSS variable and no
+ * amount of care on our side changes a control inside them. The appearance
+ * variables in connectAppearance() are the only lever, and they set fonts and
+ * padding, not heights.
  *
  * Measured on an iPad, 2026-08-23: "Edit Amount" 60x10pt (eight of them),
  * "Add Status" 66x10pt, "Update" 56x24pt, "Send email" and "See details"
  * 93x30pt, "Export" 63x30pt. Against a 44pt floor, on the page where the
- * organization's money lives. Mis-tapping "Edit Amount" at ten points high is
- * a worse outcome than not having the control on a phone at all.
+ * organization's money lives. That is still true inside the iframe at any
+ * width. What changed is the judgment: on a wide screen Stripe lays those
+ * panels out as the dashboard it designed, and the touch appearance makes
+ * the controls bigger where it can. On a phone the same panels are cramped
+ * tables of ten point links, and mis-tapping "Edit Amount" there is a worse
+ * outcome than not having the control at all.
  *
- * So on a coarse pointer these panels are replaced rather than shrunk. What
- * stays is what we render ourselves and can size properly: the balance
- * summary above, and a route to the day-to-day view people actually want,
- * which is our own invoice list.
+ * So below the width they are replaced rather than shrunk. What stays is what
+ * we render ourselves and can size properly: the balance summary above, and a
+ * route to the day-to-day view people actually want, which is our own invoice
+ * list (where refunds now live too).
  *
  * ── WHAT IS DELIBERATELY *NOT* GATED ──────────────────────────────────────
  *
  * Onboarding. Connecting Stripe at all goes through
  * `ConnectAccountOnboarding`, and hiding it would strand a tenant who only has
- * a phone — unable to start taking money, with no alternative inside the app.
+ * a phone, unable to start taking money with no alternative inside the app.
  * Stripe designs that flow for mobile; the dashboards are the part that is not.
+ * It renders at every width.
  *
  * This is a usability decision, not an App Review one. This is the tenant's own
  * money, which src/lib/app-store-billing.ts is explicit about never gating.
@@ -581,13 +601,14 @@ function MaybeConnectProvider({
   );
 }
 
-function NotOnAPhone({ what, refunds }: { what: string; refunds?: boolean }) {
+function NeedsAWiderScreen({ what, refunds }: { what: string; refunds?: boolean }) {
   return (
     <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-      <p className="font-medium text-foreground">{what} needs a bigger screen</p>
+      <p className="font-medium text-foreground">{what} needs a wider screen</p>
       <p className="mt-1">
-        Stripe&rsquo;s {what.toLowerCase()} view has controls too small to use reliably on a phone
-        or tablet, and we cannot resize them. Open this page on a computer for the full view.
+        Stripe&rsquo;s {what.toLowerCase()} view needs a wider screen than this one, and we cannot
+        resize its controls. Open this page on a larger screen, or turn a tablet sideways, for the
+        full view.
       </p>
       <p className="mt-2">
         For day-to-day work,{" "}
@@ -600,9 +621,9 @@ function NotOnAPhone({ what, refunds }: { what: string; refunds?: boolean }) {
         shows every charge with controls built for touch.
       </p>
       {/* Said outright on the Activity tab, because Stripe's panel used to be
-          the ONLY place a refund could be made, and "open this on a computer"
-          read as "you cannot refund anyone from here". You can: from the
-          invoice (refundInvoicePayment). */}
+          the ONLY place a refund could be made, and "open this on a larger
+          screen" read as "you cannot refund anyone from here". You can: from
+          the invoice (refundInvoicePayment). */}
       {refunds && (
         <p className="mt-2">
           To refund a client, open their invoice and press{" "}
@@ -611,6 +632,39 @@ function NotOnAPhone({ what, refunds }: { what: string; refunds?: boolean }) {
       )}
     </div>
   );
+}
+
+/**
+ * Stripe appearance for this device, from two facts that combine:
+ *
+ *   A finger (coarse pointer): bigger type and more padding inside the
+ *   iframes. A mouse keeps Stripe's sizes.
+ *   Dark mode (the "dark" class theme.ts puts on <html>): the app's dark
+ *   palette, so the panels are not white boxes on a dark page. Light mode
+ *   keeps Stripe's colours, which is the look the light page was reviewed in.
+ *
+ * The values, and their source in styles.css, are in src/lib/connect-appearance.ts.
+ *
+ * What Stripe lets us change (AppearanceVariables in @stripe/connect-js):
+ * fontSizeBase, spacingUnit, button and input padding, button label size,
+ * table row padding, colours, radii and the overlay type. What it does not:
+ * anything else inside the iframe. There is no height, min-height or hit-area
+ * variable, links styled as actions ("Edit Amount") take no padding variable
+ * at all, and no CSS of ours reaches across the origin. So this makes the
+ * controls larger, not 44pt; the width gate is what keeps them off a phone.
+ *
+ * Read when the instance is created, and again whenever the theme changes
+ * while the page is open (ConnectDashboard watches the class and calls
+ * instance.update()), so switching to dark in Preferences or a phone going
+ * dark at sunset repaints the panels without a reload. The pointer a device
+ * has does not change while the page is open, so nothing watches that.
+ */
+function connectAppearance() {
+  if (typeof window === "undefined") return undefined;
+  return connectAppearanceFor({
+    dark: isDarkApplied(),
+    coarse: window.matchMedia("(pointer: coarse)").matches,
+  });
 }
 
 function ConnectDashboard({
@@ -630,30 +684,47 @@ function ConnectDashboard({
   chargesEnabled: boolean;
   onOnboardingExit: () => void;
 }) {
-  // A coarse pointer, not a width. An iPad is 834pt wide and still a finger,
-  // which is exactly the substitution documented in docs/ipad-was-never-measured.md.
-  const isTouch = useMediaQuery("(pointer: coarse)");
+  // A width, not a pointer. 1024px is a landscape iPad (1024 to 1366) and every
+  // laptop; below it is a phone or a portrait tablet, where Stripe's panels
+  // are cramped tables of controls we cannot resize. The reasoning, and why it
+  // used to be `(pointer: coarse)`, is in the comment above MaybeConnectProvider.
+  const isWide = useMediaQuery("(min-width: 1024px)");
+  const narrow = !isWide;
+  // useMediaQuery answers false on the server and on the first client render,
+  // and only learns the real width in an effect. Deciding before then would
+  // draw NeedsAWiderScreen for a frame on every wide screen, and skip the
+  // session it then has to start a render later. So nothing is decided until
+  // `measured`: its effect runs right after useMediaQuery's, in the same
+  // flush, so both updates land in the same re-render.
+  const [measured, setMeasured] = useState(false);
+  useEffect(() => setMeasured(true), []);
+  // The dashboards are replaced, and the instance is not needed, only once the
+  // account is live. Before that the one Connect surface is onboarding, which
+  // renders at every width.
+  const replaced = narrow && chargesEnabled;
   const sessionFn = useServerFn(createStripeAccountSession);
   const [instance, setInstance] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    // NOTHING TO LOAD ON A FINGER. The three panels this instance exists to
-    // render are replaced by NotOnAPhone on a coarse pointer, so creating an
-    // account session and pulling in @stripe/connect-js would be work done for
-    // iframes that never appear — and a failure in it would blank a page whose
-    // touch content does not depend on Stripe at all. That is not theoretical:
-    // it is exactly what happened while testing this, and the dashboard showed
-    // "Couldn't load the payment dashboard" over content that needed no Stripe.
+    if (!measured) return;
+    // NOTHING TO LOAD ON A NARROW SCREEN. The panels this instance exists to
+    // render are replaced by NeedsAWiderScreen there, so creating an account
+    // session and pulling in @stripe/connect-js would be work done for iframes
+    // that never appear, and a failure in it would blank a page whose narrow
+    // content does not depend on Stripe at all. That is not theoretical: it is
+    // exactly what happened while testing the first version of this, and the
+    // dashboard showed "Couldn't load the payment dashboard" over content that
+    // needed no Stripe.
     // Only when there is a dashboard to skip. Onboarding is the one Connect
     // surface a phone must keep: it is how an account gets connected at all,
     // and Stripe designs that flow for mobile. Gating it would strand a tenant
     // who only has a phone, unable to start taking money with no alternative
     // in the app. So the instance is still created while `chargesEnabled` is
-    // false, and only skipped once the account is live and the tiny dashboards
-    // are what would have rendered.
-    if (isTouch && chargesEnabled) return;
+    // false, and only skipped once the account is live and the dashboards are
+    // what would have rendered.
+    if (replaced) return;
     let cancelled = false;
     setErr(null);
     setInstance(null);
@@ -668,6 +739,7 @@ function ConnectDashboard({
             const r = await sessionFn();
             return (r as any).clientSecret as string;
           },
+          appearance: connectAppearance(),
         });
         if (!cancelled) setInstance(inst);
       } catch (e) {
@@ -677,11 +749,22 @@ function ConnectDashboard({
     return () => {
       cancelled = true;
     };
-  }, [reloadKey, isTouch, chargesEnabled]);
+  }, [reloadKey, measured, replaced]);
 
-  // Both guards below are about the Stripe instance, which a touch device does
-  // not have and does not need.
-  if (err && !(isTouch && chargesEnabled))
+  // The theme can change under an open page (Preferences, or a phone on
+  // "System" going dark). The iframes cannot see our CSS, so tell Stripe.
+  useEffect(() => {
+    if (!instance) return;
+    return watchDarkTheme(() => {
+      instance.update({ appearance: connectAppearance() });
+    });
+  }, [instance]);
+
+  if (!measured) return <p className="text-sm text-muted-foreground">Loading payment dashboard…</p>;
+
+  // Both guards below are about the Stripe instance, which a narrow screen
+  // with a live account does not have and does not need.
+  if (err && !replaced)
     return (
       <div className="rounded-lg border bg-card p-4">
         <p className="text-sm text-destructive">Couldn't load the payment dashboard: {err}</p>
@@ -695,20 +778,21 @@ function ConnectDashboard({
         </Button>
       </div>
     );
-  if (!instance && !(isTouch && chargesEnabled))
+  if (!instance && !replaced)
     return <p className="text-sm text-muted-foreground">Loading payment dashboard…</p>;
 
   return (
-    <div className="space-y-5">
-      {/* No provider on touch: every Connect component beneath is replaced by
-          NotOnAPhone there, and the provider requires an instance this branch
-          deliberately never creates. */}
-      <MaybeConnectProvider instance={instance} skip={isTouch && chargesEnabled}>
+    <div className="min-w-0 space-y-5">
+      {/* No provider below 1024px once the account is live: every Connect
+          component beneath is replaced by NeedsAWiderScreen there, and the
+          provider requires an instance this branch deliberately never
+          creates. */}
+      <MaybeConnectProvider instance={instance} skip={replaced}>
         {/* Stripe's own alerting. Above the tabs, because "your account is
             restricted" is true on whichever tab you are looking at, and
             hiding it inside one of them means the tab you are NOT on is where
             the warning lives. */}
-        {!(isTouch && chargesEnabled) && <ConnectNotificationBanner />}
+        {!replaced && <ConnectNotificationBanner />}
         {!chargesEnabled ? (
           <ConnectCard title="Account setup">
             {(h) => <ConnectAccountOnboarding onExit={onOnboardingExit} {...h} />}
@@ -722,15 +806,23 @@ function ConnectDashboard({
            * scroll in which the thing you wanted was rarely on screen.
            *
            * Grouped by the question being asked:
-           *   Money    — "how much do I have, and when does it reach my bank"
+           *   Money:    "how much do I have, and when does it reach my bank"
            *              (balances and payouts answer that together; splitting
            *              them made you scroll between two halves of one answer)
-           *   Activity — "what did clients actually pay"
-           *   Account  — "my business details, and disconnecting"
+           *   Activity: "what did clients actually pay"
+           *   Account:  "my business details, and disconnecting"
            *
-           * Tabs unmount their content, so exactly one iframe is live. */
+           * Tabs unmount their content, so exactly one iframe is live.
+           *
+           * The tab row is one line at every width. Four short labels fit
+           * with room to spare at 1024px, but the primitive only scrolls
+           * below `md`, so from `md` up it is told to start at the left and
+           * scroll sideways rather than push the page wider if it ever
+           * cannot fit. `h-auto` because a scroller clips vertically too, and
+           * on a touch iPad the 44px triggers are taller than the fixed `h-9`
+           * the primitive gives a desktop row. */
           <Tabs defaultValue="money">
-            <TabsList>
+            <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
               <TabsTrigger value="money">Money</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
               {settings && <TabsTrigger value="fees">Fees &amp; tips</TabsTrigger>}
@@ -739,13 +831,13 @@ function ConnectDashboard({
 
             <TabsContent value="money" className="mt-4 space-y-4">
               <BalanceSummary />
-              {isTouch ? (
-                <NotOnAPhone what="Balance" />
+              {narrow ? (
+                <NeedsAWiderScreen what="Balance" />
               ) : (
                 <ConnectCard title="Balance">{(h) => <ConnectBalances {...h} />}</ConnectCard>
               )}
-              {isTouch ? (
-                <NotOnAPhone what="Payouts" />
+              {narrow ? (
+                <NeedsAWiderScreen what="Payouts" />
               ) : (
                 <ConnectCard
                   title="Payouts"
@@ -757,8 +849,8 @@ function ConnectDashboard({
             </TabsContent>
 
             <TabsContent value="activity" className="mt-4">
-              {isTouch ? (
-                <NotOnAPhone what="Payments" refunds />
+              {narrow ? (
+                <NeedsAWiderScreen what="Payments" refunds />
               ) : (
                 <ConnectCard
                   title="Payments"
@@ -776,8 +868,8 @@ function ConnectDashboard({
             )}
 
             <TabsContent value="account" className="mt-4 space-y-4">
-              {isTouch ? (
-                <NotOnAPhone what="Business details" />
+              {narrow ? (
+                <NeedsAWiderScreen what="Business details" />
               ) : (
                 <ConnectCard
                   title="Business details"
@@ -831,7 +923,7 @@ function ConnectCard({
     },
   };
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="min-w-0 rounded-lg border bg-card p-4">
       <div className="mb-2">
         <div className="text-sm font-medium">{title}</div>
         {hint && <div className="text-2xs text-muted-foreground">{hint}</div>}
@@ -858,7 +950,13 @@ function ConnectCard({
           {state === "loading" && (
             <p className="text-sm text-muted-foreground">Loading {title.toLowerCase()}…</p>
           )}
-          <div key={attempt} className={state === "loading" ? "hidden" : ""}>
+          {/* Stripe sizes its iframe to this box. If a panel is ever wider than
+              the content column (a wide table at 1024px), it scrolls here
+              rather than widening the page. */}
+          <div
+            key={attempt}
+            className={state === "loading" ? "hidden" : "max-w-full overflow-x-auto"}
+          >
             {children(handlers)}
           </div>
         </>
