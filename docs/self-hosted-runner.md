@@ -125,6 +125,42 @@ only to it queues for up to a day rather than failing, so set
 `VIEWPORTS_RUNNER` to `macOS` to send the sweep back to the Mac until it
 returns, then delete the variable.
 
+## Either machine takes the portable jobs (2026-10-18)
+
+GitHub-hosted minutes are billed and the free quota ran out in October 2026,
+almost all of it on 2026-10-10 while `WINDOWS_RUNNER_JSON` and
+`VIEWPORTS_RUNNER` pointed at `windows-latest` / `ubuntu-latest`. So every job
+that does not need a particular machine now asks for plain `self-hosted`,
+which both runners carry, and runs on whichever is online and idle:
+
+| job | runs on | why |
+|---|---|---|
+| `ci.yml` `verify` | either (`PORTABLE_RUNNER_JSON`, default `["self-hosted"]`) | npm, npx, Git Bash on the PC |
+| `sandboxes.yml` `changes`, `viewports`, `viewport-cases` | either (same variable) | git, bash, Playwright against a stub backend |
+| `ci.yml` `windows-probe` | the PC (`WINDOWS_RUNNER_JSON`) | its whole answer is "on Windows"; now main and manual runs only |
+| `ci.yml` `migrations`, `deployment`; `sandboxes.yml` `database` | the Mac (`UNIX_RUNNER = macOS`) | psql, Docker and the Supabase CLI. The PC's runner service has no Docker or Supabase CLI on its PATH, and every `database` run on it failed |
+| `backup.yml` | `ubuntu-latest`, on purpose | a production backup must not depend on a laptop being awake; about 2 minutes a day |
+| `android-release.yml` | `ubuntu-latest` | manual only |
+
+The Windows-only steps (Git Bash on PATH, the LF/renormalise pair) carry
+`if: runner.os == 'Windows'`, so the same job works on the Mac.
+
+`PORTABLE_RUNNER_JSON` moves the portable jobs without a commit:
+
+- unset: either self-hosted runner (default)
+- `["self-hosted","Windows","X64"]`: the PC only
+- `"ubuntu-latest"`: GitHub-hosted, billed. The npm Actions cache switches on
+  automatically for a `-latest` image.
+
+Trade-off: with both machines off, these jobs queue (up to 24 hours) instead
+of failing or costing money. That is the price of near-zero billed minutes.
+The viewport jobs have run 40-45 minutes on the Mac against their 45-minute
+ceiling; if they time out there, set `VIEWPORTS_TIMEOUT_MINUTES` or pin them
+back to the PC with the variable above.
+
+Concurrency: pull-request runs of the same branch cancel the superseded run.
+Runs on main and manual runs are never cancelled, not even while pending.
+
 ## What the machine needs
 
 The `verify` job installs its own Node — `actions/setup-node@v4` downloads
