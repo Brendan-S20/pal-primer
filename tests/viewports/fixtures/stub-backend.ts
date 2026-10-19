@@ -1038,6 +1038,7 @@ export const BASE_STUBS: Record<string, Stub> = {
     contact_phone: "+1 (312) 555-0142",
     contact_email: "office@whitfield-ramirez-yard-and-waste-services.example",
     contact_address: "4413 North Ravenswood Manor Terrace, Chicago, IL 60611",
+    country: fx.ORGANIZATION.country,
     latitude: 41.9632,
     longitude: -87.6745,
     portal_reschedule_cutoff_hours: 24,

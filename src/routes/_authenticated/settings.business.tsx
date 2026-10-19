@@ -15,6 +15,7 @@ import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
 import { isDemoOrganization } from "@/lib/demo-org";
 import { getMyOrg } from "@/lib/org.functions";
+import { CountryCard } from "@/components/settings/CountryCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
@@ -76,6 +77,7 @@ function BusinessDefaultsPage() {
           it. The server gates the write on manage_settings, so render it only
           for the people the server will listen to, like PricingBaselineCard. */}
       {canManageSettings && <TimeZoneCard />}
+      {canManageSettings && <CountryCard />}
       <ServiceLinesCard />
       <PricingBaselineCard />
       <CommercialAccountsCard />

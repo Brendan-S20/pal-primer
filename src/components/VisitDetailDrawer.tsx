@@ -7,6 +7,8 @@ import { skipReasonText } from "@/lib/skip-reason-text";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { orgLocalTime } from "@/lib/org-day";
+import { formatDistance } from "@/lib/measures";
+import { useDistanceUnit } from "@/hooks/useDistanceUnit";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sheet,
@@ -113,6 +115,7 @@ export function VisitDetailDrawer({
 }) {
   const open = !!visitId;
   const tz = useOrgTimezone();
+  const distanceUnit = useDistanceUnit();
   const qc = useQueryClient();
   const getDetail = useServerFn(getVisitDetail);
   // This drawer opens from /routes and /dashboard, and ROUTE_ROLES excludes
@@ -465,7 +468,7 @@ export function VisitDetailDrawer({
                 {v.eta_start && <div>ETA {orgLocalTime(v.eta_start, tz)}</div>}
                 {v.travel_km != null && (
                   <div>
-                    Drive {Number(v.travel_km).toFixed(1)} km ·{" "}
+                    Drive {formatDistance(v.travel_km, distanceUnit)} ·{" "}
                     {Math.round(Number(v.travel_min ?? 0))} min
                   </div>
                 )}

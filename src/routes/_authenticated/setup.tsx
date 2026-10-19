@@ -21,6 +21,7 @@ import {
   type OnboardingStepId,
 } from "@/lib/onboarding.functions";
 import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
+import { countryFromAddress } from "@/lib/distance-unit";
 import { setServiceLines } from "@/lib/org-features.functions";
 import type { ServiceLine } from "@/lib/service-lines";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
@@ -336,11 +337,16 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
       // does not run pet waste is asked where its day ends, not for a dump
       // site.
       if (linesChanged) await saveLinesFn({ data: { lines: linesVal } });
+      // The country, when the address says it plainly ("TX 78701" is US) and
+      // nobody has chosen one yet: it decides miles or km on the board
+      // (#496). A choice made in Settings > Business is never overwritten.
+      const country = b?.country ? undefined : (countryFromAddress(addressVal) ?? undefined);
       await saveBrandingFn({
         data: {
           name: nameVal.trim() || undefined,
           contactPhone: phoneVal.trim() || null,
           contactAddress: addressVal.trim() || null,
+          country,
         },
       });
       await saveDispatchFn({ data: { timezone: tzVal } });
