@@ -86,7 +86,7 @@ export function PortalBookingCard() {
             Shown to the client when they ask, and filled in when you book one. Leave it blank to
             price each request yourself.
             {otherServices &&
-              " Your other services (a walk, a sit, a groom) are offered at their own price from Settings → Services; one with no price yet is not offered."}
+              " Your other services are offered at their own price from Settings → Services once their kind of service is bookable; one marked Coming soon, or with no price yet, is not offered."}
           </p>
         </div>
 

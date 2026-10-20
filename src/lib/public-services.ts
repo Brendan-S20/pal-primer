@@ -43,8 +43,9 @@ function isServiceLine(v: unknown): v is ServiceLine {
  *
  * A row on a line that is still Coming soon (not in BOOKABLE_SERVICE_LINES)
  * is dropped too (#506): an owner may set up a walk before launch, and a
- * stranger must not be able to pick it. A follow-up migration puts the same
- * rule in public_services; this holds whether or not it has run. `bookable` is for tests, as in oneOffServiceOptions.
+ * stranger must not be able to pick it. public_services leaves it out as
+ * well (20261018150000); this is the same rule for a database that has not
+ * caught up. `bookable` is for tests, as in oneOffServiceOptions.
  */
 export function publicServiceChoices(
   raw: unknown,

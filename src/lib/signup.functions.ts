@@ -185,10 +185,11 @@ const SERVICE_NOT_OFFERED_ONLINE = "That service isn't offered online right now.
  * Refuses a service on a line that is still Coming soon (#506), before
  * public_quote is asked about it. The picker never lists one
  * (publicServiceChoices), so a request that names one anyway is a hand-built
- * body; it gets the words a refused service always got. Read with the
- * service role, scoped to the business the slug names. An id that is not that business's is left to
- * public_quote, which answers it with silence as before. A follow-up migration
- * makes public_quote ignore one too; this says so in words either way.
+ * body; it gets the words a refused service always got. Read with the service role, scoped to the
+ * business the slug names. An id that is not that business's is left to
+ * public_quote, which answers it with silence as before. public_quote also
+ * ignores a Coming soon service itself (20261018150000); this says so in
+ * words, and holds on a database that has not caught up.
  */
 async function refuseAComingSoonService(slug: string, serviceId: string | undefined) {
   if (!serviceId) return;

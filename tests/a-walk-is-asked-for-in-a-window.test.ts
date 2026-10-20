@@ -175,6 +175,8 @@ describe("the wiring, end to end", () => {
   });
 
   it("the services carry their line, so the card knows which one is a walk", () => {
+    // Walking is Coming soon (#506), so the portal does not offer it yet;
+    // this drives the path as it will run once the line is bookable.
     const [walk] = oneOffServiceOptions(
       [
         {
@@ -189,6 +191,7 @@ describe("the wiring, end to end", () => {
         } as any,
       ],
       null,
+      ["pet_waste", "dog_walking"],
     );
     expect(walk.serviceLine).toBe("dog_walking");
   });
