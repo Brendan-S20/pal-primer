@@ -354,7 +354,7 @@ function TimeClockSidebarItem({ collapsed }: { collapsed: boolean }) {
 }
 
 export function AppSidebar() {
-  const { state, isMobile, setOpenMobile, rail, railOpen, setRailOpen } = useSidebar();
+  const { state, isMobile, setOpenMobile, setRailOpen, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
 
@@ -364,7 +364,8 @@ export function AppSidebar() {
   // covering four seconds later. Closing on the PATHNAME rather than on each
   // link's onClick catches every route change, including the command palette
   // and anything added later that this file does not know about.
-  // The rail's overlay panel (below 1280px) closes on the same signal.
+  // The rail's overlay panel (below 1024px) closes on the same signal. The
+  // docked column's expanded or collapsed choice does not: that one is kept.
   useEffect(() => {
     if (isMobile) setOpenMobile(false);
     setRailOpen(false);
@@ -437,7 +438,7 @@ export function AppSidebar() {
     // in Arabic. The NEXT UP bar on My Day clears it with `start-` for the
     // same reason.
     <Sidebar collapsible="icon" side={dirFor(i18n.language) === "rtl" ? "right" : "left"}>
-      <SidebarHeader className={rail && !collapsed ? "flex-row items-center" : undefined}>
+      <SidebarHeader className={!isMobile && !collapsed ? "flex-row items-center" : undefined}>
         {/* When collapsed, the menu icons sit centered in a 2rem button within
             the icon rail; match that geometry exactly (same width, centered,
             no horizontal padding) so the mark lines up with the icon column. */}
@@ -459,20 +460,24 @@ export function AppSidebar() {
             <span className="truncate text-base font-semibold tracking-tight">{APP_NAME}</span>
           )}
         </Link>
-        {/* The rail's own way to the labels (below 1280px, QA row 34). The
-            panel opens over the page and closes on a route change, Escape,
-            a tap outside it, or this same button. */}
-        {rail && (
+        {/* The sidebar's own way to the labels and back, wherever it is
+            docked. Below 1024px (QA row 34) it opens the panel over the
+            page, which closes on a route change, Escape, a tap outside it,
+            or this same button. From 1024 it switches the column between
+            the icons and the labels beside the page, and the choice is kept
+            on this device (#499), the same as the header toggle and
+            Cmd/Ctrl+B. */}
+        {!isMobile && (
           <button
             type="button"
-            onClick={() => setRailOpen(!railOpen)}
-            aria-expanded={railOpen}
-            aria-label={railOpen ? t("nav.collapseMenu") : t("nav.expandMenu")}
-            title={railOpen ? t("nav.collapseMenu") : t("nav.expandMenu")}
+            onClick={toggleSidebar}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? t("nav.expandMenu") : t("nav.collapseMenu")}
+            title={collapsed ? t("nav.expandMenu") : t("nav.collapseMenu")}
             data-sidebar="rail-toggle"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground touch:h-11 touch:w-11"
           >
-            {railOpen ? (
+            {!collapsed ? (
               <PanelLeftClose className="h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />
             ) : (
               <PanelLeftOpen className="h-4 w-4 shrink-0 rtl:-scale-x-100" aria-hidden="true" />

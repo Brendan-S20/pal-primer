@@ -6,7 +6,15 @@ import { PanelLeft } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { nativeSidebarStyle } from "@/lib/native-build";
-import { SIDEBAR_RAIL_BELOW, sidebarShape, type SidebarDocksFrom } from "@/lib/sidebar-shape";
+import {
+  SIDEBAR_EXPANDED_FROM,
+  SIDEBAR_RAIL_BELOW,
+  readSidebarExpanded,
+  sidebarExpanded,
+  sidebarShape,
+  writeSidebarExpanded,
+  type SidebarDocksFrom,
+} from "@/lib/sidebar-shape";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -21,7 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
@@ -52,7 +60,7 @@ type SidebarContextProps = {
   isMobile: boolean;
   /** Where the sidebar stops being a sheet and docks. See SidebarProvider. */
   docksFrom: SidebarDocksFrom;
-  /** Docked, but below 1280px: an icon rail whose labelled panel opens over
+  /** Docked, but below 1024px: an icon rail whose labelled panel opens over
    *  the page instead of beside it. See SidebarProvider. */
   rail: boolean;
   /** The rail's labelled panel is open over the page. */
@@ -87,17 +95,22 @@ const SidebarProvider = React.forwardRef<
      *  docked column. They were two separate spellings of 768 that
      *  happened to agree, and no caller could move either. */
     docksFrom?: SidebarDocksFrom;
-    /** Below 1280px, dock as the icon rail with an overlay panel. Needs a
+    /** Below 1024px, dock as the icon rail with an overlay panel. Needs a
      *  `<Sidebar collapsible="icon">`; the platform console's offcanvas
      *  sidebar does not ask for it and keeps the full column. */
-    railBelowXl?: boolean;
+    railBelowLg?: boolean;
+    /** Keep the docked column's expanded or collapsed choice on this device
+     *  (lib/sidebar-shape.ts), in place of `defaultOpen`. The platform
+     *  console's offcanvas sidebar does not ask: collapsed there is hidden. */
+    rememberExpanded?: boolean;
   }
 >(
   (
     {
       defaultOpen = true,
       docksFrom = "md",
-      railBelowXl = false,
+      railBelowLg = false,
+      rememberExpanded = false,
       open: openProp,
       onOpenChange: setOpenProp,
       className,
@@ -115,18 +128,19 @@ const SidebarProvider = React.forwardRef<
     // ── THE RAIL (QA row 34) ─────────────────────────────────────────────
     //
     // At 820px, an iPad in portrait, the docked sidebar took 256px of the
-    // screen and left the page 564. Below 1280 it is now the icon rail, and
-    // its labelled panel opens OVER the page when asked for (the rail's own
+    // screen and left the page 564. Below 1024 it is the icon rail, and its
+    // labelled panel opens OVER the page when asked for (the rail's own
     // button, the header toggle, or Cmd/Ctrl+B), so the content keeps the
-    // width either way. From 1280 up nothing changed: the full column, and
-    // the toggle collapses it beside the page as before.
+    // width either way. From 1024 up it is the column, and the toggle
+    // collapses it to the icons beside the page (#499; it was the rail up
+    // to 1280, so an iPad in landscape could never keep the labels).
     //
-    // The open state is separate from `open`. That one is the desktop
-    // choice to keep the column collapsed; an overlay opened on a tablet is
-    // a moment, and closes on a route change (AppSidebar), on Escape and on
-    // a tap outside it (below).
+    // The open state is separate from `open`. That one is the choice to
+    // keep the column collapsed; an overlay opened below 1024 is a moment,
+    // and closes on a route change (AppSidebar), on Escape and on a tap
+    // outside it (below).
     const belowRail = useMediaMatch(`(max-width: ${SIDEBAR_RAIL_BELOW - 1}px)`);
-    const shape = sidebarShape({ belowDock, coarsePointer, belowRail, docksFrom, railBelowXl });
+    const shape = sidebarShape({ belowDock, coarsePointer, belowRail, docksFrom, railBelowLg });
     const isMobile = shape === "sheet";
     const rail = shape === "rail";
     const [railOpen, setRailOpen] = React.useState(false);
@@ -145,20 +159,37 @@ const SidebarProvider = React.forwardRef<
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
     const [_open, _setOpen] = React.useState(defaultOpen);
-    const open = openProp ?? _open;
+    // ── THE REMEMBERED CHOICE (#499) ─────────────────────────────────────
+    //
+    // The cookie below was written on every toggle and read by nothing, so
+    // a collapsed column came back expanded on every reload. The choice is
+    // read from this device in the first render: the signed-in shell is
+    // client only, so there is no server render for it to disagree with.
+    // With no choice yet the default follows the width, live, so turning
+    // an iPad from portrait to landscape still gets the right answer.
+    const [savedExpanded, setSavedExpanded] = React.useState<boolean | null>(() =>
+      rememberExpanded ? readSidebarExpanded() : null,
+    );
+    const belowExpandedDefault = useMediaMatch(`(max-width: ${SIDEBAR_EXPANDED_FROM - 1}px)`);
+    const open =
+      openProp ??
+      (rememberExpanded ? sidebarExpanded({ saved: savedExpanded, belowExpandedDefault }) : _open);
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
         const openState = typeof value === "function" ? value(open) : value;
         if (setOpenProp) {
           setOpenProp(openState);
+        } else if (rememberExpanded) {
+          setSavedExpanded(openState);
         } else {
           _setOpen(openState);
         }
+        if (rememberExpanded) writeSidebarExpanded(openState);
 
         // This sets the cookie to keep the sidebar state.
         document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
       },
-      [setOpenProp, open],
+      [setOpenProp, open, rememberExpanded],
     );
 
     // Helper to toggle the sidebar.

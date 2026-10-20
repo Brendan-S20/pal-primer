@@ -466,9 +466,11 @@ function WorkspaceShell() {
   }
 
   return (
-    // railBelowXl: under 1280px the docked sidebar is the icon rail and its
+    // railBelowLg: under 1024px the docked sidebar is the icon rail and its
     // labelled panel opens over the page (QA row 34, ui/sidebar.tsx).
-    <SidebarProvider docksFrom={docksFrom} railBelowXl>
+    // rememberExpanded: from 1024 the column's expanded or collapsed choice
+    // is kept on this device across reloads and sign outs (#499).
+    <SidebarProvider docksFrom={docksFrom} railBelowLg rememberExpanded>
       <div className="flex min-h-screen w-full bg-background" style={brandStyle}>
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">

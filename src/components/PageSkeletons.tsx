@@ -135,7 +135,15 @@ export function RoutePending() {
 export function ShellPending() {
   return (
     <div className="flex min-h-screen w-full bg-background">
-      <div aria-hidden="true" className="hidden w-64 shrink-0 border-e bg-sidebar md:block" />
+      {/* The sidebar's place, at the width the shell will most likely draw
+          it on a first visit: the icons below 1280px, the full column from
+          there (#499, SIDEBAR_EXPANDED_FROM in lib/sidebar-shape.ts). The
+          server cannot see the choice kept on the device, so a different
+          one moves this edge once, not twice. */}
+      <div
+        aria-hidden="true"
+        className="hidden w-12 shrink-0 border-e bg-sidebar md:block max-[1279px]:touch:w-15 min-[1280px]:w-64"
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <div
           aria-hidden="true"
