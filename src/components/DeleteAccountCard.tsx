@@ -63,6 +63,8 @@ const DELETION_STEP_NOTE: Record<DeletionStep, string> = {
     "Devices that were already signed in may still be signed in. If you are deleting because a device was lost or stolen, tell us that when you contact us so we can revoke them first.",
   billing:
     "The workspace subscription was not canceled, so billing may continue. Nothing further will be charged once we cancel it, and anything taken in the meantime is refundable.",
+  avatar:
+    "Your profile photo could not be removed. Email support@houndstack.com and we will remove it.",
 };
 
 export function DeleteAccountCard() {

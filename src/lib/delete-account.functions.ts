@@ -15,12 +15,14 @@
 // and does it in one transaction: the sole-owner refusal, the ownership
 // transfer, the workspace close, removing membership, and clearing the
 // personal columns off `staff` — including the start/end address and
-// coordinates, which for a technician is their home.
+// coordinates, which for a technician is their home. Since 20261018060000 it
+// also deletes the person's push subscriptions and Live Activity tokens.
 //
-// This file does the two things SQL cannot reach, in a deliberate order:
+// This file does the things SQL cannot reach, in a deliberate order:
 //
-//   1. the auth identity — email, phone and metadata, anonymised
-//   2. every session, revoked, so an open tab or a phone in a pocket stops
+//   1. the profile photo files in the "avatars" bucket, removed
+//   2. the auth identity: email, phone and metadata, anonymised
+//   3. every session, revoked, so an open tab or a phone in a pocket stops
 //      working rather than running on a token nobody can now log in to renew
 //
 // Plus cancelling the platform subscription when a workspace is closed, which
@@ -48,7 +50,51 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
  * deletion. Naming them is what lets the screen say which one, and lets a
  * `switch` over them fail to compile when a fourth is added.
  */
-export type DeletionStep = "billing" | "identity" | "sessions";
+export type DeletionStep = "billing" | "avatar" | "identity" | "sessions";
+
+/** Profile photos live at avatars/{org_id}/{user_id}/{timestamp}.{ext}. */
+const AVATAR_BUCKET = "avatars";
+/** One page of a Storage listing. Removed files drop out of the next page. */
+const AVATAR_PAGE = 100;
+/** A stop for a folder that never empties, so the loop cannot spin. */
+const AVATAR_MAX_PAGES = 50;
+/** What a user or org id has to look like before it goes into a folder path. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Removes every file in each of the person's avatar folders.
+ *
+ * Throws on the first Storage error, so the caller can record the step as
+ * incomplete. Exported for the DB test.
+ */
+export async function removeAvatarFolders(
+  admin: any,
+  orgIds: string[] | null,
+  userId: string,
+): Promise<void> {
+  // Null means the lookup failed. Not knowing the folders is a failed step.
+  if (!orgIds) throw new Error("the person's organizations could not be read");
+  // The folder is `${orgId}/${userId}`. An empty or odd id would widen the
+  // listing to a whole org's photos (or the bucket root), so every id must be
+  // a UUID before anything is listed.
+  if (!UUID.test(userId)) throw new Error("refusing avatar removal: userId is not a UUID");
+  for (const orgId of orgIds) {
+    if (!UUID.test(orgId)) throw new Error("refusing avatar removal: an orgId is not a UUID");
+  }
+  for (const orgId of orgIds) {
+    const folder = `${orgId}/${userId}`;
+    for (let page = 0; page < AVATAR_MAX_PAGES; page++) {
+      const { data, error } = await admin.storage
+        .from(AVATAR_BUCKET)
+        .list(folder, { limit: AVATAR_PAGE });
+      if (error) throw new Error(error.message);
+      const paths = ((data ?? []) as Array<{ name: string }>).map((f) => `${folder}/${f.name}`);
+      if (paths.length === 0) break;
+      const { error: removeError } = await admin.storage.from(AVATAR_BUCKET).remove(paths);
+      if (removeError) throw new Error(removeError.message);
+    }
+  }
+}
 
 export const listOwnershipTransferCandidates = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -107,6 +153,28 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 0. Which orgs hold this person's avatar folders. Read now, because the
+    //    RPC deletes user_roles. The staff row stays, but read it too: a
+    //    person can have a staff row in an org with no membership left. A
+    //    failed read only costs the avatar step, so it does not throw.
+    let avatarOrgIds: string[] | null = null;
+    try {
+      const [roles, staff] = await Promise.all([
+        supabaseAdmin.from("user_roles").select("organization_id").eq("user_id", userId),
+        supabaseAdmin.from("staff").select("organization_id").eq("user_id", userId),
+      ]);
+      if (roles.error) throw new Error(roles.error.message);
+      if (staff.error) throw new Error(staff.error.message);
+      const ids = [...(roles.data ?? []), ...(staff.data ?? [])]
+        .map((r: any) => r.organization_id as string | null)
+        .filter((id): id is string => !!id);
+      avatarOrgIds = [...new Set(ids)];
+    } catch (e) {
+      console.error("account deletion: avatar org lookup failed", (e as Error).message);
+    }
+
     // 1. The database half, atomically. Throws for a sole owner who has not
     //    said what should happen to the business; that message is written for
     //    the person reading it and is surfaced verbatim by the UI.
@@ -119,11 +187,9 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
     const orgId = (result as any)?.organization_id as string | null;
     const closed = !!(result as any)?.workspace_closed;
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
     // ── WHAT DID NOT HAPPEN, RATHER THAN A BARE ok ──────────────────────
     //
-    // The three steps below are best effort ON PURPOSE and that does not
+    // The steps below are best effort ON PURPOSE and that does not
     // change: the database half has already committed, and a Stripe outage or
     // a GoTrue hiccup must not leave somebody unable to delete their account.
     // Each reason is argued at its own step.
@@ -142,6 +208,9 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
     //   sessions  every already-signed-in device stays signed in. A deletion
     //             done because a laptop was lost does not achieve the thing it
     //             was done for.
+    //   avatar    the profile photo files are still in Storage. Nobody can
+    //             reach them without the service role, but the privacy
+    //             policy says deletion removes them.
     //
     // So they are named and returned. The caller decides what to say; what it
     // must not do any more is claim a clean deletion it cannot vouch for.
@@ -175,7 +244,18 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
       }
     }
 
-    // 3. Anonymise the auth identity. The address has to become something that
+    // 3. Remove the profile photo files. The RPC cleared staff.avatar_url,
+    //    but the files stay in Storage, and older uploads can sit beside the
+    //    current one. SQL cannot delete a Storage object, so it happens here,
+    //    with the service role, for every org folder read in step 0.
+    try {
+      await removeAvatarFolders(supabaseAdmin, avatarOrgIds, userId);
+    } catch (e) {
+      incomplete.push("avatar");
+      console.error("account deletion: avatar removal failed", (e as Error).message);
+    }
+
+    // 4. Anonymise the auth identity. The address has to become something that
     //    can never receive mail and can never collide with a real signup, so
     //    the account cannot be resurrected by password reset and the address is
     //    freed for genuine reuse.
@@ -192,7 +272,7 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
       console.error("account deletion: identity anonymisation failed", (e as Error).message);
     }
 
-    // 4. Revoke every session, last. Doing this earlier would cut the caller's
+    // 5. Revoke every session, last. Doing this earlier would cut the caller's
     //    own connection mid-way through the steps above and leave the account
     //    half-deleted with no way back in to finish.
     try {
