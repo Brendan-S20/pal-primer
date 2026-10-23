@@ -170,8 +170,8 @@ function SetupPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Set up your business</h1>
           <p className="text-sm text-muted-foreground">
-            {completed} of {steps.length} done. Each step takes a minute, and you can come back to
-            any of them.
+            {completed} of {steps.length} done. Each step takes a minute, and you can come back
+            to any of them.
           </p>
         </div>
         <Button variant="ghost" onClick={finishLater} data-setup-action="later">
@@ -266,11 +266,7 @@ function SetupPage() {
                 {isLast ? "Done" : "Next"}
               </Button>
             ) : (
-              <Button
-                variant="ghost"
-                onClick={forward}
-                data-setup-action={isLast ? "done" : "skip"}
-              >
+              <Button variant="ghost" onClick={forward} data-setup-action={isLast ? "done" : "skip"}>
                 {isLast ? "Skip and finish" : "Skip for now"}
               </Button>
             )}

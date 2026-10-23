@@ -212,15 +212,17 @@ export const upsertSkipRule = createServerFn({ method: "POST" })
     // Skip-billing rules set how much a skipped visit still bills — a billing
     // settings action (owner/office_manager), not dispatcher-reachable (I7).
     const orgId = (await requirePermission(supabase, userId, "manage_settings")).orgId;
-    const { error } = await supabase.from("skip_billing_rules").upsert(
-      {
-        organization_id: orgId,
-        reason_code: data.code,
-        billable_pct: data.billablePct,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "organization_id,reason_code" },
-    );
+    const { error } = await supabase
+      .from("skip_billing_rules")
+      .upsert(
+        {
+          organization_id: orgId,
+          reason_code: data.code,
+          billable_pct: data.billablePct,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "organization_id,reason_code" },
+      );
     if (error) throw new Error(error.message);
     return { ok: true };
   });
