@@ -150,6 +150,10 @@ export const loadOnboardingStatus = createServerOnlyFn(
       ? { areaDone, done: (pricedPackages.count ?? 0) > 0 && (skills.count ?? 0) > 0 }
       : undefined;
 
+    const grooming = orgLines.includes("mobile_grooming");
+    const groomingSetup = grooming
+      ? await supabase.from("organizations").select("groom_setup_reviewed_at").eq("id", orgId).maybeSingle()
+      : null;
     const o = (org.data ?? {}) as {
       contact_address?: string | null;
       stripe_connect_charges_enabled?: boolean | null;
@@ -237,10 +241,11 @@ export const loadOnboardingStatus = createServerOnlyFn(
         description: training
           ? "Where you work and what you charge per visit, and the price of your lesson package and the skills a trainer scores. Clients are quoted these prices."
           : "Where you work and what you charge per visit. New clients in the area are quoted this price.",
-        done: areaDone && (!training || training.done),
+        done: areaDone && (!training || training.done) && (!grooming || !!groomingSetup?.data?.groom_setup_reviewed_at),
         to: "/setup",
         cta: "Set your price",
         gate: "/zones",
+        ...(grooming ? { alt: { to: "/settings/services", cta: "Review grooming setup", gate: "/settings/services" } } : {}),
         ...(training
           ? {
               training,

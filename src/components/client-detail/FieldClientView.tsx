@@ -29,16 +29,18 @@ const DOG_TEMPERAMENTS = new Set(["friendly", "nervous", "aggressive", "unknown"
 /** The sizes the office's dog form offers, worded by `fieldClient.dogSize.<size>`.
  *  weight_class is free text (an import keeps whatever it was given), so
  *  anything else is shown as the office wrote it. */
-const DOG_SIZES = new Set(["small", "medium", "large", "giant"]);
+const DOG_SIZES = new Set(["small", "medium", "large", "giant", "xlarge"]);
 
 export function FieldClientView({
   client,
   properties,
   dogs,
+  grooming = false,
 }: {
   client: any;
   properties: any[];
   dogs: any[];
+  grooming?: boolean;
 }) {
   const { t } = useTranslation();
   useDocumentTitle(
@@ -63,6 +65,7 @@ export function FieldClientView({
         DOG_SIZES.has(size) ? t(`fieldClient.dogSize.${size}`) : <bdi>{d.weight_class}</bdi>,
       );
     }
+    if (grooming && d.coat_type) parts.push(t(`fieldClient.coatType.${d.coat_type}`));
     if (d.temperament) {
       parts.push(
         DOG_TEMPERAMENTS.has(d.temperament) ? (
@@ -208,6 +211,9 @@ export function FieldClientView({
                             </span>
                           )}
                         </div>
+                        {d.vaccine_status && (
+                          <span className="inline-block rounded-md border px-2 py-1 text-xs">{t(`vaccineStatus.${d.vaccine_status}`)}</span>
+                        )}
                         {details.length > 0 && (
                           <div className="text-xs text-muted-foreground">
                             {details.map((part, i) => (

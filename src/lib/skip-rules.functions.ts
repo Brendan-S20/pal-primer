@@ -183,11 +183,21 @@ export const LESSON_SKIP_REASON_LABELS: Record<(typeof LESSON_SKIP_REASON_CODES)
     other: "Other",
   };
 
+export const GROOM_SKIP_REASON_CODES = [
+  "dog_outside",
+  "no_one_home",
+  "access_blocked",
+  "unsafe_conditions",
+  "weather",
+  "other",
+] as const;
+
 /** The picker's list for a stop on this service line. */
 export function techSkipReasonCodes(line: string | null | undefined): readonly string[] {
   if (line === "pet_sitting") return Object.keys(SIT_SKIP_REASON_LABELS);
   if (line === "dog_walking") return WALK_SKIP_REASON_CODES;
   if (line === "training") return LESSON_SKIP_REASON_CODES;
+  if (line === "mobile_grooming") return GROOM_SKIP_REASON_CODES;
   return TECH_SKIP_REASON_CODES;
 }
 

@@ -260,7 +260,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Refer a business: earn cash for referrals",
     section: "Client-facing",
     body: [
-      "Know another pet-service business that could use HoundStack? Share your referral link from [Refer a business](/settings/referrals).",
+      "Know another pet service business that could use HoundStack? Share your referral link from [Refer a business](/settings/referrals).",
       "When a business signs up through your link and becomes a paying customer, you earn a percentage of their first payment, paid out in cash after they've stayed active through a short holding period. Progress shows on the same page.",
     ],
     appLink: { to: "/settings/referrals", label: "Open Refer a business" },

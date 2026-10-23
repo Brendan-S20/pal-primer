@@ -218,34 +218,54 @@ describe("no trigger function is executable by a signed-in user", () => {
     // REST write adding a line that is still Coming soon. REVOKEd in the
     // same file.
     // 67 -> 72 on 2026-10-16 (pet sitting, #411): tg_pet_care_instructions_pet
-    // (20261024080000) keeps a pet's care in the pet's business;
+    // (20261023120000) keeps a pet's care in the pet's business;
     // tg_stays_validate, tg_stays_follow, tg_subscriptions_stay and
-    // tg_visits_stay_sitter (20261024080100) keep a stay, its plans and its
+    // tg_visits_stay_sitter (20261023120100) keep a stay, its plans and its
     // sitter consistent. validate_walk_group_member is restated there, not
     // new. Each REVOKEd from PUBLIC, anon and authenticated in the same file.
     //
-    // 72 -> 73 on 2026-10-16 (20261024080300): tg_stays_invoice_guard
+    // 72 -> 73 on 2026-10-16 (20261023120300): tg_stays_invoice_guard
     // keeps confirmation and invoice links on the transactional booking path.
     // It revokes EXECUTE from PUBLIC, anon and authenticated in the same file.
     // The 20261017 stay migrations re-create tg_stays_validate,
     // tg_stays_follow and tg_stays_invoice_guard; none of them is new.
     //
-    // 68 -> 75 on 2026-10-23 (20261023100000, a trainer sells a package of
+    // 73 -> 80 on 2026-10-16 (20261023120600, a trainer sells a package of
     // sessions): training_service_package_guard, training_client_package_guard,
     // training_visit_package_guard, training_package_recount,
     // training_subscription_package_guard, training_skill_guard and
     // training_progress_row_guard. Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
     //
-    // 75 -> 76 on 2026-10-23 (20261023110000, training cancel and no-show):
+    // 80 -> 81 on 2026-10-16 (20261023120800, training cancel and no-show):
     // training_lesson_session_rule, which decides whether a missed or late
     // canceled package lesson uses a session. REVOKEd from PUBLIC, anon and
     // authenticated in the same file. That file also re-creates four of the
-    // package guards, and 20261023130000 re-creates
+    // package guards, and 20261023121200 re-creates
     // training_lesson_session_rule; none of them is new.
     //
-    // Both branches merged (pet sitting #411 and training #476): 68 + 6 + 8.
-    expect(triggerFunctions().size).toBe(82);
+    // The grooming lines below were counted on the grooming branch, from a
+    // base of 69.
+    //
+    // 69 -> 71 (mobile grooming): tg_service_size_rules_service derives the
+    // tenant from the groom, and pet_vaccinations_before_write derives the
+    // tenant, validates the document path and caps portal records. Both
+    // revoked in their files.
+    // 71 -> 74 (20261023121000): tg_visits_groom_plan_stamp copies a groom
+    // plan onto every visit it generates, tg_visits_groom_plan_addons charges
+    // the plan's add-ons when a groom is completed, and
+    // tg_pet_groom_notes_before_write derives a note's tenant from its visit.
+    // All three revoked in that file.
+    // 74 -> 75 (20261023121100): pet_vaccinations_review_stamp takes the
+    // reviewer who rejected a portal upload from the session. Revoked there.
+    // 75 -> 76 (20261023122300): tg_visits_groom_plan_addons_void voids a
+    // groom's add-on charges when the visit leaves completed. Revoked there.
+    // 76 -> 77 (20261023122400): tg_visits_groom_no_overlap refuses a groom
+    // that overlaps another for the same groomer. Revoked there.
+    //
+    // 81 -> 89 (mobile grooming stacked on training, #477): the eight above,
+    // none of them created by the walking, sitting or training migrations.
+    expect(triggerFunctions().size).toBe(91);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

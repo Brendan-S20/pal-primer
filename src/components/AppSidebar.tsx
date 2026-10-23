@@ -145,7 +145,7 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // role Field exists for they were never in it at all.
       { title: "Messages", url: "/messages", icon: MessageSquare, textingOnly: true },
       { title: "Leads", url: "/leads", icon: UserPlus },
-      { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
+      { title: "Requests", url: "/concerns", icon: MessageCircleWarning },
       {
         title: "Training packages",
         url: "/training-packages",

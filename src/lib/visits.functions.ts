@@ -66,6 +66,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
         `id, scheduled_on, status, sequence, assigned_staff_id,
          started_at, completed_at, skip_reason, skip_reason_code, skip_billable, client_package_id,
          weather_flagged, weather_note, tech_note, completion_photo_waived_reason, visit_checklist,
+         duration_min, groom_summary,
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
@@ -237,6 +238,11 @@ export const reassignVisit = createServerFn({ method: "POST" })
     z.object({ visitId: z.string().uuid(), staffId: z.string().uuid().nullable() }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    // A groom refuses a groomer who already has a groom at that time, as
+    // booking does. The board's drag between lanes lands here.
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: [data.visitId], toStaffId: data.staffId };
+    await refuseGroomMoveClash(context.supabase, move);
     // The tech it comes off and the tech it goes to are told (field-notify).
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: [data.visitId] });
@@ -247,7 +253,7 @@ export const reassignVisit = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _staff_id: data.staffId as string,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
     // QA round 8: reassignment shows on the client's Activity timeline.
@@ -548,6 +554,10 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
+    // A groom keeps its start time and groomer; the new day must have room.
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: [data.visitId], toDate: data.newDate };
+    await refuseGroomMoveClash(supabase, move);
     const { data: was } = await supabase
       .from("visits")
       .select("assigned_staff_id, staff(display_name)")
@@ -569,7 +579,7 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _new_date: data.newDate,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(supabase, error, move);
     await watch.finish();
     await pushRoutes();
     await walks.finish(`${data.visitId}-${data.newDate}`);
@@ -595,6 +605,7 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
     const lessonClashes = await lessonClashesAfterMove(supabase as any, [data.visitId]);
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     return {
       ok: true,
       lessonClashes,
@@ -851,6 +862,11 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Grooms in the batch: none may land on a groomer who is busy then, and
+    // two of them may not land on one groomer at once.
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: data.visitIds, toStaffId: data.staffId };
+    await refuseGroomMoveClash(context.supabase, move);
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
@@ -859,7 +875,7 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
       _visit_ids: data.visitIds,
       _staff_id: data.staffId,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
     const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
@@ -883,6 +899,10 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Grooms keep their start time and groomer; the new day must have room.
+    const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
+    const move = { visitIds: data.visitIds, toDate: data.toDate };
+    await refuseGroomMoveClash(context.supabase, move);
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
@@ -894,7 +914,7 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       _visit_ids: data.visitIds,
       _to_date: data.toDate,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
     await walks.finish(moveKey(data.visitIds, data.toDate));
@@ -938,6 +958,16 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
       _staff_id: data.staffId,
     });
     if (error) throw new Error(error.message);
+    // A groom with a fixed time that no other tech has room for stays with
+    // this tech (20261023122400). Same window as the move, so what is left
+    // is exactly what the office still has to place by hand.
+    const { data: rest } = await (context.supabase as any).rpc("staff_upcoming_load", {
+      _staff_id: data.staffId,
+    });
+    const left = ((rest ?? []) as Array<{ visits: number }>).reduce(
+      (s, d) => s + Number(d.visits ?? 0),
+      0,
+    );
     await watch.finish();
     // The work went to whoever had room, which this call does not say, so
     // every live route in the business is rebuilt; an unchanged one is not
@@ -951,7 +981,37 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
       const { refreshOrgRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
       await refreshOrgRouteLiveActivities(staffRow.organization_id);
     }
-    return { moved: (n as number) ?? 0 };
+    const { data: remaining, error: remainingError } = await context.supabase
+      .from("visits")
+      .select("id, scheduled_on, start_time, client:clients(display_name)")
+      .eq("assigned_staff_id", data.staffId)
+      .in(
+        "scheduled_on",
+        ((rest ?? []) as Array<{ scheduled_on: string }>).map((d) => d.scheduled_on),
+      )
+      .not("status", "in", "(completed,skipped)");
+    if (remainingError) throw new Error(remainingError.message);
+    const leftAppointments = (remaining ?? []).map((v) => ({
+      id: v.id,
+      day: v.scheduled_on,
+      startTime: v.start_time,
+      client: (Array.isArray(v.client) ? v.client[0] : v.client)?.display_name ?? "Client",
+    }));
+    if (leftAppointments.length && staffRow?.organization_id) {
+      const { notifyRoles } = await import("@/lib/notify-center.server");
+      await notifyRoles(["owner"], {
+        orgId: staffRow.organization_id,
+        type: "concern",
+        title: "Appointments still need cover",
+        body: leftAppointments.map((v) => `${v.client}, ${v.day} ${v.startTime ?? ""}`).join("; "),
+        link: "/routes",
+        eventKey: `groom-cover:${data.staffId}:${leftAppointments
+          .map((v) => v.id)
+          .sort()
+          .join(":")}`,
+      });
+    }
+    return { moved: (n as number) ?? 0, left, leftAppointments };
   });
 
 // ── Auto-routing moved out of this file on 2026-10-04 ─────────────────────

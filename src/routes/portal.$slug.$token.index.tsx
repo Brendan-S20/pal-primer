@@ -1,6 +1,15 @@
 import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarDays, Sparkles, ArrowRight, Camera } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import {
+  CalendarDays,
+  Sparkles,
+  ArrowRight,
+  Camera,
+  GraduationCap,
+  Scissors,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TrainingCard } from "@/components/portal/TrainingCard";
 import {
@@ -17,6 +26,7 @@ import { orgLocalTime } from "@/lib/org-day";
 export const Route = createFileRoute("/portal/$slug/$token/")({
   component: PortalHome,
 });
+
 
 function PortalHome() {
   const copy = useLaunchCopy();
@@ -120,6 +130,30 @@ function PortalHome() {
           </div>
         </section>
       ) : null}
+
+      {/* The way in to Grooming, for a client whose business runs it. */}
+      {c?.mobile_grooming && (
+        <section className="rounded-lg border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <Scissors className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <h2 className="font-semibold">Grooming</h2>
+                <p className="text-sm text-muted-foreground">
+                  {c?.groom_requests
+                    ? "Request a groom and keep your pet's vaccine records up to date."
+                    : "Keep your pet's vaccine records up to date."}
+                </p>
+              </div>
+            </div>
+            <Link to="/portal/$slug/$token/grooming" params={{ slug, token }}>
+              <Button size="sm" variant="outline" className="gap-1">
+                Open grooming <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+              </Button>
+            </Link>
+          </div>
+        </section>
+      )}
 
       <TrainingCard />
 

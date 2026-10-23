@@ -243,23 +243,27 @@ describe("what makes a service saveable", () => {
   });
 
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
-    // Walking, sitting and training are Coming soon, so only a business that
+    // Walking, sitting, grooming and training are Coming soon, so only a business that
     // already runs one, or a service already on it, is offered it.
     expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste"]);
     expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste"])).not.toContain("training");
     expect(serviceLineChoices(["pet_waste", "training"])).toContain("training");
+    expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste", "dog_walking"])).toEqual(["pet_waste", "dog_walking"]);
     expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual(["pet_waste", "pet_sitting"]);
     expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste"])).not.toContain("mobile_grooming");
     expect(serviceLineChoices(["mobile_grooming"])).toContain("mobile_grooming");
+    expect(serviceLineChoices(["training"])).toContain("training");
+    expect(serviceLineChoices(["pet_waste"])).not.toContain("training");
     expect(serviceLineChoices(["pet_waste"], "other")).toContain("other");
     expect(defaultServiceLine(["dog_walking", "pet_waste"])).toBe("dog_walking");
     expect(defaultServiceLine([])).toBe("pet_waste");
   });
 
-  it("seeds every selected launch line once, with blank prices", () => {
+  it("seeds selected lines once, with starter grooming prices", () => {
     const seeds = defaultServiceSeedsFor([
       "dog_walking",
       "pet_sitting",
@@ -273,13 +277,14 @@ describe("what makes a service saveable", () => {
       "Drop-in (30 min)",
       "Overnight stay",
       "House sit",
-      "Bath and brush (60 min)",
+      "Bath and tidy (60 min)",
       "Full groom (90 min)",
       "Nail trim (15 min)",
       "Private lesson (60 min)",
       "Evaluation (45 min)",
     ]);
-    expect(seeds.every((s) => s.base_price_cents === null)).toBe(true);
+    expect(seeds.filter((s) => s.service_line !== "mobile_grooming").every((s) => s.base_price_cents === null)).toBe(true);
+    expect(seeds.find((s) => s.name === "Full groom (90 min)")?.base_price_cents).toBe(8000);
     expect(seeds.find((s) => s.name === "Private lesson (60 min)")).toMatchObject({
       service_line: "training",
       default_duration_min: 60,

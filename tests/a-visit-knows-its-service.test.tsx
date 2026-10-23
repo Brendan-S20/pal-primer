@@ -95,6 +95,13 @@ describe("how long a stop takes", () => {
     expect(visitServiceMinutes("", "abc")).toBe(DEFAULT_STOP_MINUTES);
   });
 
+  it("prefers the visit's own length, and ignores 0 the way the SQL function does", () => {
+    expect(visitServiceMinutes(60, 12, 90)).toBe(90);
+    expect(visitServiceMinutes(60, 12, "90")).toBe(90);
+    expect(visitServiceMinutes(60, 12, 0)).toBe(60);
+    expect(visitServiceMinutes(null, null, null)).toBe(DEFAULT_STOP_MINUTES);
+  });
+
   it("is the rule the planner's SQL uses, word for word", () => {
     // Code only: the header quotes the old expression to say what it replaced.
     const sql = read("supabase/migrations/20261009230100_a-walk-takes-as-long-as-the-walk.sql")
@@ -115,9 +122,10 @@ describe("how long a stop takes", () => {
 
   it("is what the day-fit check after auto-routing counts", () => {
     const src = read("src/lib/auto-routing.server.ts");
+    expect(src).toMatch(/duration_min, properties\(latitude/);
     expect(src).toMatch(/services\(default_duration_min\)/);
     expect(src).toMatch(
-      /serviceMin: visitServiceMinutes\(\s*v\.services\?\.default_duration_min,\s*v\.properties\?\.service_duration_min,\s*\)/,
+      /serviceMin: visitServiceMinutes\(\s*v\.services\?\.default_duration_min,\s*v\.properties\?\.service_duration_min,\s*v\.duration_min,\s*\)/,
     );
   });
 });

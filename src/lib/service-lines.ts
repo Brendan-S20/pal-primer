@@ -53,13 +53,30 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
  *  (booking, the walker's day, portal reports and access, client emails,
  *  invoices) is built and waits on that approval. An org runs training only
  *  when its `organizations.service_lines` is set to include it directly, and
- *  customers still cannot request it (`customerCanRequestService`). */
+ *  customers still cannot request it (`customerCanRequestService`). Mobile
+ *  grooming's office screens work for a business that already has the line;
+ *  customers, the public form and the receptionist cannot request it (see
+ *  CUSTOMER_BOOKABLE_SERVICE_LINES and customerCanRequestService). */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
 
+/** Lines a customer may ask for (public signup, the portal, the receptionist).
+ *  Mobile grooming stays with the office until a customer can pick pets,
+ *  add-ons and a price the same way the office books one. Training is sold
+ *  and scheduled by the office. */
+export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = BOOKABLE_SERVICE_LINES;
+
+export function customerMayBook(line: string | null | undefined): boolean {
+  return (
+    typeof line === "string" &&
+    (CUSTOMER_BOOKABLE_SERVICE_LINES as readonly string[]).includes(line)
+  );
+}
+
 /** Whether a customer, the public signup form, or the receptionist may ask
- *  for this line. Training is sold and scheduled by the office. */
+ *  for this line. Training and mobile grooming are booked by the office, and
+ *  each keeps its own gate here so opening one never opens the other. */
 export function customerCanRequestService(line: string): boolean {
-  return line !== "training";
+  return (BOOKABLE_SERVICE_LINES as readonly string[]).includes(line);
 }
 
 /** Whether a client may ask for a stay from the portal. Sitting is Coming

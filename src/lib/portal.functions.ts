@@ -10,7 +10,11 @@ import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
-import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
+import {
+  customerCanRequestService,
+  runsPetWaste,
+  serviceLinesOrDefault,
+} from "@/lib/service-lines";
 import {
   WALK_ISSUE_CODES,
   WALK_ISSUE_LABELS,
@@ -282,6 +286,8 @@ async function loadPortalClient(token: string, _session: PortalSession) {
     ...row,
     skip_billable_pct: rule?.billable_pct ?? 0,
     reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
+    mobile_grooming: serviceLinesOrDefault(lines?.service_lines).includes("mobile_grooming"),
+    groom_requests: customerCanRequestService("mobile_grooming"),
   };
 }
 
@@ -1483,7 +1489,10 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       // The pet-waste service at the one-off price, and every other active,
       // priced service at its own (one pet). Empty for a business with no
       // active service, when the card offers the extra cleanup as before.
-      services: oneOffServiceOptions((services ?? []) as any[], priceCents),
+      services: oneOffServiceOptions(
+        ((services ?? []) as any[]).filter((s) => s.service_line !== "mobile_grooming"),
+        priceCents,
+      ),
       petsByProperty,
       currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
       // The times a walk can be asked for (#410): the working day in two-hour
@@ -1551,6 +1560,9 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         const { oneOffRefusalMessage } = await import("@/lib/one-off-booking");
         throw new Error(oneOffRefusalMessage("service_not_offered"));
       }
+    }
+    if (service?.service_line === "mobile_grooming") {
+      throw new Error("Mobile grooming is booked by the office.");
     }
     const petWaste = !service || service.service_line === "pet_waste";
     // A walk's window: one the card offered, or none. Refused before anything
@@ -1686,8 +1698,9 @@ function concernLabel(category: string): string | undefined {
   return isWalkIssue(category) ? `Walk: ${WALK_ISSUE_LABELS.en[category]}` : CONCERN_LABELS[category];
 }
 
-/** Exported for the training lesson request (portal-training.functions.ts),
- *  which tells the office the same way a one-off request does. */
+/** Exported for the groom request (portal-groom.server.ts) and the training
+ *  lesson request (portal-training.functions.ts), which tell the office the
+ *  same way a one-off request does. */
 export async function notifyOfficeOfConcern(
   sb: any,
   token: string,

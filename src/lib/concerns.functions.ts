@@ -42,6 +42,7 @@ export const CONCERN_CATEGORY_LABELS: Record<string, string> = {
   other: "Other",
   reclean_request: "Re-clean request",
   one_off_request: "Extra visit request",
+  groom_request: "Groom request",
   training_lesson_request: "Training lesson request",
 };
 
@@ -60,7 +61,7 @@ export const listConcerns = createServerFn({ method: "GET" })
         // Two foreign keys to visits now (the visit complained about, and the
         // free re-clean booked for it), so each embed names its constraint;
         // an unnamed `visits(...)` would be ambiguous and PostgREST refuses it.
-        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email, account_type), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status), requested_on, property_id, booked_visit_id, property:properties!qc_tickets_property_id_fkey(street, city, dogs(active)), booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on, status), requested_via, service_id, service:services(id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min), requested_earliest_time, requested_latest_time, client_package_id, requested_time, client_package:client_packages!qc_tickets_client_package_id_fkey(name, sessions_count, sessions_used)",
+        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email, account_type), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status), requested_on, property_id, booked_visit_id, property:properties!qc_tickets_property_id_fkey(street, city, dogs(active)), booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on, status), requested_via, service_id, service:services(id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min), requested_earliest_time, requested_latest_time, dog_id, requested_time, requested_time_end, groom_addons, quoted_cents, quoted_minutes, dog:dogs!qc_tickets_dog_id_fkey(name), client_package_id, client_package:client_packages!qc_tickets_client_package_id_fkey(name, sessions_count, sessions_used)",
       )
       .eq("organization_id", orgId)
       // Unresolved first, then newest.
@@ -77,7 +78,31 @@ export const listConcerns = createServerFn({ method: "GET" })
     }));
     const counts = { open: 0, in_progress: 0, resolved: 0 };
     for (const r of concerns) counts[r.status] += 1;
-    return { concerns, counts };
+
+    // A groom request names its add-ons by id (qc_tickets.groom_addons is a
+    // list, which PostgREST cannot embed), so their names come in one read.
+    const addonIds = [
+      ...new Set(
+        concerns.flatMap((r) =>
+          Array.isArray(r.groom_addons)
+            ? (r.groom_addons as Array<{ addon_service_id?: unknown }>)
+                .map((a) => a?.addon_service_id)
+                .filter((id): id is string => typeof id === "string")
+            : [],
+        ),
+      ),
+    ];
+    const addonNames: Record<string, string> = {};
+    if (addonIds.length > 0) {
+      const { data: addons, error: aErr } = await context.supabase
+        .from("addon_services")
+        .select("id, name")
+        .eq("organization_id", orgId)
+        .in("id", addonIds);
+      if (aErr) throw new Error(aErr.message);
+      for (const a of addons ?? []) addonNames[a.id] = a.name;
+    }
+    return { concerns, counts, addonNames };
   });
 
 /**
@@ -196,6 +221,71 @@ export const linkOneOffBooking = createServerFn({ method: "POST" })
     // org-write.server.ts for why that is not allowed to read as one here.
     if (!updated || updated.length === 0)
       throw new Error("The visit was booked, but it couldn't be linked to the request.");
+    return { ok: true, scheduledOn: visit.scheduled_on as string };
+  });
+
+/**
+ * Tie a booked groom to the client's groom request, and resolve the request:
+ * the portal then shows "Booked for <day>".
+ *
+ * The groom is booked by bookGroom first, exactly as "Book a groom" on the
+ * client's page books one, with the start time and groomer the office chose;
+ * this only links. It checks what a link could get wrong: the ticket is a
+ * groom request in the caller's org, and the visit is in the same org, for
+ * the same client, at the same address. manage_pricing, like bookGroom.
+ */
+export const linkGroomBooking = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ ticketId: z.string().uuid(), visitId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_pricing");
+    const { data: ticket, error: tErr } = await context.supabase
+      .from("qc_tickets")
+      .select("id, category, client_id, property_id, booked_visit_id")
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (tErr) throw new Error(tErr.message);
+    if (!ticket) throw new Error("That request isn't in your organization.");
+    if (ticket.category !== "groom_request")
+      throw new Error("Only a groom request can have a groom linked to it.");
+    if (ticket.booked_visit_id && ticket.booked_visit_id !== data.visitId)
+      throw new Error("This request already has a groom booked for it.");
+
+    const { data: visit, error: vErr } = await context.supabase
+      .from("visits")
+      .select("id, client_id, property_id, organization_id, scheduled_on, start_time")
+      .eq("id", data.visitId)
+      .maybeSingle();
+    if (vErr) throw new Error(vErr.message);
+    if (!visit || visit.organization_id !== orgId)
+      throw new Error("That visit isn't in your organization.");
+    if (visit.client_id !== ticket.client_id)
+      throw new Error("That visit is for a different client than the request.");
+    if (ticket.property_id && visit.property_id !== ticket.property_id)
+      throw new Error("That visit is at a different address than the request.");
+
+    const { formatDay } = await import("@/lib/format");
+    const at = visit.start_time ? ` at ${String(visit.start_time).slice(0, 5)}` : "";
+    const { data: updated, error } = await context.supabase
+      .from("qc_tickets")
+      .update({
+        booked_visit_id: data.visitId,
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        resolved_by: context.userId,
+        resolution_note: `Booked for ${formatDay(visit.scheduled_on as string)}${at}.`,
+      })
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    // An UPDATE that matched nothing is a success to Postgres; see
+    // org-write.server.ts for why that is not allowed to read as one here.
+    if (!updated || updated.length === 0)
+      throw new Error("The groom was booked, but it couldn't be linked to the request.");
     return { ok: true, scheduledOn: visit.scheduled_on as string };
   });
 

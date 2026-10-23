@@ -18,6 +18,13 @@ import {
   type StopFacts,
   type StopFactsRow,
 } from "@/lib/stop-facts";
+import {
+  GROOM_HISTORY_PER_PET,
+  groomPetFacts,
+  type GroomNote,
+  type GroomPetFacts,
+} from "@/lib/groom-pets";
+import type { VaccineRecord, VaccineRule } from "@/lib/vaccines";
 import { stampVisitAccess } from "@/lib/property-access";
 
 export const getMyDay = createServerFn({ method: "GET" })
@@ -82,7 +89,10 @@ export const getMyDay = createServerFn({ method: "GET" })
         // 20260804110000 precisely so a REPLAYED skip shows the time the tech
         // actually stood at the door, not the time their signal came back --
         // has been dead since the day it was written.
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents), walk_group_id, pee, poo, report_note, properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, access_method, key_held, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, temperament, species, species_note, active, vet_clinic_name, vet_clinic_phone, pet_care_instructions(feeding, meds, other_care)), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line, default_duration_min), visit_photos(id, storage_path, kind)",
+        // Gate, lock box and key location are not selected here: their column
+        // SELECT is revoked, and stampVisitAccess reads them through
+        // property_access_codes.
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skipped_at, eta_start, eta_end, duration_min, groom_summary, groom_dog_ids, start_time, visit_checklist, gate_reply, gate_reply_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents), walk_group_id, pee, poo, report_note, properties(label, street, city, postal_code, latitude, longitude, account_type, has_units, access_method, key_held, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, boundary, boundary_area_sqm, dogs(id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, muzzle_required, bite_history, senior_or_medical, handling_notes, species, species_note, active, vet_clinic_name, vet_clinic_phone, pet_care_instructions(feeding, meds, other_care)), waste_stations(id, label, station_number, section, location_description, sort_order, active)), zones(name), services(name, service_line, default_duration_min), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
@@ -95,7 +105,18 @@ export const getMyDay = createServerFn({ method: "GET" })
       staff: targetStaff,
       visits: await withSitDay(
         supabase,
-        await withStopFacts(supabase, await stampVisitAccess(supabase, visits ?? [])),
+        await withStopFacts(
+          supabase,
+          await withGroomPets(
+            supabase,
+            await withPriorGroomNotes(
+              supabase,
+              await stampVisitAccess(supabase, visits ?? []),
+              data.day,
+            ),
+            data.day,
+          ),
+        ),
       ),
       previewing,
       canText: await businessCanText(targetStaff.organization_id),
@@ -163,6 +184,151 @@ async function withNoticeDeadline<T>(
  * null and the stations without a date, and the card says less rather than
  * the page saying nothing.
  */
+/** The last completed groom note for this client, preferring the same address.
+ *  A failure leaves the card without it. The day still loads. */
+async function withPriorGroomNotes<
+  V extends {
+    id: string;
+    client_id?: string | null;
+    property_id?: string | null;
+    services?: { service_line?: string | null } | null;
+  },
+>(
+  supabase: SupabaseClient<Database>,
+  visits: V[],
+  day: string,
+): Promise<(V & { prior_groom_note: string | null; prior_groom_on: string | null })[]> {
+  const blank = (v: V) => ({ ...v, prior_groom_note: null, prior_groom_on: null });
+  const grooming = visits.filter(
+    (v) => v.services?.service_line === "mobile_grooming" && v.client_id,
+  );
+  if (grooming.length === 0) return visits.map(blank);
+  type Prior = {
+    id: string;
+    client_id: string;
+    property_id: string | null;
+    scheduled_on: string;
+    tech_note: string | null;
+  };
+  let rows: Prior[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("visits")
+      .select("id, client_id, property_id, scheduled_on, tech_note, services!inner(service_line)")
+      .in("client_id", [...new Set(grooming.map((v) => v.client_id as string))])
+      .eq("status", "completed")
+      .not("tech_note", "is", null)
+      .lt("scheduled_on", day)
+      .eq("services.service_line", "mobile_grooming")
+      .order("scheduled_on", { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    rows = (data ?? []) as Prior[];
+  } catch (e) {
+    console.warn("prior groom note lookup failed", e);
+  }
+  return visits.map((v) => {
+    if (v.services?.service_line !== "mobile_grooming") return blank(v);
+    const hit =
+      rows.find(
+        (r) => r.client_id === v.client_id && r.property_id === v.property_id && r.id !== v.id,
+      ) ?? rows.find((r) => r.client_id === v.client_id && r.id !== v.id);
+    return {
+      ...v,
+      prior_groom_note: hit?.tech_note ?? null,
+      prior_groom_on: hit?.scheduled_on ?? null,
+    };
+  });
+}
+
+/** Per pet on a groom: vaccines on this groom's date, this groom's note, and
+ *  the pet's last few grooms. A failure leaves `groom_pets` empty and the
+ *  card says less; the day still loads. */
+async function withGroomPets<
+  V extends {
+    id: string;
+    organization_id?: string | null;
+    services?: { service_line?: string | null } | null;
+    properties?: unknown;
+    groom_dog_ids?: string[] | null;
+  },
+>(
+  supabase: SupabaseClient<Database>,
+  visits: V[],
+  day: string,
+): Promise<(V & { groom_pets: GroomPetFacts[] })[]> {
+  // The pets booked on this groom; a plan from before groom_dog_ids counts
+  // every pet at the address.
+  const dogIdsOf = (v: V) => {
+    const atProperty = (
+      (v.properties as { dogs?: { id?: string | null }[] | null } | null)?.dogs ?? []
+    )
+      .map((d) => d?.id)
+      .filter((id): id is string => typeof id === "string");
+    const booked = v.groom_dog_ids;
+    return booked && booked.length > 0
+      ? atProperty.filter((id) => booked.includes(id))
+      : atProperty;
+  };
+  const grooming = visits.filter((v) => v.services?.service_line === "mobile_grooming");
+  const dogIds = [...new Set(grooming.flatMap(dogIdsOf))];
+  if (dogIds.length === 0) return visits.map((v) => ({ ...v, groom_pets: [] }));
+
+  let notes: GroomNote[] = [];
+  let vaccines: (VaccineRecord & { dog_id: string })[] = [];
+  let rule: VaccineRule | null = null;
+  let required: string[] = [];
+  try {
+    const orgId = grooming[0].organization_id;
+    const [noteRes, orgRes, vacRes] = await Promise.all([
+      supabase
+        .from("pet_groom_notes")
+        .select("dog_id, visit_id, groomed_on, blade, style, problems")
+        .in("dog_id", dogIds)
+        .lte("groomed_on", day)
+        .order("groomed_on", { ascending: false })
+        // Newest first across every pet on the day; a pet groomed every six
+        // weeks needs a few rows, not years of them.
+        .limit(Math.min(500, dogIds.length * (GROOM_HISTORY_PER_PET + 1) * 4)),
+      orgId
+        ? supabase
+            .from("organizations")
+            .select("vaccine_rule, required_vaccines")
+            .eq("id", orgId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      supabase
+        .from("pet_vaccinations")
+        .select("dog_id, vaccine, expires_on, source, verified_at, rejected_at")
+        .in("dog_id", dogIds),
+    ]);
+    if (noteRes.error) throw noteRes.error;
+    notes = (noteRes.data ?? []) as GroomNote[];
+    if (!orgRes.error && orgRes.data) {
+      rule = orgRes.data.vaccine_rule as VaccineRule;
+      required = orgRes.data.required_vaccines ?? [];
+    }
+    if (!vacRes.error) vaccines = vacRes.data ?? [];
+  } catch (e) {
+    console.warn("groom pet lookup failed", e);
+  }
+  return visits.map((v) => ({
+    ...v,
+    groom_pets:
+      v.services?.service_line === "mobile_grooming"
+        ? groomPetFacts({
+            dogIds: dogIdsOf(v),
+            visitId: v.id,
+            day,
+            notes,
+            vaccines,
+            rule,
+            required,
+          })
+        : [],
+  }));
+}
+
 async function withStopFacts<V extends { id: string; properties?: unknown }>(
   supabase: SupabaseClient<Database>,
   visits: V[],

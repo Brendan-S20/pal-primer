@@ -228,3 +228,39 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
     });
   });
 }
+
+for (const w of [390, 820, 1024, 1440]) {
+  test(`grooming setup keeps its travel buffer and request inbox @${w}px`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 1000 });
+    await installSignedInSession(page);
+    await installStubBackend(page, { role: "owner", serviceLines: ["mobile_grooming"] });
+    await page.route("**/_serverFn/**", async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
+      let name = "";
+      try {
+        name = String(
+          JSON.parse(Buffer.from(decodeURIComponent(id), "base64url").toString()).export ?? "",
+        ).replace(/_createServerFn_handler$/, "");
+      } catch {
+        /* Other fixture routes handle unknown calls. */
+      }
+      if (name === "getVaccineSettings") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            result: { enabled: true, rule: "warn", required: ["rabies"], bufferMin: 30 },
+          }),
+        });
+      }
+      return route.fallback();
+    });
+    await page.goto("/settings/services", { waitUntil: "domcontentloaded" });
+    await expect(page.getByLabel("Setup, cleanup and travel minutes")).toHaveValue("30", {
+      timeout: 30_000,
+    });
+    await expect(page.getByRole("link", { name: "Requests", exact: true }).first()).toBeVisible();
+    await measure(page, w, `grooming setup ${w}`);
+    await page.screenshot({ path: `test-results/grooming-setup-${w}.png`, fullPage: true });
+  });
+}

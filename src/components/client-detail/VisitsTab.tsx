@@ -9,8 +9,10 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarClock, CalendarOff, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarClock, CalendarOff, ChevronLeft, ChevronRight, Scissors, X } from "lucide-react";
 import { usePermissions } from "@/hooks/useMyRole";
+import { useServiceLines } from "@/components/CommercialOnly";
+import { BookGroomDialog } from "@/components/BookGroomDialog";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,7 +30,6 @@ import {
 } from "@/lib/visits.functions";
 import { listClientHolds } from "@/lib/clients.functions";
 import { notifyCanceledWalks } from "@/lib/walk-notify.functions";
-import { useServiceLines } from "@/components/CommercialOnly";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { formatVisitDuration } from "@/lib/visit-lifecycle";
@@ -95,8 +96,11 @@ export function VisitsTab({
   // the dead-machinery check exists for, in TypeScript where that check cannot
   // see it.
   const [oneOffOpen, setOneOffOpen] = useState(false);
+  const [groomOpen, setGroomOpen] = useState(false);
   const { can } = usePermissions();
   const canBookOneOff = can("manage_pricing");
+  const { lines } = useServiceLines();
+  const runsGrooming = lines.includes("mobile_grooming");
 
   // Vacation hold banner (QA round 8): an active or upcoming hold explains
   // why no visits exist in a range. Managed from the header's ••• menu.
@@ -252,14 +256,53 @@ export function VisitsTab({
     </div>
   ) : null;
 
+  const booked = () => {
+    qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
+    qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+  };
+  const bookButtons = canBookOneOff ? (
+    <div className="flex flex-wrap items-center gap-2">
+      {runsGrooming && (
+        <Button size="sm" variant="outline" onClick={() => setGroomOpen(true)}>
+          <Scissors className="me-1.5 h-4 w-4 shrink-0" />
+          Book a groom
+        </Button>
+      )}
+      <Button size="sm" variant="outline" onClick={() => setOneOffOpen(true)}>
+        <CalendarClock className="me-1.5 h-4 w-4 shrink-0" />
+        Book a visit
+      </Button>
+    </div>
+  ) : null;
+  const bookDialogs = (
+    <>
+      <OneOffVisitDialog
+        open={oneOffOpen}
+        onOpenChange={setOneOffOpen}
+        clientId={clientId}
+        onCreated={booked}
+      />
+      {runsGrooming && (
+        <BookGroomDialog
+          open={groomOpen}
+          onOpenChange={setGroomOpen}
+          clientId={clientId}
+          onCreated={booked}
+        />
+      )}
+    </>
+  );
+
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (visits.length === 0)
     return (
       <div className="space-y-4">
         {holdBanner}
+        <div className="flex flex-wrap items-center justify-end gap-2">{bookButtons}</div>
         <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           No visits yet. They appear here once a service starts generating them.
         </div>
+        {bookDialogs}
       </div>
     );
 
@@ -312,12 +355,7 @@ export function VisitsTab({
             </>
           )}
         </div>
-        {canBookOneOff && (
-          <Button size="sm" variant="outline" onClick={() => setOneOffOpen(true)}>
-            <CalendarClock className="mr-1.5 h-4 w-4 shrink-0" />
-            Book a visit
-          </Button>
-        )}
+        {bookButtons}
         <div className="flex items-center gap-1" role="group" aria-label="View">
           <Button
             size="sm"
@@ -338,15 +376,7 @@ export function VisitsTab({
         </div>
       </div>
 
-      <OneOffVisitDialog
-        open={oneOffOpen}
-        onOpenChange={setOneOffOpen}
-        clientId={clientId}
-        onCreated={() => {
-          qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
-          qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
-        }}
-      />
+      {bookDialogs}
 
       {bulkConfirmDialog}
 
@@ -627,12 +657,20 @@ function VisitTable({
                     ) : null}
                   </td>
                 )}
-                <td className="whitespace-nowrap px-4 py-2.5">
-                  {formatDay(v.scheduled_on)}
-                  {v.rescheduled_from && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      (moved from {formatDay(v.rescheduled_from)})
-                    </span>
+                <td className="px-4 py-2.5">
+                  <div className="whitespace-nowrap">
+                    {formatDay(v.scheduled_on)}
+                    {v.rescheduled_from && (
+                      <span className="ms-1 text-xs text-muted-foreground">
+                        (moved from {formatDay(v.rescheduled_from)})
+                      </span>
+                    )}
+                  </div>
+                  {v.groom_summary && (
+                    <div className="mt-0.5 max-w-64 whitespace-normal text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                      {v.groom_summary}
+                      {v.duration_min ? ` · ${v.duration_min} min` : ""}
+                    </div>
                   )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
@@ -1077,6 +1115,18 @@ function VisitDetailDrawer({
             <dt className="text-muted-foreground">Duration</dt>
             <dd>{durText}</dd>
           </div>
+          {v.duration_min ? (
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Appointment length</dt>
+              <dd className="shrink-0">{v.duration_min} min</dd>
+            </div>
+          ) : null}
+          {v.groom_summary && (
+            <div>
+              <dt className="text-muted-foreground">Groom</dt>
+              <dd className="mt-0.5 min-w-0 [overflow-wrap:anywhere]">{v.groom_summary}</dd>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Technician</dt>
             <dd>{v.staff?.display_name ?? "Unassigned"}</dd>

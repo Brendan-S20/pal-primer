@@ -271,6 +271,7 @@ export const setServiceLines = createServerFn({ method: "POST" })
     if (problem) throw new Error(problem);
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    // A line that is Coming soon can be kept or dropped, never added.
     // Read, not assumed: a failed read must not pass as {pet_waste} and
     // refuse a line the org already runs.
     const { data: org, error } = await context.supabase

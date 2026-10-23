@@ -307,6 +307,17 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
   }
 }
 
+function PricingPanel({ done, onSaved }: { done: boolean; onSaved: () => void }) {
+  const { lines } = useServiceLines();
+  return lines.includes("mobile_grooming") ? (
+    <Button asChild className="min-h-11">
+      <Link to="/settings/services">Review grooming prices, vaccines and buffer</Link>
+    </Button>
+  ) : (
+    <ServiceAreaPanel done={done} onSaved={onSaved} />
+  );
+}
+
 const fieldClass = "space-y-1.5";
 
 // ── 1. The business ────────────────────────────────────────────────────────

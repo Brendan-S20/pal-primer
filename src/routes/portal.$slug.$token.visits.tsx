@@ -56,6 +56,7 @@ function PortalVisits() {
     <div className="space-y-6">
       <PortalStayTimeline />
       <TrainingCard />
+      <PortalStayTimeline />
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
           <CalendarDays className="h-4 w-4 shrink-0" /> Upcoming visits

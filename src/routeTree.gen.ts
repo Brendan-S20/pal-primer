@@ -149,6 +149,7 @@ import { Route as PortalSlugTokenVisitsRouteImport } from './routes/portal.$slug
 import { Route as PortalSlugTokenTrainingRouteImport } from './routes/portal.$slug.$token.training'
 import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$slug.$token.requests'
 import { Route as PortalSlugTokenPropertyRouteImport } from './routes/portal.$slug.$token.property'
+import { Route as PortalSlugTokenGroomingRouteImport } from './routes/portal.$slug.$token.grooming'
 import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
 import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
@@ -911,6 +912,11 @@ const PortalSlugTokenPropertyRoute = PortalSlugTokenPropertyRouteImport.update({
   path: '/property',
   getParentRoute: () => PortalSlugTokenRoute,
 } as any)
+const PortalSlugTokenGroomingRoute = PortalSlugTokenGroomingRouteImport.update({
+  id: '/grooming',
+  path: '/grooming',
+  getParentRoute: () => PortalSlugTokenRoute,
+} as any)
 const PortalSlugTokenBillingRoute = PortalSlugTokenBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -1151,6 +1157,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
+  '/portal/$slug/$token/grooming': typeof PortalSlugTokenGroomingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
   '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
   '/portal/$slug/$token/training': typeof PortalSlugTokenTrainingRoute
@@ -1299,6 +1306,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
+  '/portal/$slug/$token/grooming': typeof PortalSlugTokenGroomingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
   '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
   '/portal/$slug/$token/training': typeof PortalSlugTokenTrainingRoute
@@ -1458,6 +1466,7 @@ export interface FileRoutesById {
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
+  '/portal/$slug/$token/grooming': typeof PortalSlugTokenGroomingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
   '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
   '/portal/$slug/$token/training': typeof PortalSlugTokenTrainingRoute
@@ -1617,6 +1626,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/weekly-digest'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
+    | '/portal/$slug/$token/grooming'
     | '/portal/$slug/$token/property'
     | '/portal/$slug/$token/requests'
     | '/portal/$slug/$token/training'
@@ -1765,6 +1775,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/weekly-digest'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
+    | '/portal/$slug/$token/grooming'
     | '/portal/$slug/$token/property'
     | '/portal/$slug/$token/requests'
     | '/portal/$slug/$token/training'
@@ -1923,6 +1934,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/weekly-digest'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
+    | '/portal/$slug/$token/grooming'
     | '/portal/$slug/$token/property'
     | '/portal/$slug/$token/requests'
     | '/portal/$slug/$token/training'
@@ -2966,6 +2978,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalSlugTokenPropertyRouteImport
       parentRoute: typeof PortalSlugTokenRoute
     }
+    '/portal/$slug/$token/grooming': {
+      id: '/portal/$slug/$token/grooming'
+      path: '/grooming'
+      fullPath: '/portal/$slug/$token/grooming'
+      preLoaderRoute: typeof PortalSlugTokenGroomingRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
+    }
     '/portal/$slug/$token/billing': {
       id: '/portal/$slug/$token/billing'
       path: '/billing'
@@ -3363,6 +3382,7 @@ const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
 interface PortalSlugTokenRouteChildren {
   PortalSlugTokenAccountRoute: typeof PortalSlugTokenAccountRoute
   PortalSlugTokenBillingRoute: typeof PortalSlugTokenBillingRoute
+  PortalSlugTokenGroomingRoute: typeof PortalSlugTokenGroomingRoute
   PortalSlugTokenPropertyRoute: typeof PortalSlugTokenPropertyRoute
   PortalSlugTokenRequestsRoute: typeof PortalSlugTokenRequestsRoute
   PortalSlugTokenTrainingRoute: typeof PortalSlugTokenTrainingRoute
@@ -3374,6 +3394,7 @@ interface PortalSlugTokenRouteChildren {
 const PortalSlugTokenRouteChildren: PortalSlugTokenRouteChildren = {
   PortalSlugTokenAccountRoute: PortalSlugTokenAccountRoute,
   PortalSlugTokenBillingRoute: PortalSlugTokenBillingRoute,
+  PortalSlugTokenGroomingRoute: PortalSlugTokenGroomingRoute,
   PortalSlugTokenPropertyRoute: PortalSlugTokenPropertyRoute,
   PortalSlugTokenRequestsRoute: PortalSlugTokenRequestsRoute,
   PortalSlugTokenTrainingRoute: PortalSlugTokenTrainingRoute,
