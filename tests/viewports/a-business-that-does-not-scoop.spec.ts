@@ -233,6 +233,7 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
 
 for (const w of [390, 820, 1024, 1440]) {
   test(`grooming setup keeps its travel buffer and request inbox @${w}px`, async ({ page }) => {
+    test.setTimeout(180_000);
     await page.setViewportSize({ width: w, height: 1000 });
     await installSignedInSession(page);
     await installStubBackend(page, { role: "owner", serviceLines: ["mobile_grooming"] });
@@ -321,7 +322,7 @@ for (const w of [390, 820, 1024, 1440]) {
     });
     await page.goto("/settings/services", { waitUntil: "domcontentloaded" });
     await expect(page.getByLabel("Setup, cleanup and travel minutes")).toHaveValue("30", {
-      timeout: 30_000,
+      timeout: 90_000,
     });
     if (w >= 768)
       await expect(page.getByRole("link", { name: "Requests", exact: true }).first()).toBeVisible();

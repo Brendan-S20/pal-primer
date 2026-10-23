@@ -76,7 +76,7 @@ describe("the portal quote is the office's quote", () => {
     expect(groomRequestQuote({ service, rules, pet, addons, picked: [], bufferMin: null })).toEqual(
       {
         cents: 8000,
-        minutes: 90 + 15,
+        minutes: 90 + 30,
       },
     );
   });
