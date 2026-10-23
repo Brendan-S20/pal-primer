@@ -244,7 +244,7 @@ export function LogExpenseSheet({
                 maxLength={120}
                 placeholder={
                   mileage
-                    ? t("expense.tripPlaceholder")
+                    ? t(petWaste ? "expense.tripPlaceholder" : "workerNeutral.tripPlaceholder")
                     : t(petWaste ? "expense.wherePlaceholder" : "workerNeutral.wherePlaceholder")
                 }
                 value={vendor}

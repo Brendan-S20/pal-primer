@@ -2074,7 +2074,10 @@ function VisitCard({
       haptic("tap");
       // The kind in the picker's own words ("Gate latched", "Terminado"), so
       // the toast names the photo the way the tech just chose it.
-      const kind = t(`photoKind.${photoKind_}`, { defaultValue: photoKindLabel(photoKind_) });
+      const kind =
+        !petWaste && photoKind_ === "gate"
+          ? t("workerNeutral.gate")
+          : t(`photoKind.${photoKind_}`, { defaultValue: photoKindLabel(photoKind_) });
       toast.success(
         r.queued ? t("photo.queuedToast", { kind }) : t("photo.uploadedToast", { kind }),
       );
