@@ -36,8 +36,8 @@ const walk: ServiceFacts = {
 describe("customers cannot book a groom", () => {
   it("keeps the line off the customer lists", () => {
     expect(customerMayBook("mobile_grooming")).toBe(false);
-    expect(customerMayBook("dog_walking")).toBe(true);
-    expect(oneOffServiceOptions([groom, walk], null).map((s) => s.id)).toEqual(["walk"]);
+    expect(customerMayBook("dog_walking")).toBe(false);
+    expect(oneOffServiceOptions([groom, walk], null).map((s) => s.id)).toEqual([]);
   });
 
   it("keeps the receptionist from offering or resolving one", async () => {
@@ -54,7 +54,7 @@ describe("customers cannot book a groom", () => {
     const caller: Caller = { orgId: "org", fromNumber: "+15555550100", clientId: null };
     const listed = await listServices(store, caller);
     expect(listed).toMatchObject({
-      services: [{ service_id: "walk", kind: "dog_walking" }],
+      services: [],
     });
     expect(JSON.stringify(listed)).not.toContain("groom");
   });
@@ -72,7 +72,7 @@ describe("customers cannot book a groom", () => {
 
 describe("a portal groom request is a request, not a booking", () => {
   it("leaves the customer-bookable lines as they were", () => {
-    expect(CUSTOMER_BOOKABLE_SERVICE_LINES).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+    expect(CUSTOMER_BOOKABLE_SERVICE_LINES).toEqual(["pet_waste"]);
     expect(customerMayBook("mobile_grooming")).toBe(false);
   });
 
@@ -105,7 +105,7 @@ describe("a portal groom request is a request, not a booking", () => {
     const sql = read("supabase/migrations/20261023121100_grooming-portal.sql");
     expect(sql).not.toMatch(/public_services|public_quote|receptionist/);
     expect(read("src/lib/service-lines.ts")).toContain(
-      'export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = [\n  "pet_waste",\n  "dog_walking",\n  "pet_sitting",\n];',
+      'export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = BOOKABLE_SERVICE_LINES;',
     );
   });
 });

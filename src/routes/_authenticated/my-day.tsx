@@ -3144,7 +3144,7 @@ function VisitCard({
                       beside a full-width Bill. */}
                   <div className="grid grid-cols-6 gap-2">
                     <select
-                      className="col-span-6 h-9 rounded-md border bg-background px-2 text-sm sm:col-span-4"
+                      className="col-span-6 h-11 rounded-md border bg-background px-2 text-sm sm:col-span-4"
                       aria-label={t("addon.selectService")}
                       value={addonSvcId}
                       onChange={(e) => setAddonSvcId(e.target.value)}
@@ -3159,7 +3159,7 @@ function VisitCard({
                     <input
                       type="number"
                       min="1"
-                      className="col-span-2 h-9 rounded-md border bg-background px-2 text-sm touch:min-h-11 sm:col-span-1"
+                      className="col-span-2 h-11 rounded-md border bg-background px-2 text-sm sm:col-span-1"
                       aria-label={t("addon.quantity")}
                       value={addonQty}
                       onChange={(e) => setAddonQty(e.target.value)}
@@ -3172,7 +3172,7 @@ function VisitCard({
                       <AlertDialogTrigger asChild>
                         <Button
                           size="sm"
-                          className="col-span-4 touch:min-h-11 sm:col-span-1"
+                          className="col-span-4 min-h-11 sm:col-span-1"
                           disabled={!addonSvcId || !svc || addonMut.isPending || !cardOnline}
                         >
                           {addonMut.isPending ? "…" : t("addon.bill")}
