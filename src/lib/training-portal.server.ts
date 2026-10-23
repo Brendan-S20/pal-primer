@@ -371,7 +371,7 @@ export async function buyPackageFromPortal(
     const { notifyRoles } = await import("@/lib/notify-center.server");
     await notifyRoles(["owner", "office_manager"], {
       orgId: session.organizationId,
-      type: "training.package",
+      type: "training_package",
       title: `Training package bought: ${client?.display_name ?? "a client"}`,
       body: `${sale.package.name}, invoice ${sale.invoiceNumber}. Not paid yet.`,
       link: `/clients/${session.clientId}`,
@@ -491,7 +491,7 @@ export async function sendTrainingPackageNotices(
       });
       await notifyRoles(["owner", "office_manager"], {
         orgId: org.id,
-        type: "training.package",
+        type: "training_package",
         ...text,
         link: `/clients/${pkg.client_id}`,
         eventKey: key,

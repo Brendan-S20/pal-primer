@@ -142,8 +142,32 @@ export const WALK_SKIP_REASON_LABELS: Record<(typeof WALK_SKIP_REASON_CODES)[num
   other: "Other",
 };
 
-export function techSkipReasonCodes(walk: boolean): readonly string[] {
-  return walk ? WALK_SKIP_REASON_CODES : TECH_SKIP_REASON_CODES;
+/** What a trainer picks on a lesson. Gate, yard and walk-hand-over reasons
+ *  do not fit a lesson. Whether a skip uses a package session is the
+ *  training rule's call (training_lesson_session_rule), not the reason's. */
+export const LESSON_SKIP_REASON_CODES = [
+  "client_cancelled_late",
+  "dog_unwell",
+  "no_one_home",
+  "weather",
+  "other",
+] as const satisfies readonly (typeof SKIP_REASON_CODES)[number][];
+
+/** Short labels for the trainer's picker. */
+export const LESSON_SKIP_REASON_LABELS: Record<(typeof LESSON_SKIP_REASON_CODES)[number], string> =
+  {
+    client_cancelled_late: "Client canceled",
+    dog_unwell: "Dog unwell",
+    no_one_home: "No one home",
+    weather: "Weather",
+    other: "Other",
+  };
+
+/** The picker's list for a stop on this service line. */
+export function techSkipReasonCodes(line: string | null | undefined): readonly string[] {
+  if (line === "dog_walking") return WALK_SKIP_REASON_CODES;
+  if (line === "training") return LESSON_SKIP_REASON_CODES;
+  return TECH_SKIP_REASON_CODES;
 }
 
 async function getOrgId(supabase: any, userId: string): Promise<string> {
@@ -188,17 +212,15 @@ export const upsertSkipRule = createServerFn({ method: "POST" })
     // Skip-billing rules set how much a skipped visit still bills — a billing
     // settings action (owner/office_manager), not dispatcher-reachable (I7).
     const orgId = (await requirePermission(supabase, userId, "manage_settings")).orgId;
-    const { error } = await supabase
-      .from("skip_billing_rules")
-      .upsert(
-        {
-          organization_id: orgId,
-          reason_code: data.code,
-          billable_pct: data.billablePct,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "organization_id,reason_code" },
-      );
+    const { error } = await supabase.from("skip_billing_rules").upsert(
+      {
+        organization_id: orgId,
+        reason_code: data.code,
+        billable_pct: data.billablePct,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "organization_id,reason_code" },
+    );
     if (error) throw new Error(error.message);
     return { ok: true };
   });

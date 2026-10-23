@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { portalShowsTraining } from "../src/lib/training-portal";
 import { customerCanRequestService } from "../src/lib/service-lines";
 import { oneOffServiceOptions } from "../src/lib/one-off-booking";
@@ -8,6 +8,14 @@ import { publicServiceChoices } from "../src/lib/public-services";
 import { bookVisit, getOpenSlots, listServices } from "../src/lib/receptionist-booking";
 import type { ReceptionistStore } from "../src/lib/receptionist-booking";
 import { progressText, scoreProblem } from "../src/lib/training-progress";
+
+// Walking and training are Coming soon (#506), so today no customer path offers
+// either. This file asks the question that outlives launch: with both lines
+// bookable, a walk is offered and a lesson still is not.
+vi.mock("@/lib/service-lines", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/service-lines")>()),
+  BOOKABLE_SERVICE_LINES: ["pet_waste", "dog_walking", "training"],
+}));
 
 const lesson = {
   id: "lesson",
