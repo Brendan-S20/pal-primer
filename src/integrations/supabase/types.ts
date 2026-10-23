@@ -3924,7 +3924,6 @@ export type Database = {
           sms_consent_phone: string | null
           sms_consent_text: string | null
           sms_from_number: string | null
-          stay_deposit_refund_days: number
           std_base_price_cents: number | null
           std_per_dog_addl_cents: number | null
           stripe_connect_account_id: string | null
@@ -4077,7 +4076,6 @@ export type Database = {
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           sms_from_number?: string | null
-          stay_deposit_refund_days?: number
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
           stripe_connect_account_id?: string | null
@@ -4230,7 +4228,6 @@ export type Database = {
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           sms_from_number?: string | null
-          stay_deposit_refund_days?: number
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
           stripe_connect_account_id?: string | null
@@ -8383,10 +8380,6 @@ export type Database = {
         Args: { _cancel_booked: boolean; _client_package_id: string }
         Returns: number
       }
-      cancel_stay: {
-        Args: { _refund_deposit?: boolean; _stay_id: string }
-        Returns: Json
-      }
       cast_roadmap_vote: {
         Args: { p_feature: string; p_voter: string }
         Returns: undefined
@@ -9565,7 +9558,6 @@ export type Database = {
         }
         Returns: number
       }
-      restate_stay_billing: { Args: { _stay_id: string }; Returns: string }
       reverse_prepaid_credit_for_payment: {
         Args: { _payment_id: string; _refunded_cents: number }
         Returns: number
