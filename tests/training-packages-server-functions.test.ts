@@ -129,7 +129,7 @@ function fake(
           data =
             columns === "client_packages(sessions_count)"
               ? { client_packages: { sessions_count: 6 } }
-              : String(columns).startsWith("scheduled_on, subscriptions")
+              : /^(id, )?scheduled_on, subscriptions/.test(String(columns))
                 ? (options.busy ?? [])
                 : op === "update" && single
                   ? options.lessonMissing

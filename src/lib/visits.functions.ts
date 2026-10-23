@@ -268,7 +268,9 @@ export const reassignVisit = createServerFn({ method: "POST" })
         });
       }
     } catch {}
-    return { ok: true };
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(context.supabase as any, [data.visitId]);
+    return { ok: true, lessonClashes };
   });
 
 export const reorderRoute = createServerFn({ method: "POST" })
@@ -573,8 +575,11 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       .eq("id", data.visitId)
       .maybeSingle();
     const hadTech = (was as any)?.assigned_staff_id ?? null;
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(supabase as any, [data.visitId]);
     return {
       ok: true,
+      lessonClashes,
       techName: hadTech ? (((was as any)?.staff?.display_name as string | undefined) ?? null) : null,
       /** "kept": still theirs. "dropped": they had it and the new day is not
        *  one they work. "none": it had nobody to keep. */
@@ -836,7 +841,9 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
-    return { moved: (n as number) ?? 0 };
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(context.supabase as any, data.visitIds);
+    return { moved: (n as number) ?? 0, lessonClashes };
   });
 
 export const bulkRescheduleVisits = createServerFn({ method: "POST" })
@@ -869,7 +876,9 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     // moved exactly a week already has a visit there, and the honest report is
     // "moved 12, left 2 alone", not silence.
     const row = Array.isArray(rows) ? rows[0] : rows;
-    return { moved: row?.moved ?? 0, skipped: row?.skipped ?? 0 };
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(context.supabase as any, data.visitIds);
+    return { moved: row?.moved ?? 0, skipped: row?.skipped ?? 0, lessonClashes };
   });
 
 /** What a tech is still holding, by day — read BEFORE offering to move it. */

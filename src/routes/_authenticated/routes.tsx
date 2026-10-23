@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -721,6 +722,7 @@ function RoutesPage() {
           ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
           : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
       );
+      warnLessonClashes(r);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -740,6 +742,7 @@ function RoutesPage() {
       } else {
         toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
       }
+      warnLessonClashes(r);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -914,9 +917,11 @@ function RoutesPage() {
     setLocalColumns(next);
 
     try {
-      await reassign({
-        data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
-      });
+      warnLessonClashes(
+        await reassign({
+          data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
+        }),
+      );
       if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
       if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
     } catch (err) {

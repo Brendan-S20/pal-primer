@@ -1,4 +1,5 @@
 import i18n from "@/lib/i18n";
+import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
 // estimates into facts. Rows open a detail drawer (QA follow-up 2.3) with
@@ -211,6 +212,7 @@ export function VisitsTab({
       const results = await Promise.allSettled(
         ids.map((visitId) => bulkReassignFn({ data: { visitId, staffId: bulkStaffId || null } })),
       );
+      for (const r of results) if (r.status === "fulfilled") warnLessonClashes(r.value);
       const ok = results.filter((r) => r.status === "fulfilled").length;
       return { ok, failed: results.length - ok };
     },
@@ -976,7 +978,10 @@ function VisitDetailDrawer({
   });
   const rescheduleMut = useMutation({
     mutationFn: () => rescheduleFn({ data: { visitId: v.id, newDate } }),
-    onSuccess: () => afterAction("Visit rescheduled"),
+    onSuccess: (r) => {
+      warnLessonClashes(r);
+      afterAction("Visit rescheduled");
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const cancelMut = useMutation({
@@ -994,7 +999,10 @@ function VisitDetailDrawer({
   });
   const reassignMut = useMutation({
     mutationFn: () => reassignFn({ data: { visitId: v.id, staffId: newStaffId || null } }),
-    onSuccess: () => afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned"),
+    onSuccess: (r) => {
+      warnLessonClashes(r);
+      afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned");
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 

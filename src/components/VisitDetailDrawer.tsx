@@ -62,6 +62,7 @@ import {
   TrainingSessionBadge,
 } from "@/components/training/TrainingProgressPanel";
 import { LessonSessionUse } from "@/components/training/LessonSessionUse";
+import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 import {
   ClientCalledAtField,
   clientCalledAtIso,
@@ -198,6 +199,7 @@ export function VisitDetailDrawer({
       } else {
         toast.success(`Visit moved to ${formatDay(moveTo)}`);
       }
+      warnLessonClashes(r);
       setMoveTo("");
       invalidate();
     },
@@ -224,7 +226,12 @@ export function VisitDetailDrawer({
       return;
     }
     setPendingStaff(staffId);
-    const change = holdForUndo(() => doReassign({ data: { visitId: vid, staffId } }), {
+    const send = () =>
+      doReassign({ data: { visitId: vid, staffId } }).then((r) => {
+        warnLessonClashes(r);
+        return r;
+      });
+    const change = holdForUndo(send, {
       onError: (e) => toast.error(e instanceof Error ? e.message : "Could not reassign the visit"),
     });
     const toastId = toast(name ? `Reassigned to ${name}` : "Visit unassigned", {

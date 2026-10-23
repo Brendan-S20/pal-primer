@@ -106,11 +106,12 @@ export async function trainerConflicts(
   staffId: string,
   dates: string[],
   slot: { start: string; end: string },
+  exceptVisitId?: string,
 ): Promise<Busy[]> {
   const { data, error } = await db
     .from("visits")
     .select(
-      "scheduled_on, subscriptions(earliest_time, latest_time), services(default_duration_min)",
+      "id, scheduled_on, subscriptions(earliest_time, latest_time), services(default_duration_min)",
     )
     .eq("organization_id", orgId)
     .eq("assigned_staff_id", staffId)
@@ -119,10 +120,12 @@ export async function trainerConflicts(
   if (error) throw new Error(error.message);
   const out: Busy[] = [];
   for (const row of (data ?? []) as {
+    id?: string;
     scheduled_on: string;
     subscriptions: { earliest_time: string | null; latest_time: string | null } | null;
     services: { default_duration_min: number | null } | null;
   }[]) {
+    if (exceptVisitId && row.id === exceptVisitId) continue;
     const start = row.subscriptions?.earliest_time?.slice(0, 5);
     if (!start) continue;
     const end =
@@ -132,6 +135,70 @@ export async function trainerConflicts(
     if (timesOverlap(slot, { start, end })) out.push({ date: row.scheduled_on, start, end });
   }
   return out.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+}
+
+export type LessonClash = Busy & { visitId: string };
+
+/**
+ * After the office reassigns or moves visits, the timed package lessons among
+ * them that now overlap another timed stop of the same trainer. The same
+ * check booking makes (trainerConflicts); the move itself has already
+ * happened, so this only says so, the way booking's "book anyway" lets the
+ * office decide. A lesson with no trainer or no start time cannot clash.
+ */
+export async function lessonClashes(db: TrainingDb, visitIds: string[]): Promise<LessonClash[]> {
+  if (visitIds.length === 0) return [];
+  const { data, error } = await db
+    .from("visits")
+    .select(
+      "id, organization_id, scheduled_on, status, assigned_staff_id, client_package_id, subscriptions(earliest_time, latest_time), services(default_duration_min)",
+    )
+    .in("id", visitIds)
+    .not("client_package_id", "is", null);
+  if (error) throw new Error(error.message);
+  const out: LessonClash[] = [];
+  for (const v of (data ?? []) as {
+    id: string;
+    organization_id: string;
+    scheduled_on: string;
+    status: string;
+    assigned_staff_id: string | null;
+    subscriptions: { earliest_time: string | null; latest_time: string | null } | null;
+    services: { default_duration_min: number | null } | null;
+  }[]) {
+    if (!v.assigned_staff_id || !["scheduled", "in_progress"].includes(v.status)) continue;
+    const start = v.subscriptions?.earliest_time?.slice(0, 5);
+    if (!start) continue;
+    const end =
+      v.subscriptions?.latest_time?.slice(0, 5) ??
+      lessonEnd(start, v.services?.default_duration_min ?? 60) ??
+      "23:59";
+    const busy = await trainerConflicts(
+      db,
+      v.organization_id,
+      v.assigned_staff_id,
+      [v.scheduled_on],
+      { start, end },
+      v.id,
+    );
+    for (const b of busy) out.push({ visitId: v.id, ...b });
+  }
+  return out;
+}
+
+/** lessonClashes for a server function that has already made the move: a
+ *  failed check is logged, never thrown, so it cannot undo a move that
+ *  happened or report one that did not. */
+export async function lessonClashesAfterMove(
+  db: TrainingDb,
+  visitIds: string[],
+): Promise<LessonClash[]> {
+  try {
+    return await lessonClashes(db, visitIds);
+  } catch (e) {
+    console.error("lesson clash check failed", (e as Error).message);
+    return [];
+  }
 }
 
 export type PackageSale = {
