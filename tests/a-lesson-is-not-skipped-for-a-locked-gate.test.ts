@@ -38,7 +38,7 @@ describe("the trainer's skip reasons", () => {
     for (const code of LESSON_SKIP_REASON_CODES) {
       expect(LESSON_SKIP_REASON_LABELS[code]).toBeTruthy();
       for (const locale of [en, es, ar, zh]) {
-        expect((locale as any).lessonSkipReason[code]).toBeTruthy();
+        expect(locale.lessonSkipReason[code]).toBeTruthy();
       }
     }
   });
