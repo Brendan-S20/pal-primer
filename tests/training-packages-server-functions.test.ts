@@ -315,6 +315,8 @@ describe("booking lessons from a package", () => {
     });
     expect(db.writes("visits", "update")[0].args[0]).toEqual({ assigned_staff_id: ID });
     expect(db.calls).toContainEqual({ table: "visits", op: "eq", args: ["status", "scheduled"] });
+    // A lesson is not a yard: booking one does not touch the yard estimate.
+    expect(mocks.estimate).not.toHaveBeenCalled();
   });
   it("cuts the last date at expiry or an optional smaller count", async () => {
     let db = fake({ package: { expires_on: "2090-01-09" } });

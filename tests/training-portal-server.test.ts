@@ -27,6 +27,10 @@ const state = vi.hoisted(() => ({
   sale: vi.fn(),
   book: vi.fn(),
   permission: vi.fn(async () => ({ orgId: "org-1", role: "owner" })),
+  // Training is Coming soon on main (#506). Most of this file drives the
+  // path as it will run once the line is bookable; the launch list is
+  // restored where a test asks what a client sees today.
+  bookable: ["pet_waste", "training"] as string[],
 }));
 
 function makeDb() {
@@ -102,6 +106,15 @@ vi.mock("@/lib/portal-auth.server", () => ({
     return state.session;
   }),
 }));
+vi.mock("@/lib/service-lines", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/service-lines")>();
+  return {
+    ...actual,
+    get BOOKABLE_SERVICE_LINES() {
+      return state.bookable;
+    },
+  };
+});
 vi.mock("@/lib/notify-center.server", () => ({ notifyRoles: state.notify }));
 vi.mock("@/lib/email/enqueue.server", () => ({ enqueueAppEmail: state.email }));
 vi.mock("@/lib/portal-links.server", () => ({
@@ -143,6 +156,7 @@ function on(handlers: Record<string, Handler>) {
 
 beforeEach(() => {
   state.queries = [];
+  state.bookable = ["pet_waste", "training"];
   state.session = { clientId: "client-1", organizationId: "org-1", preview: false };
   state.rpc.mockReset();
   state.notify.mockClear();
@@ -365,6 +379,39 @@ describe("buying a package in the portal", () => {
 
   it("refuses at a business that does not run training, before any sale", async () => {
     on({ organizations: () => ({ data: { service_lines: ["pet_waste"] }, error: null }) });
+    await expect(
+      portalBuyTrainingPackage({
+        data: { token: TOKEN, servicePackageId: PACK, requestId: REQUEST },
+      }),
+    ).rejects.toThrow("Training packages are not offered here.");
+    expect(state.sale).not.toHaveBeenCalled();
+  });
+
+  it("offers nothing and sells nothing while training is Coming soon", async () => {
+    state.bookable = ["pet_waste"];
+    on({
+      organizations: () => ({
+        data: { timezone: "UTC", service_lines: ["training"] },
+        error: null,
+      }),
+      service_packages: () => ({
+        data: [
+          {
+            id: "sp",
+            name: "6-session package",
+            sessions_count: 6,
+            price_cents: 42000,
+            expires_after_days: 90,
+            services: { name: "Private lesson", active: true },
+          },
+        ],
+        error: null,
+      }),
+      client_packages: () => ({ data: [], error: null }),
+    });
+    await expect(portalGetTraining({ data: { token: TOKEN } })).resolves.toEqual({
+      visible: false,
+    });
     await expect(
       portalBuyTrainingPackage({
         data: { token: TOKEN, servicePackageId: PACK, requestId: REQUEST },

@@ -66,6 +66,9 @@ export async function recomputePropertyEstimate(
       .eq("property_id", propertyId)
       .eq("status", "active")
       .neq("frequency", "one_time")
+      // A training package's lesson plan is booked at its own start and
+      // length; it is not the property's routine.
+      .is("client_package_id", null)
       .or(liveServiceOrFilter(orgToday(org?.timezone || undefined)))
       .order("created_at", { ascending: false })
       .limit(1),

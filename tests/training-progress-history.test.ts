@@ -19,11 +19,17 @@ vi.mock("@tanstack/react-start", () => ({
   },
 }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
+const permission = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/authz.server", () => ({
   resolveCaller: async () => ({ orgId: "org-a", role: "technician" }),
+  requirePermission: permission,
 }));
 
-import { getSessionProgress, saveSessionProgress } from "@/lib/training-progress.functions";
+import {
+  getSessionProgress,
+  saveSessionProgress,
+  saveTrainingSkill,
+} from "@/lib/training-progress.functions";
 
 const VISIT = "11111111-1111-4111-8111-111111111111";
 const EARLIER = "22222222-2222-4222-8222-222222222222";
@@ -235,5 +241,15 @@ describe("the dog's earlier lessons", () => {
       op: "in",
       args: ["client_package_id", [PACK]],
     });
+  });
+});
+
+describe("the skill list", () => {
+  it("is edited only by someone who can set prices, before anything is written", async () => {
+    const { calls } = fake();
+    permission.mockRejectedValueOnce(new Error("Not authorized"));
+    await expect(saveTrainingSkill({ data: { name: "Place" } })).rejects.toThrow("Not authorized");
+    expect(permission).toHaveBeenCalledWith(context.supabase, "trainer-user", "manage_pricing");
+    expect(calls.filter((c) => c.table === "training_skills")).toEqual([]);
   });
 });

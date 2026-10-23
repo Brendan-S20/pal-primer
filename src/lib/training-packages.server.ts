@@ -381,7 +381,7 @@ export async function bookTrainingSessions(
       .eq("status", "scheduled");
     if (assigned.error) throw new Error(assigned.error.message);
   }
-  const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
-  await recomputePropertyEstimate(db, input.propertyId);
+  // No yard estimate: a lesson's length is the slot booked above, and the
+  // property's routine minutes come from its own service, not a package.
   return { subscriptionId: plan.id as string, visitCount: (generated.data as number) ?? 0 };
 }

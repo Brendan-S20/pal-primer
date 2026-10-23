@@ -182,7 +182,10 @@ export const saveTrainingSkill = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const db = context.supabase as TrainingDb;
-    const { orgId } = await resolveCaller(db, context.userId);
+    // The skill list is the business's curriculum, set where prices are set.
+    // The settings card is drawn for manage_pricing; the server asks the same.
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(db, context.userId, "manage_pricing");
     const result = data.id
       ? await db
           .from("training_skills")

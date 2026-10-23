@@ -6,7 +6,7 @@
 // from the browser.
 
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
-import { serviceLinesOrDefault } from "@/lib/service-lines";
+import { BOOKABLE_SERVICE_LINES, serviceLinesOrDefault } from "@/lib/service-lines";
 import {
   holdsSession,
   packageState,
@@ -62,6 +62,13 @@ function firstName(name: string | null | undefined): string | null {
   return name?.trim().split(/\s+/)[0] || null;
 }
 
+/** Whether a client may buy a package. Training is Coming soon until it
+ *  joins BOOKABLE_SERVICE_LINES, and a Coming soon line is never offered
+ *  to clients (#506). */
+function trainingIsForSale(): boolean {
+  return BOOKABLE_SERVICE_LINES.includes("training");
+}
+
 export type PortalTraining = Awaited<ReturnType<typeof loadPortalTraining>>;
 
 /** Everything the portal's Training page draws, for one client. */
@@ -107,27 +114,31 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
   const today = orgToday(org.data?.timezone || DEFAULT_ORG_TIMEZONE);
   const runsTraining = serviceLinesOrDefault(org.data?.service_lines).includes("training");
   const packages = (packs.data ?? []) as PackageRow[];
-  const catalog = runsTraining
-    ? (
-        (forSale.data ?? []) as Array<{
-          id: string;
-          name: string;
-          sessions_count: number;
-          price_cents: number;
-          expires_after_days: number | null;
-          services: { name: string; active: boolean } | { name: string; active: boolean }[] | null;
-        }>
-      )
-        .filter((p) => one(p.services)?.active !== false)
-        .map((p) => ({
-          id: p.id,
-          name: p.name,
-          serviceName: one(p.services)?.name ?? null,
-          sessionsCount: p.sessions_count,
-          priceCents: p.price_cents,
-          expiresAfterDays: p.expires_after_days,
-        }))
-    : [];
+  // Nothing is for sale while training is Coming soon (#506): a client who
+  // already holds a package still sees it, its lessons and its invoice.
+  const catalog =
+    runsTraining && trainingIsForSale()
+      ? (
+          (forSale.data ?? []) as Array<{
+            id: string;
+            name: string;
+            sessions_count: number;
+            price_cents: number;
+            expires_after_days: number | null;
+            services:
+              { name: string; active: boolean } | { name: string; active: boolean }[] | null;
+          }>
+        )
+          .filter((p) => one(p.services)?.active !== false)
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            serviceName: one(p.services)?.name ?? null,
+            sessionsCount: p.sessions_count,
+            priceCents: p.price_cents,
+            expiresAfterDays: p.expires_after_days,
+          }))
+      : [];
   if (
     !portalShowsTraining({
       hasPackage: packages.length > 0,
@@ -354,7 +365,7 @@ export async function buyPackageFromPortal(
     .eq("id", session.organizationId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!serviceLinesOrDefault(org?.service_lines).includes("training"))
+  if (!serviceLinesOrDefault(org?.service_lines).includes("training") || !trainingIsForSale())
     throw new Error("Training packages are not offered here.");
   const sale = await createPackageSale(sb as TrainingDb, {
     ...input,
