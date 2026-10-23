@@ -51,17 +51,15 @@ export async function seedTrainingPackage(db: TrainingDb, orgId: string) {
     .limit(1);
   if (existing.error) throw new Error(existing.error.message);
   if (existing.data?.length) return;
-  const inserted = await db
-    .from("service_packages")
-    .insert({
-      organization_id: orgId,
-      service_id: service.id,
-      name: "6-session package",
-      sessions_count: 6,
-      expires_after_days: 90,
-      price_cents: 0,
-      active: false,
-    });
+  const inserted = await db.from("service_packages").insert({
+    organization_id: orgId,
+    service_id: service.id,
+    name: "6-session package",
+    sessions_count: 6,
+    expires_after_days: 90,
+    price_cents: 0,
+    active: false,
+  });
   if (inserted.error) throw new Error(inserted.error.message);
 }
 

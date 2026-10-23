@@ -20,7 +20,9 @@ describe("both office cancel paths ask when the client called", () => {
     it(`${file} renders the field on a package lesson and sends it`, () => {
       const src = read(file);
       expect(src).toMatch(/client_package_id && \(\s*<ClientCalledAtField/);
-      expect(src).toMatch(/clientCancelledAt: [^\n]*client_package_id \? clientCalledAtIso\(calledAt\) : null/);
+      expect(src).toMatch(
+        /clientCancelledAt: [^\n]*client_package_id \? clientCalledAtIso\(calledAt\) : null/,
+      );
     });
   }
 

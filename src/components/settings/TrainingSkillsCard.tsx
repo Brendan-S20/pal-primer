@@ -17,8 +17,7 @@ export function TrainingSkillsCard({ canEdit }: { canEdit: boolean }) {
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["training-skills"] });
   const save = useMutation({
-    mutationFn: (input: { id?: string; name: string; active?: boolean }) =>
-      saveFn({ data: input }),
+    mutationFn: (input: { id?: string; name: string; active?: boolean }) => saveFn({ data: input }),
     onSuccess: () => {
       setName("");
       setEditing(null);
@@ -28,7 +27,10 @@ export function TrainingSkillsCard({ canEdit }: { canEdit: boolean }) {
   });
 
   return (
-    <section className="space-y-4 rounded-lg border bg-card p-4 sm:p-6" data-testid="training-skills-settings">
+    <section
+      className="space-y-4 rounded-lg border bg-card p-4 sm:p-6"
+      data-testid="training-skills-settings"
+    >
       <div className="min-w-0">
         <h3 className="font-semibold">Training skills</h3>
         <p className="text-sm text-muted-foreground">
@@ -93,13 +95,18 @@ export function TrainingSkillsCard({ canEdit }: { canEdit: boolean }) {
             </div>
             {canEdit && editing?.id !== skill.id && (
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setEditing({ id: skill.id, name: skill.name })}>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditing({ id: skill.id, name: skill.name })}
+                >
                   Rename
                 </Button>
                 <Button
                   variant="outline"
                   disabled={save.isPending}
-                  onClick={() => save.mutate({ id: skill.id, name: skill.name, active: !skill.active })}
+                  onClick={() =>
+                    save.mutate({ id: skill.id, name: skill.name, active: !skill.active })
+                  }
                 >
                   {skill.active ? "Deactivate" : "Activate"}
                 </Button>

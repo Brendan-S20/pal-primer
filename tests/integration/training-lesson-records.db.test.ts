@@ -227,7 +227,10 @@ describe.skipIf(!enabled)("training lesson records", () => {
       name: `Other ${runId}`,
       service_lines: ["training"],
     });
-    const foreignSkill = await insert("training_skills", { organization_id: otherOrg, name: "Sit" });
+    const foreignSkill = await insert("training_skills", {
+      organization_id: otherOrg,
+      name: "Sit",
+    });
     const bad = await admin
       .from("session_progress")
       .insert({ organization_id: orgId, visit_id: visitId, skill_id: foreignSkill, score: 2 });

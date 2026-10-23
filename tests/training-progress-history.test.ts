@@ -79,7 +79,11 @@ function fake(
         if (table === "training_session_notes" && columns === "visit_id, note, trainer_note")
           return {
             data: [
-              { visit_id: EARLIER, note: "Pulled on the leash", trainer_note: "Owner skips practice" },
+              {
+                visit_id: EARLIER,
+                note: "Pulled on the leash",
+                trainer_note: "Owner skips practice",
+              },
             ],
             error: null,
           };

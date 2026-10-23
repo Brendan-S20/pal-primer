@@ -16,7 +16,9 @@ const fn = (name: string) => {
 
 describe("a trainer-only note the portal never reads", () => {
   it("adds trainer_note beside the shared note, and a row needs one of them", () => {
-    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS trainer_note text\s+CHECK \(trainer_note IS NULL OR/);
+    expect(sql).toMatch(
+      /ADD COLUMN IF NOT EXISTS trainer_note text\s+CHECK \(trainer_note IS NULL OR/,
+    );
     expect(sql).toContain("ALTER COLUMN note DROP NOT NULL");
     expect(sql).toContain("CHECK (note IS NOT NULL OR trainer_note IS NOT NULL)");
   });
@@ -53,7 +55,9 @@ describe("the session rule", () => {
     expect(guard).toContain("NOT public.can_write_org((select auth.uid()), NEW.organization_id)");
     expect(guard).toContain("Only the office can record when the client canceled.");
     // On a status change, a non-office writer's skip_billable does not count.
-    expect(rule).toContain("NEW.skip_billable := (_office AND COALESCE(NEW.skip_billable, false)) OR (");
+    expect(rule).toContain(
+      "NEW.skip_billable := (_office AND COALESCE(NEW.skip_billable, false)) OR (",
+    );
     expect(rule).not.toContain("NEW.skip_billable := COALESCE(NEW.skip_billable, false) OR");
     expect(rule).toContain("Only the office can change whether this lesson uses a session.");
   });
