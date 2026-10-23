@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   listTrainingPackagesOverview,
   type PackageOverviewRow,
@@ -33,10 +33,7 @@ function TrainingPackagesPage() {
   const [filter, setFilter] = useState<Filter | null>(null);
   // Opens on the packages running low when there are any.
   const shownFilter: Filter = filter ?? (low > 0 ? "low" : "all");
-  const rows = useMemo(
-    () => (shownFilter === "low" ? packages.filter((p) => p.runningLow) : packages),
-    [packages, shownFilter],
-  );
+  const rows = shownFilter === "low" ? packages.filter((p) => p.runningLow) : packages;
 
   return (
     <>
