@@ -632,6 +632,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       "waste-log": "倾倒记录",
       messages: "消息",
       concerns: "投诉",
+      "training-packages": "训练套餐",
       neighbors: "邻居拜访",
       dna: "DNA 合规",
       invoices: "发票",

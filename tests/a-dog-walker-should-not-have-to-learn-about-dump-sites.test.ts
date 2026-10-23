@@ -93,6 +93,7 @@ const vis = (lines: ServiceLine[], commercial = true): NavVisibility => ({
   franchiseParent: false,
   texting: false,
   petWaste: runsPetWaste(lines),
+  training: lines.includes("training"),
 });
 
 // ── The gating table ──────────────────────────────────────────────────────

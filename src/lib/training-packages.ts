@@ -21,6 +21,18 @@ export function packageState(pkg: TrainingPackage, today: string) {
   return "active" as const;
 }
 
+/** Days before expiry when a package counts as running low: the same 14 the
+ *  expiry notice uses (dueNotices in training-portal.ts). */
+export const RUNNING_LOW_DAYS = 14;
+
+/** An active package the office should look at: one session or none left to
+ *  book, or expiring within RUNNING_LOW_DAYS. */
+export function runningLow(pkg: TrainingPackage, today: string): boolean {
+  if (packageState(pkg, today) !== "active") return false;
+  if (sessionsLeft(pkg) <= 1) return true;
+  return !!pkg.expires_on && pkg.expires_on <= addDaysToDay(today, RUNNING_LOW_DAYS);
+}
+
 export function expiresOnFor(purchasedOn: string, days: number | null): string | null {
   return days == null ? null : addDaysToDay(purchasedOn, days);
 }

@@ -673,6 +673,7 @@ const en = {
       "waste-log": "Waste log",
       messages: "Messages",
       concerns: "Concerns",
+      "training-packages": "Training packages",
       neighbors: "Neighbor canvassing",
       dna: "DNA compliance",
       invoices: "Invoices",

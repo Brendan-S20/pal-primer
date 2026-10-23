@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
 import { orgToday, DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
-import { packageState, sessionsLeft } from "@/lib/training-packages";
+import { holdsSession, packageState, runningLow, sessionsLeft } from "@/lib/training-packages";
 import {
   bookTrainingSessions,
   lessonCounts,
@@ -160,6 +160,110 @@ export const listClientPackages = createServerFn({ method: "GET" })
       }),
     );
     return { packages };
+  });
+
+export type PackageOverviewRow = {
+  id: string;
+  name: string;
+  clientId: string;
+  clientName: string;
+  dogName: string | null;
+  sessionsCount: number;
+  /** Sessions used, as the package counts them (completed, and missed or
+   *  late-canceled ones the rule charged). */
+  used: number;
+  /** Lessons on the schedule. */
+  booked: number;
+  /** Sessions free to book: neither used nor on the schedule. */
+  toBook: number;
+  expiresOn: string | null;
+  runningLow: boolean;
+  unpaid: boolean;
+};
+
+/** Every running package in the business, for the office's Training
+ *  packages page: who holds it, how many sessions are used, booked and still
+ *  to book, when it expires, and whether it is running low or unpaid. The
+ *  ones running low come first. Read through RLS, like a client's own list. */
+export const listTrainingPackagesOverview = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const db = context.supabase as TrainingDb;
+    const { orgId } = await resolveCaller(db, context.userId);
+    const [packs, org] = await Promise.all([
+      db
+        .from("client_packages")
+        .select(
+          "id, name, client_id, dog_id, sessions_count, sessions_used, expires_on, status, invoice_id, clients(display_name), dogs(name)",
+        )
+        .eq("organization_id", orgId)
+        .eq("status", "active")
+        .order("expires_on", { ascending: true, nullsFirst: false }),
+      db.from("organizations").select("timezone").eq("id", orgId).single(),
+    ]);
+    if (packs.error) throw new Error(packs.error.message);
+    if (org.error) throw new Error(org.error.message);
+    const today = orgToday(org.data.timezone || DEFAULT_ORG_TIMEZONE);
+    type Row = ClientPackage & {
+      client_id: string;
+      clients: { display_name: string | null } | null;
+      dogs: { name: string | null } | null;
+    };
+    const rows = ((packs.data ?? []) as unknown as Row[]).filter(
+      (p) => packageState(p, today) === "active",
+    );
+    const ids = rows.map((p) => p.id);
+    const invoiceIds = rows.map((p) => p.invoice_id).filter((v): v is string => !!v);
+    const [lessons, invoices] = await Promise.all([
+      ids.length
+        ? db
+            .from("visits")
+            .select("client_package_id, status, skip_billable")
+            .in("client_package_id", ids)
+        : { data: [], error: null },
+      invoiceIds.length
+        ? db.from("invoices").select("id, status").in("id", invoiceIds)
+        : { data: [], error: null },
+    ]);
+    if (lessons.error) throw new Error(lessons.error.message);
+    if (invoices.error) throw new Error(invoices.error.message);
+    // Per package: lessons on the schedule, and every lesson that holds a
+    // session (on the schedule, or used). The rest are free to book, as on
+    // the client's own tab (free = sessions - held).
+    const booked = new Map<string, number>();
+    const held = new Map<string, number>();
+    const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+    for (const v of (lessons.data ?? []) as {
+      client_package_id: string;
+      status: string;
+      skip_billable: boolean;
+    }[]) {
+      if (holdsSession(v)) bump(held, v.client_package_id);
+      if (v.status === "scheduled" || v.status === "in_progress") bump(booked, v.client_package_id);
+    }
+    const openInvoice = new Set(
+      ((invoices.data ?? []) as { id: string; status: string }[])
+        .filter((i) => i.status === "open" || i.status === "draft")
+        .map((i) => i.id),
+    );
+    const out: PackageOverviewRow[] = rows.map((p) => {
+      return {
+        id: p.id,
+        name: p.name,
+        clientId: p.client_id,
+        clientName: p.clients?.display_name ?? "Client",
+        dogName: p.dogs?.name ?? null,
+        sessionsCount: p.sessions_count,
+        used: p.sessions_used,
+        booked: booked.get(p.id) ?? 0,
+        toBook: Math.max(0, p.sessions_count - (held.get(p.id) ?? 0)),
+        expiresOn: p.expires_on,
+        runningLow: runningLow(p, today),
+        unpaid: !!p.invoice_id && openInvoice.has(p.invoice_id),
+      };
+    });
+    out.sort((a, b) => Number(b.runningLow) - Number(a.runningLow));
+    return { today, packages: out };
   });
 
 const lessonTime = {

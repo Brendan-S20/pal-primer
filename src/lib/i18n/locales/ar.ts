@@ -713,6 +713,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       "waste-log": "سجل النفايات",
       messages: "الرسائل",
       concerns: "الشكاوى",
+      "training-packages": "باقات التدريب",
       neighbors: "التسويق للجيران",
       dna: "التزام DNA",
       invoices: "الفواتير",

@@ -665,6 +665,7 @@ const es: Translations = {
       "waste-log": "Registro de desechos",
       messages: "Mensajes",
       concerns: "Quejas",
+      "training-packages": "Paquetes de entrenamiento",
       neighbors: "Visitas a vecinos",
       dna: "Cumplimiento de ADN",
       invoices: "Facturas",
