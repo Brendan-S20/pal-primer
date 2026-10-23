@@ -67,6 +67,19 @@ All added migrations follow main's latest timestamp, 20261018150000. The stacked
 - Confirm existing pet waste signup, portal one-off booking, route generation, waste logging and invoicing still work.
 - Controlled QA of the launch switch must show portal request -> Requests -> office booking -> groomer completion -> invoice/payment -> client portal, with other service-line switches unchanged.
 
+## Local verification
+
+- TypeScript: `NODE_OPTIONS=--max-old-space-size=6144 npx tsc --noEmit` passed. Node's default 2 GB heap was insufficient.
+- Browser fixtures: grooming settings and the My Day matting charge passed at 390, 820, 1024 and 1440. The phone case passed on rerun after allowing for Vite's cold module load. These are fixture UI checks, not real payment or database integration tests.
+- Full lint: 16,934 errors and 155 warnings. 5,924 errors are in 616 files unchanged by this PR. This remains a merge blocker; no lint rules were disabled.
+- Local Supabase replay/Storage: blocked before startup by the environment denying the public.ecr.aws image pull. Portal uploads remain disabled.
+- Remote CI: checkout failed on the self-hosted runner with a missing `_runner_file_commands/set_output_*` file, including a retry. DB/browser/impact jobs did not reach application checks.
+- Full Vitest results are recorded in the PR body after the final run.
+
+The screenshots below use synthetic fixture data, including the fixture's trial banner and checklist. They show the new controls and billing confirmation; QA must still review a real grooming setup with its own checklist and current billing state.
+
+[Settings at 390px](grooming-qa/setup-390.png) · [Matting confirmation at 390px](grooming-qa/matting-390.png)
+
 ## Explicitly deferred by the first-customer scope
 
 Deposits and cancellation/no-show fees; real drive-time routing; van power/water; per-pet invoice lines; arbitrary-week repeats/rebook prompt; business-time-zone default date; groomer-only staff picker; a separate grooming board; Spanish/Chinese register and empty-state polish; dispatcher booking (#460); bank debit (#461). Track these before broader launch promises; none is silently represented as implemented.
