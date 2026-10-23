@@ -36,6 +36,11 @@ import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  ClientCalledAtField,
+  clientCalledAtIso,
+  nowAsCalledAt,
+} from "@/components/training/ClientCalledAtField";
 
 /** A skip's reason as words: a code through the office's labels, free text
  *  (from before reasons were codes) as it was typed. */
@@ -931,6 +936,8 @@ function VisitDetailDrawer({
   const [newDate, setNewDate] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [cancelCode, setCancelCode] = useState("other");
+  // On a training package lesson: when the client called to cancel.
+  const [calledAt, setCalledAt] = useState("");
   const [newStaffId, setNewStaffId] = useState("");
 
   const completeFn = useServerFn(completeVisitFromOffice);
@@ -975,7 +982,12 @@ function VisitDetailDrawer({
   const cancelMut = useMutation({
     mutationFn: () =>
       cancelFn({
-        data: { visitId: v.id, reason: cancelReason.trim(), code: cancelCode as any },
+        data: {
+          visitId: v.id,
+          reason: cancelReason.trim(),
+          code: cancelCode as any,
+          clientCancelledAt: v.client_package_id ? clientCalledAtIso(calledAt) : null,
+        },
       }),
     onSuccess: () => afterAction("Visit canceled"),
     onError: (e) => toast.error((e as Error).message),
@@ -1122,7 +1134,10 @@ function VisitDetailDrawer({
                     size="sm"
                     variant={action === "cancel" ? "destructive" : "outline"}
                     className={action === "cancel" ? undefined : "text-destructive"}
-                    onClick={() => setAction(action === "cancel" ? null : "cancel")}
+                    onClick={() => {
+                      setCalledAt(nowAsCalledAt());
+                      setAction(action === "cancel" ? null : "cancel");
+                    }}
                   >
                     Cancel visit…
                   </Button>
@@ -1235,6 +1250,9 @@ function VisitDetailDrawer({
                     />
                   </div>
                 </div>
+                {v.client_package_id && (
+                  <ClientCalledAtField id="va-called-at" value={calledAt} onChange={setCalledAt} />
+                )}
                 <p className="text-xs text-muted-foreground">
                   The visit is recorded as skipped with this reason; the org's skip-billing rules
                   decide whether any charge applies.

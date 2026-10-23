@@ -213,7 +213,11 @@ describe("what makes a service saveable", () => {
   });
 
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
+    // Walking, sitting and training are Coming soon, so only a business that
+    // already runs one, or a service already on it, is offered it.
     expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste"]);
+    expect(serviceLineChoices(["pet_waste"])).not.toContain("training");
+    expect(serviceLineChoices(["pet_waste", "training"])).toContain("training");
     expect(serviceLineChoices(["pet_waste", "dog_walking"])).toEqual(["pet_waste", "dog_walking"]);
     expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual(["pet_waste", "pet_sitting"]);
     expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
@@ -240,12 +244,16 @@ describe("what makes a service saveable", () => {
       "Full groom (90 min)",
       "Nail trim (15 min)",
       "Private lesson (60 min)",
-      "Training package (4 sessions)",
+      "Evaluation (45 min)",
     ]);
     expect(seeds.every((s) => s.base_price_cents === null)).toBe(true);
     expect(seeds.find((s) => s.name === "Private lesson (60 min)")).toMatchObject({
       service_line: "training",
       default_duration_min: 60,
+    });
+    expect(seeds.find((s) => s.name === "Evaluation (45 min)")).toMatchObject({
+      service_line: "training",
+      default_duration_min: 45,
     });
   });
 

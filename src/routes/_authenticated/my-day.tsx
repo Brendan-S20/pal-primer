@@ -108,6 +108,10 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { visitServiceLabel } from "@/lib/visit-service";
+import {
+  TrainingProgressPanel,
+  TrainingSessionBadge,
+} from "@/components/training/TrainingProgressPanel";
 import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
@@ -2303,6 +2307,7 @@ function VisitCard({
                 )}
               </span>
             )}
+            <TrainingSessionBadge visitId={visit.id} serviceLine={service?.line} />
             {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">
@@ -2342,6 +2347,9 @@ function VisitCard({
             {p?.city || p?.postal_code ? " · " : ""}
             {visit.clients?.display_name ?? t("visit.fallbackClient")}
           </div>
+          {!collapsed && (
+            <TrainingProgressPanel visitId={visit.id} serviceLine={service?.line} />
+          )}
 
           {/* When this stop is expected, and how big the yard is — one line of
               context, wrapping rather than stacking.

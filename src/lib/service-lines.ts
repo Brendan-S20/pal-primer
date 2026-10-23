@@ -51,8 +51,16 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
  *  then the picker shows them as Coming soon. A business that already runs
  *  one keeps it; setServiceLines refuses only adding one. Walking's path
  *  (booking, the walker's day, portal reports and access, client emails,
- *  invoices) is built and waits on that approval. */
+ *  invoices) is built and waits on that approval. An org runs training only
+ *  when its `organizations.service_lines` is set to include it directly, and
+ *  customers still cannot request it (`customerCanRequestService`). */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
+
+/** Whether a customer, the public signup form, or the receptionist may ask
+ *  for this line. Training is sold and scheduled by the office. */
+export function customerCanRequestService(line: string): boolean {
+  return line !== "training";
+}
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
   pet_waste: "Pet waste removal (scooping)",

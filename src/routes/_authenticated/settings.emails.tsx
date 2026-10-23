@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { pageTitle } from "@/lib/page-title";
 import { WeeklyDigestCard } from "@/components/settings/WeeklyDigestCard";
 import { usePermissions } from "@/hooks/useMyRole";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 const key = ["email-settings"] as const;
 
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/_authenticated/settings/emails")({
 // The switches. quote_followup_days is a number and gets its own control.
 type SwitchKey = Exclude<keyof Settings, "quote_followup_days" | "runs_dog_walking">;
 
-const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
+const ROWS: Array<{ key: SwitchKey; label: string; help: string; trainingOnly?: boolean }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
   { key: "notify_email_invoice_sent", label: "Invoice sent", help: "Sent when you email a new invoice from the invoice page." },
   { key: "notify_email_quote_sent", label: "Quote sent", help: "Sent when you press Send on a quote, with a link the client accepts or declines from. Off means Send only marks the quote sent, and you share the link yourself." },
@@ -30,6 +31,7 @@ const ROWS: Array<{ key: SwitchKey; label: string; help: string }> = [
   { key: "notify_email_visit_reminder", label: "Day-before visit reminder", help: "Sent early each morning to every client with a visit the next day, with a link to skip or reschedule. Replies go to your business email." },
   { key: "notify_email_on_my_way", label: "On my way (when a text can't go)", help: "Sent instead of the \"on my way\" text when the client has no texting consent, no mobile number, or the text fails. Names the tech and the arrival window." },
   { key: "notify_email_weather_reschedule", label: "Weather reschedule", help: "Sent when a visit is bumped due to weather." },
+  { key: "notify_email_training_package", label: "Training package notices", help: "Sent once when a package has one session left, and once 14 days before it expires, with a link to the client's training page. The office gets the same notices in the app either way.", trainingOnly: true },
 ];
 
 // Dog walking only (#410): drawn for a business that runs it, and sent only
@@ -48,13 +50,15 @@ function EmailSettingsPage() {
   // answers with an error.
   const { can } = usePermissions();
   const canSeeDigest = can("view_financials");
+  const { lines } = useServiceLines();
   const load = useServerFn(getEmailSettings);
   const save = useServerFn(updateEmailSettings);
   const { data, refetch } = useSuspenseQuery(queryOptions({ queryKey: key, queryFn: () => load() }));
   const [values, setValues] = useState<Settings>(data);
   useEffect(() => setValues(data), [data]);
 
-  const rows = values.runs_dog_walking ? [...ROWS, ...WALK_ROWS] : ROWS;
+  const base = ROWS.filter((r) => !r.trainingOnly || lines.includes("training"));
+  const rows = values.runs_dog_walking ? [...base, ...WALK_ROWS] : base;
   const mut = useMutation({
     mutationFn: () => {
       // The walk switches are saved only where they were drawn.
