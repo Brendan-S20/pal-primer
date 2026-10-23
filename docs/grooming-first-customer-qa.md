@@ -8,7 +8,7 @@ Grooming remains Coming soon. Pet waste stays bookable. A later launch PR must c
 
 - `BOOKABLE_SERVICE_LINES` in `src/lib/service-lines.ts`: the owner picker, `serviceLinesAdditionProblem`, `customerMayBook`, `CUSTOMER_BOOKABLE_SERVICE_LINES`, `customerCanRequestService`, public catalog, portal request UI/server, public signup and receptionist all derive from this list.
 - `public.bookable_service_lines()`: organization write guard and public catalog/quote/one-off SQL, plus `portal_request_groom`. No permanently false request constant remains.
-- The SQL assertions in `20261018150000` and its restoration `20261023190000` deliberately pin pet waste as the only bookable line; update them in the launch PR.
+- The assertions in `20261018150000` and its restoration `20261023190000` establish pet waste as the only bookable line at this point in migration history. A launch PR must add a later migration changing the SQL list and update the launch-gate tests; do not rewrite migrations already on main.
 - `PORTAL_VACCINE_UPLOADS_ENABLED` stays false independently of booking. Enable only after the Storage suite passes in CI: office access, cross-client isolation, MIME/type and size limits. Both server upload steps refuse while disabled; clients can still read their own existing records.
 
 ## Review disposition
@@ -52,6 +52,7 @@ All added migrations follow main's latest timestamp, 20261018150000. The stacked
 - `supabase/migrations/20261023122200_a-kept-deposit-is-not-billed-twice.sql`
 - `supabase/migrations/20261023122300_a-groom-that-was-not-done-bills-no-add-ons.sql`
 - `supabase/migrations/20261023122400_two-grooms-cannot-share-a-groomer.sql`
+- `supabase/migrations/20261023170000_grooming-skip-reasons.sql`
 - `supabase/migrations/20261023180000_grooming-launch-defaults.sql`
 - `supabase/migrations/20261023190000_keep-coming-soon-off-public-booking.sql`
 

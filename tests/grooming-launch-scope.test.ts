@@ -50,10 +50,10 @@ describe("grooming first customer scope", () => {
   });
   it("offers grooming reasons without changing the pet waste picker", () => {
     expect(techSkipReasonCodes(false, true)).toEqual([
-      "dog_outside",
-      "no_one_home",
-      "access_blocked",
-      "unsafe_conditions",
+      "pet_not_ready",
+      "client_not_home",
+      "no_parking",
+      "pet_stressed",
       "weather",
       "other",
     ]);

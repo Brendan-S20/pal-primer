@@ -70,9 +70,9 @@ describe("vaccine status", () => {
       vaccines: [],
     });
   });
-  it("flags only unverified portal records and prefers a verified tie", () => {
+  it("flags office records without proof seen and prefers a verified tie", () => {
     expect(vaccineStatus([record("2027-01-01")], ["rabies"], today).vaccines[0].unverified).toBe(
-      false,
+      true,
     );
     expect(
       vaccineStatus(
@@ -106,9 +106,16 @@ describe("groom vaccine decisions", () => {
     expect(groomVaccineDecision("warn", missing)).toBe("warn");
     expect(groomVaccineDecision("block", missing)).toBe("block");
     for (const rule of ["off", "warn", "block"] as const) {
-      expect(groomVaccineDecision(rule, vaccineStatus([record(today)], ["rabies"], today))).toBe(
-        "allow",
-      );
+      expect(
+        groomVaccineDecision(
+          rule,
+          vaccineStatus(
+            [record(today, { verified_at: "2026-10-01T12:00:00Z" })],
+            ["rabies"],
+            today,
+          ),
+        ),
+      ).toBe("allow");
       expect(groomVaccineDecision(rule, vaccineStatus([], [], today))).toBe("allow");
     }
   });
@@ -127,7 +134,7 @@ describe("groom vaccine decisions", () => {
     expect(groomVaccineFlag(verified)).toBe("ok");
   });
   it("checks each groom on its own date: rabies current in October has lapsed by February", () => {
-    const records = [record("2027-01-31")];
+    const records = [record("2027-01-31", { verified_at: "2026-10-01T12:00:00Z" })];
     expect(groomVaccineDecision("block", vaccineStatus(records, ["rabies"], today))).toBe("allow");
     const february = vaccineStatus(records, ["rabies"], "2027-02-12");
     expect(groomVaccineDecision("block", february)).toBe("block");

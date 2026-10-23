@@ -8124,6 +8124,10 @@ export type Database = {
           skip_charge_cents: number
           skip_reason: string | null
           skip_reason_code:
+        | "pet_not_ready"
+        | "client_not_home"
+        | "no_parking"
+        | "pet_stressed"
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           skipped_at: string | null
@@ -10883,6 +10887,10 @@ export type Database = {
         | "one_time"
         | "every_n_days"
       skip_reason_code:
+        | "pet_not_ready"
+        | "client_not_home"
+        | "no_parking"
+        | "pet_stressed"
         | "client_cancelled_late"
         | "gate_locked"
         | "dog_outside"
@@ -11097,6 +11105,10 @@ export const Constants = {
         "every_n_days",
       ],
       skip_reason_code: [
+        "pet_not_ready",
+        "client_not_home",
+        "no_parking",
+        "pet_stressed",
         "client_cancelled_late",
         "gate_locked",
         "dog_outside",

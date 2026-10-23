@@ -54,6 +54,16 @@ describe("office vaccine files use the caller", () => {
     expect(state.calls[0].data).toMatchObject({ dog_id: dog, organization_id: org, source: "office", created_by: "user" });
     expect(storage.remove).not.toHaveBeenCalled();
   });
+  it("marks proof seen only when the office ticks it, including records without a file", async () => {
+    const unseen = form(); unseen.delete("file");
+    await addVaccination({ data: unseen });
+    expect(state.calls.at(-1).data).toMatchObject({ verified_by: null, verified_at: null, storage_path: null });
+    const seen = form(); seen.delete("file"); seen.set("proofSeen", "on");
+    await addVaccination({ data: seen });
+    expect(state.calls.at(-1).data.verified_by).toBe("user");
+    expect(state.calls.at(-1).data.verified_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
   it("removes the uploaded file when inserting the record fails", async () => {
     state.insertFails = true;
     await expect(addVaccination({ data: form() })).rejects.toThrow("Write failed");

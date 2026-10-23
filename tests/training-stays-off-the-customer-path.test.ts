@@ -42,9 +42,9 @@ const walk = {
 describe("customers cannot request training", () => {
   it("keeps the line off the portal, the public form and the receptionist", async () => {
     expect(customerCanRequestService("training")).toBe(false);
-    expect(customerCanRequestService("dog_walking")).toBe(true);
-    expect(oneOffServiceOptions([lesson, walk], null).map((s) => s.id)).toEqual(["walk"]);
-    expect(publicServiceChoices([lesson, walk]).map((s) => s.id)).toEqual(["walk"]);
+    expect(customerCanRequestService("dog_walking")).toBe(false);
+    expect(oneOffServiceOptions([lesson, walk], null).map((s) => s.id)).toEqual([]);
+    expect(publicServiceChoices([lesson, walk]).map((s) => s.id)).toEqual([]);
 
     const store = {
       org: async () => ({
@@ -59,7 +59,7 @@ describe("customers cannot request training", () => {
     const caller = { orgId: "org", fromNumber: "+15555550100", clientId: null };
     const listed = await listServices(store, caller);
     expect(listed).toMatchObject({
-      services: [{ service_id: "walk", kind: "dog_walking" }],
+      services: [],
     });
     expect(JSON.stringify(listed)).not.toMatch(/lesson|training/);
     await expect(getOpenSlots(store, caller, { service_id: "lesson" })).resolves.toEqual({
