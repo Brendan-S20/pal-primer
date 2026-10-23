@@ -2,8 +2,9 @@
 // A stranger cannot pick, be quoted for, pay for or send a lead about a
 // service on a line that is still Coming soon (#506).
 //
-// Only pet waste is in BOOKABLE_SERVICE_LINES. An owner may set up a walk
-// before launch, and before this change the public paths offered it: the
+// Pet waste and, since #530, dog walking are in BOOKABLE_SERVICE_LINES. An
+// owner may set up a sit before launch, and before #506 the public paths
+// offered a Coming soon service like it: the
 // signup and quote form's picker (publicServiceChoices), the signup's quote
 // and checkout (signup.functions.ts) and the embedded lead form
 // (/api/public/leads). This was open on main.
@@ -195,17 +196,17 @@ beforeEach(() => {
 });
 
 describe("the public signup and quote form's picker", () => {
-  it("drops a walk and a sit that public_services handed back, keeping pet waste", () => {
-    expect(publicServiceChoices([PW, WALK, SIT]).map((s) => s.id)).toEqual(["pw"]);
+  it("drops a sit that public_services handed back, keeping pet waste and the walk", () => {
+    expect(publicServiceChoices([PW, WALK, SIT]).map((s) => s.id)).toEqual(["pw", "w"]);
   });
 
   it("offers nothing to pick from for a business whose only services are Coming soon", () => {
-    expect(publicServiceChoices([WALK, SIT])).toEqual([]);
+    expect(publicServiceChoices([SIT])).toEqual([]);
   });
 
   it("offers a line once it joins the launch list", () => {
-    const got = publicServiceChoices([PW, WALK, SIT], ["pet_waste", "dog_walking"]);
-    expect(got.map((s) => s.id)).toEqual(["pw", "w"]);
+    const got = publicServiceChoices([PW, WALK, SIT], ["pet_waste", "dog_walking", "pet_sitting"]);
+    expect(got.map((s) => s.id)).toEqual(["pw", "w", "s"]);
   });
 });
 
@@ -226,28 +227,27 @@ const checkoutBody = {
 const REFUSED = "That service isn't offered online right now. Pick another.";
 
 describe("the public signup", () => {
-  it("refuses to quote a walk or a sit before public_quote is asked", async () => {
+  it("refuses to quote a sit before public_quote is asked", async () => {
     const { getSignupQuote } = await import("@/lib/signup.functions");
-    for (const service_id of [WALK_ID, SIT_ID]) {
-      await expect((getSignupQuote as any)({ data: { ...quoteBody, service_id } })).rejects.toThrow(
-        REFUSED,
-      );
-    }
+    await expect(
+      (getSignupQuote as any)({ data: { ...quoteBody, service_id: SIT_ID } }),
+    ).rejects.toThrow(REFUSED);
     expect(h.quoteCalls).toEqual([]);
   });
 
-  it("still quotes pet waste, and leaves another business's id to public_quote", async () => {
+  it("quotes pet waste and a walk, and leaves another business's id to public_quote", async () => {
     const { getSignupQuote } = await import("@/lib/signup.functions");
     await (getSignupQuote as any)({ data: { ...quoteBody, service_id: PW_ID } });
     await (getSignupQuote as any)({ data: quoteBody });
+    await (getSignupQuote as any)({ data: { ...quoteBody, service_id: WALK_ID } });
     await (getSignupQuote as any)({ data: { ...quoteBody, service_id: OTHER_WALK_ID } });
-    expect(h.quoteCalls).toHaveLength(3);
+    expect(h.quoteCalls).toHaveLength(4);
   });
 
-  it("refuses to check out a walk: no quote, no card, no row", async () => {
+  it("refuses to check out a sit: no quote, no card, no row", async () => {
     const { createSignupPaymentIntent } = await import("@/lib/signup.functions");
     await expect(
-      (createSignupPaymentIntent as any)({ data: { ...checkoutBody, service_id: WALK_ID } }),
+      (createSignupPaymentIntent as any)({ data: { ...checkoutBody, service_id: SIT_ID } }),
     ).rejects.toThrow(REFUSED);
     expect(h.quoteCalls).toEqual([]);
     expect(h.intents).toEqual([]);
@@ -300,8 +300,8 @@ const leadBody = {
 };
 
 describe("the embedded lead form (/api/public/leads)", () => {
-  it("refuses a walk as invalid input, before a turn is taken, and writes nothing", async () => {
-    const r = await postLead({ ...leadBody, service_id: WALK_ID });
+  it("refuses a sit as invalid input, before a turn is taken, and writes nothing", async () => {
+    const r = await postLead({ ...leadBody, service_id: SIT_ID });
     expect(r).toEqual({ status: 400, body: { error: "Invalid input" } });
     expect(h.rpcs).toEqual([]);
     expect(h.leads).toEqual([]);

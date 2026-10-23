@@ -391,7 +391,7 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
-  it("offers five lines; only scooping is bookable", () => {
+  it("offers five lines; scooping and walking are bookable", () => {
     expect([...OFFERED_SERVICE_LINES]).toEqual([
       "pet_waste",
       "dog_walking",
@@ -399,7 +399,7 @@ describe("what an owner can choose", () => {
       "mobile_grooming",
       "training",
     ]);
-    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste"]);
+    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste", "dog_walking"]);
   });
 
   it("a Coming soon line can be kept or dropped, never added", () => {

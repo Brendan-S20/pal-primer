@@ -113,7 +113,7 @@ export function oneOffPriceFor(option: OneOffServiceOption, pets: number): numbe
  *
  * Deactivated services are never offered, and neither is a service on a
  * line that is still Coming soon (not in BOOKABLE_SERVICE_LINES, #506): an
- * owner may price a walk ahead of launch, and a client must not be able to
+ * owner may price a sit ahead of launch, and a client must not be able to
  * ask for it until the line goes live. portalRequestOneOff refuses the same
  * services, so a request built by hand cannot get past this either.
  * `bookable` is the launch list; a test that drives a line's path before its

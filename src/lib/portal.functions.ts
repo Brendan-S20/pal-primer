@@ -1541,10 +1541,15 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
     // The service, when one was named: the database refuses another
     // business's or a deactivated one (service_not_offered); this read is for
     // the words and the price. Pet waste is the extra cleanup, as before.
-    let service: { id: string; name: string; service_line: string } | null = null;
+    let service: {
+      id: string;
+      name: string;
+      service_line: string;
+      base_price_cents: number | null;
+    } | null = null;
     if (data.serviceId) {
       const { data: svc } = await (sb.from("services") as any)
-        .select("id, name, service_line")
+        .select("id, name, service_line, base_price_cents")
         .eq("id", data.serviceId)
         .eq("organization_id", session.organizationId)
         .maybeSingle();
@@ -1552,10 +1557,13 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
       // A line that is still Coming soon is never offered (oneOffServiceOptions),
       // and the RPC does not know about launch lines, so a request that names
       // one anyway is refused here, before anything is saved (#506).
+      // A service with no price yet is not offered either (oneOffServiceOptions
+      // leaves it out), now that a walk can be bookable (#530).
       const { BOOKABLE_SERVICE_LINES } = await import("@/lib/service-lines");
       if (
         service &&
-        !(BOOKABLE_SERVICE_LINES as readonly string[]).includes(service.service_line)
+        (!(BOOKABLE_SERVICE_LINES as readonly string[]).includes(service.service_line) ||
+          (service.service_line !== "pet_waste" && service.base_price_cents == null))
       ) {
         const { oneOffRefusalMessage } = await import("@/lib/one-off-booking");
         throw new Error(oneOffRefusalMessage("service_not_offered"));
