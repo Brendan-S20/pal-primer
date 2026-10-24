@@ -162,9 +162,33 @@ export const SIT_SKIP_REASON_LABELS = {
   other: "Other",
 } as const;
 
-export function techSkipReasonCodes(walk: boolean, sitting = false): readonly string[] {
-  if (sitting) return Object.keys(SIT_SKIP_REASON_LABELS);
-  return walk ? WALK_SKIP_REASON_CODES : TECH_SKIP_REASON_CODES;
+/** What a trainer picks on a lesson. Gate, yard and walk-hand-over reasons
+ *  do not fit a lesson. Whether a skip uses a package session is the
+ *  training rule's call (training_lesson_session_rule), not the reason's. */
+export const LESSON_SKIP_REASON_CODES = [
+  "client_cancelled_late",
+  "dog_unwell",
+  "no_one_home",
+  "weather",
+  "other",
+] as const satisfies readonly (typeof SKIP_REASON_CODES)[number][];
+
+/** Short labels for the trainer's picker. */
+export const LESSON_SKIP_REASON_LABELS: Record<(typeof LESSON_SKIP_REASON_CODES)[number], string> =
+  {
+    client_cancelled_late: "Client canceled",
+    dog_unwell: "Dog unwell",
+    no_one_home: "No one home",
+    weather: "Weather",
+    other: "Other",
+  };
+
+/** The picker's list for a stop on this service line. */
+export function techSkipReasonCodes(line: string | null | undefined): readonly string[] {
+  if (line === "pet_sitting") return Object.keys(SIT_SKIP_REASON_LABELS);
+  if (line === "dog_walking") return WALK_SKIP_REASON_CODES;
+  if (line === "training") return LESSON_SKIP_REASON_CODES;
+  return TECH_SKIP_REASON_CODES;
 }
 
 async function getOrgId(supabase: any, userId: string): Promise<string> {

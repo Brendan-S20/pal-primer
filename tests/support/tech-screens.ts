@@ -16,6 +16,9 @@
  */
 export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/routes/_authenticated/my-day.tsx" },
+  // The session count on a training stop, and the scores, note and homework
+  // a trainer records on it. Both open from My Day and from the visit drawer.
+  { file: "src/components/training/TrainingProgressPanel.tsx" },
   // The offline queue's sync toasts ("Synced 3 queued actions", the dead-letter
   // message that names the stop). They moved out of My Day so the queue
   // replays from every page, and they still speak the tech's language.

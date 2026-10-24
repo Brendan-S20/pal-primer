@@ -39,6 +39,7 @@ import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendOnMyWayMessage, sendVisitStatusSms } from "@/lib/messages.functions";
 import {
   SKIP_REASON_LABELS,
+  LESSON_SKIP_REASON_LABELS,
   WALK_SKIP_REASON_LABELS,
   SIT_SKIP_REASON_LABELS,
   techSkipReasonCodes,
@@ -110,6 +111,10 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { visitServiceLabel } from "@/lib/visit-service";
+import {
+  TrainingProgressPanel,
+  TrainingSessionBadge,
+} from "@/components/training/TrainingProgressPanel";
 import type { ServiceLine } from "@/lib/service-lines";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 import { EnRouteLocationChip } from "@/components/EnRouteLocationChip";
@@ -1357,15 +1362,20 @@ function cacheAgeText(t: TFunction, ageMs: number): string {
 }
 
 /** A skip reason code in the tech's language. A walk uses the walker labels
- *  (`walkSkipReason.<code>`). An unknown code is shown as-is. */
-function skipReasonLabel(t: TFunction, code: string, walk = false, sitting = false): string {
-  if (sitting) {
+ *  (`walkSkipReason.<code>`), a lesson the trainer's (`lessonSkipReason.<code>`),
+ *  a sit the sitter's (`sitSkipReason.<code>`). An unknown code is shown as-is. */
+function skipReasonLabel(t: TFunction, code: string, line?: string): string {
+  if (line === "pet_sitting") {
     const english = SIT_SKIP_REASON_LABELS[code as keyof typeof SIT_SKIP_REASON_LABELS];
     if (english) return t(`sitSkipReason.${code}`, { defaultValue: english });
   }
-  if (walk) {
+  if (line === "dog_walking") {
     const english = WALK_SKIP_REASON_LABELS[code as keyof typeof WALK_SKIP_REASON_LABELS];
     if (english) return t(`walkSkipReason.${code}`, { defaultValue: english });
+  }
+  if (line === "training") {
+    const english = LESSON_SKIP_REASON_LABELS[code as keyof typeof LESSON_SKIP_REASON_LABELS];
+    if (english) return t(`lessonSkipReason.${code}`, { defaultValue: english });
   }
   const english = SKIP_REASON_LABELS[code as keyof typeof SKIP_REASON_LABELS];
   return english ? t(`skipReason.${code}`, { defaultValue: english }) : code;
@@ -2098,7 +2108,7 @@ function VisitCard({
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
   const service = visitServiceLabel(visit.services);
   const walkStop = service?.line === "dog_walking";
-  const skipCodes = techSkipReasonCodes(walkStop, service?.line === "pet_sitting");
+  const skipCodes = techSkipReasonCodes(service?.line);
 
   // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
@@ -2346,6 +2356,7 @@ function VisitCard({
                 )}
               </span>
             )}
+            <TrainingSessionBadge visitId={visit.id} serviceLine={service?.line} />
             {visit.zones?.name && <span className="truncate">{visit.zones.name}</span>}
             {pendingLocal > 0 && (
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">
@@ -2385,6 +2396,9 @@ function VisitCard({
             {p?.city || p?.postal_code ? " · " : ""}
             {visit.clients?.display_name ?? t("visit.fallbackClient")}
           </div>
+          {!collapsed && (
+            <TrainingProgressPanel visitId={visit.id} serviceLine={service?.line} />
+          )}
 
           {/* When this stop is expected, and how big the yard is — one line of
               context, wrapping rather than stacking.
@@ -2559,7 +2573,7 @@ function VisitCard({
                     ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
                   {visit.skip_reason_code
-                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, walkStop, Boolean(sit))})`
+                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, service?.line)})`
                     : ""}
                   {visit.skip_reason ? ": " : ""}
                   {visit.skip_reason ? <bdi>{visit.skip_reason}</bdi> : null}
@@ -2982,7 +2996,7 @@ function VisitCard({
                 >
                   {skipCodes.map((c) => (
                     <option key={c} value={c}>
-                      {skipReasonLabel(t, c, walkStop, Boolean(sit))}
+                      {skipReasonLabel(t, c, service?.line)}
                     </option>
                   ))}
                 </select>

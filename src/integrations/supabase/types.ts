@@ -1242,6 +1242,115 @@ export type Database = {
           },
         ]
       }
+      client_packages: {
+        Row: {
+          canceled_at: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          dog_id: string | null
+          expires_on: string | null
+          id: string
+          invoice_id: string | null
+          name: string
+          organization_id: string
+          price_cents: number
+          purchased_on: string
+          request_id: string | null
+          service_id: string
+          service_package_id: string
+          sessions_count: number
+          sessions_used: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          canceled_at?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          dog_id?: string | null
+          expires_on?: string | null
+          id?: string
+          invoice_id?: string | null
+          name: string
+          organization_id: string
+          price_cents: number
+          purchased_on: string
+          request_id?: string | null
+          service_id: string
+          service_package_id: string
+          sessions_count: number
+          sessions_used?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          canceled_at?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          dog_id?: string | null
+          expires_on?: string | null
+          id?: string
+          invoice_id?: string | null
+          name?: string
+          organization_id?: string
+          price_cents?: number
+          purchased_on?: string
+          request_id?: string | null
+          service_id?: string
+          service_package_id?: string
+          sessions_count?: number
+          sessions_used?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_packages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_packages_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_packages_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_packages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_packages_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_packages_service_package_id_fkey"
+            columns: ["service_package_id"]
+            isOneToOne: false
+            referencedRelation: "service_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_unsubscribe_tokens: {
         Row: {
           client_id: string
@@ -2614,6 +2723,61 @@ export type Database = {
           },
         ]
       }
+      homework: {
+        Row: {
+          body: string
+          client_marked_done_at: string | null
+          created_at: string
+          dog_id: string | null
+          due_on: string | null
+          organization_id: string
+          updated_at: string
+          visit_id: string
+        }
+        Insert: {
+          body: string
+          client_marked_done_at?: string | null
+          created_at?: string
+          dog_id?: string | null
+          due_on?: string | null
+          organization_id: string
+          updated_at?: string
+          visit_id: string
+        }
+        Update: {
+          body?: string
+          client_marked_done_at?: string | null
+          created_at?: string
+          dog_id?: string | null
+          due_on?: string | null
+          organization_id?: string
+          updated_at?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homework_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homework_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homework_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: true
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       impersonation_grants: {
         Row: {
           actor_user_id: string
@@ -3836,6 +4000,7 @@ export type Database = {
           notify_email_review_request: boolean
           notify_email_stay_confirmed: boolean
           notify_email_stay_ending: boolean
+          notify_email_training_package: boolean
           notify_email_visit_completed: boolean
           notify_email_visit_reminder: boolean
           notify_email_walk_canceled: boolean
@@ -3910,6 +4075,9 @@ export type Database = {
           timezone: string
           tips_enabled: boolean
           traffic_profile: string
+          training_late_cancel_hours: number
+          training_missed_uses_session: boolean
+          training_share_progress: boolean
           trial_ends_at: string | null
           updated_at: string
           visit_checklist: Json
@@ -3988,6 +4156,7 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_stay_confirmed?: boolean
           notify_email_stay_ending?: boolean
+          notify_email_training_package?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
           notify_email_walk_canceled?: boolean
@@ -4062,6 +4231,9 @@ export type Database = {
           timezone?: string
           tips_enabled?: boolean
           traffic_profile?: string
+          training_late_cancel_hours?: number
+          training_missed_uses_session?: boolean
+          training_share_progress?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           visit_checklist?: Json
@@ -4140,6 +4312,7 @@ export type Database = {
           notify_email_review_request?: boolean
           notify_email_stay_confirmed?: boolean
           notify_email_stay_ending?: boolean
+          notify_email_training_package?: boolean
           notify_email_visit_completed?: boolean
           notify_email_visit_reminder?: boolean
           notify_email_walk_canceled?: boolean
@@ -4214,6 +4387,9 @@ export type Database = {
           timezone?: string
           tips_enabled?: boolean
           traffic_profile?: string
+          training_late_cancel_hours?: number
+          training_missed_uses_session?: boolean
+          training_share_progress?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           visit_checklist?: Json
@@ -5625,6 +5801,7 @@ export type Database = {
           booked_visit_id: string | null
           category: string
           client_id: string
+          client_package_id: string | null
           created_at: string
           id: string
           last_reply: string | null
@@ -5636,6 +5813,7 @@ export type Database = {
           requested_earliest_time: string | null
           requested_latest_time: string | null
           requested_on: string | null
+          requested_time: string | null
           requested_via: string | null
           resolution_note: string | null
           resolved_at: string | null
@@ -5649,6 +5827,7 @@ export type Database = {
           booked_visit_id?: string | null
           category: string
           client_id: string
+          client_package_id?: string | null
           created_at?: string
           id?: string
           last_reply?: string | null
@@ -5660,6 +5839,7 @@ export type Database = {
           requested_earliest_time?: string | null
           requested_latest_time?: string | null
           requested_on?: string | null
+          requested_time?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5673,6 +5853,7 @@ export type Database = {
           booked_visit_id?: string | null
           category?: string
           client_id?: string
+          client_package_id?: string | null
           created_at?: string
           id?: string
           last_reply?: string | null
@@ -5684,6 +5865,7 @@ export type Database = {
           requested_earliest_time?: string | null
           requested_latest_time?: string | null
           requested_on?: string | null
+          requested_time?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5706,6 +5888,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_client_package_id_fkey"
+            columns: ["client_package_id"]
+            isOneToOne: false
+            referencedRelation: "client_packages"
             referencedColumns: ["id"]
           },
           {
@@ -6173,6 +6362,60 @@ export type Database = {
           },
         ]
       }
+      service_packages: {
+        Row: {
+          active: boolean
+          created_at: string
+          expires_after_days: number | null
+          id: string
+          name: string
+          organization_id: string
+          price_cents: number
+          service_id: string
+          sessions_count: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          expires_after_days?: number | null
+          id?: string
+          name: string
+          organization_id: string
+          price_cents: number
+          service_id: string
+          sessions_count: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          expires_after_days?: number | null
+          id?: string
+          name?: string
+          organization_id?: string
+          price_cents?: number
+          service_id?: string
+          sessions_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_packages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_packages_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           active: boolean
@@ -6225,6 +6468,58 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_progress: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          score: number
+          skill_id: string
+          updated_at: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          score: number
+          skill_id: string
+          updated_at?: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          score?: number
+          skill_id?: string
+          updated_at?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_progress_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_progress_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "training_skills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_progress_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
             referencedColumns: ["id"]
           },
         ]
@@ -6808,6 +7103,7 @@ export type Database = {
           billing_cadence: Database["public"]["Enums"]["billing_cadence"]
           booked_via: string | null
           client_id: string
+          client_package_id: string | null
           created_at: string
           dog_count: number | null
           earliest_time: string | null
@@ -6842,6 +7138,7 @@ export type Database = {
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id: string
+          client_package_id?: string | null
           created_at?: string
           dog_count?: number | null
           earliest_time?: string | null
@@ -6876,6 +7173,7 @@ export type Database = {
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id?: string
+          client_package_id?: string | null
           created_at?: string
           dog_count?: number | null
           earliest_time?: string | null
@@ -6911,6 +7209,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_client_package_id_fkey"
+            columns: ["client_package_id"]
+            isOneToOne: false
+            referencedRelation: "client_packages"
             referencedColumns: ["id"]
           },
           {
@@ -7109,6 +7414,125 @@ export type Database = {
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_package_notices: {
+        Row: {
+          client_package_id: string
+          created_at: string
+          dedupe_key: string
+          kind: string
+          organization_id: string
+        }
+        Insert: {
+          client_package_id: string
+          created_at?: string
+          dedupe_key: string
+          kind: string
+          organization_id: string
+        }
+        Update: {
+          client_package_id?: string
+          created_at?: string
+          dedupe_key?: string
+          kind?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_package_notices_client_package_id_fkey"
+            columns: ["client_package_id"]
+            isOneToOne: false
+            referencedRelation: "client_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_package_notices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_session_notes: {
+        Row: {
+          created_at: string
+          note: string | null
+          organization_id: string
+          trainer_note: string | null
+          updated_at: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          note?: string | null
+          organization_id: string
+          trainer_note?: string | null
+          updated_at?: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          note?: string | null
+          organization_id?: string
+          trainer_note?: string | null
+          updated_at?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_session_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_session_notes_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: true
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_skills: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_skills_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -7316,7 +7740,9 @@ export type Database = {
       visits: {
         Row: {
           assigned_staff_id: string | null
+          client_cancelled_at: string | null
           client_id: string
+          client_package_id: string | null
           completed_at: string | null
           completion_photo_waived_reason: string | null
           completion_source: string | null
@@ -7365,7 +7791,9 @@ export type Database = {
         }
         Insert: {
           assigned_staff_id?: string | null
+          client_cancelled_at?: string | null
           client_id: string
+          client_package_id?: string | null
           completed_at?: string | null
           completion_photo_waived_reason?: string | null
           completion_source?: string | null
@@ -7414,7 +7842,9 @@ export type Database = {
         }
         Update: {
           assigned_staff_id?: string | null
+          client_cancelled_at?: string | null
           client_id?: string
+          client_package_id?: string | null
           completed_at?: string | null
           completion_photo_waived_reason?: string | null
           completion_source?: string | null
@@ -7474,6 +7904,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_client_package_id_fkey"
+            columns: ["client_package_id"]
+            isOneToOne: false
+            referencedRelation: "client_packages"
             referencedColumns: ["id"]
           },
           {
@@ -8280,6 +8717,10 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      cancel_client_package: {
+        Args: { _cancel_booked: boolean; _client_package_id: string }
+        Returns: number
+      }
       cast_roadmap_vote: {
         Args: { p_feature: string; p_voter: string }
         Returns: undefined
@@ -8353,6 +8794,10 @@ export type Database = {
         }[]
       }
       client_may_be_texted: { Args: { _client_id: string }; Returns: boolean }
+      client_package_session_number: {
+        Args: { _visit_id: string }
+        Returns: number
+      }
       client_unsubscribe_token_state: {
         Args: { _token: string }
         Returns: string
@@ -8826,12 +9271,16 @@ export type Database = {
         Returns: string
       }
       office_mark_visit_missed: {
-        Args: { _visit_id: string }
+        Args: {
+          _code?: Database["public"]["Enums"]["skip_reason_code"]
+          _visit_id: string
+        }
         Returns: undefined
       }
       office_reopen_visit: { Args: { _visit_id: string }; Returns: undefined }
       office_skip_visit: {
         Args: {
+          _client_cancelled_at?: string
           _code?: Database["public"]["Enums"]["skip_reason_code"]
           _reason: string
           _visit_id: string
@@ -9193,6 +9642,20 @@ export type Database = {
         }
         Returns: string
       }
+      portal_request_training_lesson: {
+        Args: {
+          _at: string
+          _client_package_id: string
+          _message: string
+          _on: string
+          _property_id: string
+          _token: string
+        }
+        Returns: {
+          created: boolean
+          ticket_id: string
+        }[]
+      }
       portal_request_vacation_hold: {
         Args: { _end: string; _reason: string; _start: string; _token: string }
         Returns: number
@@ -9218,6 +9681,17 @@ export type Database = {
           _token: string
         }
         Returns: string
+      }
+      portal_training_lesson_notes: {
+        Args: {
+          _client_id: string
+          _organization_id: string
+          _visit_ids: string[]
+        }
+        Returns: {
+          note: string
+          visit_id: string
+        }[]
       }
       post_credit_entry: {
         Args: {
@@ -9620,6 +10094,18 @@ export type Database = {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined
       }
+      set_training_session_rules: {
+        Args: {
+          _late_cancel_hours: number
+          _missed_uses_session: boolean
+          _org_id: string
+        }
+        Returns: undefined
+      }
+      set_training_share_progress: {
+        Args: { _org_id: string; _share: boolean }
+        Returns: undefined
+      }
       settle_email_campaigns: { Args: never; Returns: number }
       sit_visit_facts: {
         Args: { _visit_ids: string[] }
@@ -9778,6 +10264,20 @@ export type Database = {
       }
       team_size_ordinal: { Args: { _n: number }; Returns: string }
       tip_staff_for_invoice: { Args: { _invoice_id: string }; Returns: string }
+      training_visit_holds_session: {
+        Args: {
+          _skip_billable: boolean
+          _status: Database["public"]["Enums"]["visit_status"]
+        }
+        Returns: boolean
+      }
+      training_visit_uses_session: {
+        Args: {
+          _skip_billable: boolean
+          _status: Database["public"]["Enums"]["visit_status"]
+        }
+        Returns: boolean
+      }
       trial_enforcement_from: { Args: never; Returns: string }
       unlink_franchise_child: {
         Args: { _child_org_id: string }

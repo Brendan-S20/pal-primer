@@ -2,6 +2,7 @@ import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarDays, Sparkles, ArrowRight, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TrainingCard } from "@/components/portal/TrainingCard";
 import {
   usePortalCtx,
   usePortalTimezone,
@@ -119,6 +120,8 @@ function PortalHome() {
           </div>
         </section>
       ) : null}
+
+      <TrainingCard />
 
       {/* Recent history preview */}
       <section>

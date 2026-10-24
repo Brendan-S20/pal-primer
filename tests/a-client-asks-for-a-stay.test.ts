@@ -35,7 +35,7 @@ const state = vi.hoisted(() => ({
 // prove the real endpoint refuses writes while its launch gate is closed.
 vi.mock("@/lib/service-lines", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/service-lines")>()),
-  customerCanRequestService: () => state.bookable,
+  customerCanRequestStay: () => state.bookable,
 }));
 vi.mock("@/lib/portal-auth.server", () => ({
   requirePortalSession: async (_token: string, opts: any = {}) => {

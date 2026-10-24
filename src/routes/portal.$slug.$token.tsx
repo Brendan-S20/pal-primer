@@ -88,8 +88,9 @@ function PortalShell() {
   // A page under a tab that is not itself a tab (paying one invoice) keeps its
   // own name: without this the tab read only the business name, because this
   // effect replaced the pay page's "Pay invoice" with no label at all.
-  const pageLabel =
-    section?.label ?? (pathname.startsWith(`${base}/pay/`) ? "Pay invoice" : null);
+  const pageLabel = pathname.startsWith(`${base}/training`)
+    ? "Training"
+    : (section?.label ?? (pathname.startsWith(`${base}/pay/`) ? "Pay invoice" : null));
   useDocumentTitle(orgName ? customerTitle(pageLabel, orgName) : null);
 
   // Auth gate (finding #4): resolve the session before anything else.
@@ -358,9 +359,14 @@ function BottomTabs({
         <ul className="grid grid-cols-6">
           {TABS.map((t) => {
             const target = t.to.replace("$slug", slug).replace("$token", token);
+            // Training is reached from Visits (lessons are visits), so Visits
+            // stays lit there: there is no room for a seventh tab at 320px.
+            const base = `/portal/${slug}/${token}`;
             const active = t.end
               ? pathname === target
-              : pathname === target || pathname.startsWith(target + "/");
+              : pathname === target ||
+                pathname.startsWith(target + "/") ||
+                (t.label === "Visits" && pathname.startsWith(`${base}/training`));
             const Icon = t.icon;
             const label = t.label === "Property" && isCommercial ? "Property" : t.label;
             return (

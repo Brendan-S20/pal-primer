@@ -86,6 +86,7 @@
                 <data android:pathPrefix="/setup" />
                 <data android:pathPrefix="/tax-reports" />
                 <data android:pathPrefix="/timesheets" />
+                <data android:pathPrefix="/training-packages" />
                 <data android:pathPrefix="/waste-log" />
                 <data android:pathPrefix="/zones" />
                 <data android:pathPrefix="/settings/accounting" />

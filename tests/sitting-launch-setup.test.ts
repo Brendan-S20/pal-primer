@@ -6,27 +6,27 @@ import zh from "@/lib/i18n/locales/zh";
 import { techSkipReasonCodes } from "@/lib/skip-rules.functions";
 import {
   BOOKABLE_SERVICE_LINES,
-  customerCanRequestService,
+  customerCanRequestStay,
   addOnExampleFor,
   serviceLinesAdditionProblem,
 } from "@/lib/service-lines";
 
 describe("sitting is ready for QA while its launch gate stays closed", () => {
   it("offers sitter reasons in every worker language", () => {
-    const codes = techSkipReasonCodes(false, true);
+    const codes = techSkipReasonCodes("pet_sitting");
     expect(codes).toEqual(["pet_hiding", "key_failed", "client_home", "access_blocked", "other"]);
     for (const locale of [en, es, ar, zh]) {
       expect(Object.keys(locale.sitSkipReason)).toEqual(codes);
       for (const value of Object.values(locale.sitSkipReason))
         expect(value.length).toBeGreaterThan(0);
     }
-    expect(techSkipReasonCodes(false)).not.toContain("pet_hiding");
-    expect(techSkipReasonCodes(true)).not.toContain("client_home");
+    expect(techSkipReasonCodes("pet_waste")).not.toContain("pet_hiding");
+    expect(techSkipReasonCodes("dog_walking")).not.toContain("client_home");
   });
   it("offers an extra pet add-on and refuses enabling sitting", () => {
     expect(addOnExampleFor(["pet_sitting"])).toEqual({ code: "extra_pet", name: "Extra pet" });
     expect(BOOKABLE_SERVICE_LINES).toEqual(["pet_waste"]);
-    expect(customerCanRequestService("pet_sitting")).toBe(false);
+    expect(customerCanRequestStay()).toBe(false);
     expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toBe(
       "That service is coming soon.",
     );

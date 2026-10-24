@@ -71,6 +71,9 @@ export async function recomputePropertyEstimate(
       // A stay's plans (#411) run every day for a week or two; they are not
       // the property's routine.
       .is("stay_id", null)
+      // A training package's lesson plan is booked at its own start and
+      // length; it is not the property's routine.
+      .is("client_package_id", null)
       .or(liveServiceOrFilter(orgToday(org?.timezone || undefined)))
       .order("created_at", { ascending: false })
       .limit(1),

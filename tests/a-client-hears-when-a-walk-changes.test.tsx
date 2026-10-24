@@ -402,7 +402,7 @@ describe("the call sites", () => {
     expect(enqueue).toMatch(/"notify_email_walk_schedule_change"/);
     const page = read("src/routes/_authenticated/settings.emails.tsx");
     expect(page).toMatch(
-      /const rows = values\.runs_dog_walking \? \[\.\.\.ROWS, \.\.\.WALK_ROWS\] : ROWS;/,
+      /const rows = values\.runs_dog_walking \? \[\.\.\.base, \.\.\.WALK_ROWS\] : base;/,
     );
     const sql = read("supabase/migrations/20261015220000_a-client-hears-when-a-walk-changes.sql");
     expect(sql).toMatch(/notify_email_walk_not_done boolean NOT NULL DEFAULT true/);

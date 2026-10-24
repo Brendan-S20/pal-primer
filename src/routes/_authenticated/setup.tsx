@@ -295,7 +295,7 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
     case "business":
       return <BusinessPanel onSaved={onSaved} />;
     case "zones":
-      return <ServiceAreaPanel done={step.done} onSaved={onSaved} />;
+      return <ServiceAreaPanel step={step} onSaved={onSaved} />;
     case "clients":
       return <ClientsPanel step={step} />;
     case "staff":
@@ -469,7 +469,30 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
 
 const MILES = [5, 10, 15, 25, 40] as const;
 
-function ServiceAreaPanel({ done, onSaved }: { done: boolean; onSaved: () => void }) {
+/** For a business that runs training, the second half of the price step:
+ *  the lesson package's price and the skill list, both in Settings, Services. */
+function TrainingPriceNote({ done }: { done: boolean }) {
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <p className="text-sm">
+        {done
+          ? "Your lesson package is priced and your skill list is set. Both can be changed in Settings, Services."
+          : "You also run training. Price your lesson package, turn it on, and add the skills a trainer scores, in Settings, Services."}
+      </p>
+      {!done && (
+        <Button asChild variant="outline" data-setup-action="price-lessons">
+          <Link to="/settings/services">Price lessons</Link>
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function ServiceAreaPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => void }) {
+  // A training business's step is done when the area AND the lesson price
+  // are; the form below is about the area alone.
+  const training = step.training;
+  const done = training ? training.areaDone : step.done;
   const qc = useQueryClient();
   // Done means a priced area exists. Offering the create form again on a
   // finished step reads as "you have not done this yet"; adding a second
@@ -533,6 +556,7 @@ function ServiceAreaPanel({ done, onSaved }: { done: boolean; onSaved: () => voi
         <Button type="button" variant="outline" onClick={() => setAdding(true)}>
           Add another area
         </Button>
+        {training && <TrainingPriceNote done={training.done} />}
       </div>
     );
   }

@@ -229,7 +229,23 @@ describe("no trigger function is executable by a signed-in user", () => {
     // It revokes EXECUTE from PUBLIC, anon and authenticated in the same file.
     // The 20261017 stay migrations re-create tg_stays_validate,
     // tg_stays_follow and tg_stays_invoice_guard; none of them is new.
-    expect(triggerFunctions().size).toBe(74);
+    //
+    // 68 -> 75 on 2026-10-23 (20261023100000, a trainer sells a package of
+    // sessions): training_service_package_guard, training_client_package_guard,
+    // training_visit_package_guard, training_package_recount,
+    // training_subscription_package_guard, training_skill_guard and
+    // training_progress_row_guard. Each REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    //
+    // 75 -> 76 on 2026-10-23 (20261023110000, training cancel and no-show):
+    // training_lesson_session_rule, which decides whether a missed or late
+    // canceled package lesson uses a session. REVOKEd from PUBLIC, anon and
+    // authenticated in the same file. That file also re-creates four of the
+    // package guards, and 20261023130000 re-creates
+    // training_lesson_session_rule; none of them is new.
+    //
+    // Both branches merged (pet sitting #411 and training #476): 68 + 6 + 8.
+    expect(triggerFunctions().size).toBe(82);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

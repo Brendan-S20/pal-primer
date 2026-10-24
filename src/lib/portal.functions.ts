@@ -1686,7 +1686,9 @@ function concernLabel(category: string): string | undefined {
   return isWalkIssue(category) ? `Walk: ${WALK_ISSUE_LABELS.en[category]}` : CONCERN_LABELS[category];
 }
 
-async function notifyOfficeOfConcern(
+/** Exported for the training lesson request (portal-training.functions.ts),
+ *  which tells the office the same way a one-off request does. */
+export async function notifyOfficeOfConcern(
   sb: any,
   token: string,
   category: string,
