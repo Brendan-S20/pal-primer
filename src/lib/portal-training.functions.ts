@@ -78,6 +78,13 @@ export const portalRequestTrainingLesson = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
+    // Closed while training is Coming soon, before anything is saved: the
+    // same switch as buying a package (trainingIsForSale).
+    const { trainingIsForSale } = await import("@/lib/training-portal.server");
+    if (!trainingIsForSale()) {
+      const { LESSON_REQUEST_REFUSALS } = await import("@/lib/training-portal");
+      throw new Error(LESSON_REQUEST_REFUSALS.coming_soon);
+    }
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_request_training_lesson", {
       _token: data.token,

@@ -13,6 +13,7 @@ export const LESSON_REQUEST_REFUSALS: Record<string, string> = {
   date_too_far: "Choose a day within the next 90 days.",
   no_sessions_left:
     "No sessions are left in this package. Lessons already booked or requested use them.",
+  coming_soon: "Lesson requests open here soon. Until then, contact us to book your next lesson.",
 };
 
 export function lessonRequestRefusal(message: string): string {
@@ -30,10 +31,15 @@ export function lessonRequestBlock(
   held: number,
   openRequests: number,
   today: string,
-): "package_canceled" | "package_expired" | "no_sessions_left" | null {
+  /** Training is bookable (BOOKABLE_SERVICE_LINES). While it is Coming soon
+   *  a held package is shown but takes no requests: the same switch as a
+   *  portal purchase, so the launch flip turns both on. */
+  bookable = true,
+): "package_canceled" | "package_expired" | "no_sessions_left" | "coming_soon" | null {
   const state = packageState(pkg, today);
   if (state === "canceled") return "package_canceled";
   if (state === "expired") return "package_expired";
+  if (!bookable) return "coming_soon";
   if (held + openRequests >= pkg.sessions_count) return "no_sessions_left";
   return null;
 }

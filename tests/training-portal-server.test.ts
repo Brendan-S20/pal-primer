@@ -434,6 +434,15 @@ describe("buying a package in the portal", () => {
 describe("requesting a lesson from the balance", () => {
   const ask = { token: TOKEN, clientPackageId: PACK, propertyId: PROPERTY, day: "2099-01-12" };
 
+  it("is closed while training is Coming soon, before the database is asked", async () => {
+    state.bookable = ["pet_waste"];
+    await expect(portalRequestTrainingLesson({ data: ask })).rejects.toThrow(
+      /Lesson requests open here soon/,
+    );
+    expect(state.rpc).not.toHaveBeenCalled();
+    expect(state.notify).not.toHaveBeenCalled();
+  });
+
   it("words each refusal the database raises and tells nobody", async () => {
     for (const [code, words] of [
       ["no_sessions_left", /No sessions are left/],

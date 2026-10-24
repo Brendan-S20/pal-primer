@@ -85,6 +85,11 @@ describe("when the portal offers a lesson request", () => {
     expect(lessonRequestBlock(p, 3, 2, "2026-10-16")).toBeNull();
     expect(lessonRequestBlock(p, 4, 2, "2026-10-16")).toBe("no_sessions_left");
     expect(lessonRequestBlock(p, 6, 0, "2026-10-16")).toBe("no_sessions_left");
+    // Coming soon: a held package takes no requests, whatever its balance.
+    expect(lessonRequestBlock(p, 0, 0, "2026-10-16", false)).toBe("coming_soon");
+    expect(lessonRequestBlock({ ...p, status: "canceled" }, 0, 0, "2026-10-16", false)).toBe(
+      "package_canceled",
+    );
   });
   it("refuses a canceled or expired package", () => {
     expect(lessonRequestBlock({ ...p, status: "canceled" }, 0, 0, "2026-10-16")).toBe(

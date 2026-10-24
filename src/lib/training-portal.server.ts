@@ -62,10 +62,10 @@ function firstName(name: string | null | undefined): string | null {
   return name?.trim().split(/\s+/)[0] || null;
 }
 
-/** Whether a client may buy a package. Training is Coming soon until it
- *  joins BOOKABLE_SERVICE_LINES, and a Coming soon line is never offered
- *  to clients (#506). */
-function trainingIsForSale(): boolean {
+/** Whether a client may buy a package or request a lesson. Training is
+ *  Coming soon until it joins BOOKABLE_SERVICE_LINES, and a Coming soon line
+ *  is never offered to clients (#506). One switch for both portal paths. */
+export function trainingIsForSale(): boolean {
   return BOOKABLE_SERVICE_LINES.includes("training");
 }
 
@@ -306,7 +306,7 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
         expiresOn: p.expires_on,
         purchasedOn: p.purchased_on,
         state: packageState(p, today),
-        requestBlock: lessonRequestBlock(p, held, asked.length, today),
+        requestBlock: lessonRequestBlock(p, held, asked.length, today, trainingIsForSale()),
         invoice: invoice
           ? {
               id: invoice.id,
