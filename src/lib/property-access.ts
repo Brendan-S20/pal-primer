@@ -1,8 +1,10 @@
-// Gate code, lock box code, key location and key tag. Plain SELECT of those
-// columns is revoked. This asks property_access_codes, which answers for the office
-// (view_client_directory) or the tech assigned to a visit at the property
-// today. A miss, including a failed call, is empty codes: the rest of the
-// property still loads, and the code is not shown.
+// Gate code, lock box code, key location, key tag and alarm details. Plain
+// SELECT of those columns is revoked. This asks property_access_codes, which
+// answers for the office (view_client_directory) or the tech assigned to a
+// visit at the property today. A stay visit does not count: a sitter reads a
+// stay's codes through stay_access_codes (src/lib/sit-day.server.ts). A miss,
+// including a failed call, is empty codes: the rest of the property still
+// loads, and the code is not shown.
 //
 // The map holds only the rows the function returned. accessLoaded tells a
 // property whose codes came back empty from one whose codes were refused or
@@ -17,6 +19,7 @@ export type PropertyAccessCodes = {
   lock_box_code: string | null;
   key_location: string | null;
   key_tag: string | null;
+  alarm_notes: string | null;
 };
 
 const EMPTY: PropertyAccessCodes = {
@@ -24,6 +27,7 @@ const EMPTY: PropertyAccessCodes = {
   lock_box_code: null,
   key_location: null,
   key_tag: null,
+  alarm_notes: null,
 };
 
 export async function readPropertyAccess(
@@ -46,6 +50,7 @@ export async function readPropertyAccess(
       lock_box_code: row.lock_box_code,
       key_location: row.key_location,
       key_tag: row.key_tag,
+      alarm_notes: row.alarm_notes,
     });
   }
   return out;

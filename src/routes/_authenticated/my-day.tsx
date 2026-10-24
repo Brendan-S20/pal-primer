@@ -90,6 +90,7 @@ import {
   Ban,
   ShieldCheck,
   ReceiptText,
+  BellRing,
   Info as InfoIcon,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -138,6 +139,19 @@ import {
   isWalkVisit,
   useWalkReport,
 } from "@/components/my-day/WalkParts";
+import {
+  SitCareLog,
+  SitCodesHint,
+  SitEmergencyFacts,
+  SitMeta,
+  SitNoteField,
+  SitPetsCare,
+  isSitVisit,
+  sitEmergency,
+  sitStepLabel,
+  useSitCare,
+  useSitPets,
+} from "@/components/my-day/SitParts";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
   captureCompletionFile,
@@ -1668,6 +1682,12 @@ function VisitCard({
   // stop, pet waste included, keeps its card exactly as it was.
   const walk = isWalkVisit(visit);
   const walkReport = useWalkReport(visit.id);
+  // A pet sitting visit reads as a sit (components/my-day/SitParts.tsx): the
+  // stay, the pets' care, the care log. Its note for the client is the walk
+  // report's note.
+  const sit = isSitVisit(visit);
+  const sitPets = useSitPets(visit);
+  const sitCare = useSitCare(visit, sit);
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -1901,7 +1921,9 @@ function VisitCard({
     mutationFn: async () => {
       // A walk's report goes first, so the completion email is written from
       // it (#410). Queued, the completion queues behind it, never ahead.
-      const reportQueued = walk && (await walkReport.send()).queued;
+      const reportQueued = (walk || sit) && (await walkReport.send()).queued;
+      // A sit's care entries still on the device go first as well (#411).
+      const careQueued = sit && (await sitCare.hasQueued());
       return actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
@@ -1911,7 +1933,7 @@ function VisitCard({
           checklist.length > 0
             ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
-        queueOnly: reportQueued,
+        queueOnly: reportQueued || careQueued,
       });
     },
     onSuccess: (r) => {
@@ -2150,14 +2172,18 @@ function VisitCard({
     step === "start"
       ? walk
         ? t("walk.start")
-        : t("myDay.start")
+        : sit
+          ? sitStepLabel(t, visit.sit_facts, "start")
+          : t("myDay.start")
       : step === "photo"
         ? uploading
           ? t("photo.uploading")
           : t("visit.takeCompletionPhotoStep")
         : walk
           ? t("walk.end")
-          : t("myDay.complete");
+          : sit
+            ? sitStepLabel(t, visit.sit_facts, "end")
+            : t("myDay.complete");
 
   // The owner's checklist, as rows. Each row is the label AND the box, 44px
   // tall at every width, so a gloved thumb anywhere on the line ticks it --
@@ -2376,6 +2402,7 @@ function VisitCard({
             </div>
           )}
           {walk && <WalkMeta visit={visit} dayVisits={dayVisits} />}
+          {sit && <SitMeta visit={visit} locale={locale} />}
 
           {!collapsed && (
             <>
@@ -2411,12 +2438,20 @@ function VisitCard({
                   they're walking into. Never silent: the priced count when
                   there are no dog records, "No dogs on file" when there is
                   neither -- see DogsLine. */}
-              <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
+              {sit ? (
+                <>
+                  <SitPetsCare pets={sitPets} locale={locale} />
+                  <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
+                </>
+              ) : (
+                <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
+              )}
 
-              {walk && <WalkAccess property={p} />}
+              {(walk || sit) && <WalkAccess property={p} />}
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
-              {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
+              {sit && <SitCodesHint visit={visit} locale={locale} />}
+              {(p?.gate_code || p?.lock_box_code || p?.key_location || p?.alarm_notes) && (
                 <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border bg-muted/30 p-2.5">
                   {p?.gate_code && (
                     <AccessFact icon={Fence} label={t("access.gate")} value={p.gate_code} mono />
@@ -2432,6 +2467,11 @@ function VisitCard({
                   {p?.key_location && (
                     <div className="col-span-2">
                       <AccessFact icon={KeyRound} label={t("access.key")} value={p.key_location} />
+                    </div>
+                  )}
+                  {p?.alarm_notes && (
+                    <div className="col-span-2">
+                      <AccessFact icon={BellRing} label={t("access.alarm")} value={p.alarm_notes} />
                     </div>
                   )}
                 </div>
@@ -2729,6 +2769,13 @@ function VisitCard({
 
           {walk && underWay && canPerformVisit && (
             <WalkReportFields visitId={visit.id} report={walkReport} />
+          )}
+
+          {sit && underWay && canPerformVisit && (
+            <>
+              <SitCareLog visit={visit} pets={sitPets} care={sitCare} tz={tz} locale={locale} />
+              <SitNoteField visitId={visit.id} report={walkReport} />
+            </>
           )}
 
           {underWay && canPerformVisit && (

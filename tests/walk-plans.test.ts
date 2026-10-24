@@ -79,12 +79,13 @@ describe("one plan per walk time", () => {
     expect(server).toContain("walkWindowsProblem(windows)");
     expect(server).toContain("createSubSchema.parse({ ...base, ...window })");
     expect(server).toContain(
-      "createSubscriptionPlans(context.supabase, context.userId, data, true)",
+      'createSubscriptionPlans(context.supabase, context.userId, data, "dog_walking")',
     );
     const shared = read("src/lib/subscriptions.functions.ts");
     expect(shared).toContain('requirePermission(supabase, userId, "manage_pricing")');
     expect(shared).toMatch(/\.insert\(\s*plans\.map/);
     expect(shared).toContain("await generateVisitHorizon(supabase, client.organization_id)");
-    expect(shared).toContain('service?.service_line !== "dog_walking"');
+    expect(shared).toContain("service?.service_line !== onlyLine");
+    expect(shared).toContain('"Choose a dog walking service."');
   });
 });

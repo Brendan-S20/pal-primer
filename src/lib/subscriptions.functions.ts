@@ -141,7 +141,10 @@ export async function createSubscriptionPlans(
   supabase: any,
   userId: string,
   plans: Array<z.infer<typeof createSubSchema>>,
-  walkOnly = false,
+  /** The line every plan must sell: walk times (#410), a stay's plans (#411). */
+  onlyLine: "dog_walking" | "pet_sitting" | null = null,
+  /** A stay's plans carry the stay (subscriptions.stay_id). */
+  stayId: string | null = null,
 ): Promise<{ ids: string[] }> {
   const data = plans[0];
   // Creating a service sets pricing, so it needs the same permission the
@@ -156,14 +159,17 @@ export async function createSubscriptionPlans(
   if (cErr) throw new Error(cErr.message);
   // A walk is priced from its service, not from any zone: its provenance
   // must not claim the zone's rate card (priced_from_zone_id stays NULL).
-  if (walkOnly) {
+  if (onlyLine) {
     const { data: service, error } = await supabase
       .from("services")
       .select("service_line")
       .eq("id", data.serviceId!)
       .single();
     if (error) throw new Error(error.message);
-    if (service?.service_line !== "dog_walking") throw new Error("Choose a dog walking service.");
+    if (service?.service_line !== onlyLine)
+      throw new Error(
+        onlyLine === "dog_walking" ? "Choose a dog walking service." : "Choose a pet sitting service.",
+      );
   }
   const zonePriced = data.serviceId
     ? (await assertServiceBookable(supabase, data.serviceId, null)).zonePriced
@@ -209,6 +215,7 @@ export async function createSubscriptionPlans(
         earliest_time: data.earliestTime ?? null,
         latest_time: data.latestTime ?? null,
         ...(data.serviceId ? { service_id: data.serviceId } : {}),
+        ...(stayId ? { stay_id: stayId } : {}),
       })),
     )
     .select("id");
@@ -571,7 +578,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line)",
+        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line), stay_id",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

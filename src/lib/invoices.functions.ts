@@ -533,6 +533,8 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
     // Charge the OPEN amount: total net of applied credit (B7) and of any
     // partial payment already recorded.
     const dueCents = invoiceDueCents(invoice);
@@ -634,7 +636,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -673,7 +675,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );
@@ -823,6 +825,8 @@ async function chargeSavedCardCore(
     taxCents: taxShareCents(dueCents, invoice.tax_cents, invoice.total_cents),
     config: await orgFeeConfig(feeAdmin, invoice.organization_id),
   });
+  const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+  const stayRails = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, []);
   try {
     const pi = await stripe.paymentIntents.create(
       {
@@ -831,6 +835,7 @@ async function chargeSavedCardCore(
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
+        ...(stayRails.length ? { payment_method_types: stayRails } : {}),
         off_session: true,
         confirm: true,
         metadata: {
@@ -1421,6 +1426,8 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!invoice) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
     // Charge the OPEN amount: total net of applied credit (B7) and of any
     // partial payment already recorded.
     const dueCents = invoiceDueCents(invoice);
@@ -1534,7 +1541,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
               existing.id,
               {
                 ...updateParams,
-                payment_method_types: INVOICE_PM_TYPES,
+                payment_method_types: paymentMethodTypes,
               },
               opts,
             );
@@ -1573,7 +1580,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
         pi = await stripe.paymentIntents.create(
           {
             ...createParams,
-            payment_method_types: INVOICE_PM_TYPES,
+            payment_method_types: paymentMethodTypes,
           },
           opts,
         );

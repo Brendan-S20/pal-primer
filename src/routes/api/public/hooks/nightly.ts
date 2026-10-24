@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, workday_start, workday_end, notify_email_visit_reminder, quote_followup_days",
+            "id, name, service_lines, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice, timezone, workday_start, workday_end, notify_email_visit_reminder, quote_followup_days",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -188,6 +188,15 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             if (!error) {
               const { notifyMissedWalks } = await import("@/lib/walk-notify.server");
               perOrg.missed_walks_emailed = await notifyMissedWalks(org.id, todayStr);
+            }
+          }
+
+          if (org.service_lines?.includes("pet_sitting")) {
+            try {
+              const { notifyStaysEnding } = await import("@/lib/stay-notify.server");
+              perOrg.stays_ending_emailed = await notifyStaysEnding(org.id, todayStr);
+            } catch (error) {
+              console.error("stay ending notices failed", org.id, error);
             }
           }
 
@@ -957,7 +966,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   if (!acct || !acct.chargesEnabled) return 0;
   const { data: org } = await supabaseAdmin
     .from("organizations")
-    .select("dunning_retry_days, dunning_pause_after_failures")
+    .select("dunning_retry_days, dunning_pause_after_failures, service_lines")
     .eq("id", orgId)
     .single();
   const retryDays: number[] =
@@ -1083,6 +1092,9 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         taxCents: taxShareCents(dueCents, inv.tax_cents, inv.total_cents),
         config: await orgFeeConfig(supabaseAdmin, inv.organization_id),
       });
+      const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
+      const stayRails = org?.service_lines?.includes("pet_sitting")
+        ? await stayInvoicePaymentTypes(inv.id, inv.organization_id, []) : [];
       const pi = await stripe.paymentIntents.create(
         {
           amount: quote.totalCents,
@@ -1090,6 +1102,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           currency: inv.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
+          ...(stayRails.length ? { payment_method_types: stayRails } : {}),
           off_session: true,
           confirm: true,
           metadata: {

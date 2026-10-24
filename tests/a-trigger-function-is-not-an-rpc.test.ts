@@ -217,7 +217,19 @@ describe("no trigger function is executable by a signed-in user", () => {
     // only when bookable): tg_orgs_service_lines_bookable, which refuses a
     // REST write adding a line that is still Coming soon. REVOKEd in the
     // same file.
-    expect(triggerFunctions().size).toBe(68);
+    // 67 -> 72 on 2026-10-16 (pet sitting, #411): tg_pet_care_instructions_pet
+    // (20261016110000) keeps a pet's care in the pet's business;
+    // tg_stays_validate, tg_stays_follow, tg_subscriptions_stay and
+    // tg_visits_stay_sitter (20261016120000) keep a stay, its plans and its
+    // sitter consistent. validate_walk_group_member is restated there, not
+    // new. Each REVOKEd from PUBLIC, anon and authenticated in the same file.
+    //
+    // 72 -> 73 on 2026-10-16 (20261016140000): tg_stays_invoice_guard
+    // keeps confirmation and invoice links on the transactional booking path.
+    // It revokes EXECUTE from PUBLIC, anon and authenticated in the same file.
+    // The 20261017 stay migrations re-create tg_stays_validate,
+    // tg_stays_follow and tg_stays_invoice_guard; none of them is new.
+    expect(triggerFunctions().size).toBe(74);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -50,6 +50,21 @@ import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-t
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
 import { ACCESS_METHOD_LABEL, isAccessMethod, type AccessMethod } from "@/lib/walk-access";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useServiceLines } from "@/components/CommercialOnly";
+import { careSummary, PetCareEditor } from "@/components/client-detail/PetCareEditor";
+import { getPetCare } from "@/lib/stays.functions";
+import {
+  activeDogCount,
+  cleanSpeciesNote,
+  isDog,
+  PET_SPECIES,
+  PET_SPECIES_LABEL,
+  petsHeading,
+  runsPetSitting,
+  speciesLabel,
+  SPECIES_NOTE_MAX,
+  type PetSpecies,
+} from "@/lib/pets";
 
 const HAZARD_LABELS: Array<[string, string]> = [
   ["do_not_enter_if_dog_out", "Do not enter if dog is out"],
@@ -343,8 +358,10 @@ function PropertyCard({
 
   const accountType = p.account_type ?? client.account_type ?? "residential";
   const isCommercial = accountType === "commercial";
-  const activeDogs = dogs.filter((d: any) => d.active !== false);
-  const activeSubs = subscriptions.filter((s: any) => s.status === "active");
+  // Dogs, not every pet: the estimate and the dog badge count dogs (#411).
+  const activeDogs = dogs.filter((d: any) => d.active !== false && isDog(d));
+  // A stay's plans (#411) are not the property's routine service.
+  const activeSubs = subscriptions.filter((s: any) => s.status === "active" && !s.stay_id);
   const hazards = HAZARD_LABELS.filter(([k]) => p[k]);
 
   const zoneName = (id: string | null | undefined) =>
@@ -712,7 +729,10 @@ function PropertyCard({
               clientId={clientId}
               dogs={dogs}
               billedDogCounts={activeSubs
-                .filter((x: any) => x.account_type === "residential" && x.dog_count != null)
+                // A stay's plan counts the pets on the stay, not dogs (#411).
+                .filter(
+                  (x: any) => x.account_type === "residential" && x.dog_count != null && !x.stay_id,
+                )
                 .map((x: any) => x.dog_count as number)}
             />
           )}
@@ -724,7 +744,7 @@ function PropertyCard({
 
 // ── Dogs (belong to properties; deactivate instead of delete) ──────────────
 
-function DogsSection({
+export function DogsSection({
   propertyId,
   clientId,
   dogs,
@@ -738,25 +758,46 @@ function DogsSection({
   const qc = useQueryClient();
   const addFn = useServerFn(addDog);
   const updateFn = useServerFn(updateDog);
+  const careFn = useServerFn(getPetCare);
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["client-dogs", clientId] });
     qc.invalidateQueries({ queryKey: ["properties", clientId] });
   };
+  // A business that runs pet sitting records cats and other pets, and how
+  // each is looked after (#411). Everyone else sees Dogs exactly as before.
+  const { lines, known } = useServiceLines();
+  const sitting = known && runsPetSitting(lines);
+  const noun = sitting ? "pet" : "dog";
+  const petIds = dogs.map((d) => d.id as string);
+  const { data: careData } = useQuery({
+    queryKey: ["pet-care", clientId, petIds],
+    queryFn: () => careFn({ data: { petIds } }),
+    enabled: sitting && petIds.length > 0,
+  });
+  const [careFor, setCareFor] = useState<string | null>(null);
 
   // One form, two modes: adding a new dog or editing an existing one (UX
   // round 4: dogs must be editable right here, not just add/deactivate).
   const [adding, setAdding] = useState(false);
   const [editingDogId, setEditingDogId] = useState<string | null>(null);
+  const [species, setSpecies] = useState<PetSpecies>("dog");
+  const [speciesNote, setSpeciesNote] = useState("");
   const [name, setName] = useState("");
   const [breed, setBreed] = useState("");
   const [breedChoice, setBreedChoice] = useState("");
   const [size, setSize] = useState("");
   const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("unknown");
   const [notes, setNotes] = useState("");
+  const [vetName, setVetName] = useState("");
+  const [vetPhone, setVetPhone] = useState("");
 
   const resetForm = () => {
     setAdding(false);
     setEditingDogId(null);
+    setSpecies("dog");
+    setSpeciesNote("");
+    setVetName("");
+    setVetPhone("");
     setName("");
     setBreed("");
     setBreedChoice("");
@@ -768,6 +809,10 @@ function DogsSection({
   const startEdit = (d: any) => {
     setEditingDogId(d.id);
     setAdding(true);
+    setSpecies((d.species ?? "dog") as PetSpecies);
+    setSpeciesNote(d.species_note ?? "");
+    setVetName(d.vet_clinic_name ?? "");
+    setVetPhone(d.vet_clinic_phone ?? "");
     setName(d.name ?? "");
     const knownBreed = d.breed && COMMON_BREEDS.includes(d.breed);
     setBreed(d.breed ?? "");
@@ -781,6 +826,12 @@ function DogsSection({
     mutationFn: () => {
       const fields = {
         name: name.trim(),
+        // Only a sitting business picks a species; a dog form sends none and
+        // the row stays a dog.
+        ...(sitting ? { species, speciesNote: cleanSpeciesNote(species, speciesNote) } : {}),
+        ...(sitting
+          ? { vetClinicName: vetName.trim() || null, vetClinicPhone: vetPhone.trim() || null }
+          : {}),
         breed: breed || null,
         weightClass: size || null,
         temperament,
@@ -806,32 +857,42 @@ function DogsSection({
   const activeDogs = dogs.filter((d) => d.active !== false);
   const inactiveDogs = dogs.filter((d) => d.active === false);
   // QA follow-up 1.5: services billing for a different dog count than the
-  // property's records is a data-quality problem worth surfacing.
-  const mismatched = billedDogCounts.filter((n) => n !== activeDogs.length);
+  // property's records is a data-quality problem worth surfacing. Dogs only:
+  // a plan's dog_count never counts a cat (#411).
+  const dogCount = activeDogCount(dogs);
+  const mismatched = billedDogCounts.filter((n) => n !== dogCount);
 
   return (
     <div>
       {mismatched.length > 0 && (
         <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           Services bill for {mismatched.join(" and ")} dog{mismatched.some((n) => n !== 1) ? "s" : ""},
-          but this property has {activeDogs.length} active dog record
-          {activeDogs.length === 1 ? "" : "s"}. Add the dogs below or fix the service dog count.
+          but this property has {dogCount} active dog record
+          {dogCount === 1 ? "" : "s"}. Add the dogs below or fix the service dog count.
         </div>
       )}
       <div className="flex items-center justify-between">
-        <SectionLabel>Dogs ({activeDogs.length})</SectionLabel>
+        <SectionLabel>
+          {petsHeading(sitting ? lines : [])} ({activeDogs.length})
+        </SectionLabel>
         {!adding && (
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAdding(true)}>
-            <Plus className="mr-1 h-3 w-3 shrink-0" /> Add dog
+            <Plus className="mr-1 h-3 w-3 shrink-0" /> Add {noun}
           </Button>
         )}
       </div>
 
       <ul className="mt-1.5 space-y-1.5 text-sm">
         {activeDogs.map((d) => (
-          <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2">
-            <span className="flex flex-wrap items-center gap-2">
+          <li key={d.id} className="rounded-md border p-2">
+           <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="font-medium">{d.name}</span>
+              {speciesLabel(d) && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">
+                  {speciesLabel(d)}
+                </span>
+              )}
               {d.breed && <span className="text-xs text-muted-foreground">{d.breed}</span>}
               {d.weight_class && <span className="text-xs text-muted-foreground">{d.weight_class}</span>}
               <span
@@ -840,8 +901,24 @@ function DogsSection({
                 {d.temperament ?? "unknown"}
               </span>
               {d.notes && <span className="text-xs text-muted-foreground">{d.notes}</span>}
+              {sitting && (d.vet_clinic_name || d.vet_clinic_phone) && (
+                <span className="text-xs text-muted-foreground">
+                  Vet: <bdi>{[d.vet_clinic_name, d.vet_clinic_phone].filter(Boolean).join(", ")}</bdi>
+                </span>
+              )}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex flex-wrap items-center gap-1">
+              {sitting && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  aria-expanded={careFor === d.id}
+                  onClick={() => setCareFor(careFor === d.id ? null : d.id)}
+                >
+                  Care
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
@@ -859,6 +936,21 @@ function DogsSection({
                 Mark inactive
               </Button>
             </span>
+           </div>
+            {sitting && careFor !== d.id && careSummary(careData?.care?.[d.id]) && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Care: {careSummary(careData?.care?.[d.id])}
+              </p>
+            )}
+            {sitting && careFor === d.id && (
+              <PetCareEditor
+                petId={d.id}
+                petName={d.name}
+                clientId={clientId}
+                care={careData?.care?.[d.id] ?? null}
+                onDone={() => setCareFor(null)}
+              />
+            )}
           </li>
         ))}
         {activeDogs.length === 0 && !adding && (
@@ -866,9 +958,13 @@ function DogsSection({
             <EmptyState
               compact
               icon={DogIcon}
-              title="No dogs recorded"
-              description="Dog records here drive service dog counts and safety notes."
-              actionLabel="Add dog"
+              title={sitting ? "No pets recorded" : "No dogs recorded"}
+              description={
+                sitting
+                  ? "Pet records here drive service counts, care instructions and safety notes."
+                  : "Dog records here drive service dog counts and safety notes."
+              }
+              actionLabel={`Add ${noun}`}
               onAction={() => setAdding(true)}
             />
           </li>
@@ -877,7 +973,9 @@ function DogsSection({
 
       {inactiveDogs.length > 0 && (
         <details className="mt-1.5 text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Inactive dogs ({inactiveDogs.length})</summary>
+          <summary className="cursor-pointer">
+            Inactive {noun}s ({inactiveDogs.length})
+          </summary>
           <ul className="mt-1 space-y-1">
             {inactiveDogs.map((d) => (
               <li key={d.id} className="flex items-center justify-between rounded-md border p-2">
@@ -901,16 +999,60 @@ function DogsSection({
 
       {adding && (
         <form
-          className="mt-2 grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-5"
+          className={`mt-2 grid gap-2 rounded-md border bg-muted/20 p-3 ${
+            sitting ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-5"
+          }`}
           onSubmit={(e) => {
             e.preventDefault();
             if (name.trim()) addMut.mutate();
           }}
         >
+          {sitting && (
+            <div className="min-w-0">
+              <Label className="text-xs" htmlFor={`pet-species-${propertyId}`}>
+                Kind of pet
+              </Label>
+              <select
+                id={`pet-species-${propertyId}`}
+                value={species}
+                onChange={(e) => setSpecies(e.target.value as PetSpecies)}
+                className="h-10 w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
+              >
+                {PET_SPECIES.map((s) => (
+                  <option key={s} value={s}>
+                    {PET_SPECIES_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+              {species === "other" && (
+                <Input
+                  aria-label="What kind of pet"
+                  className="mt-1"
+                  value={speciesNote}
+                  maxLength={SPECIES_NOTE_MAX}
+                  onChange={(e) => setSpeciesNote(e.target.value)}
+                  placeholder="Rabbit, bird, fish"
+                />
+              )}
+            </div>
+          )}
           <div>
             <Label className="text-xs">Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
+          {species !== "dog" ? (
+            <div className="min-w-0">
+              <Label className="text-xs" htmlFor={`dog-breed-${propertyId}`}>
+                Breed
+              </Label>
+              <Input
+                id={`dog-breed-${propertyId}`}
+                value={breed}
+                onChange={(e) => setBreed(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          ) : (
           <div>
             <Label className="text-xs" htmlFor={`dog-breed-${propertyId}`}>
               Breed
@@ -942,6 +1084,7 @@ function DogsSection({
               />
             )}
           </div>
+          )}
           <div>
             <Label className="text-xs">Size</Label>
             <select
@@ -973,13 +1116,43 @@ function DogsSection({
             <Label className="text-xs">Notes</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
-          <div className="flex gap-2 sm:col-span-5">
+          {sitting && (
+            <>
+              <div className="min-w-0">
+                <Label className="text-xs" htmlFor={`pet-vet-${propertyId}`}>
+                  Vet clinic
+                </Label>
+                <Input
+                  id={`pet-vet-${propertyId}`}
+                  value={vetName}
+                  maxLength={200}
+                  onChange={(e) => setVetName(e.target.value)}
+                  placeholder="Eastside Animal Hospital"
+                />
+              </div>
+              <div className="min-w-0">
+                <Label className="text-xs" htmlFor={`pet-vet-phone-${propertyId}`}>
+                  Vet phone
+                </Label>
+                <Input
+                  id={`pet-vet-phone-${propertyId}`}
+                  type="tel"
+                  value={vetPhone}
+                  maxLength={40}
+                  onChange={(e) => setVetPhone(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+          <div
+            className={`flex gap-2 ${sitting ? "sm:col-span-2 lg:col-span-3" : "sm:col-span-5"}`}
+          >
             <Button type="submit" size="sm" disabled={addMut.isPending || !name.trim()}>
               {addMut.isPending
                 ? "Saving…"
                 : editingDogId
-                  ? "Save dog"
-                  : "Add dog"}
+                  ? `Save ${noun}`
+                  : `Add ${noun}`}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
               <X className="mr-1 h-3.5 w-3.5 shrink-0" /> Cancel

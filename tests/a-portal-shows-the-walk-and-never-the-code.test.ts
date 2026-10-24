@@ -63,7 +63,8 @@ vi.mock("@/integrations/supabase/client.server", () => {
         else filters.push((r) => r[col] === v);
         return q;
       },
-      in: (col: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[col])), q),
+      in: (col: string, vs: unknown[]) =>
+        (filters.push((r) => vs.includes(col === "services.service_line" ? r.services?.service_line : r[col])), q),
       is: (col: string, v: unknown) => (filters.push((r) => (r[col] ?? null) === v), q),
       then: (res: (v: unknown) => unknown) => {
         if (patch) {
@@ -166,6 +167,14 @@ describe("what the portal is told", () => {
   it("nothing for a client with no walk plan, so a scooping client's tab is unchanged", async () => {
     state.subscriptions = state.subscriptions.map((s) => ({ ...s, services: { service_line: "pet_waste" } }));
     await expect(portalGetAccess({ data: { token: TOKEN } })).resolves.toEqual({ properties: [] });
+  });
+
+  it("a sitting client can update access with the same write-only code response", async () => {
+    state.subscriptions[0].services.service_line = "pet_sitting";
+    const out = await portalUpdateAccess({ data: { token: TOKEN, propertyId: P_OWN, doorCode: "5566" } });
+    expect(out.access.doorCodeSet).toBe(true);
+    expect(JSON.stringify(out)).not.toContain("5566");
+    expect(JSON.stringify(state.activity)).not.toContain("5566");
   });
 
   it("portalAccessOf is the only shape, and it has no field for a code", () => {

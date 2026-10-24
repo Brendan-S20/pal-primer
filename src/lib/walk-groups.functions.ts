@@ -56,6 +56,7 @@ export const listWalkGroups = createServerFn({ method: "GET" })
           .select("property_id, name")
           .eq("organization_id", orgId)
           .eq("active", true)
+          .eq("species", "dog")
           .in("property_id", propertyIds)
       : { data: [], error: null };
     if (dogs.error) throw new Error(dogs.error.message);

@@ -73,6 +73,26 @@ export type PendingAction =
       poo: boolean | null;
       reportNote: string | null;
     } & ActionBase)
+  // A sitter's care log entry (#411): fed, water, a dose given or missed.
+  // `entryId` is minted on the device, so the replay of a request that
+  // landed is the same row, and an undo can name it. Queued as it is tapped,
+  // so the replay, oldest first, logs it before the visit's completion and
+  // the visit report is written from it. Replay passes `ts` as when it was
+  // done.
+  | ({
+      kind: "care_entry";
+      visitId: string;
+      entryId: string;
+      petId: string | null;
+      careKind: "feed" | "meds" | "litter" | "walk" | "water" | "other";
+      medName: string | null;
+      status: "done" | "missed";
+      missedReason: string | null;
+      note: string | null;
+    } & ActionBase)
+  // Undo of an entry that had already reached the server. An entry still in
+  // the queue is undone by dropping it from the queue instead.
+  | ({ kind: "care_entry_undo"; visitId: string; entryId: string } & ActionBase)
   | ({
       kind: "station";
       visitId: string;

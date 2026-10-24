@@ -212,11 +212,45 @@ describe("what makes a service saveable", () => {
     for (const line of SERVICE_LINES) expect(durationRequired(line)).toBe(line !== "pet_waste");
   });
 
+  it("lets a per-night sitting service omit a minute length", () => {
+    expect(
+      serviceProblem({
+        ...WALK,
+        name: "Overnight stay",
+        service_line: "pet_sitting",
+        price_unit: "night",
+        default_duration_min: null,
+      }),
+    ).toBeNull();
+    expect(
+      serviceProblem({
+        ...WALK,
+        name: "House sit",
+        service_line: "pet_sitting",
+        price_unit: "night",
+        default_duration_min: null,
+      }),
+    ).toBeNull();
+    expect(
+      serviceProblem({
+        ...WALK,
+        name: "Drop-in (30 min)",
+        service_line: "pet_sitting",
+        price_unit: "visit",
+        default_duration_min: null,
+      }),
+    ).toMatch(/how long/);
+  });
+
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
+    // Walking and sitting are Coming soon, so only a business that already
+    // runs one, or a service already on it, is offered it.
     expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste"]);
+    expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste", "dog_walking"])).toEqual(["pet_waste", "dog_walking"]);
     expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual(["pet_waste", "pet_sitting"]);
     expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toContain("pet_sitting");
     expect(serviceLineChoices(["mobile_grooming"])).toContain("mobile_grooming");
     expect(serviceLineChoices(["pet_waste"], "other")).toContain("other");
     expect(defaultServiceLine(["dog_walking", "pet_waste"])).toBe("dog_walking");
@@ -236,6 +270,7 @@ describe("what makes a service saveable", () => {
       "Drop-in visit (20 min)",
       "Drop-in (30 min)",
       "Overnight stay",
+      "House sit",
       "Bath and brush (60 min)",
       "Full groom (90 min)",
       "Nail trim (15 min)",
@@ -319,6 +354,7 @@ describe("the server functions", () => {
       ...WALK,
       name: "30-minute walk",
       max_dogs: null,
+      holiday_surcharge_pct: 0,
       organization_id: "org-a",
       active: true,
     });

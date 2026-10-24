@@ -84,6 +84,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { visitStayDates } from "@/lib/stays";
 import { skipReasonText } from "@/lib/skip-reason-text";
 
 export const Route = createFileRoute("/_authenticated/routes")({
@@ -721,6 +722,7 @@ function RoutesPage() {
           ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
           : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
       );
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -740,6 +742,7 @@ function RoutesPage() {
       } else {
         toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
       }
+      if (r.clash) toast.warning(r.clash);
       afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -914,9 +917,10 @@ function RoutesPage() {
     setLocalColumns(next);
 
     try {
-      await reassign({
+      const r = await reassign({
         data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
       });
+      if (r.clash) toast.warning(r.clash);
       if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
       if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
     } catch (err) {
@@ -2497,6 +2501,14 @@ function VisitCardView({
                 title={visit.services.name}
               >
                 <bdi className="truncate">{visit.services.name}</bdi>
+              </Badge>
+            )}
+            {visitStayDates((visit as any).subscriptions?.stays) && (
+              // Part of a sitter's stay (#411), with its dates.
+              <Badge variant="outline" className="h-4 min-w-0 max-w-full px-1 text-3xs">
+                <span className="truncate">
+                  Stay, {visitStayDates((visit as any).subscriptions?.stays)}
+                </span>
               </Badge>
             )}
             {visit.zones?.name && (

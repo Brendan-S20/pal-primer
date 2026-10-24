@@ -47,6 +47,8 @@ import {
 import type { ServiceLine } from "@/lib/service-lines";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { HolidayDatesCard } from "@/components/settings/HolidayDatesCard";
+import { StayDepositCard } from "@/components/settings/StayDepositCard";
 import { usePermissions } from "@/hooks/useMyRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,6 +91,7 @@ type FormState = {
   minutes: string;
   maxDogs: string;
   groupWalk: boolean;
+  holidayPct: string;
 };
 
 function formFor(s: Service | null, line: ServiceLine): FormState {
@@ -103,6 +106,7 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
       minutes: "",
       maxDogs: "",
       groupWalk: false,
+      holidayPct: "0",
     };
   }
   return {
@@ -115,6 +119,7 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
     minutes: s.default_duration_min === null ? "" : String(s.default_duration_min),
     maxDogs: s.max_dogs == null ? "" : String(s.max_dogs),
     groupWalk: s.max_dogs != null,
+    holidayPct: String(s.holiday_surcharge_pct ?? 0),
   };
 }
 
@@ -130,6 +135,7 @@ function draftOf(f: FormState): { draft: ServiceDraft } | { problem: string } {
   if (minutes !== null && !Number.isInteger(minutes))
     return { problem: "Enter the length in whole minutes." };
   const draft: ServiceDraft = {
+    ...(f.service_line === "pet_sitting" ? { holiday_surcharge_pct: Number(f.holidayPct) } : {}),
     name: f.name.trim(),
     service_line: f.service_line,
     price_unit: f.price_unit,
@@ -270,6 +276,9 @@ function ServicesPage() {
         )}
       </section>
 
+      {lines.includes("pet_sitting") && <HolidayDatesCard canEdit={canEdit} />}
+      {lines.includes("pet_sitting") && <StayDepositCard canEdit={canEdit} />}
+
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           {form && (
@@ -307,7 +316,7 @@ function ServiceForm({
   onSubmit: () => void;
 }) {
   const units = priceUnitsFor(form.service_line);
-  const minutesRequired = durationRequired(form.service_line);
+  const minutesRequired = durationRequired(form.service_line) && form.price_unit !== "night";
   const per = form.price_unit;
 
   return (
@@ -430,13 +439,34 @@ function ServiceForm({
             inputMode="numeric"
             min={1}
             max={720}
-            placeholder={minutesRequired ? "30" : "Set by each yard"}
+            placeholder={
+              form.price_unit === "night" ? "Optional" : minutesRequired ? "30" : "Set by each yard"
+            }
             value={form.minutes}
             onChange={(e) => setForm({ ...form, minutes: e.target.value })}
             required={minutesRequired}
           />
         </div>
       </div>
+
+      {form.service_line === "pet_sitting" && (
+        <div className="space-y-1.5">
+          <Label htmlFor="service-holiday">Holiday surcharge (%)</Label>
+          <Input
+            id="service-holiday"
+            type="number"
+            min={0}
+            max={500}
+            step={1}
+            value={form.holidayPct}
+            onChange={(e) => setForm({ ...form, holidayPct: e.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Applied to sitting visits on the holiday dates set on this page. Zero means the usual
+            rate.
+          </p>
+        </div>
+      )}
 
       {form.service_line === "dog_walking" && (
         <fieldset className="space-y-2">
