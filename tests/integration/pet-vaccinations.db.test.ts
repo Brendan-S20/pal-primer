@@ -105,7 +105,39 @@ describe.skipIf(!enabled)("private pet vaccinations in the database", () => {
     }
   });
   it("lets an assigned tech read the same pet, but keeps office writes closed", async () => {
-    await insert("visits", { organization_id: orgId, client_id: clientId, property_id: propertyId, assigned_staff_id: techStaffId, scheduled_on: "2026-10-16", status: "scheduled" });
+    // Match a real one-time groom: visits always belong to a subscription.
+    // Keep the production NOT NULL constraint intact, including pet waste.
+    const serviceId = await insert("services", {
+      organization_id: orgId,
+      name: "Vaccine access test groom",
+      service_line: "mobile_grooming",
+      price_unit: "visit",
+      base_price_cents: 8000,
+      default_duration_min: 60,
+      active: true,
+    });
+    const subscriptionId = await insert("subscriptions", {
+      organization_id: orgId,
+      client_id: clientId,
+      property_id: propertyId,
+      service_id: serviceId,
+      account_type: "residential",
+      frequency: "one_time",
+      price_cents: 8000,
+      dog_count: 1,
+      started_on: "2026-10-16",
+      ends_on: "2026-10-16",
+    });
+    await insert("visits", {
+      organization_id: orgId,
+      subscription_id: subscriptionId,
+      client_id: clientId,
+      property_id: propertyId,
+      service_id: serviceId,
+      assigned_staff_id: techStaffId,
+      scheduled_on: "2026-10-16",
+      status: "scheduled",
+    });
     const read = await tech.from("pet_vaccinations").select("id").eq("id", recordId);
     expect(read.error).toBeNull(); expect(read.data).toEqual([{ id: recordId }]);
     expect((await tech.storage.from(bucket).createSignedUrl(documentPath, 300)).error).toBeNull();
