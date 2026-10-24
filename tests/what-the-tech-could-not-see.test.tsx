@@ -450,7 +450,9 @@ describe("a technician's header has no Help or Weather, and no switch for them",
 describe("the stop card draws all of it", () => {
   const myDay = read("src/routes/_authenticated/my-day.tsx");
   it("renders each piece from the day's data", () => {
-    expect(myDay).toMatch(/<DogsLine dogs=\{p\?\.dogs\} dogCount=\{facts\?\.dogCount\} \/>/);
+    expect(myDay).toMatch(
+      /<DogsLine\s+dogs=\{p\?\.dogs\}\s+dogCount=\{facts\?\.dogCount\}\s+pets=\{service\?\.line === "pet_sitting"\}\s*\/>/,
+    );
     expect(myDay).toMatch(/<YardOutline\s+boundary=\{p\?\.boundary\}/);
     expect(myDay).toMatch(/hasStations && <StationsSummary stations=\{p\?\.waste_stations\}/);
     expect(myDay).toMatch(/<PaymentLine/);

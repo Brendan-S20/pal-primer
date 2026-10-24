@@ -19,6 +19,8 @@ export const SKIP_REASON_CODES = [
   "key_failed",
   "no_one_home",
   "dog_unwell",
+  "pet_hiding",
+  "client_home",
 ] as const;
 
 export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
@@ -34,6 +36,8 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
   key_failed: "Key or code did not work",
   no_one_home: "No one home",
   dog_unwell: "Dog unwell",
+  pet_hiding: "Pet hiding",
+  client_home: "Client home",
 };
 
 /**
@@ -62,6 +66,8 @@ export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[numb
   key_failed: "The key or the code did not work",
   no_one_home: "No one was home",
   dog_unwell: "The dog was not well enough to walk",
+  pet_hiding: "Your pet was hiding",
+  client_home: "You were home",
 };
 
 /** Translate known office reasons and format older, unknown codes as words. */
@@ -102,6 +108,8 @@ const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
   key_failed: 50,
   no_one_home: 50,
   dog_unwell: 0,
+  pet_hiding: 0,
+  client_home: 0,
 };
 
 /** Reasons that exist for a walk and would be the wrong list on a yard. */
@@ -119,7 +127,11 @@ type WalkOnlySkip = (typeof WALK_ONLY_SKIP_REASON_CODES)[number];
  * yard card.
  */
 export const TECH_SKIP_REASON_CODES = SKIP_REASON_CODES.filter(
-  (c) => c !== "customer_requested" && !WALK_ONLY_SKIP_REASON_CODES.includes(c as WalkOnlySkip),
+  (c) =>
+    c !== "customer_requested" &&
+    !WALK_ONLY_SKIP_REASON_CODES.includes(c as WalkOnlySkip) &&
+    c !== "pet_hiding" &&
+    c !== "client_home",
 ) as ReadonlyArray<(typeof SKIP_REASON_CODES)[number]>;
 
 /** What a walker picks. Yard reasons stay off this list. */
@@ -142,7 +154,16 @@ export const WALK_SKIP_REASON_LABELS: Record<(typeof WALK_SKIP_REASON_CODES)[num
   other: "Other",
 };
 
-export function techSkipReasonCodes(walk: boolean): readonly string[] {
+export const SIT_SKIP_REASON_LABELS = {
+  pet_hiding: "Pet hiding",
+  key_failed: "Key or code did not work",
+  client_home: "Client home",
+  access_blocked: "Could not get in",
+  other: "Other",
+} as const;
+
+export function techSkipReasonCodes(walk: boolean, sitting = false): readonly string[] {
+  if (sitting) return Object.keys(SIT_SKIP_REASON_LABELS);
   return walk ? WALK_SKIP_REASON_CODES : TECH_SKIP_REASON_CODES;
 }
 
@@ -188,17 +209,15 @@ export const upsertSkipRule = createServerFn({ method: "POST" })
     // Skip-billing rules set how much a skipped visit still bills — a billing
     // settings action (owner/office_manager), not dispatcher-reachable (I7).
     const orgId = (await requirePermission(supabase, userId, "manage_settings")).orgId;
-    const { error } = await supabase
-      .from("skip_billing_rules")
-      .upsert(
-        {
-          organization_id: orgId,
-          reason_code: data.code,
-          billable_pct: data.billablePct,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "organization_id,reason_code" },
-      );
+    const { error } = await supabase.from("skip_billing_rules").upsert(
+      {
+        organization_id: orgId,
+        reason_code: data.code,
+        billable_pct: data.billablePct,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "organization_id,reason_code" },
+    );
     if (error) throw new Error(error.message);
     return { ok: true };
   });

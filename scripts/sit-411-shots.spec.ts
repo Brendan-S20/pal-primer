@@ -6,8 +6,8 @@ import { CLIENT_ID } from "../tests/viewports/fixtures/dataset";
 import { findControlsOffTheSide, measurePageOverflow } from "../tests/viewports/rules";
 
 const LINES = ["pet_waste", "dog_walking", "pet_sitting"];
-const WIDTHS = [390, 820, 1024, 1440];
-const OUT = "/opt/cursor/artifacts/sit-411";
+const WIDTHS = [360, 768, 1280, 1920];
+const OUT = process.env.SIT_SCREENSHOT_DIR ?? "work/sit-411";
 
 function heightFor(width: number) {
   return width <= 390 ? 844 : 1100;

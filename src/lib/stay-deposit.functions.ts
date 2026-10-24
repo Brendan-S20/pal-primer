@@ -1,5 +1,5 @@
 // How many days before a stay its deposit stays refundable
-// (organizations.stay_deposit_refund_days, migration 20261017050000).
+// (organizations.stay_deposit_refund_days, migration 20261024080900).
 // Canceling later keeps the deposit as a cancellation fee. It is a price
 // rule, so it needs manage_pricing as the services on the same page do.
 

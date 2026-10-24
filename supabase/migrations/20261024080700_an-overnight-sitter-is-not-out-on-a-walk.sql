@@ -46,7 +46,7 @@ REVOKE ALL ON FUNCTION public.overnight_covers(date, time, date, time, time) FRO
 GRANT EXECUTE ON FUNCTION public.overnight_covers(date, time, date, time, time) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.overnight_covers(date, time, date, time, time) IS
-  'Whether an overnight on _night arriving from _arrival covers a visit on _on with the window _earliest to _latest: after the arrival that evening, or before 8 AM the next morning. Mirrored by overnightCovers in src/lib/stays.ts. Migration 20261017030000.';
+  'Whether an overnight on _night arriving from _arrival covers a visit on _on with the window _earliest to _latest: after the arrival that evening, or before 8 AM the next morning. Mirrored by overnightCovers in src/lib/stays.ts. Migration 20261024080700.';
 
 CREATE OR REPLACE FUNCTION public.overnight_clashes(_visit_ids uuid[])
 RETURNS TABLE (
@@ -108,7 +108,7 @@ REVOKE ALL ON FUNCTION public.overnight_clashes(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.overnight_clashes(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.overnight_clashes(uuid[]) IS
-  'For these scheduled visits, the same sitter''s other visits that fall inside an overnight (overnight_covers), from either side. Office only (can_write_org). Warns, never refuses. Migration 20261017030000.';
+  'For these scheduled visits, the same sitter''s other visits that fall inside an overnight (overnight_covers), from either side. Office only (can_write_org). Warns, never refuses. Migration 20261024080700.';
 
 CREATE OR REPLACE FUNCTION public.stay_sitter_clashes(_stay_id uuid)
 RETURNS TABLE (
@@ -135,7 +135,7 @@ REVOKE ALL ON FUNCTION public.stay_sitter_clashes(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.stay_sitter_clashes(uuid) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.stay_sitter_clashes(uuid) IS
-  'overnight_clashes for every scheduled visit of a stay. Office only. Migration 20261017030000.';
+  'overnight_clashes for every scheduled visit of a stay. Office only. Migration 20261024080700.';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $check$

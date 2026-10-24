@@ -18,7 +18,7 @@ import { formatServiceMoney } from "@/lib/services";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const sql = readFileSync(
-  join(ROOT, "supabase/migrations/20261017000000_a-stay-can-change.sql"),
+  join(ROOT, "supabase/migrations/20261024080400_a-stay-can-change.sql"),
   "utf8",
 );
 

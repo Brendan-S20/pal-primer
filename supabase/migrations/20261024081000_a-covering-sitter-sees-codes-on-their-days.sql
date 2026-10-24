@@ -1,7 +1,7 @@
 -- A sitter covering one visit of a stay sees the codes on that visit's day
 -- (#478 review).
 --
--- 20261017010000 let any active staff member with a scheduled or in-progress
+-- 20261024080500 let any active staff member with a scheduled or in-progress
 -- visit on a stay read its codes for the whole stay window. A sitter covering
 -- one drop-in on day 5 could read the lock box code from the day before day 1.
 --
@@ -120,7 +120,7 @@ REVOKE ALL ON FUNCTION public.stay_access_codes(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.stay_access_codes(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.stay_access_codes(uuid[]) IS
-  'Gate code, lock box code, key location, key tag and alarm details for each stay''s home. The office (view_client_directory); the stay''s sitter (stays.assigned_staff_id) from the day before its first visit to its last visit day; anyone else assigned to a scheduled or in-progress visit of the stay on that visit''s day only. Every row returned is logged to activity_log as stay.access_viewed. Migrations 20261017010000, 20261017060000.';
+  'Gate code, lock box code, key location, key tag and alarm details for each stay''s home. The office (view_client_directory); the stay''s sitter (stays.assigned_staff_id) from the day before its first visit to its last visit day; anyone else assigned to a scheduled or in-progress visit of the stay on that visit''s day only. Every row returned is logged to activity_log as stay.access_viewed. Migrations 20261024080500, 20261024081000.';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $check$

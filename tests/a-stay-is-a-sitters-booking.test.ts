@@ -34,7 +34,7 @@ import { walkDay } from "./support/walk-day";
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const sql = read("supabase/migrations/20261016120000_a-stay-is-a-sitters-booking.sql");
+const sql = read("supabase/migrations/20261024080100_a-stay-is-a-sitters-booking.sql");
 const code = sql.replace(/--[^\n]*/g, "");
 
 // 2026-10-19 is a Monday.
@@ -321,7 +321,7 @@ describe("the server", () => {
   it("books a stay through transactional confirmation and the shared generator", () => {
     expect(fns).toMatch(/requirePermission\(supabase, context\.userId, "manage_pricing"\)/);
     expect(fns).toMatch(/rpc\("confirm_stay"/);
-    const booking = read("supabase/migrations/20261016140000_a-client-asks-for-a-stay.sql");
+    const booking = read("supabase/migrations/20261024080300_a-client-asks-for-a-stay.sql");
     expect(booking).toContain("ARRAY[0,1,2,3,4,5,6]");
     expect(booking).toContain("public.generate_visits_core(_st.organization_id, _last, _sub)");
     // A failed confirmation takes the office's requested stay with it.

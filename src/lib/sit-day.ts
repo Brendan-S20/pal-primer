@@ -3,7 +3,7 @@
  *
  *  The visit list comes from getMyDay. What a tech cannot read for themselves
  *  (the stay, the plan's window, which visit of the stay this is) comes from
- *  sit_visit_facts (migration 20261016130000) as `sit_facts` on the visit. */
+ *  sit_visit_facts (migration 20261024080200) as `sit_facts` on the visit. */
 
 import { readMeds, type PetCare, type PetSpecies, isPetSpecies } from "@/lib/pets";
 

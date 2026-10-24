@@ -1,5 +1,5 @@
 // Settings > Services, for a business that runs pet sitting: how many days
-// before a stay its deposit stays refundable (migration 20261017050000).
+// before a stay its deposit stays refundable (migration 20261024080900).
 // Office screen, English.
 
 import { useEffect, useState } from "react";

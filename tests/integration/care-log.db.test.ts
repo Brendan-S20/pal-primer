@@ -1,5 +1,5 @@
 /** record_care_entry and delete_care_entry against a database built from the
- *  migrations (#411, 20261016130000):
+ *  migrations (#411, 20261024080200):
  *
  *    * the assigned sitter and the office can log; another sitter and anyone
  *      signed out cannot;

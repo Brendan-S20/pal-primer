@@ -108,7 +108,11 @@ export function PortalStayRequest() {
       <p className="text-sm text-muted-foreground">
         Choose the days you need care. The office will confirm availability and send your invoice.
       </p>
-      {sent ? (
+      {!opts.canRequest ? (
+        <p className="text-sm text-muted-foreground">
+          Pet sitting is coming soon. You can still follow an existing stay on the Visits page.
+        </p>
+      ) : sent ? (
         <div className="space-y-3">
           <p role="status">Your stay request was sent. We will email you when it is confirmed.</p>
           <Button
@@ -316,7 +320,16 @@ export function PortalStayTimeline() {
         Stay timelines could not be loaded. Refresh to try again.
       </p>
     );
-  if (!q.data?.offered || !q.data.stays.length) return null;
+  if (!q.data?.offered) return null;
+  if (!q.data.stays.length)
+    return (
+      <section className="space-y-2">
+        <h2 className="text-lg font-semibold">Your stays</h2>
+        <p className="text-sm text-muted-foreground">
+          No stays yet. Once the office books your stay, you can follow each visit here.
+        </p>
+      </section>
+    );
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">Your stays</h2>

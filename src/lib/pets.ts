@@ -1,6 +1,6 @@
 // Pets that are not dogs, and how each one is looked after (#411).
 //
-// public.dogs holds every pet a client has since migration 20261016110000;
+// public.dogs holds every pet a client has since migration 20261024080000;
 // `species` says which kind. Everything that counts DOGS (a plan's dog_count,
 // the scooping estimate, group-walk places, the "services bill for N dogs"
 // warning) counts rows whose species is dog, and a row without the column
@@ -98,7 +98,7 @@ export type PetCare = {
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Why a medication list cannot be saved, or null. The same rule as
- *  public.pet_meds_are_valid (migration 20261016110000). */
+ *  public.pet_meds_are_valid (migration 20261024080000). */
 export function medsProblem(meds: readonly PetMed[]): string | null {
   if (meds.length > MEDS_MAX) return `Up to ${MEDS_MAX} medications.`;
   for (const med of meds) {

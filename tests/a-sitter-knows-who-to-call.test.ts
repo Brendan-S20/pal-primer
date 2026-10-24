@@ -11,7 +11,7 @@ import { sitEmergency, sitPets } from "@/lib/sit-day";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const sql = read("supabase/migrations/20261017020000_a-sitter-knows-who-to-call.sql");
+const sql = read("supabase/migrations/20261024080600_a-sitter-knows-who-to-call.sql");
 
 const ready = {
   emergency_contact_name: "Sam",

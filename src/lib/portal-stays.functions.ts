@@ -1,3 +1,4 @@
+import { customerCanRequestService } from "@/lib/service-lines";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { Json } from "@/integrations/supabase/types";
@@ -163,6 +164,7 @@ export const portalListStays = createServerFn({ method: "GET" })
     if (orgError) throw new Error(orgError.message);
     const empty = {
       offered: false,
+      canRequest: false,
       currency: org.currency,
       services: [] as Array<{ id: string; name: string; price_unit: string }>,
       properties: [] as Array<{ id: string; street: string }>,
@@ -274,6 +276,7 @@ export const portalListStays = createServerFn({ method: "GET" })
     const due = new Set((deposits.data ?? []).filter((i) => i.status === "open").map((i) => i.id));
     return {
       offered: true,
+      canRequest: customerCanRequestService("pet_sitting"),
       currency: org.currency,
       services: services.data ?? [],
       properties: (properties.data ?? []).map((p) => ({ id: p.id, street: p.street })),
@@ -314,6 +317,7 @@ export const portalRequestStay = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { requirePortalSession } = await import("@/lib/portal-auth.server");
     const session = await requirePortalSession(data.token);
+    if (!customerCanRequestService("pet_sitting")) throw new Error("Pet sitting is coming soon.");
     const sb = await admin();
     const { data: service, error } = await sb
       .from("services")

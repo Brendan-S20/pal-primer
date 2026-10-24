@@ -1,5 +1,5 @@
 // A sitter logs what each pet got (#411, the sitter's day): migration
-// 20261016130000, the server functions, the generated types, the email
+// 20261024080200, the server functions, the generated types, the email
 // switch, and the pure rules My Day's sit card reads (src/lib/sit-day.ts).
 // tests/integration/care-log.db.test.ts runs the functions against a
 // database built from the migrations.
@@ -22,7 +22,7 @@ import {
 } from "@/lib/sit-day";
 
 const read = (p: string) => readFileSync(p, "utf8");
-const MIG = "supabase/migrations/20261016130000_a-sitter-logs-what-each-pet-got.sql";
+const MIG = "supabase/migrations/20261024080200_a-sitter-logs-what-each-pet-got.sql";
 const sql = stripLineComments(read(MIG));
 const between = (from: string, to: string) =>
   sql.slice(sql.indexOf(from), sql.indexOf(to, sql.indexOf(from)));

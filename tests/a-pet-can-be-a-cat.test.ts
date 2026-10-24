@@ -24,7 +24,7 @@ import {
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const MIGRATION = "supabase/migrations/20261016110000_a-pet-can-be-a-cat.sql";
+const MIGRATION = "supabase/migrations/20261024080000_a-pet-can-be-a-cat.sql";
 const sql = read(MIGRATION);
 const code = sql.replace(/--[^\n]*/g, "");
 

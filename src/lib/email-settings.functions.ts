@@ -31,7 +31,7 @@ export const getEmailSettings = createServerFn({ method: "GET" })
       )
       .eq("id", orgId)
       .maybeSingle();
-    // The sitting emails (#411, 20261016130000) are read on their own too, so
+    // The sitting emails (#411, 20261024080200) are read on their own too, so
     // a database without them still shows the walk switches. They are shown
     // only to a business that runs pet sitting.
     const { data: sit } = await (context.supabase as any)

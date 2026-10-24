@@ -6,7 +6,7 @@
 //   overnight  one visit a night on starts_on .. ends_on - 1: ends_on is the
 //              checkout morning. Mon -> Sat is five nights.
 //
-// The database holds the same rules (public.stays, migration 20261016120000);
+// The database holds the same rules (public.stays, migration 20261024080100);
 // tests/a-stay-is-a-sitters-booking.test.ts holds the two together.
 
 import { arrivalWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
@@ -200,7 +200,7 @@ export function stayDatesLabel(kind: StayKind, startsOn: string, endsOn: string)
 
 // ── Changing a confirmed stay ────────────────────────────────────────────
 //
-// change_stay (migration 20261017000000) holds the same rules: a scheduled
+// change_stay (migration 20261024080400) holds the same rules: a scheduled
 // visit from the business's today on is still to come, and the stay can end
 // no earlier than its last visit already under way or done, nor before
 // yesterday.
@@ -289,7 +289,7 @@ export function priceDifferenceSentence(cents: number, money: (c: number) => str
 
 // ── Who sees the codes, and when ─────────────────────────────────────────
 //
-// stay_access_codes (migration 20261017010000) gives a stay's sitter the
+// stay_access_codes (migration 20261024080500) gives a stay's sitter the
 // gate code, lock box code, key and alarm details from the day before the
 // stay's first visit to the end of its last visit day. The sit card uses the
 // same window to say when the codes will show.
@@ -310,7 +310,7 @@ export function stayAccessOpen(today: string, window: StayAccessWindow | null): 
 
 // ── Who to call ──────────────────────────────────────────────────────────
 //
-// stay_contact_gaps (migration 20261017020000) names what a stay is missing
+// stay_contact_gaps (migration 20261024080600) names what a stay is missing
 // for an emergency. Confirming warns about it and never refuses.
 
 export const STAY_CONTACT_GAPS = ["emergency_contact", "vet", "treatment_limit"] as const;
@@ -355,7 +355,7 @@ export function stayContactGapsSentence(gaps: readonly string[] | null | undefin
 
 // ── The deposit when a stay is canceled ──────────────────────────────────
 //
-// tg_stays_follow (migration 20261017050000) refunds the deposit when the
+// tg_stays_follow (migration 20261024080900) refunds the deposit when the
 // stay starts at least organizations.stay_deposit_refund_days later, and
 // otherwise keeps it as a cancellation fee. The office can refund anyway.
 
@@ -391,7 +391,7 @@ export function depositCancelSentence(args: {
 
 // ── Holiday dates ────────────────────────────────────────────────────────
 //
-// holiday_dates (migration 20261017040000) price a sitting visit on the date
+// holiday_dates (migration 20261024080800) price a sitting visit on the date
 // at its service's holiday surcharge. An overnight's visit is dated the
 // evening it starts, so the night that counts starts on the date.
 
@@ -419,7 +419,7 @@ export function holidayNightLabel(day: string): string {
 
 // ── A sitter's evening ───────────────────────────────────────────────────
 //
-// overnight_clashes (migration 20261017030000) finds a sitter's other visits
+// overnight_clashes (migration 20261024080700) finds a sitter's other visits
 // inside one of their overnights: after the arrival window opens that
 // evening, or before 8 AM the next morning. It warns and never refuses.
 

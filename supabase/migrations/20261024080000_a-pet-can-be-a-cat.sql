@@ -36,11 +36,11 @@ ALTER TABLE public.dogs ADD CONSTRAINT dogs_species_note_length
   CHECK (species_note IS NULL OR char_length(species_note) <= 40);
 
 COMMENT ON TABLE public.dogs IS
-  'Every pet a client has, at a property. Named for dogs because that is all it held until pet sitting (#411); since migration 20261016110000 a row may be a cat or another pet (species). Counts that mean dogs (subscriptions.dog_count, group walks, the scooping estimate) filter species = ''dog''.';
+  'Every pet a client has, at a property. Named for dogs because that is all it held until pet sitting (#411); since migration 20261024080000 a row may be a cat or another pet (species). Counts that mean dogs (subscriptions.dog_count, group walks, the scooping estimate) filter species = ''dog''.';
 COMMENT ON COLUMN public.dogs.species IS
-  'dog, cat or other. Default dog, so every row written before pet sitting is a dog. Migration 20261016110000.';
+  'dog, cat or other. Default dog, so every row written before pet sitting is a dog. Migration 20261024080000.';
 COMMENT ON COLUMN public.dogs.species_note IS
-  'What kind of pet, for species other ("rabbit"). Up to 40 characters. Migration 20261016110000.';
+  'What kind of pet, for species other ("rabbit"). Up to 40 characters. Migration 20261024080000.';
 
 -- ── 2. Care instructions ─────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ REVOKE ALL ON FUNCTION public.pet_meds_are_valid(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.pet_meds_are_valid(jsonb) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.pet_meds_are_valid(jsonb) IS
-  'True for a medication list pet_care_instructions.meds may hold: an array of up to 20 {name, dose, times ["HH:MM"], notes}. Mirrored by medsProblem in src/lib/pets.ts. Migration 20261016110000.';
+  'True for a medication list pet_care_instructions.meds may hold: an array of up to 20 {name, dose, times ["HH:MM"], notes}. Mirrored by medsProblem in src/lib/pets.ts. Migration 20261024080000.';
 
 CREATE TABLE IF NOT EXISTS public.pet_care_instructions (
   pet_id uuid PRIMARY KEY REFERENCES public.dogs(id) ON DELETE CASCADE,
@@ -118,7 +118,7 @@ CREATE INDEX IF NOT EXISTS pet_care_instructions_org_idx
   ON public.pet_care_instructions(organization_id);
 
 COMMENT ON TABLE public.pet_care_instructions IS
-  'How a pet is looked after, one row per pet (public.dogs): feeding, medications (name, dose, times, notes) and other care such as litter, plants and mail. Read by the office and by a sitter who may see the property; written by the office (can_write_org, the same as dogs). Migration 20261016110000.';
+  'How a pet is looked after, one row per pet (public.dogs): feeding, medications (name, dose, times, notes) and other care such as litter, plants and mail. Read by the office and by a sitter who may see the property; written by the office (can_write_org, the same as dogs). Migration 20261024080000.';
 
 -- The row's business is the pet's business. Set from the pet rather than
 -- trusted from the caller, and stamped with who changed it.

@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS public.holiday_dates (
 );
 
 COMMENT ON TABLE public.holiday_dates IS
-  'Dates a sitting visit takes its service''s holiday surcharge. Not a closure: nothing is skipped or moved. An overnight counts on the date its night starts. Migration 20261017040000.';
+  'Dates a sitting visit takes its service''s holiday surcharge. Not a closure: nothing is skipped or moved. An overnight counts on the date its night starts. Migration 20261024080800.';
 
 ALTER TABLE public.holiday_dates ENABLE ROW LEVEL SECURITY;
 SELECT public.require_mfa_policy('public.holiday_dates');
@@ -108,7 +108,7 @@ REVOKE ALL ON FUNCTION public.stay_visit_bill(uuid) FROM PUBLIC, anon, authentic
 GRANT EXECUTE ON FUNCTION public.stay_visit_bill(uuid) TO service_role;
 
 -- ── invoice_stay writes its lines through stay_visit_bill ────────────────
--- The same body as 20261016140000 apart from the line INSERT.
+-- The same body as 20261024080300 apart from the line INSERT.
 
 CREATE OR REPLACE FUNCTION public.invoice_stay(_stay_id uuid)
 RETURNS uuid

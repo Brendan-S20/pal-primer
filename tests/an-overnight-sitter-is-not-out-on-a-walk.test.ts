@@ -10,7 +10,7 @@ import { overnightClashSentence, overnightCovers, type OvernightClash } from "@/
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const sql = read("supabase/migrations/20261017030000_an-overnight-sitter-is-not-out-on-a-walk.sql");
+const sql = read("supabase/migrations/20261024080700_an-overnight-sitter-is-not-out-on-a-walk.sql");
 
 describe("what an overnight covers", () => {
   const night = "2026-12-24";

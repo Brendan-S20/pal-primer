@@ -42,7 +42,7 @@ END
 $constraints$;
 
 COMMENT ON COLUMN public.organizations.stay_deposit_refund_days IS
-  'A stay deposit is refunded on cancel when the stay starts at least this many days later; otherwise it is kept as a cancellation fee. 0 refunds up to the first day. Migration 20261017050000.';
+  'A stay deposit is refunded on cancel when the stay starts at least this many days later; otherwise it is kept as a cancellation fee. 0 refunds up to the first day. Migration 20261024080900.';
 
 -- ── Canceling applies the rule ───────────────────────────────────────────
 
@@ -146,7 +146,7 @@ REVOKE ALL ON FUNCTION public.cancel_stay(uuid, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.cancel_stay(uuid, boolean) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.cancel_stay(uuid, boolean) IS
-  'The office cancels a stay. The deposit is refunded when the stay starts at least organizations.stay_deposit_refund_days later, or when _refund_deposit; otherwise it is kept as a cancellation fee invoice. Returns {deposit: none|refunded|kept, fee_invoice_id}. can_write_org. Migration 20261017050000.';
+  'The office cancels a stay. The deposit is refunded when the stay starts at least organizations.stay_deposit_refund_days later, or when _refund_deposit; otherwise it is kept as a cancellation fee invoice. Returns {deposit: none|refunded|kept, fee_invoice_id}. can_write_org. Migration 20261024080900.';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $check$

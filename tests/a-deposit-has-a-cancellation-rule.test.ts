@@ -10,7 +10,7 @@ import { depositCancelSentence, depositRefundable } from "@/lib/stays";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const sql = read("supabase/migrations/20261017050000_a-deposit-has-a-cancellation-rule.sql");
+const sql = read("supabase/migrations/20261024080900_a-deposit-has-a-cancellation-rule.sql");
 
 describe("when a deposit is refundable", () => {
   it("at least the set number of days before the stay starts", () => {

@@ -2,7 +2,7 @@
  *  because a tech cannot read plans), the care log so far, and how to get in.
  *
  *  A stay visit's gate code, lock box code, key and alarm details come only
- *  from stay_access_codes (migration 20261017010000): the stay's sitter,
+ *  from stay_access_codes (migration 20261024080500): the stay's sitter,
  *  from the day before its first visit to its last, and every read is
  *  logged. Whatever the day's query or property_access_codes put on the
  *  property is replaced, so a sit card never shows a code by another path.

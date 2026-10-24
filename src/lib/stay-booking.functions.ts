@@ -46,7 +46,11 @@ export const getStayContactGaps = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ stayId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "view_client_directory");
-    return { gaps: await contactGaps(context.supabase, data.stayId) };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    return {
+      gaps: await contactGaps(context.supabase, data.stayId),
+      clash: await overnightClashWarning(context.supabase, { stayId: data.stayId }),
+    };
   });
 
 export const listRequestedStays = createServerFn({ method: "GET" })

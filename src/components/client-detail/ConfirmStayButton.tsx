@@ -59,6 +59,14 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
         {mut.isPending ? "Confirming…" : "Confirm stay"}
       </Button>
       {invalid && <p className="text-xs text-destructive">Enter a deposit in dollars and cents.</p>}
+      {gapsQ.data?.clash && (
+        <p
+          role="alert"
+          className="basis-full rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+        >
+          {gapsQ.data.clash}
+        </p>
+      )}
       {missing && (
         <p className="basis-full rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
           {missing} You can confirm now and add them on the client and pet forms.

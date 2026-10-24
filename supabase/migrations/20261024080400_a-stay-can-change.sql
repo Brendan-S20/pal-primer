@@ -66,7 +66,7 @@ END
 $constraints$;
 
 COMMENT ON COLUMN public.stays.credited_cents IS
-  'Account credit given for nights or pets removed after the stay invoice was paid, before tax. Written by restate_stay_billing only. Migration 20261017000000.';
+  'Account credit given for nights or pets removed after the stay invoice was paid, before tax. Written by restate_stay_billing only. Migration 20261024080400.';
 
 -- ── 2. One stay visit as the invoice bills it ────────────────────────────
 
@@ -227,7 +227,7 @@ REVOKE ALL ON FUNCTION public.restate_stay_billing(uuid) FROM PUBLIC, anon, auth
 GRANT EXECUTE ON FUNCTION public.restate_stay_billing(uuid) TO service_role;
 
 COMMENT ON FUNCTION public.restate_stay_billing(uuid) IS
-  'Brings a stay''s billing in line with its visits after a change or a cancel. Unpaid stay invoice: lines rewritten (voided when none remain). Paid: new nights and extra pets on a new invoice, removed ones as account credit. Returns the new invoice, or NULL. Migration 20261017000000.';
+  'Brings a stay''s billing in line with its visits after a change or a cancel. Unpaid stay invoice: lines rewritten (voided when none remain). Paid: new nights and extra pets on a new invoice, removed ones as account credit. Returns the new invoice, or NULL. Migration 20261024080400.';
 
 -- ── 4. The guards let change_stay through, and only it ───────────────────
 
@@ -562,7 +562,7 @@ REVOKE ALL ON FUNCTION public.change_stay(uuid, date, date, uuid[]) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION public.change_stay(uuid, date, date, uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.change_stay(uuid, date, date, uuid[]) IS
-  'The office changes a confirmed stay: end date either way, start date before it starts, pets added or removed. Visits and billing follow; completed visits are never touched. can_write_org. Migration 20261017000000.';
+  'The office changes a confirmed stay: end date either way, start date before it starts, pets added or removed. Visits and billing follow; completed visits are never touched. can_write_org. Migration 20261024080400.';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $check$

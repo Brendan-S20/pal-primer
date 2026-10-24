@@ -75,7 +75,7 @@ CREATE INDEX IF NOT EXISTS care_log_pet_idx ON public.care_log(pet_id);
 CREATE INDEX IF NOT EXISTS care_log_given_by_idx ON public.care_log(given_by);
 
 COMMENT ON TABLE public.care_log IS
-  'What a sitter did for each pet on a pet sitting visit (#411): fed, water, litter, walk, a medication given or missed (with the reason). Written only by record_care_entry and delete_care_entry. Migration 20261016130000.';
+  'What a sitter did for each pet on a pet sitting visit (#411): fed, water, litter, walk, a medication given or missed (with the reason). Written only by record_care_entry and delete_care_entry. Migration 20261024080200.';
 COMMENT ON COLUMN public.care_log.pet_id IS
   'The pet (public.dogs). NULL for all pets at the home.';
 COMMENT ON COLUMN public.care_log.med_name IS
@@ -250,7 +250,7 @@ GRANT EXECUTE ON FUNCTION public.record_care_entry(uuid, uuid, text, text, text,
   TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.record_care_entry(uuid, uuid, text, text, text, text, text, timestamptz, uuid) IS
-  'Logs one thing a sitter did for a pet (#411). The assigned sitter or the office; a pet sitting visit under way or completed today; a pet at the visit''s home. _id is minted on the device, so a replay returns the same row. Migration 20261016130000.';
+  'Logs one thing a sitter did for a pet (#411). The assigned sitter or the office; a pet sitting visit under way or completed today; a pet at the visit''s home. _id is minted on the device, so a replay returns the same row. Migration 20261024080200.';
 
 CREATE OR REPLACE FUNCTION public.delete_care_entry(_id uuid)
 RETURNS void
@@ -288,7 +288,7 @@ REVOKE ALL ON FUNCTION public.delete_care_entry(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.delete_care_entry(uuid) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.delete_care_entry(uuid) IS
-  'Undoes a care log entry logged by mistake: the assigned sitter or the office, within 12 hours. Migration 20261016130000.';
+  'Undoes a care log entry logged by mistake: the assigned sitter or the office, within 12 hours. Migration 20261024080200.';
 
 -- ── 3. What My Day needs about a stay visit ──────────────────────────────
 
@@ -343,7 +343,7 @@ REVOKE ALL ON FUNCTION public.sit_visit_facts(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.sit_visit_facts(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.sit_visit_facts(uuid[]) IS
-  'For My Day (#411): each stay visit''s stay (kind, dates, pets), its plan window, and which visit of the stay it is, for visits the caller works or the office. Up to 200 ids. Migration 20261016130000.';
+  'For My Day (#411): each stay visit''s stay (kind, dates, pets), its plan window, and which visit of the stay it is, for visits the caller works or the office. Up to 200 ids. Migration 20261024080200.';
 
 -- ── 4. The client's email switch ─────────────────────────────────────────
 
@@ -351,7 +351,7 @@ ALTER TABLE public.organizations
   ADD COLUMN IF NOT EXISTS notify_email_missed_meds boolean NOT NULL DEFAULT true;
 
 COMMENT ON COLUMN public.organizations.notify_email_missed_meds IS
-  'Email the client when a pet sitting visit ends with a medication missed, with the reason. Pet sitting visits only. Migration 20261016130000.';
+  'Email the client when a pet sitting visit ends with a medication missed, with the reason. Pet sitting visits only. Migration 20261024080200.';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $check$

@@ -117,7 +117,7 @@ REVOKE ALL ON FUNCTION public.stay_windows_are_valid(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.stay_windows_are_valid(jsonb) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.stay_windows_are_valid(jsonb) IS
-  'True for one to four distinct drop-in windows [{earliest, latest}] in "HH:MM", earliest before latest. Mirrored by stayWindowsProblem in src/lib/stays.ts. Migration 20261016120000.';
+  'True for one to four distinct drop-in windows [{earliest, latest}] in "HH:MM", earliest before latest. Mirrored by stayWindowsProblem in src/lib/stays.ts. Migration 20261024080100.';
 
 CREATE TABLE IF NOT EXISTS public.stays (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -164,7 +164,7 @@ CREATE INDEX IF NOT EXISTS stays_service_idx ON public.stays(service_id);
 CREATE INDEX IF NOT EXISTS stays_staff_idx ON public.stays(assigned_staff_id);
 
 COMMENT ON TABLE public.stays IS
-  'A pet sitter''s booking (#411): drop-ins or overnights at a client''s home from starts_on to ends_on. Its visits come from plans with subscriptions.stay_id. kind follows the service (priced per night = overnight). Migration 20261016120000.';
+  'A pet sitter''s booking (#411): drop-ins or overnights at a client''s home from starts_on to ends_on. Its visits come from plans with subscriptions.stay_id. kind follows the service (priced per night = overnight). Migration 20261024080100.';
 COMMENT ON COLUMN public.stays.ends_on IS
   'Drop-in: the last day with visits. Overnight: the checkout morning, so the last night is ends_on - 1.';
 COMMENT ON COLUMN public.stays.pet_ids IS
@@ -297,7 +297,7 @@ ALTER TABLE public.subscriptions
 CREATE INDEX IF NOT EXISTS subscriptions_stay_idx ON public.subscriptions(stay_id);
 
 COMMENT ON COLUMN public.subscriptions.stay_id IS
-  'The stay (public.stays) this plan''s visits belong to: one plan per drop-in window, or one for the overnight arrival window. NULL on every other plan. Migration 20261016120000.';
+  'The stay (public.stays) this plan''s visits belong to: one plan per drop-in window, or one for the overnight arrival window. NULL on every other plan. Migration 20261024080100.';
 
 -- A plan names a stay of its own client, property, business and service.
 CREATE OR REPLACE FUNCTION public.tg_subscriptions_stay()
@@ -344,7 +344,7 @@ DECLARE
     -- the later of the plan's start and the business's today to its end.
     -- No client-hold or blackout skip: the client is away and the pets still
     -- need feeding. Only a day a visit was rescheduled away from is left
-    -- alone. Migration 20261016120000.
+    -- alone. Migration 20261024080100.
     IF _sub.stay_id IS NOT NULL THEN
       DECLARE
         _stay_today date;

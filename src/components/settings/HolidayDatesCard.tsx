@@ -1,6 +1,6 @@
 // Settings > Services, for a business that runs pet sitting: the dates a
 // sitting visit takes its service's holiday surcharge (holiday_dates,
-// migration 20261017040000). These are not closures. Office screen, English.
+// migration 20261024080800). These are not closures. Office screen, English.
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

@@ -24,11 +24,18 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 const state = vi.hoisted(() => ({
   verified: true,
+  bookable: true,
   preview: false,
   reads: [] as string[],
   auth: [] as any[],
   rpc: [] as any[],
   tables: {} as Record<string, any[]>,
+}));
+// Exercise the built request flow after a future approval, and separately
+// prove the real endpoint refuses writes while its launch gate is closed.
+vi.mock("@/lib/service-lines", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/service-lines")>()),
+  customerCanRequestService: () => state.bookable,
 }));
 vi.mock("@/lib/portal-auth.server", () => ({
   requirePortalSession: async (_token: string, opts: any = {}) => {
@@ -110,7 +117,7 @@ const {
 const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const sql = read("supabase/migrations/20261016140000_a-client-asks-for-a-stay.sql");
+const sql = read("supabase/migrations/20261024080300_a-client-asks-for-a-stay.sql");
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const SERVICE = "22222222-2222-4222-8222-222222222222";
 const PROPERTY = "33333333-3333-4333-8333-333333333333";
@@ -136,6 +143,7 @@ const request = () => ({
 });
 
 beforeEach(() => {
+  state.bookable = true;
   state.verified = true;
   state.preview = false;
   state.reads = [];
@@ -261,6 +269,15 @@ beforeEach(() => {
 });
 
 describe("the client stay request", () => {
+  it("refuses direct requests while Coming soon and preserves existing timelines", async () => {
+    state.bookable = false;
+    await expect(portalRequestStay({ data: request() })).rejects.toThrow("coming soon");
+    expect(state.rpc).toEqual([]);
+    expect(state.reads).toEqual([]);
+    const result = await portalListStays({ data: { token: TOKEN } });
+    expect(result.canRequest).toBe(false);
+    expect(result.stays.length).toBeGreaterThan(0);
+  });
   it("takes the tenant and client from the verified session and saves edited care", async () => {
     await portalRequestStay({
       data: { ...request(), organizationId: "org-b", clientId: "client-b", depositCents: 1 },

@@ -58,13 +58,13 @@ END
 $constraints$;
 
 COMMENT ON COLUMN public.clients.emergency_contact_name IS
-  'Who the sitter calls when the client cannot be reached. Migration 20261017020000.';
+  'Who the sitter calls when the client cannot be reached. Migration 20261024080600.';
 COMMENT ON COLUMN public.clients.emergency_contact_may_approve_vet IS
-  'The emergency contact may approve vet care for the client''s pets. Migration 20261017020000.';
+  'The emergency contact may approve vet care for the client''s pets. Migration 20261024080600.';
 COMMENT ON COLUMN public.clients.vet_treatment_limit_cents IS
-  'What a sitter may spend on vet treatment without asking. NULL is not set. Migration 20261017020000.';
+  'What a sitter may spend on vet treatment without asking. NULL is not set. Migration 20261024080600.';
 COMMENT ON COLUMN public.dogs.vet_clinic_name IS
-  'The pet''s vet clinic, for the sitter. Migration 20261017020000.';
+  'The pet''s vet clinic, for the sitter. Migration 20261024080600.';
 
 CREATE OR REPLACE FUNCTION public.stay_contact_gaps(_stay_id uuid)
 RETURNS text[]
@@ -95,7 +95,7 @@ REVOKE ALL ON FUNCTION public.stay_contact_gaps(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.stay_contact_gaps(uuid) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.stay_contact_gaps(uuid) IS
-  'What a stay is missing for an emergency: emergency_contact, vet, treatment_limit. Empty when nothing is missing, NULL when the caller is not the office. Warns, never refuses. Migration 20261017020000.';
+  'What a stay is missing for an emergency: emergency_contact, vet, treatment_limit. Empty when nothing is missing, NULL when the caller is not the office. Warns, never refuses. Migration 20261024080600.';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $check$

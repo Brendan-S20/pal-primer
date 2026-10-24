@@ -10,7 +10,7 @@ import { holidayDateLabel, holidayNightLabel } from "@/lib/stays";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const sql = read("supabase/migrations/20261017040000_a-holiday-is-not-a-closure.sql");
+const sql = read("supabase/migrations/20261024080800_a-holiday-is-not-a-closure.sql");
 
 describe("which night a holiday prices", () => {
   it("the night that starts on the date", () => {

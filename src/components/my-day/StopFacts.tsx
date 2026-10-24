@@ -55,14 +55,22 @@ const DOG_TEMPERAMENTS = new Set(["friendly", "nervous", "aggressive", "unknown"
  * records, which was most stops, so a tech could not tell "no dogs" from "we
  * don't know".
  */
-export function DogsLine({ dogs, dogCount }: { dogs: unknown; dogCount?: number | null }) {
+export function DogsLine({
+  dogs,
+  dogCount,
+  pets = false,
+}: {
+  dogs: unknown;
+  dogCount?: number | null;
+  pets?: boolean;
+}) {
   const { t } = useTranslation();
   const line = dogsLine(dogs, dogCount);
   if (line.kind === "none") {
     return (
       <div className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
         <Dog className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="min-w-0">{t("dogs.none")}</span>
+        <span className="min-w-0">{t(pets ? "pets.none" : "dogs.none")}</span>
       </div>
     );
   }

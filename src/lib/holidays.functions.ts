@@ -1,4 +1,4 @@
-// Holiday dates (migration 20261017040000): a sitting visit on one of these
+// Holiday dates (migration 20261024080800): a sitting visit on one of these
 // dates takes its service's holiday surcharge. Not a closure; blackouts are
 // closures. Setting one sets a price, so it needs manage_pricing as the
 // surcharge itself does.

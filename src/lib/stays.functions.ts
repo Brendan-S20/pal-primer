@@ -3,7 +3,7 @@
 // A stay's visits come from sibling plans, one per drop-in window or one for
 // the overnight arrival window. confirm_stay writes the plans through S1's
 // generator and creates the invoice in one transaction. The
-// database keeps the rest straight (migration 20261016120000): kind follows
+// database keeps the rest straight (migration 20261024080100): kind follows
 // the service, a stay visit takes the stay's sitter, a sitter never has two
 // overnights on one night, and canceling a stay cancels its future visits.
 //

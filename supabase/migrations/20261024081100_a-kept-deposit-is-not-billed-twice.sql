@@ -4,7 +4,7 @@
 -- credit_ledger as a 'prepayment', and from then on it is ordinary account
 -- credit. apply_credit_to_invoice spends it on any open invoice, and autopay
 -- and the portal's Pay button both call it first, so the deposit's credit is
--- often gone by the time the stay is canceled. 20261017050000 keeps a late
+-- often gone by the time the stay is canceled. 20261024080900 keeps a late
 -- cancel's deposit by opening a "Cancellation fee" invoice and paying it from
 -- that credit.
 --

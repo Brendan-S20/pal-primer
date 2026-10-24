@@ -49,7 +49,7 @@ END
 $constraints$;
 
 COMMENT ON COLUMN public.properties.alarm_notes IS
-  'Alarm details for whoever lets themselves in: code, panel, who to call. Not granted to authenticated; read through property_access_codes or stay_access_codes. Migration 20261017010000.';
+  'Alarm details for whoever lets themselves in: code, panel, who to call. Not granted to authenticated; read through property_access_codes or stay_access_codes. Migration 20261024080500.';
 
 -- The return type changes, so the walking function is dropped and made again
 -- with the same grants.
@@ -90,7 +90,7 @@ REVOKE ALL ON FUNCTION public.property_access_codes(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.property_access_codes(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.property_access_codes(uuid[]) IS
-  'Gate code, lock box code, key location, key tag and alarm details. Office (view_client_directory), or an active tech assigned to a scheduled or in-progress visit at the property today that is not a stay visit. Plain SELECT of these columns is revoked from authenticated. Migrations 20261015215000, 20261017010000.';
+  'Gate code, lock box code, key location, key tag and alarm details. Office (view_client_directory), or an active tech assigned to a scheduled or in-progress visit at the property today that is not a stay visit. Plain SELECT of these columns is revoked from authenticated. Migrations 20261015215000, 20261024080500.';
 
 CREATE OR REPLACE FUNCTION public.stay_access_codes(_stay_ids uuid[])
 RETURNS TABLE (
@@ -169,7 +169,7 @@ REVOKE ALL ON FUNCTION public.stay_access_codes(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.stay_access_codes(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.stay_access_codes(uuid[]) IS
-  'Gate code, lock box code, key location, key tag and alarm details for each stay''s home. The office (can_write_org), or an active sitter assigned to the stay, from the day before its first visit to its last visit day. Every row returned is logged to activity_log as stay.access_viewed. Migration 20261017010000.';
+  'Gate code, lock box code, key location, key tag and alarm details for each stay''s home. The office (can_write_org), or an active sitter assigned to the stay, from the day before its first visit to its last visit day. Every row returned is logged to activity_log as stay.access_viewed. Migration 20261024080500.';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $check$

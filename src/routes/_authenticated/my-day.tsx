@@ -40,6 +40,7 @@ import { sendOnMyWayMessage, sendVisitStatusSms } from "@/lib/messages.functions
 import {
   SKIP_REASON_LABELS,
   WALK_SKIP_REASON_LABELS,
+  SIT_SKIP_REASON_LABELS,
   techSkipReasonCodes,
 } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
@@ -159,7 +160,12 @@ import {
   takeCompletionPhoto,
   visitStep,
 } from "@/lib/visit-step";
-import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
+import {
+  PHOTO_KIND_OPTIONS,
+  photoKindLabel,
+  defaultPhotoKind,
+  type PhotoKind,
+} from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
@@ -525,7 +531,8 @@ function MyDay() {
   // offline Complete moves the count and promotes the next stop. The rules
   // (H1: skipped is not done; BUG-17: an open job outranks the next scheduled
   // one) live in lib/my-day-progress.ts, where they are tested.
-  const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
+  const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } =
+    dayAtAGlance(visits);
   const upcomingDays = useQuery({
     queryKey: ["my-upcoming-days"],
     queryFn: () => upcomingFn({ data: {} }),
@@ -734,7 +741,10 @@ function MyDay() {
                           aria-label={`${headline}${queued}. ${updated}${warning}`}
                           className="block w-full truncate py-1 text-start touch:min-h-11"
                         >
-                          <span className="font-medium">{headline}{queued}</span>
+                          <span className="font-medium">
+                            {headline}
+                            {queued}
+                          </span>
                           {warning ? (
                             <span className="font-medium">{warning}</span>
                           ) : (
@@ -743,7 +753,10 @@ function MyDay() {
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="w-[min(18rem,calc(100vw-2rem))] space-y-1 p-3 text-sm">
-                        <p>{headline}{queued}</p>
+                        <p>
+                          {headline}
+                          {queued}
+                        </p>
                         <p>{updated}</p>
                         {freshness.beyondTrustHorizon && <p>{t("myDay.routeMayHaveChanged")}</p>}
                       </PopoverContent>
@@ -1345,7 +1358,11 @@ function cacheAgeText(t: TFunction, ageMs: number): string {
 
 /** A skip reason code in the tech's language. A walk uses the walker labels
  *  (`walkSkipReason.<code>`). An unknown code is shown as-is. */
-function skipReasonLabel(t: TFunction, code: string, walk = false): string {
+function skipReasonLabel(t: TFunction, code: string, walk = false, sitting = false): string {
+  if (sitting) {
+    const english = SIT_SKIP_REASON_LABELS[code as keyof typeof SIT_SKIP_REASON_LABELS];
+    if (english) return t(`sitSkipReason.${code}`, { defaultValue: english });
+  }
   if (walk) {
     const english = WALK_SKIP_REASON_LABELS[code as keyof typeof WALK_SKIP_REASON_LABELS];
     if (english) return t(`walkSkipReason.${code}`, { defaultValue: english });
@@ -1755,8 +1772,9 @@ function VisitCard({
   // Completion, and a "before" shot got filed as the finished yard). Once the
   // visit is under way it is `photoKind` again, which opens on Completion.
   const [photoKindChosen, setPhotoKindChosen] = useState(false);
-  const shownPhotoKind: PhotoKind =
-    !photoKindChosen ? defaultPhotoKind(visit.status, startedHere) : photoKind;
+  const shownPhotoKind: PhotoKind = !photoKindChosen
+    ? defaultPhotoKind(visit.status, startedHere)
+    : photoKind;
   // Which photo the in-app viewer is showing, and the signed URLs the
   // thumbnails have already fetched. Keyed by photo id rather than index so a
   // photo arriving mid-render cannot shift somebody else's URL onto it.
@@ -1893,8 +1911,7 @@ function VisitCard({
   const completeToast = (r: { queued: boolean; result?: unknown }) => {
     if (r.queued) return t("visit.completeQueued");
     const summary = (r.result as any)?.notificationSummary as
-      | { sent?: string[]; pending?: boolean }
-      | undefined;
+      { sent?: string[]; pending?: boolean } | undefined;
     const sent = summary?.sent ?? [];
     const labels = sent
       .map((name) =>
@@ -2081,7 +2098,7 @@ function VisitCard({
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
   const service = visitServiceLabel(visit.services);
   const walkStop = service?.line === "dog_walking";
-  const skipCodes = techSkipReasonCodes(walkStop);
+  const skipCodes = techSkipReasonCodes(walkStop, service?.line === "pet_sitting");
 
   // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
@@ -2426,7 +2443,7 @@ function VisitCard({
                   <span className="min-w-0">
                     {visit.gate_reply === "do_not_enter"
                       ? t("visit.customerSaysDoNotEnter")
-                      : t("visit.customerSaysDogsSecured")}
+                      : t(sit ? "visit.customerSaysPetsSecured" : "visit.customerSaysDogsSecured")}
                     {visit.gate_reply_at
                       ? ` (${orgLocalTime(visit.gate_reply_at, tz, locale)})`
                       : ""}
@@ -2444,7 +2461,11 @@ function VisitCard({
                   <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
                 </>
               ) : (
-                <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
+                <DogsLine
+                  dogs={p?.dogs}
+                  dogCount={facts?.dogCount}
+                  pets={service?.line === "pet_sitting"}
+                />
               )}
 
               {(walk || sit) && <WalkAccess property={p} />}
@@ -2538,7 +2559,7 @@ function VisitCard({
                     ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
                   {visit.skip_reason_code
-                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, walkStop)})`
+                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, walkStop, Boolean(sit))})`
                     : ""}
                   {visit.skip_reason ? ": " : ""}
                   {visit.skip_reason ? <bdi>{visit.skip_reason}</bdi> : null}
@@ -2961,7 +2982,7 @@ function VisitCard({
                 >
                   {skipCodes.map((c) => (
                     <option key={c} value={c}>
-                      {skipReasonLabel(t, c, walkStop)}
+                      {skipReasonLabel(t, c, walkStop, Boolean(sit))}
                     </option>
                   ))}
                 </select>

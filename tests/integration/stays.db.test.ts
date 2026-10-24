@@ -1,6 +1,6 @@
 /**
  * Pet sitting in a real database (#411): pets that are not dogs, care
- * instructions, and stays (migrations 20261016110000 and 20261016120000).
+ * instructions, and stays (migrations 20261024080000 and 20261024080100).
  *
  *   * a drop-in stay Mon..Fri with two windows generates ten visits, and an
  *     overnight Mon -> Sat five, through the existing generator, even across

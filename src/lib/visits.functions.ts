@@ -47,7 +47,11 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
       .order("assigned_staff_id", { ascending: true, nullsFirst: true })
       .order("sequence", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);
-    return { visits: rows ?? [] };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    const clash = await overnightClashWarning(supabase, {
+      visitIds: (rows ?? []).map((v) => v.id),
+    });
+    return { visits: rows ?? [], clash };
   });
 
 export const getVisitDetail = createServerFn({ method: "GET" })
@@ -185,8 +189,16 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
         /** Why it was booked. Shows on the client's activity timeline. */
         note: z.string().max(300).optional(),
         /** A walk request's window (#410), carried from /concerns. */
-        earliestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
-        latestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
+        earliestTime: z
+          .string()
+          .regex(/^\d{2}:\d{2}(:\d{2})?$/)
+          .nullable()
+          .optional(),
+        latestTime: z
+          .string()
+          .regex(/^\d{2}:\d{2}(:\d{2})?$/)
+          .nullable()
+          .optional(),
       })
       .parse(d),
   )
@@ -577,7 +589,9 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     return {
       ok: true,
-      techName: hadTech ? (((was as any)?.staff?.display_name as string | undefined) ?? null) : null,
+      techName: hadTech
+        ? (((was as any)?.staff?.display_name as string | undefined) ?? null)
+        : null,
       /** "kept": still theirs. "dropped": they had it and the new day is not
        *  one they work. "none": it had nobody to keep. */
       tech: !hadTech

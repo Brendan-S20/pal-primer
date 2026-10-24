@@ -10,7 +10,7 @@ import { stayAccessOpen, stayAccessWindow, stayDays } from "@/lib/stays";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const sql = read("supabase/migrations/20261017010000_a-stay-code-is-for-the-stays-sitter.sql");
+const sql = read("supabase/migrations/20261024080500_a-stay-code-is-for-the-stays-sitter.sql");
 
 describe("the access window", () => {
   it("runs from the day before the first visit to the last visit day", () => {
@@ -52,8 +52,8 @@ describe("the database reads", () => {
     expect(fn).toMatch(/WHERE st\.status <> 'canceled'/);
   });
 
-  it("20261017060000 keeps the window for the stay's sitter, gives a covering sitter their day, and checks the office as walking does", () => {
-    const next = read("supabase/migrations/20261017060000_a-covering-sitter-sees-codes-on-their-days.sql");
+  it("20261024081000 keeps the window for the stay's sitter, gives a covering sitter their day, and checks the office as walking does", () => {
+    const next = read("supabase/migrations/20261024081000_a-covering-sitter-sees-codes-on-their-days.sql");
     const at = next.indexOf("FUNCTION public.stay_access_codes(");
     const fn = next.slice(at, next.indexOf("$function$;", at));
     expect(fn).not.toMatch(/can_write_org/);
