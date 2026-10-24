@@ -72,7 +72,11 @@ describe("the step bar on a phone", () => {
 
   it("names the current step on its own line, truncating rather than cut", () => {
     expect(bar).toMatch(/<p className="[^"]*\btruncate\b[^"]*\blg:hidden\b[^"]*">/);
-    expect(bar).toMatch(/Step \{step \+ 1\} of \{steps\.length\}: \{current\}/);
+    // A sitting business calls the Dogs step "Pets"; the line still names
+    // the current step, only under the word that business uses.
+    expect(bar).toMatch(
+      /Step \{step \+ 1\} of \{steps\.length\}: \{current === "Dogs" && sitting \? "Pets" : current\}/,
+    );
   });
 
   it("gives each dot its name, since the name beside it is hidden", () => {

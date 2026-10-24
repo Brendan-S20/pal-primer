@@ -240,7 +240,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     heading: "معلومات العميل الميدانية",
     pageSection: "العملاء",
     propertyFallback: "العقار",
-    gate: "المنزل مؤمّن",
+    gate: "البوابة:",
     lockBox: "صندوق المفاتيح:",
     key: "المفتاح:",
     parking: "موقف السيارة:",

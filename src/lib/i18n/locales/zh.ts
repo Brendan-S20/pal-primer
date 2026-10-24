@@ -195,7 +195,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     heading: "客户现场信息",
     pageSection: "客户",
     propertyFallback: "地址",
-    gate: "住家已锁好",
+    gate: "大门：",
     lockBox: "钥匙盒：",
     key: "钥匙：",
     parking: "停车：",

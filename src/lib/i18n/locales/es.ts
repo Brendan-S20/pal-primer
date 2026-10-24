@@ -203,7 +203,7 @@ const es: Translations = {
     heading: "Datos del cliente para el campo",
     pageSection: "Clientes",
     propertyFallback: "Propiedad",
-    gate: "Casa asegurada",
+    gate: "Portón:",
     lockBox: "Caja de llaves:",
     key: "Llave:",
     parking: "Estacionamiento:",

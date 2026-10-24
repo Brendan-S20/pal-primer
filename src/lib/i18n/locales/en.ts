@@ -210,7 +210,7 @@ const en = {
     /** After the client's name in the browser tab: "Smith · Clients". */
     pageSection: "Clients",
     propertyFallback: "Property",
-    gate: "Home secured",
+    gate: "Gate:",
     lockBox: "Lock box:",
     key: "Key:",
     parking: "Parking:",
