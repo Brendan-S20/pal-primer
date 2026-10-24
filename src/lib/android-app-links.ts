@@ -84,6 +84,7 @@ export const APP_LINK_PATH_PREFIXES: readonly string[] = [
   "/setup",
   "/tax-reports",
   "/timesheets",
+  "/training-packages",
   "/waste-log",
   "/zones",
   // Settings, page by page, without billing and addons.

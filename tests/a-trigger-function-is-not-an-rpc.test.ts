@@ -217,7 +217,21 @@ describe("no trigger function is executable by a signed-in user", () => {
     // only when bookable): tg_orgs_service_lines_bookable, which refuses a
     // REST write adding a line that is still Coming soon. REVOKEd in the
     // same file.
-    expect(triggerFunctions().size).toBe(68);
+    //
+    // 68 -> 75 on 2026-10-23 (20261023100000, a trainer sells a package of
+    // sessions): training_service_package_guard, training_client_package_guard,
+    // training_visit_package_guard, training_package_recount,
+    // training_subscription_package_guard, training_skill_guard and
+    // training_progress_row_guard. Each REVOKEd from PUBLIC, anon and
+    // authenticated in the same file.
+    //
+    // 75 -> 76 on 2026-10-23 (20261023110000, training cancel and no-show):
+    // training_lesson_session_rule, which decides whether a missed or late
+    // canceled package lesson uses a session. REVOKEd from PUBLIC, anon and
+    // authenticated in the same file. That file also re-creates four of the
+    // package guards, and 20261023130000 re-creates
+    // training_lesson_session_rule; none of them is new.
+    expect(triggerFunctions().size).toBe(76);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

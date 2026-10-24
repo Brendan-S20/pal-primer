@@ -255,6 +255,17 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             perOrg.visit_reminders_emailed = await sendVisitReminderEmails(supabaseAdmin, org);
           }
 
+          // Training packages: one session left, and 14 days before expiry,
+          // each told once (training-portal.server.ts). Also run from the
+          // lesson paths; this catches the nightly missed sweep above and
+          // every expiry. A business with no packages costs one empty read.
+          try {
+            const { sendTrainingPackageNotices } = await import("@/lib/training-portal.server");
+            perOrg.training_notices_sent = await sendTrainingPackageNotices(supabaseAdmin, org);
+          } catch (e) {
+            perOrg.training_notices_sent = `err: ${(e as Error).message}`;
+          }
+
           // One follow-up on a quote nobody has answered: see
           // quote-followups.server.ts. 0 days is off.
           if ((org.quote_followup_days ?? 3) > 0) {

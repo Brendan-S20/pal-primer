@@ -93,8 +93,8 @@ const allText = (page: Page) => page.evaluate(() => document.body.textContent ??
 
 /** ServiceLinesChoices, as /setup step 1 and Settings → Business defaults both
  *  draw it for a dog-walking business. Only pet waste is bookable. The
- *  business keeps walking, marked Coming soon; sitting and grooming are
- *  listed, marked, and cannot be ticked. */
+ *  business keeps walking, marked Coming soon; sitting, grooming and
+ *  training are listed, marked, and cannot be ticked. */
 async function expectServiceLineChoices(page: Page) {
   await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
     timeout: 30_000,
@@ -116,6 +116,10 @@ async function expectServiceLineChoices(page: Page) {
   const grooming = page.getByRole("checkbox", { name: /^Mobile grooming/ });
   await expect(grooming).toBeDisabled();
   await expect(page.locator("li").filter({ has: grooming }).getByText("Coming soon")).toBeVisible();
+  const training = page.getByRole("checkbox", { name: /^Dog training/ });
+  await expect(training).not.toBeChecked();
+  await expect(training).toBeDisabled();
+  await expect(page.locator("li").filter({ has: training }).getByText("Coming soon")).toBeVisible();
 }
 
 for (const { w, h, label } of WIDTHS) {

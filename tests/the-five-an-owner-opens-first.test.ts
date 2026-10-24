@@ -24,7 +24,13 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 const root = join(import.meta.dirname, "..");
 const ROLES: AppRole[] = ["owner", "office_manager", "dispatcher", "tech"];
 // texting: since #458 the Messages entry is shown only when texting is on.
-const ALL_ON = { commercialEnabled: true, franchiseParent: true, petWaste: true, texting: true };
+const ALL_ON = {
+  commercialEnabled: true,
+  franchiseParent: true,
+  petWaste: true,
+  training: true,
+  texting: true,
+};
 /** MobileTabBar's OFFICE_TAB_URLS: the three the More sheet leaves out. */
 const OFFICE_TABS = ["/dashboard", "/routes", "/clients"];
 

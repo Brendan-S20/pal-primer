@@ -24,6 +24,11 @@ export type OnboardingStep = {
    *  viewer's role with the same `canAccess` the sidebar and CreateSheet use,
    *  because this runs on the server and cannot see the role itself. */
   alt?: { to: string; cta: string; gate: string };
+  /** Only on the price step, and only for a business that runs training:
+   *  whether its service area is set (`areaDone`) and whether a lesson
+   *  package is priced and a skill list exists (`done`). The step is done
+   *  when both are. */
+  training?: { areaDone: boolean; done: boolean };
 };
 
 /** The checklist and the setup guide are ONE list. The guide at /setup walks
@@ -115,7 +120,34 @@ export const loadOnboardingStatus = createServerOnlyFn(
       // reached fails this alone and falls open to pet waste.
       supabase.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
     ]);
-    const petWaste = runsPetWaste(serviceLinesOrDefault(lines.data?.service_lines));
+    const orgLines = serviceLinesOrDefault(lines.data?.service_lines);
+    const petWaste = runsPetWaste(orgLines);
+
+    // A training business prices lessons as a package and scores a skill
+    // list, and signup seeds the package inactive at $0 (training-package-
+    // seed.server.ts). Nothing would ever be sold until somebody prices and
+    // turns it on, so the price step asks for that too. Read only for a
+    // business that runs training.
+    const runsTraining = orgLines.includes("training");
+    const [pricedPackages, skills] = runsTraining
+      ? await Promise.all([
+          supabase
+            .from("service_packages")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", orgId)
+            .eq("active", true)
+            .gt("price_cents", 0),
+          supabase
+            .from("training_skills")
+            .select("id", { count: "exact", head: true })
+            .eq("organization_id", orgId)
+            .eq("active", true),
+        ])
+      : [{ count: 0 }, { count: 0 }];
+    const areaDone = (zones.count ?? 0) > 0;
+    const training = runsTraining
+      ? { areaDone, done: (pricedPackages.count ?? 0) > 0 && (skills.count ?? 0) > 0 }
+      : undefined;
 
     const o = (org.data ?? {}) as {
       contact_address?: string | null;
@@ -201,12 +233,19 @@ export const loadOnboardingStatus = createServerOnlyFn(
       {
         id: "zones",
         label: "Your service area and price",
-        description:
-          "Where you work and what you charge per visit. New clients in the area are quoted this price.",
-        done: (zones.count ?? 0) > 0,
+        description: training
+          ? "Where you work and what you charge per visit, and the price of your lesson package and the skills a trainer scores. Clients are quoted these prices."
+          : "Where you work and what you charge per visit. New clients in the area are quoted this price.",
+        done: areaDone && (!training || training.done),
         to: "/setup",
         cta: "Set your price",
         gate: "/zones",
+        ...(training
+          ? {
+              training,
+              alt: { to: "/settings/services", cta: "Price lessons", gate: "/settings/services" },
+            }
+          : {}),
       },
       {
         // ── WHY THIS STEP HAS TWO BUTTONS ───────────────────────────────

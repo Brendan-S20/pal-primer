@@ -36,6 +36,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   UserCog,
+  GraduationCap,
 } from "lucide-react";
 import { Megaphone } from "lucide-react";
 import { openTimeClock, useMyClock } from "@/components/TimeClock";
@@ -77,6 +78,9 @@ export type NavItem = {
    *  the answer is loading -- see useServiceLines. The gating table is
    *  PET_WASTE_MODULES in lib/service-lines. */
   petWasteOnly?: boolean;
+  /** Only meaningful for a business that runs training. Hidden until the
+   *  service lines are known (TrainingOnly), since nearly no business does. */
+  trainingOnly?: boolean;
   /** Only meaningful for a franchise PARENT — an org with `is_franchise_parent`
    *  set, or with children linked to it. For everyone else the screen behind it
    *  is a page about locations they do not have. Unlike `commercialOnly` this
@@ -142,6 +146,12 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { title: "Messages", url: "/messages", icon: MessageSquare, textingOnly: true },
       { title: "Leads", url: "/leads", icon: UserPlus },
       { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
+      {
+        title: "Training packages",
+        url: "/training-packages",
+        icon: GraduationCap,
+        trainingOnly: true,
+      },
       { title: "Campaigns", url: "/campaigns", icon: Megaphone },
       // Inventory and Timesheets were a sixth group called "Ops", two groups
       // below one called "Operations": the same word twice, once abbreviated,
@@ -273,6 +283,8 @@ export type NavVisibility = {
   franchiseParent: boolean;
   /** organizations.service_lines includes pet_waste. */
   petWaste: boolean;
+  /** organizations.service_lines is known and includes training. */
+  training: boolean;
   /** This business can text its own clients (useClientTexting). */
   texting: boolean;
 };
@@ -293,7 +305,8 @@ export function navGroupLabel(t: TFunction, label: string): string {
 
 export function useNavVisibility(): NavVisibility {
   const { enabled: commercialEnabled } = useCommercialAccounts();
-  const { petWaste } = useServiceLines();
+  const { petWaste, lines, known } = useServiceLines();
+  const training = known && lines.includes("training");
   const ctxFn = useServerFn(getFranchiseContext);
   // Same key the /franchise page uses, so the two share one fetch rather than
   // asking the same question twice on every navigation.
@@ -308,7 +321,13 @@ export function useNavVisibility(): NavVisibility {
   // in front of every single-location business on a slow request — which is
   // precisely what hiding it was meant to prevent.
   const texting = useClientTexting();
-  return { commercialEnabled, franchiseParent: ctx.data?.isParent === true, petWaste, texting };
+  return {
+    commercialEnabled,
+    franchiseParent: ctx.data?.isParent === true,
+    petWaste,
+    training,
+    texting,
+  };
 }
 
 export function isNavItemVisible(
@@ -320,6 +339,7 @@ export function isNavItemVisible(
     canAccess(role, it.url) &&
     (!it.commercialOnly || v.commercialEnabled) &&
     (!it.petWasteOnly || v.petWaste) &&
+    (!it.trainingOnly || v.training) &&
     (!it.franchiseParentOnly || v.franchiseParent) &&
     (!it.officeOnly || role !== "tech") &&
     (!it.textingOnly || v.texting)

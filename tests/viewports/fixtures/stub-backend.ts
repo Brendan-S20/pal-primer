@@ -721,6 +721,42 @@ export const BASE_STUBS: Record<string, Stub> = {
   // /concerns. Unstubbed until 2026-09-28, when re-clean requests landed there
   // with a booking button; without this it drew only its empty state.
   listConcerns: fx.CONCERNS,
+  // /training-packages. The longest client name with a dog, running low and
+  // unpaid (both badges beside a name that has to truncate), and a second row
+  // with no dog and no expiry, so both shapes of the stats line are drawn.
+  listTrainingPackagesOverview: {
+    today: "2090-01-01",
+    packages: [
+      {
+        id: "7a7a0000-0000-4000-8000-000000007a01",
+        name: "6-session private lesson package",
+        clientId: fx.CLIENTS[4].id,
+        clientName: fx.CLIENTS[4].display_name,
+        dogName: "Sir Reginald Barksworth",
+        sessionsCount: 6,
+        used: 4,
+        booked: 1,
+        toBook: 1,
+        expiresOn: "2090-01-10",
+        runningLow: true,
+        unpaid: true,
+      },
+      {
+        id: "7a7a0000-0000-4000-8000-000000007a02",
+        name: "Puppy basics, 4 sessions",
+        clientId: fx.CLIENTS[0].id,
+        clientName: fx.CLIENTS[0].display_name,
+        dogName: null,
+        sessionsCount: 4,
+        used: 0,
+        booked: 2,
+        toBook: 2,
+        expiresOn: null,
+        runningLow: false,
+        unpaid: false,
+      },
+    ],
+  },
   // /quotes and /quotes/:id. Keyed by id: an accepted prospect quote draws
   // the timeline and Convert; the draft draws the editor.
   listQuotes: fx.QUOTES,

@@ -57,6 +57,24 @@ import { Link } from "@tanstack/react-router";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
+import {
+  TrainingProgressPanel,
+  TrainingSessionBadge,
+} from "@/components/training/TrainingProgressPanel";
+import { LessonSessionUse } from "@/components/training/LessonSessionUse";
+import { warnLessonClashes } from "@/components/training/lessonClashWarning";
+import {
+  ClientCalledAtField,
+  clientCalledAtIso,
+  nowAsCalledAt,
+} from "@/components/training/ClientCalledAtField";
+import { BUSINESS_REASONS } from "@/lib/training-packages";
+
+const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
+  our_fault: "Our fault",
+  weather: "Weather",
+  unsafe_conditions: "Unsafe conditions",
+};
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -181,6 +199,7 @@ export function VisitDetailDrawer({
       } else {
         toast.success(`Visit moved to ${formatDay(moveTo)}`);
       }
+      warnLessonClashes(r);
       setMoveTo("");
       invalidate();
     },
@@ -207,7 +226,12 @@ export function VisitDetailDrawer({
       return;
     }
     setPendingStaff(staffId);
-    const change = holdForUndo(() => doReassign({ data: { visitId: vid, staffId } }), {
+    const send = () =>
+      doReassign({ data: { visitId: vid, staffId } }).then((r) => {
+        warnLessonClashes(r);
+        return r;
+      });
+    const change = holdForUndo(send, {
       onError: (e) => toast.error(e instanceof Error ? e.message : "Could not reassign the visit"),
     });
     const toastId = toast(name ? `Reassigned to ${name}` : "Visit unassigned", {
@@ -256,11 +280,22 @@ export function VisitDetailDrawer({
     onError: (e: Error) => toast.error(e.message),
   });
   const [skipReason, setSkipReason] = useState("");
+  // On a training package lesson: when the client called to cancel.
+  const [calledAt, setCalledAt] = useState("");
+  useEffect(() => setCalledAt(nowAsCalledAt()), [visitId]);
   const cancelMut = useMutation({
     // The office variant requires a reason — no silent "Skipped from dispatch"
     // default, because that string was being written to real visits as if a
     // human had given it.
-    mutationFn: () => doCancel({ data: { visitId: visitId!, reason: skipReason, code: "other" } }),
+    mutationFn: () =>
+      doCancel({
+        data: {
+          visitId: visitId!,
+          reason: skipReason,
+          code: "other",
+          clientCancelledAt: data?.visit?.client_package_id ? clientCalledAtIso(calledAt) : null,
+        },
+      }),
     onSuccess: () => {
       toast.success("Visit canceled");
       invalidate();
@@ -276,8 +311,12 @@ export function VisitDetailDrawer({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  // On a training package lesson, why it was missed. The business's own
+  // reasons use no session.
+  const [missedCode, setMissedCode] = useState<"" | (typeof BUSINESS_REASONS)[number]>("");
+  useEffect(() => setMissedCode(""), [visitId]);
   const markMissedMut = useMutation({
-    mutationFn: () => doMarkMissed({ data: { visitId: visitId! } }),
+    mutationFn: () => doMarkMissed({ data: { visitId: visitId!, code: missedCode || null } }),
     onSuccess: () => {
       toast.success("Visit marked missed");
       invalidate();
@@ -347,6 +386,8 @@ export function VisitDetailDrawer({
             {v?.staff?.display_name ? ` · ${v.staff.display_name}` : ""}
           </SheetDescription>
         </SheetHeader>
+
+        {v?.id && <TrainingSessionBadge visitId={v.id} serviceLine={v.services?.service_line} />}
 
         {isLoading || !v ? (
           <div className="flex justify-center py-8 text-muted-foreground">
@@ -462,6 +503,11 @@ export function VisitDetailDrawer({
               dogs={dogs}
               onChanged={() => qc.invalidateQueries({ queryKey: ["visit-detail", visitId] })}
             />
+
+            {v?.id && (
+              <TrainingProgressPanel visitId={v.id} serviceLine={v.services?.service_line} />
+            )}
+            {v?.id && <LessonSessionUse visit={v} />}
 
             {(v.eta_start || v.travel_min != null) && (
               <section className="rounded-md border p-2 text-xs">
@@ -633,6 +679,13 @@ export function VisitDetailDrawer({
                           onChange={(e) => setSkipReason(e.target.value)}
                           placeholder="Gate locked, dog outside, weather…"
                         />
+                        {v.client_package_id && (
+                          <ClientCalledAtField
+                            id="skip-called-at"
+                            value={calledAt}
+                            onChange={setCalledAt}
+                          />
+                        )}
                         <Button
                           size="sm"
                           variant="destructive"
@@ -653,6 +706,26 @@ export function VisitDetailDrawer({
               <section className="space-y-2 border-t pt-3">
                 {canActFromOffice || role === "dispatcher" ? (
                   <div className="flex flex-wrap gap-2">
+                    {v.client_package_id && (
+                      <div className="w-full space-y-1">
+                        <Label htmlFor="missed-reason" className="text-xs">
+                          If it was missed, why
+                        </Label>
+                        <select
+                          id="missed-reason"
+                          className="h-9 w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
+                          value={missedCode}
+                          onChange={(e) => setMissedCode(e.target.value as typeof missedCode)}
+                        >
+                          <option value="">Client no-show</option>
+                          {BUSINESS_REASONS.map((code) => (
+                            <option key={code} value={code}>
+                              {MISSED_REASON_LABELS[code]} (no session used)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"

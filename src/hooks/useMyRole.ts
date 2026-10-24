@@ -64,6 +64,9 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/inbox": ["owner", "office_manager", "dispatcher"],
   "/notifications": ["owner", "office_manager", "dispatcher", "tech"],
   "/concerns": ["owner", "office_manager", "dispatcher"],
+  // Every running training package and which are low. The roles that open a
+  // client's Services tab, where each row leads.
+  "/training-packages": ["owner", "office_manager", "dispatcher"],
   "/inventory": ["owner", "office_manager"],
   // Payroll input. The same audience as the server gate, which is
   // manage_users -- the permission that also lets a person see and change the

@@ -11,6 +11,7 @@ import {
   ServiceHistorySection,
 } from "@/lib/portal-ui";
 import { usePortalWalks, WalkReportsSection } from "@/components/portal/WalkReports";
+import { TrainingCard } from "@/components/portal/TrainingCard";
 
 export const Route = createFileRoute("/portal/$slug/$token/visits")({
   component: PortalVisits,
@@ -52,6 +53,7 @@ function PortalVisits() {
 
   return (
     <div className="space-y-6">
+      <TrainingCard />
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
           <CalendarDays className="h-4 w-4 shrink-0" /> Upcoming visits

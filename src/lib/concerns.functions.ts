@@ -42,6 +42,7 @@ export const CONCERN_CATEGORY_LABELS: Record<string, string> = {
   other: "Other",
   reclean_request: "Re-clean request",
   one_off_request: "Extra visit request",
+  training_lesson_request: "Training lesson request",
 };
 
 export const listConcerns = createServerFn({ method: "GET" })
@@ -59,7 +60,7 @@ export const listConcerns = createServerFn({ method: "GET" })
         // Two foreign keys to visits now (the visit complained about, and the
         // free re-clean booked for it), so each embed names its constraint;
         // an unnamed `visits(...)` would be ambiguous and PostgREST refuses it.
-        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email, account_type), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status), requested_on, property_id, booked_visit_id, property:properties!qc_tickets_property_id_fkey(street, city, dogs(active)), booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on, status), requested_via, service_id, service:services(id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min), requested_earliest_time, requested_latest_time",
+        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, reclean_visit_id, clients(display_name, primary_phone, primary_email, account_type), visit:visits!qc_tickets_visit_id_fkey(scheduled_on, property_id, assigned_staff_id), reclean_visit:visits!qc_tickets_reclean_visit_id_fkey(scheduled_on, status), requested_on, property_id, booked_visit_id, property:properties!qc_tickets_property_id_fkey(street, city, dogs(active)), booked_visit:visits!qc_tickets_booked_visit_id_fkey(scheduled_on, status), requested_via, service_id, service:services(id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min), requested_earliest_time, requested_latest_time, client_package_id, requested_time, client_package:client_packages!qc_tickets_client_package_id_fkey(name, sessions_count, sessions_used)",
       )
       .eq("organization_id", orgId)
       // Unresolved first, then newest.

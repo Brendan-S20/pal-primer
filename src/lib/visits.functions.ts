@@ -60,7 +60,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .from("visits")
       .select(
         `id, scheduled_on, status, sequence, assigned_staff_id,
-         started_at, completed_at, skip_reason, skip_reason_code,
+         started_at, completed_at, skip_reason, skip_reason_code, skip_billable, client_package_id,
          weather_flagged, weather_note, tech_note, completion_photo_waived_reason, visit_checklist,
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
@@ -268,7 +268,9 @@ export const reassignVisit = createServerFn({ method: "POST" })
         });
       }
     } catch {}
-    return { ok: true };
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(context.supabase as any, [data.visitId]);
+    return { ok: true, lessonClashes };
   });
 
 export const reorderRoute = createServerFn({ method: "POST" })
@@ -507,6 +509,9 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
       kind: "visit.completed",
       summary: `Marked the visit on ${v.scheduled_on} completed from the office`,
     });
+    // A lesson that leaves one session on its package. Never throws.
+    const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
+    await afterLessonSessionChange(data.visitId);
     return { ok: true };
   });
 
@@ -570,8 +575,11 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       .eq("id", data.visitId)
       .maybeSingle();
     const hadTech = (was as any)?.assigned_staff_id ?? null;
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(supabase as any, [data.visitId]);
     return {
       ok: true,
+      lessonClashes,
       techName: hadTech ? (((was as any)?.staff?.display_name as string | undefined) ?? null) : null,
       /** "kept": still theirs. "dropped": they had it and the new day is not
        *  one they work. "none": it had nobody to keep. */
@@ -604,6 +612,9 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
             "other",
           ])
           .default("other"),
+        // When the client called. A training lesson's late-cancel rule
+        // measures notice from here instead of from now.
+        clientCancelledAt: z.string().datetime().nullable().optional(),
         // A bulk cancel sends false and emails once for the whole set
         // afterwards (notifyCanceledWalks), one email per client.
         notifyClient: z.boolean().default(true),
@@ -626,6 +637,7 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _reason: data.reason,
       _code: data.code,
+      ...(data.clientCancelledAt ? { _client_cancelled_at: data.clientCancelledAt } : {}),
     });
     if (error) throw new Error(error.message);
     await watch.finish();
@@ -645,6 +657,9 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
       summary: `Canceled the visit on ${v.scheduled_on}: ${data.reason}`,
       meta: { reason: data.reason, code: data.code },
     });
+    // A late-canceled lesson can use a session. Never throws.
+    const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
+    await afterLessonSessionChange(data.visitId);
     return { ok: true };
   });
 
@@ -705,7 +720,16 @@ export const reopenVisitFromOffice = createServerFn({ method: "POST" })
 
 export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        // The business's own reason. On a training package lesson it means
+        // no session is used.
+        code: z.enum(["our_fault", "weather", "unsafe_conditions"]).nullable().default(null),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
@@ -720,6 +744,7 @@ export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_mark_visit_missed", {
       _visit_id: data.visitId,
+      _code: data.code,
     });
     if (error) throw new Error(error.message);
     await watch.finish();
@@ -732,6 +757,7 @@ export const markVisitMissedFromOffice = createServerFn({ method: "POST" })
       actorUserId: userId,
       kind: "visit.missed",
       summary: `Marked the visit on ${v.scheduled_on} missed`,
+      ...(data.code ? { meta: { code: data.code } } : {}),
     });
     return { ok: true };
   });
@@ -815,7 +841,9 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
-    return { moved: (n as number) ?? 0 };
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(context.supabase as any, data.visitIds);
+    return { moved: (n as number) ?? 0, lessonClashes };
   });
 
 export const bulkRescheduleVisits = createServerFn({ method: "POST" })
@@ -848,7 +876,9 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     // moved exactly a week already has a visit there, and the honest report is
     // "moved 12, left 2 alone", not silence.
     const row = Array.isArray(rows) ? rows[0] : rows;
-    return { moved: row?.moved ?? 0, skipped: row?.skipped ?? 0 };
+    const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
+    const lessonClashes = await lessonClashesAfterMove(context.supabase as any, data.visitIds);
+    return { moved: row?.moved ?? 0, skipped: row?.skipped ?? 0, lessonClashes };
   });
 
 /** What a tech is still holding, by day — read BEFORE offering to move it. */
