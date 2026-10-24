@@ -61,7 +61,17 @@ The ten grooming migrations use 20261024100000–20261024100900, after main’s 
 - Confirm existing pet waste signup, portal one-off booking, route generation, waste logging and invoicing still work.
 - Controlled QA of the launch switch must show portal request -> Requests -> office booking -> groomer completion -> invoice/payment -> client portal, with other service-line switches unchanged.
 
-## Local verification
+## Rebase verification (October 24)
+
+- Main: `90746c65`, including merged training #476. Training-only source and migrations now come from main; 29 source/test files are byte-identical to main. The training launch fixture was adapted to the shared booking gate.
+- All 12 sitting migrations remain byte-identical to the original #535 head. None is an exact duplicate on main. The shared `20261023120000_a-pet-can-be-a-cat.sql` still collides with main's training portal version; changing that sitting prerequisite needs an exception to the current task's sitting restriction.
+- Clean `npm ci`, TypeScript (6 GB heap), and `check:hooks` passed locally. CI typecheck also passed.
+- Full Vitest: 7,999 passed, 316 skipped. The duplicate-version and training-portal ordering checks fail on the retained sitting prerequisite. The full run also loaded an earlier catalog fixture expectation; that expectation now preserves main's package-only training policy and its focused rerun passed.
+- Focused final scope/catalog checks: 38 passed. Named wording check: **groomer wording has neutral term fallbacks, expenses, access and hazards**. This covers translation values, grooming checklist and shared UI guards; it is not a real-database browser walkthrough.
+- CI database replay reproduced `schema_migrations_pkey` duplicate version `20261023120000`. The checkout infrastructure failure recovered on retry. The verification runner also lost `node_modules/vitest/suppress-warnings.cjs` mid-run; no CI gates were weakened.
+- No live database migrations or real payment walkthrough performed. Grooming remains Coming soon and portal vaccine uploads remain disabled.
+
+## Historical pre-rebase verification
 
 - TypeScript: `NODE_OPTIONS=--max-old-space-size=6144 npx tsc --noEmit` passed. Node's default 2 GB heap was insufficient.
 - Browser fixtures: grooming settings and the My Day matting charge passed at 390, 820, 1024 and 1440. The phone case passed on rerun after allowing for Vite's cold module load. These are fixture UI checks, not real payment or database integration tests.
