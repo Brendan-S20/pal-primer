@@ -1,7 +1,7 @@
 /**
  * DB-layer proof for 20261017004000: an owner's REST write cannot turn on a
  * service line that is still Coming soon, keeps the lines the org already
- * runs, and the service role is not gated. Since 20261023120000 (#530) dog
+ * runs, and the service role is not gated. Since 20261024230000 (#530) dog
  * walking is bookable and may be added; sitting, grooming and training may not.
  *
  * Local stack only. Skipped without TEST_SUPABASE_* env.

@@ -96,7 +96,7 @@ BEGIN
 
   -- The service asked for: this business's, and still offered. Another
   -- business's id, a deactivated one, one on a line that is still Coming
-  -- soon (20261018150000) and one with no price yet (20261023120000) are the
+  -- soon (20261018150000) and one with no price yet (20261024230000) are the
   -- same refusal.
   IF _service_id IS NOT NULL THEN
     PERFORM 1 FROM public.services s

@@ -56,7 +56,7 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
  *  business that already has the line; customers, the public form and the
  *  receptionist cannot request it (see CUSTOMER_BOOKABLE_SERVICE_LINES and
  *  customerCanRequestService). public.bookable_service_lines() is the SQL
- *  copy (newest definition: 20261023120000), and the two change together. */
+ *  copy (newest definition: 20261024230000), and the two change together. */
 export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste", "dog_walking"];
 
 /** Lines a customer may ask for (public signup, the portal, the receptionist).

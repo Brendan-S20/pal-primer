@@ -4,7 +4,7 @@
 // reports and access, the client's emails, the reports and the invoices
 // (#410). It went live once walking QA passed: walking joined
 // BOOKABLE_SERVICE_LINES here and public.bookable_service_lines() in
-// 20261023120000. Pet sitting, grooming and training stay Coming soon until
+// 20261024230000. Pet sitting, grooming and training stay Coming soon until
 // their own QA. tests/pet-waste-and-walking-can-be-turned-on.test.ts holds the
 // picker and the server check.
 
