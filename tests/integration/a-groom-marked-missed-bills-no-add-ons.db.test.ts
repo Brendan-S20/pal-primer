@@ -1,7 +1,7 @@
 // A groom marked missed after it was done stops billing its add-ons, in a
 // real database. The add-on is charged when the groom is completed
 // (visits_groom_plan_addons); office_mark_visit_missed, run by the owner,
-// voids that charge (visits_groom_plan_addons_void, 20261023122300), hands a
+// voids that charge (visits_groom_plan_addons_void, 20261024100500), hands a
 // prepaid client's credit back, and refuses while the add-on is on an
 // invoice. Skipped unless TEST_SUPABASE_* point at a local stack.
 

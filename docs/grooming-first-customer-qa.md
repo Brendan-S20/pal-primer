@@ -1,6 +1,6 @@
 # Mobile grooming first-customer QA
 
-Derived from PR #477 at 3f453ebe, squashed onto main 99d7f209. The source PR is stacked on unmerged #478 and #476; this review branch carries those dependencies and does not rewrite the published source branch. Do not merge until dependency coordination and the checks below are complete.
+Rebased onto main 90746c65 after training #476 merged. Main supplies the current training implementation; the six stale training migration copies were dropped. Sitting dependencies from #478 remain pending that PR. Do not merge until dependency coordination and the checks below are complete.
 
 ## Launch switches
 
@@ -8,7 +8,7 @@ Grooming remains Coming soon. Pet waste stays bookable. A later launch PR must c
 
 - `BOOKABLE_SERVICE_LINES` in `src/lib/service-lines.ts`: the owner picker, `serviceLinesAdditionProblem`, `customerMayBook`, `CUSTOMER_BOOKABLE_SERVICE_LINES`, `customerCanRequestService`, public catalog, portal request UI/server, public signup and receptionist all derive from this list.
 - `public.bookable_service_lines()`: organization write guard and public catalog/quote/one-off SQL, plus `portal_request_groom`. No permanently false request constant remains.
-- The assertions in `20261018150000` and its restoration `20261023190000` establish pet waste as the only bookable line at this point in migration history. A launch PR must add a later migration changing the SQL list and update the launch-gate tests; do not rewrite migrations already on main.
+- The assertions in `20261018150000` and its restoration `20261024100900` establish pet waste as the only bookable line at this point in migration history. A launch PR must add a later migration changing the SQL list and update the launch-gate tests; do not rewrite migrations already on main.
 - `PORTAL_VACCINE_UPLOADS_ENABLED` stays false independently of booking. Enable only after the Storage suite passes in CI: office access, cross-client isolation, MIME/type and size limits. Both server upload steps refuse while disabled; clients can still read their own existing records.
 
 ## Review disposition
@@ -25,23 +25,17 @@ Grooming remains Coming soon. Pet waste stays bookable. A later launch PR must c
 
 ## Migration files (never applied to a live database)
 
-All added migrations follow main's latest timestamp, 20261018150000. The stacked dependency migrations were renumbered in their original order.
+The ten grooming migrations use 20261024100000–20261024100900, after main’s latest 20261023150000. Sitting dependencies retain their existing versions. The shared pet prerequisite at 20261023120000 still collides with main’s training portal version pending permission to renumber that sitting file.
 
 - `supabase/migrations/20261023120000_a-pet-can-be-a-cat.sql`
 - `supabase/migrations/20261023120100_a-stay-is-a-sitters-booking.sql`
 - `supabase/migrations/20261023120200_a-sitter-logs-what-each-pet-got.sql`
 - `supabase/migrations/20261023120300_a-client-asks-for-a-stay.sql`
-- `supabase/migrations/20261023120400_a-groom-is-timed-by-the-pets-size.sql`
-- `supabase/migrations/20261023120500_a-vaccine-record-is-private.sql`
-- `supabase/migrations/20261023120600_a-trainer-sells-a-package-of-sessions.sql`
-- `supabase/migrations/20261023120700_a-groom-appointment-has-a-length.sql`
-- `supabase/migrations/20261023120800_training-cancel-and-no-show.sql`
-- `supabase/migrations/20261023120900_training-portal.sql`
-- `supabase/migrations/20261023121000_grooming-repeat-stamp-start-time.sql`
-- `supabase/migrations/20261023121100_grooming-portal.sql`
-- `supabase/migrations/20261023121200_training-trainer-note-and-cancel-time.sql`
-- `supabase/migrations/20261023121300_the-nightly-missed-lesson-has-a-reason.sql`
-- `supabase/migrations/20261023121400_portal-reads-no-trainer-note.sql`
+- `supabase/migrations/20261024100000_a-groom-is-timed-by-the-pets-size.sql`
+- `supabase/migrations/20261024100100_a-vaccine-record-is-private.sql`
+- `supabase/migrations/20261024100200_a-groom-appointment-has-a-length.sql`
+- `supabase/migrations/20261024100300_grooming-repeat-stamp-start-time.sql`
+- `supabase/migrations/20261024100400_grooming-portal.sql`
 - `supabase/migrations/20261023121500_a-stay-can-change.sql`
 - `supabase/migrations/20261023121600_a-stay-code-is-for-the-stays-sitter.sql`
 - `supabase/migrations/20261023121700_a-sitter-knows-who-to-call.sql`
@@ -50,13 +44,13 @@ All added migrations follow main's latest timestamp, 20261018150000. The stacked
 - `supabase/migrations/20261023122000_a-deposit-has-a-cancellation-rule.sql`
 - `supabase/migrations/20261023122100_a-covering-sitter-sees-codes-on-their-days.sql`
 - `supabase/migrations/20261023122200_a-kept-deposit-is-not-billed-twice.sql`
-- `supabase/migrations/20261023122300_a-groom-that-was-not-done-bills-no-add-ons.sql`
-- `supabase/migrations/20261023122400_two-grooms-cannot-share-a-groomer.sql`
-- `supabase/migrations/20261023170000_grooming-skip-reasons.sql`
-- `supabase/migrations/20261023180000_grooming-launch-defaults.sql`
-- `supabase/migrations/20261023190000_keep-coming-soon-off-public-booking.sql`
+- `supabase/migrations/20261024100500_a-groom-that-was-not-done-bills-no-add-ons.sql`
+- `supabase/migrations/20261024100600_two-grooms-cannot-share-a-groomer.sql`
+- `supabase/migrations/20261024100700_grooming-skip-reasons.sql`
+- `supabase/migrations/20261024100800_grooming-launch-defaults.sql`
+- `supabase/migrations/20261024100900_keep-coming-soon-off-public-booking.sql`
 
-`20261023180000` adds default seeding and setup review state; `20261023190000` restores main's public booking guard after older stacked function definitions.
+`20261024100800` adds default seeding and setup review state; `20261024100900` restores main's public booking guard after older stacked function definitions.
 
 ## Required review before merge / launch
 
@@ -71,7 +65,7 @@ All added migrations follow main's latest timestamp, 20261018150000. The stacked
 
 - TypeScript: `NODE_OPTIONS=--max-old-space-size=6144 npx tsc --noEmit` passed. Node's default 2 GB heap was insufficient.
 - Browser fixtures: grooming settings and the My Day matting charge passed at 390, 820, 1024 and 1440. The phone case passed on rerun after allowing for Vite's cold module load. These are fixture UI checks, not real payment or database integration tests.
-- Full lint: 16,934 errors and 155 warnings. 5,924 errors are in 616 files unchanged by this PR. This remains a merge blocker; no lint rules were disabled.
+- Full lint: 16,934 errors and 155 warnings. 5,924 errors are in 616 files unchanged by this PR. This is the existing baseline; CI gates on check:hooks. No lint rules were disabled.
 - Local Supabase replay/Storage: blocked before startup by the environment denying the public.ecr.aws image pull. Portal uploads remain disabled.
 - Remote CI: checkout failed on the self-hosted runner with a missing `_runner_file_commands/set_output_*` file, including a retry. DB/browser/impact jobs did not reach application checks.
 - Full Vitest results are recorded in the PR body after the final run.

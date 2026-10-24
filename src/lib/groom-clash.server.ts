@@ -13,7 +13,7 @@
 // and a move or a reassign does the same, with the same sentence.
 //
 // The database holds the same line (zz_visits_groom_no_overlap,
-// 20261023122400) for the writes this file never sees: two saves at once, and
+// 20261024100600) for the writes this file never sees: two saves at once, and
 // Cover's redistribution. It raises 23P01 with the first sentence of
 // groomClashRefusal; groomWriteError turns that back into the full sentence.
 

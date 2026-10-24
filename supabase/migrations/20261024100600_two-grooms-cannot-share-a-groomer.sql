@@ -1,5 +1,5 @@
 -- Two grooms for the same groomer cannot overlap, whoever writes the visit.
--- Follows 20261023122300.
+-- Follows 20261024100500.
 --
 -- src/lib/groom-clash.server.ts refuses a groom booked, moved or reassigned
 -- on top of another for the same groomer, but only in the server, and only

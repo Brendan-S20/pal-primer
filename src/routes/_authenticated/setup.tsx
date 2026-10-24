@@ -295,7 +295,7 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
     case "business":
       return <BusinessPanel onSaved={onSaved} />;
     case "zones":
-      return <ServiceAreaPanel step={step} onSaved={onSaved} />;
+      return <PricingPanel step={step} onSaved={onSaved} />;
     case "clients":
       return <ClientsPanel step={step} />;
     case "staff":
@@ -307,14 +307,14 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
   }
 }
 
-function PricingPanel({ done, onSaved }: { done: boolean; onSaved: () => void }) {
+function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => void }) {
   const { lines } = useServiceLines();
   return lines.includes("mobile_grooming") ? (
     <Button asChild className="min-h-11">
       <Link to="/settings/services">Review grooming prices, vaccines and buffer</Link>
     </Button>
   ) : (
-    <ServiceAreaPanel done={done} onSaved={onSaved} />
+    <ServiceAreaPanel step={step} onSaved={onSaved} />
   );
 }
 

@@ -294,7 +294,7 @@ export async function bookGroomAppointment(
   // The plan carries what every visit needs. visits_groom_plan_stamp copies
   // it onto each visit at insert, whichever generator inserts it and however
   // far out, and visits_groom_plan_addons charges the add-ons when each groom
-  // is completed (20261023121000).
+  // is completed (20261024100300).
   const groomAddons = quote.addons
     .filter((a) => a.quantity > 0)
     .map((a) => ({

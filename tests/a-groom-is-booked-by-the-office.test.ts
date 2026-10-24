@@ -1,6 +1,6 @@
 // Mobile grooming is a service the office can book. A customer still cannot:
 // the portal's booking, the public quote and the receptionist leave it out.
-// A portal client of a grooming business can ASK for a groom (20261023121100),
+// A portal client of a grooming business can ASK for a groom (20261024100400),
 // and that request goes to the office's queue; only the office books it.
 
 import { readFileSync } from "node:fs";
@@ -63,7 +63,7 @@ describe("customers cannot book a groom", () => {
     const portal = read("src/lib/portal.functions.ts");
     expect(portal).toContain('s.service_line !== "mobile_grooming"');
     expect(portal).toContain("Mobile grooming is booked by the office.");
-    const sql = read("supabase/migrations/20261023120700_a-groom-appointment-has-a-length.sql");
+    const sql = read("supabase/migrations/20261024100200_a-groom-appointment-has-a-length.sql");
     expect(sql).toContain("AND s.service_line <> 'mobile_grooming'");
     expect(sql).toContain("service_line = ''mobile_grooming''");
     expect(sql).toContain("RETURN;");
@@ -102,7 +102,7 @@ describe("a portal groom request is a request, not a booking", () => {
   });
 
   it("keeps grooming off public signup, the public form and the receptionist", () => {
-    const sql = read("supabase/migrations/20261023121100_grooming-portal.sql");
+    const sql = read("supabase/migrations/20261024100400_grooming-portal.sql");
     expect(sql).not.toMatch(/public_services|public_quote|receptionist/);
     expect(read("src/lib/service-lines.ts")).toContain(
       'export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = BOOKABLE_SERVICE_LINES;',
@@ -111,7 +111,7 @@ describe("a portal groom request is a request, not a booking", () => {
 });
 
 describe("a groom appointment has a length", () => {
-  const sql = read("supabase/migrations/20261023120700_a-groom-appointment-has-a-length.sql");
+  const sql = read("supabase/migrations/20261024100200_a-groom-appointment-has-a-length.sql");
 
   it("stores the length on the visit and prefers it in the named planner functions", () => {
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS duration_min integer/);

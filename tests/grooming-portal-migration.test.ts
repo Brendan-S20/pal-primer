@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const sql = readFileSync(
-  join(import.meta.dirname, "..", "supabase/migrations/20261023121100_grooming-portal.sql"),
+  join(import.meta.dirname, "..", "supabase/migrations/20261024100400_grooming-portal.sql"),
   "utf8",
 );
 const code = sql.replace(/--[^\n]*/g, "");

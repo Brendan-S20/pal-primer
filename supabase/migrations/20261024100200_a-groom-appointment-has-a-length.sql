@@ -35,7 +35,7 @@ AS $function$
 $function$;
 
 COMMENT ON FUNCTION public.stop_service_min(integer, integer, integer) IS
-  'Minutes on site: the visit''s duration_min when it is set, else stop_service_min(service, property). Mirrored by visitServiceMinutes. Migration 20261023120700.';
+  'Minutes on site: the visit''s duration_min when it is set, else stop_service_min(service, property). Mirrored by visitServiceMinutes. Migration 20261024100200.';
 
 REVOKE ALL ON FUNCTION public.stop_service_min(integer, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.stop_service_min(integer, integer, integer) TO authenticated, service_role;
@@ -71,7 +71,7 @@ END
 $patch$;
 
 -- Strangers and the portal's public list. The office catalog is unchanged.
--- 20261023120600 (#476) spliced the training line out of this function, and
+-- 20261023100000 (#476) spliced the training line out of this function, and
 -- this file runs after it, so the full definition below hides both lines.
 CREATE OR REPLACE FUNCTION public.public_services(_slug text)
 RETURNS TABLE(

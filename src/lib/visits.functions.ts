@@ -959,7 +959,7 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
     // A groom with a fixed time that no other tech has room for stays with
-    // this tech (20261023122400). Same window as the move, so what is left
+    // this tech (20261024100600). Same window as the move, so what is left
     // is exactly what the office still has to place by hand.
     const { data: rest } = await (context.supabase as any).rpc("staff_upcoming_load", {
       _staff_id: data.staffId,

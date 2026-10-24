@@ -115,7 +115,12 @@ vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: admin }
 // line is treated as launched.
 vi.mock("@/lib/service-lines", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/service-lines")>();
-  return { ...real, BOOKABLE_SERVICE_LINES: real.OFFERED_SERVICE_LINES };
+  return {
+    ...real,
+    BOOKABLE_SERVICE_LINES: real.OFFERED_SERVICE_LINES,
+    customerCanRequestService: (line: string) =>
+      real.customerCanRequestService(line, real.OFFERED_SERVICE_LINES),
+  };
 });
 vi.mock("@/lib/lead-notify.server", () => ({
   notifyOfficeOfNewLead: async (lead: Row) => {

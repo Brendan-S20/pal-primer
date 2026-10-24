@@ -4,7 +4,9 @@ import {
   BOOKABLE_SERVICE_LINES,
   customerCanRequestService,
   serviceLinesAdditionProblem,
+  suggestedChecklistFor,
 } from "@/lib/service-lines";
+import en from "@/lib/i18n/locales/en";
 import { DEFAULT_GROOM_BUFFER_MIN, groomHoldMinutes } from "@/lib/groom";
 import {
   PORTAL_VACCINE_UPLOADS_ENABLED,
@@ -49,7 +51,7 @@ describe("grooming first customer scope", () => {
     expect(PORTAL_VACCINE_UPLOADS_ENABLED).toBe(false);
   });
   it("offers grooming reasons without changing the pet waste picker", () => {
-    expect(techSkipReasonCodes(false, true)).toEqual([
+    expect(techSkipReasonCodes("mobile_grooming")).toEqual([
       "pet_not_ready",
       "client_not_home",
       "no_parking",
@@ -57,12 +59,33 @@ describe("grooming first customer scope", () => {
       "weather",
       "other",
     ]);
-    expect(techSkipReasonCodes(false)).toContain("gate_locked");
-    expect(techSkipReasonCodes(false, true)).not.toContain("gate_locked");
+    expect(techSkipReasonCodes("pet_waste")).toContain("gate_locked");
+    expect(techSkipReasonCodes("mobile_grooming")).not.toContain("gate_locked");
+  });
+  it("groomer wording has neutral term fallbacks, expenses, access and hazards", () => {
+    const words = JSON.stringify({
+      terms: en.term,
+      worker: en.workerNeutral,
+      hazards: en.workerHazard,
+    });
+    expect(words).not.toMatch(/scooper|Disposal fees|Gate latched|dog in yard|close gate/i);
+    expect(en.workerNeutral.disposal).toBe("Service fees");
+    expect(en.workerNeutral.gate).toBe("Access secured");
+    expect(JSON.stringify(suggestedChecklistFor(["mobile_grooming"]))).not.toMatch(
+      /Gate latched|waste bagged|areas walked/i,
+    );
+    const expenses = readFileSync("src/components/LogExpenseSheet.tsx", "utf8");
+    expect(expenses).toContain('!petWaste && c === "disposal"');
+    expect(expenses).toContain(
+      'petWaste ? "expense.tripPlaceholder" : "workerNeutral.tripPlaceholder"',
+    );
+    const day = readFileSync("src/routes/_authenticated/my-day.tsx", "utf8");
+    expect(day).toContain("<HazardBanner property={p} petWaste={petWaste} />");
+    expect(day).toContain("`workerHazard.${k}`");
   });
   it("seeds only missing grooming prices, never overwrites a business's prices", () => {
     const sql = readFileSync(
-      "supabase/migrations/20261023180000_grooming-launch-defaults.sql",
+      "supabase/migrations/20261024100800_grooming-launch-defaults.sql",
       "utf8",
     );
     expect(sql).toContain("ON CONFLICT DO NOTHING");

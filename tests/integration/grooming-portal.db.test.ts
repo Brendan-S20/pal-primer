@@ -214,7 +214,7 @@ describe.skipIf(!enabled)("a client asks for a groom in the database", () => {
       .is("rejected_at", null);
     expect(pending).toEqual([]);
 
-    // verified_by and verified_at go together (20261023120500), so the
+    // verified_by and verified_at go together (20261024100100), so the
     // verifier is a real user, as it is when the office approves.
     const { data: user, error: userError } = await admin.auth.admin.createUser({
       email: `groom-review-${runId}@example.test`,

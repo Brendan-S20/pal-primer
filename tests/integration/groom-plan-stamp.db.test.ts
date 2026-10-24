@@ -133,7 +133,7 @@ describe.skipIf(!enabled)("a groom plan stamps every visit in the database", () 
       .update({ status: "scheduled", completed_at: null })
       .eq("id", visit!.id);
     expect((await complete()).error).toBeNull();
-    // Reopening voided the first charge (20261023122300); the second
+    // Reopening voided the first charge (20261024100500); the second
     // completion charged once more. One live charge.
     const { data: charges } = await admin
       .from("addon_charges")

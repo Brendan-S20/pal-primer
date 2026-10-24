@@ -136,7 +136,7 @@ export function oneOffServiceOptions(
 ): OneOffServiceOption[] {
   const out: OneOffServiceOption[] = [];
   for (const s of servicePickerOptions(services)) {
-    if (!s.active || !customerCanRequestService(s.service_line)) continue;
+    if (!s.active || !customerCanRequestService(s.service_line, bookable)) continue;
     if (!bookable.includes(s.service_line)) continue;
     const fields = {
       price_unit: s.price_unit,

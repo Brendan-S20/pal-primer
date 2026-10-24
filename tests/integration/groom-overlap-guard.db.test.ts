@@ -1,5 +1,5 @@
 // Two grooms for the same groomer cannot overlap, in a real database
-// (zz_visits_groom_no_overlap, 20261023122400). The server's check in
+// (zz_visits_groom_no_overlap, 20261024100600). The server's check in
 // groom-clash.server.ts reads and then writes, so two saves at once, a direct
 // write and Cover's redistribution all went around it. The trigger refuses
 // with 23P01 whoever writes, and redistribute_staff_work leaves a groom that

@@ -1,7 +1,7 @@
 -- A groom that leaves completed stops billing the add-ons its completion
--- charged. Follows 20261023121200.
+-- charged. Follows 20261023130000.
 --
--- visits_groom_plan_addons (20261023121000) charges a groom plan's add-ons
+-- visits_groom_plan_addons (20261024100300) charges a groom plan's add-ons
 -- when the visit becomes completed, as addon_charges rows noted 'Booked with
 -- the groom'. office_mark_visit_missed runs on a completed visit, so a groom
 -- marked missed after it was done kept those charges and the client was
@@ -29,7 +29,7 @@
 --    the invoice line first (and, for a paid invoice, refunds the client),
 --    then changes the visit. Every office path that takes a visit out of
 --    completed asks this function (office_mark_visit_missed, the reopen in
---    20261012140000, the training cancel in 20261023121200).
+--    20261012140000, the training cancel in 20261023130000).
 --
 -- Replays into an empty database: two functions replaced or created and one
 -- trigger. The check block asserts only what this file creates.

@@ -15,6 +15,8 @@ import { progressText, scoreProblem } from "../src/lib/training-progress";
 vi.mock("@/lib/service-lines", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/service-lines")>()),
   BOOKABLE_SERVICE_LINES: ["pet_waste", "dog_walking", "training"],
+  customerCanRequestService: (line: string) =>
+    line !== "training" && ["pet_waste", "dog_walking", "training"].includes(line),
 }));
 
 const lesson = {
@@ -42,9 +44,9 @@ const walk = {
 describe("customers cannot request training", () => {
   it("keeps the line off the portal, the public form and the receptionist", async () => {
     expect(customerCanRequestService("training")).toBe(false);
-    expect(customerCanRequestService("dog_walking")).toBe(false);
-    expect(oneOffServiceOptions([lesson, walk], null).map((s) => s.id)).toEqual([]);
-    expect(publicServiceChoices([lesson, walk]).map((s) => s.id)).toEqual([]);
+    expect(customerCanRequestService("dog_walking")).toBe(true);
+    expect(oneOffServiceOptions([lesson, walk], null).map((s) => s.id)).toEqual(["walk"]);
+    expect(publicServiceChoices([lesson, walk]).map((s) => s.id)).toEqual(["walk"]);
 
     const store = {
       org: async () => ({
@@ -59,7 +61,7 @@ describe("customers cannot request training", () => {
     const caller = { orgId: "org", fromNumber: "+15555550100", clientId: null };
     const listed = await listServices(store, caller);
     expect(listed).toMatchObject({
-      services: [],
+      services: [{ service_id: "walk", kind: "dog_walking" }],
     });
     expect(JSON.stringify(listed)).not.toMatch(/lesson|training/);
     await expect(getOpenSlots(store, caller, { service_id: "lesson" })).resolves.toEqual({

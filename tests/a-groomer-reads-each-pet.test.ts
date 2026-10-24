@@ -10,7 +10,7 @@ import { petGroomNoteSchema } from "@/lib/pet-groom-notes.functions";
 
 const sql = readFileSync(
   new URL(
-    "../supabase/migrations/20261023121000_grooming-repeat-stamp-start-time.sql",
+    "../supabase/migrations/20261024100300_grooming-repeat-stamp-start-time.sql",
     import.meta.url,
   ),
   "utf8",

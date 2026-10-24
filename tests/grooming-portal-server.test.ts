@@ -289,7 +289,7 @@ describe("groom requests are off while grooming is not customer-requestable", ()
   it("the database refuses it too, whatever the business runs", async () => {
     const { readFileSync } = await import("node:fs");
     const sql = readFileSync(
-      new URL("../supabase/migrations/20261023121100_grooming-portal.sql", import.meta.url),
+      new URL("../supabase/migrations/20261024100400_grooming-portal.sql", import.meta.url),
       "utf8",
     );
     const fn = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.portal_request_groom"));

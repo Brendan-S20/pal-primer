@@ -4,7 +4,7 @@ import { SERVICE_LINES } from "@/lib/service-lines";
 
 const sql = readFileSync(
   new URL(
-    "../supabase/migrations/20261023120400_a-groom-is-timed-by-the-pets-size.sql",
+    "../supabase/migrations/20261024100000_a-groom-is-timed-by-the-pets-size.sql",
     import.meta.url,
   ),
   "utf8",

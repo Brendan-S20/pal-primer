@@ -2,7 +2,7 @@
 // A repeat groom keeps what was booked on every visit, at any date, and a
 // groomer's day holds one groom at a time.
 //
-// Until 20261023121000 the booking call stamped the length, price, summary
+// Until 20261024100300 the booking call stamped the length, price, summary
 // and add-ons on the visits it generated itself, the first 60 days, and the
 // nightly generator made every later visit with the service default and no
 // add-ons. The plan now lives on the subscription and a BEFORE INSERT trigger
@@ -23,7 +23,7 @@ import {
 
 const sql = readFileSync(
   new URL(
-    "../supabase/migrations/20261023121000_grooming-repeat-stamp-start-time.sql",
+    "../supabase/migrations/20261024100300_grooming-repeat-stamp-start-time.sql",
     import.meta.url,
   ),
   "utf8",

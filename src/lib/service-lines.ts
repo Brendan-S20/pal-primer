@@ -75,8 +75,11 @@ export function customerMayBook(line: string | null | undefined): boolean {
 /** Whether a customer, the public signup form, or the receptionist may ask
  *  for this line. Training and mobile grooming are booked by the office, and
  *  each keeps its own gate here so opening one never opens the other. */
-export function customerCanRequestService(line: string): boolean {
-  return (BOOKABLE_SERVICE_LINES as readonly string[]).includes(line);
+export function customerCanRequestService(
+  line: string,
+  bookable: readonly string[] = BOOKABLE_SERVICE_LINES,
+): boolean {
+  return line !== "training" && bookable.includes(line);
 }
 
 /** Whether a client may ask for a stay from the portal. Sitting is Coming

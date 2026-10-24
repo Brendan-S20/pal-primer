@@ -32,7 +32,7 @@ function minutesOrNull(v: number | string | null | undefined): number | null {
  * default_duration_min, else the property's service_duration_min, else 8.
  *
  * The same rule as `public.stop_service_min` (two arguments in 20261009230100,
- * three in 20261023120700), which route_day_inputs and apply_route_plan use.
+ * three in 20261024100200), which route_day_inputs and apply_route_plan use.
  * Pet-waste services leave their duration NULL on purpose: a cleanup takes as
  * long as the yard.
  */

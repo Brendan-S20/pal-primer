@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 const read = (name: string) => readFileSync(join(import.meta.dirname, "..", name), "utf8");
-const sql = read("supabase/migrations/20261023120500_a-vaccine-record-is-private.sql").replace(/--[^\n]*/g, "");
+const sql = read("supabase/migrations/20261024100100_a-vaccine-record-is-private.sql").replace(/--[^\n]*/g, "");
 const helper = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.can_use_vaccine_record"), sql.indexOf("REVOKE ALL ON FUNCTION public.can_use_vaccine_record"));
 
 describe("private vaccine records", () => {

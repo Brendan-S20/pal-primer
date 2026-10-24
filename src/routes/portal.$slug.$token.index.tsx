@@ -1,15 +1,6 @@
 import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
-import {
-  CalendarDays,
-  Sparkles,
-  ArrowRight,
-  Camera,
-  GraduationCap,
-  Scissors,
-} from "lucide-react";
+import { CalendarDays, Sparkles, ArrowRight, Camera, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TrainingCard } from "@/components/portal/TrainingCard";
 import {
@@ -26,7 +17,6 @@ import { orgLocalTime } from "@/lib/org-day";
 export const Route = createFileRoute("/portal/$slug/$token/")({
   component: PortalHome,
 });
-
 
 function PortalHome() {
   const copy = useLaunchCopy();

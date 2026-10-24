@@ -230,18 +230,18 @@ describe("no trigger function is executable by a signed-in user", () => {
     // The 20261017 stay migrations re-create tg_stays_validate,
     // tg_stays_follow and tg_stays_invoice_guard; none of them is new.
     //
-    // 73 -> 80 on 2026-10-16 (20261023120600, a trainer sells a package of
+    // 73 -> 80 on 2026-10-16 (20261023100000, a trainer sells a package of
     // sessions): training_service_package_guard, training_client_package_guard,
     // training_visit_package_guard, training_package_recount,
     // training_subscription_package_guard, training_skill_guard and
     // training_progress_row_guard. Each REVOKEd from PUBLIC, anon and
     // authenticated in the same file.
     //
-    // 80 -> 81 on 2026-10-16 (20261023120800, training cancel and no-show):
+    // 80 -> 81 on 2026-10-16 (20261023110000, training cancel and no-show):
     // training_lesson_session_rule, which decides whether a missed or late
     // canceled package lesson uses a session. REVOKEd from PUBLIC, anon and
     // authenticated in the same file. That file also re-creates four of the
-    // package guards, and 20261023121200 re-creates
+    // package guards, and 20261023130000 re-creates
     // training_lesson_session_rule; none of them is new.
     //
     // The grooming lines below were counted on the grooming branch, from a
@@ -251,16 +251,16 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tenant from the groom, and pet_vaccinations_before_write derives the
     // tenant, validates the document path and caps portal records. Both
     // revoked in their files.
-    // 71 -> 74 (20261023121000): tg_visits_groom_plan_stamp copies a groom
+    // 71 -> 74 (20261024100300): tg_visits_groom_plan_stamp copies a groom
     // plan onto every visit it generates, tg_visits_groom_plan_addons charges
     // the plan's add-ons when a groom is completed, and
     // tg_pet_groom_notes_before_write derives a note's tenant from its visit.
     // All three revoked in that file.
-    // 74 -> 75 (20261023121100): pet_vaccinations_review_stamp takes the
+    // 74 -> 75 (20261024100400): pet_vaccinations_review_stamp takes the
     // reviewer who rejected a portal upload from the session. Revoked there.
-    // 75 -> 76 (20261023122300): tg_visits_groom_plan_addons_void voids a
+    // 75 -> 76 (20261024100500): tg_visits_groom_plan_addons_void voids a
     // groom's add-on charges when the visit leaves completed. Revoked there.
-    // 76 -> 77 (20261023122400): tg_visits_groom_no_overlap refuses a groom
+    // 76 -> 77 (20261024100600): tg_visits_groom_no_overlap refuses a groom
     // that overlaps another for the same groomer. Revoked there.
     //
     // 81 -> 89 (mobile grooming stacked on training, #477): the eight above,

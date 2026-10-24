@@ -1,5 +1,5 @@
 -- Mobile grooming in the customer portal (#412, part B). Follows
--- 20261023121000.
+-- 20261024100300.
 --
 -- 1. A groom request is a qc_tickets row with category 'groom_request', in
 --    the inbox the office already works (/concerns), so the client never
@@ -14,7 +14,7 @@
 --    One open request per pet per day, held by a partial unique index.
 --
 --    requested_time is also added by the training portal migration
---    (20261023120900, PR #476) with the same type, so either order applies.
+--    (20261023120000, PR #476) with the same type, so either order applies.
 --    For the same reason the category list below keeps
 --    'training_lesson_request': whichever of the two files runs second
 --    rebuilds the constraint, and it must not drop the other's category.
