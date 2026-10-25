@@ -46,18 +46,18 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
 ];
 
 /** Lines an owner can turn on today. A line joins this list when it is
- *  approved to go live: dog walking (#410), pet sitting (#411), mobile
- *  grooming (#412) and training (#413) each join with their approval. Until
- *  then the picker shows them as Coming soon. A business that already runs
- *  one keeps it; setServiceLines refuses only adding one. Walking's path
- *  (booking, the walker's day, portal reports and access, client emails,
- *  invoices) is built and waits on that approval. An org runs training only
- *  when its `organizations.service_lines` is set to include it directly, and
- *  customers still cannot request it (`customerCanRequestService`). Mobile
- *  grooming's office screens work for a business that already has the line;
- *  customers, the public form and the receptionist cannot request it (see
- *  CUSTOMER_BOOKABLE_SERVICE_LINES and customerCanRequestService). */
-export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste"];
+ *  approved to go live: dog walking (#410) joined in #530; pet sitting
+ *  (#411), mobile grooming (#412) and training (#413) each join with their
+ *  own approval. Until then the picker shows them as Coming soon. A business
+ *  that already runs one keeps it; setServiceLines refuses only adding one.
+ *  An org runs training only when its `organizations.service_lines` is set to
+ *  include it directly, and customers still cannot request it
+ *  (`customerCanRequestService`). Mobile grooming's office screens work for a
+ *  business that already has the line; customers, the public form and the
+ *  receptionist cannot request it (see CUSTOMER_BOOKABLE_SERVICE_LINES and
+ *  customerCanRequestService). public.bookable_service_lines() is the SQL
+ *  copy (newest definition: 20261024230000), and the two change together. */
+export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste", "dog_walking"];
 
 /** Lines a customer may ask for (public signup, the portal, the receptionist).
  *  Mobile grooming stays with the office until a customer can pick pets,

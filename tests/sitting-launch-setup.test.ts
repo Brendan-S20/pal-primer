@@ -25,7 +25,7 @@ describe("sitting is ready for QA while its launch gate stays closed", () => {
   });
   it("offers an extra pet add-on and refuses enabling sitting", () => {
     expect(addOnExampleFor(["pet_sitting"])).toEqual({ code: "extra_pet", name: "Extra pet" });
-    expect(BOOKABLE_SERVICE_LINES).toEqual(["pet_waste"]);
+    expect(BOOKABLE_SERVICE_LINES).not.toContain("pet_sitting");
     expect(customerCanRequestStay()).toBe(false);
     expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toBe(
       "That service is coming soon.",

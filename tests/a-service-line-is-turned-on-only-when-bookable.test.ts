@@ -41,6 +41,19 @@ describe("a service line is turned on only when bookable", () => {
     expect([...sqlBookable()!.lines].sort()).toEqual([...BOOKABLE_SERVICE_LINES].sort());
   });
 
+  it("is pinned to exactly pet waste and dog walking, by the #530 flip", () => {
+    const found = sqlBookable()!;
+    expect(found.file).toBe("20261024230000_dog-walking-is-bookable.sql");
+    expect(found.lines).toEqual(["pet_waste", "dog_walking"]);
+  });
+
+  it("the flip asserts the exact list on replay, not a superset", () => {
+    const sql = stripLineComments(readMigration("20261024230000_dog-walking-is-bookable.sql"));
+    expect(sql).toMatch(
+      /IF public\.bookable_service_lines\(\) IS DISTINCT FROM ARRAY\['pet_waste', 'dog_walking'\]::text\[\] THEN\s+RAISE EXCEPTION/,
+    );
+  });
+
   it("holds only lines the database accepts", () => {
     for (const line of sqlBookable()!.lines) {
       expect(SERVICE_LINES as readonly string[]).toContain(line);

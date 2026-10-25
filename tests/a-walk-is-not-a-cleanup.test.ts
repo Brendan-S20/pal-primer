@@ -243,15 +243,20 @@ describe("what makes a service saveable", () => {
   });
 
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
-    // Walking, sitting, grooming and training are Coming soon, so only a business that
-    // already runs one, or a service already on it, is offered it.
-    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste"]);
+    // Walking is bookable (#530), so every business is offered it. Sitting,
+    // grooming and training are Coming soon, so only a business that already
+    // runs one, or a service already on it, is offered it.
+    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste", "dog_walking"]);
     expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste"])).not.toContain("training");
     expect(serviceLineChoices(["pet_waste", "training"])).toContain("training");
     expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste", "dog_walking"])).toEqual(["pet_waste", "dog_walking"]);
-    expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual(["pet_waste", "pet_sitting"]);
+    expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual([
+      "pet_waste",
+      "dog_walking",
+      "pet_sitting",
+    ]);
     expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste"])).not.toContain("mobile_grooming");

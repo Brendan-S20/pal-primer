@@ -94,8 +94,8 @@ async function showAllSteps(page: Page) {
 const allText = (page: Page) => page.evaluate(() => document.body.textContent ?? "");
 
 /** ServiceLinesChoices, as /setup step 1 and Settings → Business defaults both
- *  draw it for a dog-walking business. Only pet waste is bookable. The
- *  business keeps walking, marked Coming soon; sitting, grooming and
+ *  draw it for a dog-walking business. Pet waste and walking are bookable
+ *  (#530), so walking carries no Coming soon badge; sitting, grooming and
  *  training are listed, marked, and cannot be ticked. */
 async function expectServiceLineChoices(page: Page) {
   await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
@@ -103,7 +103,7 @@ async function expectServiceLineChoices(page: Page) {
   });
   const walking = page.getByRole("checkbox", { name: /^Dog walking/ });
   await expect(walking).toBeChecked();
-  await expect(page.locator("li").filter({ has: walking }).getByText("Coming soon")).toBeVisible();
+  await expect(page.locator("li").filter({ has: walking }).getByText("Coming soon")).toHaveCount(0);
   const petWaste = page.getByRole("checkbox", {
     name: "Pet waste removal (scooping)",
     exact: true,

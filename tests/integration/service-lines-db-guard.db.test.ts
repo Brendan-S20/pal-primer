@@ -1,7 +1,8 @@
 /**
  * DB-layer proof for 20261017004000: an owner's REST write cannot turn on a
  * service line that is still Coming soon, keeps the lines the org already
- * runs, and the service role is not gated.
+ * runs, and the service role is not gated. Since 20261024230000 (#530) dog
+ * walking is bookable and may be added; sitting, grooming and training may not.
  *
  * Local stack only. Skipped without TEST_SUPABASE_* env.
  */
@@ -68,16 +69,32 @@ describe.skipIf(!enabled)("a service line is turned on only when bookable", () =
     if (signIn.error) throw new Error(`signIn: ${signIn.error.message}`);
   });
 
-  it("refuses an owner adding dog_walking to an org that only runs pet_waste", async () => {
+  it("lets an owner add dog_walking to an org that only runs pet_waste", async () => {
     await resetLines(["pet_waste"]);
-    const { error } = await owner
+    const { data, error } = await owner
       .from("organizations")
       .update({ service_lines: ["pet_waste", "dog_walking"] })
-      .eq("id", orgId);
-    expect(error?.message).toMatch(/dog_walking service is coming soon/);
-    expect(error?.hint).toBe("service_line_not_bookable");
-    expect(await linesOf()).toEqual(["pet_waste"]);
+      .eq("id", orgId)
+      .select("id");
+    expect(error).toBeNull();
+    // An RLS-filtered update returns no error and no rows; prove it landed.
+    expect(data).toHaveLength(1);
+    expect(await linesOf()).toEqual(["pet_waste", "dog_walking"]);
   });
+
+  it.each(["pet_sitting", "mobile_grooming", "training"])(
+    "refuses an owner adding %s",
+    async (line) => {
+      await resetLines(["pet_waste"]);
+      const { error } = await owner
+        .from("organizations")
+        .update({ service_lines: ["pet_waste", line] })
+        .eq("id", orgId);
+      expect(error?.message).toMatch(new RegExp(`${line} service is coming soon`));
+      expect(error?.hint).toBe("service_line_not_bookable");
+      expect(await linesOf()).toEqual(["pet_waste"]);
+    },
+  );
 
   it("lets an owner drop a line the org already runs and keep another, but not re-add it", async () => {
     await resetLines(["pet_waste", "dog_walking", "pet_sitting"]);
@@ -88,7 +105,6 @@ describe.skipIf(!enabled)("a service line is turned on only when bookable", () =
       .eq("id", orgId)
       .select("id");
     expect(drop.error).toBeNull();
-    // An RLS-filtered update returns no error and no rows; prove it landed.
     expect(drop.data).toHaveLength(1);
     expect(await linesOf()).toEqual(["pet_waste", "dog_walking"]);
 

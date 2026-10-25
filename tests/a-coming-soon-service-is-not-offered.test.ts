@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // A Coming soon service is never offered to a client (#506).
 //
-// Only pet waste is in BOOKABLE_SERVICE_LINES. A business that runs dog
-// walking or pet sitting may still add services on those lines in Settings →
-// Services (an owner prepares prices ahead of launch), so the form says those
-// lines are Coming soon, and every path a client books through leaves them
-// out: the portal's extra-visit picker, the portal's request handler, and the
+// Pet waste and, since #530, dog walking are in BOOKABLE_SERVICE_LINES. A
+// business may still add services on a line that is not (pet sitting,
+// grooming, training) in Settings → Services (an owner prepares prices ahead
+// of launch), so the form says those lines are Coming soon, and every path a
+// client books through leaves them out: the portal's extra-visit picker, the portal's request handler, and the
 // AI receptionist's list_services / get_open_slots / book_visit.
 //
 // And the public paths, which were open on main before this change: the
@@ -57,8 +57,13 @@ const SIT = {
 };
 
 describe("the portal's extra-visit picker", () => {
-  it("does not offer an active, priced walk or sit while their lines are Coming soon", () => {
+  it("does not offer an active, priced sit while its line is Coming soon; offers the walk", () => {
     const opts = oneOffServiceOptions([PW, WALK, SIT], 4500);
+    expect(opts.map((o) => o.id)).toEqual(["pw", "w"]);
+  });
+
+  it("does not offer a walk with no price yet", () => {
+    const opts = oneOffServiceOptions([PW, { ...WALK, base_price_cents: null }], 4500);
     expect(opts.map((o) => o.id)).toEqual(["pw"]);
   });
 
@@ -68,12 +73,16 @@ describe("the portal's extra-visit picker", () => {
   });
 
   it("offers nothing to a business whose only services are Coming soon", () => {
-    expect(oneOffServiceOptions([WALK, SIT], 4500)).toEqual([]);
+    expect(oneOffServiceOptions([SIT], 4500)).toEqual([]);
   });
 
   it("offers a line once it joins the launch list", () => {
-    const opts = oneOffServiceOptions([PW, WALK, SIT], 4500, ["pet_waste", "dog_walking"]);
-    expect(opts.map((o) => o.id)).toEqual(["pw", "w"]);
+    const opts = oneOffServiceOptions([PW, WALK, SIT], 4500, [
+      "pet_waste",
+      "dog_walking",
+      "pet_sitting",
+    ]);
+    expect(opts.map((o) => o.id)).toEqual(["pw", "w", "s"]);
   });
 
   it("the request handler refuses a Coming soon service before anything is saved", () => {
@@ -83,25 +92,45 @@ describe("the portal's extra-visit picker", () => {
     expect(request).toMatch(
       /!\(BOOKABLE_SERVICE_LINES as readonly string\[\]\)\.includes\(service\.service_line\)/,
     );
+    expect(request).toMatch(
+      /service\.service_line !== "pet_waste" && service\.base_price_cents == null/,
+    );
     expect(refusal).toBeGreaterThan(0);
     expect(refusal).toBeLessThan(request.indexOf('rpc("portal_request_one_off"'));
   });
 });
 
+/** A priced sit, so the refusal below is about the line and not the price. */
+function withAPricedSit() {
+  const b = twoBusinesses();
+  b.db.serviceRows.push({
+    id: "sit-a",
+    organization_id: "org-a",
+    name: "Overnight stay",
+    service_line: "pet_sitting",
+    active: true,
+    price_unit: "visit",
+    base_price_cents: 6000,
+    extra_pet_cents: 0,
+    default_duration_min: 30,
+  });
+  return b;
+}
+
 describe("the AI receptionist", () => {
-  it("does not list a walk", async () => {
-    const { store, clientA } = twoBusinesses();
+  it("lists the walk, and not a sit", async () => {
+    const { store, clientA } = withAPricedSit();
     const r: any = await listServices(store, clientA);
-    expect(r.services.map((s: any) => s.service_id)).toEqual(["pw-a"]);
+    expect(r.services.map((s: any) => s.service_id)).toEqual(["pw-a", "walk-a"]);
   });
 
-  it("refuses to offer days for, or book, a walk", async () => {
-    const { db, store, clientA } = twoBusinesses();
-    const open: any = await getOpenSlots(store, clientA, { now: db.now, service_id: "walk-a" });
+  it("refuses to offer days for, or book, a sit", async () => {
+    const { db, store, clientA } = withAPricedSit();
+    const open: any = await getOpenSlots(store, clientA, { now: db.now, service_id: "sit-a" });
     expect(open).toMatchObject({ available: false, reason: "service_not_offered" });
     const r: any = await bookVisit(store, clientA, {
       date: "2026-10-13",
-      service_id: "walk-a",
+      service_id: "sit-a",
       now: db.now,
     });
     expect(r).toMatchObject({ booked: false, reason: "service_not_offered" });
@@ -116,7 +145,7 @@ describe("Settings → Services", () => {
       expect(isBookableServiceLine(line)).toBe(BOOKABLE_SERVICE_LINES.includes(line));
     }
     expect(isBookableServiceLine("pet_waste")).toBe(true);
-    expect(isBookableServiceLine("dog_walking")).toBe(false);
+    expect(isBookableServiceLine("dog_walking")).toBe(true);
     expect(isBookableServiceLine("pet_sitting")).toBe(false);
   });
 
@@ -323,17 +352,17 @@ beforeEach(() => {
 });
 
 describe("the public signup and quote form's picker", () => {
-  it("drops a walk and a sit that public_services handed back, keeping pet waste", () => {
-    expect(publicServiceChoices([PW, WALK, SIT]).map((s) => s.id)).toEqual(["pw"]);
+  it("drops a sit that public_services handed back, keeping pet waste and the walk", () => {
+    expect(publicServiceChoices([PW, WALK, SIT]).map((s) => s.id)).toEqual(["pw", "w"]);
   });
 
   it("offers nothing to pick from for a business whose only services are Coming soon", () => {
-    expect(publicServiceChoices([WALK, SIT])).toEqual([]);
+    expect(publicServiceChoices([SIT])).toEqual([]);
   });
 
   it("offers a line once it joins the launch list", () => {
-    const got = publicServiceChoices([PW, WALK, SIT], ["pet_waste", "dog_walking"]);
-    expect(got.map((s) => s.id)).toEqual(["pw", "w"]);
+    const got = publicServiceChoices([PW, WALK, SIT], ["pet_waste", "dog_walking", "pet_sitting"]);
+    expect(got.map((s) => s.id)).toEqual(["pw", "w", "s"]);
   });
 });
 
@@ -354,28 +383,27 @@ const checkoutBody = {
 const REFUSED = "That service isn't offered online right now. Pick another.";
 
 describe("the public signup", () => {
-  it("refuses to quote a walk or a sit before public_quote is asked", async () => {
+  it("refuses to quote a sit before public_quote is asked", async () => {
     const { getSignupQuote } = await import("@/lib/signup.functions");
-    for (const service_id of [WALK_ID, SIT_ID]) {
-      await expect((getSignupQuote as any)({ data: { ...quoteBody, service_id } })).rejects.toThrow(
-        REFUSED,
-      );
-    }
+    await expect(
+      (getSignupQuote as any)({ data: { ...quoteBody, service_id: SIT_ID } }),
+    ).rejects.toThrow(REFUSED);
     expect(h.quoteCalls).toEqual([]);
   });
 
-  it("still quotes pet waste, and leaves another business's id to public_quote", async () => {
+  it("quotes pet waste and a walk, and leaves another business's id to public_quote", async () => {
     const { getSignupQuote } = await import("@/lib/signup.functions");
     await (getSignupQuote as any)({ data: { ...quoteBody, service_id: PW_ID } });
     await (getSignupQuote as any)({ data: quoteBody });
+    await (getSignupQuote as any)({ data: { ...quoteBody, service_id: WALK_ID } });
     await (getSignupQuote as any)({ data: { ...quoteBody, service_id: OTHER_WALK_ID } });
-    expect(h.quoteCalls).toHaveLength(3);
+    expect(h.quoteCalls).toHaveLength(4);
   });
 
-  it("refuses to check out a walk: no quote, no card, no row", async () => {
+  it("refuses to check out a sit: no quote, no card, no row", async () => {
     const { createSignupPaymentIntent } = await import("@/lib/signup.functions");
     await expect(
-      (createSignupPaymentIntent as any)({ data: { ...checkoutBody, service_id: WALK_ID } }),
+      (createSignupPaymentIntent as any)({ data: { ...checkoutBody, service_id: SIT_ID } }),
     ).rejects.toThrow(REFUSED);
     expect(h.quoteCalls).toEqual([]);
     expect(h.intents).toEqual([]);
@@ -428,8 +456,8 @@ const leadBody = {
 };
 
 describe("the embedded lead form (/api/public/leads)", () => {
-  it("refuses a walk as invalid input, before a turn is taken, and writes nothing", async () => {
-    const r = await postLead({ ...leadBody, service_id: WALK_ID });
+  it("refuses a sit as invalid input, before a turn is taken, and writes nothing", async () => {
+    const r = await postLead({ ...leadBody, service_id: SIT_ID });
     expect(r).toEqual({ status: 400, body: { error: "Invalid input" } });
     expect(h.rpcs).toEqual([]);
     expect(h.leads).toEqual([]);

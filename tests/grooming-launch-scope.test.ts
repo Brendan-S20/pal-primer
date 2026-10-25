@@ -17,7 +17,7 @@ import { techSkipReasonCodes } from "@/lib/skip-rules.functions";
 
 describe("grooming first customer scope", () => {
   it("keeps pet waste bookable and grooming Coming soon in every customer check", () => {
-    expect(BOOKABLE_SERVICE_LINES).toEqual(["pet_waste"]);
+    expect(BOOKABLE_SERVICE_LINES).toEqual(["pet_waste", "dog_walking"]);
     expect(customerCanRequestService("pet_waste")).toBe(true);
     expect(customerCanRequestService("mobile_grooming")).toBe(false);
     expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "mobile_grooming"])).toMatch(

@@ -47,7 +47,7 @@ function isServiceLine(v: unknown): v is ServiceLine {
  * picker option whose id public_quote refuses.
  *
  * A row on a line that is still Coming soon (not in BOOKABLE_SERVICE_LINES)
- * is dropped too (#506): an owner may set up a walk before launch, and a
+ * is dropped too (#506): an owner may set up a sit before launch, and a
  * stranger must not be able to pick it. public_services leaves it out as
  * well (20261018150000); this is the same rule for a database that has not
  * caught up. `bookable` is for tests, as in oneOffServiceOptions.
