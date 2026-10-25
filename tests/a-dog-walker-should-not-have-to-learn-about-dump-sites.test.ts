@@ -43,8 +43,8 @@ vi.mock("@tanstack/react-start", () => ({
   },
 }));
 
+import { LAUNCH_DEFAULT } from "./support/service-line-availability";
 import {
-  BOOKABLE_SERVICE_LINES,
   DEFAULT_SERVICE_LINES,
   LINE_SEEDS,
   OFFERED_SERVICE_LINES,
@@ -399,37 +399,39 @@ describe("what an owner can choose", () => {
       "mobile_grooming",
       "training",
     ]);
-    expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste", "dog_walking"]);
+    expect([...LAUNCH_DEFAULT.bookable]).toEqual(["pet_waste", "dog_walking"]);
   });
 
   it("a Coming soon line can be kept or dropped, never added", () => {
-    expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "mobile_grooming"])).toMatch(
-      /coming soon/,
-    );
-    expect(serviceLinesAdditionProblem(["dog_walking"], ["dog_walking", "training"])).toMatch(
-      /coming soon/,
-    );
-    expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toMatch(
-      /coming soon/,
-    );
+    expect(
+      serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "mobile_grooming"], LAUNCH_DEFAULT),
+    ).toMatch(/coming soon/);
+    expect(
+      serviceLinesAdditionProblem(["dog_walking"], ["dog_walking", "training"], LAUNCH_DEFAULT),
+    ).toMatch(/coming soon/);
+    expect(
+      serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"], LAUNCH_DEFAULT),
+    ).toMatch(/coming soon/);
     // Set some other way before the hotfix: it stays, and it can go.
     const kept = ["mobile_grooming"] as const;
-    expect(serviceLinesAdditionProblem(kept, [...kept, "pet_waste"])).toBeNull();
-    expect(serviceLinesAdditionProblem(["pet_waste", "training"], ["pet_waste"])).toBeNull();
+    expect(serviceLinesAdditionProblem(kept, [...kept, "pet_waste"], LAUNCH_DEFAULT)).toBeNull();
+    expect(
+      serviceLinesAdditionProblem(["pet_waste", "training"], ["pet_waste"], LAUNCH_DEFAULT),
+    ).toBeNull();
     // The setter's own gate is serviceLinesAdditionProblem, pinned by
     // tests/pet-waste-and-walking-can-be-turned-on.test.ts.
   });
 
   it("training is offered as Coming soon, and neither an owner nor a customer can turn it on", () => {
     expect(OFFERED_SERVICE_LINES).toContain("training");
-    expect(BOOKABLE_SERVICE_LINES).not.toContain("training");
-    expect(customerCanRequestService("training")).toBe(false);
-    expect(customerCanRequestService("dog_walking")).toBe(true);
+    expect(LAUNCH_DEFAULT.bookable).not.toContain("training");
+    expect(customerCanRequestService("training", LAUNCH_DEFAULT)).toBe(false);
+    expect(customerCanRequestService("dog_walking", LAUNCH_DEFAULT)).toBe(true);
     // The row draws the badge and refuses the tick for any line that is not
     // bookable, so training reads Coming soon and its box cannot be ticked.
     const rows = codeOnly(read("src/components/ServiceLinesChoices.tsx"));
-    expect(rows).toMatch(/const bookable = BOOKABLE_SERVICE_LINES\.includes\(line\);/);
-    expect(rows).toMatch(/\{!bookable && <ComingSoonBadge \/>\}/);
+    expect(rows).toMatch(/const bookable = known && isBookableLine\(line, availability\);/);
+    expect(rows).toMatch(/\{known && !bookable && <ComingSoonBadge \/>\}/);
   });
 
   it("refuses what the database's CHECK refuses, with a sentence", () => {

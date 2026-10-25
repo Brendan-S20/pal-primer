@@ -2,9 +2,10 @@
 // A stranger cannot pick, be quoted for, pay for or send a lead about a
 // service on a line that is still Coming soon (#506).
 //
-// Pet waste and, since #530, dog walking are in BOOKABLE_SERVICE_LINES. An
-// owner may set up a sit before launch, and before #506 the public paths
-// offered a Coming soon service like it: the
+// Pet waste and, since #530, dog walking are bookable on the platform
+// switch's default (platform_service_lines, #531). An owner may set up a sit
+// before launch, and before #506 the public paths offered a Coming soon
+// service like it: the
 // signup and quote form's picker (publicServiceChoices), the signup's quote
 // and checkout (signup.functions.ts) and the embedded lead form
 // (/api/public/leads). This was open on main.
@@ -13,7 +14,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { publicServiceChoices } from "@/lib/public-services";
-import { BOOKABLE_SERVICE_LINES, SERVICE_LINES } from "@/lib/service-lines";
+import { SERVICE_LINES } from "@/lib/service-lines";
+import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
+
+// The switch as the server reads it: the migration's default.
+vi.mock("@/lib/service-line-availability.server", async () => ({
+  loadServiceLineAvailability: async () =>
+    (await import("./support/service-line-availability")).LAUNCH_DEFAULT,
+}));
 
 const read = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
 
@@ -197,15 +205,18 @@ beforeEach(() => {
 
 describe("the public signup and quote form's picker", () => {
   it("drops a sit that public_services handed back, keeping pet waste and the walk", () => {
-    expect(publicServiceChoices([PW, WALK, SIT]).map((s) => s.id)).toEqual(["pw", "w"]);
+    expect(publicServiceChoices([PW, WALK, SIT], LAUNCH_DEFAULT).map((s) => s.id)).toEqual([
+      "pw",
+      "w",
+    ]);
   });
 
   it("offers nothing to pick from for a business whose only services are Coming soon", () => {
-    expect(publicServiceChoices([SIT])).toEqual([]);
+    expect(publicServiceChoices([SIT], LAUNCH_DEFAULT)).toEqual([]);
   });
 
-  it("offers a line once it joins the launch list", () => {
-    const got = publicServiceChoices([PW, WALK, SIT], ["pet_waste", "dog_walking", "pet_sitting"]);
+  it("offers a line once the switch turns it on", () => {
+    const got = publicServiceChoices([PW, WALK, SIT], withBookable("pet_sitting"));
     expect(got.map((s) => s.id)).toEqual(["pw", "w", "s"]);
   });
 });

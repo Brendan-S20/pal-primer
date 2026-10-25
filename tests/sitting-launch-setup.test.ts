@@ -5,11 +5,11 @@ import ar from "@/lib/i18n/locales/ar";
 import zh from "@/lib/i18n/locales/zh";
 import { techSkipReasonCodes } from "@/lib/skip-rules.functions";
 import {
-  BOOKABLE_SERVICE_LINES,
   customerCanRequestStay,
   addOnExampleFor,
   serviceLinesAdditionProblem,
 } from "@/lib/service-lines";
+import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
 
 describe("sitting is ready for QA while its launch gate stays closed", () => {
   it("offers sitter reasons in every worker language", () => {
@@ -25,11 +25,12 @@ describe("sitting is ready for QA while its launch gate stays closed", () => {
   });
   it("offers an extra pet add-on and refuses enabling sitting", () => {
     expect(addOnExampleFor(["pet_sitting"])).toEqual({ code: "extra_pet", name: "Extra pet" });
-    expect(BOOKABLE_SERVICE_LINES).not.toContain("pet_sitting");
-    expect(customerCanRequestStay()).toBe(false);
-    expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toBe(
-      "That service is coming soon.",
-    );
+    expect(LAUNCH_DEFAULT.bookable).not.toContain("pet_sitting");
+    expect(customerCanRequestStay(LAUNCH_DEFAULT)).toBe(false);
+    expect(customerCanRequestStay(withBookable("pet_sitting"))).toBe(true);
+    expect(
+      serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"], LAUNCH_DEFAULT),
+    ).toBe("That service is coming soon.");
   });
   it("uses neutral fallback words without a service line", () => {
     expect([

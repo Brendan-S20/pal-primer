@@ -36,8 +36,9 @@
 //   * book anything for a number that is not exactly one of this business's
 //     active clients (an unknown number becomes a lead, never a client);
 //   * book twice for one conversation and day (the offer row is claimed);
-//   * list or book a service on a line that is still Coming soon (outside
-//     BOOKABLE_SERVICE_LINES), the same rule as the portal's (#506);
+//   * list or book a service on a line that is still Coming soon (not
+//     bookable on the platform switch, #531), the same rule as the portal's
+//     (#506);
 //   * say a price. Neither tool returns one; get_pricing_quote is the only
 //     place a price comes from.
 //
@@ -49,7 +50,7 @@ import { bookableDays, ONE_OFF_MAX_DAYS_AHEAD } from "@/lib/one-off-booking";
 import { addDaysToDay } from "@/lib/reclean";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { oneOffRequestWord } from "@/lib/one-off-booking";
-import { BOOKABLE_SERVICE_LINES, customerCanRequestService } from "@/lib/service-lines";
+import { customerCanRequestService, isBookableLine } from "@/lib/service-lines";
 import { isZonePriced } from "@/lib/services";
 import { servicePickerOptions } from "@/lib/visit-service";
 import { matchZone, type ZoneMatchFields } from "@/lib/zone-match";
@@ -150,11 +151,16 @@ async function resolveService(
   serviceId: string | undefined,
 ): Promise<Resolved> {
   if (!serviceId) return { ok: true, service: null };
-  const hit = (await store.services(orgId)).find((s) => s.id === serviceId);
-  if (!hit || !hit.active || !customerCanRequestService(hit.service_line)) return { ok: false };
+  const [services, availability] = await Promise.all([
+    store.services(orgId),
+    store.serviceLineAvailability(),
+  ]);
+  const hit = services.find((s) => s.id === serviceId);
+  if (!hit || !hit.active || !customerCanRequestService(hit.service_line, availability))
+    return { ok: false };
   // A line that is still Coming soon cannot be booked by a client, here any
   // more than from the portal (#506).
-  if (!BOOKABLE_SERVICE_LINES.includes(hit.service_line)) return { ok: false };
+  if (!isBookableLine(hit.service_line, availability)) return { ok: false };
   return { ok: true, service: hit };
 }
 
@@ -220,10 +226,14 @@ export async function listServices(store: ReceptionistStore, c: Caller) {
   // servicePickerOptions: the active ones, by line (pet waste first) and name,
   // as the plan form and the portal list them. Not a line that is still
   // Coming soon, which the portal does not offer either (#506).
-  const rows = servicePickerOptions(await store.services(c.orgId)).filter(
+  const [services, availability] = await Promise.all([
+    store.services(c.orgId),
+    store.serviceLineAvailability(),
+  ]);
+  const rows = servicePickerOptions(services).filter(
     (s) =>
-      BOOKABLE_SERVICE_LINES.includes(s.service_line) &&
-      customerCanRequestService(s.service_line) &&
+      isBookableLine(s.service_line, availability) &&
+      customerCanRequestService(s.service_line, availability) &&
       (isZonePriced(s) || s.base_price_cents != null),
   );
   return {

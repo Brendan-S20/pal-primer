@@ -47,6 +47,7 @@ import {
 } from "@/lib/services";
 import type { ServiceLine } from "@/lib/service-lines";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { HolidayDatesCard } from "@/components/settings/HolidayDatesCard";
 import { StayDepositCard } from "@/components/settings/StayDepositCard";
@@ -164,6 +165,7 @@ function ServicesPage() {
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
   const { lines, known } = useServiceLines();
+  const availability = useServiceLineAvailability();
   const ensure = useServerFn(ensureTrainingCatalog);
   const seeded = useRef(false);
   const trainingOn = known && lines.includes("training");
@@ -261,7 +263,9 @@ function ServicesPage() {
                       <Badge variant="secondary" className="shrink-0">
                         {serviceLineLabel(s.service_line)}
                       </Badge>
-                      {!isBookableServiceLine(s.service_line) && <ComingSoonBadge />}
+                      {availability && !isBookableServiceLine(s.service_line, availability) && (
+                        <ComingSoonBadge />
+                      )}
                       {!s.active && (
                         <Badge variant="outline" className="shrink-0">
                           Inactive
@@ -369,6 +373,7 @@ function ServiceForm({
   saving: boolean;
   onSubmit: () => void;
 }) {
+  const availability = useServiceLineAvailability();
   const units = priceUnitsFor(form.service_line);
   const minutesRequired = durationRequired(form.service_line) && form.price_unit !== "night";
   const per = form.price_unit;
@@ -420,17 +425,17 @@ function ServiceForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {serviceLineChoices(lines, form.service_line).map((l) => (
+            {serviceLineChoices(lines, availability, form.service_line).map((l) => (
               <SelectItem key={l} value={l}>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 truncate">{serviceLineLabel(l)}</span>
-                  {!isBookableServiceLine(l) && <ComingSoonBadge />}
+                  {availability && !isBookableServiceLine(l, availability) && <ComingSoonBadge />}
                 </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {!isBookableServiceLine(form.service_line) && (
+        {availability && !isBookableServiceLine(form.service_line, availability) && (
           <p className="text-xs text-muted-foreground">
             Coming soon: you can set this up now, but clients can't book it yet.
           </p>

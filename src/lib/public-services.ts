@@ -18,10 +18,11 @@
 
 import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
 import {
-  BOOKABLE_SERVICE_LINES,
   customerCanRequestService,
+  isBookableLine,
   SERVICE_LINES,
   type ServiceLine,
+  type ServiceLineAvailability,
 } from "@/lib/service-lines";
 
 /** One row of public_services: what public_quote needs back, and what a
@@ -46,15 +47,16 @@ function isServiceLine(v: unknown): v is ServiceLine {
  * dropped rather than guessed at: a malformed row would otherwise become a
  * picker option whose id public_quote refuses.
  *
- * A row on a line that is still Coming soon (not in BOOKABLE_SERVICE_LINES)
- * is dropped too (#506): an owner may set up a sit before launch, and a
- * stranger must not be able to pick it. public_services leaves it out as
- * well (20261018150000); this is the same rule for a database that has not
- * caught up. `bookable` is for tests, as in oneOffServiceOptions.
+ * A row on a line that is still Coming soon (not bookable on the platform
+ * switch, #531) is dropped too (#506): an owner may set up a sit before
+ * launch, and a stranger must not be able to pick it. public_services leaves
+ * it out as well (20261018150000, 20261025200000); this is the same rule for
+ * a database that has not caught up. `availability` is the switch, read at
+ * runtime (loadServiceLineAvailability).
  */
 export function publicServiceChoices(
   raw: unknown,
-  bookable: readonly string[] = BOOKABLE_SERVICE_LINES,
+  availability: ServiceLineAvailability,
 ): PublicService[] {
   if (!Array.isArray(raw)) return [];
   const out: PublicService[] = [];
@@ -64,8 +66,8 @@ export function publicServiceChoices(
     const o = r as Record<string, unknown>;
     if (typeof o.id !== "string" || typeof o.name !== "string") continue;
     if (!isServiceLine(o.service_line) || !isPriceUnit(o.price_unit)) continue;
-    if (!customerCanRequestService(o.service_line, bookable)) continue;
-    if (!bookable.includes(o.service_line)) continue;
+    if (!customerCanRequestService(o.service_line, availability)) continue;
+    if (!isBookableLine(o.service_line, availability)) continue;
     if (seen.has(o.id)) continue;
     seen.add(o.id);
     out.push({

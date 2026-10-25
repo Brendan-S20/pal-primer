@@ -167,7 +167,10 @@ export function SignupFlow({
   // What the business sells (public_services, through the form lookup). A
   // business that sells one thing, or lists nothing online, gets no picker
   // and sends no service id anywhere: its form is the form it always was.
-  const services = publicServiceChoices(formQ.data?.services);
+  const services = publicServiceChoices(
+    formQ.data?.services,
+    formQ.data?.serviceLines ?? { bookable: [], customerRequestable: [] },
+  );
   const pickService = offersAChoice(services);
   const chosen = chosenPublicService(services, form.service_id);
   const serviceField = pickService && chosen ? { service_id: chosen.id } : {};

@@ -109,19 +109,18 @@ const admin = {
   },
 };
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: admin }));
-// This file pins how a walk is sold once dog walking is bookable. Today only
-// pet waste is (#506); the refusal of a Coming soon walk is pinned in
+// This file pins how a walk is sold now that dog walking is bookable (#530).
+// The refusal of a Coming soon line is pinned in
 // tests/a-coming-soon-service-is-not-offered.test.ts, so here every offered
-// line is treated as launched.
-vi.mock("@/lib/service-lines", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@/lib/service-lines")>();
-  return {
-    ...real,
-    BOOKABLE_SERVICE_LINES: real.OFFERED_SERVICE_LINES,
-    customerCanRequestService: (line: string) =>
-      real.customerCanRequestService(line, real.OFFERED_SERVICE_LINES),
-  };
-});
+// line is treated as launched on the switch (#531).
+vi.mock("@/lib/service-line-availability.server", async () => ({
+  loadServiceLineAvailability: async () =>
+    (await import("./support/service-line-availability")).withBookable(
+      "dog_walking",
+      "pet_sitting",
+      "mobile_grooming",
+    ),
+}));
 vi.mock("@/lib/lead-notify.server", () => ({
   notifyOfficeOfNewLead: async (lead: Row) => {
     h.notices.push(lead);

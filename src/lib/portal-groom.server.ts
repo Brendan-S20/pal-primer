@@ -22,6 +22,7 @@ import {
   type GroomWindow,
 } from "@/lib/groom-request";
 import { customerCanRequestService, serviceLinesOrDefault } from "@/lib/service-lines";
+import { loadServiceLineAvailability } from "@/lib/service-line-availability.server";
 import { orgToday } from "@/lib/org-day";
 
 type Db = SupabaseClient<Database>;
@@ -60,7 +61,7 @@ export async function loadPortalGroom(db: Db, session: PortalSession) {
     ) ?? [];
   const propertyIds = props.map((p) => p.id);
 
-  const [dogs, services, rules, addons, requests] = await Promise.all([
+  const [dogs, services, rules, addons, requests, availability] = await Promise.all([
     propertyIds.length
       ? db
           .from("dogs")
@@ -97,6 +98,7 @@ export async function loadPortalGroom(db: Db, session: PortalSession) {
       .eq("category", "groom_request")
       .order("created_at", { ascending: false })
       .limit(20),
+    loadServiceLineAvailability(),
   ]);
   for (const res of [dogs, services, rules, addons, requests]) {
     if (res.error) throw new Error(res.error.message);
@@ -106,9 +108,9 @@ export async function loadPortalGroom(db: Db, session: PortalSession) {
   return {
     visible: true as const,
     // Whether a client may ask for a groom here. Off while mobile grooming is
-    // not a line a customer can request; the page then shows past requests
-    // and vaccine records only.
-    canRequest: customerCanRequestService("mobile_grooming"),
+    // not a line a customer can request (the platform switch, #531); the page
+    // then shows past requests and vaccine records only.
+    canRequest: customerCanRequestService("mobile_grooming", availability),
     today: orgToday(org.timezone),
     workDays: (org.work_days as number[] | null) ?? [0, 1, 2, 3, 4, 5, 6],
     bufferMin: org.groom_buffer_min ?? DEFAULT_GROOM_BUFFER_MIN,

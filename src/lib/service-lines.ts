@@ -7,7 +7,8 @@
  *
  *    which modules are pet-waste-only   PET_WASTE_MODULES / showsPetWasteModules
  *    what a line seeds                  LINE_SEEDS
- *    what the settings screen offers    OFFERED_SERVICE_LINES / BOOKABLE_SERVICE_LINES
+ *    what the settings screen offers    OFFERED_SERVICE_LINES
+ *    which lines are live               ServiceLineAvailability (read at runtime)
  *
  *  Like `commercial_accounts`, this is a RENDERING preference with no
  *  adversary. It hides; it never refuses a write and never deletes. And it
@@ -45,48 +46,73 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
   "training",
 ];
 
-/** Lines an owner can turn on today. A line joins this list when it is
- *  approved to go live: dog walking (#410) joined in #530; pet sitting
- *  (#411), mobile grooming (#412) and training (#413) each join with their
- *  own approval. Until then the picker shows them as Coming soon. A business
- *  that already runs one keeps it; setServiceLines refuses only adding one.
- *  An org runs training only when its `organizations.service_lines` is set to
- *  include it directly, and customers still cannot request it
- *  (`customerCanRequestService`). Mobile grooming's office screens work for a
- *  business that already has the line; customers, the public form and the
- *  receptionist cannot request it (see CUSTOMER_BOOKABLE_SERVICE_LINES and
- *  customerCanRequestService). public.bookable_service_lines() is the SQL
- *  copy (newest definition: 20261024230000), and the two change together. */
-export const BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = ["pet_waste", "dog_walking"];
+/** Which lines are live, as the platform switch says (#531).
+ *
+ *  The answer is not written down in code. It is the table
+ *  `public.platform_service_lines` (migration 20261025200000), one row per
+ *  line, read at runtime: on the server by loadServiceLineAvailability
+ *  (service-line-availability.server.ts), in the browser through
+ *  getServiceLineAvailability. A platform admin turns a line on or off with
+ *  no new build.
+ *
+ *    bookable              an owner may add the line, and customers may be
+ *                          sold it. Until then the picker shows it as Coming
+ *                          soon. A business that already runs one keeps it;
+ *                          setServiceLines refuses only adding one.
+ *    customerRequestable   a customer, the public signup form or the
+ *                          receptionist may ask for it, once it is also
+ *                          bookable. Training is sold and scheduled by the
+ *                          office, and mobile grooming stays with the office
+ *                          until a customer can pick pets, add-ons and a
+ *                          price the same way the office books one, so both
+ *                          start false: turning grooming bookable never opens
+ *                          it to customers on its own. */
+export type ServiceLineAvailability = {
+  bookable: readonly ServiceLine[];
+  customerRequestable: readonly ServiceLine[];
+};
 
-/** Lines a customer may ask for (public signup, the portal, the receptionist).
- *  Mobile grooming stays with the office until a customer can pick pets,
- *  add-ons and a price the same way the office books one. Training is sold
- *  and scheduled by the office. */
-export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = BOOKABLE_SERVICE_LINES;
+/** service_line_availability()'s rows, typed. A row that is not the right
+ *  shape, or names a line this build does not know, is dropped. */
+export function serviceLineAvailabilityFromRows(raw: unknown): ServiceLineAvailability {
+  const bookable: ServiceLine[] = [];
+  const customerRequestable: ServiceLine[] = [];
+  if (Array.isArray(raw)) {
+    for (const r of raw) {
+      if (!r || typeof r !== "object") continue;
+      const o = r as Record<string, unknown>;
+      if (!isServiceLine(o.service_line)) continue;
+      if (o.bookable === true && !bookable.includes(o.service_line)) bookable.push(o.service_line);
+      if (o.customer_requestable === true && !customerRequestable.includes(o.service_line))
+        customerRequestable.push(o.service_line);
+    }
+  }
+  return { bookable, customerRequestable };
+}
 
-export function customerMayBook(line: string | null | undefined): boolean {
-  return (
-    typeof line === "string" &&
-    (CUSTOMER_BOOKABLE_SERVICE_LINES as readonly string[]).includes(line)
-  );
+/** Whether an owner may add this line, and customers may be sold it. */
+export function isBookableLine(line: string, availability: ServiceLineAvailability): boolean {
+  return (availability.bookable as readonly string[]).includes(line);
 }
 
 /** Whether a customer, the public signup form, or the receptionist may ask
- *  for this line. Training and mobile grooming are booked by the office, and
- *  each keeps its own gate here so opening one never opens the other. */
+ *  for this line. Both switches: a Coming soon line is not for sale whatever
+ *  its second column says. */
 export function customerCanRequestService(
   line: string,
-  bookable: readonly string[] = BOOKABLE_SERVICE_LINES,
+  availability: ServiceLineAvailability,
 ): boolean {
-  return line !== "training" && bookable.includes(line);
+  return (
+    isBookableLine(line, availability) &&
+    (availability.customerRequestable as readonly string[]).includes(line)
+  );
 }
 
 /** Whether a client may ask for a stay from the portal. Sitting is Coming
- *  soon until it joins BOOKABLE_SERVICE_LINES, the same gate the service
- *  picker and training's portal read. */
-export function customerCanRequestStay(): boolean {
-  return BOOKABLE_SERVICE_LINES.includes("pet_sitting");
+ *  soon until the switch turns it on, the same gate the service picker and
+ *  training's portal read. */
+export function customerCanRequestStay(availability: ServiceLineAvailability): boolean {
+  return customerCanRequestService("pet_sitting", availability);
 }
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
@@ -121,9 +147,10 @@ export function serviceLinesProblem(lines: readonly unknown[]): string | null {
 export function serviceLinesAdditionProblem(
   current: readonly ServiceLine[],
   next: readonly ServiceLine[],
+  availability: ServiceLineAvailability,
 ): string | null {
   const added = next.filter((l) => !current.includes(l));
-  return added.every((l) => BOOKABLE_SERVICE_LINES.includes(l))
+  return added.every((l) => isBookableLine(l, availability))
     ? null
     : "That service is coming soon.";
 }

@@ -33,6 +33,8 @@ import { bookableDays } from "../../src/lib/one-off-booking";
 import { orgToday } from "../../src/lib/org-day";
 import { isZonePriced, servicePriceCents } from "../../src/lib/services";
 import type { ZoneMatchFields } from "../../src/lib/zone-match";
+import type { ServiceLineAvailability } from "../../src/lib/service-lines";
+import { LAUNCH_DEFAULT } from "./service-line-availability";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -56,6 +58,8 @@ export class FakeReceptionistDb {
   props: (PropertyFacts & { organization_id: string })[] = [];
   /** The catalog, per org. */
   serviceRows: (ServiceFacts & { organization_id: string })[] = [];
+  /** The platform switch (#531). The migration's default unless a test says. */
+  availability: ServiceLineAvailability = LAUNCH_DEFAULT;
   /** Active dogs at a property, as bookOneOffVisit counts them. Unset: one. */
   petsAt = new Map<string, number>();
   zoneRows: { orgId: string; zone: ZoneMatchFields }[] = [];
@@ -137,6 +141,10 @@ export class FakeReceptionistDb {
         return db.serviceRows
           .filter((s) => s.organization_id === orgId)
           .map(({ organization_id: _o, ...s }) => s);
+      },
+      async serviceLineAvailability() {
+        await tick();
+        return db.availability;
       },
       async zones(orgId) {
         await tick();

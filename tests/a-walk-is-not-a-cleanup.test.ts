@@ -28,6 +28,7 @@ import {
   type ServiceDraft,
 } from "@/lib/services";
 import { SERVICE_LINES } from "@/lib/service-lines";
+import { LAUNCH_DEFAULT } from "./support/service-line-availability";
 import { ROUTE_ROLES, canAccess } from "@/hooks/useMyRole";
 import { hasPermission } from "@/lib/permissions";
 import { APP_LINK_PATH_PREFIXES, appLinkClaims } from "@/lib/android-app-links";
@@ -246,24 +247,29 @@ describe("what makes a service saveable", () => {
     // Walking is bookable (#530), so every business is offered it. Sitting,
     // grooming and training are Coming soon, so only a business that already
     // runs one, or a service already on it, is offered it.
-    expect(serviceLineChoices(["pet_waste"])).toEqual(["pet_waste", "dog_walking"]);
-    expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
-    expect(serviceLineChoices(["pet_waste"])).not.toContain("training");
-    expect(serviceLineChoices(["pet_waste", "training"])).toContain("training");
-    expect(serviceLineChoices(["pet_waste"])).not.toContain("pet_sitting");
-    expect(serviceLineChoices(["pet_waste", "dog_walking"])).toEqual(["pet_waste", "dog_walking"]);
-    expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toEqual([
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).toEqual(["pet_waste", "dog_walking"]);
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("training");
+    expect(serviceLineChoices(["pet_waste", "training"], LAUNCH_DEFAULT)).toContain("training");
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste", "dog_walking"], LAUNCH_DEFAULT)).toEqual([
+      "pet_waste",
+      "dog_walking",
+    ]);
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT, "pet_sitting")).toEqual([
       "pet_waste",
       "dog_walking",
       "pet_sitting",
     ]);
-    expect(serviceLineChoices(["pet_sitting"])).toContain("pet_sitting");
-    expect(serviceLineChoices(["pet_waste"], "pet_sitting")).toContain("pet_sitting");
-    expect(serviceLineChoices(["pet_waste"])).not.toContain("mobile_grooming");
-    expect(serviceLineChoices(["mobile_grooming"])).toContain("mobile_grooming");
-    expect(serviceLineChoices(["training"])).toContain("training");
-    expect(serviceLineChoices(["pet_waste"])).not.toContain("training");
-    expect(serviceLineChoices(["pet_waste"], "other")).toContain("other");
+    expect(serviceLineChoices(["pet_sitting"], LAUNCH_DEFAULT)).toContain("pet_sitting");
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT, "pet_sitting")).toContain(
+      "pet_sitting",
+    );
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("mobile_grooming");
+    expect(serviceLineChoices(["mobile_grooming"], LAUNCH_DEFAULT)).toContain("mobile_grooming");
+    expect(serviceLineChoices(["training"], LAUNCH_DEFAULT)).toContain("training");
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("training");
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT, "other")).toContain("other");
     expect(defaultServiceLine(["dog_walking", "pet_waste"])).toBe("dog_walking");
     expect(defaultServiceLine([])).toBe("pet_waste");
   });

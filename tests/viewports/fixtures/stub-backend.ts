@@ -112,6 +112,12 @@ export const BASE_STUBS: Record<string, Stub> = {
     emailConfirmed: true,
     pendingEmail: null,
   },
+  // The platform switch (#531): the migration's default, so Settings draws
+  // its Coming soon badges as it does in production.
+  getServiceLineAvailability: {
+    bookable: ["pet_waste"],
+    customerRequestable: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "other"],
+  },
   getMyOrgFeatures: {
     commercialAccounts: true,
     hasCommercialData: true,

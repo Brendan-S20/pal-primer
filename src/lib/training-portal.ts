@@ -31,7 +31,7 @@ export function lessonRequestBlock(
   held: number,
   openRequests: number,
   today: string,
-  /** Training is bookable (BOOKABLE_SERVICE_LINES). While it is Coming soon
+  /** Training is bookable on the platform switch (#531). While it is Coming soon
    *  a held package is shown but takes no requests: the same switch as a
    *  portal purchase, so the launch flip turns both on. */
   bookable = true,

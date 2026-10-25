@@ -35,6 +35,12 @@ vi.mock("@/lib/account-lock.server", () => ({
   lockForOrg: async () => ({ locked: state.locked }),
 }));
 vi.mock("@/components/PhotoLightbox", () => ({ PhotoLightbox: () => null }));
+// The platform switch (#531) is read beside the home's own reads; it is not
+// one of the home's parts, so it answers the default here.
+vi.mock("@/lib/service-line-availability.server", async () => ({
+  loadServiceLineAvailability: async () =>
+    (await import("./support/service-line-availability")).LAUNCH_DEFAULT,
+}));
 vi.mock("@/lib/skip-rules.functions", () => ({ customerSkipReason: () => "customer_requested" }));
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({

@@ -121,8 +121,8 @@ difference.
 4. Add `weekdays` frequency and array; teach `generate_visits_core`.
 5. Pricing by service; `public_quote` and the wizard read the service.
 6. `pets` table, migrate dogs, `dogs` becomes a view; species in the UI.
-   Then make the other lines bookable in `BOOKABLE_SERVICE_LINES` and the
-   onboarding seeds below.
+   Then make the other lines bookable on the platform switch
+   (`public.platform_service_lines`, #531) and the onboarding seeds below.
 
 ## What each trade's onboarding seeds
 
@@ -222,8 +222,10 @@ drop; the 20260701 file declares it inline, so Postgres named it.
 
 ### B. Things step 1 deliberately left for step 2
 
-- `BOOKABLE_SERVICE_LINES` is `["pet_waste"]`; phase 6 widens it, and the
-  "coming soon" badges on Settings → Business defaults go away by themselves.
+- Only `pet_waste` is bookable on the platform switch
+  (`public.platform_service_lines`, #531, read at runtime); phase 6 turns the
+  other lines on there, and the "coming soon" badges on Settings → Business
+  defaults go away by themselves.
 - `LINE_SEEDS.*.frequencyMultipliers` and `estTime` for the new lines are
   data only; signup reads them when it seeds a non-waste org.
 - `/get-started` (the Twilio-reviewed signup) has no line picker. Adding one is

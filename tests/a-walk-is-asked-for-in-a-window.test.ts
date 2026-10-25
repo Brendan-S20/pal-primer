@@ -22,6 +22,7 @@ import {
 } from "@/lib/walk-windows";
 import { checkedWalkWindow, recordRequestedWindow } from "@/lib/walk-request.server";
 import { oneOffServiceOptions } from "@/lib/one-off-booking";
+import { withBookable } from "./support/service-line-availability";
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -191,7 +192,7 @@ describe("the wiring, end to end", () => {
         } as any,
       ],
       null,
-      ["pet_waste", "dog_walking"],
+      withBookable("dog_walking"),
     );
     expect(walk.serviceLine).toBe("dog_walking");
   });

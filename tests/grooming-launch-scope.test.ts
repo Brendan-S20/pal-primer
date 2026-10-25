@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
 import {
-  BOOKABLE_SERVICE_LINES,
   customerCanRequestService,
   serviceLinesAdditionProblem,
   suggestedChecklistFor,
@@ -17,14 +17,22 @@ import { techSkipReasonCodes } from "@/lib/skip-rules.functions";
 
 describe("grooming first customer scope", () => {
   it("keeps pet waste bookable and grooming Coming soon in every customer check", () => {
-    expect(BOOKABLE_SERVICE_LINES).toEqual(["pet_waste", "dog_walking"]);
-    expect(customerCanRequestService("pet_waste")).toBe(true);
-    expect(customerCanRequestService("mobile_grooming")).toBe(false);
-    expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "mobile_grooming"])).toMatch(
-      /coming soon/,
+    expect(LAUNCH_DEFAULT.bookable).toEqual(["pet_waste", "dog_walking"]);
+    expect(customerCanRequestService("pet_waste", LAUNCH_DEFAULT)).toBe(true);
+    expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(false);
+    // Turning grooming bookable does not open it to customers on its own.
+    expect(customerCanRequestService("mobile_grooming", withBookable("mobile_grooming"))).toBe(
+      false,
     );
     expect(
-      serviceLinesAdditionProblem(["mobile_grooming"], ["mobile_grooming", "pet_waste"]),
+      serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "mobile_grooming"], LAUNCH_DEFAULT),
+    ).toMatch(/coming soon/);
+    expect(
+      serviceLinesAdditionProblem(
+        ["mobile_grooming"],
+        ["mobile_grooming", "pet_waste"],
+        LAUNCH_DEFAULT,
+      ),
     ).toBeNull();
   });
   it("holds 30 minutes for setup, cleanup and travel", () => {

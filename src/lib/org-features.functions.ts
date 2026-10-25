@@ -251,8 +251,8 @@ async function ensureDefaultServicesForLines(
  *  a seasonal campaign -- stay visible while they are configured), and the
  *  rows themselves are untouched.
  *
- *  The one refusal is a launch gate: a line outside BOOKABLE_SERVICE_LINES
- *  cannot be added. A line the org already has is kept, so saving an
+ *  The one refusal is a launch gate: a line that is not bookable on the
+ *  platform switch (read at runtime, #531) cannot be added. A line the org already has is kept, so saving an
  *  unrelated change never fails for a business that runs one. */
 export const setServiceLines = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -280,9 +280,11 @@ export const setServiceLines = createServerFn({ method: "POST" })
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
+    const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
     const adding = serviceLinesAdditionProblem(
       serviceLinesOrDefault(org?.service_lines),
       data.lines,
+      await loadServiceLineAvailability(),
     );
     if (adding) throw new Error(adding);
     const { updateOwnOrg } = await import("@/lib/org-write.server");
