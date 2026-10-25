@@ -417,14 +417,14 @@ describe("what an owner can choose", () => {
     expect(serviceLinesAdditionProblem(kept, [...kept, "pet_waste"])).toBeNull();
     expect(serviceLinesAdditionProblem(["pet_waste", "training"], ["pet_waste"])).toBeNull();
     // The setter's own gate is serviceLinesAdditionProblem, pinned by
-    // tests/only-pet-waste-can-be-turned-on.test.ts.
+    // tests/pet-waste-and-walking-can-be-turned-on.test.ts.
   });
 
   it("training is offered as Coming soon, and neither an owner nor a customer can turn it on", () => {
     expect(OFFERED_SERVICE_LINES).toContain("training");
     expect(BOOKABLE_SERVICE_LINES).not.toContain("training");
     expect(customerCanRequestService("training")).toBe(false);
-    expect(customerCanRequestService("dog_walking")).toBe(false);
+    expect(customerCanRequestService("dog_walking")).toBe(true);
     // The row draws the badge and refuses the tick for any line that is not
     // bookable, so training reads Coming soon and its box cannot be ticked.
     const rows = codeOnly(read("src/components/ServiceLinesChoices.tsx"));

@@ -25,11 +25,11 @@
 --                                              refuses (no card is taken)
 --        portal_request_one_off                see 2
 --      public_services and public_quote are therefore not restated: their
---      newest bodies (20261018150000) gate on bookable_service_lines() and
+--      newest bodies (20261024100900) gate on bookable_service_lines() and
 --      not on a literal 'pet_waste', so restating them unchanged would add a
 --      copy and change nothing.
 --
---   2. portal_request_one_off (newest body 20261018150000 plus the training
+--   2. portal_request_one_off (newest body 20261024100900 plus the training
 --      refusal 20261023100000 spliced in, copied unchanged but for ONE
 --      condition) also refuses a service with no price yet, with
 --      the same 'service_not_offered'. Before walking was bookable no
