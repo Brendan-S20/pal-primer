@@ -1,3 +1,4 @@
+import { PortalStayTimeline } from "@/components/portal/Stays";
 import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
@@ -53,6 +54,7 @@ function PortalVisits() {
 
   return (
     <div className="space-y-6">
+      <PortalStayTimeline />
       <TrainingCard />
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">

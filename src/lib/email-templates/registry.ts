@@ -1,3 +1,4 @@
+import { confirmedTemplate, endingTemplate } from "./stay-notice";
 import type { ComponentType } from "react";
 
 import { template as welcomeTemplate } from "./welcome";
@@ -18,6 +19,8 @@ import { template as trainingPackageNoticeTemplate } from "./training-package-no
 import { template as walkNotDoneTemplate } from "./walk-not-done";
 import { template as walkScheduleChangedTemplate } from "./walk-schedule-changed";
 import { template as walkCanceledTemplate } from "./walk-canceled";
+import { template as sitMissedMedsTemplate } from "./sit-missed-meds";
+import { template as staySummaryTemplate } from "./stay-summary";
 
 export interface TemplateEntry {
   component: ComponentType<any>;
@@ -29,6 +32,8 @@ export interface TemplateEntry {
 }
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
+  "stay-confirmed": confirmedTemplate,
+  "stay-ending": endingTemplate,
   welcome: welcomeTemplate,
   "invoice-sent": invoiceSentTemplate,
   "payment-received": paymentReceivedTemplate,
@@ -47,4 +52,6 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   "walk-not-done": walkNotDoneTemplate,
   "walk-schedule-changed": walkScheduleChangedTemplate,
   "walk-canceled": walkCanceledTemplate,
+  "sit-missed-meds": sitMissedMedsTemplate,
+  "stay-summary": staySummaryTemplate,
 };

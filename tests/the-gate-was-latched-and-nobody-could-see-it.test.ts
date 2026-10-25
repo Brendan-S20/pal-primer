@@ -30,7 +30,7 @@ describe("a tech can say a photo is of the latched gate", () => {
 
   it("is offered in both pickers, by name", () => {
     expect(PHOTO_KIND_OPTIONS.map((o) => o.value).sort()).toEqual([...PHOTO_KINDS].sort());
-    expect(photoKindLabel("gate")).toBe("Gate latched");
+    expect(photoKindLabel("gate")).toBe("Home secured");
     // Both pickers render the list rather than spelling the options out, which
     // is how the drawer and My Day stay offering the same four.
     for (const f of [

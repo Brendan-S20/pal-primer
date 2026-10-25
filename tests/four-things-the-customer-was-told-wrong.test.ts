@@ -193,6 +193,9 @@ describe("emails say who sent them", () => {
     "walk-not-done",
     "walk-schedule-changed",
     "walk-canceled",
+    "sit-missed-meds",
+    "stay-summary",
+    "stay-notice",
   ];
 
   it("there is a shared footer", () => {

@@ -1,3 +1,4 @@
+import { RequestedStays } from "@/components/RequestedStays";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { CalendarCheck, CalendarOff, CalendarPlus, Inbox, Repeat, Sparkles } from "lucide-react";
@@ -391,6 +392,8 @@ function ConcernsPage() {
           they ask for. Triage and resolve them here.
         </p>
       </div>
+
+      <RequestedStays />
 
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (

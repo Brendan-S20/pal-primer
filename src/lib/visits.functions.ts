@@ -35,7 +35,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     let q = supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, skip_reason, skip_reason_code, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time), service_id, services(name, service_line, default_duration_min)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, skip_reason, skip_reason_code, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time, stay_id, stays(kind, starts_on, ends_on)), service_id, services(name, service_line, default_duration_min)",
       )
       .eq("organization_id", orgId);
     q =
@@ -47,7 +47,11 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
       .order("assigned_staff_id", { ascending: true, nullsFirst: true })
       .order("sequence", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);
-    return { visits: rows ?? [] };
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
+    const clash = await overnightClashWarning(supabase, {
+      visitIds: (rows ?? []).map((v) => v.id),
+    });
+    return { visits: rows ?? [], clash };
   });
 
 export const getVisitDetail = createServerFn({ method: "GET" })
@@ -68,7 +72,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          properties(id, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
-         subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via),
+         subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time, booked_via, stay_id, stays(kind, starts_on, ends_on)),
          service_id, services(name, service_line, default_duration_min),
          visit_photos(id, storage_path, kind, created_at)`,
       )
@@ -185,8 +189,16 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
         /** Why it was booked. Shows on the client's activity timeline. */
         note: z.string().max(300).optional(),
         /** A walk request's window (#410), carried from /concerns. */
-        earliestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
-        latestTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional(),
+        earliestTime: z
+          .string()
+          .regex(/^\d{2}:\d{2}(:\d{2})?$/)
+          .nullable()
+          .optional(),
+        latestTime: z
+          .string()
+          .regex(/^\d{2}:\d{2}(:\d{2})?$/)
+          .nullable()
+          .optional(),
       })
       .parse(d),
   )
@@ -268,9 +280,14 @@ export const reassignVisit = createServerFn({ method: "POST" })
         });
       }
     } catch {}
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
     const lessonClashes = await lessonClashesAfterMove(context.supabase as any, [data.visitId]);
-    return { ok: true, lessonClashes };
+    return {
+      ok: true,
+      clash: await overnightClashWarning(context.supabase, { visitIds: [data.visitId] }),
+      lessonClashes,
+    };
   });
 
 export const reorderRoute = createServerFn({ method: "POST" })
@@ -575,12 +592,15 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       .eq("id", data.visitId)
       .maybeSingle();
     const hadTech = (was as any)?.assigned_staff_id ?? null;
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
     const lessonClashes = await lessonClashesAfterMove(supabase as any, [data.visitId]);
     return {
       ok: true,
       lessonClashes,
-      techName: hadTech ? (((was as any)?.staff?.display_name as string | undefined) ?? null) : null,
+      techName: hadTech
+        ? (((was as any)?.staff?.display_name as string | undefined) ?? null)
+        : null,
       /** "kept": still theirs. "dropped": they had it and the new day is not
        *  one they work. "none": it had nobody to keep. */
       tech: !hadTech
@@ -588,6 +608,7 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
         : (now as any)?.assigned_staff_id === hadTech
           ? ("kept" as const)
           : ("dropped" as const),
+      clash: await overnightClashWarning(supabase, { visitIds: [data.visitId] }),
     };
   });
 
@@ -841,9 +862,14 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
     const lessonClashes = await lessonClashesAfterMove(context.supabase as any, data.visitIds);
-    return { moved: (n as number) ?? 0, lessonClashes };
+    return {
+      moved: (n as number) ?? 0,
+      clash: await overnightClashWarning(context.supabase, { visitIds: data.visitIds }),
+      lessonClashes,
+    };
   });
 
 export const bulkRescheduleVisits = createServerFn({ method: "POST" })
@@ -876,9 +902,15 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     // moved exactly a week already has a visit there, and the honest report is
     // "moved 12, left 2 alone", not silence.
     const row = Array.isArray(rows) ? rows[0] : rows;
+    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
     const lessonClashes = await lessonClashesAfterMove(context.supabase as any, data.visitIds);
-    return { moved: row?.moved ?? 0, skipped: row?.skipped ?? 0, lessonClashes };
+    return {
+      moved: row?.moved ?? 0,
+      skipped: row?.skipped ?? 0,
+      clash: await overnightClashWarning(context.supabase, { visitIds: data.visitIds }),
+      lessonClashes,
+    };
   });
 
 /** What a tech is still holding, by day — read BEFORE offering to move it. */

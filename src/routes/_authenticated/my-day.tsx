@@ -41,6 +41,7 @@ import {
   SKIP_REASON_LABELS,
   LESSON_SKIP_REASON_LABELS,
   WALK_SKIP_REASON_LABELS,
+  SIT_SKIP_REASON_LABELS,
   techSkipReasonCodes,
 } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
@@ -91,6 +92,7 @@ import {
   Ban,
   ShieldCheck,
   ReceiptText,
+  BellRing,
   Info as InfoIcon,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -143,6 +145,19 @@ import {
   isWalkVisit,
   useWalkReport,
 } from "@/components/my-day/WalkParts";
+import {
+  SitCareLog,
+  SitCodesHint,
+  SitEmergencyFacts,
+  SitMeta,
+  SitNoteField,
+  SitPetsCare,
+  isSitVisit,
+  sitEmergency,
+  sitStepLabel,
+  useSitCare,
+  useSitPets,
+} from "@/components/my-day/SitParts";
 import { LogExpenseSheet } from "@/components/LogExpenseSheet";
 import {
   captureCompletionFile,
@@ -150,7 +165,12 @@ import {
   takeCompletionPhoto,
   visitStep,
 } from "@/lib/visit-step";
-import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
+import {
+  PHOTO_KIND_OPTIONS,
+  photoKindLabel,
+  defaultPhotoKind,
+  type PhotoKind,
+} from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
@@ -516,7 +536,8 @@ function MyDay() {
   // offline Complete moves the count and promotes the next stop. The rules
   // (H1: skipped is not done; BUG-17: an open job outranks the next scheduled
   // one) live in lib/my-day-progress.ts, where they are tested.
-  const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } = dayAtAGlance(visits);
+  const { completedCount, skippedCount, missedCount, total, pct, activeVisit, nextUp } =
+    dayAtAGlance(visits);
   const upcomingDays = useQuery({
     queryKey: ["my-upcoming-days"],
     queryFn: () => upcomingFn({ data: {} }),
@@ -725,7 +746,10 @@ function MyDay() {
                           aria-label={`${headline}${queued}. ${updated}${warning}`}
                           className="block w-full truncate py-1 text-start touch:min-h-11"
                         >
-                          <span className="font-medium">{headline}{queued}</span>
+                          <span className="font-medium">
+                            {headline}
+                            {queued}
+                          </span>
                           {warning ? (
                             <span className="font-medium">{warning}</span>
                           ) : (
@@ -734,7 +758,10 @@ function MyDay() {
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="w-[min(18rem,calc(100vw-2rem))] space-y-1 p-3 text-sm">
-                        <p>{headline}{queued}</p>
+                        <p>
+                          {headline}
+                          {queued}
+                        </p>
                         <p>{updated}</p>
                         {freshness.beyondTrustHorizon && <p>{t("myDay.routeMayHaveChanged")}</p>}
                       </PopoverContent>
@@ -1335,9 +1362,13 @@ function cacheAgeText(t: TFunction, ageMs: number): string {
 }
 
 /** A skip reason code in the tech's language. A walk uses the walker labels
- *  (`walkSkipReason.<code>`), a lesson the trainer's (`lessonSkipReason.<code>`).
- *  An unknown code is shown as-is. */
+ *  (`walkSkipReason.<code>`), a lesson the trainer's (`lessonSkipReason.<code>`),
+ *  a sit the sitter's (`sitSkipReason.<code>`). An unknown code is shown as-is. */
 function skipReasonLabel(t: TFunction, code: string, line?: string): string {
+  if (line === "pet_sitting") {
+    const english = SIT_SKIP_REASON_LABELS[code as keyof typeof SIT_SKIP_REASON_LABELS];
+    if (english) return t(`sitSkipReason.${code}`, { defaultValue: english });
+  }
   if (line === "dog_walking") {
     const english = WALK_SKIP_REASON_LABELS[code as keyof typeof WALK_SKIP_REASON_LABELS];
     if (english) return t(`walkSkipReason.${code}`, { defaultValue: english });
@@ -1678,6 +1709,12 @@ function VisitCard({
   // stop, pet waste included, keeps its card exactly as it was.
   const walk = isWalkVisit(visit);
   const walkReport = useWalkReport(visit.id);
+  // A pet sitting visit reads as a sit (components/my-day/SitParts.tsx): the
+  // stay, the pets' care, the care log. Its note for the client is the walk
+  // report's note.
+  const sit = isSitVisit(visit);
+  const sitPets = useSitPets(visit);
+  const sitCare = useSitCare(visit, sit);
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -1745,8 +1782,9 @@ function VisitCard({
   // Completion, and a "before" shot got filed as the finished yard). Once the
   // visit is under way it is `photoKind` again, which opens on Completion.
   const [photoKindChosen, setPhotoKindChosen] = useState(false);
-  const shownPhotoKind: PhotoKind =
-    !photoKindChosen ? defaultPhotoKind(visit.status, startedHere) : photoKind;
+  const shownPhotoKind: PhotoKind = !photoKindChosen
+    ? defaultPhotoKind(visit.status, startedHere)
+    : photoKind;
   // Which photo the in-app viewer is showing, and the signed URLs the
   // thumbnails have already fetched. Keyed by photo id rather than index so a
   // photo arriving mid-render cannot shift somebody else's URL onto it.
@@ -1883,8 +1921,7 @@ function VisitCard({
   const completeToast = (r: { queued: boolean; result?: unknown }) => {
     if (r.queued) return t("visit.completeQueued");
     const summary = (r.result as any)?.notificationSummary as
-      | { sent?: string[]; pending?: boolean }
-      | undefined;
+      { sent?: string[]; pending?: boolean } | undefined;
     const sent = summary?.sent ?? [];
     const labels = sent
       .map((name) =>
@@ -1911,7 +1948,9 @@ function VisitCard({
     mutationFn: async () => {
       // A walk's report goes first, so the completion email is written from
       // it (#410). Queued, the completion queues behind it, never ahead.
-      const reportQueued = walk && (await walkReport.send()).queued;
+      const reportQueued = (walk || sit) && (await walkReport.send()).queued;
+      // A sit's care entries still on the device go first as well (#411).
+      const careQueued = sit && (await sitCare.hasQueued());
       return actions.complete({
         note: note.trim() || undefined,
         noPhotoReason: photoOnFile ? undefined : noPhotoReason.trim() || undefined,
@@ -1921,7 +1960,7 @@ function VisitCard({
           checklist.length > 0
             ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
-        queueOnly: reportQueued,
+        queueOnly: reportQueued || careQueued,
       });
     },
     onSuccess: (r) => {
@@ -2160,14 +2199,18 @@ function VisitCard({
     step === "start"
       ? walk
         ? t("walk.start")
-        : t("myDay.start")
+        : sit
+          ? sitStepLabel(t, visit.sit_facts, "start")
+          : t("myDay.start")
       : step === "photo"
         ? uploading
           ? t("photo.uploading")
           : t("visit.takeCompletionPhotoStep")
         : walk
           ? t("walk.end")
-          : t("myDay.complete");
+          : sit
+            ? sitStepLabel(t, visit.sit_facts, "end")
+            : t("myDay.complete");
 
   // The owner's checklist, as rows. Each row is the label AND the box, 44px
   // tall at every width, so a gloved thumb anywhere on the line ticks it --
@@ -2390,6 +2433,7 @@ function VisitCard({
             </div>
           )}
           {walk && <WalkMeta visit={visit} dayVisits={dayVisits} />}
+          {sit && <SitMeta visit={visit} locale={locale} />}
 
           {!collapsed && (
             <>
@@ -2413,7 +2457,7 @@ function VisitCard({
                   <span className="min-w-0">
                     {visit.gate_reply === "do_not_enter"
                       ? t("visit.customerSaysDoNotEnter")
-                      : t("visit.customerSaysDogsSecured")}
+                      : t(sit ? "visit.customerSaysPetsSecured" : "visit.customerSaysDogsSecured")}
                     {visit.gate_reply_at
                       ? ` (${orgLocalTime(visit.gate_reply_at, tz, locale)})`
                       : ""}
@@ -2425,12 +2469,24 @@ function VisitCard({
                   they're walking into. Never silent: the priced count when
                   there are no dog records, "No dogs on file" when there is
                   neither -- see DogsLine. */}
-              <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} />
+              {sit ? (
+                <>
+                  <SitPetsCare pets={sitPets} locale={locale} />
+                  <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
+                </>
+              ) : (
+                <DogsLine
+                  dogs={p?.dogs}
+                  dogCount={facts?.dogCount}
+                  pets={service?.line === "pet_sitting"}
+                />
+              )}
 
-              {walk && <WalkAccess property={p} />}
+              {(walk || sit) && <WalkAccess property={p} />}
               {/* Getting in. One block, bordered, at a size that survives
                   sunlight and gloves — see AccessFact. */}
-              {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
+              {sit && <SitCodesHint visit={visit} locale={locale} />}
+              {(p?.gate_code || p?.lock_box_code || p?.key_location || p?.alarm_notes) && (
                 <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg border bg-muted/30 p-2.5">
                   {p?.gate_code && (
                     <AccessFact icon={Fence} label={t("access.gate")} value={p.gate_code} mono />
@@ -2446,6 +2502,11 @@ function VisitCard({
                   {p?.key_location && (
                     <div className="col-span-2">
                       <AccessFact icon={KeyRound} label={t("access.key")} value={p.key_location} />
+                    </div>
+                  )}
+                  {p?.alarm_notes && (
+                    <div className="col-span-2">
+                      <AccessFact icon={BellRing} label={t("access.alarm")} value={p.alarm_notes} />
                     </div>
                   )}
                 </div>
@@ -2743,6 +2804,13 @@ function VisitCard({
 
           {walk && underWay && canPerformVisit && (
             <WalkReportFields visitId={visit.id} report={walkReport} />
+          )}
+
+          {sit && underWay && canPerformVisit && (
+            <>
+              <SitCareLog visit={visit} pets={sitPets} care={sitCare} tz={tz} locale={locale} />
+              <SitNoteField visitId={visit.id} report={walkReport} />
+            </>
           )}
 
           {underWay && canPerformVisit && (

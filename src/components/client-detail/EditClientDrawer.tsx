@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateClient } from "@/lib/clients.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
-import { useCommercialAccounts } from "@/components/CommercialOnly";
+import { useCommercialAccounts, useServiceLines } from "@/components/CommercialOnly";
+import { runsPetSitting } from "@/lib/pets";
+import { centsToDollarInput, parseDollarsToCents } from "@/lib/services";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { clientNameFormDefaults } from "@/lib/client-name";
@@ -48,6 +50,13 @@ export function EditClientDrawer({
       billingFrequency: (client?.billing_frequency ?? "monthly") as
         "after_each_visit" | "weekly" | "monthly" | "quarterly" | "yearly",
       taxExempt: !!client?.tax_exempt,
+      emergencyName: (client?.emergency_contact_name ?? "") as string,
+      emergencyPhone: (client?.emergency_contact_phone ?? "") as string,
+      emergencyMayApproveVet: !!client?.emergency_contact_may_approve_vet,
+      vetLimit:
+        client?.vet_treatment_limit_cents != null
+          ? centsToDollarInput(client.vet_treatment_limit_cents)
+          : "",
     };
   }, [client]);
   const [form, setForm] = useState(initial);
@@ -81,6 +90,15 @@ export function EditClientDrawer({
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const { enabled: commercialEnabled } = useCommercialAccounts();
+  // Pet sitting (#411): who the sitter calls and what they may spend at the
+  // vet. Shown to a sitting business, or when something is already saved.
+  const { lines, known: linesKnown } = useServiceLines();
+  const emergency =
+    (linesKnown && runsPetSitting(lines)) ||
+    !!(initial.emergencyName || initial.emergencyPhone || initial.vetLimit);
+  const vetLimitCents = form.vetLimit.trim() ? parseDollarsToCents(form.vetLimit) : null;
+  const vetLimitInvalid =
+    vetLimitCents != null && (Number.isNaN(vetLimitCents) || vetLimitCents > 10_000_000);
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => {
     edited.current = true;
@@ -123,6 +141,17 @@ export function EditClientDrawer({
           // Sent only when changed: it takes the billing permission, and an
           // unrelated edit should not need it on its account.
           ...(form.taxExempt !== initial.taxExempt ? { taxExempt: form.taxExempt } : {}),
+          // Each sent only when changed, so an unrelated edit logs nothing here.
+          ...(form.emergencyName !== initial.emergencyName
+            ? { emergencyContactName: form.emergencyName.trim() || null }
+            : {}),
+          ...(form.emergencyPhone !== initial.emergencyPhone
+            ? { emergencyContactPhone: form.emergencyPhone.trim() || null }
+            : {}),
+          ...(form.emergencyMayApproveVet !== initial.emergencyMayApproveVet
+            ? { emergencyContactMayApproveVet: form.emergencyMayApproveVet }
+            : {}),
+          ...(form.vetLimit !== initial.vetLimit ? { vetTreatmentLimitCents: vetLimitCents } : {}),
         },
       }),
     onSuccess: () => {
@@ -305,6 +334,61 @@ export function EditClientDrawer({
             . Applies to invoices made after you save; ones already issued keep their tax.
           </p>
         </div>
+        {emergency && (
+          <fieldset className="min-w-0 space-y-3 rounded-md border bg-muted/20 p-3">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Emergency contact and vet care
+            </legend>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="min-w-0">
+                <Label htmlFor="ec-emergency-name">Emergency contact</Label>
+                <Input
+                  id="ec-emergency-name"
+                  value={form.emergencyName}
+                  maxLength={200}
+                  onChange={(e) => set("emergencyName", e.target.value)}
+                  placeholder="Who to call if the client can't be reached"
+                />
+              </div>
+              <div className="min-w-0">
+                <Label htmlFor="ec-emergency-phone">Their phone</Label>
+                <Input
+                  id="ec-emergency-phone"
+                  type="tel"
+                  value={form.emergencyPhone}
+                  maxLength={40}
+                  onChange={(e) => set("emergencyPhone", e.target.value)}
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm touch:min-h-11">
+              <input
+                type="checkbox"
+                checked={form.emergencyMayApproveVet}
+                onChange={(e) => set("emergencyMayApproveVet", e.target.checked)}
+              />
+              <span>They may approve vet care</span>
+            </label>
+            <div className="min-w-0">
+              <Label htmlFor="ec-vet-limit">Vet treatment limit ($)</Label>
+              <Input
+                id="ec-vet-limit"
+                className="sm:w-48"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={form.vetLimit}
+                onChange={(e) => set("vetLimit", e.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                What a sitter may spend on treatment without asking. Each pet's vet is on the
+                Properties tab.
+              </p>
+              {vetLimitInvalid && (
+                <p className="mt-1 text-xs text-destructive">Enter an amount in dollars and cents.</p>
+              )}
+            </div>
+          </fieldset>
+        )}
         <fieldset className="rounded-md border bg-muted/20 p-3">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Communication preferences
@@ -347,7 +431,7 @@ export function EditClientDrawer({
           Billing addresses are managed by Stripe and don't need to be entered here.
         </p>
         <DrawerFooter>
-          <Button type="submit" disabled={saveMut.isPending || !dirty}>
+          <Button type="submit" disabled={saveMut.isPending || !dirty || vetLimitInvalid}>
             {saveMut.isPending ? "Saving…" : "Save changes"}
           </Button>
         </DrawerFooter>

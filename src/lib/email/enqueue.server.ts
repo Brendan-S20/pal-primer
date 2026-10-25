@@ -25,10 +25,13 @@ type NotifyKey =
   | "notify_email_visit_reminder"
   | "notify_email_on_my_way"
   | "notify_email_quote_sent"
+  | "notify_email_stay_confirmed"
+  | "notify_email_stay_ending"
   | "notify_email_training_package"
   | "notify_email_walk_not_done"
   | "notify_email_walk_schedule_change"
-  | "notify_email_walk_canceled";
+  | "notify_email_walk_canceled"
+  | "notify_email_missed_meds";
 
 interface EnqueueParams {
   organizationId: string;

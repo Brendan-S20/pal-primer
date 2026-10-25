@@ -28,6 +28,7 @@ import {
   ACCESS_CODE_MAX,
   ACCESS_METHODS,
   ACCESS_METHOD_LABEL,
+  ALARM_NOTES_MAX,
   KEY_TAG_MAX,
   gateCodeSave,
   isAccessMethod,
@@ -108,6 +109,7 @@ export function PropertyDrawer({
       keyTag: (property?.key_tag ?? "") as string,
       lockBoxCode: (property?.lock_box_code ?? "") as string,
       keyLocation: (property?.key_location ?? "") as string,
+      alarmNotes: (property?.alarm_notes ?? "") as string,
     }),
     [property, client],
   );
@@ -440,6 +442,19 @@ export function PropertyDrawer({
                   maxLength={200}
                   onChange={(e) => set("keyLocation", e.target.value)}
                   placeholder="Under the blue pot by the back door"
+                />
+              </div>
+              <div className="min-w-0 sm:col-span-2">
+                <Label htmlFor="pd-alarm" className="text-xs">
+                  Alarm
+                </Label>
+                <Input
+                  id="pd-alarm"
+                  value={form.alarmNotes ?? ""}
+                  maxLength={ALARM_NOTES_MAX}
+                  autoComplete="off"
+                  onChange={(e) => set("alarmNotes", e.target.value)}
+                  placeholder="Panel by the garage door, code 2580"
                 />
               </div>
               <label className="flex items-center gap-2 text-sm touch:min-h-11">

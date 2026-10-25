@@ -61,6 +61,22 @@ export interface SyncCallers {
   recordWalkReport?: (args: {
     data: { visitId: string; pee: boolean | null; poo: boolean | null; reportNote: string | null };
   }) => Promise<unknown>;
+  /** A sitter's care log entry, and its undo (#411). Optional for the same
+   *  reason; useSyncCallers always sets both. */
+  recordCareEntry?: (args: {
+    data: {
+      id: string;
+      visitId: string;
+      petId: string | null;
+      kind: "feed" | "meds" | "litter" | "walk" | "water" | "other";
+      medName: string | null;
+      status: "done" | "missed";
+      missedReason: string | null;
+      note: string | null;
+      at?: string;
+    };
+  }) => Promise<unknown>;
+  deleteCareEntry?: (args: { data: { id: string } }) => Promise<unknown>;
   /** The time clock. `at` is the tap time; the SQL decides whether to believe
    *  it, as complete_visit does with `completedAt`. */
   clockIn: (args: { data: { at?: string } }) => Promise<unknown>;
@@ -131,6 +147,28 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
           reportNote: action.reportNote,
         },
       });
+      return;
+    case "care_entry":
+      // When the dose was given, not when signal came back: the visit report
+      // and the office read this time.
+      if (!callers.recordCareEntry) throw new Error("This device cannot send a care log entry yet");
+      await callers.recordCareEntry({
+        data: {
+          id: action.entryId,
+          visitId: action.visitId,
+          petId: action.petId,
+          kind: action.careKind,
+          medName: action.medName,
+          status: action.status,
+          missedReason: action.missedReason,
+          note: action.note,
+          at: new Date(action.ts).toISOString(),
+        },
+      });
+      return;
+    case "care_entry_undo":
+      if (!callers.deleteCareEntry) throw new Error("This device cannot undo a care log entry yet");
+      await callers.deleteCareEntry({ data: { id: action.entryId } });
       return;
     case "station":
       // The bag counts a commercial account is invoiced against, so the same

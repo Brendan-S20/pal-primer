@@ -77,7 +77,10 @@ describe("My Day's sticky header", () => {
 
   it("lets a touch user read the full saved-copy age and stale-route warning", () => {
     expect(src).toMatch(/aria-label=\{`\$\{headline\}\$\{queued\}\. \$\{updated\}\$\{warning\}`\}/);
-    expect(src).toMatch(/<PopoverContent[^>]*>[\s\S]*?<p>\{headline\}\{queued\}<\/p>\s*<p>\{updated\}<\/p>/);
+    // Prettier may break the first paragraph across lines; the content is what counts.
+    expect(src).toMatch(
+      /<PopoverContent[^>]*>[\s\S]*?<p>\s*\{headline\}\s*\{queued\}\s*<\/p>\s*<p>\{updated\}<\/p>/,
+    );
     expect(src).toMatch(/freshness\.beyondTrustHorizon && <p>\{t\("myDay\.routeMayHaveChanged"\)\}<\/p>/);
   });
 });

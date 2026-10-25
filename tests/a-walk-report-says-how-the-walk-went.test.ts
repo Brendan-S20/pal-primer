@@ -148,17 +148,24 @@ describe("the report goes before the completion, live or queued", () => {
     expect(callers).toMatch(/recordWalkReport: walkReportFn/);
   });
 
-  it("only for a walk", () => {
+  it("only for a walk, or a pet sitting visit's note for the client (#411)", () => {
     expect(page).toMatch(/const walk = isWalkVisit\(visit\)/);
-    expect(page).toMatch(/const reportQueued = walk && \(await walkReport\.send\(\)\)\.queued/);
+    expect(page).toMatch(
+      /const reportQueued = \(walk \|\| sit\) && \(await walkReport\.send\(\)\)\.queued/,
+    );
   });
 });
 
 describe("a pet-waste card keeps its words", () => {
   const page = read("src/routes/_authenticated/my-day.tsx");
   it("still says Start and Complete when the stop is not a walk", () => {
-    expect(page).toMatch(/walk\s*\?\s*t\("walk\.start"\)\s*:\s*t\("myDay\.start"\)/);
-    expect(page).toMatch(/walk\s*\?\s*t\("walk\.end"\)\s*:\s*t\("myDay\.complete"\)/);
+    // A pet sitting stop (#411) has its own words between the two.
+    expect(page).toMatch(
+      /walk\s*\?\s*t\("walk\.start"\)\s*:\s*sit\s*\?\s*sitStepLabel\(t, visit\.sit_facts, "start"\)\s*:\s*t\("myDay\.start"\)/,
+    );
+    expect(page).toMatch(
+      /walk\s*\?\s*t\("walk\.end"\)\s*:\s*sit\s*\?\s*sitStepLabel\(t, visit\.sit_facts, "end"\)\s*:\s*t\("myDay\.complete"\)/,
+    );
     // The second timer is the old one, untouched, for every other stop.
     expect(page).toMatch(/inProg && visit\.started_at && !walk && \(/);
     expect(page).toMatch(/<ElapsedTimer startedAt=\{visit\.started_at\} \/>/);
@@ -168,7 +175,8 @@ describe("a pet-waste card keeps its words", () => {
     for (const part of ["WalkMeta", "WalkAccess", "WalkTimer", "WalkReportFields"]) {
       const at = page.indexOf(`<${part} `);
       expect(at, part).toBeGreaterThan(-1);
-      expect(page.slice(Math.max(0, at - 80), at), part).toMatch(/walk &&/);
+      // How the walker gets in is also how a sitter gets in (#411).
+      expect(page.slice(Math.max(0, at - 80), at), part).toMatch(/walk( \|\| sit\))? &&/);
     }
   });
 

@@ -87,6 +87,9 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   // to the person who pressed Apply, and only when they had left the page.
   { type: "routing_ready", label: "Auto-routing finished in the background" },
   { type: "routing_failed", label: "Auto-routing did not finish" },
+  // A sitter logged a medication as missed (src/lib/sit-notify.server.ts), to
+  // the owner, office managers and dispatchers.
+  { type: "missed_meds", label: "A sitter missed a medication" },
   // Training (src/lib/training-portal.server.ts), to owners and office
   // managers: a package with one session left, or 14 days from expiry.
   { type: "training_package", label: "Training packages running low or expiring" },

@@ -62,6 +62,13 @@ export function customerCanRequestService(line: string): boolean {
   return line !== "training";
 }
 
+/** Whether a client may ask for a stay from the portal. Sitting is Coming
+ *  soon until it joins BOOKABLE_SERVICE_LINES, the same gate the service
+ *  picker and training's portal read. */
+export function customerCanRequestStay(): boolean {
+  return BOOKABLE_SERVICE_LINES.includes("pet_sitting");
+}
+
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
   pet_waste: "Pet waste removal (scooping)",
   dog_walking: "Dog walking",
@@ -212,9 +219,10 @@ export function newClientWizardSteps(petWaste: boolean): readonly NewClientStep[
 // default and the estimator's defaults -- and a test holds it byte-identical,
 // so introducing lines changes nothing for a pet-waste business.
 //
-// The other lines' numbers are first proposals for step 2, when signup seeds
-// an org per line. Today only the checklist suggestions and the add-on
-// placeholder are read, and only for an org whose lines include them.
+// Checklist suggestions and add-on examples are read for the business's lines.
+// Sitting starter services are seeded in the database by
+// 20261024081200_a-sitting-business-starts-with-its-services.sql.
+// The other lines' estimator and multiplier values remain proposals.
 
 export type LineSeeds = {
   /** One-tap suggestions on the visit checklist editor. */
@@ -273,7 +281,7 @@ export const LINE_SEEDS: Readonly<Record<ServiceLine, LineSeeds>> = {
       { label: "Litter or yard cleaned up", required: false },
       { label: "Doors locked, lights as asked", required: true },
     ],
-    addOnExample: { code: "overnight", name: "Overnight stay" },
+    addOnExample: { code: "extra_pet", name: "Extra pet" },
     frequencyMultipliers: FLAT_MULTIPLIERS,
     estTime: fixedVisit(30, 5),
   },

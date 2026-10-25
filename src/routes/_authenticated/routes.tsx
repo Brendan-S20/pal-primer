@@ -85,6 +85,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { visitStayDates } from "@/lib/stays";
 import { skipReasonText } from "@/lib/skip-reason-text";
 
 export const Route = createFileRoute("/_authenticated/routes")({
@@ -722,6 +723,7 @@ function RoutesPage() {
           ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
           : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
       );
+      if (r.clash) toast.warning(r.clash);
       warnLessonClashes(r);
       afterBulk();
     },
@@ -742,6 +744,7 @@ function RoutesPage() {
       } else {
         toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
       }
+      if (r.clash) toast.warning(r.clash);
       warnLessonClashes(r);
       afterBulk();
     },
@@ -917,11 +920,11 @@ function RoutesPage() {
     setLocalColumns(next);
 
     try {
-      warnLessonClashes(
-        await reassign({
-          data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
-        }),
-      );
+      const r = await reassign({
+        data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
+      });
+      if (r.clash) toast.warning(r.clash);
+      warnLessonClashes(r);
       if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
       if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
     } catch (err) {
@@ -969,6 +972,14 @@ function RoutesPage() {
   return (
     <>
       {moveDialog}
+      {visitsData?.clash && (
+        <p
+          role="alert"
+          className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+        >
+          {visitsData.clash}
+        </p>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-3">
         {/* ── THE PAGE IS CALLED SCHEDULE, AND NOW SAYS SO ─────────────────
             The sidebar, the tab bar, the command palette and the dashboard all
@@ -1199,78 +1210,78 @@ function RoutesPage() {
                   </button>
                 </div>
               </div>
-            {canManageCrew && (
-              <div className="-mx-4 -mb-4 border-t" data-testid="schedule-crew">
-                <div className="border-b px-3 py-2">
-                  <div className="flex items-center gap-1.5 text-sm font-medium">
-                    <Users className="h-4 w-4 shrink-0" />
-                    Who runs routes
-                  </div>
-                  <div className="text-2xs text-muted-foreground">
-                    Everyone switched on here gets a lane on the board and can be assigned work.
-                    Everyone else stays in the office.
-                  </div>
-                </div>
-                <div className="max-h-72 overflow-y-auto">
-                  {allStaff.length === 0 ? (
-                    <div className="px-3 py-4 text-xs text-muted-foreground">
-                      Nobody on the team yet.{" "}
-                      <Link to="/settings/users" className="underline">
-                        Invite someone
-                      </Link>
-                      .
+              {canManageCrew && (
+                <div className="-mx-4 -mb-4 border-t" data-testid="schedule-crew">
+                  <div className="border-b px-3 py-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <Users className="h-4 w-4 shrink-0" />
+                      Who runs routes
                     </div>
-                  ) : (
-                    allStaff.map((s: any) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-0"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-sm">{s.display_name}</div>
-                          <div className="text-2xs text-muted-foreground capitalize">
-                            {s.role ? humanizeRole(s.role) : "—"}
-                            {/* Only ever shown for someone being switched OFF,
+                    <div className="text-2xs text-muted-foreground">
+                      Everyone switched on here gets a lane on the board and can be assigned work.
+                      Everyone else stays in the office.
+                    </div>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {allStaff.length === 0 ? (
+                      <div className="px-3 py-4 text-xs text-muted-foreground">
+                        Nobody on the team yet.{" "}
+                        <Link to="/settings/users" className="underline">
+                          Invite someone
+                        </Link>
+                        .
+                      </div>
+                    ) : (
+                      allStaff.map((s: any) => (
+                        <div
+                          key={s.id}
+                          className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-0"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-sm">{s.display_name}</div>
+                            <div className="text-2xs text-muted-foreground capitalize">
+                              {s.role ? humanizeRole(s.role) : "—"}
+                              {/* Only ever shown for someone being switched OFF,
                                 where it is the consequence rather than trivia:
                                 their lane is about to disappear with work
                                 still in it. */}
-                            {s.is_field_tech && assignedIds.has(s.id) ? (
-                              <span> · holds work today</span>
-                            ) : null}
-                            {offToday.has(s.id) ? (
-                              <span className="text-amber-600"> · off today</span>
-                            ) : null}
+                              {s.is_field_tech && assignedIds.has(s.id) ? (
+                                <span> · holds work today</span>
+                              ) : null}
+                              {offToday.has(s.id) ? (
+                                <span className="text-amber-600"> · off today</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-2xs"
+                              onClick={() => setRoutingDialogStaff(s)}
+                              title="Time off and route endpoints"
+                            >
+                              <CalendarOff className="h-3.5 w-3.5 shrink-0" />
+                            </Button>
+                            <Switch
+                              checked={Boolean(s.is_field_tech)}
+                              disabled={routingMut.isPending}
+                              onCheckedChange={(next) =>
+                                routingMut.mutate({ staffId: s.id, isFieldTech: next })
+                              }
+                              aria-label={`${s.display_name} runs routes`}
+                            />
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-2xs"
-                            onClick={() => setRoutingDialogStaff(s)}
-                            title="Time off and route endpoints"
-                          >
-                            <CalendarOff className="h-3.5 w-3.5 shrink-0" />
-                          </Button>
-                          <Switch
-                            checked={Boolean(s.is_field_tech)}
-                            disabled={routingMut.isPending}
-                            onCheckedChange={(next) =>
-                              routingMut.mutate({ staffId: s.id, isFieldTech: next })
-                            }
-                            aria-label={`${s.display_name} runs routes`}
-                          />
-                        </div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
+                  <div className="border-t px-3 py-2 text-2xs text-muted-foreground">
+                    Switching somebody off doesn&apos;t move their visits, so use{" "}
+                    <strong>Cover</strong> on their lane for that.
+                  </div>
                 </div>
-                <div className="border-t px-3 py-2 text-2xs text-muted-foreground">
-                  Switching somebody off doesn&apos;t move their visits, so use{" "}
-                  <strong>Cover</strong> on their lane for that.
-                </div>
-              </div>
-            )}
+              )}
             </PopoverContent>
           </Popover>
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
@@ -1791,7 +1802,11 @@ function RoutesPage() {
           so the last cards of a lane can be scrolled up out from under it.
           The card measures itself into --auto-routing-h (QA row 17). */}
       {toolsOpen && (
-        <div aria-hidden="true" data-auto-routing-room="" className="h-[var(--auto-routing-h,0px)]" />
+        <div
+          aria-hidden="true"
+          data-auto-routing-room=""
+          className="h-[var(--auto-routing-h,0px)]"
+        />
       )}
       <StaffRoutingDialog
         staff={routingDialogStaff}
@@ -2502,6 +2517,14 @@ function VisitCardView({
                 title={visit.services.name}
               >
                 <bdi className="truncate">{visit.services.name}</bdi>
+              </Badge>
+            )}
+            {visitStayDates((visit as any).subscriptions?.stays) && (
+              // Part of a sitter's stay (#411), with its dates.
+              <Badge variant="outline" className="h-4 min-w-0 max-w-full px-1 text-3xs">
+                <span className="truncate">
+                  Stay, {visitStayDates((visit as any).subscriptions?.stays)}
+                </span>
               </Badge>
             )}
             {visit.zones?.name && (

@@ -122,6 +122,7 @@ export const loadOnboardingStatus = createServerOnlyFn(
     ]);
     const orgLines = serviceLinesOrDefault(lines.data?.service_lines);
     const petWaste = runsPetWaste(orgLines);
+    const sitting = orgLines.includes("pet_sitting");
 
     // A training business prices lessons as a package and scores a skill
     // list, and signup seeds the package inactive at $0 (training-package-
@@ -329,6 +330,24 @@ export const loadOnboardingStatus = createServerOnlyFn(
         gate: "/payments",
       },
     ];
+
+    if (sitting) {
+      const { data: services } = await supabase
+        .from("services")
+        .select("created_at, updated_at")
+        .eq("organization_id", orgId)
+        .eq("service_line", "pet_sitting")
+        .eq("active", true);
+      Object.assign(steps.find((step) => step.id === "zones")!, {
+        label: "Price your sitting services",
+        description:
+          "Review Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window before booking your first stay.",
+        done: (services ?? []).some((s) => s.updated_at !== s.created_at),
+        to: "/settings/services",
+        cta: "Review sitting services",
+        gate: "/settings/services",
+      });
+    }
 
     const completed = steps.filter((s) => s.done).length;
     return {

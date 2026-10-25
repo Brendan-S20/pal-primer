@@ -214,9 +214,17 @@ export function VisitsTab({
       );
       for (const r of results) if (r.status === "fulfilled") warnLessonClashes(r.value);
       const ok = results.filter((r) => r.status === "fulfilled").length;
-      return { ok, failed: results.length - ok };
+      const clash = results.find((r) => r.status === "fulfilled" && r.value.clash);
+      return {
+        ok,
+        failed: results.length - ok,
+        clash: clash?.status === "fulfilled" ? clash.value.clash : null,
+      };
     },
-    onSuccess: (r) => afterBulk(r, bulkStaffId ? "Reassigned" : "Unassigned"),
+    onSuccess: (r) => {
+      afterBulk(r, bulkStaffId ? "Reassigned" : "Unassigned");
+      if (r.clash) toast.warning(r.clash);
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -960,8 +968,9 @@ function VisitDetailDrawer({
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
 
-  const afterAction = (msg: string) => {
+  const afterAction = (msg: string, clash?: string | null) => {
     toast.success(msg);
+    if (clash) toast.warning(clash);
     setAction(null);
     setNewDate("");
     setCancelReason("");
@@ -980,7 +989,7 @@ function VisitDetailDrawer({
     mutationFn: () => rescheduleFn({ data: { visitId: v.id, newDate } }),
     onSuccess: (r) => {
       warnLessonClashes(r);
-      afterAction("Visit rescheduled");
+      afterAction("Visit rescheduled", r.clash);
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -1001,7 +1010,7 @@ function VisitDetailDrawer({
     mutationFn: () => reassignFn({ data: { visitId: v.id, staffId: newStaffId || null } }),
     onSuccess: (r) => {
       warnLessonClashes(r);
-      afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned");
+      afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned", r.clash);
     },
     onError: (e) => toast.error((e as Error).message),
   });

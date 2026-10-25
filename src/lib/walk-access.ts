@@ -41,14 +41,15 @@ export function hasWalkAccess(p: WalkAccessFields | null | undefined): boolean {
   return !!p && (isAccessMethod(p.access_method) || !!p.key_held || !!p.key_tag?.trim());
 }
 
-/** The office sees the walker-access fields when the business runs dog walking,
- *  or when this property already has a value (so nothing saved is hidden). A
- *  pet-waste-only business with nothing recorded sees the drawer as before. */
+/** The office sees the walker-access fields when the business runs dog walking
+ *  or pet sitting (a sitter goes inside too, #411), or when this property
+ *  already has a value (so nothing saved is hidden). A pet-waste-only business
+ *  with nothing recorded sees the drawer as before. */
 export function showsWalkAccess(
   lines: readonly ServiceLine[],
   p: WalkAccessFields | null | undefined,
 ): boolean {
-  return lines.includes("dog_walking") || hasWalkAccess(p);
+  return lines.includes("dog_walking") || lines.includes("pet_sitting") || hasWalkAccess(p);
 }
 
 export type WalkAccessForm = {
@@ -57,7 +58,11 @@ export type WalkAccessForm = {
   keyTag: string;
   lockBoxCode: string;
   keyLocation: string;
+  /** Alarm details (#411). Read and saved like the lock box code. */
+  alarmNotes?: string;
 };
+
+export const ALARM_NOTES_MAX = 500;
 
 /** The gate code under the same save rule as the walker-access codes. It is
  *  on every property drawer, so it has its own helper. */
@@ -88,14 +93,15 @@ export function gateCodeSave(initial: GateCodeForm, form: GateCodeForm): { gateC
  *
  *  Turning "key held" off in this edit still clears the key tag. */
 export function walkAccessSave(initial: WalkAccessForm, form: WalkAccessForm) {
-  const changed = (k: "keyTag" | "lockBoxCode" | "keyLocation") =>
-    form[k].trim() !== initial[k].trim();
+  const changed = (k: "keyTag" | "lockBoxCode" | "keyLocation" | "alarmNotes") =>
+    (form[k] ?? "").trim() !== (initial[k] ?? "").trim();
   const out: {
     accessMethod: AccessMethod | null;
     keyHeld: boolean;
     keyTag?: string | null;
     lockBoxCode?: string | null;
     keyLocation?: string | null;
+    alarmNotes?: string | null;
   } = {
     accessMethod: form.accessMethod || null,
     keyHeld: form.keyHeld,
@@ -104,6 +110,7 @@ export function walkAccessSave(initial: WalkAccessForm, form: WalkAccessForm) {
   else if (form.keyHeld && changed("keyTag")) out.keyTag = form.keyTag.trim() || null;
   if (changed("lockBoxCode")) out.lockBoxCode = form.lockBoxCode.trim() || null;
   if (changed("keyLocation")) out.keyLocation = form.keyLocation.trim() || null;
+  if (changed("alarmNotes")) out.alarmNotes = (form.alarmNotes ?? "").trim() || null;
   return out;
 }
 

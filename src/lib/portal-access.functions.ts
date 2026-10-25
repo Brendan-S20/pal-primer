@@ -71,15 +71,15 @@ export function portalAccessOf(p: PropertyRow): PortalAccess {
 
 const PROPERTY_COLUMNS = "id, label, street, access_method, key_location, lock_box_code, gate_code";
 
-/** The client's properties that a live dog-walking plan serves. */
-async function walkPropertyIds(sb: any, clientId: string, orgId: string): Promise<string[]> {
+/** The client's properties served by a live walking or sitting plan. */
+async function homeServicePropertyIds(sb: any, clientId: string, orgId: string): Promise<string[]> {
   const { data } = await sb
     .from("subscriptions")
     .select("property_id, services!inner(service_line)")
     .eq("client_id", clientId)
     .eq("organization_id", orgId)
     .in("status", ["active", "paused"])
-    .eq("services.service_line", "dog_walking");
+    .in("services.service_line", ["dog_walking", "pet_sitting"]);
   return [
     ...new Set(((data ?? []) as Array<{ property_id: string | null }>).map((r) => r.property_id)),
   ].filter((id): id is string => !!id);
@@ -91,7 +91,7 @@ export const portalGetAccess = createServerFn({ method: "GET" })
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token, { readOnly: true });
     const sb = await admin();
-    const ids = await walkPropertyIds(sb, session.clientId, session.organizationId);
+    const ids = await homeServicePropertyIds(sb, session.clientId, session.organizationId);
     if (ids.length === 0) return { properties: [] as PortalAccess[] };
     const { data: rows, error } = await sb
       .from("properties")
@@ -164,7 +164,7 @@ export const portalUpdateAccess = createServerFn({ method: "POST" })
 
     // The client's own, live property, on a walk plan. Anything else is the
     // same refusal, so the answer says nothing about other clients' homes.
-    const ids = await walkPropertyIds(sb, session.clientId, session.organizationId);
+    const ids = await homeServicePropertyIds(sb, session.clientId, session.organizationId);
     if (!ids.includes(data.propertyId)) throw new Error("That address isn't on your account.");
 
     const { patch, changed } = accessPatch(data);

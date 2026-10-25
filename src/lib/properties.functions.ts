@@ -1,7 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { ACCESS_CODE_MAX, ACCESS_METHODS, KEY_TAG_MAX, cleanKeyTag } from "@/lib/walk-access";
+import {
+  ACCESS_CODE_MAX,
+  ACCESS_METHODS,
+  ALARM_NOTES_MAX,
+  KEY_TAG_MAX,
+  cleanKeyTag,
+} from "@/lib/walk-access";
 
 // yard_size is derived from the boundary by a DB trigger now; the field is
 // still accepted (older forms send it) but never written.
@@ -68,13 +74,14 @@ const createPropSchema = z.object({
   keyTag: z.string().max(KEY_TAG_MAX).nullable().optional(),
   lockBoxCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
   keyLocation: z.string().max(200).nullable().optional(),
+  alarmNotes: z.string().max(ALARM_NOTES_MAX).nullable().optional(),
 });
 
 /** The walker-access columns to write: only the fields the form sent. */
 function walkAccessPatch(
   data: Pick<
     z.infer<typeof createPropSchema>,
-    "accessMethod" | "keyHeld" | "keyTag" | "lockBoxCode" | "keyLocation"
+    "accessMethod" | "keyHeld" | "keyTag" | "lockBoxCode" | "keyLocation" | "alarmNotes"
   >,
 ) {
   const patch: {
@@ -83,12 +90,14 @@ function walkAccessPatch(
     key_tag?: string | null;
     lock_box_code?: string | null;
     key_location?: string | null;
+    alarm_notes?: string | null;
   } = {};
   if (data.accessMethod !== undefined) patch.access_method = data.accessMethod;
   if (data.keyHeld !== undefined) patch.key_held = data.keyHeld;
   if (data.keyTag !== undefined) patch.key_tag = cleanKeyTag(data.keyTag);
   if (data.lockBoxCode !== undefined) patch.lock_box_code = data.lockBoxCode?.trim() || null;
   if (data.keyLocation !== undefined) patch.key_location = data.keyLocation?.trim() || null;
+  if (data.alarmNotes !== undefined) patch.alarm_notes = data.alarmNotes?.trim() || null;
   return patch;
 }
 

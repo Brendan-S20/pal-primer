@@ -57,6 +57,7 @@ import { Link } from "@tanstack/react-router";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
+import { visitStayDates } from "@/lib/stays";
 import {
   TrainingProgressPanel,
   TrainingSessionBadge,
@@ -199,6 +200,7 @@ export function VisitDetailDrawer({
       } else {
         toast.success(`Visit moved to ${formatDay(moveTo)}`);
       }
+      if (r.clash) toast.warning(r.clash);
       warnLessonClashes(r);
       setMoveTo("");
       invalidate();
@@ -226,8 +228,11 @@ export function VisitDetailDrawer({
       return;
     }
     setPendingStaff(staffId);
+    // The overnight clash warning is shown once the change is sent, since
+    // nothing is checked while it is held.
     const send = () =>
       doReassign({ data: { visitId: vid, staffId } }).then((r) => {
+        if (r.clash) toast.warning(r.clash);
         warnLessonClashes(r);
         return r;
       });
@@ -370,6 +375,10 @@ export function VisitDetailDrawer({
             {/* Booked by text, through the AI receptionist (subscriptions.booked_via). */}
             {(v as any)?.subscriptions?.booked_via === "ai_receptionist" && (
               <Badge variant="outline">Booked by AI receptionist</Badge>
+            )}
+            {/* Part of a sitter's stay (#411): the stay's dates. */}
+            {visitStayDates((v as any)?.subscriptions?.stays) && (
+              <Badge variant="outline">Stay, {visitStayDates((v as any).subscriptions.stays)}</Badge>
             )}
           </SheetTitle>
           <SheetDescription>

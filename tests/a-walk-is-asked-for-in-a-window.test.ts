@@ -216,7 +216,9 @@ describe("the wiring, end to end", () => {
     expect(dialog).toMatch(/earliestTime: t\.earliestTime, latestTime: t\.latestTime/);
     const visits = read("src/lib/visits.functions.ts");
     const create = visits.slice(visits.indexOf("export const createOneOffVisit"));
-    expect(create.slice(0, 1500)).toMatch(/earliestTime: z\.string\(\)/);
+    // Both ends of the window are in the schema, however Prettier wraps them.
+    expect(create.slice(0, 1500)).toMatch(/earliestTime: z\s*\.string\(\)/);
+    expect(create.slice(0, 1500)).toMatch(/latestTime: z\s*\.string\(\)/);
     // bookOneOffVisit writes them onto the one-off's plan.
     const server = read("src/lib/one-off-visit.server.ts");
     expect(server).toMatch(/earliest_time: input\.earliestTime/);

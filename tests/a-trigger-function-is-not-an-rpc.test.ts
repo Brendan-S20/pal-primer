@@ -217,6 +217,18 @@ describe("no trigger function is executable by a signed-in user", () => {
     // only when bookable): tg_orgs_service_lines_bookable, which refuses a
     // REST write adding a line that is still Coming soon. REVOKEd in the
     // same file.
+    // 67 -> 72 on 2026-10-16 (pet sitting, #411): tg_pet_care_instructions_pet
+    // (20261024080000) keeps a pet's care in the pet's business;
+    // tg_stays_validate, tg_stays_follow, tg_subscriptions_stay and
+    // tg_visits_stay_sitter (20261024080100) keep a stay, its plans and its
+    // sitter consistent. validate_walk_group_member is restated there, not
+    // new. Each REVOKEd from PUBLIC, anon and authenticated in the same file.
+    //
+    // 72 -> 73 on 2026-10-16 (20261024080300): tg_stays_invoice_guard
+    // keeps confirmation and invoice links on the transactional booking path.
+    // It revokes EXECUTE from PUBLIC, anon and authenticated in the same file.
+    // The 20261017 stay migrations re-create tg_stays_validate,
+    // tg_stays_follow and tg_stays_invoice_guard; none of them is new.
     //
     // 68 -> 75 on 2026-10-23 (20261023100000, a trainer sells a package of
     // sessions): training_service_package_guard, training_client_package_guard,
@@ -231,7 +243,9 @@ describe("no trigger function is executable by a signed-in user", () => {
     // authenticated in the same file. That file also re-creates four of the
     // package guards, and 20261023130000 re-creates
     // training_lesson_session_rule; none of them is new.
-    expect(triggerFunctions().size).toBe(76);
+    //
+    // Both branches merged (pet sitting #411 and training #476): 68 + 6 + 8.
+    expect(triggerFunctions().size).toBe(82);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

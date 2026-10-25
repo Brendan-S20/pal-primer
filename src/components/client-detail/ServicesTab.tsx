@@ -91,6 +91,8 @@ import { servicePriceCents } from "@/lib/services";
 import { useIntlLocale } from "@/lib/i18n";
 import { createWalkPlans } from "@/lib/walk-plans.functions";
 import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
+import { isDog } from "@/lib/pets";
+import { StaysSection } from "@/components/client-detail/StaysSection";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -99,10 +101,10 @@ export function ServicesTab({
   clientId,
   client,
   properties,
-  subscriptions,
+  subscriptions: allSubscriptions,
   zones,
   visits,
-  dogs,
+  dogs: pets,
   canBill,
   canManagePricing,
   editServiceId,
@@ -130,6 +132,14 @@ export function ServicesTab({
 }) {
   const qc = useQueryClient();
   const today = useOrgToday();
+  // A stay's plans (#411) are listed with their stay under Stays, not as
+  // services of their own; and every dog count here counts dogs, not a
+  // sitting client's cat.
+  const subscriptions = useMemo(
+    () => allSubscriptions.filter((s: any) => !s.stay_id),
+    [allSubscriptions],
+  );
+  const dogs = useMemo(() => pets.filter((p: any) => isDog(p)), [pets]);
   // The formatters' locale, so a set-days plan reads "Mon–Fri" in the
   // interface language.
   const locale = useIntlLocale();
@@ -670,6 +680,14 @@ export function ServicesTab({
           )}
         </div>
       )}
+
+      <StaysSection
+        clientId={clientId}
+        client={client}
+        properties={properties}
+        pets={pets}
+        canManagePricing={canManagePricing}
+      />
 
       <ServiceDrawer
         open={drawerSub !== null}
