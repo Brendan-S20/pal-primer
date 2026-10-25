@@ -300,9 +300,7 @@ describe("the public form", () => {
   it("shows the picker only when there is a choice, and sends the id with both buttons and the quote", () => {
     expect(flow).toMatch(/const pickService = offersAChoice\(services\);/);
     expect(flow).toMatch(/\{pickService && \(\s*<div[^>]*>\s*<Label htmlFor="service">/);
-    expect(flow).toMatch(
-      /const serviceField = pickService && chosen \? \{ service_id: chosen\.id \} : \{\};/,
-    );
+    expect(flow).toMatch(/const serviceField = chosen \? \{ service_id: chosen\.id \} : \{\};/);
     // The quote, the checkout and the quote request: three sends, one source.
     expect(flow.match(/\.\.\.serviceField/g)?.length).toBe(3);
     const quoteCall = flow.slice(

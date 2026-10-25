@@ -73,10 +73,10 @@ import {
 import { ELAPSED_FIELD, HONEYPOT_FIELD } from "@/lib/public-form-guard";
 import {
   asksAboutTheYard,
-  chosenPublicService,
   offersAChoice,
   publicServiceChoices,
   publicServiceOptionLabel,
+  quotedPublicService,
 } from "@/lib/public-services";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
@@ -173,8 +173,11 @@ export function SignupFlow({
     formQ.data?.serviceLines ?? { bookable: [], customerRequestable: [] },
   );
   const pickService = offersAChoice(services);
-  const chosen = chosenPublicService(services, form.service_id);
-  const serviceField = pickService && chosen ? { service_id: chosen.id } : {};
+  // The service quoted: the one picked, or the business's only service when
+  // it is not zone-priced (a walking-only business). Sent by id, so the
+  // server prices THAT and adds no first cleanup to a walk.
+  const chosen = quotedPublicService(services, form.service_id);
+  const serviceField = chosen ? { service_id: chosen.id } : {};
 
   // The words that depend on what is being sold (lib/booking-copy.ts, #525):
   // the service picked, else the business's only one, else pet waste. The

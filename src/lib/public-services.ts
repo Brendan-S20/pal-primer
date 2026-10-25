@@ -6,14 +6,18 @@
  *    which rows count                 publicServiceChoices
  *    whether there is anything to pick  offersAChoice
  *    what the picker starts on        defaultPublicServiceId
+ *    what is quoted and charged       quotedPublicService
  *    whether the yard questions apply   asksAboutTheYard
  *    how an option reads              publicServiceOptionLabel
  *
  *  The rule the whole file exists for: a business that sells ONE thing sees
- *  the form it has always seen. No picker, no service id in any request, no
- *  service id on its lead or its signup. A pet-waste-only business is the
- *  common case today, and its signup must stay byte-for-byte what it was
- *  (tests/a-stranger-can-see-what-is-for-sale.test.ts holds it there).
+ *  no picker. A pet-waste-only business (the common case) also sends no
+ *  service id in any request and has none on its lead or its signup: its
+ *  signup stays byte-for-byte what it was
+ *  (tests/a-stranger-can-see-what-is-for-sale.test.ts holds it there). A
+ *  business whose one service is a walk, a sit or a groom sends that
+ *  service's id (quotedPublicService), so it is priced as itself and never
+ *  as a yard (#525).
  */
 
 import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
@@ -111,6 +115,22 @@ export function chosenPublicService(
     services.find((s) => s.id === defaultPublicServiceId(services)) ??
     null
   );
+}
+
+/** The service the form quotes, charges and words itself for: the one picked
+ *  when there is a choice, else the business's ONLY service when that one is
+ *  not zone-priced. A business that sells one walk has no picker, but its
+ *  walk is still a walk: quoted by its id, public_quote prices the service
+ *  (no first cleanup, no rate card) instead of the zone's scooping price, and
+ *  the yard questions are not asked. A pet-waste-only business, or one that
+ *  lists nothing, still gets null and sends no id: its form is unchanged. */
+export function quotedPublicService(
+  services: readonly PublicService[],
+  pickedId: string | null | undefined,
+): PublicService | null {
+  if (offersAChoice(services)) return chosenPublicService(services, pickedId);
+  const only = services.length === 1 ? services[0] : null;
+  return only && !isZonePriced(only) ? only : null;
 }
 
 /** Whether the pet-waste questions ("when was your yard last cleaned?", the

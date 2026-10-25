@@ -39,7 +39,7 @@ import {
 import { PORTAL_FREQUENCY_VALUES } from "@/lib/frequency-request";
 import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
 import { normalizeFormConfig, readsAsQuoteOnly } from "@/lib/new-customer-form";
-import { publicServiceChoices } from "@/lib/public-services";
+import { asksAboutTheYard, publicServiceChoices, quotedPublicService } from "@/lib/public-services";
 import { SERVICE_LINES, type ServiceLineAvailability } from "@/lib/service-lines";
 import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
 
@@ -127,6 +127,34 @@ describe("with a walk chosen, the form says nothing about a yard", () => {
 
   it("asks for dogs, because a walk is a dog's", () => {
     expect(html).toMatch(/<label[^>]*for="dog_count"[^>]*>Dogs<\/label>/);
+  });
+});
+
+describe("a business that sells only a walk is priced and worded as a walk", () => {
+  // Walking is bookable at launch, so this is a live case: no picker (one
+  // service), and before the fix no service id, so public_quote priced the
+  // zone rate card with its first cleanup and the form asked about the yard.
+  const html = render([WALK], LAUNCH_DEFAULT);
+
+  it("has no picker, and still says nothing about a yard", () => {
+    expect(html).not.toMatch(/id="service"/);
+    expect(html).toContain(BOOKING_COPY.dog_walking.notePlaceholder);
+    expect(visibleWords(html)).not.toMatch(YARD_WORDS);
+    expect(html).not.toContain(LAST_CLEANED_QUESTION);
+  });
+
+  it("quotes the walk by its id, so the server adds no first cleanup", () => {
+    const only = publicServiceChoices([WALK], LAUNCH_DEFAULT);
+    expect(quotedPublicService(only, "")?.id).toBe(WALK.id);
+    expect(asksAboutTheYard(quotedPublicService(only, ""))).toBe(false);
+    const flow = read("src/components/signup/SignupFlow.tsx");
+    expect(flow).toMatch(/const chosen = quotedPublicService\(services, form\.service_id\);/);
+    expect(flow).toMatch(/const serviceField = chosen \? \{ service_id: chosen\.id \} : \{\};/);
+  });
+
+  it("a pet-waste-only business still sends no id", () => {
+    expect(quotedPublicService(publicServiceChoices([SCOOP], LAUNCH_DEFAULT), "")).toBeNull();
+    expect(quotedPublicService([], "")).toBeNull();
   });
 });
 
