@@ -55,6 +55,8 @@ The ten grooming migrations remain at 20261024100000–20261024100900, after mai
 - Deleted all twelve older sitting migration copies (20261023120000–20261023122200). Main's 2026102408* migrations are unchanged; no sitting files were renumbered.
 - Sitting-only components, server functions and tests use main's versions, including its booking guards, clash warnings, skip reasons and onboarding checklist. Shared screens retain grooming additions.
 - Removed duplicate sitting generated types and imports introduced by the rebase. All ten grooming migrations retain their existing names and contents.
+- Validation: clean `npm ci`; TypeScript (6 GB heap), production build/PWA, hook lint, dead-machinery and customer-copy checks passed. Full Vitest: 582 files passed, 48 skipped, one shared fixture import failed; 7,996 tests passed, 317 skipped. After restoring the grooming-required middleware mocks, that fixture and the migration security suite passed (23 tests).
+- No duplicate migration versions remain. `check:migrations` cannot compare with the live database without `SUPABASE_DB_URL`.
 - No live database migrations or real payment walkthrough performed. Grooming remains Coming soon and portal vaccine uploads remain disabled.
 
 ## Historical pre-rebase verification

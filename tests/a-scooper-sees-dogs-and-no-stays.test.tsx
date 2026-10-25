@@ -11,6 +11,8 @@ const lines = vi.hoisted(() => ({ current: ["pet_waste"] as string[] }));
 
 vi.mock("@tanstack/react-start", () => ({
   useServerFn: (f: unknown) => f,
+  createMiddleware: () => ({ server: () => ({}) }),
+  createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
     const chain: any = {
       middleware: () => chain,
