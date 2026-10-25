@@ -59,7 +59,6 @@ import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-t
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
 import { ACCESS_METHOD_LABEL, isAccessMethod, type AccessMethod } from "@/lib/walk-access";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { useServiceLines } from "@/components/CommercialOnly";
 import { careSummary, PetCareEditor } from "@/components/client-detail/PetCareEditor";
 import { getPetCare } from "@/lib/stays.functions";
 import {

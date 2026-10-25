@@ -965,7 +965,6 @@ const zh: TranslationsWithPlurals<"other"> = {
     routing_failed: "自动规划路线未完成",
     missed_meds: "照看员漏给了药物",
     training_package: "训练套餐快用完或快到期",
-    missed_meds: "照看员漏给了药物",
   },
   techPush: {
     routeChangedToday: "你今天的路线有变动",

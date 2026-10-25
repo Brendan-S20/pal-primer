@@ -1007,7 +1007,6 @@ const es: Translations = {
     routing_failed: "La planificación automática no terminó",
     missed_meds: "Un cuidador no dio un medicamento",
     training_package: "Paquetes de entrenamiento por agotarse o vencer",
-    missed_meds: "Un cuidador no dio un medicamento",
   },
   techPush: {
     routeChangedToday: "Cambió tu ruta de hoy",

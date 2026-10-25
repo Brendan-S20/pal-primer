@@ -1018,7 +1018,6 @@ const en = {
     routing_failed: "Auto-routing did not finish",
     missed_meds: "A sitter missed a medication",
     training_package: "Training packages running low or expiring",
-    missed_meds: "A sitter missed a medication",
   },
   techPush: {
     routeChangedToday: "Your route for today changed",

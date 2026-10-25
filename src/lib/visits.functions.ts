@@ -605,7 +605,6 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     const { lessonClashesAfterMove } = await import("@/lib/training-packages.server");
     const lessonClashes = await lessonClashesAfterMove(supabase as any, [data.visitId]);
-    const { overnightClashWarning } = await import("@/lib/overnight-clashes.server");
     return {
       ok: true,
       lessonClashes,

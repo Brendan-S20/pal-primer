@@ -1078,7 +1078,6 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     routing_failed: "لم يكتمل التخطيط التلقائي للمسارات",
     missed_meds: "جليس حيوانات لم يُعطِ دواءً",
     training_package: "باقات تدريب أوشكت على النفاد أو الانتهاء",
-    missed_meds: "جليس حيوانات لم يُعطِ دواءً",
   },
   techPush: {
     routeChangedToday: "تغيّر مسارك لليوم",

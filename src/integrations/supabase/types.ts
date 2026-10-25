@@ -4090,7 +4090,6 @@ export type Database = {
           stay_deposit_refund_days: number
           std_base_price_cents: number | null
           std_per_dog_addl_cents: number | null
-          stay_deposit_refund_days: number
           stripe_connect_account_id: string | null
           stripe_connect_charges_enabled: boolean
           stripe_connect_connected_at: string | null
@@ -4251,7 +4250,6 @@ export type Database = {
           stay_deposit_refund_days?: number
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
-          stay_deposit_refund_days?: number
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -4412,7 +4410,6 @@ export type Database = {
           stay_deposit_refund_days?: number
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
-          stay_deposit_refund_days?: number
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -9092,10 +9089,6 @@ export type Database = {
         Args: { _cancel_booked: boolean; _client_package_id: string }
         Returns: number
       }
-      cancel_stay: {
-        Args: { _refund_deposit?: boolean; _stay_id: string }
-        Returns: Json
-      }
       capture_routing_run_undo: { Args: { _run_id: string }; Returns: number }
       cast_roadmap_vote: {
         Args: { p_feature: string; p_voter: string }
@@ -10646,21 +10639,8 @@ export type Database = {
       }
       stay_windows_are_valid: { Args: { _windows: Json }; Returns: boolean }
       stop_service_min: {
-        Args: { _property_min: number; _service_min: number }
+        Args: { _property_min: number; _service_min: number; _visit_min?: number }
         Returns: number
-      }
-      stay_contact_gaps: { Args: { _stay_id: string }; Returns: string[] }
-      stay_sitter_clashes: {
-        Args: { _stay_id: string }
-        Returns: {
-          arrival: string
-          client_name: string
-          night_of: string
-          sitter_name: string
-          visit_earliest: string
-          visit_latest: string
-          visit_on: string
-        }[]
       }
       stay_visit_bill: {
         Args: { _visit_id: string }
@@ -10669,20 +10649,6 @@ export type Database = {
           description: string
         }[]
       }
-      stay_windows_are_valid: { Args: { _windows: Json }; Returns: boolean }
-      stop_service_min:
-        | {
-            Args: { _property_min: number; _service_min: number }
-            Returns: number
-          }
-        | {
-            Args: {
-              _property_min: number
-              _service_min: number
-              _visit_min: number
-            }
-            Returns: number
-          }
       sync_invoice_amount_paid: {
         Args: { _invoice_id: string }
         Returns: undefined
