@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
-import { getPublicSignupForm } from "@/lib/signup.functions";
+import { getPublicSignupForm, getPublicSignupLines } from "@/lib/signup.functions";
 import { formCopy } from "@/lib/new-customer-form";
+import { bookingMetaDescription } from "@/lib/booking-copy";
 import { SignupFlow } from "@/components/signup/SignupFlow";
 import { customerTitle } from "@/lib/page-title";
 
@@ -24,14 +25,23 @@ import { customerTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/signup/$slug")({
   validateSearch: (s: Record<string, unknown>) => s,
-  head: () => ({
+  // The lines the business sells online, for the meta description (#525): a
+  // walking business's link should not be previewed as a yard cleanup. Its
+  // own small lookup, deliberately NOT the form's query: seeding the query
+  // cache here would render the form on the server while the browser's first
+  // render is still "Loading…", which is a hydration mismatch. A lookup that
+  // fails describes the page as pet waste; the page shows its own error.
+  loader: async ({ params }) => {
+    try {
+      return await getPublicSignupLines({ data: { slug: params.slug } });
+    } catch {
+      return { lines: [] };
+    }
+  },
+  head: ({ loaderData }) => ({
     meta: [
       { title: customerTitle("Get a quote") },
-      {
-        name: "description",
-        content:
-          "Enter your ZIP, number of dogs, and cleanup frequency to get a price, then start service online or ask for a quote.",
-      },
+      { name: "description", content: bookingMetaDescription(loaderData?.lines ?? []) },
     ],
   }),
   component: SignupPage,

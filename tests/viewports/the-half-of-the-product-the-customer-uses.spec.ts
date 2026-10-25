@@ -434,7 +434,7 @@ test.describe("the signup page, which prices the first cleanup by the customer's
       // The choice the lead form and the signup merged into: both are on
       // the page once there is a price, and so both are measured.
       await expect(page.getByRole("button", { name: "Start service" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Just send me a quote" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Get a quote by email" })).toBeVisible();
       await page.waitForTimeout(700);
 
       const { scrollW, innerW } = await measurePageOverflow(page);

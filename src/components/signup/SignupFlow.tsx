@@ -10,8 +10,8 @@
 //      ZIP, "Get instant price" shows the price.
 //   2. Name, email, phone, address, a note.
 //   3. The visitor chooses. "Start service" is the signup it always was: card
-//      here, client + property + subscription from the webhook. "Just send me
-//      a quote" writes a lead the office follows up. Where there is no price
+//      here, client + property + subscription from the webhook. "Get a quote
+//      by email" writes a lead the office follows up. Where there is no price
 //      (instant start switched off, a ZIP outside every zone, payments not
 //      ready) the quote request is the only button, so nobody hits a wall.
 //
@@ -29,7 +29,14 @@
 // marks the door. `offerQuoteRequest` is off in walk mode, which has its own
 // fallback (mark the door, the office finishes it).
 import { appUrl } from "@/lib/app-origin";
-import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
+import { frequencyLabel } from "@/lib/frequency-request";
+import {
+  BOOKING_COPY,
+  bookingCadence,
+  bookingLine,
+  chargedTodayCovers,
+  perVisitBillingSentence,
+} from "@/lib/booking-copy";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -66,10 +73,10 @@ import {
 import { ELAPSED_FIELD, HONEYPOT_FIELD } from "@/lib/public-form-guard";
 import {
   asksAboutTheYard,
-  chosenPublicService,
   offersAChoice,
   publicServiceChoices,
   publicServiceOptionLabel,
+  quotedPublicService,
 } from "@/lib/public-services";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
@@ -84,12 +91,6 @@ function getStripe(pk: string, stripeAccount?: string) {
   }
   return p;
 }
-
-// Canonical labels for the portal-selectable cadences (I3 shared map): the
-// public signup page uses the same wording as the portal and office.
-const FREQ_LABELS: Record<string, string> = Object.fromEntries(
-  PORTAL_FREQUENCY_VALUES.map((v) => [v, frequencyLabel(v)]),
-);
 
 function money(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -126,7 +127,7 @@ export function SignupFlow({
    *  return_url lands on the success screen, so nothing is lost, only the
    *  caller's chance to react in place. */
   onPaid?: (signupRequestId: string) => void;
-  /** Offer "Just send me a quote". Off in walk mode, which has its own
+  /** Offer "Get a quote by email". Off in walk mode, which has its own
    *  fallback for a prospect who will not pay at the door. */
   offerQuoteRequest?: boolean;
   /** Where this signup happens, for the label on the lead it writes. */
@@ -172,8 +173,18 @@ export function SignupFlow({
     formQ.data?.serviceLines ?? { bookable: [], customerRequestable: [] },
   );
   const pickService = offersAChoice(services);
-  const chosen = chosenPublicService(services, form.service_id);
-  const serviceField = pickService && chosen ? { service_id: chosen.id } : {};
+  // The service quoted: the one picked, or the business's only service when
+  // it is not zone-priced (a walking-only business). Sent by id, so the
+  // server prices THAT and adds no first cleanup to a walk.
+  const chosen = quotedPublicService(services, form.service_id);
+  const serviceField = chosen ? { service_id: chosen.id } : {};
+
+  // The words that depend on what is being sold (lib/booking-copy.ts, #525):
+  // the service picked, else the business's only one, else pet waste. The
+  // cadence list is the line's, so the frequency sent is one it showed.
+  const line = bookingLine(services, chosen);
+  const lineCopy = BOOKING_COPY[line];
+  const frequency = bookingCadence(line, form.frequency);
 
   // The pet-waste questions apply when nothing was picked and for the
   // pet-waste service; a walk has no yard to ask about.
@@ -210,7 +221,7 @@ export function SignupFlow({
           slug,
           postal_code: form.postal_code,
           dog_count: Number(form.dog_count),
-          frequency: form.frequency as any,
+          frequency,
           last_cleaned: form.last_cleaned,
           ...serviceField,
         },
@@ -234,7 +245,7 @@ export function SignupFlow({
           slug,
           postal_code: form.postal_code,
           dog_count: Number(form.dog_count),
-          frequency: form.frequency as any,
+          frequency,
           // The answer, as a tier id. The price is not sent: the server asks
           // the database for it and charges that.
           last_cleaned: form.last_cleaned,
@@ -255,7 +266,7 @@ export function SignupFlow({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // "Just send me a quote": the hosted lead form's own endpoint, unchanged,
+  // "Get a quote by email": the hosted lead form's own endpoint, unchanged,
   // so a quote request is exactly the `leads` row it always was.
   const [sent, setSent] = useState(false);
   const leadMut = useMutation({
@@ -266,7 +277,9 @@ export function SignupFlow({
       const res = await fetch("/api/public/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...lead, ...serviceField }),
+        // The cadence the line offered, which form.frequency may not be
+        // after the service changed.
+        body: JSON.stringify({ ...lead, frequency, ...serviceField }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -301,6 +314,9 @@ export function SignupFlow({
       : (quote.initial_cleanup_cents ?? 0);
 
   const hasContact = form.name.trim().length > 0 && EMAIL_RE.test(form.email.trim());
+  // The first cleanup is a yard's: never shown for a walk, a sit or a groom.
+  const showsFirstCleanup =
+    asksAboutTheYard(chosen) && (firstCleanupCents == null || firstCleanupCents > 0);
   const canCheckout =
     branch.canStartService && firstCleanupCents != null && hasContact && !!form.street.trim();
 
@@ -379,7 +395,7 @@ export function SignupFlow({
         )}
         {fields.dogCount && (
           <div className="space-y-1.5">
-            <Label htmlFor="dog_count">Dogs</Label>
+            <Label htmlFor="dog_count">{lineCopy.petLabel}</Label>
             <Input
               id="dog_count"
               type="number"
@@ -392,17 +408,14 @@ export function SignupFlow({
         )}
         <div className="space-y-1.5">
           <Label htmlFor="frequency">Frequency</Label>
-          <Select
-            value={form.frequency}
-            onValueChange={(v) => setFormField({ ...form, frequency: v })}
-          >
+          <Select value={frequency} onValueChange={(v) => setFormField({ ...form, frequency: v })}>
             <SelectTrigger id="frequency">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(FREQ_LABELS).map(([k, v]) => (
+              {lineCopy.cadences.map((k) => (
                 <SelectItem key={k} value={k}>
-                  {v}
+                  {frequencyLabel(k)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -559,7 +572,7 @@ export function SignupFlow({
               id="message"
               rows={3}
               maxLength={2000}
-              placeholder="Gate code, dog names, preferred days…"
+              placeholder={lineCopy.notePlaceholder}
               value={form.message}
               onChange={(e) => setFormField({ ...form, message: e.target.value })}
             />
@@ -580,10 +593,13 @@ export function SignupFlow({
         {leadMut.isPending
           ? "Sending…"
           : branch.canStartService || branch.reason === "not-priced-yet"
-            ? "Just send me a quote"
+            ? "Get a quote by email"
             : "Request a quote"}
       </Button>
-      {!hasContact && (
+      {/* Once Start service is on offer, the one hint under it covers both
+          buttons (#528): two hints for the same missing fields read as two
+          different problems. */}
+      {!hasContact && !(branch.canStartService && firstCleanupCents != null) && (
         <p className="text-xs text-muted-foreground">Add your name and email to send it.</p>
       )}
       {leadMut.error ? (
@@ -607,10 +623,10 @@ export function SignupFlow({
           <p className="text-sm text-muted-foreground">
             {branch.reason === "not-priced-yet" ? (
               <>
-                Enter your ZIP and dogs, then hit <em>Get instant price</em>.
+                {lineCopy.priceHint} <em>Get instant price</em>.
               </>
             ) : branch.reason === "no-zone" ? (
-              <>We'll price your yard ourselves and get back to you.</>
+              <>{lineCopy.outOfArea}</>
             ) : (
               <>Tell us about your property and pets and we'll get back to you with a price.</>
             )}
@@ -625,7 +641,7 @@ export function SignupFlow({
           {pickService && chosen && (
             <div className="min-w-0 break-words text-sm font-medium">{chosen.name}</div>
           )}
-          {(firstCleanupCents == null || firstCleanupCents > 0) && (
+          {showsFirstCleanup && (
             <div className="flex items-baseline justify-between gap-3">
               <div className="min-w-0 text-sm">
                 First cleanup (one-time)
@@ -643,7 +659,7 @@ export function SignupFlow({
             </div>
           )}
           <div className="flex items-baseline justify-between gap-3">
-            <div className="min-w-0 text-sm">Ongoing ({FREQ_LABELS[form.frequency]})</div>
+            <div className="min-w-0 text-sm">Ongoing ({frequencyLabel(frequency)})</div>
             {/* PER VISIT, not per month. `public_quote` returns
                 `round(base_visit_cents × frequency_multiplier)`, and
                 pricing.ts documents it as "Per-visit price after the
@@ -654,7 +670,7 @@ export function SignupFlow({
                 month" for what buys ONE visit. Weekly service at $25 read
                 "$25.00/mo". */}
             <div className="shrink-0 font-medium">
-              {money(quote.recurring_price_cents, quote.currency)}/visit
+              {money(quote.recurring_price_cents, quote.currency)}/{lineCopy.visit}
             </div>
           </div>
           <div className="border-t pt-3 text-xs text-muted-foreground">
@@ -666,10 +682,8 @@ export function SignupFlow({
                 <strong className="text-foreground">
                   {money(firstCleanupCents + quote.recurring_price_cents, quote.currency)}
                 </strong>
-                {firstCleanupCents > 0
-                  ? ", which covers your first cleanup plus your first scheduled visit."
-                  : ", which covers your first scheduled visit."}{" "}
-                After that you are billed for visits as they happen. Cancel anytime.
+                {chargedTodayCovers(line, showsFirstCleanup)}{" "}
+                {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
               </>
             )}
           </div>
@@ -699,7 +713,7 @@ export function SignupFlow({
               </Button>
               {!canCheckout && firstCleanupCents != null && (
                 <p className="text-xs text-muted-foreground">
-                  Add your name, email and street address to start.
+                  Add your name, email and street address to continue.
                 </p>
               )}
             </div>

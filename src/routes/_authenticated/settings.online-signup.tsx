@@ -12,7 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { appOrigin } from "@/lib/app-origin";
 import { titleHead } from "@/lib/page-title";
-import { FORM_DEFAULTS, normalizeFormConfig, type FormFields } from "@/lib/new-customer-form";
+import {
+  FORM_DEFAULTS,
+  normalizeFormConfig,
+  readsAsQuoteOnly,
+  type FormFields,
+} from "@/lib/new-customer-form";
 
 // Signup & quote form: the settings for a business's ONE public form.
 //
@@ -205,8 +210,8 @@ function SignupAndQuoteFormSettings() {
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Put this on your website, in your Google listing, and in your voicemail greeting.
-                  It shows your logo and brand color, not ours. Old lead form links keep working
-                  and open this form.
+                  It shows your logo and brand color, not ours. Old lead form links keep working and
+                  open this form.
                   {cfg?.portalSlug && cfg?.signupSlug && cfg.portalSlug !== cfg.signupSlug ? (
                     <>
                       {" "}
@@ -342,6 +347,9 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
   }, [raw]);
 
   const defaults = instantOn ? FORM_DEFAULTS.instant : FORM_DEFAULTS.quoteOnly;
+  // Words saved for a quote-only page, on a page that now prices instantly
+  // and offers Start service (#528). Clearing them shows the default.
+  const quoteOnlyWords = instantOn && (readsAsQuoteOnly(headline) || readsAsQuoteOnly(intro));
 
   const save = useMutation({
     mutationFn: () =>
@@ -430,6 +438,27 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
           placeholder={defaults.intro}
         />
       </div>
+      {quoteOnlyWords ? (
+        <div className="rounded-md border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-900">
+          <p>
+            Your form prices instantly and offers Start service, but your{" "}
+            {readsAsQuoteOnly(headline) ? "headline" : "intro text"} reads like a quote request
+            only. Visitors may not expect a price.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={() => {
+              if (readsAsQuoteOnly(headline)) setHeadline("");
+              if (readsAsQuoteOnly(intro)) setIntro("");
+            }}
+          >
+            Use the default wording
+          </Button>
+        </div>
+      ) : null}
       <div>
         <Label htmlFor="form-confirmation" className="text-xs">
           Message after a quote request
